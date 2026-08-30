@@ -1,14 +1,15 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
-Status: **active plan, reviewed 2026-08-30.** hipEngine has a working named
-`production` path. The frozen historical llama.cpp role baseline still leads by
-**3.22x** on p508 prefill and **1.10x** on tg32 decode. A same-day source/build
-refresh raised the provisional same-weight shape target: EngramHalo HIP leads by
-**3.49x/1.16x**, and Nathan's Vulkan release leads by **4.87x/1.57x**, on its
-BF16-KV p508/tg32 rows. Those generated-input rows remain historical diagnostics.
-P0 now uses a category-balanced exact-token p512/p1024/p4096 matrix with 128
-autoregressive transitions after each prefix. This document is the
-performance-specific plan and punchlist.
+Status: **active plan, reviewed 2026-08-30.** The category-balanced exact-token
+screening baseline now covers p512/p1024/p4096 plus 128 autoregressive
+transitions after each prefix. Named hipEngine production measures
+**82.51/81.22/67.93 tok/s** prefill and **13.82/13.79/10.40 tok/s** decode.
+Repeatability-valid screening comparators remain **2.90–4.34x** ahead on HIP
+prefill and **2.92–3.93x** ahead on Vulkan prefill; decode gaps are
+**1.24–1.42x** and **1.46–1.74x**. This is not section-6 closure: the run used
+three repetitions, several rows exceed 2% CV, and cold-PLE plus heldout modes
+remain open. The frozen p508/tg32 role baseline remains the attribution anchor.
+This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
 authority; this file owns only the gap-closure campaign.
 
@@ -52,11 +53,13 @@ backend, or one MTP budget wins.
 
 ## 2. Current verified gap
 
-Evidence anchor:
+Canonical screening evidence:
+[`2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json).
+It pins hipEngine commit `6fbcc721a`, current upstream `f1793c1c4`, every
+external binary and patch hash, the exact 12-case fixture, all 180 measured
+samples, host state, and output-repeatability verdicts. The role-resolved p508
+and tg32 attribution anchor remains
 [`2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json).
-It pins hipEngine commit `15a436766`, llama.cpp remote HEAD
-`57291f2644af8c9df0dd8d44395881c5bdcf0ecd`, HIP/Vulkan comparator binary
-hashes, production manifest `9e27fec0...`, and strict manifest `42509601...`.
 
 ### End-to-end rows
 
@@ -65,7 +68,44 @@ hashes, production manifest `9e27fec0...`, and strict manifest `42509601...`.
 | p508 prefill | **84.83 tok/s** | 272.83 | 331.03 | **3.22x** | **3.90x** |
 | tg32 steady decode | **15.19 tok/s** | 16.64 | 24.22 | **1.10x** | **1.59x** |
 
-### 2.1 Latest external-fork refresh
+### 2.1 Canonical exact-token screening
+
+All rows use the same four category token arrays at each shape, BF16 K/V,
+greedy sampling, disabled prompt reuse, one warmup per case, and three measured
+requests per case. Each cell is prompt processing / 128-transition decode in
+tokens per second.
+
+| Engine | p512 | p1024 | p4096 | Repeatability |
+| --- | ---: | ---: | ---: | --- |
+| hipEngine production | **82.51 / 13.82** | **81.22 / 13.79** | **67.93 / 10.40** | 12/12 exact |
+| Upstream Vulkan `f1793c1c4` | 240.53 / 22.97 | 259.73 / 20.11 | 266.98 / 18.07 | 12/12 exact |
+| Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
+| EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; `code-p4096` alternates |
+| Nathan Vulkan `ad914eb` | 348.31 / 23.23 | 354.93 / 20.36 | 350.54 / 18.44 | 0/12 exact |
+
+Nathan's follow-up control repeated the identical p1024 token array 16 times
+and produced 16 distinct continuations, so its faster rates are non-binding
+diagnostics. EngramHalo is repeat-exact at p512/p1024 but not p4096. Pristine
+upstream HIP produced zero samples after separate 1,800-second default and
+`--no-host` starts. The two documented Strix Halo loader patches were therefore
+measured only as a separately labeled patched-upstream lane; that row is not
+stock upstream.
+
+The repeatability-valid screening targets and current hipEngine gaps are:
+
+| Shape | HIP target and gap | Vulkan target and gap |
+| --- | ---: | ---: |
+| p512 / tg128 | patched upstream, **2.90x / 1.28x** | upstream, **2.92x / 1.66x** |
+| p1024 / tg128 | EngramHalo, **3.88x / 1.24x** | upstream, **3.20x / 1.46x** |
+| p4096 / tg128 | patched upstream, **4.34x / 1.42x** | upstream, **3.93x / 1.74x** |
+
+These are screening ratios, not match/loss verdicts. Section 6 still requires
+five same-thermal counterbalanced pairs, per-row CV at or below 2% for a match,
+and paired confidence intervals. Cross-engine generated-ID equality is
+recorded but remains diagnostic for named production arithmetic; each lane's
+repeatability and hipEngine's execution-profile gates are separate checks.
+
+### 2.2 Historical external-fork shape refresh
 
 The 2026-08-30 refresh used the existing four-part `UD-Q4_K_XL`; no new
 weight quant was downloaded. EngramHalo HEAD remained `1423f689...`. Its
@@ -181,13 +221,17 @@ for every campaign claim.
 
 ### 3.2 Build the comparator once
 
-The 2026-08-30 comparator used llama.cpp remote HEAD
-`57291f2644af8c9df0dd8d44395881c5bdcf0ecd` with these effective Release build
-settings: HIP on, `AMDGPU_TARGETS=gfx1151`, `GGML_HIP_GRAPHS=ON`,
-`GGML_HIP_MMQ_MFMA=ON`, and Vulkan in a separate build tree. The artifact stores
-both `llama-bench` SHA-256 values. Refresh the comparator only as a separate
-baseline event; do not compare old and new absolute rows as an old→new
-optimization.
+The canonical 2026-08-30 refresh used current upstream HEAD
+`f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d`. The pristine Release binaries are
+HIP `020d0e94...` and Vulkan `c6c9dd2b...`; HIP uses
+`AMDGPU_TARGETS=gfx1151`, `GGML_HIP_GRAPHS=ON`, and
+`GGML_HIP_MMQ_MFMA=ON`, while Vulkan uses RADV/Mesa 26.2.1 in a separate build
+tree. Pristine HIP is startup-blocked for this 111-GB artifact. A separately
+labeled HIP binary `bb41c755...` applies only the documented host-buffer and
+per-buffer-mmap patches (`aca70db1...` and `971d428d...`). EngramHalo HIP is
+`0514f125...` at `1423f689...` plus the same patches; Nathan Vulkan is
+`d3dbb492...` at `ad914eb...`. Refresh any comparator only as a separate
+baseline event; do not report old and new absolute rows as an optimization A/B.
 
 ### 3.3 Collect canonical exact-token wall rows
 
@@ -320,7 +364,7 @@ None of these numbers are hipEngine results.
 | Source | Mechanism or claim | Status for this campaign |
 | --- | --- | --- |
 | [Sleeping Robots, 2026-08-29](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/) | Independently tested EngramHalo on Strix Halo with a different quant. MTP reaches 28-38 tok/s at working depths; 26K MTP regresses to 15.0; kernel-only prefill improves up to about 35% at 26K. | Useful cross-check of the direction, not a same-quant baseline. Confidence: medium-high for the external fork, low for transfer magnitude. |
-| Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Direct same-host evidence, but shape inputs are not yet exact-matched to hipEngine. AR rows are provisional competitor targets; the MTP speed row fails correctness and is diagnostic only. |
+| Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Historical same-host shape evidence, superseded for AR targets by the exact-token screening in section 2.1. The MTP speed row fails correctness and remains diagnostic only. |
 | [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), refreshed at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), and load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. The published container additionally applies the tracked #25992 host-buffer and per-buffer-mmap patches. | Code and build mechanisms verified by source inspection and a local gfx1151 HIP build. hipEngine already covers the QSA selector/gather direction; PLE advice/prefetch, loader drop-behind, full-step graphing, and MTP economics remain open. |
 | [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), toolbox HEAD `a8631dfbf0aeb6a4004866fce1fd7e5c10370049`, source `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone loses; merged `WILLNEED` row prefetch is the paying half (`77362a8`). Qwen4Exp also adds host PLE gather and reusable decode topology (`631b9ff`), per-block QSA bias (`024b7ad`), and MTP graph/context (`3543908` + `39817c4`). Vulkan lineage includes MoE row lists (`212cca8`), route-scale epilogue, SiLU/mul fusion, transposed concat (`30d8bb0`), dense wave32 (`25c45fe`), and LDS padding (`baf6360`). | Source mechanisms verified; release and local source builds agree within 1% on this host. Vulkan shader topology is not portable to HIP, but the removed data movement, host synchronization, graph rebuild, and LDS-bank mechanisms are actionable. |
 | [quimmedes/cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp), observed HEAD `2da84198eccb0aee59abba59e967dcc61f84ce07` | The fresh fork exposes pinned-host/CPU routed-expert placement, PLE n-gram SSD mmap or disable modes, and Qwen4Exp MTP trunk/combiner fixes. Commits `ba7bd23` and `7ee981d` add the PLE controls; `19aefd2` and `d98dc18` address MTP hidden export and mixer mapping. | Track as a source lead, not a measured comparator. SSD PLE and host-placement ownership may inform P9; `--no-ngram` changes the model and cannot close parity. No same-weight local rate or correctness packet has been verified. Confidence: high for repository/commit identity, medium for transfer applicability. |
@@ -412,13 +456,16 @@ matrix before implementation claims parity.
 - [x] Add at least one prompt from every code/general-English/general-Japanese/
       mixed category to the AR wall packet so one routed prompt cannot define
       parity. Category-heldout expansion remains a closure gate.
-- [ ] Freeze the current best BF16 target per row: upstream llama.cpp,
-      EngramHalo HIP, and Nathan Vulkan. Refresh a comparator only as a separate
-      baseline event with old and new binaries measured on the same host.
-- [ ] Record hostname/machine ID, source and binary hashes, compiler/driver,
+- [x] Freeze the current three-repeat BF16 screening target per row for
+      upstream llama.cpp, EngramHalo HIP, and Nathan Vulkan, with deterministic
+      rows separated from non-binding diagnostics. Refresh a comparator only as
+      a separate baseline event with old and new binaries measured on the same
+      host. A five-pair section-6 closure refresh remains open.
+- [x] Record hostname/machine ID, source and binary hashes, compiler/driver,
       profile manifest, model-part hashes, exact command, CPU governor/TuneD,
       `amd_iommu`, power/clock samples, free/available/swap, and active GPU
-      processes in every closure artifact.
+      processes in the canonical screening artifact. Repeat the capture for the
+      eventual closure artifact.
 - [ ] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
       or compare them as one workload.
 - [ ] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
@@ -800,6 +847,8 @@ cleanup, and commits are complete.
 - Tracked implementation leads:
   [cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp) and
   [omlx PR #3260](https://github.com/jundot/omlx/pull/3260).
+- Canonical exact-token screening:
+  [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
 - Fresh profile artifact:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json)
 - External fork refresh:
