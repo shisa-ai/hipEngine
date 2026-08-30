@@ -1,0 +1,33 @@
+{
+  "baseline_repeatability": "The WMMA arm here (0.7115 s at 285 tokens) reproduces an independent run from earlier today (0.7124 s) to 0.13%, so the baseline is stable enough that a 3.20x effect needs no repeats to conclude.",
+  "consequence_for_objective": "Closes the last non-kernel lever for the prefill deficit. Combined with pp512 parity (benchmarks/results/2026-08-30-w7900-q4km-pp512-cross-engine.json) and the verify row-scaling trace (\u2026block-verify-row-scaling-trace.json), the C1-C3 prefill deficit and much of the K3 C5-C8 deficit reduce to the ~252-271 ms fixed cost of a small-row WMMA prefill, which now requires kernel work with a strict RED gate.",
+  "control_that_made_this_interpretable": "The first attempt flipped only _GGUF_PUBLIC_USE_WMMA_PREFILL (via __wrapped__.__kwdefaults__ on the contextmanager) and gave walls identical to baseline to within 0.2%, which is a vacuous arm, not a null result: the measured AR session is reused from warmup pools constructed with a literal True (route log showed use_wmma_prefill=True in the \"flipped\" process). Only after the literals were flipped did the route log show False and the walls move. Same trap as the tile sweep, caught the same way - prove the control reaches the kernel.",
+  "date": "2026-08-30",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100, RDNA3), device 0",
+  "kind": "w7900-q4km-all-gemv-prefill-arm-rejected",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "question": "Task #12 last cheap lever: at 45 rows a 16x16 WMMA tile wastes 12 of 16 rows, so does the GEMV prefill family beat the WMMA rowtile family at small rows? Measured by a revertible scratch edit flipping the 11 literal use_wmma_prefill=True sites to False, probe otherwise identical, medians of 3.",
+  "rows": [
+    {
+      "gemv_over_wmma": 1.57,
+      "gemv_prefill_wall_s": 0.4632,
+      "gemv_spread_s": 0.0365,
+      "prompt_tokens": 42,
+      "wmma_prefill_wall_s": 0.295,
+      "wmma_spread_s": 0.0411
+    },
+    {
+      "gemv_over_wmma": 3.2,
+      "gemv_prefill_wall_s": 2.2764,
+      "gemv_spread_s": 0.0166,
+      "prompt_tokens": 285,
+      "wmma_prefill_wall_s": 0.7115,
+      "wmma_spread_s": 0.0009
+    }
+  ],
+  "schema": "w7900_all_gemv_prefill_arm.v1",
+  "scratch_hygiene": "hipengine/generation/qwen35_gguf.py was restored from a byte copy and git status is clean for it; no route default changed in the tree.",
+  "status": "rejected-measured",
+  "verdict": "All-GEMV prefill is 1.57x slower at 42 tokens and 3.20x slower at 285. The route choice is already right; the small-row deficit is not a wrong-route problem, so the remaining lever is a small-M variant of the WMMA rowtile family, not a route switch."
+}
