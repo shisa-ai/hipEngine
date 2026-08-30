@@ -4864,7 +4864,7 @@ def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> 
     owner = FakeOwner()
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
     runner.packed_prefill_max_rows = 8
-    runner._route_counts = {"native_full_prefill_rows": 0}
+    runner._route_counts = Counter(native_full_prefill_rows=0)
     runner._row = lambda request_id: rows[int(request_id)]
     runner._packed_execution_owner = lambda session: owner
     runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(prompts)
@@ -4897,6 +4897,7 @@ def test_resident_ar_packed_prefill_survives_one_over_long_lane(monkeypatch) -> 
         "chunked serial path"
     )
     assert runner._route_counts["native_full_prefill_rows"] == 7
+    assert runner._route_counts["native_full_prefill_groups"] == 1
 
 
 def test_gguf_gfx1100_packed_prefill_capability_is_undeclared_by_default() -> None:
@@ -4989,7 +4990,7 @@ def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> 
     owner = FakeOwner()
     runner = Qwen35GGUFResidentModelRunner.__new__(Qwen35GGUFResidentModelRunner)
     runner.packed_prefill_max_rows = 8
-    runner._route_counts = {"native_full_prefill_rows": 0}
+    runner._route_counts = Counter(native_full_prefill_rows=0)
     runner._row = lambda request_id: rows[int(request_id)]
     runner._packed_execution_owner = lambda session: owner
     runner._begin_mtp2_prompt_streaming = lambda _rows: [None] * len(prompts)
@@ -5015,6 +5016,9 @@ def test_resident_ar_packed_prefill_groups_mixed_prompt_lengths(monkeypatch) -> 
     assert slots == (0, 1, 2)
     assert lengths == (4, 2, 1), f"per-row lengths were not forwarded: {lengths}"
     assert runner._route_counts["native_full_prefill_rows"] == 3
+    # The group counter is what lets a packet prove a wave grouped: rows alone is also
+    # bumped by single-request prefill.
+    assert runner._route_counts["native_full_prefill_groups"] == 1
 
 
 def test_gguf_ar_packed_prefill_notimplemented_falls_back(monkeypatch) -> None:

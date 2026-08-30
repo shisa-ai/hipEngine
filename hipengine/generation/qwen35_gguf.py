@@ -5248,6 +5248,9 @@ class Qwen35GGUFResidentModelRunner:
             "routes": {
                 "counts": {
                     "native_full_prefill_rows": int(self._route_counts["native_full_prefill_rows"]),
+                    "native_full_prefill_groups": int(
+                        self._route_counts["native_full_prefill_groups"]
+                    ),
                     "native_incremental_prefill_chunks": int(
                         self._route_counts["native_incremental_prefill_chunks"]
                     ),
@@ -6489,6 +6492,9 @@ class Qwen35GGUFResidentModelRunner:
             )
         elapsed_ms = _timing_ms_since(started)
         self._route_counts["native_full_prefill_rows"] += len(rows)
+        # Distinct from the row counter: rows is also bumped by single-request prefill,
+        # so without this a packet cannot prove a wave actually grouped.
+        self._route_counts["native_full_prefill_groups"] += 1
         for row, chunk, result in zip(rows, chunks, result_rows, strict=True):
             row.prefill_tokens_seen = len(chunk)
             row.incremental_prefill = False
