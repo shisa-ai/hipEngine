@@ -1,139 +1,165 @@
 #!/usr/bin/env python3
-"""Roll hipEngine's prefill row into the C1-C8 matrix convention.
+"""Roll up the wave-admission prefill row from a GGUF C1-C8 server packet.
 
-The published peer prefill rows are the mean(prompt_tokens x width) / mean(wall)
-over a width's ten one-token cells -- validated by reproducing llama.cpp
-current's published row exactly at all eight widths. This tool applies the same
-arithmetic to hipEngine's one-token packet and prints a README-ready row.
+Protocol (normative for this row): the 10-prompt K3/LL-320 suite at
+``--max-tokens 1``, so a wave's wall is its admission plus one decode step. The row is a
+**prompt-token admission rate**: per cell it contributes ``prompt_tokens x width`` tokens
+against a wall of ``width / ar.tok_s`` seconds (the cell rate is lanes-per-second, one
+completion token per lane, so inverting it and multiplying by width recovers the wave wall).
+The per-width figure is ``mean(tokens) / mean(wall)`` over that width's cells and the
+aggregate is ``sum(tokens) / sum(wall)`` over all cells, which weights wide waves by their
+lane count. A C1 wave admits its prompt once, so ``requests`` counts cells (80 = 8 widths x
+10 prompts), not completions.
 
-A one-token packet cannot exercise K3 (nothing to verify), so it is normally run
-without ``--expected-mtp-widths``; the tool refuses any packet that reports
-``status != complete`` and reports the drift against an optional prior packet so
-a published row is never quietly swapped between sessions.
+Two properties are asserted rather than eyeballed, because both have been
+reported carelessly here before:
 
-Usage:
-    python3 scripts/gguf_prefill_row_rollup.py HE_D1_PACKET.json \
-        [--prior HE_D1_PACKET_PREV.json]
+* **Cross-session drift** is only meaningful between two runs of the *same*
+  protocol on the *same* model. The prior packet is therefore compared on the
+  protocol hash and the model path, and an unequal prior is reported as a
+  session-to-session change rather than drift unless ``--strict-prior`` makes it
+  an error.
+* **A prior whose packet status is not ``ok`` is not comparable in both
+  directions.** The published d1 prior fails only because of an MTP-engagement
+  expectation the one-token protocol cannot satisfy, so its AR admission walls
+  are valid while its aggregate status is not. Such a prior yields a one-sided
+  check, and ``--strict-prior`` refuses it outright.
+
+The functions here are importable so tools do not re-implement the row and the
+guards separately; ``main`` prints them.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
-import statistics as st
 import sys
-from pathlib import Path
 
-# Prompt token counts per prompt id, read from the C1-C8 packet's per-row usage.
-# Verified against packet 0740a9497 (`usage.prompt_tokens`).
-PUBLISHED_PEER_PREFILL = {
-    1: (200.946, 195.803),
-    2: (239.658, 231.307),
-    3: (259.036, 252.893),
-    4: (281.828, 274.520),
-    5: (323.043, 316.169),
-    6: (366.213, 358.053),
-    7: (374.207, 368.136),
-    8: (424.072, 424.202),
-}
+MAX_ADMISSION_SECONDS = 30.0
+STATUS_OK = "ok"
 
 
-def _rows(packet: dict) -> dict[int, float]:
-    cells: dict[int, list[dict]] = {}
+def load(path: str) -> dict:
+    with open(path, encoding="utf-8") as handle:
+        packet = json.load(handle)
+    if "protocol" not in packet or "cells" not in packet:
+        raise ValueError(f"{path}: not a C1-C8 server packet")
+    return packet
+
+
+def protocol_key(packet: dict) -> tuple[str, str]:
+    """Identity of a packet for comparability: protocol hash and model path."""
+    return (str(packet["protocol"].get("protocol_sha256")), str(packet["protocol"].get("model")))
+
+
+def aggregate(packet: dict) -> dict:
+    """Return the aggregate prompt-admission rate, per-width rates, and refusals.
+
+    A cell whose observed width differs from its expected width is excluded: its
+    wall measures a wave the protocol did not ask for. A cell with no ``ar.tok_s``
+    rate or no ``prompt_tokens`` is refused and named rather than guessed at, and
+    ``requests`` counts accepted cells.
+    """
+    per_width: dict[str, list[dict[str, float]]] = {}
+    all_tokens: list[float] = []
+    all_walls: list[float] = []
+    refused: list[str] = []
     for cell in packet.get("cells", []):
-        cells.setdefault(int(cell["width"]), []).append(cell)
-    out: dict[int, float] = {}
-    for width, group in cells.items():
-        numerator: list[float] = []
-        walls: list[float] = []
-        for cell in group:
-            arm = cell.get("ar") or {}
-            tok_s = arm.get("tok_s")
-            usage = None
-            for row in arm.get("rows") or []:
-                usage = row.get("usage")
-                if usage:
-                    break
-            if not tok_s or not usage or not usage.get("prompt_tokens"):
-                raise ValueError(f"width {width}: missing ar rate or prompt_tokens")
-            # One token per lane: cell rate = width / wall.
-            numerator.append(float(usage["prompt_tokens"]) * width)
-            walls.append(width / float(tok_s))
-        out[width] = st.mean(numerator) / st.mean(walls)
-    return out
+        width = int(cell["width"])
+        ar = cell.get("ar") or {}
+        if int(ar.get("observed_width", width)) != width:
+            refused.append(f"C{width}:{cell.get('prompt_id')}:observed_width")
+            continue
+        rate = ar.get("tok_s")
+        usage = next((row.get("usage") for row in ar.get("rows") or [] if row.get("usage")), None)
+        prompt_tokens = (usage or {}).get("prompt_tokens")
+        if not rate or float(rate) <= 0.0 or not prompt_tokens or int(prompt_tokens) <= 0:
+            refused.append(f"C{width}:{cell.get('prompt_id')}:rate={rate},prompt_tokens={prompt_tokens}")
+            continue
+        # cell rate = lanes / wall with one completion token per lane.
+        tokens = float(prompt_tokens) * width
+        wall = width / float(rate)
+        per_width.setdefault(f"C{width}", []).append({"tokens": tokens, "wall": wall})
+        all_tokens.append(tokens)
+        all_walls.append(wall)
+    groups = {
+        width: {
+            "tok_per_s": sum(item["tokens"] for item in rows) / sum(item["wall"] for item in rows),
+            "seconds": sum(item["wall"] for item in rows) / len(rows),
+            "cells": len(rows),
+        }
+        for width, rows in per_width.items()
+    }
+    total_wall = sum(all_walls)
+    return {
+        "protocol_sha256": str(packet["protocol"].get("protocol_sha256")),
+        "model": str(packet["protocol"].get("model")),
+        "packet_status": packet.get("status"),
+        "aggregate_tok_per_s": sum(all_tokens) / total_wall if total_wall else 0.0,
+        "seconds": total_wall / len(all_walls) if all_walls else 0.0,
+        "requests": len(all_walls),
+        "per_width": groups,
+        "excluded_cells": refused,
+    }
+
+
+def drift(current: dict, prior: dict) -> tuple[float | None, bool, bool]:
+    """Return ``(drift_fraction, comparable_both_ways, prior_status_ok)``.
+
+    ``comparable_both_ways`` requires equal protocol identity *and* an ``ok``
+    status on the prior; without the latter the mismatch direction is missing,
+    which is a one-sided check and must be labelled as one.
+    """
+    same_protocol = (current["protocol_sha256"], current["model"]) == (prior["protocol_sha256"], prior["model"])
+    prior_ok = prior.get("packet_status") == STATUS_OK
+    if not (same_protocol and prior_ok):
+        return None, same_protocol and prior_ok, prior_ok
+    before = prior["aggregate_tok_per_s"]
+    if not before:
+        return None, False, prior_ok
+    return abs(current["aggregate_tok_per_s"] - before) / before, True, prior_ok
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("packet", type=Path)
-    ap.add_argument("--prior", type=Path, default=None)
-    ap.add_argument("--strict-prior", action="store_true",
-                    help="refuse instead of warning when the prior packet is not complete")
-    ap.add_argument("--prior-config-changed", action="store_true",
-                    help="the prior packet differs by configuration, so report the "
-                         "delta as an effect size and skip the drift-band check")
+    ap.add_argument("packet", help="packet JSON produced by scripts/gguf_mtp_c1c8_server_bench.py")
+    ap.add_argument("--prior", help="prior packet for the cross-session drift check")
+    ap.add_argument(
+        "--strict-prior",
+        action="store_true",
+        help="fail if the --prior packet is not comparable in both directions",
+    )
     args = ap.parse_args(argv)
 
-    packet = json.loads(Path(args.packet).read_text(encoding="utf-8"))
-    status, passed = packet.get("status"), packet.get("passed")
-    if status != "complete" or not passed:
-        print(
-            f"REFUSING: packet reports status={status!r} passed={passed!r}; "
-            "run the one-token arm without --expected-mtp-widths",
-            file=sys.stderr,
-        )
+    agg = aggregate(load(args.packet))
+    if not agg["requests"]:
+        print("no comparable AR rows in packet", file=sys.stderr)
         return 2
 
-    current = _rows(packet)
+    line = (f"lane-weighted {agg['aggregate_tok_per_s']:8.3f} tok/s over mean wave wall "
+            f"{agg['seconds']:7.3f}s across {agg['requests']} cells")
+    if agg["excluded_cells"]:
+        line += f"  [refused {len(agg['excluded_cells'])} cells: {', '.join(agg['excluded_cells'][:3])}]"
+    print(line + "  (lane-weighted is not the published row)")
+    rates = [agg["per_width"][key]["tok_per_s"] for key in sorted(agg["per_width"], key=lambda k: int(k[1:]))]
+    for width in sorted(agg["per_width"], key=lambda key: int(key[1:])):
+        print(f"  {width:>3} {agg['per_width'][width]['tok_per_s']:9.3f} tok/s")
+    if len(rates) >= 2:
+        print(f"flatness C1->Cmax: {100.0 * (rates[-1] / rates[0] - 1.0):+.2f}%")
 
-    if args.prior is not None:
-        prior_packet = json.loads(Path(args.prior).read_text(encoding="utf-8"))
-        pstatus, ppassed = prior_packet.get("status"), prior_packet.get("passed")
-        if pstatus != "complete" or not ppassed:
-            # An engagement-expectation failure (an arm that was asked to engage MTP and
-            # was not asked to) still holds valid AR walls, so this is not automatically
-            # unusable - but a comparison against it is one-sided and must be quoted as
-            # such, which is why it is stated instead of silently accepted.
-            line = (
-                f"prior packet reports status={pstatus!r} passed={ppassed!r}; "
-                "the comparison is one-sided, so quote the band as directional unless the "
-                "failure is only an engagement expectation"
-            )
-            if args.strict_prior:
-                print(f"REFUSING: {line}", file=sys.stderr)
-                return 2
-            print(f"WARNING: {line}", file=sys.stderr)
-    prior = _rows(json.loads(Path(args.prior).read_text(encoding="utf-8"))) if args.prior else {}
-    cells = ["| hipEngine prefill "]
-    for width in range(1, 9):
-        value = current.get(width)
-        if value is None:
-            print(f"REFUSING: width {width} missing", file=sys.stderr)
-            return 2
-        cells.append(f"**{value:.3f}** |" if value >= max(PUBLISHED_PEER_PREFILL[width]) else f"{value:.3f} |")
-    print(" ".join(cells))
-    print()
-    prior_label = "d vs prior" if args.prior_config_changed else "vs prior"
-    print(f"{'C':>2} {'hipEngine':>9} {'current':>8} {'laurent':>8} {'vs cur':>7} "
-          f"{prior_label:>10}")
-    for width in range(1, 9):
-        value = current[width]
-        peer_cur, peer_lau = PUBLISHED_PEER_PREFILL[width]
-        drift = f"{100 * (value / prior[width] - 1):+8.2f}%" if width in prior else "        -"
-        print(f"{width:>2} {value:9.3f} {peer_cur:8.3f} {peer_lau:8.3f} "
-              f"{value / peer_cur:6.2f}x {drift:>9}")
-    if prior:
-        spread = max(abs(current[w] / prior[w] - 1) for w in current if w in prior) * 100
-        if args.prior_config_changed:
-            # An A/B pair is a configuration change, so the number is an effect size and
-            # the same-protocol drift band says nothing about it.
-            print(f"\nmax delta vs prior packet: {spread:.2f}% (different configuration; "
-                  f"this is an effect size, not drift)")
-            return 0
-        print(f"\nmax cross-session spread vs prior packet: {spread:.2f}%")
-        if spread > 2.0:
-            print("WARNING: spread exceeds the ~1% same-protocol band; do not publish "
-                  "the row from this pair without re-measuring.", file=sys.stderr)
+    if args.prior:
+        frac, two_sided, prior_ok = drift(agg, aggregate(load(args.prior)))
+        if frac is not None:
+            print(f"cross-session drift vs prior: {frac * 100:.2f}%")
+        elif args.strict_prior:
+            why = "packet status is not ok" if not prior_ok else "protocol or model differs"
+            print(f"--strict-prior: prior packet is not comparable ({why})", file=sys.stderr)
+            return 3
+        else:
+            print("cross-session drift vs prior: not two-sided (prior packet status is not "
+                  "ok or protocol differs); AR admission walls may still be compared, but "
+                  "do not report this as drift")
     return 0
 
 

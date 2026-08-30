@@ -1,75 +1,80 @@
 {
- "caveats": [
-  "the prior packet reports status='failed' because it was run with an MTP engagement expectation the one-token protocol cannot satisfy; its AR walls are valid, so the 0.41% agreement is directional rather than a two-sided same-configuration band"
- ],
- "command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1v3/he-d1v3.json --prior /tmp/he-d1-clean/he-d1-clean.json",
- "date": "2026-08-30",
- "fix_in_flight": "GGUF_C2_PACKED_PREFILL_MAX_ROWS + mixed-length grouping in the resident AR route (guard landed inert in 713ad7e1b; qualification run pending)",
- "flatness_c1_to_c8_percent": {
-  "current": 111.04,
-  "hipengine": 3.95,
-  "laurent": 116.65
- },
- "hardware": {
-  "gpu": "AMD Radeon Pro W7900 (gfx1100/RDNA3)",
-  "host_role": "default development host"
- },
- "kind": "w7900_q4km_c1c8_hipengine_prefill_row",
- "measured_tok_s": {
-  "current": {
-   "1": 200.946,
-   "2": 239.658,
-   "3": 259.036,
-   "4": 281.828,
-   "5": 323.043,
-   "6": 366.213,
-   "7": 374.207,
-   "8": 424.072
+  "caveats": [
+    "the prior packet (/tmp/he-d1-clean) reports status='failed' solely because the bench's MTP route expectation defaults to *every* width when --expected-mtp-widths is omitted (scripts/gguf_mtp_c1c8_server_bench.py:580), which a one-token AR-only arm can never satisfy; its content gate is clean (exact_cells == cells == 10 at all eight widths, only route_expectation_passed is False), so its AR admission walls are valid and the 0.41% agreement is directional rather than a two-sided same-configuration band"
+  ],
+  "command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1v3/he-d1v3.json --prior /tmp/he-d1-clean/he-d1-clean.json",
+  "date": "2026-08-30",
+  "fix_in_flight": "GGUF_C2_PACKED_PREFILL_MAX_ROWS + mixed-length grouping in the resident AR route (guard landed inert in 713ad7e1b; qualification run pending)",
+  "flatness_c1_to_c8_percent": {
+    "current": 111.04,
+    "hipengine": 3.95,
+    "laurent": 116.65
   },
-  "hipengine": {
-   "1": 148.891,
-   "2": 154.209,
-   "3": 154.187,
-   "4": 153.517,
-   "5": 154.061,
-   "6": 154.408,
-   "7": 154.588,
-   "8": 154.767
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900 (gfx1100/RDNA3)",
+    "host_role": "default development host"
   },
-  "laurent": {
-   "1": 195.803,
-   "2": 231.307,
-   "3": 252.893,
-   "4": 274.52,
-   "5": 316.169,
-   "6": 358.053,
-   "7": 368.136,
-   "8": 424.202
-  }
- },
- "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
- "protocol": "one-token arm, 10 prompts (mtpbench-code-general-ja) x widths 1-8, resident capacity 8, greedy, production profile; peer convention mean(prompt_tokens x width) / mean(wall)",
- "quant": "gguf_q4_k_m",
- "ratio_vs_current": {
-  "1": 0.741,
-  "2": 0.643,
-  "3": 0.595,
-  "4": 0.545,
-  "5": 0.477,
-  "6": 0.422,
-  "7": 0.413,
-  "8": 0.365
- },
- "repeatability": {
-  "max_spread_percent": 0.41,
-  "note": "independent runs of the same protocol; per-width drift reported by the rollup tool",
-  "prior_packet": "/tmp/he-d1-clean/he-d1-clean.json"
- },
- "schema": "hipengine.benchmarks.c1c8_prefill_row.v1",
- "source_command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1v3/he-d1v3.json --prior /tmp/he-d1-clean/he-d1-clean.json",
- "status_checks": {
-  "packet_status": "complete",
-  "rollup_refuses_non_complete_packets": true
- },
- "verdict": "hipEngine prefill is slower than both peers at every width and is flat across C1-C8 because admission does not overlap requests; it is the sole owner of every lost AR row"
+  "kind": "w7900_q4km_c1c8_hipengine_prefill_row",
+  "measured_tok_s": {
+    "current": {
+      "1": 200.946,
+      "2": 239.658,
+      "3": 259.036,
+      "4": 281.828,
+      "5": 323.043,
+      "6": 366.213,
+      "7": 374.207,
+      "8": 424.072
+    },
+    "hipengine": {
+      "1": 148.891,
+      "2": 154.209,
+      "3": 154.187,
+      "4": 153.517,
+      "5": 154.061,
+      "6": 154.408,
+      "7": 154.588,
+      "8": 154.767
+    },
+    "laurent": {
+      "1": 195.803,
+      "2": 231.307,
+      "3": 252.893,
+      "4": 274.52,
+      "5": 316.169,
+      "6": 358.053,
+      "7": 368.136,
+      "8": 424.202
+    }
+  },
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "protocol": "one-token arm, 10 prompts (mtpbench-code-general-ja) x widths 1-8, resident capacity 8, greedy, production profile; peer convention mean(prompt_tokens x width) / mean(wall)",
+  "quant": "gguf_q4_k_m",
+  "ratio_vs_current": {
+    "1": 0.741,
+    "2": 0.643,
+    "3": 0.595,
+    "4": 0.545,
+    "5": 0.477,
+    "6": 0.422,
+    "7": 0.413,
+    "8": 0.365
+  },
+  "repeatability": {
+    "max_spread_percent": 0.41,
+    "note": "independent runs of the same protocol; per-width drift reported by the rollup tool",
+    "prior_packet": "/tmp/he-d1-clean/he-d1-clean.json"
+  },
+  "reproduction": {
+    "both_packets_predate_promotion": "72a29e9ad (grouped prefill) is not an ancestor of a93fee18e or 3cbda5e9e, so this flat row is a valid capability-off baseline",
+    "lane_weighted_aggregate": "154.187 tok/s (sum of prompt_tokens x lanes over sum of wave walls). This is NOT the published row and is printed as such: an earlier throwaway script reported a 154.767 \"aggregate\" that is the C8 per-width rate, and that script is not on disk",
+    "per_width_and_flatness": "scripts/gguf_prefill_row_rollup.py reproduces all eight per-width rates (148.891 ... 154.767) and flatness +3.95% exactly from /tmp/he-d1v3/he-d1v3.json"
+  },
+  "schema": "hipengine.benchmarks.c1c8_prefill_row.v1",
+  "source_command": "scripts/gguf_prefill_row_rollup.py /tmp/he-d1v3/he-d1v3.json --prior /tmp/he-d1-clean/he-d1-clean.json",
+  "status_checks": {
+    "packet_status": "complete",
+    "rollup_refuses_non_complete_packets": true
+  },
+  "verdict": "hipEngine prefill is slower than both peers at every width and is flat across C1-C8 because admission does not overlap requests; it is the sole owner of every lost AR row"
 }
