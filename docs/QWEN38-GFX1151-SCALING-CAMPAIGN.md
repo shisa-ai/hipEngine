@@ -63,11 +63,13 @@ Two compounding defects, which must be measured separately:
 From the retained wide telemetry
 ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json)),
 a C8 subgroup cycle is **688.1 ms** for R16, i.e. ~43 ms per target row. The
-matched AR cycle at C8 serves 8 rows at ~21.8 ms per row. A wide verify pass
-should cost *less* per row than AR decode — it amortizes one weight sweep over
-4x the rows — and instead costs about **2x more**. This is the "multi-row
-verify amortization wall" the parity campaign named as the shared MTP/DFlash2
-suspect (P5.3), now with a per-row number attached to it.
+matched AR cycle at C8 serves 8 rows at ~21.8 ms per row (derived from the
+matrix's complete-wall 45.936 tok/s, not from cycle telemetry — M0 replaces
+this side of the comparison with measured matched-width AR cycle accounting).
+A wide verify pass should cost *less* per row than AR decode — it amortizes
+one weight sweep over 4x the rows — and instead costs about **2x more**.
+This is the "multi-row verify amortization wall" the parity campaign named
+as the shared MTP/DFlash2 suspect (P5.3), now with a per-row number attached to it.
 
 **A2 — every width above 4 runs sequential complete cycles.**
 `hipengine/generation/engine_loop.py:2336` `_maybe_run_partitioned_speculative_decode`
@@ -89,8 +91,10 @@ bound, not a kernel bound. **C5 is the worst cell in the matrix (0.5249x AR)
 precisely because `4+1` is the most unbalanced split**: the trailing R4 group
 pays a near-full pass for a quarter of the rows.
 
-Neither defect is recorded in [`REFACTOR.md`](REFACTOR.md); the width-4 cap has
-no removal condition on file.
+The width-4 cap and its ten literals are now tracked as
+[`REFACTOR.md`](REFACTOR.md) **RF-OI5** with removal tied to M1's outcome
+(punchlist R1, closed at campaign open). A1 is a measured performance defect,
+not refactor debt, and stays owned here.
 
 ### B. C1 production MTP is missing coverage we already own
 
@@ -175,15 +179,28 @@ with a **measured, named blocker** recorded here and in the unit worklog entry.
 Full-suite plus category-heldout validation for every acceptance/speed claim; no
 prompt-conditioned tuning. Commit each completed unit immediately.
 
+**"All 80 cells exact"** means the parity campaign's gate: 10 prompts x 8
+widths, each cell passing exact-generated-ID/output, engaged-route, and
+budget-conformance checks (the closeout's "exactness/route/budget gates").
+**Known evidence gap:** the frozen entry artifact embeds the full `protocol`
+block and raw-source hashes but **not the driver command line**; the parity
+closeout entry does not record it either. M0's artifact and worklog entry must
+therefore re-establish and record the exact reproducible command for the
+C1-C8 prefill/AR/MTP sweep before any M-track perf claim is made.
+
 ### X — external MTP batching survey (cheap, de-risks M1)
 
 - [ ] X1 Read the pinned external checkouts under
   `/home/lhl/.local/state/hipengine-external-survey/repos/` and record, for
   llama.cpp server speculative decoding, **what the verification batch
   dimension actually is**: whether draft verification for N slots is flattened
-  into one decode call or issued per slot, and what caps that width. Do the
-  same reading pass for vLLM V1 spec-decode and SGLang EAGLE proposer/verifier
-  batching from their published sources. Deliverable is a comparison table of
+  into one decode call or issued per slot, and what caps that width. The
+  relevant pinned checkouts are `llama.cpp-mainline/` and
+  `llama.cpp-mike-152d337fa/` (plus the Vulkan fork pins `laurent/`,
+  `nathan/`, `q38rocm/`). **vLLM and SGLang are not pinned locally**: read
+  their published sources at commit-pinned upstream URLs for vLLM V1
+  spec-decode and SGLang EAGLE proposer/verifier batching, and cite those
+  URLs+commits in the table. Deliverable is a comparison table of
   batch dimension, per-cycle model passes, and any width cap — cited by file
   and commit, no vendoring, no code port. This directly tests A2's premise
   against the field and is the only item that may precede M0.
@@ -194,7 +211,10 @@ prompt-conditioned tuning. Commit each completed unit immediately.
   subgroup count, target rows per pass, model passes per cycle, **ms per target
   row**, and **accepted tokens per target row**, with matched AR ms-per-row at
   the same width. Establish ms/target-row as this campaign's primary economic
-  metric; complete-wall tok/s stays the reported headline. No perf claim.
+  metric; complete-wall tok/s stays the reported headline. Deliverable: a
+  compact artifact under `benchmarks/results/` carrying the per-cycle table,
+  the recorded sweep command (see the evidence-gap rule above), and a worklog
+  entry. No perf claim.
 - [ ] M1 **Single-group wide verify.** Lift the width-4 partition so one cycle
   covers all due requests: `partition_max_requests`, `claims_fit`,
   `proposal_widths`, `max_requests`/`max_frontier_rows`, and the
@@ -202,7 +222,10 @@ prompt-conditioned tuning. Commit each completed unit immediately.
   removed as unengaged. Binding gates: exact control/ownership in every
   profile, all 80 cells exact, acceptance unchanged at 78.894%, registered
   strict fallback, and C1-C4 non-regressive. Targets: C5 `18.657 -> >= 33`,
-  C8 `28.577 -> >= 45` (its own AR is 45.936).
+  C8 `28.577 -> >= 45` (its own AR is 45.936). These are **intermediate**
+  partition-lift targets — roughly own-AR parity — not the campaign goal;
+  the section-1 `>= 1.15x own AR` bar (C8 `>= 52.8`) is owned by M1+M2
+  together, since a single-group R32 verify still pays A1's per-row cost.
 - [ ] M2 Per-row verify cost (A1). Using M1's per-quant attribution, close the
   gap between MTP ms/target-row and AR ms/row at matched width. Q4 owners above
   R12 (C) open here **only if** M1's trace names Q4 as the binding class; the
@@ -242,14 +265,16 @@ prompt-conditioned tuning. Commit each completed unit immediately.
 
 ### R — refactor ledger
 
-- [ ] R1 Add the width-4 MTP partition and the `GGUF_SPECDEC2_MTP2_C4`
-  capability gate to [`REFACTOR.md`](REFACTOR.md) with an explicit removal
-  condition tied to M1, whether or not M1 succeeds.
+- [x] R1 **Done at campaign open (2026-08-30).** The width-4 MTP partition,
+  its ten `qwen35_gguf_mtp2.py` literals, the per-subgroup sequential loop,
+  and the `GGUF_SPECDEC2_MTP2_C4` capability gate are recorded as
+  [`REFACTOR.md`](REFACTOR.md) RF-OI5 with an explicit removal condition tied
+  to M1's outcome, success or blocker.
 
 ## 5. Order
 
 `X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` -> `P2` -> `M5` -> `P3`,
-with `R1` committed alongside `M1`. X1 and M0 are cheap and de-risk the
+(`R1` closed at campaign open). X1 and M0 are cheap and de-risk the
 expensive M1 unit. M3 is placed early because it is coverage work against paths
 we already own, and is the largest single-cell deficit in the matrix (-63.04%).
 
