@@ -19,6 +19,7 @@
   "date": "2026-08-30",
   "elapsed_seconds": 611.6193926306441,
   "engine_tree_note": "only docs/scripts/benchmarks commits between source_commit and HEAD; git diff 0740a9497..HEAD touches 0 files under hipengine/ or kernels/",
+  "engine_tree_note_status": "The engine_tree_note above is a point-in-time claim about HEAD when this artifact was written (11:38). It is no longer true of today's HEAD: 72a29e9ad (12:26) shipped grouped prefill on gfx1100. The rows in this artifact do not need remeasuring, because they were produced by packets that already ran with GGUF_C2_PACKED_PREFILL_MAX_ROWS=8 applied, which is exactly the behaviour that commit made the default. Verified 13:2x by recomputing per-width means from /tmp/he-c1c8-cap8/c1c8-cap8.json (producer 13fa01e50, capability echo applied=8): the MTP arm means 31.455/39.820/54.590/55.780/47.960/49.020/55.225/55.860 reproduce the README \"hipEngine explicit K3\" row at all 8 widths.",
   "hardware": {
     "backend": "hip_gfx1100",
     "device": "AMD Radeon Pro W7900 (gfx1100)",
