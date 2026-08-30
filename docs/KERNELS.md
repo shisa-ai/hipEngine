@@ -831,17 +831,18 @@ rocprofv3 --kernel-trace --output-format csv -d /tmp/hipengine-smoke -- \
     --require-cached-build
 ```
 
-To attribute cost across wave widths, trace two runs of the same workload at different row counts and
-diff them per kernel with `scripts/gguf_rocprof_width_scale_diff.py`. It separates the two signatures
-that look alike in a single trace: `per_row_launches` (launch count scales with rows, i.e. one launch
-per row) and `per_row_inside_launch` (launch count flat, each launch longer). Kernels present in only
-one run are reported as `only_in_base` / `only_in_candidate` rather than dropped, which matters because
-an MTP verifier that engages only at rows >= 2 otherwise reads as row scaling - the reason a
-rows-scaling trace must be taken with speculation removed from both runs, not just from the summary.
-`scripts/gguf_packed_ar_rocprof.py` profiles this model but builds two warmups (`c1` and `c4`)
-regardless of `--concurrency`, and `--skip-warmbuild` fails inside `rocprofv3`, so budget 40-45 min per
-configuration or trace a narrower driver instead. Its `_default_roctx_sdk` now falls back to the legacy
-`/opt/rocm/lib/libroctx64.so.4`, which is what images without the pip ROCm SDK packages actually ship.
+To attribute cost across wave widths, trace two runs of the same workload at different row counts
+and diff them per kernel with `scripts/gguf_rocprof_width_scale_diff.py`. It separates the two
+signatures that look alike in a single trace: `per_row_launches` (launch count scales with rows,
+i.e. one launch per row) and `per_row_inside_launch` (launch count flat, each launch longer).
+Kernels present in only one run are reported as `only_in_base` / `only_in_candidate` rather than
+dropped, which matters because an MTP verifier that engages only at rows >= 2 otherwise reads as
+row scaling - the reason a rows-scaling trace must be taken with speculation removed from both
+runs, not just from the summary. `scripts/gguf_packed_ar_rocprof.py` profiles this model but
+builds two warmups (`c1` and `c4`) regardless of `--concurrency`, and `--skip-warmbuild` fails
+inside `rocprofv3`, so budget 40-45 min per configuration or trace a narrower driver instead. Its
+`_default_roctx_sdk` now falls back to the legacy `/opt/rocm/lib/libroctx64.so.4`, which is what
+images without the pip ROCm SDK packages actually ship.
 
 For Generation-2 GGUF owner profiling, use the mechanical isolated-cache
 workflow instead of mutating the shared cache:
@@ -938,7 +939,12 @@ measurement, so record it instead of rediscovering it.
    sense that `_prepare_roctx_override(<therock _rocm_sdk_core path>)` returns an override
    directory instead of raising (verified in plain Python 2026-08-30, no GPU); what is *not*
    yet verified is that marker tracing then succeeds end to end under `rocprofv3`. The
-   permanent fix is for `_default_roctx_sdk` to also probe the prefix of `which(rocprofv3)`.
+   permanent fix is for `_default_roctx_sdk` to also probe the prefix of `which(rocprofv3)`. **Done in one wrapper on 2026-08-30** (commit 7716ccf87):
+   `gguf_packed_ar_rocprof.py` globs
+   `lib/python3*/site-packages/_rocm_sdk_{core,devel}/lib/librocprofiler-sdk-roctx.so*` under the
+   `which(rocprofv3)` prefix, newest python first, then falls back to legacy `libroctx64`. On this
+   host it resolves to the therock copy matching `rocprofv3 1.3.2` with no flag passed. The other
+   seven wrappers still carry the old copy - see `docs/REFACTOR.md`.
    Kernel tracing needs no ROCTX shim - only markers do - so the
    working route is the wrapper's own `--child` mode driven under a direct
    `rocprofv3 --kernel-trace`, rolled up with `gguf_kernel_trace_rollup.py TRACE_DIR`.
