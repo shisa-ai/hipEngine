@@ -4723,3 +4723,14 @@ predicates, not one switch - and it is the reason the C5-C8 "AR beats our own K3
 has no user-facing urgency: there is no automatic K3 to displace yet. Until then do not
 read the K3 row as shipping behaviour. Removing this note = the automatic route engages at
 some width with acceptance counters proving it.
+
+`gguf_mtp_verifier_rocprof.py --mode block-verify` cannot sweep `--block-rows`: the child
+raises `ValueError: token_id 2147483647 outside [0, 248320)` from
+`qwen35_gguf_runner.py:19000`, i.e. `verify()` rejects the INT32_MAX padding the harness
+submits for rows past the prompt tail. That sweep - rows 4 -> 32, since K3 is 4 rows per lane
+and C8 is 32 - is the only cheap way to separate launch overhead from real kernel work in the
+MTP verify path, and it is currently impossible, which is why the per-row verify cost stayed
+open on 2026-08-30. Fix: have the harness submit a real prompt long enough to fill the block
+(`--prompt-ids` sized to `block_rows + prompt`), or give `verify()` an explicit padding token
+it accepts. Also consider a `--roctx-sdk auto` that degrades to plain kernel tracing when no
+pip ROCm SDK exists - see the profiling traps section in `docs/KERNELS.md`.
