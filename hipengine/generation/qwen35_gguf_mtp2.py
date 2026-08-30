@@ -2175,10 +2175,45 @@ class Qwen35GGUFMTP2Adapter:
             self._accept_staging_state = "off"
             return None
         prepared = np.zeros(self._ACCEPT_STAGING_BYTES, dtype=np.uint8)
-        register(int(prepared.ctypes.data), int(prepared.nbytes))
+        try:
+            register(int(prepared.ctypes.data), int(prepared.nbytes))
+        except Exception:
+            # Page-locking is an optimization. ``hipHostRegister`` fails under
+            # locked-memory pressure, and the documented fallback is the
+            # blocking pageable upload, not an aborted accept cycle.
+            self._reset_accept_staging()
+            self._accept_staging_state = "off"
+            return None
         self._accept_staging_arena = prepared
+        self._accept_staging_registered_ptr = int(prepared.ctypes.data)
+        self._accept_staging_unregister = getattr(runtime, "host_unregister", None)
         self._accept_staging_state = "ok"
         return prepared
+
+    def _reset_accept_staging(self) -> None:
+        """Drop every arena reference without touching the runtime."""
+
+        self._accept_staging_arena = None
+        self._accept_staging_registered_ptr = 0
+        self._accept_staging_unregister = None
+
+    def _release_accept_staging(self) -> None:
+        """Unregister and release the page-locked accept arena once.
+
+        Safe to call when staging was never allocated, and idempotent. The
+        accept window always ends in the blocking target-accept readback, which
+        drains the enqueued arena uploads before a cycle returns, so no arena
+        copy can still be in flight at teardown time.
+        """
+
+        registered_ptr = int(getattr(self, "_accept_staging_registered_ptr", 0) or 0)
+        unregister = getattr(self, "_accept_staging_unregister", None)
+        allocated = getattr(self, "_accept_staging_arena", None) is not None
+        self._reset_accept_staging()
+        self._accept_staging_state = "off"
+        if not allocated or registered_ptr <= 0 or not callable(unregister):
+            return
+        unregister(registered_ptr)
 
     def _upload_accept_array_staged(
         self,
@@ -3837,6 +3872,7 @@ class Qwen35GGUFMTP2Adapter:
         ):
             self._free_prompt_streaming_norm_buffer(request_id, target=None)
         self._close_cycle_workspace()
+        self._release_accept_staging()
         ngram = getattr(self, "_ngram", None)
         if ngram is not None:
             ngram.close()

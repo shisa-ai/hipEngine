@@ -4889,6 +4889,14 @@ other means and were not touched.
   `host_unregister()` nor clears the registered NumPy arena. Before keeping this path as load-bearing code,
   track the registered pointer/runtime, unregister it on close and partial initialization, catch registration
   failure, and test both paths. If the accept cycle redesign removes staging, delete it instead.
+- **Repaired 2026-08-31.** A failed `host_register` now selects the pageable path and latches the adapter
+  off (`_accept_staging_backing` -> `_reset_accept_staging`), the registered pointer and `host_unregister`
+  callable are tracked, and `close()` releases the arena exactly once before the remaining teardown, so a
+  page-locked 4 MiB arena no longer leaks per adapter. CPU lifecycle coverage lives in
+  `tests/test_qwen35_gguf_mtp2_accept_staging.py` (registration failure, sticky-off, single registration,
+  unregister-on-close, unregister failure still releases, no re-registration after close). Both runner call
+  sites are teardown-only, so the latch cannot disable staging for a live session. Still neutral: this is
+  lifecycle hygiene, not a rate win.
 - Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging
   path too if the accept cycle is redesigned (route (b), `20260830T155541…`). Do not re-justify it as a speedup.
 
