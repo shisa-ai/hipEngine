@@ -7,8 +7,10 @@
   (1.21x@35), now promoted. **`(5120,12288)` at row 128 is noise-bounded 0.97-1.02 across two runs**, so that
   shape's band edge is weakly supported and is flagged in the artifact rather than smoothed. Four shapes are
   recorded as **measured losses** so they are not re-opened: `(17408,5120)` 0.77x-0.83x, `(5120,6144)`/
-  `(6144,5120)` 0.75x-0.85x, `(5120,1024)` 0.63x-0.92x. Row-6 routes are untouched, preserving the measured
-  7.28x rows6-rowtile wins. First-token same-build A/B: **252.92→230.49 ms (-8.8%)**. The sweep also
+  `(6144,5120)` 0.75x-0.85x, `(5120,1024)` 0.63x-0.92x. Row-6 routes are left untouched. **Correction:** the
+  `7.28x`/`7.32x` row-6 rowtile figures first quoted here are void. The rowtile leaves need buffers this
+  harness does not supply. They timed 14.3x while disagreeing with the owner by ~1e7 ULPs. Detail:
+  `worklog/entries/20260830T211157.587412Z-lhl-rowtile-invalid-payload-voided-206579.md`. First-token same-build A/B: **252.92→230.49 ms (-8.8%)**. The sweep also
   localises the last large dense gap: the FFN **down projection costs 1.23-1.37 ms per launch** on the same
   51.5 MB, because `out_features = 5120` gives the shared-B grid ~107 column blocks against 512 compute units,
   and no registered leaf beats it — that needs split-K work, not a declaration. Artifact (per-run
