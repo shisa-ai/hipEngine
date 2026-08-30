@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "kind": "gguf_t16_smallm_rows_not_promoted",
+  "date": "2026-08-30",
+  "status": "not_promoted_routing_blocked",
+  "question": "Can smallm replace the shared-B 256-row tile, or the promoted single-wave owner, on the ragged 2-16 row MTP verify band at (rows, 5120, 17408)?",
+  "answer": "smallm is bit-exact and 1.52x-1.62x faster than the current single-wave owner at rows 2-16, but the rows MTP verify cycles run are owned by dense_rowtile in the verifier/native-batch-decode scope, which this sweep did not measure. Promoting on this evidence would compare against the wrong incumbent.",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "hardware": "epyc / AMD Radeon Pro W7900 gfx1100",
+  "revision": "628441190",
+  "command": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --rows 2,3,4,5,6,7,8,12,16 --reps 25 --warmup 6 --output /tmp/he-t16/smallm-band.json",
+  "geometry": {
+    "in_features": 5120,
+    "out_features": 17408,
+    "weight_tile_bytes": 51527680
+  },
+  "rows": [
+    {
+      "rows": 2,
+      "shared_b_ms": 0.624,
+      "single_wave_ms": 0.4377,
+      "smallm_ms": 0.2706,
+      "smallm_over_shared_b": 2.306,
+      "smallm_over_single_wave": 1.618,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 3,
+      "shared_b_ms": 0.6501,
+      "single_wave_ms": 0.4576,
+      "smallm_ms": 0.2983,
+      "smallm_over_shared_b": 2.179,
+      "smallm_over_single_wave": 1.534,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 4,
+      "shared_b_ms": 0.6334,
+      "single_wave_ms": 0.4582,
+      "smallm_ms": 0.2987,
+      "smallm_over_shared_b": 2.121,
+      "smallm_over_single_wave": 1.534,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 5,
+      "shared_b_ms": 0.6246,
+      "single_wave_ms": 0.4605,
+      "smallm_ms": 0.3014,
+      "smallm_over_shared_b": 2.072,
+      "smallm_over_single_wave": 1.528,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 6,
+      "shared_b_ms": 0.6228,
+      "single_wave_ms": 0.4596,
+      "smallm_ms": 0.3009,
+      "smallm_over_shared_b": 2.07,
+      "smallm_over_single_wave": 1.527,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 7,
+      "shared_b_ms": 0.6305,
+      "single_wave_ms": 0.46,
+      "smallm_ms": 0.2994,
+      "smallm_over_shared_b": 2.106,
+      "smallm_over_single_wave": 1.537,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 8,
+      "shared_b_ms": 0.6337,
+      "single_wave_ms": 0.4585,
+      "smallm_ms": 0.2998,
+      "smallm_over_shared_b": 2.114,
+      "smallm_over_single_wave": 1.53,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 12,
+      "shared_b_ms": 0.6297,
+      "single_wave_ms": 0.458,
+      "smallm_ms": 0.3014,
+      "smallm_over_shared_b": 2.089,
+      "smallm_over_single_wave": 1.52,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    },
+    {
+      "rows": 16,
+      "shared_b_ms": 0.6374,
+      "single_wave_ms": 0.4596,
+      "smallm_ms": 0.3002,
+      "smallm_over_shared_b": 2.123,
+      "smallm_over_single_wave": 1.531,
+      "ulp_smallm_vs_shared_b": 0,
+      "smallm_error": null,
+      "finite": true
+    }
+  ],
+  "contract_limit": "smallm raises ValueError: small-M Q4T16 WMMA requires rows <= 16, so it is a decode/verify-band kernel only",
+  "blocking_route_fact": {
+    "selector": "hipengine/runtime/gguf_linear.py _q4_t16_sidecar_decode_variants",
+    "returns": [
+      "dense_rowtile_col4_bf16_bf16_out for rows<=4 on _Q4_T16_COL4_ALL_ROWS_SHAPES",
+      "dense_rowtile_bf16_bf16_out for 2<=rows<=8",
+      "nothing above rows 8"
+    ],
+    "scope_gate": "_Q4_T16_DENSE_ROWTILE_MAX_ROWS_BY_QUANT = {gguf_q4_k_t16_v1: 8, gguf_q4_k_qmicro_t16_v1: 4}, active only for native batch decode session or verifier candidate scope",
+    "consequence": "the incumbent at verify rows 2-8 is dense_rowtile, not shared-B and not single-wave"
+  },
+  "not_measured": "dense_rowtile_bf16_bf16_out and dense_rowtile_col4_bf16_bf16_out at this shape. The rows6_rowtile column in the sweep is the prefill dispatcher gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out, not the sidecar rowtile leaf.",
+  "next_measurement": "sweep dense_rowtile and dense_rowtile_col4 against smallm at rows 2-8 in verifier selection order with ULP, then promote whichever wins with a same-protocol MTP packet",
+  "correctness_gate": "smallm bit-exact vs the strict owner at every row measured (ULP 0), so a future promotion would be an ownership change rather than an arithmetic change; no engine file was modified"
+}
