@@ -1808,7 +1808,11 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_accepted_counts.append(accepted)
             row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
+            row.mtp2_provider_update_pass_ms.append(
+                float(provider_update_seconds) * 1000.0
+            )
             accept = AcceptResult(
                 request_ids=plan.request_ids,
                 accepted_counts=summary.accepted_counts,
@@ -2467,6 +2471,7 @@ class Qwen35GGUFMTP2Adapter:
         for row in rows:
             row.mtp2_target_batch_calls += 1
             row.mtp2_target_physical_rows.append(physical_target_rows)
+            row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
         candidate_readback_seconds = 0.0
@@ -2750,6 +2755,10 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
+            row.mtp2_accept_pass_ms.append(float(accept_seconds) * 1000.0)
+            row.mtp2_provider_update_pass_ms.append(
+                float(provider_update_seconds) * 1000.0
+            )
             row.mtp2_selected_commit_ms += float(commit_seconds) * 1000.0
             row.mtp2_candidate_readback_ms += (
                 float(candidate_readback_seconds) * 1000.0
