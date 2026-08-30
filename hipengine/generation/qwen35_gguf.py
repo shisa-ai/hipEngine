@@ -2095,7 +2095,7 @@ class Qwen35GGUFBringupGenerator:
                 session, session_pool_key, _session_reused = self._acquire_shared_session(
                     shared_runner,
                     pool_name="ar_batch",
-                    use_wmma_prefill=True,
+                    use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                 )
                 _timing_set(timing, "session_open_ms", session_open_start)
@@ -2682,7 +2682,7 @@ class Qwen35GGUFBringupGenerator:
                 with self._resident_session_scope(
                     shared_runner=shared_runner,
                     pool_name="mtp_target",
-                    use_wmma_prefill=True,
+                    use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                 ) as (session, _session_reused):
                     session_open_ms = _timing_ms_since(session_open_start)
@@ -3016,14 +3016,14 @@ class Qwen35GGUFBringupGenerator:
                 session, session_pool_key, _session_reused = self._acquire_shared_session(
                     shared_runner,
                     pool_name="mtp_target",
-                    use_wmma_prefill=True,
+                    use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                 ) if pool_sessions else (
                     Qwen35GGUFResidentSession(
                         self.model_path,
                         runtime=shared_runner.runtime,
                         shared_runner=shared_runner,
-                        use_wmma_prefill=True,
+                        use_wmma_prefill=_resident_session_wmma_prefill_default(),
                         use_gemv_decode=True,
                     ),
                     None,
@@ -3218,14 +3218,14 @@ class Qwen35GGUFBringupGenerator:
             session, session_pool_key, _session_reused = self._acquire_shared_session(
                 shared_runner,
                 pool_name="mtp_target",
-                use_wmma_prefill=True,
+                use_wmma_prefill=_resident_session_wmma_prefill_default(),
                 use_gemv_decode=True,
             ) if pool_sessions else (
                 Qwen35GGUFResidentSession(
                     self.model_path,
                     runtime=shared_runner.runtime,
                     shared_runner=shared_runner,
-                    use_wmma_prefill=True,
+                    use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                 ),
                 None,
@@ -6887,7 +6887,7 @@ class Qwen35GGUFResidentModelRunner:
             batch_owner, pool_key, _reused = self.generator._acquire_shared_session(
                 self._shared_runner,
                 pool_name="continuous_ar_dynamic_kv",
-                use_wmma_prefill=True,
+                use_wmma_prefill=_resident_session_wmma_prefill_default(),
                 use_gemv_decode=True,
                 defer_kv_allocation=True,
                 max_batch_size=self.capacity,
@@ -6935,7 +6935,7 @@ class Qwen35GGUFResidentModelRunner:
                 session, pool_key, _reused = self.generator._acquire_shared_session(
                     self._shared_runner,
                     pool_name="continuous_ar_dynamic_kv",
-                    use_wmma_prefill=True,
+                    use_wmma_prefill=_resident_session_wmma_prefill_default(),
                     use_gemv_decode=True,
                     defer_kv_allocation=True,
                 )
