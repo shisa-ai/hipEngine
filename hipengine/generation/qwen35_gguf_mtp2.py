@@ -2886,6 +2886,7 @@ class Qwen35GGUFMTP2Adapter:
         candidate_readback_seconds = 0.0
         bounded_readback_seconds = 0.0
         accept_upload_seconds = 0.0
+        accept_enqueue_seconds = 0.0
         accept_tail_seconds = 0.0
         remaining = tuple(
             max(0, int(row.request.max_tokens) - len(row.slot.generated_ids))
@@ -2932,6 +2933,7 @@ class Qwen35GGUFMTP2Adapter:
                     cancelled_request_ids=cancelled,
                 )
             accept_started = time.perf_counter()
+            accept_enqueue_started = time.perf_counter()
             pending = self._enqueue_target_batch_accept(
                 batch,
                 proposal=device_candidates,
@@ -2941,6 +2943,7 @@ class Qwen35GGUFMTP2Adapter:
                 runtime=targets[0].runtime,
                 pad_rows=pad_rows,
             )
+            accept_enqueue_seconds = time.perf_counter() - accept_enqueue_started
             accept_upload_seconds = float(pending.upload_seconds)
             accept_tail_seconds = float(pending.tail_seconds)
             commit_batch = getattr(
@@ -3189,6 +3192,7 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
+            row.mtp2_accept_enqueue_ms += accept_enqueue_seconds * 1000.0
             row.mtp2_accept_upload_ms += accept_upload_seconds * 1000.0
             row.mtp2_accept_tail_ms += accept_tail_seconds * 1000.0
             row.mtp2_target_readback_ms += float(bounded_readback_seconds) * 1000.0

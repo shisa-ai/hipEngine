@@ -4928,6 +4928,7 @@ class _GGUFResidentLoopRow:
     mtp2_target_readback_ms: float = 0.0
     mtp2_accept_upload_ms: float = 0.0
     mtp2_accept_tail_ms: float = 0.0
+    mtp2_accept_enqueue_ms: float = 0.0
     mtp2_k0_catchups: int = 0
     mtp2_ngram_lookup_calls: int = 0
     mtp2_ngram_lookup_hits: int = 0
@@ -8660,6 +8661,9 @@ class Qwen35GGUFResidentModelRunner:
                     "specdec2_mtp2_accept_tail_ms": float(
                         row.mtp2_accept_tail_ms
                     ),
+                    "specdec2_mtp2_accept_enqueue_ms": float(
+                        row.mtp2_accept_enqueue_ms
+                    ),
                     "specdec2_mtp2_selected_commit_ms": float(
                         row.mtp2_selected_commit_ms
                     ),
@@ -8784,6 +8788,7 @@ class Qwen35GGUFResidentModelRunner:
             "specdec2_mtp2_target_readback_ms": float(row.mtp2_target_readback_ms),
             "specdec2_mtp2_accept_upload_ms": float(row.mtp2_accept_upload_ms),
             "specdec2_mtp2_accept_tail_ms": float(row.mtp2_accept_tail_ms),
+            "specdec2_mtp2_accept_enqueue_ms": float(row.mtp2_accept_enqueue_ms),
             "specdec2_mtp2_selected_commit_ms": float(
                 row.mtp2_selected_commit_ms
             ),
