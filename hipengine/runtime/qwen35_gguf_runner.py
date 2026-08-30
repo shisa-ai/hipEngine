@@ -20623,21 +20623,30 @@ class Qwen35GGUFResidentSession:
                     " state before reusing the packed workspace slots"
                 )
         try:
-            return self._prefill_batch_native_impl(
-                prompt_token_ids,
-                sessions=sessions,
-                full_prompt_lengths=full_prompt_lengths,
-                return_logits=return_logits,
-                return_hidden_seeds=return_hidden_seeds,
-                sample_output=sample_output,
-                require_logits=require_logits,
-                capture_layer_output_hidden=capture_layer_output_hidden,
-                target_hidden_chunk_sinks=target_hidden_chunk_sinks,
-                target_hidden_request_ids=target_hidden_request_ids,
-                target_hidden_chunk_starts=target_hidden_chunk_starts,
-                finish_target_hidden_sinks=finish_target_hidden_sinks,
-                stream=stream,
-            )
+            # Packed admission prefill is the shipping AR route's prefill entry
+            # (generation/qwen35_gguf.py binds ``prefill_batch_native``), so it needs
+            # the same prefill-only QKV dual-owner session that ``prefill`` opens; the
+            # rows16 floor is otherwise invisible to the server path. Target
+            # verification uses ``verify_target_blocks_batch``/``verify_rows``, which
+            # never reach this entry, so verification stays on the exact singletons.
+            with q4_t16_unequal_pair_prefill_session(
+                _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
+            ):
+                return self._prefill_batch_native_impl(
+                    prompt_token_ids,
+                    sessions=sessions,
+                    full_prompt_lengths=full_prompt_lengths,
+                    return_logits=return_logits,
+                    return_hidden_seeds=return_hidden_seeds,
+                    sample_output=sample_output,
+                    require_logits=require_logits,
+                    capture_layer_output_hidden=capture_layer_output_hidden,
+                    target_hidden_chunk_sinks=target_hidden_chunk_sinks,
+                    target_hidden_request_ids=target_hidden_request_ids,
+                    target_hidden_chunk_starts=target_hidden_chunk_starts,
+                    finish_target_hidden_sinks=finish_target_hidden_sinks,
+                    stream=stream,
+                )
         finally:
             seen: set[int] = set()
             for session in session_tuple:
