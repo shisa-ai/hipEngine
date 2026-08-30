@@ -80,8 +80,8 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **28.125 tok/s** | **1.553x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **30.537 tok/s** | **1.270x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **28.121 tok/s** | **1.540x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **30.499 tok/s** | **1.295x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -99,13 +99,15 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
 other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M` keeps strict C1/K3 automatic at **18.191 tok/s
-(1.6445x AR)**. Production C2/C3 diagnostics reach **28.125/30.537 tok/s**
-(1.553x/1.270x AR). The scaling-campaign M2j owner promotion (bit-exact
-low-VGPR/shared-B2W2 siblings at physical Q4 rows2-16) lifts production C1 to
-**13.759 tok/s (1.237x AR)**, C4 to **34.201 tok/s (1.138x AR; 1.1% short of
-its 34.596 gate)**, and C5-C8 to **26.059/31.885/32.395/33.491 tok/s**. C2-C8
-remain automatic K0 pending their width-specific performance and serving
-gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
+(1.6445x AR)**. Production C1 reaches **15.646 tok/s (1.408x AR)** with the
+M3 width-1 prompt-streaming policy;
+production
+C2/C3 diagnostics reach **28.121/30.499 tok/s** (1.540x/1.295x AR). The M2j owner promotion (bit-exact
+low-VGPR/shared-B2W2 siblings at physical Q4 rows2-16) lifts C4 to
+**34.182 tok/s (1.118x AR; 1.2% short of its 34.596 gate)** and C5-C8 to
+**27.298/31.884/32.390/33.595 tok/s**. C2-C8 remain automatic K0 pending
+width-specific serving gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
+[`M3 C1`](results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json) ·
 [`M2j`](results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json) ·
 [`C4-C8 history`](results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json)
 
