@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "retained_exact_nonautomatic",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M exact Q5 true-R16 target owner",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "candidate_commit": "f5f6adac2d146391a50314529cc68920c457c0bd",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "scope": {
+    "enabled": "hip_gfx1151 production target verifier Q5 K6144/N5120 physical R16",
+    "selected_variant": "t16_gemv_rowtile16_col8_bf16_bf16_out",
+    "strict_fallback": "two exact R8 col8 rowtiles",
+    "unchanged": ["other rows", "other shapes", "other quants", "strict misses", "AR", "proposal", "peer backends"]
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "widths": [4, 5, 6, 7, 8],
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "resident_capacity": 8,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "actual-weight BF16-bit R8+R8 parent parity plus full-suite exact IDs/acceptance",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "one row/quant/shape package key; full categories/heldouts; no content selector"
+  },
+  "commands": {
+    "clean_c4_c8": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 4,5,6,7,8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 4,5,6,7,8 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p380-q5-r16-c4c8-clean.json",
+    "actual_red": "HIPENGINE_HIP_ARCH=gfx1151 pytest tests/test_qwen38_q5_t16_r16.py -q",
+    "leaf_micro": "5 warmups plus 15 counterbalanced HIP-event pairs; /tmp/p380-q5-r16-micro.json",
+    "trace": "cached-only one-prompt C8 server kernel/HIP/copy trace"
+  },
+  "leaf": {
+    "shape": "Q5 K6144/N5120",
+    "parent": "R8+R8 col8",
+    "candidate": "true-R16 col8",
+    "parent_median_ms": 0.3015260100364685,
+    "candidate_median_ms": 0.29787901043891907,
+    "delta_pct": -1.2095140970121765,
+    "candidate_wins": 14,
+    "pairs": 15,
+    "every_bf16_output_bit_exact": true,
+    "guard_words_exact": true
+  },
+  "complete_wall": {
+    "columns": ["width", "control_mtp_tok_s", "candidate_mtp_tok_s", "mtp_uplift_pct", "candidate_ar_tok_s", "mtp_vs_ar", "external_target", "gap_to_external_pct", "accepted", "proposed"],
+    "rows": [
+      [4, 27.450267382673612, 29.493364970053143, 7.442905961160573, 30.29110031986646, 0.9736643653948047, 27.015, 9.174032833807665, 628, 796],
+      [5, 17.970381649710376, 18.70802717706527, 4.104784983054488, 35.7043316810751, 0.5239707983942286, 32.74, -42.85880520138892, 785, 995],
+      [6, 26.904178638447267, 28.255463471239697, 5.022583483969978, 40.071596563933866, 0.7051244745429188, 36.023, -21.562714179164168, 942, 1194],
+      [7, 28.205211134014057, 29.526536077488196, 4.684683752927787, 43.41261751441521, 0.6801371989994355, 42.304, -30.203914340279425, 1099, 1393],
+      [8, 27.392945632276543, 29.50391674710425, 7.706258184736403, 47.63986694465134, 0.6193114850925656, 54.834, -46.194119073742115, 1256, 1592]
+    ],
+    "wall_reduction_pct": {"4": 6.927312598796531, "5": 3.942935940670389, "6": 4.78238424284867, "7": 4.47504217903012, "8": 7.154884325773092},
+    "category_uplift_pct": {
+      "4": {"code": 7.729, "general_en": 7.985, "general_ja": 7.548, "mixed_ja_en": 6.39},
+      "5": {"code": 4.108, "general_en": 4.195, "general_ja": 3.897, "mixed_ja_en": 4.228},
+      "6": {"code": 5.271, "general_en": 5.489, "general_ja": 5.259, "mixed_ja_en": 3.974},
+      "7": {"code": 4.754, "general_en": 5.0, "general_ja": 4.823, "mixed_ja_en": 4.155},
+      "8": {"code": 7.904, "general_en": 7.97, "general_ja": 7.742, "mixed_ja_en": 7.103}
+    },
+    "exact_cells": 50,
+    "engaged_cells": 50,
+    "budget_conformed_cells": 50,
+    "draft_acceptance": 0.7889447236180904
+  },
+  "trace": {
+    "candidate_named_kernel": "q5_k_t16_dense_rowtile_gemv_kernel<unsigned short,16,8>",
+    "candidate_named_calls": 1344,
+    "candidate_named_kernel_ms": 502.563,
+    "compiler_ran_inside_profiler": false,
+    "note": "whole-process setup/warmup trace proves engagement; clean complete wall is the product metric"
+  },
+  "decision": {
+    "retained_widths": [4, 5, 6, 7, 8],
+    "automatic_widths": [],
+    "c4_external_parity": true,
+    "named_remaining_blocker": "C4 is 0.9737x AR overall and still trails AR in code/Japanese/mixed; C5-C8 trail AR and external despite exact gains. Prompt replay and dominant Q4 provider-group work remain.",
+    "next": "Refresh C4 automatic-gate economics and R16 Q4/host-submission attribution; do not reopen rejected Q4 high-row morphologies without a new dataflow premise."
+  },
+  "raw_sources": [
+    ["/tmp/p380-q5-r16-micro.json", "ef31427d7cab7fedf9e60bcdbe4df014586410e190d0a2586cf96324859f4bf6", 978],
+    ["/tmp/p360-c4-q6-r16-clean.json", "d6675e694ca439fa5d3630e0834ece9fb96bd50656eb8e6f4522526cb43c2cab", 1148416],
+    ["/tmp/p370-q6-wide-c5c8-clean.json", "00a3a0b3cf5c5d7eb0bc8dadb1b93811d04c4ddbe9f1170523cf19a67716778b", 11001542],
+    ["/tmp/p380-q5-r16-c4c8-clean.json", "dde77d3191c22c09d06f603c1f105e37fddac14409ec52b4201dd4c1ed646836", 12139929],
+    ["/tmp/p380-q5-r16-c8-dirty-rocprof/gfx1151/4154849_kernel_trace.csv", "d2a6f4958d5f0d7d729cd7a1336b8a05e7871ddaf6fe371b89d149764d286896", 30029702]
+  ]
+}
