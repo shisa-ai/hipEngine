@@ -6414,20 +6414,27 @@ class Qwen35GGUFResidentModelRunner:
             or len(work.request_ids) > self.packed_prefill_max_rows
             or not _gguf_ar_packed_prefill_enabled()
         ):
-            return False
+            return frozenset()
         rows = [self._row(request_id) for request_id in work.request_ids]
         chunks = [tuple(int(token) for token in token_row) for token_row in work.token_rows]
-        if any(not chunk for chunk in chunks):
-            return False
-        for row, chunk in zip(rows, chunks, strict=True):
-            if (
-                not row.native_greedy
-                or row.slot is not None
-                or row.prefill_tokens_seen != 0
-                or row.prefix_reused_tokens
-                or chunk != row.prompt_ids
-            ):
-                return False
+        # Group the compatible subset instead of refusing the whole item: one lane
+        # whose chunk is truncated by the prefill chunk cap, or that reuses a prefix,
+        # must not cost every other lane its grouped prefill. The caller prefills
+        # whatever this returns-unhandled through the serial path.
+        eligible = [
+            (row, chunk)
+            for row, chunk in zip(rows, chunks, strict=True)
+            if chunk
+            and row.native_greedy
+            and row.slot is None
+            and row.prefill_tokens_seen == 0
+            and not row.prefix_reused_tokens
+            and chunk == row.prompt_ids
+        ]
+        if len(eligible) <= 1:
+            return frozenset()
+        rows, chunks = [row for row, _ in eligible], [chunk for _, chunk in eligible]
+        for row in rows:
             raise_if_generation_deadline_expired(row.request)
         leases: list[_GGUFResidentSessionLease] = []
         for row in rows:
@@ -6494,15 +6501,16 @@ class Qwen35GGUFResidentModelRunner:
                 native_compact_prefill=True,
             )
             raise_if_generation_deadline_expired(row.request)
-        return True
+        return frozenset(int(row.request_id) for row in rows)
 
     def prefill_batch(self, work: WorkItem, *, commit: bool) -> None:
         if not commit:
             raise ValueError("GGUF resident prefill requires commit=True")
         with hip_target_arch_environment(self.generator.target_arch):
-            if self._try_prefill_native_work_batch(work):
-                return
+            handled = self._try_prefill_native_work_batch(work)
             for request_id, token_row in zip(work.request_ids, work.token_rows, strict=True):
+                if int(request_id) in handled:
+                    continue
                 row = self._row(request_id)
                 start = int(row.prefill_tokens_seen)
                 chunk = tuple(int(token) for token in token_row)
