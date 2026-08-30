@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8 exact Q4 R16 revisit rejected] Q5 proved submission count material, but exact Q4 col4 R16 raises weighted GPU work **101.03→156.90 ms (+55.31%)** and loses all 90 leaf pairs; one-prompt C4 falls **29.610→27.717 tok/s (-6.39%)**. Candidate code is removed. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8 exact Q5 R16 retained] Replace two R8 Q5 target rowtiles with one exact K6144/N5120 R16 col8 launch: clean C4-C8 improve **27.450/17.970/26.904/28.205/27.393→29.493/18.708/28.255/29.527/29.504 tok/s (+4.10% to +7.71%)**, all 50 cells/acceptance exact and every category positive. C4 is 0.9737x AR; automatic choices remain K0. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8 wide Q6 attribution corrected] Clean C5-C8 still improve **15.244/20.830/23.245/19.650→17.970/26.904/28.205/27.393 tok/s (+17.89%/+29.16%/+21.34%/+39.41%)** exactly, but provider telemetry proves physical target groups are C5 R16+R4, C6 R16+R8, C7 R16+R12, and C8 R16+R16. The gains come from the retained R16 Q6 owner; unengaged R20-R32 keys are removed. `benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json`.

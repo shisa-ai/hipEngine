@@ -31,8 +31,14 @@ def test_qwen38_q5_true_r16_matches_r8_r8(
         gguf_q5_k_t16_gemv_rowtile16_col8_bf16_bf16_out as candidate,
         gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out as parent,
     )
+    from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+        register_qwen35_paged_attn_decode_kernels,
+    )
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
+    register_qwen35_paged_attn_decode_kernels(replace=True)
+    register_gfx1151_kernels(replace=True)
     runtime = get_hip_runtime()
     rows, in_features, out_features = 16, 6_144, 5_120
     rng = np.random.default_rng(0xE516)
