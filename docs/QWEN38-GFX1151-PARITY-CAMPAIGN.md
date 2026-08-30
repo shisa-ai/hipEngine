@@ -322,7 +322,9 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   R16/remainder Q4/Q5 work under its exact/production gates. Exact Q5
   true-R16 subsequently improves clean C4-C8 by **4.10-7.71%**, with all 50
   cells/acceptance exact and every category positive; C4 reaches **29.493 tok/s
-  (0.9737x AR)** and remains automatic K0
+  (0.9737x AR)** and remains automatic K0. An exact Q4 true-R16 submission-
+  amortization revisit is rejected: weighted GPU work rises 55.31% and one-
+  prompt C4 falls 6.39%. Attribute the residual outside this morphology
   ([`matrix`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-post-e2-c1c8-refreeze.json),
   [`proposal correction`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-wide-proposal-policy-rejected.json),
   [`C2 streaming`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json),
@@ -338,12 +340,14 @@ wmma GEMMs) + ~111 ms route overhead + ~30 ms serving; winner cluster total
   unengaged keys are removed. A C8 trace reduces whole-process BF16 Q6 kernel
   time **8.707→3.210 s (-63.13%)**. Every width remains below AR and 25-50%
   below external. Exact Q5 true-R16 then improves clean C4-C8 by **4.10-7.71%**
-  and C4 reaches **29.493 tok/s (0.9737x AR)**; R16/remainder Q4 attribution and
-  C4's remaining automatic-gate deficit are next
+  and C4 reaches **29.493 tok/s (0.9737x AR)**. Exact Q4 true-R16 is rejected
+  after weighted GPU **+55.31%** and one-prompt C4 **-6.39%**; prompt replay and
+  non-Q4 operation-complete attribution are next
   ([`wide blockers`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-c8-target-blockers.json),
   [`C4 win`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json),
   [`wide Q6`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-q6-r20-r32-retained.json),
-  [`Q5 R16`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json)).
+  [`Q5 R16`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json),
+  [`Q4 R16 reject`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json)).
 - [ ] P4.3 Reopen T3 adaptive-K and the B4 clamp once verifier rowtile work
   lands (per the CONCURRENCY2 supersession note); require full-suite
   acceptance/speed validation per anti-gaming.

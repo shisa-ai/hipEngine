@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "rejected_operation_complete_candidate",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 exact Q4 true-R16 submission-amortization revisit",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "base_commit": "d63dc2bab392fc4b7706dfe283ce005c76e3937d",
+    "candidate_code_committed": false,
+    "candidate_code_removed": true,
+    "production_changed": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "hypothesis": "Q5 true-R16 showed that eliminating Python/ctypes submissions can outweigh a small GPU-leaf delta, so exact one-launch Q4 R16 deserved one operation-complete revisit despite the prior R12 leaf-only rejection.",
+  "candidate": {
+    "single": "one exact ROW_TILE=16/TILE_COLS=4 launch",
+    "dual": "one exact two-wave ROW_TILE=16/TILE_COLS=4 gate/up+SiLU launch",
+    "parent": "two exact R8 rowtile launches",
+    "scope_screened": "gfx1151 production target verifier physical R16 only"
+  },
+  "leaf": {
+    "protocol": "five warmups plus 15 counterbalanced HIP-event pairs per actual shape",
+    "columns": ["shape", "parent_ms", "candidate_ms", "candidate_delta_pct", "candidate_wins"],
+    "rows": [
+      ["single K5120/N6144", 0.1871110051870346, 0.2678219974040985, 43.13535280107435, 0],
+      ["single K5120/N10240", 0.2523930072784424, 0.36139801144599915, 43.18859913868429, 0],
+      ["single K5120/N12288", 0.3036099970340729, 0.51705002784729, 70.30072556842183, 0],
+      ["single K6144/N5120", 0.14956100285053253, 0.23319700360298157, 55.920994883962315, 0],
+      ["single K17408/N5120", 0.5306360125541687, 0.8617770075798035, 62.40454609021302, 0],
+      ["dual K5120/N17408", 0.9649800062179565, 1.4967679977416992, 55.108705682719574, 0]
+    ],
+    "weighted_r16_parent_ms": 101.02856922149658,
+    "weighted_r16_candidate_ms": 156.90297675132751,
+    "weighted_gpu_delta_pct": 55.30555164780273,
+    "parent_launches_per_r16_group": 400,
+    "candidate_launches_per_r16_group": 200,
+    "launches_saved_per_r16_group": 200,
+    "every_actual_shape_bf16_exact": true,
+    "guard_words_exact": true
+  },
+  "operation_complete": {
+    "protocol": "one canonical train prompt, physical C4, D24/K3, complete barrier-to-last wall; dirty diagnostic only",
+    "prompt_id": "code_merge_intervals",
+    "control_mtp_tok_s": 29.609759076327045,
+    "candidate_mtp_tok_s": 27.7169096472885,
+    "delta_pct": -6.392653936018933,
+    "control_wall_seconds": 3.2421743031591177,
+    "candidate_wall_seconds": 3.463589600054547,
+    "candidate_ar_tok_s": 31.011221488795925,
+    "exact": true,
+    "engaged": true,
+    "budget_conformed": true,
+    "full_suite_run": false,
+    "stop_reason": "The operation-complete row regresses 6.39%; a full-suite run cannot retain the candidate."
+  },
+  "decision": {
+    "retained": false,
+    "named_blocker": "The 200-launch R16 reduction cannot cover 43-70% per-shape GPU penalties and a 55.3% weighted Q4 R16 GPU increase.",
+    "reopen_only_if": "A new Q4 dataflow reduces the GPU penalty materially; do not rerun the same col4/shared-weight morphologies or tune prompt/content selectors.",
+    "next": "Keep exact R8+R8 Q4 parents and attribute C4's remaining 2.63% AR deficit outside rejected Q4 one-sweep morphologies."
+  },
+  "raw_sources": [
+    ["/tmp/p390-q4-r16-micro.json", "05706a0218d7c6ad17decadba864cdb8af832cfb1b2c3c84e26161c65b134168", 6247],
+    ["/tmp/p390-q4-r16-c4-one-dirty.json", "18efc3f0754be41e0e8923413983e6b46132a26f15be78bddb05db08eca2cb8e", 123741]
+  ]
+}

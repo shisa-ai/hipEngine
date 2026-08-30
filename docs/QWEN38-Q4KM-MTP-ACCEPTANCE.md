@@ -466,6 +466,14 @@ that extra column workgroups or multi-wave LDS/barrier cost exceeds the second
 cached weight sweep at R12 on gfx1151. Keep R8+R4 and proceed to Q6.
 [`artifact`](../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e2-q4-true-r12-rejected.json)
 
+Post-Q5 R16 revisit: Q5 proved host launch count can dominate a nearly neutral
+GPU leaf, so Q4 received one bounded operation-complete R16 reconsideration.
+The exact col4 single/dual candidates lose every one of 90 pairs by 43.1-70.3%;
+weighted Q4 GPU work rises **101.03→156.90 ms (+55.31%)** despite halving 400
+to 200 launches/group. One-prompt C4 falls **29.610→27.717 tok/s (-6.39%)**.
+All candidate code is removed; do not reopen without a new dataflow premise.
+[`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json)
+
 Q6 closeout: standard K5120/N10240 true-R12 is BF16-bit exact and improves
 **0.6915→0.4468 ms (-35.38%)**, 15/15 leaf wins. Clean C3 improves
 **29.198→29.409 tok/s (+0.72%)**; the trace replaces standard R8+R4
@@ -674,6 +682,7 @@ These are ordered follow-ons, not assumptions in the primary claim:
 | 1b | C4 exact Q6 R16 | C4 target owner was 72.68% of child; Q6 direct kernels were 1.847 s | closed retained: R8+R8 cuts Q6 74.10%, C4 reaches 27.450 tok/s and passes external parity |
 | 1c | C5-C8 physical-R16 Q6 carryover | provider partitions targets as R16+R4/R8/R12/R16 | closed retained: +17.89% to +39.41%; unengaged logical R20-R32 keys removed |
 | 1d | Physical-R16 Q5 one-sweep | Q5 R12 predecessor won; R16 parent paid two Python/ctypes launches | closed retained: C4-C8 +4.10% to +7.71% exactly; C4 reaches 0.9737x AR |
+| 1e | Physical-R16 Q4 one-sweep revisit | Q5 proved launch count material, reopening the prior leaf-only stop once | rejected: weighted GPU +55.31% and one-prompt C4 -6.39%; candidate removed |
 | 2 | Fixed K4 | max zero-cost visible lift 17.54%; external K4 is diagnostic | measured p4/cost score cannot beat fixed K3 |
 | 3 | NextN norm/concat/Q4 residual | E0 Q4 NextN work is 12.75 ms/cycle at C3/K3 after the head | < material refreshed Amdahl share or compound-only idea |
 | 4 | Provider update/selected commit | unprofiled telemetry currently single-digit ms/cycle | <=5% refreshed wall or P7 already owns best path |
