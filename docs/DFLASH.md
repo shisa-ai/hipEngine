@@ -26,8 +26,12 @@
 > capture inside the timed region). The 620 ms 8-row verify is the
 > `_PACK8_ROWTILE_MAX_ROWS = 4` admission cliff (one full weight re-read per
 > row ≈ 8.0 weight sweeps), not O(N^2) attention, whose contribution here is
-> microseconds; the reverted rowtile-8 experiment (620 -> 310 ms, AR-divergent,
-> never root-caused) is the top open item. The cross-lane FP8-BLOCK / PRO 6000
+> microseconds. The historical broad rowtile-8 experiment (620 -> 310 ms) was
+> AR-divergent because rows5-8 dispatch was admitted without complete layout-
+> qualified verifier ownership. Later exact standard-Q4 rows5-8 owners plus
+> standard/qmicro fail-closed dispatch fix that class. Current `code_lru_cache`
+> R8 is bit-exact through five taps and selected commit at **721.5→204.4 ms
+> (3.53x)**; P5.1 is closed. The cross-lane FP8-BLOCK / PRO 6000
 > claim previously used to argue "hardware economics that do not transfer" is
 > unverifiable from this host, and its MTP-strength half is refuted by the
 > corrected MTP number. DFlash2 stays a diagnostic on this lane on the measured

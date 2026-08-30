@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "correctness_closed_current_route",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 DFlash-shaped row8 verifier AR-divergence closure",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "commit": "c9b9ec607784930dc52a84697a8fc88f426bfcb8",
+    "tracked_dirty": false,
+    "production_changed": false,
+    "regression_test_added": "tests/test_qwen38_dflash_row8_verify.py"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "historical_failure": {
+    "source_worklog": "worklog/entries/20260819T152835.922012Z-lhl-dflash2-d4-batch-verify-b7-measurement-6b86ff.md",
+    "unsafe_change": "broadly extend Q4T16 rowtile switch cases and rows<=8 dispatch gates",
+    "performance": "approximately 620 to 310 ms for eight-row verify",
+    "failure": "code_lru_cache native row 7 returned 436 where AR expected 43072; 31/40 outputs matched",
+    "isolated_kernels_exact": true,
+    "reverted": true
+  },
+  "root_cause": {
+    "class": "over-broad dispatch admission without complete layout-qualified verifier ownership",
+    "not_arithmetic": "isolated kernels were exact historically and current every-boundary verifier output is exact",
+    "safe_replacement_lineage": [
+      ["19d08b8bf0f67827fc6254aa7a2d00da2303a45b", "enable physical native_c8 with valid Q6 lm-head chunks and exact Q4 2x4 composition"],
+      ["073c3b5e7222e18a7d6bba03110478b27cc70c51", "exact standard-Q4 dual ROW_TILE=8 owner"],
+      ["76bc14e95d144b5b438976ccba259297c8875df2", "exact standard-Q4 rows5-7 owners"],
+      ["1ec78558b452bc7c6ece8274eef59778c0d57e3d", "exact standard-Q4 down ROW_TILE=8 owner"],
+      ["c8d8abc93b867268ad215eec9c4f88bd83cf83a1", "quant/layout-qualified standard-Q4 rows2-8 versus qmicro rows2-4 fail-closed dispatch"]
+    ],
+    "current_contract": "standard Q4T16 rows5-8 are admitted only through exact layout/shape owners; qmicro and unsupported widths fail closed"
+  },
+  "protocol": {
+    "prompt_id": "code_lru_cache",
+    "prompt_rendering": "exact canonical raw rendered string",
+    "prompt_tokens": 43,
+    "block_rows": 8,
+    "block_inputs": [248068, 198, 760, 1156, 6587, 264, 12654, 43072],
+    "serial": "verify_target_block_serial_exact",
+    "candidate": "verify_target_block bulk_attention_mode=native, use_wmma_prefill=false",
+    "captured_layer_output_taps": [0, 15, 31, 47, 63],
+    "state_commit": "deferred native linear-state row7 then one AR continuation",
+    "timing": "single host wall sample with identical tap capture; correctness/root-cause evidence, not a retained product throughput row"
+  },
+  "result": {
+    "serial_seconds": 0.7215217940974981,
+    "native_seconds": 0.20441311807371676,
+    "native_speedup": 3.5297235368098945,
+    "serial_target_ids": [198, 760, 1156, 6587, 264, 12654, 43072, 5287],
+    "native_target_ids": [198, 760, 1156, 6587, 264, 12654, 43072, 5287],
+    "target_ids_exact": true,
+    "post_output_norm_hidden_bit_exact": true,
+    "pre_output_norm_hidden_bit_exact": true,
+    "all_five_layer_taps_bit_exact": true,
+    "next_ar_token_serial": 1714,
+    "next_ar_token_native": 1714,
+    "selected_commit_continuation_exact": true
+  },
+  "decision": {
+    "p5_1": "complete",
+    "row8_verifier_correctness_blocker": "closed on current route",
+    "dflash2_promoted": false,
+    "remaining_blockers": ["drafter plus select approximately 96 ms/cycle", "matched full-suite DFlash2 economics still required", "historical drafter snapshot is absent on this host"],
+    "next": "P5.2 should profile or reduce drafter/select cost; P5.3 must use matched same-target full-suite economics before promotion."
+  },
+  "commands": {
+    "repro": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 /tmp/p420_dflash_row8_repro.py",
+    "regression": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 pytest tests/test_qwen38_dflash_row8_verify.py -q"
+  },
+  "raw_sources": [
+    ["/tmp/p420-dflash-row8-repro.json", "627ffcd4ccc48fbe16cbf1e5c6dd4d6148d29e4c9fbea1132fd2dc8bb35149c4", 1723],
+    ["tests/test_qwen38_dflash_row8_verify.py", "f9b484bf3d49494bf9b60c25e58e05b5e6835306df8b1c02cc340b5b84d2419c", 4708]
+  ]
+}

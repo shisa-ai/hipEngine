@@ -382,13 +382,15 @@ admission cliff); it does **not** grow smoothly as N^2. If the curve is
 instead smooth and superlinear from 2 rows up, the original O(N^2) explanation
 was right after all and the pre-2026-08-22 conclusion should be restored.
 
-**N2 — Root-cause the reverted rowtile-8 AR divergence on `code_lru_cache`.**
-The kernels were exact in isolation; the divergence appeared only through the
-verify path, which points at state/ownership (linear-state row commit, tap
-capture rows, or chunk boundaries) rather than arithmetic. Prediction: with
-an exact 8-row rowtile admitted, the 8-row verify lands **<=1.5 sweeps
-(<=120 ms)**, not 8.0. This is the item that decides whether the deep chain is
-reachable at all.
+**N2 — Complete 2026-08-30: rowtile-8 AR divergence root-caused.** The old
+experiment broadly widened rows<=8 dispatch. The safe replacement added the
+physical-c8 scope, valid Q6 lm-head chunks, exact standard-Q4 rows5-8
+single/dual/down owners, and quant/layout-specific standard-Q4 rows2-8 versus
+qmicro rows2-4 caps. Current `code_lru_cache` R8 target IDs, pre/post-norm
+hidden, five taps, selected row7 commit, and the next AR token are bit-exact;
+serial/native wall is **721.5/204.4 ms (3.53x)**. This closes correctness, not
+DFlash product economics.
+[`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-row8-root-cause-closed.json)
 
 **N3 — Matched-protocol DFlash2-vs-MTP rerun.** The current comparison
 conflates four independent differences. Hold all four fixed: (i) one target
