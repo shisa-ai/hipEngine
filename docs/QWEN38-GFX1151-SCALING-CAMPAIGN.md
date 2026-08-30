@@ -279,7 +279,17 @@ is made.
   [`m1-wide-cycle-blocked`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json).
   [`Entry`](../worklog/entries/20260830T142143.717427Z-lhl-qwen38-m1-wide-bound-blocker-8b3ed2.md)
 - [ ] M2 Per-row verify cost (A1). Using M1's per-quant attribution, close the
-  gap between MTP ms/target-row and AR ms/row at matched width. M1+M2 jointly
+  gap between MTP ms/target-row and AR ms/row at matched width.
+  **Interim (2026-08-31):** the M2i hip-API/copy/kernel trace closed every
+  host-side explanation (the accept window is 98% GPU-busy; the drain is Q4/Q5/Q6
+  verify math). M2j promoted the bit-exact low-VGPR/shared-B2W2 Q4 owners to
+  physical rows 2-16 (C1 **+75.5% to 13.759**, C4 **+15.8% to 34.201 = 1.138x
+  AR, 1.14% short of the 34.596 gate**, C5-C8 **26.059/31.885/32.395/33.491**,
+  48/48 exact). M2k screened Q5/Q6 siblings: the admitted rowtiles already win
+  every bit-exact cell and association-different WMMA alternatives save <5 ms
+  per pass - strict-owner recovery is exhausted at the certified bound.
+  [`M2j`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json)
+  M1+M2 jointly
   own the final `MTP >= 1.15x own AR` gates: C4 `>= 34.596`, C5 `>= 40.876`,
   C6 `>= 45.892`, C7 `>= 49.579`, and C8 `>= 52.827` tok/s, or a measured named
   blocker for each missed cell. Q4 owners above R12 (C) open here **only if**
@@ -294,6 +304,17 @@ is made.
   strict natural25 result, used as an aspiration rather than a comparator),
   stretch `>= 21.126` (external). Resolver, policy-miss, and strict-C1 tests
   must prove strict automatic behavior is unchanged.
+  **Interim (2026-08-31):** validator + width-1 production policy key retained
+  (streaming screen: IDs/acceptance/route/budget identical to replay, +24.1%;
+  full protocol production C1 **7.841 -> 15.646 tok/s, 1.408x own AR, 48/48
+  exact**); the rows1 proposal-head clause needs no wrapper change (rows1
+  lm-head is the qualified decode GEMV and multi-row proposals stay in the
+  admitted rows2-8 band); the native-graph re-screen closes no-capture on the
+  staged route (0 graph buckets; N2/N3 belongs to the llama_compat adapter and
+  M2i shows the window GPU-busy). -14.0% residual to the 18.191 aspiration
+  lives in the shared accept-window verify math (C1 accept-member 111
+  ms/cycle vs 33.6 ms/pass target kernels).
+  [`M3`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json)
 - [ ] M4 C4 prompt-streaming acceptance blocker. Streaming at C4 changed
   acceptance 628/796 -> 624/800 and was rejected. Decide explicitly whether the
   binding contract is exactness of the replayed prompt or of the acceptance
