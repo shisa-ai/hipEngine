@@ -1122,7 +1122,10 @@ def test_q4_t16_bulk_unequal_pair_routes_only_admitted_shape() -> None:
                 runtime="runtime-sentinel",
             )
         with q4_t16_unequal_pair_prefill_session(True):
-            for rows in (1, 4, 511):
+            # rows<=8 keep the GEMV/rowtile decode owners and 15 is the last row
+            # count under the qualified rows16 floor (2026-08-30 W7900 re-
+            # qualification; 511 routed here before that change).
+            for rows in (1, 4, 15):
                 assert not launch_gguf_linear_pair(
                     q4_a,
                     q4_b,
