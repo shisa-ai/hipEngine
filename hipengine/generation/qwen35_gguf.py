@@ -4905,6 +4905,9 @@ class _GGUFResidentLoopRow:
     mtp2_proposal_physical_rows: list[int] = field(default_factory=list)
     mtp2_target_batch_calls: int = 0
     mtp2_target_physical_rows: list[int] = field(default_factory=list)
+    mtp2_target_pass_ms: list[float] = field(default_factory=list)
+    mtp2_accept_pass_ms: list[float] = field(default_factory=list)
+    mtp2_provider_update_pass_ms: list[float] = field(default_factory=list)
     mtp2_candidate_device_handoffs: int = 0
     mtp2_candidate_d2h_after_target: int = 0
     mtp2_device_accept_calls: int = 0
@@ -8730,6 +8733,11 @@ class Qwen35GGUFResidentModelRunner:
             "specdec2_mtp2_target_batch_calls": int(row.mtp2_target_batch_calls),
             "specdec2_mtp2_target_physical_rows": list(
                 row.mtp2_target_physical_rows
+            ),
+            "specdec2_mtp2_target_pass_ms": list(row.mtp2_target_pass_ms),
+            "specdec2_mtp2_accept_pass_ms": list(row.mtp2_accept_pass_ms),
+            "specdec2_mtp2_provider_update_pass_ms": list(
+                row.mtp2_provider_update_pass_ms
             ),
             "specdec2_mtp2_candidate_device_handoffs": int(
                 row.mtp2_candidate_device_handoffs
