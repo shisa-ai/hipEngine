@@ -1,5 +1,12 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` grouped-prefill **command-provenance correction, no metric
+  change** — the retained packet records `candidate_budget=3`, explicit MTP and
+  `generation2_diagnostic_plan=true`, but the artifact's prior reconstructed command omitted
+  `--generation2-diagnostic` and its alleged as-run command named `--require-mtp`, a flag no committed
+  version of the driver ever accepted. The current equivalent now pins the model, K3, explicit mode and
+  diagnostic plan; an independent HEAD C3 run engaged 10/10 with all gates passing. Artifact:
+  [`grouped-prefill promotion`](results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json).
 - **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` C1-C8 **refresh via a genuine same-protocol repeat
   pair, no row change** — two 24-token explicit-K3 runs on the current tree reproduce the published
   AR row (max deviation **4.09%** at C5) and the K3 row (max **1.24%** at C1). Run-to-run spread is

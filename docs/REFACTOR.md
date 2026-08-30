@@ -4884,6 +4884,11 @@ other means and were not touched.
 - `hipengine/generation/qwen35_gguf_mtp2.py::_accept_staging_backing` / `_upload_accept_array_staged` is
   default-on with the blocking `copy_host_to_device` path as automatic fallback. Measured perf-neutral
   (worklog `20260830T160316…`): uploads 85.4-101.6 ms -> 0.1 ms per lane-cycle with no rate change.
+- Audit defect (2026-08-30): the fallback is not actually complete. `runtime.host_register(...)` exceptions
+  escape instead of selecting the pageable path, and `Qwen35GGUFMTP2Adapter.close()` neither calls
+  `host_unregister()` nor clears the registered NumPy arena. Before keeping this path as load-bearing code,
+  track the registered pointer/runtime, unregister it on close and partial initialization, catch registration
+  failure, and test both paths. If the accept cycle redesign removes staging, delete it instead.
 - Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging
   path too if the accept cycle is redesigned (route (b), `20260830T155541…`). Do not re-justify it as a speedup.
 
@@ -4893,4 +4898,3 @@ other means and were not touched.
   1-3 (worklog `20260830T164432…`): AR -15.0% / -21.8% / -29.9% and explicit K3 -20.4% / -28.6% / -36.1%.
 - Verdict: the WMMA route is the better one and the knob stays diagnostic-only. Remove the knob once the
   small-row WMMA kernel itself is fixed; do not promote the GEMV route as a small-row fallback.
-
