@@ -187,6 +187,27 @@ def test_summarize_samples_reports_shape_rates_and_determinism() -> None:
     assert summary["shapes"]["512"]["decode_tok_s_weighted"] > 60
 
 
+def test_llamacpp_startup_default_covers_large_model_load(tmp_path: Path) -> None:
+    module = _load_script()
+    args = module.build_parser().parse_args(
+        [
+            "llamacpp",
+            "--server-bin",
+            str(tmp_path / "llama-server"),
+            "--model",
+            str(tmp_path / "model.gguf"),
+            "--engine-label",
+            "probe",
+            "--output",
+            str(tmp_path / "result.json"),
+            "--server-log",
+            str(tmp_path / "server.log"),
+        ]
+    )
+
+    assert args.startup_timeout == 1800.0
+
+
 def test_rocm_platform_falls_back_to_rocm_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _load_script()
 
