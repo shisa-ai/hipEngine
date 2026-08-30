@@ -1,7 +1,9 @@
 # Qwen3.8-27B gfx1151 External-Parity Campaign (Umbrella)
 
-Status: active. Opened 2026-08-28. Owner: parity punchlist loop
-(`docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md`, lane `parity`).
+Status: **closed with measured blockers** on 2026-08-30. Opened 2026-08-28.
+Owner: parity punchlist loop. All win items are `[x]`; the five remaining `[~]`
+items satisfy the campaign's terminal named-blocker/reopen-condition rule.
+[`Closeout artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-parity-campaign-closeout.json)
 
 ## 1. Goal
 
