@@ -5,7 +5,12 @@ environment, patches the module-level tuning gates in
 hipengine.runtime.gguf_linear (both are read at dispatch time), then executes
 HE_PROBE_TARGET (default scripts/qwen35_gguf_bench.py) with the remaining
 argv. Diagnostic only: never imported by product code and not a supported way to
-select a route.
+select a route. Measurement rules learned the hard way on 2026-08-30: always pass
+``--public-ar-profile`` (without it the run measures the low-level selector route
+and `shipping_ar_route_mismatch` comes back true - worth 1.65x on 45-row prefill),
+never combine with ``--gpu-stage-timings`` (per-stage device syncs inflate wall),
+and include a negative control at rows below the candidate floor - identical
+dispatch there bounds the arm-order bias, which measured <=0.9% at 0.24 s prefill.
 """
 
 from __future__ import annotations
