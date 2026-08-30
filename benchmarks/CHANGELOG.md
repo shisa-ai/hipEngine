@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-30 gfx1151 Qwen3.8 post-Q5 C4 blocker] Current C4 is **29.493 vs 30.291 tok/s AR (0.9737x)** with a 0.8572 s suite gap. Prompt prime is 9.08% of its measured child and can cover the residual, but existing streaming changes acceptance **628/796→624/800**. Automatic C4 remains K0 pending replay-equivalent prompt state and category gates. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json`.
+
 - [2026-08-30 gfx1151 Qwen3.8 exact Q4 R16 revisit rejected] Q5 proved submission count material, but exact Q4 col4 R16 raises weighted GPU work **101.03→156.90 ms (+55.31%)** and loses all 90 leaf pairs; one-prompt C4 falls **29.610→27.717 tok/s (-6.39%)**. Candidate code is removed. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json`.
 
 - [2026-08-30 gfx1151 Qwen3.8 exact Q5 R16 retained] Replace two R8 Q5 target rowtiles with one exact K6144/N5120 R16 col8 launch: clean C4-C8 improve **27.450/17.970/26.904/28.205/27.393→29.493/18.708/28.255/29.527/29.504 tok/s (+4.10% to +7.71%)**, all 50 cells/acceptance exact and every category positive. C4 is 0.9737x AR; automatic choices remain K0. `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json`.

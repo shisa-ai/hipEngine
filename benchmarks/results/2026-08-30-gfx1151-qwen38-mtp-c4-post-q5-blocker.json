@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "blocked_automatic_c4",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 C4 post-Q5 automatic-route blocker",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "commit": "d63dc2bab392fc4b7706dfe283ce005c76e3937d",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "heldout_included": true,
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "physical_width": 4,
+    "resident_capacity": 8,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+  },
+  "current": {
+    "ar_wall_seconds": 31.69247699365951,
+    "mtp_wall_seconds": 32.54969383706339,
+    "ar_tok_s": 30.29110031986646,
+    "mtp_tok_s": 29.493364970053143,
+    "mtp_vs_ar": 0.9736643653948047,
+    "wall_gap_seconds": 0.8572168434038758,
+    "external_target_tok_s": 27.015,
+    "gap_to_external_pct": 9.174032833807665,
+    "accepted": 628,
+    "proposed": 796,
+    "exact_cells": 10,
+    "category_wall": {
+      "code": {"ar_seconds": 12.510036116931587, "mtp_seconds": 12.756324948044494, "mtp_extra_seconds": 0.24628883111290634},
+      "general_en": {"ar_seconds": 6.231187107041478, "mtp_seconds": 5.932333156000823, "mtp_extra_seconds": -0.2988539510406554},
+      "general_ja": {"ar_seconds": 6.2430872928816825, "mtp_seconds": 6.678568779025227, "mtp_extra_seconds": 0.4354814861435443},
+      "mixed_ja_en": {"ar_seconds": 6.708166476804763, "mtp_seconds": 7.182466953992844, "mtp_extra_seconds": 0.47430047718808055}
+    }
+  },
+  "post_q5_stage_telemetry": {
+    "scope": "sum of one shared physical-C4 group record per prompt",
+    "columns": ["stage", "seconds", "percent_of_mtp_wall"],
+    "rows": [
+      ["proposal", 2.3638015161268413, 7.262131336655614],
+      ["target_enqueue", 2.3633730383589864, 7.260814956323437],
+      ["accept_sync", 13.95356122800149, 42.868486867649054],
+      ["selected_commit", 0.13347133295610547, 0.4100540349910313],
+      ["provider_update", 0.5040933901909739, 1.5486885766556042],
+      ["other_including_prompt_prefill_replay_and_server", 13.23139333142899, 40.64982422772526]
+    ],
+    "interpretation": "accept_sync is the synchronization owner for queued target kernels, not an arithmetic accept kernel wall"
+  },
+  "prompt_replay": {
+    "retained_route": "host-hidden capture plus shifted NextN replay",
+    "marker_measured_prompt_prime_seconds_one_profile_child": 0.441593681,
+    "marker_measured_complete_seconds_same_child": 4.861134708,
+    "share_pct_same_child": 9.084168769757945,
+    "current_code_prompt_gap_to_ar_seconds": 0.14666533516719937,
+    "largest_current_category_gap_seconds": 0.47430047718808055,
+    "amdahl_premise": "prompt prime is individually large enough to cover overall C4 gap and materially address category gaps",
+    "existing_streaming_screen": {
+      "speed_uplift_pct_before_q6_q5_closure": 5.6774723914700065,
+      "control_accepted_proposed": "628/796",
+      "candidate_accepted_proposed": "624/800",
+      "binding_failure": "T0 acceptance/opportunity trajectory changed",
+      "candidate_retained": false
+    }
+  },
+  "closed_kernel_paths": {
+    "q6_r16": "retained exact R8+R8",
+    "q5_r16": "retained exact true-R16",
+    "q4_r16_one_sweep": "rejected: weighted GPU +55.31%, one-prompt C4 -6.39%",
+    "proposal_head": "retained exact rows4 owner"
+  },
+  "decision": {
+    "automatic_c4": false,
+    "named_blocker": "The only measured standalone stage with clear capacity to close the residual gap is prompt priming/replay, but the existing C4 streaming route changes acceptance from 628/796 to 624/800. Kernel reopen candidates are closed or lack a new premise.",
+    "reopen_condition": "A C4 prompt path must preserve the replay-equivalent shifted token/hidden timeline and exact acceptance across the full suite, then pass overall and every category versus AR plus production serving gates.",
+    "next": "Proceed to P4.3 adaptive-K/B4 economics or a dedicated prompt-streaming correctness campaign; do not tune the fixed prompt suite."
+  },
+  "raw_sources": [
+    ["/tmp/p380-q5-r16-c4c8-clean.json", "dde77d3191c22c09d06f603c1f105e37fddac14409ec52b4201dd4c1ed646836", 12139929],
+    ["/tmp/p350-c4-clean-profile.json", "93c65b83852b29bea850d777df2da585a8d8ceb714fcf94bcd07d5550d15d313", 86573],
+    ["/tmp/p350-c4-clean-rocprof/gfx1151/4017161_marker_api_trace.csv", "4f707aaa8310756a7a333090a28480ca582934727f97b61df1a368e79f9b5694", 20834],
+    ["benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-prompt-streaming-retained.json", null, null],
+    ["benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-q4-r16-rejected.json", null, null]
+  ]
+}
