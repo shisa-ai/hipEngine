@@ -37,6 +37,37 @@ from typing import Any, Mapping, Sequence
 
 SCHEMA = "hipengine.gguf_engine_submodule_decomposition.v1"
 KINDS = ("hipengine", "llamacpp")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _provenance(command: Sequence[str]) -> dict[str, Any]:
+    """Describe where and from what code this packet was produced.
+
+    The packet this script writes had no provenance at all: no host, no commit, no argv. That is how
+    a pre-grouped-prefill decomposition kept being quoted as current - nothing in the file said when
+    it was measured, and the correction had to be reconstructed from commit dates. Use the normative
+    collector; fall back to cheap, GPU-free facts rather than writing nothing.
+    """
+
+    try:
+        from hipengine.benchmark.provenance import collect_artifact_provenance
+
+        return collect_artifact_provenance(repo_root=REPO_ROOT, command=list(command))
+    except Exception as exc:  # pragma: no cover - no-HIP runners must still get a stamped packet
+        import socket
+
+        from hipengine.benchmark.provenance import collect_repo_state
+
+        state = collect_repo_state(REPO_ROOT)
+        return {
+            "host_name": socket.gethostname(),
+            "hipengine_commit": state.get("hipengine_commit"),
+            "git_branch": state.get("git_branch"),
+            "dirty": state.get("dirty"),
+            "command": list(command),
+            "provenance_error": f"{type(exc).__name__}: {exc}",
+        }
+
 
 
 def _lanes_and_wall(cell: Mapping[str, Any]) -> tuple[int, float]:
@@ -282,6 +313,7 @@ def main() -> int:
     payload = {
         "schema": SCHEMA,
         "generated": datetime.now(timezone.utc).isoformat(),
+        "provenance": _provenance([sys.executable, *[str(item) for item in sys.argv[1:]]]),
         "arm": args.arm,
         "note": args.note,
         "method": {
