@@ -285,7 +285,8 @@
  "kind": "w7900_q4km_c1c8_submodule_decomposition",
  "limitations": [
   "peer MTP packets carry only the 24-token arm, so peer admission/decode cannot be split on arm=mtp; peer decode_step_ms 0 and decode_tok_s_aggregate null mean NOT COMPUTABLE, not free",
-  "hipEngine admission here is the one-token arm wall per lane, which is prefill-bound (measured GPU busy 287.0 ms vs 295 ms wall at 45 rows)"
+  "hipEngine admission here is the one-token arm wall per lane, which is prefill-bound (measured GPU busy 287.0 ms vs 295 ms wall at 45 rows)",
+  "AR admission rows by width (302.4/584.5/877.2/1172.4/1457.2/1746.4/2033.3/2320.8 ms) are pre-grouped-prefill: grouped prefill shipped at 72a29e9ad and this packet predates it. The linear 292 ms-per-lane growth measured here was serialized prefill, and it is gone. Recomputed C1-C8 rows, with hipEngine now cheapest at C4/C5/C7, are in 2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json. The mtp arm of this file has NOT been recomputed and must not be quoted as current."
  ],
  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
  "mtp": {
@@ -554,5 +555,6 @@
  },
  "protocol": "10 prompts (mtpbench-code-general-ja) x widths 1-8, greedy, production profile; AR arm and explicit K3 MTP arm; one-token arm supplies admission, 24-token arm supplies decode",
  "quant": "gguf_q4_k_m",
- "schema": "hipengine.benchmarks.c1c8_submodule_decomposition.v1"
+ "schema": "hipengine.benchmarks.c1c8_submodule_decomposition.v1",
+ "superseded_by": "2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json"
 }
