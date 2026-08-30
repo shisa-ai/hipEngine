@@ -4690,3 +4690,14 @@ advanced every selected cursor, so the scheduler still over-commits on rows it k
 cannot group - move the compatibility test to selection time, and declare
 `GGUF_C2_PACKED_PREFILL_MAX_ROWS` once a mixed wave with a >256-token lane is measured
 end to end (the standard 35-67-token suite cannot exercise it).
+
+`resident_observability.routes.counts` in `gguf_mtp_c1c8_server_bench.py` packets are
+**process-global cumulative snapshots**, not per-cell deltas, so they cannot be
+attributed to an arm or a width. Two consequences worth not rediscovering: AR and K3 run
+in the same process, so a cell's counts include the other arm's work; and the `order`
+field is not strictly increasing across cells, so differencing consecutive cells does not
+recover the split either (attempted once: every delta collapsed onto the first arm
+listed). Fix: have the bench read the counters before and after each cell and store the
+delta alongside the cumulative value. Until then, per-route-per-arm questions need
+`scripts/mtp_verifier_rocprof.py` regions, not packet counters - which is why the
+K1/K3/K7 verify profile is the binding instrument for the MTP per-row cost question.
