@@ -1,5 +1,15 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` C1-C8 **refresh via a genuine same-protocol repeat
+  pair, no row change** — two 24-token explicit-K3 runs on the current tree reproduce the published
+  AR row (max deviation **4.09%** at C5) and the K3 row (max **1.24%** at C1). Run-to-run spread is
+  **0.66%-5.29%** on AR and **0.01%-1.06%** on K3, the first per-width band measured from one
+  protocol rather than borrowed. AR therefore leads **7 of 8** widths with C2 the sole loss at
+  **-9.32%** against a 3.77% spread; K3 leads only C3/C4 and loses C5-C8 by **-22% to -45%**.
+  A K2 pair (default `--candidate-budget 2`) is recorded too: its plateau shape matches K3, so
+  fewer draft rows per lane does not remove the C5-C8 deficit. Reason: task #19 refresh on the
+  current tree. Artifact: [`repeat
+  pair`](results/2026-08-30-w7900-q4km-c1c8-parity-refresh-repeat-pair.json).
 - **2026-08-30** — W7900 Qwen3.8-27B `Q4_K_M` C1-C8 **AR admission decomposition recomputed on the
   grouped-prefill route** — re-running the AR arm of the submodule decomposition against the current
   `he-d1`/`he-d24` packets moves **C8 admission 2320.75 → 878.18 ms (-62.16%)** with per-lane
