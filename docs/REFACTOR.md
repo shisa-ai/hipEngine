@@ -4659,3 +4659,25 @@ manual topic shortening plus `git mv` inside an amend of an unpushed commit, and
 slugifying, strip trailing/Repeated `-`, hard-truncate to the round-trip length,
 and assert `slugify(topic) == topic` and the filename prefix before writing the
 file. Remove this entry when `new` refuses to emit an invalid pair.
+
+Wave-grouped AR prefill also needs **compatibility-aware selection**, not just the
+equal-length relaxation landed today. `next_prefill_batch_work`
+(`hipengine/generation/batch_scheduler.py:1249`) advances every selected prompt
+cursor *before* publication and states that incompatible rows "must fall back before
+this method is selected" - but nothing enforces that upstream: `_row`-level
+compatibility is only tested afterwards inside
+`_try_prefill_native_work_batch`, whose per-row loop returns `False` for the **whole**
+work item. Two consequences to remove when the capability is declared:
+
+* With `DEFAULT_MAX_PREFILL_CHUNK_TOKENS = 256`, any prompt longer than 256 tokens
+  yields `chunk != row.prompt_ids`, so a single long lane refuses every other lane in
+  that item and the wave prefills serially anyway. The standard 10-prompt suite
+  (35-67 tokens) is unaffected, so a measurement on it cannot see this.
+* The refusal happens *after* the scheduler has already consumed the prefill cursors,
+  so the fallback runs on post-advance state instead of never having committed.
+
+The fix is to filter candidates by whole-prompt-fit-before-chunk (and select the
+largest compatible subset) at selection time, so an over-long lane is routed to the
+chunked path without taxing its neighbours. Add a fixture with one 300-token lane and
+seven short lanes: today it must show zero grouped rows, and after the fix the seven
+short lanes must group while the long lane chunks.
