@@ -4548,3 +4548,20 @@ should be boring.
   registered strict fallback. (Original M1 mandate — scattered caps must not
   survive either outcome — is satisfied: one named capability-bound default
   with a pointer to the measured blocker.)
+
+## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
+
+`GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus the
+`partition_max_requests` zero-return implement the measured M5 economics on
+the engine surface: a due batch wider than the certified bound decodes as one
+full-batch AR step instead of chained MTP sub-groups (sub-groups measured
+0.74-0.80x own AR at widths 5-8). Measured **inert on the server-bench
+surface** because admission already caps explicit-MTP groups at 4 upstream
+(`server_mtp_batch_max_active_requests`), so the partitioner never sees a
+wide item there. Removal/activation condition: when the campaign owner
+amends the frozen C5-C8 engagement semantics, move the demotion to the
+admission-route layer (`_route_request_cap` group formation / `llm.py`
+submission grouping), re-measure C5-C8 against the AR ceiling
+(36.5/39.2/42.2/46.1 tok/s), and delete the partitioner-level route check as
+redundant. Until then this path is defense-in-depth with a seam test and
+must not be reported as a C5-C8 performance mechanism.

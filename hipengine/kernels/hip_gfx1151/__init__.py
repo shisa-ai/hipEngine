@@ -1774,6 +1774,13 @@ GGUF_SPECDEC2_MTP2_C1 = True
 # width-4 default; an admitted profile re-lists its bound to lift the cap.
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS: dict[str, int] = {}
+# M5 whole-batch routing (scaling campaign, 2026-08-31): measured at the
+# current head, MTP sub-group interleaving reaches only 0.74-0.80x of own AR
+# at physical widths 5-8 (C5-C8 28.0/32.7/33.1/35.5 vs AR 36.1/40.8/43.7/47.8
+# tok/s), so a due batch wider than the production bound must fall through to
+# one full-batch AR decode instead of chaining MTP sub-groups. Widths <= 4
+# keep the certified MTP cycle (1.19-1.56x AR).
+GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS: dict[str, int] = {"production": 4}
 # E1a/E7 admit the exact shifted prompt-streaming path for measured Qwen3.8
 # standard-Q4 production physical-C2/C3 groups. Scaling-campaign screens
 # (2026-08-31): width 1 engages the same exact path (C1 +24.1% screen,
@@ -3011,6 +3018,7 @@ __all__ = [
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
+    "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
