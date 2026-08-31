@@ -164,9 +164,13 @@ def test_qwen4_exp_ple_cache_advice_is_file_scoped(
     class Mapping:
         def __init__(self) -> None:
             self.advice = []
+            self.closed = 0
 
         def madvise(self, advice: int) -> None:
             self.advice.append(advice)
+
+        def close(self) -> None:
+            self.closed += 1
 
     mapping = Mapping()
 
@@ -193,6 +197,8 @@ def test_qwen4_exp_ple_cache_advice_is_file_scoped(
     assert cold["scope"] == "ple_tensor_file_range"
     assert cold["mode"] == "cold"
     assert warm["mode"] == "warm"
+    assert cold["mapping_reopened"] is True
+    assert mapping.closed == 1
     assert len(mapping.advice) == 2
     assert len(calls) == 2
     assert calls[0][0:2] == (0, 270)
