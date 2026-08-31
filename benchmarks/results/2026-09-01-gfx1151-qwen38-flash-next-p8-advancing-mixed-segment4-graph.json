@@ -1,0 +1,295 @@
+{
+  "advancing_position": true,
+  "attention_context_limit": 38,
+  "capture_nonexecuting": true,
+  "command": [
+    "qwen4exp_stateful_layer_graph_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--prompt-file",
+    "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "--segment-length",
+    "4",
+    "--advance-position",
+    "--output",
+    "/tmp/qwen4exp-stateful-mixed4-advancing-graph-clean.json"
+  ],
+  "decision": {
+    "dynamic_control_gate": true,
+    "production_binding": false,
+    "remaining": [
+      "PLE control/state",
+      "all 12 QSA position/context/index owners",
+      "token embedding/input publication",
+      "full 48-layer/final-head/argmax transition",
+      "reset/restore/fallback/c2 lifecycle",
+      "context-bucket transition"
+    ],
+    "scope": "layers 0..3, dense-equivalent QSA, positions 8..11, repeated resident input"
+  },
+  "first_mismatch": null,
+  "fixed_position": null,
+  "gdn_state_indices": [
+    0,
+    1,
+    2
+  ],
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "host_cursor_replay_safe": true,
+  "kind": "qwen4exp_stateful_layer_graph_probe",
+  "layer_kinds": [
+    "gdn",
+    "gdn",
+    "gdn",
+    "qsa"
+  ],
+  "layers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 82741321248,
+      "peak_allocations": 1638,
+      "total_allocated_bytes": 82741321248,
+      "total_freed_bytes": 82741321248
+    },
+    "passed": true
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "profile": {
+    "manifest_sha256": "e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca",
+    "name": "strict"
+  },
+  "profiler": {
+    "device_allocations_at_or_after_first_graph_launch": 0,
+    "dynamic_index_append_per_graph_launch": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "graph_launches": 7,
+    "kernel_dispatches_per_graph_launch": [
+      143,
+      143,
+      143,
+      143,
+      143,
+      143,
+      143
+    ],
+    "position_advance_per_graph_launch": [
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1
+    ],
+    "profiled_timing": {
+      "eager_median_ms": 15.812361001735553,
+      "graph_median_ms": 5.662822994054295,
+      "speedup": 2.7923106581890003
+    },
+    "trace_sha256": {
+      "hip_api": "1ded3bbce54e9b6188fd57428290fad548c23b3b38959e104a4a0898283b7fdc",
+      "kernel": "9b76c5febaf6c18e302306a1ab3dbe480f14abf0e229b57eca087c6ee534d1b6",
+      "memory_allocation": "00cc04769cabbe37e9348020bb33c5fc200875608808157d35904f69d106f8dd"
+    }
+  },
+  "prompt_tokens": 8,
+  "qsa_state_indices": [
+    0
+  ],
+  "rows": [
+    {
+      "output_exact": true,
+      "position": 8,
+      "replay": 1,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    },
+    {
+      "output_exact": true,
+      "position": 9,
+      "replay": 2,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    },
+    {
+      "output_exact": true,
+      "position": 10,
+      "replay": 3,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    },
+    {
+      "output_exact": true,
+      "position": 11,
+      "replay": 4,
+      "state_exact": true,
+      "state_owners": {
+        "decode.gdn_conv": true,
+        "decode.gdn_matrix": true,
+        "decode.ple_conv": true,
+        "decode.residual": true,
+        "qsa.0.attention.context": true,
+        "qsa.0.attention.key_cache": true,
+        "qsa.0.attention.position": true,
+        "qsa.0.attention.value_cache": true,
+        "qsa.0.index.pooled_keys": true,
+        "qsa.0.index.query_position": true,
+        "qsa.0.index.raw_keys": true,
+        "qsa.0.index.scores": true,
+        "qsa.0.index.selected_count": true,
+        "qsa.0.index.selected_positions": true,
+        "qsa.0.index.selected_starts": true
+      }
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "head": "78725a5f2dfb44b14e2beb78683f3a96f116e842",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "start_position": 8,
+  "status": "passed_research_rung",
+  "timing": {
+    "eager_median_ms": 13.8821549990098,
+    "eager_ms": [
+      15.162110998062417,
+      13.795477003441192,
+      13.202494999859482,
+      13.693536006030627,
+      14.01885598897934,
+      13.998297989019193,
+      13.335434996406548,
+      13.656647002790123,
+      14.000310999108478,
+      13.218045001849532,
+      14.683172994409688,
+      14.075222992687486,
+      14.104546993621625,
+      13.919649994932115,
+      13.82015401031822,
+      13.552310992963612,
+      13.103630000841804,
+      13.149464997695759,
+      12.856546003604308,
+      13.59766699897591,
+      13.844660003087483,
+      14.083888992900029,
+      13.922295009251684,
+      14.33741400251165,
+      13.400006006122567,
+      14.341201007482596,
+      14.004298995132558,
+      13.98536299529951,
+      13.62006799899973,
+      14.16201499523595
+    ],
+    "graph_median_ms": 4.974135510565247,
+    "graph_ms": [
+      5.574025999521837,
+      5.283320002490655,
+      5.1213669939897954,
+      4.907034002826549,
+      5.107331002363935,
+      5.06752599903848,
+      4.868582997005433,
+      5.14981999003794,
+      5.137738000485115,
+      5.0140750099672005,
+      5.061805000877939,
+      5.130202989676036,
+      5.072514992207289,
+      5.273933013086207,
+      5.036657996242866,
+      4.98255601269193,
+      4.935188000672497,
+      4.950746995746158,
+      4.981304009561427,
+      4.945225999108516,
+      4.966967011569068,
+      4.932683004881255,
+      4.92879499506671,
+      4.949944996042177,
+      4.839387998799793,
+      4.7030520072439685,
+      4.922865002299659,
+      4.884722002316266,
+      4.926720997900702,
+      4.952078990754671
+    ],
+    "samples": 30,
+    "speedup": 2.790867874331849
+  }
+}

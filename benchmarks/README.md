@@ -236,11 +236,14 @@ state owners remain exact through four replays, while synchronized layer wall
 falls **4.051→1.258 ms (3.22x)**. A chained layers-0..2 rung is likewise exact
 and contracts **9.801→3.896 ms (2.52x)**. A fixed-position layers-0..3 mixed
 GDN/QSA diagnostic remains device-state/output exact at **12.160→4.955 ms
-(2.45x)**, but its host cursor does not advance. None is yet bound to
-production; dynamic control and full-token lifecycle gates remain open.
+(2.45x)**. Its advancing-position successor passes positions 8–11 across
+position/context, K/V, QSA index, GDN state, and output at **13.882→4.974 ms
+(2.79x)**. None is yet bound to production; full-token and lifecycle gates
+remain open.
 [`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
 [`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
-[`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json).
+[`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json),
+[`advancing mixed segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json).
 
 A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
 the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up
