@@ -1,0 +1,829 @@
+{
+  "commands": [
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-p13-prefill/c1c3-r1.json",
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-p13-prefill/c1c3-r2.json"
+  ],
+  "comparison": {
+    "current_explicit_ar_pair_reading": "C1 is stable at 0.749x peer; C2/C3 are unstable at 20.44%/11.92% packet spread because actual resident group completeness changes between runs.",
+    "full_group_k0_control_reading": "The automatic-request K0 control is stable to 1.07%/1.47% and averages 1.082x/1.329x the strongest peer at C2/C3, with identical generated IDs and no speculative cycle.",
+    "strongest_peer_source": "benchmarks/README.md current-HIP prefill row"
+  },
+  "correctness": {
+    "cross_packet_generated_row_comparisons": 120,
+    "cross_packet_generated_row_mismatches": 0,
+    "engaged_mtp_cells": 0,
+    "exact_cells_per_width_per_packet": 10,
+    "group_counter_probe_mismatches": 0,
+    "packet_passed": [
+      true,
+      true
+    ],
+    "packet_statuses": [
+      "complete",
+      "complete"
+    ],
+    "passed": true,
+    "refused_attribution_cells": 0,
+    "route_expectation": "K0 at every width",
+    "within_packet_ar_mtp_exact_cells": 60,
+    "within_packet_ar_mtp_exact_cells_per_packet": 30
+  },
+  "date": "2026-08-31",
+  "execution_profile": {
+    "generated_id_equality": "diagnostic under production; exact in every within- and cross-packet comparison",
+    "requested": "production",
+    "resolved": "production",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+  },
+  "hardware": {
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon Pro W7900",
+    "host": "epyc",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "kind": "w7900_q4km_c1c3_current_server_prefill_attribution",
+  "limitations": [
+    "prefill_ms times the complete synchronized native prefill call, not WMMA kernels alone; the earlier rocprof trace remains the kernel-family attribution.",
+    "Two packets rather than the normal three expensive E2E runs were retained because this is an attribution/decision packet, not a performance promotion; each packet covers all 10 categories/heldouts and two interleaved arms.",
+    "The automatic omitted-request arm executes no MTP cycle and falls back to default, but its pre-queue routing is intentionally different; it is a causal control and current auto-request behavior, not an AR scoreboard replacement.",
+    "One unrelated untracked pre-existing probe was present; tracked source was clean and the probe was neither imported nor executed."
+  ],
+  "linked_evidence": [
+    "worklog/entries/20260830T040624.621308Z-lhl-w7900-prefill-fixed-cost-kernel-attribution-9aabde.md",
+    "benchmarks/results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json"
+  ],
+  "measurements": {
+    "conditional_on_actual_native_group": {
+      "1": {
+        "automatic_omitted_request_k0": {
+          "none": {
+            "cells": 20,
+            "mean_engine_loop_residual_ms": 0.99545,
+            "mean_native_prefill_ms": 268.48915,
+            "mean_remaining_ms": 30.044315,
+            "mean_server_queue_response_residual_ms": 29.048865,
+            "mean_wave_wall_ms": 299.259872
+          }
+        },
+        "explicit_ar": {
+          "none": {
+            "cells": 20,
+            "mean_engine_loop_residual_ms": 1.01115,
+            "mean_native_prefill_ms": 268.29115,
+            "mean_remaining_ms": 29.665671,
+            "mean_server_queue_response_residual_ms": 28.654521,
+            "mean_wave_wall_ms": 298.414357
+          }
+        }
+      },
+      "2": {
+        "automatic_omitted_request_k0": {
+          "full": {
+            "cells": 20,
+            "mean_engine_loop_residual_ms": 6.2002,
+            "mean_native_prefill_ms": 307.4996,
+            "mean_remaining_ms": 38.216802,
+            "mean_server_queue_response_residual_ms": 32.016602,
+            "mean_wave_wall_ms": 346.324018
+          }
+        },
+        "explicit_ar": {
+          "full": {
+            "cells": 5,
+            "mean_engine_loop_residual_ms": 3.769,
+            "mean_native_prefill_ms": 307.4246,
+            "mean_remaining_ms": 37.764218,
+            "mean_server_queue_response_residual_ms": 33.995218,
+            "mean_wave_wall_ms": 345.625764
+          },
+          "none": {
+            "cells": 15,
+            "mean_engine_loop_residual_ms": 7.278467,
+            "mean_native_prefill_ms": 263.9798,
+            "mean_remaining_ms": 314.495941,
+            "mean_server_queue_response_residual_ms": 307.217474,
+            "mean_wave_wall_ms": 578.903343
+          }
+        }
+      },
+      "3": {
+        "automatic_omitted_request_k0": {
+          "full": {
+            "cells": 20,
+            "mean_engine_loop_residual_ms": 9.66195,
+            "mean_native_prefill_ms": 345.5004,
+            "mean_remaining_ms": 45.049668,
+            "mean_server_queue_response_residual_ms": 35.387718,
+            "mean_wave_wall_ms": 391.174616
+          }
+        },
+        "explicit_ar": {
+          "full": {
+            "cells": 5,
+            "mean_engine_loop_residual_ms": 9.6634,
+            "mean_native_prefill_ms": 347.9882,
+            "mean_remaining_ms": 45.521293,
+            "mean_server_queue_response_residual_ms": 35.857893,
+            "mean_wave_wall_ms": 394.018526
+          },
+          "partial": {
+            "cells": 15,
+            "mean_engine_loop_residual_ms": 9.977267,
+            "mean_native_prefill_ms": 303.1958,
+            "mean_remaining_ms": 323.513085,
+            "mean_server_queue_response_residual_ms": 313.535819,
+            "mean_wave_wall_ms": 627.13772
+          }
+        }
+      }
+    },
+    "group_validation": {
+      "1": {
+        "automatic_omitted_request_k0": {
+          "cells": 20,
+          "counter_matches_probe": true,
+          "native_full_prefill_groups_counter_delta": 0,
+          "native_group_size_histogram": {},
+          "probe_record_count": 0,
+          "queue_request_count_histogram": {
+            "1": 20
+          }
+        },
+        "explicit_ar": {
+          "cells": 20,
+          "counter_matches_probe": true,
+          "native_full_prefill_groups_counter_delta": 0,
+          "native_group_size_histogram": {},
+          "probe_record_count": 0,
+          "queue_request_count_histogram": {
+            "1": 20
+          }
+        }
+      },
+      "2": {
+        "automatic_omitted_request_k0": {
+          "cells": 20,
+          "counter_matches_probe": true,
+          "native_full_prefill_groups_counter_delta": 20,
+          "native_group_size_histogram": {
+            "2": 20
+          },
+          "probe_record_count": 20,
+          "queue_request_count_histogram": {
+            "2": 20
+          }
+        },
+        "explicit_ar": {
+          "cells": 20,
+          "counter_matches_probe": true,
+          "native_full_prefill_groups_counter_delta": 5,
+          "native_group_size_histogram": {
+            "2": 5
+          },
+          "probe_record_count": 5,
+          "queue_request_count_histogram": {
+            "1": 20
+          }
+        }
+      },
+      "3": {
+        "automatic_omitted_request_k0": {
+          "cells": 20,
+          "counter_matches_probe": true,
+          "native_full_prefill_groups_counter_delta": 20,
+          "native_group_size_histogram": {
+            "3": 20
+          },
+          "probe_record_count": 20,
+          "queue_request_count_histogram": {
+            "3": 20
+          }
+        },
+        "explicit_ar": {
+          "cells": 20,
+          "counter_matches_probe": true,
+          "native_full_prefill_groups_counter_delta": 20,
+          "native_group_size_histogram": {
+            "2": 15,
+            "3": 5
+          },
+          "probe_record_count": 20,
+          "queue_request_count_histogram": {
+            "1": 20
+          }
+        }
+      }
+    },
+    "pair": {
+      "1": {
+        "automatic_k0_mean_vs_explicit_ar_ratio": 0.997173,
+        "automatic_k0_mean_vs_peer_ratio": 0.746663,
+        "automatic_omitted_request_k0_prompt_tok_s": {
+          "max": 150.59082,
+          "mean": 150.038852,
+          "median": 150.038852,
+          "min": 149.486884,
+          "samples": [
+            150.59082,
+            149.486884
+          ],
+          "spread_percent": 0.73307,
+          "stdev": 0.780601
+        },
+        "explicit_ar_mean_vs_peer_ratio": 0.74878,
+        "explicit_ar_prompt_tok_s": {
+          "max": 151.057219,
+          "mean": 150.464266,
+          "median": 150.464266,
+          "min": 149.871314,
+          "samples": [
+            151.057219,
+            149.871314
+          ],
+          "spread_percent": 0.78507,
+          "stdev": 0.838562
+        },
+        "published_hipengine_prompt_tok_s": 149.072,
+        "strongest_peer_prompt_tok_s": 200.946
+      },
+      "2": {
+        "automatic_k0_mean_vs_explicit_ar_ratio": 1.483728,
+        "automatic_k0_mean_vs_peer_ratio": 1.081968,
+        "automatic_omitted_request_k0_prompt_tok_s": {
+          "max": 260.697291,
+          "mean": 259.302256,
+          "median": 259.302256,
+          "min": 257.907221,
+          "samples": [
+            260.697291,
+            257.907221
+          ],
+          "spread_percent": 1.070234,
+          "stdev": 1.972877
+        },
+        "explicit_ar_mean_vs_peer_ratio": 0.729223,
+        "explicit_ar_prompt_tok_s": {
+          "max": 194.661665,
+          "mean": 174.764027,
+          "median": 174.764027,
+          "min": 154.86639,
+          "samples": [
+            194.661665,
+            154.86639
+          ],
+          "spread_percent": 20.443304,
+          "stdev": 28.139509
+        },
+        "published_hipengine_prompt_tok_s": 175.905,
+        "strongest_peer_prompt_tok_s": 239.658
+      },
+      "3": {
+        "automatic_k0_mean_vs_explicit_ar_ratio": 1.449711,
+        "automatic_k0_mean_vs_peer_ratio": 1.329415,
+        "automatic_omitted_request_k0_prompt_tok_s": {
+          "max": 346.92237,
+          "mean": 344.366468,
+          "median": 344.366468,
+          "min": 341.810565,
+          "samples": [
+            346.92237,
+            341.810565
+          ],
+          "spread_percent": 1.473472,
+          "stdev": 3.614592
+        },
+        "explicit_ar_mean_vs_peer_ratio": 0.917021,
+        "explicit_ar_prompt_tok_s": {
+          "max": 250.900639,
+          "mean": 237.541536,
+          "median": 237.541536,
+          "min": 224.182433,
+          "samples": [
+            224.182433,
+            250.900639
+          ],
+          "spread_percent": 11.918064,
+          "stdev": 18.892625
+        },
+        "published_hipengine_prompt_tok_s": 212.235,
+        "strongest_peer_prompt_tok_s": 259.036
+      }
+    },
+    "per_run": {
+      "r1": {
+        "elapsed_seconds": 101.101112,
+        "widths": {
+          "1": {
+            "automatic_omitted_request_k0": {
+              "component_share_percent": {
+                "admission_prepare": 0.177642,
+                "native_prefill": 89.697996,
+                "remaining": 10.054837,
+                "render": 0.0,
+                "tokenize": 0.069524
+              },
+              "mean_ms": {
+                "admission_prepare": 0.529656,
+                "engine_loop_residual": 0.9832,
+                "native_prefill": 267.4426,
+                "remaining": 29.979396,
+                "render": 0.0,
+                "request_total": 268.4258,
+                "server_queue_response_residual": 28.996196,
+                "tokenize": 0.207293,
+                "wave_wall": 298.158945
+              },
+              "native_full_prefill_groups_delta": 0,
+              "native_group_size_histogram": {},
+              "prompt_tok_s": 150.59082,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            },
+            "explicit_ar": {
+              "component_share_percent": {
+                "admission_prepare": 0.090107,
+                "native_prefill": 89.898895,
+                "remaining": 9.941565,
+                "render": 0.0,
+                "tokenize": 0.069433
+              },
+              "mean_ms": {
+                "admission_prepare": 0.267833,
+                "engine_loop_residual": 1.0007,
+                "native_prefill": 267.214,
+                "remaining": 29.550145,
+                "render": 0.0,
+                "request_total": 268.2147,
+                "server_queue_response_residual": 28.549445,
+                "tokenize": 0.206381,
+                "wave_wall": 297.238359
+              },
+              "native_full_prefill_groups_delta": 0,
+              "native_group_size_histogram": {},
+              "prompt_tok_s": 151.057219,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            }
+          },
+          "2": {
+            "automatic_omitted_request_k0": {
+              "component_share_percent": {
+                "admission_prepare": 0.142541,
+                "native_prefill": 88.761912,
+                "remaining": 11.055382,
+                "render": 0.0,
+                "tokenize": 0.040165
+              },
+              "mean_ms": {
+                "admission_prepare": 0.490999,
+                "engine_loop_residual": 6.1267,
+                "native_prefill": 305.75,
+                "remaining": 38.081459,
+                "render": 0.0,
+                "request_total": 311.8767,
+                "server_queue_response_residual": 31.954759,
+                "tokenize": 0.138352,
+                "wave_wall": 344.46081
+              },
+              "native_full_prefill_groups_delta": 10,
+              "native_group_size_histogram": {
+                "2": 10
+              },
+              "prompt_tok_s": 260.697291,
+              "queue_request_count_histogram": {
+                "2": 10
+              }
+            },
+            "explicit_ar": {
+              "component_share_percent": {
+                "admission_prepare": 0.054262,
+                "native_prefill": 61.774145,
+                "remaining": 38.139024,
+                "render": 0.0,
+                "tokenize": 0.032569
+              },
+              "mean_ms": {
+                "admission_prepare": 0.250319,
+                "engine_loop_residual": 5.5081,
+                "native_prefill": 284.9723,
+                "remaining": 175.940359,
+                "render": 0.0,
+                "request_total": 290.4804,
+                "server_queue_response_residual": 170.432259,
+                "tokenize": 0.150244,
+                "wave_wall": 461.313223
+              },
+              "native_full_prefill_groups_delta": 5,
+              "native_group_size_histogram": {
+                "2": 5
+              },
+              "prompt_tok_s": 194.661665,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            }
+          },
+          "3": {
+            "automatic_omitted_request_k0": {
+              "component_share_percent": {
+                "admission_prepare": 0.136466,
+                "native_prefill": 88.25821,
+                "remaining": 11.570636,
+                "render": 0.0,
+                "tokenize": 0.034688
+              },
+              "mean_ms": {
+                "admission_prepare": 0.52986,
+                "engine_loop_residual": 10.0442,
+                "native_prefill": 342.6813,
+                "remaining": 44.925458,
+                "render": 0.0,
+                "request_total": 352.7255,
+                "server_queue_response_residual": 34.881258,
+                "tokenize": 0.134684,
+                "wave_wall": 388.271301
+              },
+              "native_full_prefill_groups_delta": 10,
+              "native_group_size_histogram": {
+                "3": 10
+              },
+              "prompt_tok_s": 346.92237,
+              "queue_request_count_histogram": {
+                "3": 10
+              }
+            },
+            "explicit_ar": {
+              "component_share_percent": {
+                "admission_prepare": 0.055728,
+                "native_prefill": 50.99002,
+                "remaining": 48.931883,
+                "render": 0.0,
+                "tokenize": 0.022369
+              },
+              "mean_ms": {
+                "admission_prepare": 0.334843,
+                "engine_loop_residual": 9.6986,
+                "native_prefill": 306.3735,
+                "remaining": 294.007185,
+                "render": 0.0,
+                "request_total": 316.0721,
+                "server_queue_response_residual": 284.308585,
+                "tokenize": 0.134406,
+                "wave_wall": 600.849934
+              },
+              "native_full_prefill_groups_delta": 10,
+              "native_group_size_histogram": {
+                "2": 9,
+                "3": 1
+              },
+              "prompt_tok_s": 224.182433,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            }
+          }
+        }
+      },
+      "r2": {
+        "elapsed_seconds": 101.96571,
+        "widths": {
+          "1": {
+            "automatic_omitted_request_k0": {
+              "component_share_percent": {
+                "admission_prepare": 0.171467,
+                "native_prefill": 89.737309,
+                "remaining": 10.024355,
+                "render": 0.0,
+                "tokenize": 0.066869
+              },
+              "mean_ms": {
+                "admission_prepare": 0.515019,
+                "engine_loop_residual": 1.0077,
+                "native_prefill": 269.5357,
+                "remaining": 30.109233,
+                "render": 0.0,
+                "request_total": 270.5434,
+                "server_queue_response_residual": 29.101533,
+                "tokenize": 0.200847,
+                "wave_wall": 300.360799
+              },
+              "native_full_prefill_groups_delta": 0,
+              "native_group_size_histogram": {},
+              "prompt_tok_s": 149.486884,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            },
+            "explicit_ar": {
+              "component_share_percent": {
+                "admission_prepare": 0.086699,
+                "native_prefill": 89.912207,
+                "remaining": 9.940639,
+                "render": 0.0,
+                "tokenize": 0.060455
+              },
+              "mean_ms": {
+                "admission_prepare": 0.259742,
+                "engine_loop_residual": 1.0216,
+                "native_prefill": 269.3683,
+                "remaining": 29.781196,
+                "render": 0.0,
+                "request_total": 270.3899,
+                "server_queue_response_residual": 28.759596,
+                "tokenize": 0.181117,
+                "wave_wall": 299.590355
+              },
+              "native_full_prefill_groups_delta": 0,
+              "native_group_size_histogram": {},
+              "prompt_tok_s": 149.871314,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            }
+          },
+          "2": {
+            "automatic_omitted_request_k0": {
+              "component_share_percent": {
+                "admission_prepare": 0.129478,
+                "native_prefill": 88.816928,
+                "remaining": 11.014805,
+                "render": 0.0,
+                "tokenize": 0.038789
+              },
+              "mean_ms": {
+                "admission_prepare": 0.450825,
+                "engine_loop_residual": 6.2737,
+                "native_prefill": 309.2492,
+                "remaining": 38.352145,
+                "render": 0.0,
+                "request_total": 315.5229,
+                "server_queue_response_residual": 32.078445,
+                "tokenize": 0.135057,
+                "wave_wall": 348.187227
+              },
+              "native_full_prefill_groups_delta": 10,
+              "native_group_size_histogram": {
+                "2": 10
+              },
+              "prompt_tok_s": 257.907221,
+              "queue_request_count_histogram": {
+                "2": 10
+              }
+            },
+            "explicit_ar": {
+              "component_share_percent": {
+                "admission_prepare": 0.052487,
+                "native_prefill": 45.651042,
+                "remaining": 54.269746,
+                "render": 0.0,
+                "tokenize": 0.026724
+              },
+              "mean_ms": {
+                "admission_prepare": 0.30435,
+                "engine_loop_residual": 7.2941,
+                "native_prefill": 264.7097,
+                "remaining": 314.685661,
+                "render": 0.0,
+                "request_total": 272.0038,
+                "server_queue_response_residual": 307.391561,
+                "tokenize": 0.154963,
+                "wave_wall": 579.854674
+              },
+              "native_full_prefill_groups_delta": 0,
+              "native_group_size_histogram": {},
+              "prompt_tok_s": 154.86639,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            }
+          },
+          "3": {
+            "automatic_omitted_request_k0": {
+              "component_share_percent": {
+                "admission_prepare": 0.11539,
+                "native_prefill": 88.388482,
+                "remaining": 11.463184,
+                "render": 0.0,
+                "tokenize": 0.032944
+              },
+              "mean_ms": {
+                "admission_prepare": 0.454727,
+                "engine_loop_residual": 9.2797,
+                "native_prefill": 348.3195,
+                "remaining": 45.173879,
+                "render": 0.0,
+                "request_total": 357.5992,
+                "server_queue_response_residual": 35.894179,
+                "tokenize": 0.129824,
+                "wave_wall": 394.07793
+              },
+              "native_full_prefill_groups_delta": 10,
+              "native_group_size_histogram": {
+                "3": 10
+              },
+              "prompt_tok_s": 341.810565,
+              "queue_request_count_histogram": {
+                "3": 10
+              }
+            },
+            "explicit_ar": {
+              "component_share_percent": {
+                "admission_prepare": 0.05099,
+                "native_prefill": 60.054903,
+                "remaining": 39.865278,
+                "render": 0.0,
+                "tokenize": 0.028829
+              },
+              "mean_ms": {
+                "admission_prepare": 0.273748,
+                "engine_loop_residual": 10.099,
+                "native_prefill": 322.4143,
+                "remaining": 214.02309,
+                "render": 0.0,
+                "request_total": 332.5133,
+                "server_queue_response_residual": 203.92409,
+                "tokenize": 0.154772,
+                "wave_wall": 536.86591
+              },
+              "native_full_prefill_groups_delta": 10,
+              "native_group_size_histogram": {
+                "2": 6,
+                "3": 4
+              },
+              "prompt_tok_s": 250.900639,
+              "queue_request_count_histogram": {
+                "1": 10
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "model": {
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null
+  },
+  "protocol": {
+    "arms": {
+      "automatic_omitted_request_k0": "request omits speculative_mtp; automatic policy declines with resident_capacity_not_qualified, effective backend is the same default/K0 path; server queue first groups the wave",
+      "explicit_ar": "request carries speculative_mtp=false; effective default backend; server launches independent queue items"
+    },
+    "attribution": "latest-completing response on each wave; listed frontend/backend stages plus explicit residual",
+    "batch_window_ms": 20.0,
+    "candidate_budget": 3,
+    "expected_mtp_widths": [],
+    "max_sequence_length": 1024,
+    "max_tokens": 1,
+    "measured_cells_per_packet": 60,
+    "measured_packets": 2,
+    "mtp_request_mode": "automatic",
+    "prompt_count": 10,
+    "prompt_file": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "resident_capacity": 8,
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "warmup_arms_per_width_per_packet": 2,
+    "widths": [
+      1,
+      2,
+      3
+    ]
+  },
+  "provenance": {
+    "build_profile": null,
+    "collected_at": "2026-08-31T08:08:37.386525+00:00",
+    "command": [
+      ".venv/bin/python",
+      "scripts/gguf_mtp_c1c8_server_bench.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--widths",
+      "1,2,3",
+      "--resident-capacity",
+      "8",
+      "--expected-mtp-widths",
+      "none",
+      "--max-tokens",
+      "1",
+      "--candidate-budget",
+      "3",
+      "--mtp-request-mode",
+      "automatic",
+      "--execution-profile",
+      "production",
+      "--batch-window-ms",
+      "20",
+      "--max-sequence-length",
+      "1024",
+      "--capture-prefill-attribution",
+      "--output",
+      "/tmp/he-p13-prefill/c1c3-r1.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": true,
+    "environment": {
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null,
+      "GPU_MAX_HW_QUEUES": null,
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_HIP_ARCH": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0"
+    },
+    "git_branch": "campaign/gfx1100-mtp-cn-promotion",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "bfd4c58eb1fa458acbd64ec29b93d721a0cb4868",
+    "host_name": "epyc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": null,
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": null,
+    "quant": "gguf_q4_k_m",
+    "repetitions": 2,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 2,
+    "source_clean_contract": "tracked files clean; one unrelated untracked pre-existing probe was not imported or executed",
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "two independent full-suite C1-C3 one-token server packets; two harness arms per cell",
+    "unstaged_dirty": false,
+    "untracked_count": 1,
+    "untracked_dirty": true,
+    "warmups": 2
+  },
+  "quant": "gguf_q4_k_m",
+  "schema": "hipengine.benchmark.artifact.v1",
+  "source": {
+    "commit": "bfd4c58eb1fa458acbd64ec29b93d721a0cb4868",
+    "raw_packets": [
+      {
+        "bytes": 1248380,
+        "path": "/tmp/he-p13-prefill/c1c3-r1.json",
+        "sha256": "b38d8f4c27eef611da70715396785f057347e796caf2335c967a38d80925ba54"
+      },
+      {
+        "bytes": 1245104,
+        "path": "/tmp/he-p13-prefill/c1c3-r2.json",
+        "sha256": "b3177773806dda416e50058f5d4d2d9505c4fc643a419e5b55ab49bc78b42e2d"
+      }
+    ],
+    "raw_packets_committed": false,
+    "tracked_dirty": false
+  },
+  "status": "decision_admission_grouping_before_c2_c3_kernel_work",
+  "title": "Current server-path C1-C3 prefill attribution and actual native group sizes",
+  "verdict": {
+    "priority": "Fix/coalesce ready default-AR submissions at C2/C3 while preserving independent completion semantics (task #29). Continue native prefill kernel/occupancy work for C1 after the T16 protocol repair; do not use incomplete C2/C3 grouping as split-K evidence.",
+    "reconciliation": "Neither prior blanket claim is valid. C1 is native-prefill dominated: 89.9% of wave wall is the synchronized native prefill call, listed frontend work is under 1 ms, and only about 30 ms remains. At C2/C3 the large residual is not proven CPU work: it appears only when independent default-route submissions miss the full resident group and includes earlier serialized model prefill. Fully grouped waves return to about 89% native-prefill share with only 38-46 ms residual.",
+    "root_cause_c2_c3": "Default explicit-AR requests are launched as independent server queue items (queue request_count=1 in all 40 C2/C3 cells). Across the pair only 5/20 C2 cells formed a full size-2 native group; C3 formed 5/20 size-3 groups and 15/20 size-2 groups. The automatic-request K0 control queued full widths and formed full native groups 20/20 at both widths.",
+    "scoreboard": "No published row changes. The explicit-AR pair reproduces current behavior but is unstable by group composition; the automatic K0 arm is a causal/product-route control, not yet the canonical AR comparator."
+  }
+}

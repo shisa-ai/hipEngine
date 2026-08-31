@@ -997,15 +997,27 @@ P13 is complete only when:
       ratios, stale citations, and 96-CU geometry.
 - [x] Pass JSON/worklog/README/provenance/command checks and commit atomically.
 
-#### P13-B — Current prefill attribution (#22, blocks #11)
+#### P13-B — Current prefill attribution (#22 complete; #29 follow-up)
 
-- [ ] On current HEAD, collect a C1-C3 same-protocol repeat pair with grouped
-      prefill and current single-wave ownership.
-- [ ] Attribute actual EngineLoop serving wall across render/tokenize,
+- [x] On current HEAD, collect a C1-C3 same-protocol repeat pair with current
+      single-wave ownership and observe whether each wave actually groups.
+- [x] Attribute actual EngineLoop serving wall across render/tokenize,
       admission preparation, native grouped prefill, and residual wall; record
       group sizes, not only cumulative counters.
-- [ ] Reconcile the conflicting “~97% WMMA kernel” and “~0.4 s non-kernel”
+- [x] Reconcile the conflicting “~97% WMMA kernel” and “~0.4 s non-kernel”
       readings before choosing host versus kernel work.
+
+The pair separates two regimes. C1 is **89.9% complete native-prefill call**
+(268.3/298.4 ms), with under 1 ms of listed frontend work and 29.7 ms residual,
+so C1 remains kernel-shaped. At C2/C3, explicit AR enters the server as
+independent queue items (`request_count=1` in all 40 cells) and races resident
+admission: only 5/20 C2 cells form a full size-2 native group; C3 forms 5/20
+size-3 and 15/20 size-2 groups. The omitted-request automatic arm declines MTP,
+executes exact K0/default, but queues full waves 20/20 and measures stable
+**259.3/344.4 prompt tok/s**, **1.082x/1.329x** the strongest peer. Therefore
+#29 coalesces ready default-AR submissions before any C2/C3 kernel conclusion;
+#25 then #11 remain the C1 native-prefill path. Evidence:
+[`current server attribution`](../benchmarks/results/2026-08-31-w7900-q4km-c1c3-current-server-prefill-attribution.json).
 
 #### P13-C — T16 evidence and down-projection occupancy (#25, then #11)
 
