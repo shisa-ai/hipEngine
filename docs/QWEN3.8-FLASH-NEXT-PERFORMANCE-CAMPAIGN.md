@@ -809,6 +809,11 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
 - [ ] For GDN, test exact early-layer column ownership, prepare+recurrence
       fusion, state residency, and bounded chunking. Engram's chunked kernel is
       a design reference only; it was not active in the fork's published rows.
+      A strict-order prepared-QKV/scalar route is exact in output and recurrent
+      state but rejected/removed at rows508: **12.716→12.757 ms (0.9967x)**.
+      Prepared tensor traffic offsets removed norm/transcendental work; require
+      direct column ownership or state-layout reuse instead. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`.
 - [ ] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
       packets; keep every rejected early layer strict.
 - [ ] For QSA, compare current key-parallel head-dim-256 flash geometry with the
