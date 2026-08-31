@@ -122,9 +122,9 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 
 | Engine / arm | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine AR | **21.999** | 31.916 | **45.309** | **54.151** | **61.881** | **71.226** | **74.903** | **78.667** |
-| llama.cpp current HIP AR | 21.720 | **35.440** | 30.787 | 27.760 | 36.390 | 45.529 | 51.914 | 58.744 |
-| llama.cpp Laurent HIP AR | 21.463 | 35.100 | 30.635 | 27.667 | 36.473 | 45.826 | 52.537 | 59.348 |
+| hipEngine AR | **22.854** | **37.903** | **52.296** | **63.613** | **70.994** | **77.046** | **81.256** | **83.939** |
+| llama.cpp current HIP AR | 21.657 | 34.649 | 30.367 | 27.748 | 36.248 | 45.343 | 51.757 | 57.687 |
+| llama.cpp Laurent HIP AR | 21.298 | 34.151 | 30.635 | 27.850 | 36.695 | 46.091 | 52.681 | 58.840 |
 | hipEngine explicit K3 | 31.455 | 39.820 | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
 | llama.cpp current HIP K3 | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP K3 | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
@@ -132,22 +132,27 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 | llama.cpp current HIP prefill | 179.035 | 206.603 | 207.636 | 258.750 | 308.960 | 330.059 | 360.231 | 405.406 |
 | llama.cpp Laurent HIP prefill | **184.024** | 225.730 | 221.227 | 259.929 | 316.711 | 357.259 | 365.592 | 404.240 |
 
-All current rows and 78/80 Laurent AR/MTP cells are content-exact; Laurent's two
-C8 differences are deterministic and pass anti-repetition guards. The hipEngine AR row and K3 cells except the final C5-C8 physical-width packets come from a packet taken after
-**grouped prefill was declared for gfx1100**
-(`GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8`), whose protocol block is byte-identical to
-the prior packet: 80/80 correctness cells, **720** cross-packet row comparisons with
-**0** mismatches on the one-token packet and **432** at full 24-token length. That
-change is AR **+3.5%..+72.2%** and K3 **+31.8%..+76.5%** versus the pre-declaration
-packet, and AR now leads **7 of 8 widths** - only C2, at 0.90x current. In that pre-#30
-packet, draft acceptance was **0.7889 at every width** instead of falling to 0.4668 at C3:
-bypassing the packed verify path moved acceptance by exactly **+0.000** at C1/C2/C4/C8,
-so the ungrouped prefill schedule, not verification, caused the collapse. The current
-one-group C8 packet records 0.7850 acceptance (1,256 accepted from 1,600 proposals)
-versus 0.7889 for the C4 rollback (the same 1,256 accepted from 1,592 proposals). K3 leads
-the peers only at C3 (1.19x Laurent) and C4 (1.09x), and is behind our own AR from
-C5 onward; K3 remains an engine-ranking diagnostic, distinct from hipEngine's
-automatic C2/K2 product key. Prefill uses the peer one-token protocol (10 prompts x C1-C8, content-exact).
+The current AR rows are arithmetic means from a counterbalanced two-run, full-
+C1-C8 same-host D1/D24 repeat. hipEngine leads the strongest peer at every
+width. C2 closes the stale 9.94% deficit at **37.903 vs 34.649 tok/s (+9.39%)**;
+the slower hipEngine run still beats the faster peer run by **7.34%**, and every
+category plus heldout scope leads. Decomposition finds both C2 admission
+(**340.62 vs 388.05 ms**) and marginal decode (**40.25 vs 43.37 ms/step**) ahead.
+All 720 hipEngine repeat rows match, all peer cells are content-exact, C2-C8
+form full native groups, and both hipEngine packets drain. A clean cached-only
+C2 trace records a **38.26 ms** marker wall, **23.19 ms** kernel interval union,
+**15.07 ms** uncovered wall, zero memory-copy-trace operations, and device
+argmax with one i32-vector readback; it is attribution only, not a throughput sample. No
+runtime or kernel change is attributed to this refresh.
+
+The explicit K3 row is a separate engine diagnostic. Its C5-C8 cells use the
+current one-group physical owner; K3 leads peers only at C3/C4 and trails our
+own AR from C5 onward. All current peer K3 cells and 78/80 Laurent cells are
+content-exact; Laurent's two C8 differences are deterministic and pass the
+anti-repetition guards. Automatic capacity-8 requests remain K0, distinct from
+the promoted capacity-2/C2/K2 product key. Prefill uses the peer one-token
+protocol (10 prompts x C1-C8, content-exact).
+
 The canonical rows are arithmetic means from a counterbalanced two-run, full-
 C1-C8 same-host repeat: hipEngine is **166.784/263.688/351.141/405.343/440.200/
 457.406/469.752/473.754 prompt tok/s**; current HIP is **179.035/206.603/
@@ -161,21 +166,12 @@ by **+35.83%/+26.73%/+12.14%**, and every category and heldout scope is
 positive. No kernel change is attributed to this refresh. The earlier exact
 planar-Q6 FFN-down retile remains independently established by its same-build
 rollback: **+6.70%/+2.45%/+2.24%** at C1/C2/C3 with every category and heldout
-scope positive. An independent
-same-protocol repeat pair on the current tree (two 24-token explicit-K3 runs) reproduces the
-AR row to within **4.09%** and the then-current K3 C1-C7 cells to within **1.24%**, with run-to-run spread of
-**0.66%-5.29%** on AR and **0.01%-1.06%** on K3; the verdicts against the carried-forward
-peer columns are unchanged, AR 7 of 8 widths and K3 only C3/C4
-([`repeat pair`](results/2026-08-30-w7900-q4km-c1c8-parity-refresh-repeat-pair.json)).
-Two cautions on the hipEngine
-rows. The K3 arm is forced: with `--mtp-request-mode automatic` on this host and model
-MTP is declined at **every** width (0/80 cells engaged, 0 accepted draft tokens), for
-`artifact_not_qualified` at C1, `resident_capacity_not_qualified` at C2 and
-`physical_group_not_qualified` at C3-C8, so what ships today is AR at all eight widths
-and the K3 row measures the engine, not the product. And AR carries a paired
-cross-session band: 80 cells matched prompt-to-prompt across two packets move a median
-**1.5%**, width medians sit near **+1%** except **C5 at +11.9%**, so only deltas well
-above that are reads. [`automatic route gating`](results/2026-08-30-w7900-q4km-automatic-mtp-route-gating.json)
+scope positive. An older two-run explicit-K3 packet bounded then-current K3
+repeat spread at **0.01%-1.06%** through C7; it is superseded for AR rates by the
+full repeat above ([`older repeat`](results/2026-08-30-w7900-q4km-c1c8-parity-refresh-repeat-pair.json)).
+The K3 arm is forced: with `--mtp-request-mode automatic` on this host and model,
+MTP is declined at **every** capacity-8 width, so what ships in that scope is AR
+and the K3 row measures the engine, not the product. [`automatic route gating`](results/2026-08-30-w7900-q4km-automatic-mtp-route-gating.json)
 [`W7900 matrix`](results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json) ·
 [`pre-grouping refresh + submodules (superseded for current rates/acceptance)`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json) ·
 [`prefill row`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row.json) ·
@@ -184,6 +180,7 @@ above that are reads. [`automatic route gating`](results/2026-08-30-w7900-q4km-a
 [`admission/decode decomposition, post-grouping`](results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json) ·
 [`exact planar-Q6 prefill retention`](results/2026-08-31-w7900-q4km-planar-q6-prefill-retained.json) ·
 [`full C1-C8 prefill peer repeat (current rows)`](results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json) ·
+[`full C1-C8 AR peer repeat and C2 attribution (current rows)`](results/2026-08-31-w7900-q4km-c1c8-ar-peer-repeat-attribution.json) ·
 [`admission/decode decomposition, pre-grouping (superseded AR arm)`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json) ·
 [`single-wave exact route, counterbalanced speed confirmed`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json) ·
 [`single-wave shape extension, band corrected`](results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json) ·

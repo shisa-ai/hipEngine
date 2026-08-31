@@ -1,8 +1,8 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
 - Status: **Qwen3.6 lanes complete; 27B Dense and 35B MoE physical C2 promoted
-  automatically. Qwen3.8 P7-P12, P13 recovery, and the post-recovery prefill
-  repeat are complete; cross-engine parity continuation remains open**
+  automatically. Qwen3.8 P7-P12, P13 recovery, and the post-recovery prefill/AR
+  repeats are complete; cross-engine parity continuation remains open**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -939,15 +939,16 @@ each cell of the standardized W7900 matrix:
 
 | Axis | Current result | Remaining strongest-peer deficits |
 | --- | --- | --- |
-| True AR / decode | wins 7/8 | C2 **-9.94%**; C1 is +1.28%, while C3-C8 lead +32.55% to +95.07% |
+| True AR / decode | wins C1-C8 | none; C2 is **+9.39%**, and other widths lead +5.53% to +128.41% |
 | Explicit K3 diagnostic | wins C3/C4 | C1 -3.90%, C2 -2.98%, C5 -6.01%, C6 -11.50%, C7 -19.88%, C8 -38.87% |
 | Prefill | wins C2-C8 | C1 **-9.37%** |
 
 Material prefill work is now only C1. Atomic ready-cohort admission and the
 exact retile package moved C2/C3 past the strongest peer; the full #33 same-host
 repeat closes the stale carried C5/C6/C8 deficits at +38.99%/+28.03%/+16.86%,
-with worst-run and every category/heldout comparison positive. The exact final
-per-cell matrix is in §12.6.
+with worst-run and every category/heldout comparison positive. The full #34
+D1/D24 repeat independently closes the stale AR C2 deficit at +9.39%, with both
+admission and marginal decode ahead. The exact final per-cell matrix is in §12.6.
 
 P13 is complete only when:
 
@@ -1232,6 +1233,31 @@ The same full repeat refreshes the complete prefill matrix; hipEngine now leads
 C2-C8 and only C1 remains behind, by **9.37%**. Evidence:
 [`full prefill peer repeat`](../benchmarks/results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json).
 
+#### P13-I — Full AR C2 attribution (#34 complete)
+
+- [x] Run two full C1-C8 D1/D24 hipEngine, current-HIP, and Laurent-HIP packets
+      in counterbalanced process order at fixed capacity 8; do not promote the
+      earlier C2-only diagnostic to a standardized row.
+- [x] Separate admission/first-token, marginal decode, sampling, and uncovered
+      host wall before selecting any candidate.
+- [x] Preserve full category+heldout output equality, native-group ownership,
+      lifecycle drain, and per-run values rather than choosing the faster run.
+
+The repeated C2 means are hipEngine **37.903 tok/s** and strongest peer current
+HIP **34.649**, or **+9.39%**. The slower hipEngine run still beats the faster
+peer run by **+7.34%**; every category and heldout scope is positive. The D1/D24
+decomposition finds hipEngine C2 admission **340.62 vs 388.05 ms** and marginal
+decode **40.25 vs 43.37 ms/step**, both ahead of the best peer. A source-clean
+cached-only direct C2 route census records **38.26 ms** marker wall,
+**31.13 ms** summed kernels, **23.19 ms** kernel interval union, and
+**15.07 ms** uncovered wall; HIP API calls occupy 10.92 ms, memory-copy trace
+records zero operations, and sampling is device argmax with one i32-vector
+readback. The trace is attribution only. Since complete wall, admission, decode,
+and every scope already lead, no optimization candidate is selected. The full
+AR row now leads C1-C8. All 720 hipEngine repeat rows match; all peer cells are
+content-exact; both hipEngine packets drain. Evidence:
+[`full AR peer repeat and C2 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-c1c8-ar-peer-repeat-attribution.json).
+
 ### 12.5 P13 stop rules
 
 - Do not use pre-grouping rates or acceptance to prioritize current work.
@@ -1245,14 +1271,14 @@ C2-C8 and only C1 remains behind, by **9.37%**. Evidence:
 
 ### 12.6 Durable handoff and exact strongest-peer matrix
 
-This is the canonical retained matrix after the P13 rollup and full prefill
-peer repeat. Each cell is `hipEngine / strongest peer (delta)` in total tok/s. “Current” and “Laurent” name
+This is the canonical retained matrix after the P13 rollup and full prefill/AR
+peer repeats. Each cell is `hipEngine / strongest peer (delta)` in total tok/s. “Current” and “Laurent” name
 the stronger of the two llama.cpp rows; the underlying exact protocol and
 artifacts remain linked from `benchmarks/README.md`.
 
 | Axis | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| True AR | 21.999 / 21.720 current (+1.28%) | 31.916 / 35.440 current (**-9.94%**) | 45.309 / 30.787 current (+47.17%) | 54.151 / 27.760 current (+95.07%) | 61.881 / 36.473 Laurent (+69.66%) | 71.226 / 45.826 Laurent (+55.43%) | 74.903 / 52.537 Laurent (+42.57%) | 78.667 / 59.348 Laurent (+32.55%) |
+| True AR | 22.854 / 21.657 current (+5.53%) | 37.903 / 34.649 current (+9.39%) | 52.296 / 30.635 Laurent (+70.71%) | 63.613 / 27.850 Laurent (+128.41%) | 70.994 / 36.695 Laurent (+93.47%) | 77.046 / 46.091 Laurent (+67.16%) | 81.256 / 52.681 Laurent (+54.24%) | 83.939 / 58.840 Laurent (+42.66%) |
 | Explicit K3 diagnostic | 31.455 / 32.733 Laurent (**-3.90%**) | 39.820 / 41.042 current (**-2.98%**) | 54.590 / 45.947 Laurent (+18.81%) | 55.780 / 51.054 Laurent (+9.26%) | 57.345 / 61.013 Laurent (**-6.01%**) | 66.042 / 74.628 Laurent (**-11.50%**) | 62.719 / 78.281 Laurent (**-19.88%**) | 61.785 / 101.072 Laurent (**-38.87%**) |
 | Prefill | 166.784 / 184.024 Laurent (**-9.37%**) | 263.688 / 225.730 Laurent (+16.82%) | 351.141 / 221.227 Laurent (+58.72%) | 405.343 / 259.929 Laurent (+55.94%) | 440.200 / 316.711 Laurent (+38.99%) | 457.406 / 357.259 Laurent (+28.03%) | 469.752 / 365.592 Laurent (+28.49%) | 473.754 / 405.406 current (+16.86%) |
 
@@ -1274,9 +1300,11 @@ Completed recovery work has no hidden “remaining #22/#23/#11/#12” tail:
   no longer attributable to split groups; C6/C7/C8 still trail by
   **11.50%/19.88%/38.87%** and require a fresh one-group proposal/target/accept/
   commit Amdahl trace before another kernel change.
-- AR remains ahead at seven widths. C2's **-9.94%** is still open and has no
-  P13 measurement that localizes it to admission, decode kernels, or host wall;
-  do not infer its cause from the now-fixed one-token prefill race.
+- #34 closes the stale AR C2 row with a full standardized repeat: **37.903 vs
+  34.649 tok/s (+9.39%)**, worst-run **+7.34%**, and every category/heldout
+  scope positive. Admission and marginal decode independently lead, and the
+  cached C2 census leaves no sampling or host-residual deficit against peers.
+  No AR optimization is warranted from the superseded row.
 - #33 closes the stale prefill C5/C6/C8 cells: repeated means lead by
   **38.99%/28.03%/16.86%**, worst-run comparisons remain positive, and every
   category/heldout scope passes. No prefill kernel work is warranted there;

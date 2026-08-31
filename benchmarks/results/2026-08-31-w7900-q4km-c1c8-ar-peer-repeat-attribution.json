@@ -1,0 +1,241 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_c1c8_ar_peer_repeat_attribution",
+  "date": "2026-08-31",
+  "status": "complete_scoreboard_refresh_no_runtime_change",
+  "claim": "The canonical Qwen3.8 AR C2 deficit is stale. A counterbalanced same-host two-run full C1-C8 D1/D24 repeat measures hipEngine C2 at 37.903 tok/s versus the strongest peer at 34.649 tok/s (+9.39%); the slower hipEngine run beats the faster peer run by +7.34%, and every category plus heldout scope leads. Stage decomposition finds that hipEngine also leads both C2 admission and marginal decode. The refreshed complete AR row leads the strongest peer at all eight widths.",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "revisions": {
+    "hipengine_d1": "50adc772fa3a9a72ea8df1e46bfeebe171d7c97b",
+    "hipengine_d24": "97baf1fe1c344c486f20d4086071800d54f07169",
+    "runtime_note": "Only benchmark evidence/docs commits separate the D1 and D24 hipEngine packets; the runtime tree is identical and every source packet is tracked-clean.",
+    "llama_cpp_current": "b19cbe925be361d229f0fe03435affe4a2717f37",
+    "llama_cpp_laurent": "c28d538df5c02643e701a8004db84dbf1bb0ffb2"
+  },
+  "execution_profile": {
+    "hipengine_requested": "production",
+    "hipengine_resolved": "production",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "hipengine_kv": "BF16",
+    "llama_cpp_kv": "F16"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "parallel_capacity": 8,
+    "prompt_cache": false,
+    "sampling": "raw greedy; llama.cpp temperature=0, top_k=1, top_p=1, seed=1",
+    "generated_tokens_per_request": {"d1": 1, "d24": 24},
+    "timing": "per-prompt barrier-to-last-completion complete wall, summed across ten prompts; generated tokens divided by total wall",
+    "aggregation": "arithmetic mean of two independently aggregated full-suite process rates",
+    "process_order": [
+      "r1 hipEngine",
+      "r1 llama.cpp current",
+      "r1 llama.cpp Laurent",
+      "r2 llama.cpp Laurent",
+      "r2 llama.cpp current",
+      "r2 hipEngine"
+    ],
+    "hipengine_route": "capacity-8 production automatic request with every width expected K0; D24 AR and automatic-K0 comparator both execute ordinary packed AR",
+    "llama_cpp_server": "-c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -t 16 -tb 16 -fa on -ctk f16 -ctv f16"
+  },
+  "commands": {
+    "hipengine_d1_source_artifact": "benchmarks/results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json (contains both exact D1 commands and packet hashes)",
+    "hipengine_d24": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --expected-mtp-widths none --max-tokens 24 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-p13-ar-full/r1-hipengine-d24.json",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --expected-mtp-widths none --max-tokens 24 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-p13-ar-full/r2-hipengine-d24.json"
+    ],
+    "llama_cpp_current": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10671' --source-commit b19cbe925be361d229f0fe03435affe4a2717f37 --label current-hip-ar-full-r1 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 24 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-p13-ar-full/r1-current.json",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10671' --source-commit b19cbe925be361d229f0fe03435affe4a2717f37 --label current-hip-ar-full-r2 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 24 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-p13-ar-full/r2-current.json"
+    ],
+    "llama_cpp_laurent": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10681' --source-commit c28d538df5c02643e701a8004db84dbf1bb0ffb2 --label laurent-hip-ar-full-r1 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 24 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-p13-ar-full/r1-laurent.json",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10681' --source-commit c28d538df5c02643e701a8004db84dbf1bb0ffb2 --label laurent-hip-ar-full-r2 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 24 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-p13-ar-full/r2-laurent.json"
+    ],
+    "decomposition_command_template": ".venv/bin/python scripts/gguf_engine_submodule_decomposition.py --engine <label>=<kind>:<d1.json>:<d24.json> --arm ar --arm-d1 <ar-or-prefill> --output <decomposition.json>",
+    "profiler": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_EXECUTION_PROFILE=production PYTHONUNBUFFERED=1 timeout 540 .venv/bin/python scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode eager --packed-concurrency 2 --prompt-length 45 --prompt-token-id 9707 --expected-token-id 9707 --compiler-version-file /tmp/he-p13-ar-c2/hipcc-version.txt --raw-root /tmp/he-p13-ar-c2/packed-profile-clean --skip-warmbuild --out /tmp/he-p13-ar-c2/packed-profile-clean.json"
+  },
+  "complete_wall_tok_s": {
+    "hipengine": {
+      "samples": {
+        "C1": [22.999122, 22.708433],
+        "C2": [38.203470, 37.602355],
+        "C3": [52.523975, 52.067896],
+        "C4": [63.751896, 63.474334],
+        "C5": [71.232870, 70.754638],
+        "C6": [77.225237, 76.867596],
+        "C7": [81.425433, 81.087454],
+        "C8": [84.108242, 83.769740]
+      },
+      "mean": [22.853778, 37.902913, 52.295936, 63.613115, 70.993754, 77.046416, 81.256443, 83.938991],
+      "spread_percent": [1.2801, 1.5986, 0.8759, 0.4373, 0.6759, 0.4653, 0.4168, 0.4041]
+    },
+    "llama_cpp_current": {
+      "samples": {
+        "C1": [21.801992, 21.511029],
+        "C2": [35.032612, 34.265538],
+        "C3": [30.722488, 30.011504],
+        "C4": [27.775287, 27.720821],
+        "C5": [36.335208, 36.159800],
+        "C6": [45.301083, 45.385141],
+        "C7": [51.717603, 51.795826],
+        "C8": [56.829733, 58.544859]
+      },
+      "mean": [21.656511, 34.649075, 30.366996, 27.748054, 36.247504, 45.343112, 51.756714, 57.687296]
+    },
+    "llama_cpp_laurent": {
+      "samples": {
+        "C1": [21.772025, 20.823293],
+        "C2": [33.388398, 34.914504],
+        "C3": [30.847757, 30.422595],
+        "C4": [27.903930, 27.795682],
+        "C5": [36.718192, 36.671616],
+        "C6": [46.065429, 46.116751],
+        "C7": [52.730089, 52.632471],
+        "C8": [59.832914, 57.846889]
+      },
+      "mean": [21.297659, 34.151451, 30.635176, 27.849806, 36.694904, 46.091090, 52.681280, 58.839901]
+    },
+    "hipengine_vs_strongest_peer_percent": [5.5284, 9.3908, 70.7055, 128.4149, 93.4703, 67.1612, 54.2416, 42.6566]
+  },
+  "c2_closure": {
+    "hipengine_mean_tok_s": 37.902913,
+    "strongest_peer": "llama.cpp current",
+    "strongest_peer_mean_tok_s": 34.649075,
+    "mean_delta_percent": 9.3908,
+    "worst_hipengine_run_vs_best_peer_run_delta_percent": 7.3353,
+    "scopes": {
+      "code": {"hipengine": 38.175278, "strongest_peer": 34.391408, "delta_percent": 11.0024},
+      "general_en": {"hipengine": 38.187640, "strongest_peer": 36.335010, "delta_percent": 5.0987},
+      "general_ja": {"hipengine": 38.032701, "strongest_peer": 35.912817, "delta_percent": 5.9029},
+      "mixed_ja_en": {"hipengine": 36.973625, "strongest_peer": 34.606397, "delta_percent": 6.8404},
+      "train": {"hipengine": 38.050308, "strongest_peer": 34.285617, "delta_percent": 10.9804},
+      "heldout": {"hipengine": 37.683953, "strongest_peer": 35.568876, "delta_percent": 5.9464}
+    },
+    "decision": "Close the canonical AR C2 gap without runtime or kernel work. It is a stale carried row, and the current full-suite process protocol leads robustly."
+  },
+  "stage_decomposition": {
+    "method": "D1 complete wall identifies admission plus first token; (D24 wall - D1 wall) / 23 gives one co-scheduled marginal decode step.",
+    "C2": {
+      "hipengine": {
+        "admission_ms_samples": [335.7622, 345.4833],
+        "admission_ms_mean": 340.6228,
+        "decode_step_ms_samples": [40.029051, 40.479675],
+        "decode_step_ms_mean": 40.2544,
+        "decode_tok_s_aggregate_mean": 49.6856
+      },
+      "llama_cpp_current": {
+        "admission_ms_samples": [395.2639, 380.9201],
+        "admission_ms_mean": 388.0920,
+        "decode_step_ms_samples": [42.386436, 44.343666],
+        "decode_step_ms_mean": 43.3651,
+        "decode_tok_s_aggregate_mean": 46.1436
+      },
+      "llama_cpp_laurent": {
+        "admission_ms_samples": [391.2923, 384.8071],
+        "admission_ms_mean": 388.0497,
+        "decode_step_ms_samples": [45.492732, 43.042597],
+        "decode_step_ms_mean": 44.2677,
+        "decode_tok_s_aggregate_mean": 45.2143
+      },
+      "attribution": "hipEngine leads both components: admission is 47.43 ms (12.22%) below the best peer mean and decode step is 3.11 ms (7.17%) below the best peer mean. There is no remaining C2 admission, decode-kernel, sampling, or host-residual deficit to optimize against these peers."
+    }
+  },
+  "cached_only_c2_profile": {
+    "status": "c2_recurrent_census_complete",
+    "passed": true,
+    "source_clean": true,
+    "performance_claim": false,
+    "workload": "one synchronized eager steady transition, 45 repeated token IDs per row, C1/C2, greedy top-1, no speculative decode",
+    "correctness": "C1 and C2 generated token 9707 in prefill, warmup, and profiled transition; physical C2 shape exact",
+    "C2_timeline_ms": {
+      "marker_wall": 38.257608,
+      "kernel_sum": 31.131785,
+      "kernel_interval_union": 23.188438,
+      "uncovered": 15.069170,
+      "hip_api_time": 10.923596,
+      "memory_copy_ops": 0
+    },
+    "C2_gpu_family_ms": {
+      "dense_projection": 19.390423,
+      "norm_residual": 7.490935,
+      "linear_attention_state": 3.724104,
+      "full_attention_core": 0.494523,
+      "metadata_lifecycle": 0.016600,
+      "lm_head_sampler_classified": 0.008280,
+      "embedding": 0.006920
+    },
+    "sampler_manifest": {
+      "path": "argmax_i32_rows",
+      "device_result": "argmax_i32_rows",
+      "host_readback": "one_i32_vector",
+      "full_vocab_host_readback": false
+    },
+    "interpretation": "The profile is a route census, not a throughput sample. Dense projection plus fused norm/residual own 86.35% of summed GPU duration. Device sampling is negligible at the classified argmax boundary; uncovered marker time includes HIP API calls and launch gaps and is not additive to kernel sum. Because current complete-wall, admission, and decode all beat the peers, no candidate is selected from this Amdahl table."
+  },
+  "correctness_and_lifecycle": {
+    "hipengine_within_packet_exact_cells": 160,
+    "hipengine_repeat_rows": {"ar": 360, "automatic_k0_comparator": 360},
+    "hipengine_repeat_mismatches": 0,
+    "llama_cpp_current_lane_exact_cells": 320,
+    "llama_cpp_laurent_lane_exact_cells": 320,
+    "llama_cpp_repeat_exact_cells_each": 160,
+    "llama_cpp_cross_engine_exact_cells": 160,
+    "hipengine_full_native_groups": "10/10 cells at each C2-C8 width in both runs",
+    "hipengine_final_allocated_bytes": [0, 0],
+    "hipengine_final_active_allocations": [0, 0],
+    "hipengine_peak_allocated_bytes_each": 22541385916
+  },
+  "raw_packet_sha256": {
+    "r1_hipengine_d1": "89e6b24779cc5854460fcada94faca8801802a187aa618ae5e5bad0dc7f35a9c",
+    "r2_hipengine_d1": "daba2bb355f2ec42159678f82a5471a7a03e7191c64bb279b9e9754dc3e3e6cf",
+    "r1_hipengine_d24": "72e0991a4d65dcf0c27a0252a83bb676fe76e905720a70f5b53b9f074bb7ae22",
+    "r2_hipengine_d24": "d1b660d2b7bb18e531d80e57af34cbe46b4b9ea5784f606345d344e655ebaee7",
+    "r1_current": "3f4428ea85d5546ec8aa4e862b7f87b8930d6aac86423da9afc643fd33308975",
+    "r2_current": "0c5a38f027741c313c9ce316df2e83b21f5800a95d27df902baaabff33ff72da",
+    "r1_laurent": "5f64bde09c3dad8ee6e748903764d7820e38f605a723d60bb99dee555017710a",
+    "r2_laurent": "7ad15db1fd7253410af94863f597e06fde401d7f63627bc3487f4df64f711b6a",
+    "r1_hipengine_decomposition": "b7091aecd3248e7efcbc836b3202267d459e741093789c34d989ef0ae5ebcf6d",
+    "r2_hipengine_decomposition": "bf25660e08df802b41c8ce472e77866b53898be5fdda8e33eb660e723ea7d618",
+    "r1_peer_decomposition": "ebbe95772e09da6719814e64693880d34ee116afea175b60d8413a8d7220ca80",
+    "r2_peer_decomposition": "b5b5448a277613dbbe92e31a1157c9c8612d3aa6df06914f6f14f3286a74285c",
+    "cached_profile": "9c468da4a4293dc8aae6707c1c3b9030aa4a8a62adc95a5611553a541b9f6a65"
+  },
+  "scoreboard_update": {
+    "prior_hipengine": [21.999, 31.916, 45.309, 54.151, 61.881, 71.226, 74.903, 78.667],
+    "current_hipengine": [22.854, 37.903, 52.296, 63.613, 70.994, 77.046, 81.256, 83.939],
+    "hipengine_delta_percent": [3.886, 18.758, 15.421, 17.474, 14.726, 8.172, 8.482, 6.702],
+    "current_llama_cpp": [21.657, 34.649, 30.367, 27.748, 36.248, 45.343, 51.757, 57.687],
+    "laurent_llama_cpp": [21.298, 34.151, 30.635, 27.850, 36.695, 46.091, 52.681, 58.840]
+  },
+  "diagnostic_attempts": [
+    "A narrow C2-only counterbalanced packet first measured hipEngine 38.448 versus 35.634 tok/s and localized both admission and decode as wins. It is retained only as an internal diagnostic because it omitted the standardized C1-C8 same-server sequence; no scoreboard row comes from it.",
+    "The first cached profiler packet was mechanically valid but provenance-dirty because this task's new untracked worklog existed. It was superseded by the byte-independent clean-source rerun recorded here; no code or configuration changed.",
+    "The clean profiler's broader C3-family completeness sub-check is intentionally false because this is closure-level C2 exact-hybrid census. The binding C2 route check and overall packet pass."
+  ],
+  "limitations": [
+    "The D1 and D24 hipEngine packets are separate tracked-clean processes at runtime-identical commits rather than arms in one process; two counterbalanced pairs and exact trajectories bound process drift.",
+    "This is a deployable-configuration comparison: hipEngine production uses BF16 KV and llama.cpp uses F16 KV.",
+    "The profiler uses a repeated-token direct resident-session route for attribution only; it does not replace full-suite server throughput or correctness evidence.",
+    "No runtime or kernel change is attributed to this refresh. It measures the accumulated current tree and closes a stale scoreboard target."
+  ]
+}
