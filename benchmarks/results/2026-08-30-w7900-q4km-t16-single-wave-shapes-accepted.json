@@ -2,14 +2,21 @@
   "schema": 1,
   "kind": "gguf_t16_single_wave_shape_extension_accepted",
   "date": "2026-08-30",
-  "status": "retained",
-  "claim": "The single-wave leaf at rows 2-128 is extended from (5120,17408) to (5120,10240) and (5120,12288), both bit-identical and 1.02x-1.28x faster than the 256-row shared-B owner. The four dense shapes where single-wave is measurably slower are recorded as measured losses so nobody re-opens them.",
+  "status": "retained_exact_route_speed_evidence_under_correction",
+  "claim": "The single-wave leaf extension to (5120,10240) and (5120,12288) is bit-identical to shared-B on every measured row. Recorded 1.02x-1.28x speedups were measured in a fixed arm order, not a counterbalanced protocol, and (5120,12288) row 128 straddles parity; speed and that band edge are under task #25 correction. Measured losing shapes remain useful negative evidence.",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
-  "quant": "MOSTLY_Q4_K_M, execution-time Q4_T16 tier",
+  "quant": "gguf_q4_k_m",
+  "execution_weight_tier": "q4_k_t16",
   "hardware": "epyc / AMD Radeon Pro W7900 gfx1100 / Ryzen 9 5950X",
   "revision": "4f6fb3041",
-  "command": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --all-shapes --rows 2,6,16,35,48,67,128,192 --reps 15 --warmup 4 --output /tmp/he-t16/shapes.json, then the same tool with --in-features 5120 --out-features 12288 --rows 67,80,96,112,128 and --out-features 10240 --rows 96,128,144,160",
-  "protocol": "Canonical repack_gguf_q4_k_tile16 payloads over a valid Q4_K block image, one weight upload per shape, wall around one launch plus device_synchronize, two passes per arm, best-of-two, ratios are shared_b/single_wave so >1.0 means single-wave is faster, worst BF16 ULP distance recorded against the shared-B output, outputs finite.",
+  "command_as_run": null,
+  "command_note": "The prior field combined multiple invocations with prose ('then the same tool') and omitted required --output arguments from the pin-down runs, so it was not executable as-run provenance. Raw argv was not retained; these are labelled semantic templates.",
+  "command_templates": [
+    ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --all-shapes --rows 2,6,16,35,48,67,128,192 --reps 15 --warmup 4 --output /tmp/he-t16/shapes.json",
+    ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 5120 --out-features 12288 --rows 67,80,96,112,128 --reps 20 --warmup 5 --output /tmp/he-t16/pindown-12288.json",
+    ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 5120 --out-features 10240 --rows 96,128,144,160 --reps 20 --warmup 5 --output /tmp/he-t16/pindown-10240.json"
+  ],
+  "protocol": "Canonical repack_gguf_q4_k_tile16 payloads over a valid Q4_K block image, one weight upload per shape, wall around one launch plus device_synchronize, fixed arm order with two back-to-back passes per arm and best-of-two selection (not counterbalanced), ratios shared_b/single_wave, worst BF16 ULP distance against shared-B, outputs finite.",
   "single_wave_ratio_vs_shared_b": {
     "note": "per-run measurements, not one merged table. Rows appear under the run that measured them; the two runs are different rep counts on the same build and disagree by up to 5% at the band edge.",
     "sweep_15rep_all_shapes": {
@@ -467,7 +474,7 @@
       "48": 1.25,
       "67": 1.374
     },
-    "reading": "it is the most expensive dense launch in the prefill wall and 1.7x slower than gate/up on the same 51.5 MB of weights, because out_features=5120 gives the shared-B grid only ~107 column blocks against 512 compute units, so the launch cannot saturate memory. No registered leaf beats it: single-wave is 0.77x-0.83x and the rows6 rowtile is neutral outside row 6. Closing it needs a split-K or column-resplit kernel, which is new kernel work with its own RED gate, not a declaration.",
+    "reading": "It is the most expensive measured dense launch and about 1.7x slower than gate/up on the same 51.5 MB payload. W7900 has 96 CUs, not 512: grid 107 with 128-thread blocks is 428 wave32s, about 4.46 waves/CU versus a maximum 32. That supports a latency-hiding/occupancy hypothesis, not a proven CU underfill or split-K win. No validly measured registered leaf beats it; task #22 must confirm current prefill attribution, then #11 must compare finer tiling against split-K operation-complete cost under a strict RED gate.",
     "other_measured_losses": "(5120,6144), (6144,5120) and (5120,1024) have no registered leaf that beats shared-B at these rows either; their owners cost 0.30-0.49 ms."
   },
   "gates": {
@@ -477,6 +484,7 @@
     "fallback": "shared-B remains the registered strict sibling; HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0 disables the whole band on the same build"
   },
   "scratch_hygiene": "Sweep JSON stays in /tmp/he-t16; only the ratios and this summary are committed.",
+  "review_correction": "The original harness and artifact said both arm orders, but source executes one fixed order. Speed ratios are provisional; ULP-0 correctness is unaffected. W7900 geometry is 96 CUs. Unknown as-run argv is null rather than reconstructed as fact.",
   "run_disagreement": {
     "points_spanning_over_3pct": [
       {
@@ -501,6 +509,6 @@
     "material_one": "(5120,12288) at rows 128 straddles parity: 0.970 in the 15-rep all-shapes sweep and 1.022 in the 20-rep pin-down. The promotion band for that shape is therefore strongly supported only through rows 112; at rows 128 the effect is inside measurement noise and could be a small regression.",
     "material_two": "(5120,12288) at rows 67 measured 1.106 and 1.075, and (5120,10240) at rows 128 measured 1.083 and 1.110. Both runs win in every measurement, so only the quoted digit changes.",
     "correction_reason": "the first version of this artifact merged points from the 15-rep all-shapes sweep and the 20-rep pin-down runs into a single per-shape table without labelling which run each point came from, and cited the pin-down value for (5120,12288) rows 67/128 in a table that read like the sweep. Every individual number was a real measurement, but the table was not one consistent protocol, and the unlabelled merge happened to flatter the (5120,12288) band edge.",
-    "code_left_unchanged": "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS stays at 128 for all three shapes. Narrowing (5120,12288) to 112 on the strength of one of two disagreeing runs would be fitting the band to a single measurement; resolving it needs repeats at rows 120-128 for that shape, which is recorded as the next step."
+    "code_left_unchanged": "At this correction commit the global row cap is still 128, but task #25 is required to narrow (5120,12288) to the evidence-backed row 112 unless a repaired counterbalanced repeat proves row 128 non-regressive. Uncertainty cannot remain in a production default."
   }
 }

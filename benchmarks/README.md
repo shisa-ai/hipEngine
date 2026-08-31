@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-30**
+Last updated: **2026-08-31**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -168,13 +168,17 @@ cross-session band: 80 cells matched prompt-to-prompt across two packets move a 
 **1.5%**, width medians sit near **+1%** except **C5 at +11.9%**, so only deltas well
 above that are reads. [`automatic route gating`](results/2026-08-30-w7900-q4km-automatic-mtp-route-gating.json)
 [`W7900 matrix`](results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json) ·
-[`hipEngine refresh + submodules`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json) ·
+[`pre-grouping refresh + submodules (superseded for current rates/acceptance)`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json) ·
 [`prefill row`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row.json) ·
 [`prefill row, grouped`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row-grouped.json) ·
 [`grouped-prefill promotion`](results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json) ·
 [`admission/decode decomposition, post-grouping (current)`](results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json)
 ·
-[`admission/decode decomposition, pre-grouping (superseded AR arm)`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json).
+[`admission/decode decomposition, pre-grouping (superseded AR arm)`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json) ·
+[`single-wave exact route, speed protocol under correction`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json) ·
+[`single-wave shape extension, speed/band edge under correction`](results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json).
+
+**2026-08-31 audit note:** do not use the pre-grouping refresh's 31 tok/s K3 plateau or width-dependent acceptance as current evidence; grouped acceptance is 0.7889 at every width. The T16 routes are ULP-0 exact, but their recorded microbenchmark timings used one fixed arm order rather than the claimed counterbalanced protocol. W7900 has 96 CUs; the down projection's 107 blocks are 428 wave32s (~4.46 waves/CU), not 107 blocks against 512 CUs. Current attribution, timing, and the weak `(5120,12288)` row-128 edge are tracked in P13 of the gfx1100 campaign.
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 

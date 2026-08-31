@@ -1,9 +1,11 @@
 # hipEngine Benchmark Changelog
 
+- **2026-08-31** — W7900 Qwen3.8 `Q4_K_M` parity-campaign **audit correction; no metric row changed** — a post-handoff review found that the latest task priorities reused pre-grouping K3 acceptance/rates, targeted the direct `_generate_greedy_batch` loop although current resident serving already groups mixed-length prompts, described the 96-CU W7900 as 512 CUs, and called a fixed-order T16 sweep counterbalanced. The retained T16 route is ULP-0 exact, but its speed ratios are provisional pending a genuinely counterbalanced repeat; `(5120,12288)` row 128 remains 0.970x/1.022x and must narrow to row 112 unless that repeat clears it. Two T16 artifacts also carried impossible/prose command fields; unknown as-run argv is now null and executable reconstructions are labelled templates. Current grouped acceptance is 0.7889 at every width. Strongest-peer gaps are AR C2 -9.9%; explicit K3 C1/C2/C5/C6/C7/C8 -3.9/-3.0/-21.4/-34.3/-29.5/-44.7%; prefill C1/C2/C3/C5/C6/C8 -25.8/-26.6/-18.1/-3.2/-5.1/-6.3%. Reason: P13 audit recovery and immutable correction `20260831T074458...`; artifacts: [`pre-grouping refresh, superseded for current acceptance/rates`](results/2026-08-30-w7900-q4km-c1c8-hipengine-refresh-post-promotions.json), [`single-wave rows`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json), [`single-wave shapes`](results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json).
+
 - **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` **single-wave prefill band extended to two more dense shapes;
   sub-window win, no published row changed** — sweeping every shape that still reaches the 256-row shared-B
-  tile found the win is shape-dependent, so it was extended by measurement: **bit-identical (ULP 0) and
-  1.10x-1.28x faster** through rows 2-112 for `(5120,10240)` (1.20x@35, 1.08x@128) and `(5120,12288)`
+  tile found the win is shape-dependent, so it was extended by measurement: **bit-identical (ULP 0)**, with
+  fixed-order provisional timings of **1.10x-1.28x faster** through rows 2-112 for `(5120,10240)` (1.20x@35, 1.08x@128) and `(5120,12288)`
   (1.21x@35), now promoted. **`(5120,12288)` at row 128 is noise-bounded 0.97-1.02 across two runs**, so that
   shape's band edge is weakly supported and is flagged in the artifact rather than smoothed. Four shapes are
   recorded as **measured losses** so they are not re-opened: `(17408,5120)` 0.77x-0.83x, `(5120,6144)`/
@@ -11,24 +13,26 @@
   `7.28x`/`7.32x` row-6 rowtile figures first quoted here are void. The rowtile leaves need buffers this
   harness does not supply. They timed 14.3x while disagreeing with the owner by ~1e7 ULPs. Detail:
   `worklog/entries/20260830T211157.587412Z-lhl-rowtile-invalid-payload-voided-206579.md`. First-token same-build A/B: **252.92→230.49 ms (-8.8%)**. The sweep also
-  localises the last large dense gap: the FFN **down projection costs 1.23-1.37 ms per launch** on the same
-  51.5 MB, because `out_features = 5120` gives the shared-B grid ~107 column blocks against 512 compute units,
-  and no registered leaf beats it — that needs split-K work, not a declaration. Artifact (per-run
+  localises a large dense cost: the FFN **down projection costs 1.23-1.37 ms per launch** on the same
+  51.5 MB. W7900 has 96 CUs: 107 blocks × four wave32s is ~4.46 waves/CU, so low latency hiding is a candidate
+  mechanism, not a 512-CU underfill proof. Finer tiling versus split-K must be measured after current-path
+  attribution; no implementation is selected by this source reading. Artifact (per-run
   measurements, corrected from an unlabelled merge of two runs):
   [`single-wave shapes`](results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json).
 
 - **2026-08-30** — W7900 Qwen3.8 `Q4_K_M` **single-wave owns the (5120, 17408) dense prefill band rows 2-128;
-  sub-window win, no published row replaced** — the owner kernel is launched on a `4*4*16 = 256` row tile, so
+  exact route retained, speed protocol under correction, no published row replaced** — the owner kernel is launched on a `4*4*16 = 256` row tile, so
   rows 2-256 all pay one 256-row tile (0.630 ms at 6 rows vs 1.081 ms at 256, stepping up again at 257), and
-  the registered single-wave leaf is **bit-identical (ULP 0)** and **1.43x-1.04x faster** across rows 2-128
+  the registered single-wave leaf is **bit-identical (ULP 0)** with fixed-order provisional timings of **1.43x-1.04x faster** across rows 2-128
   (1.30x at row 35, 1.14x at 67, then 0.87x at 144 and 0.75x at 256, which sets the band). First-token A/B on
   the same build, same host, same 35-row prompt: **252.56→233.29 ms (-7.75%, ~19.6 ms/request)**. The retained
   24-token packet passed **80/80 exact** and moved explicit **K3 up at all eight widths
   (+0.06%…+2.59%**, e.g. 31.455→**31.918** at C1, 39.820→**40.852** at C2) while AR stayed inside the
   documented drift band (mean +1.2%). The published prefill row did **not** move in a same-session pair
-  (lane-weighted 312.193→315.330, **+1.0%**, per-cell ±8-16%): that metric's mean wave wall is **0.641 s**
-  against the engine's own **0.233 s** prefill wall, so ~0.4 s of non-kernel admission cost per cell dominates
-  it, and the **149.072 tok/s C1 row is left unchanged**. Retained as a measured sub-window win with shared-B
+  (lane-weighted 312.193→315.330, **+1.0%**, per-cell ±8-16%). The earlier inference that its **0.641 s** mean
+  wave wall minus **0.233 s** engine prefill wall proved ~0.4 s of non-kernel admission cost conflicts with
+  prior current-path WMMA attribution and is now unresolved pending task #22; it is not a settled mechanism.
+  The **149.072 tok/s C1 row is left unchanged**. Retained as an exact route with shared-B
   as the strict sibling and `HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0` as the bisection switch. Artifact:
   [`single-wave prefill band`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json).
 

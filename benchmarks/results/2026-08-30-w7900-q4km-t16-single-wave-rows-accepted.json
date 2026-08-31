@@ -2,29 +2,32 @@
   "schema": 1,
   "kind": "gguf_t16_single_wave_prefill_band_promotion",
   "date": "2026-08-30",
-  "status": "retained_subwindow_win",
-  "claim": "The registered single-wave T16 leaf now owns the (5120, 17408) dense projection for rows 2-128 instead of the 256-row shared-B tile. Bit-identical output, 1.14x-1.43x faster kernel, 7.75% faster first token. The aggregate C1-C8 rows do not move out of their noise band, so this is recorded as a sub-window win and not a scoreboard promotion.",
+  "status": "retained_exact_route_speed_evidence_under_correction",
+  "claim": "The registered single-wave T16 leaf owns the (5120, 17408) dense projection for rows 2-128 and is bit-identical to shared-B on every measured row. The recorded 1.14x-1.43x kernel and 7.75% first-token improvements came from fixed-order, best-of-two measurements rather than the counterbalanced protocol originally claimed; speed evidence is provisional pending task #25, and no published row changed.",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf (17106773984 bytes)",
-  "quant": "MOSTLY_Q4_K_M, execution-time Q4_T16 tier",
+  "quant": "gguf_q4_k_m",
+  "execution_weight_tier": "q4_k_t16",
   "hardware": "epyc / AMD Radeon Pro W7900 gfx1100 / Ryzen 9 5950X",
   "revision": "2e8e29738",
   "change": "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS = 128 in hipengine/kernels/hip_gfx1100/__init__.py; gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out routes single-wave shapes at rows 2..128 to t16_wmma_prefill instead of the shared-B fallback. HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0 restores the old route on the same build.",
   "mechanism": "launch_q4_t16_dense_wmma_prefill_shared_b_bf16 grid.y = ceil(rows / (4*4*16 = 256)), so rows 2-256 all launch one 256-row tile. Measured owner cost is 0.630 ms at 6 rows and 1.081 ms at 256 rows (1.7x for 43x the work) and steps up again at 257 rows.",
+  "microbenchmark_command_as_run": null,
+  "microbenchmark_command_note": "The prior command omitted the required --output argument and therefore could not be the as-run argv. Raw argv was not retained. This executable reconstruction is a template, not as-run provenance.",
+  "microbenchmark_command_template": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --rows 2,3,4,5,6,7,8,16,32,33,35,36,39,43,46,48,60,64,65,67,96,128,144,160,176,192,255,256,257,384 --reps 20 --warmup 5 --output /tmp/he-t16/sweep.json",
   "commands": [
-    ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --rows 2,3,4,5,6,7,8,16,32,33,35,36,39,43,46,48,60,64,65,67,96,128,144,160,176,192,255,256,257,384 --reps 20 --warmup 5",
     "HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --mtp-request-mode explicit --generation2-diagnostic --execution-profile production --output /tmp/he-t16/d1-sharedb.json",
     ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --mtp-request-mode explicit --generation2-diagnostic --execution-profile production --output /tmp/he-t16/d1-single-wave.json",
     ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --mtp-request-mode explicit --generation2-diagnostic --execution-profile production --output /tmp/he-t16/c1c8-single-wave.json"
   ],
   "kernel_sweep": {
-    "geometry": "(rows, 5120, 17408) on canonical repack_gguf_q4_k_tile16 payloads, both arm orders, all outputs finite",
+    "geometry": "(rows, 5120, 17408) on canonical repack_gguf_q4_k_tile16 payloads; fixed arm order with two back-to-back passes per arm, not counterbalanced; all outputs finite",
     "single_wave_speedup_vs_owner": {"2": 1.39, "4": 1.36, "6": 1.43, "8": 1.36, "16": 1.41, "32": 1.30, "35": 1.30, "48": 1.23, "64": 1.27, "67": 1.14, "96": 1.31, "128": 1.12, "144": 0.87, "160": 0.84, "176": 0.87, "192": 0.87, "256": 0.75, "257": 1.10, "384": 0.94},
     "ulp_vs_owner": "0 at every row measured from 2 to 128, i.e. bit-identical outputs",
     "rows6_rowtile_vs_owner": "neutral, 0.94x-1.06x across the whole sweep",
     "smallm": "2.06x-2.37x faster than the owner at rows 2-16, rejects rows > 16 by contract; specdec2-scope-gated and left for its own unit"
   },
   "first_token_ab": {
-    "protocol": "public hipengine.LLM API, production profile, one 35-token suite prompt, max_tokens=1, third iteration steady state, same build, switch toggled between runs",
+    "protocol": "public hipengine.LLM API, production profile, one 35-token suite prompt, max_tokens=1, third iteration steady state, same build; disabled arm measured before enabled arm, not counterbalanced",
     "shared_b_ms": [253.49, 252.56],
     "single_wave_ms": [233.47, 233.29],
     "delta_pct": -7.75,
@@ -36,7 +39,7 @@
     "single_wave_tok_s": {"1": 146.705, "2": 158.139, "3": 225.313, "4": 306.901, "5": 396.088, "6": 361.802, "7": 352.325, "8": 414.959},
     "delta_pct": {"1": 0.11, "2": 4.11, "3": -7.6, "4": -8.6, "5": 15.7, "6": 1.1, "7": -5.0, "8": 8.2},
     "lane_weighted_tok_s": {"shared_b": 312.193, "single_wave": 315.33, "delta_pct": 1.0},
-    "reading": "flat within noise. The metric's mean wave wall is 0.641 s while the engine's own prefill wall is 0.233 s, so roughly 0.4 s of non-kernel admission cost per cell dominates any per-kernel saving. The published 2026-08-30 row (149.072 at C1) is left in place unchanged."
+    "reading": "flat within noise. The metric's 0.641 s mean wave-wall reading and the 0.233 s engine prefill wall were previously interpreted as roughly 0.4 s of non-kernel admission cost. That conflicts with earlier current-path attribution placing nearly all C1 wall in WMMA prefill, so the mechanism is unresolved pending task #22. The published 149.072 tok/s C1 row remains unchanged."
   },
   "same_protocol_24token_packet": {
     "passed": true,
@@ -57,6 +60,6 @@
     "numerics": "no KL/top-1 gate required for the changed leaf because the promoted path is bit-identical to the strict sibling at every row in the band; packet exactness is 80/80",
     "fallback": "shared-B stays registered as the strict sibling and the fallback route; the env switch restores it"
   },
-  "consequence_for_objective": "The engine's own prefill wall is 0.233 s per 35-token request at 0.94 device utilization while the published prefill-row wave wall is 0.641 s, so about 0.4 s per cell of non-kernel admission cost is the largest remaining prefill gap, larger than everything the kernel path can still give. The kernel path keeps paying in microseconds (this unit banked ~20 ms per request and 1.14-1.43x on 58% of the kernel wall); the objective's prefill deficit needs the admission/first-token host path next.",
+  "consequence_for_objective": "The exact route change is retained, but its speed protocol was not counterbalanced and the host-versus-kernel interpretation conflicts with earlier attribution. Task #22 must remeasure current C1-C3 serving components before host or kernel work is prioritized; task #25 repairs the timing protocol.",
   "scratch_hygiene": "Packets stay in /tmp/he-t16; only this compact artifact and the harness are committed."
 }
