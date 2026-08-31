@@ -410,6 +410,13 @@ def test_gfx1100_capability_owns_one_c8_k3_frontier() -> None:
     assert capability.proposal_widths == tuple(range(1, 9))
     assert capability.target_row_buckets[-1] == 32
     assert adapter.partition_max_requests(request_ids) == 8
+    assert adapter.physical_width_contract()["last_partition"] == {
+        "request_ids": list(request_ids),
+        "static_max_realized_group_rows": [8] * 8,
+        "owner_capacity": 8,
+        "physical_max_requests": 8,
+        "resolved_max_requests": 8,
+    }
     adapter._active_claims = None
     assert adapter.claims_fit(
         SimpleNamespace(

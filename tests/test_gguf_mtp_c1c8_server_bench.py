@@ -283,7 +283,12 @@ def test_mtp_c1c8_prefill_attribution_closes_critical_wave_wall() -> None:
 
 def test_mtp_c1c8_compacts_nested_resident_observability() -> None:
     adapter = SimpleNamespace(
-        cycle_workspace_contract=lambda: {"allocated": True, "shape": [4, 5120]},
+        physical_width_contract=lambda: {
+            "physical_max_requests": 8,
+            "physical_accept_max_rows": 36,
+            "last_partition": {"resolved_max_requests": 8},
+        },
+        cycle_workspace_contract=lambda: {"allocated": True, "shape": [8, 5120]},
         _states={},
         _provider_groups={},
         _prompt_streaming_sinks={},
@@ -307,7 +312,12 @@ def test_mtp_c1c8_compacts_nested_resident_observability() -> None:
     assert snapshot["resources"]["active_requests"] == 0
     assert snapshot["routes"]["recent_completed"] == [{"request_id": 2}]
     assert snapshot["mtp2_adapter"] == {
-        "cycle_workspace": {"allocated": True, "shape": [4, 5120]},
+        "physical_width": {
+            "physical_max_requests": 8,
+            "physical_accept_max_rows": 36,
+            "last_partition": {"resolved_max_requests": 8},
+        },
+        "cycle_workspace": {"allocated": True, "shape": [8, 5120]},
         "active_states": 0,
         "provider_groups": 0,
         "prompt_streaming_sinks": 0,

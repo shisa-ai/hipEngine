@@ -231,8 +231,14 @@ def _resident_observability(llm: LLM, *, recent: int) -> dict[str, Any]:
             result = copy.deepcopy(dict(payload))
             adapter = getattr(owner, "_mtp2_adapter", None)
             cycle_contract = getattr(adapter, "cycle_workspace_contract", None)
+            width_contract = getattr(adapter, "physical_width_contract", None)
             if adapter is not None:
                 result["mtp2_adapter"] = {
+                    "physical_width": (
+                        copy.deepcopy(width_contract())
+                        if callable(width_contract)
+                        else None
+                    ),
                     "cycle_workspace": (
                         copy.deepcopy(cycle_contract())
                         if callable(cycle_contract)
