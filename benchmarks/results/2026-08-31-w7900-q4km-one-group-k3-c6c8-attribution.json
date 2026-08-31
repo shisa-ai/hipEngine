@@ -1,0 +1,1068 @@
+{
+  "c6_to_c8_growth": {
+    "cycle_marker_ms": 84.71889900000005,
+    "device_busy_share_of_cycle_growth": 0.9452165370247941,
+    "kernel_interval_union_ms": 80.07770433333334,
+    "proposal_marker_ms": 7.699301666666663,
+    "q4_share_of_target_kernel_sum_growth": 0.5724542038721582,
+    "q4_target_family_ms": {
+      "c6": 82.56000066666667,
+      "c8": 125.36109133333333,
+      "delta": 42.80109066666667
+    },
+    "target_composite_marker_ms": 77.02341866666666,
+    "target_share_of_cycle_growth": 0.9091645379700534
+  },
+  "c8_r36_fused_owner": {
+    "absent_at_c6_c7": true,
+    "calls_per_profiled_cycle_average": 42.666666666666664,
+    "historical_premise": "The rows33 floor was explicitly chosen to keep prior captured R16/R32 verifier groups unfused after floor12 regressed same-cycle C8 wall 11.9%; one-group C8 newly reaches R36 and crosses that proxy. See 2026-08-30-w7900-q4km-t16-dual-silu-prefill-rows33-promotion.json.",
+    "inferred_calls_per_r36_cycle": 64,
+    "inferred_ms_per_r36_cycle": 87.613706,
+    "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false>",
+    "ms_per_profiled_cycle_average": 58.40913733333333,
+    "target_rows": [
+      36,
+      36,
+      24
+    ]
+  },
+  "canonical_full_suite_context": {
+    "lanes": {
+      "6": {
+        "hipengine_k3_tok_s": 66.04231078397883,
+        "mtp_vs_peer_ratio": 0.8849535132119155,
+        "mtp_vs_true_ar_ratio": 0.8571802661264547,
+        "required_gain_to_peer_ratio": 1.1300028589869384,
+        "required_gain_to_true_ar_ratio": 1.166615751105586,
+        "strongest_peer": "Laurent",
+        "strongest_peer_tok_s": 74.628,
+        "true_ar_tok_s": 77.046
+      },
+      "7": {
+        "hipengine_k3_tok_s": 62.71850978042755,
+        "mtp_vs_peer_ratio": 0.801197094830515,
+        "mtp_vs_true_ar_ratio": 0.7718631212516929,
+        "required_gain_to_peer_ratio": 1.2481323340438968,
+        "required_gain_to_true_ar_ratio": 1.2955664967881206,
+        "strongest_peer": "Laurent",
+        "strongest_peer_tok_s": 78.281,
+        "true_ar_tok_s": 81.256
+      },
+      "8": {
+        "hipengine_k3_tok_s": 61.785,
+        "mtp_vs_peer_ratio": 0.6112968972613582,
+        "mtp_vs_true_ar_ratio": 0.7360702414848879,
+        "required_gain_to_peer_ratio": 1.635866310593186,
+        "required_gain_to_true_ar_ratio": 1.358565994982601,
+        "strongest_peer": "Laurent",
+        "strongest_peer_tok_s": 101.072,
+        "true_ar_tok_s": 83.939
+      }
+    },
+    "source": "docs/CONCURRENCY2-GFX1100-MTP-CN-PROMOTION.md section 12.6 plus benchmarks/results/2026-08-31-w7900-q4km-p13-final-audit.json"
+  },
+  "commands": {
+    "profile": {
+      "6": "env LD_LIBRARY_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib: HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv -d /tmp/he-k3-c6c8-amdahl/profile/c6/trace -- .venv/bin/python -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 6 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/he-k3-c6c8-amdahl/profile/c6/child.json",
+      "7": "env LD_LIBRARY_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib: HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv -d /tmp/he-k3-c6c8-amdahl/profile/c7/trace -- .venv/bin/python -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 7 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/he-k3-c6c8-amdahl/profile/c7/child.json",
+      "8": "env LD_LIBRARY_PATH=/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib: HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv -d /tmp/he-k3-c6c8-amdahl/profile/c8/trace -- .venv/bin/python -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/he-k3-c6c8-amdahl/profile/c8/child.json"
+    },
+    "summary": ".venv/bin/python scripts/specdec2_rocprof_summary.py --lane 6 /tmp/he-k3-c6c8-amdahl/profile/c6/child.json /tmp/he-k3-c6c8-amdahl/profile/c6/trace --lane 7 /tmp/he-k3-c6c8-amdahl/profile/c7/child.json /tmp/he-k3-c6c8-amdahl/profile/c7/trace --lane 8 /tmp/he-k3-c6c8-amdahl/profile/c8/child.json /tmp/he-k3-c6c8-amdahl/profile/c8/trace --output /tmp/he-k3-c6c8-amdahl/profile-summary.json"
+  },
+  "correctness_and_ownership": {
+    "all_requests_engaged": true,
+    "candidate_d2h_after_target": 0,
+    "children_complete": 3,
+    "exact_ar_mtp_cells": 3,
+    "final_active_allocations": 0,
+    "final_allocated_bytes": 0,
+    "one_physical_group_each_width": true,
+    "recoverable_failures": 0,
+    "request_rows": 21
+  },
+  "date": "2026-08-31",
+  "decision": "The remaining one-group C6-C8 K3 deficit is target/device shaped. Screen the C8 R36-only fused Q4 gate/up owner against the exact unfused verifier chain; do not reopen rejected verifier small-M.",
+  "execution_profile": {
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "requested": "production",
+    "resolved": "production",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "device": "AMD Radeon Pro W7900",
+    "host_name": "epyc",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "kind": "w7900_q4km_one_group_k3_c6c8_attribution",
+  "limitations": [
+    "Profiler overhead makes absolute marker and API durations diagnostic only.",
+    "Kernel sum is not wall under stream overlap; interval-union time is the device-busy lower bound.",
+    "HIP API time overlaps GPU work and is not additive.",
+    "selected_commit_ms and target_readback_ms decompose accept_window_ms and are not added to it.",
+    "The profile uses one prompt/D12; candidate retention still requires the complete category+heldout D24 suite and applicable exact/profile gates."
+  ],
+  "links": [
+    "benchmarks/results/2026-08-31-w7900-q4km-p13-final-audit.json",
+    "benchmarks/results/2026-08-31-w7900-q4km-c5c8-physical-group-closure.json",
+    "benchmarks/results/2026-08-30-w7900-q4km-t16-dual-silu-prefill-rows33-promotion.json",
+    "worklog/entries/20260831T190642.428579Z-lhl-qwen38-k3-c6c8-profile-leaf-51d63a.md",
+    "worklog/entries/20260831T192853.376727Z-lhl-qwen38-k3-c6c8-rocprof-rollup-551edb.md"
+  ],
+  "measurements": {
+    "6": {
+      "exact_ar_mtp_generated_ids": true,
+      "final_memory": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 28475179252
+      },
+      "group": {
+        "candidate_d2h_after_target": 0,
+        "complete_wall_seconds": 1.1391443172469735,
+        "generated_tokens": 72,
+        "operation_ledger": {
+          "call_counts": {
+            "ar_decode": 1,
+            "arm_complete": 1,
+            "cycle_total": 3,
+            "nextn_prompt_prime": 6,
+            "proposal": 3,
+            "provider_k0_attach": 1,
+            "provider_open": 3,
+            "provider_streaming_open": 1,
+            "resident_owner_transition": 24,
+            "target_accept_commit_provider": 3,
+            "target_prefill": 1,
+            "terminal_reclaim": 6
+          },
+          "totals_ms": {
+            "ar_decode": 0.9585535153746605,
+            "arm_complete": 1139.1044668853283,
+            "cycle_total": 650.0083971768618,
+            "nextn_prompt_prime": 192.84730218350887,
+            "proposal": 77.32444815337658,
+            "provider_k0_attach": 0.02457946538925171,
+            "provider_open": 0.044221989810466766,
+            "provider_streaming_open": 0.24106353521347046,
+            "resident_owner_transition": 0.02132914960384369,
+            "target_accept_commit_provider": 572.2033213824034,
+            "target_prefill": 434.7739527001977,
+            "terminal_reclaim": 41.32878594100475
+          }
+        },
+        "per_cycle_ms": {
+          "accept_enqueue_ms": 0.3657421718041102,
+          "accept_tail_ms": 0.13690566023190817,
+          "accept_upload_ms": 0.10329453895489375,
+          "accept_window_ms": 111.4794568469127,
+          "candidate_readback_ms": 0.0,
+          "nonoverlap_named_sum_ms": 215.45436450590688,
+          "proposal_ms": 25.128090443710487,
+          "provider_update_ms": 4.980128258466721,
+          "selected_commit_ms": 28.39805434147517,
+          "target_readback_ms": 82.71218712131183,
+          "target_submit_ms": 73.86668895681699
+        },
+        "physical_cycles": 3,
+        "proposal_physical_rows": [
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6,
+          6
+        ],
+        "recoverable_failures": 0,
+        "request_rows": 6,
+        "service_capacity": 8,
+        "target_physical_rows": [
+          24,
+          24,
+          18
+        ]
+      },
+      "host_stage_share_of_nonoverlap_sum": {
+        "accept_window_ms": 0.5174156351047434,
+        "proposal_ms": 0.11662836583206732,
+        "provider_update_ms": 0.02311453875574744,
+        "target_submit_ms": 0.3428414603074419
+      },
+      "raw_sources": {
+        "child": "/tmp/he-k3-c6c8-amdahl/profile/c6/child.json",
+        "child_sha256": "a5baa8ed1b10d4488e0c0c11f394d805901192bb0e195df6d838de933679ed0d",
+        "hip_api_csv": "/tmp/he-k3-c6c8-amdahl/profile/c6/trace/epyc/1626900_hip_api_trace.csv",
+        "hipengine_commit": "a81e42440b5ae199d623a30c78e3bb838379f842",
+        "kernel_csv": "/tmp/he-k3-c6c8-amdahl/profile/c6/trace/epyc/1626900_kernel_trace.csv",
+        "kernel_csv_sha256": "7178babda1480c4cc2ed69eb826b4445cd40e649439ad2633b78bcf94ed2726b",
+        "marker_csv": "/tmp/he-k3-c6c8-amdahl/profile/c6/trace/epyc/1626900_marker_api_trace.csv",
+        "marker_csv_sha256": "a33df9c9fc30e7008005f5a8497d0fba17e3200627152afcd58246d55ecc61a7",
+        "memory_allocation_csv": "/tmp/he-k3-c6c8-amdahl/profile/c6/trace/epyc/1626900_memory_allocation_trace.csv",
+        "memory_copy_csv": "/tmp/he-k3-c6c8-amdahl/profile/c6/trace/epyc/1626900_memory_copy_trace.csv",
+        "trace_dir": "/tmp/he-k3-c6c8-amdahl/profile/c6/trace",
+        "tracked_clean": true
+      },
+      "trace_phases": {
+        "cycle_total": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 5620.666666666667,
+          "hip_api_sum_ms_per_call": 155.35199266666666,
+          "host_marker_ms_per_call": 216.67425966666664,
+          "kernel_calls_per_call": 3359.6666666666665,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1079.0,
+              "ms_per_phase_call": 87.38792266666667,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 243.0,
+              "ms_per_phase_call": 63.65641299999999,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 176.0,
+              "ms_per_phase_call": 13.742776333333333,
+              "name": "q5_t16"
+            },
+            {
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 6.512099,
+              "name": "gdn_linear_attention"
+            },
+            {
+              "calls_per_phase_call": 366.6666666666667,
+              "ms_per_phase_call": 6.117497,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 1099.6666666666667,
+              "ms_per_phase_call": 5.282529333333334,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 18.0,
+              "ms_per_phase_call": 3.464510666666667,
+              "name": "commit_repair"
+            },
+            {
+              "calls_per_phase_call": 167.0,
+              "ms_per_phase_call": 2.024083,
+              "name": "norm_rope"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 173.283263,
+          "kernel_sum_ms_per_call": 189.180249,
+          "memory_copy_ops_per_call": 0.0,
+          "uncovered_marker_wall_ms_per_call": 43.390996666666666
+        },
+        "proposal": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 389.6666666666667,
+          "hip_api_sum_ms_per_call": 18.573194333333333,
+          "host_marker_ms_per_call": 25.777456333333333,
+          "kernel_calls_per_call": 237.0,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 14.863891666666667,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 15.0,
+              "ms_per_phase_call": 4.195369666666667,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 46.666666666666664,
+              "ms_per_phase_call": 2.153487333333333,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 148.33333333333334,
+              "ms_per_phase_call": 0.356242,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 15.0,
+              "ms_per_phase_call": 0.19264266666666666,
+              "name": "norm_rope"
+            },
+            {
+              "calls_per_phase_call": 5.333333333333333,
+              "ms_per_phase_call": 0.06864033333333333,
+              "name": "attention"
+            },
+            {
+              "calls_per_phase_call": 3.3333333333333335,
+              "ms_per_phase_call": 0.037053333333333334,
+              "name": "sampler"
+            },
+            {
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 0.005,
+              "name": "combine_silu"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 20.235123,
+          "kernel_sum_ms_per_call": 21.872327,
+          "memory_copy_ops_per_call": 0.0,
+          "uncovered_marker_wall_ms_per_call": 5.542333333333333
+        },
+        "target_accept_commit_provider": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 5231.0,
+          "hip_api_sum_ms_per_call": 136.77879833333336,
+          "host_marker_ms_per_call": 190.738837,
+          "kernel_calls_per_call": 3121.3333333333335,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1063.0,
+              "ms_per_phase_call": 82.56000066666667,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 241.33333333333334,
+              "ms_per_phase_call": 48.79252133333333,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 176.0,
+              "ms_per_phase_call": 13.742776333333333,
+              "name": "q5_t16"
+            },
+            {
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 6.512099,
+              "name": "gdn_linear_attention"
+            },
+            {
+              "calls_per_phase_call": 951.3333333333334,
+              "ms_per_phase_call": 4.926287333333334,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 320.0,
+              "ms_per_phase_call": 3.964009666666667,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 18.0,
+              "ms_per_phase_call": 3.464510666666667,
+              "name": "commit_repair"
+            },
+            {
+              "calls_per_phase_call": 152.0,
+              "ms_per_phase_call": 1.8314403333333333,
+              "name": "norm_rope"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 152.414441,
+          "kernel_sum_ms_per_call": 166.674223,
+          "memory_copy_ops_per_call": 0.0,
+          "top_kernels": [
+            {
+              "calls_per_phase_call": 1058.0,
+              "ms_per_phase_call": 81.135361,
+              "name": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>"
+            },
+            {
+              "calls_per_phase_call": 234.66666666666666,
+              "ms_per_phase_call": 30.193796333333335,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>"
+            },
+            {
+              "calls_per_phase_call": 176.0,
+              "ms_per_phase_call": 13.742776333333333,
+              "name": "q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 4>"
+            },
+            {
+              "calls_per_phase_call": 5.333333333333333,
+              "ms_per_phase_call": 9.230028333333333,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>"
+            },
+            {
+              "calls_per_phase_call": 1.0,
+              "ms_per_phase_call": 8.861878666666668,
+              "name": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>"
+            },
+            {
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 5.802532,
+              "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float>"
+            },
+            {
+              "calls_per_phase_call": 951.3333333333334,
+              "ms_per_phase_call": 4.926287333333334,
+              "name": "__amd_rocclr_copyBuffer"
+            },
+            {
+              "calls_per_phase_call": 6.0,
+              "ms_per_phase_call": 3.194176333333333,
+              "name": "linear_state_pair_commit_chunked_i32_kernel"
+            }
+          ],
+          "uncovered_marker_wall_ms_per_call": 38.324396
+        }
+      }
+    },
+    "7": {
+      "exact_ar_mtp_generated_ids": true,
+      "final_memory": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 29450351984
+      },
+      "group": {
+        "candidate_d2h_after_target": 0,
+        "complete_wall_seconds": 1.3401203658431768,
+        "generated_tokens": 84,
+        "operation_ledger": {
+          "call_counts": {
+            "ar_decode": 1,
+            "arm_complete": 1,
+            "cycle_total": 3,
+            "nextn_prompt_prime": 7,
+            "proposal": 3,
+            "provider_k0_attach": 1,
+            "provider_open": 3,
+            "provider_streaming_open": 1,
+            "resident_owner_transition": 28,
+            "target_accept_commit_provider": 3,
+            "target_prefill": 1,
+            "terminal_reclaim": 7
+          },
+          "totals_ms": {
+            "ar_decode": 1.0922262445092201,
+            "arm_complete": 1340.0982860475779,
+            "cycle_total": 808.4405716508627,
+            "nextn_prompt_prime": 224.64529983699322,
+            "proposal": 93.35955511778593,
+            "provider_k0_attach": 0.025231391191482544,
+            "provider_open": 0.043081119656562805,
+            "provider_streaming_open": 0.27435459196567535,
+            "resident_owner_transition": 0.02501159906387329,
+            "target_accept_commit_provider": 714.5907497033477,
+            "target_prefill": 466.4597241207957,
+            "terminal_reclaim": 50.512770190835
+          }
+        },
+        "per_cycle_ms": {
+          "accept_enqueue_ms": 0.35422823081413907,
+          "accept_tail_ms": 0.10938166330258052,
+          "accept_upload_ms": 0.10282515237728755,
+          "accept_window_ms": 149.82344303280115,
+          "candidate_readback_ms": 0.0,
+          "nonoverlap_named_sum_ms": 255.99598294744888,
+          "proposal_ms": 30.27426606665055,
+          "provider_update_ms": 5.527122567097346,
+          "selected_commit_ms": 41.365296579897404,
+          "target_readback_ms": 108.10116150726874,
+          "target_submit_ms": 70.37115128089984
+        },
+        "physical_cycles": 3,
+        "proposal_physical_rows": [
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7,
+          7
+        ],
+        "recoverable_failures": 0,
+        "request_rows": 7,
+        "service_capacity": 8,
+        "target_physical_rows": [
+          30,
+          30,
+          24
+        ]
+      },
+      "host_stage_share_of_nonoverlap_sum": {
+        "accept_window_ms": 0.5852570079724926,
+        "proposal_ms": 0.11826070752393518,
+        "provider_update_ms": 0.02159066131999407,
+        "target_submit_ms": 0.27489162318357824
+      },
+      "raw_sources": {
+        "child": "/tmp/he-k3-c6c8-amdahl/profile/c7/child.json",
+        "child_sha256": "1e1de600f0fc8699c291a27b39c5ac625d5e69f665b3ed48cffc51d87d7b1768",
+        "hip_api_csv": "/tmp/he-k3-c6c8-amdahl/profile/c7/trace/epyc/1629840_hip_api_trace.csv",
+        "hipengine_commit": "a81e42440b5ae199d623a30c78e3bb838379f842",
+        "kernel_csv": "/tmp/he-k3-c6c8-amdahl/profile/c7/trace/epyc/1629840_kernel_trace.csv",
+        "kernel_csv_sha256": "6d5c611d73da002529d363182b9d15ab0f9f8d64398c0ec6750f374c4690c985",
+        "marker_csv": "/tmp/he-k3-c6c8-amdahl/profile/c7/trace/epyc/1629840_marker_api_trace.csv",
+        "marker_csv_sha256": "0b16d8988fb653dd0d5ac3387ab2b490f87273e29afc33b6a415c57e3dfe2475",
+        "memory_allocation_csv": "/tmp/he-k3-c6c8-amdahl/profile/c7/trace/epyc/1629840_memory_allocation_trace.csv",
+        "memory_copy_csv": "/tmp/he-k3-c6c8-amdahl/profile/c7/trace/epyc/1629840_memory_copy_trace.csv",
+        "trace_dir": "/tmp/he-k3-c6c8-amdahl/profile/c7/trace",
+        "tracked_clean": true
+      },
+      "trace_phases": {
+        "cycle_total": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 6636.333333333333,
+          "hip_api_sum_ms_per_call": 203.516161,
+          "host_marker_ms_per_call": 269.485484,
+          "kernel_calls_per_call": 3956.6666666666665,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1367.0,
+              "ms_per_phase_call": 111.59685766666666,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 308.6666666666667,
+              "ms_per_phase_call": 79.50102466666667,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 224.0,
+              "ms_per_phase_call": 17.622797000000002,
+              "name": "q5_t16"
+            },
+            {
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 8.530448999999999,
+              "name": "gdn_linear_attention"
+            },
+            {
+              "calls_per_phase_call": 380.6666666666667,
+              "ms_per_phase_call": 6.470764,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 1278.0,
+              "ms_per_phase_call": 6.223799666666667,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 21.0,
+              "ms_per_phase_call": 4.081743,
+              "name": "commit_repair"
+            },
+            {
+              "calls_per_phase_call": 167.0,
+              "ms_per_phase_call": 2.049976,
+              "name": "norm_rope"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 220.09601566666666,
+          "kernel_sum_ms_per_call": 237.18226033333335,
+          "memory_copy_ops_per_call": 0.0,
+          "uncovered_marker_wall_ms_per_call": 49.38946833333333
+        },
+        "proposal": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 428.6666666666667,
+          "hip_api_sum_ms_per_call": 22.962285,
+          "host_marker_ms_per_call": 31.12450833333333,
+          "kernel_calls_per_call": 256.6666666666667,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 17.776784333333335,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 13.666666666666666,
+              "ms_per_phase_call": 5.203673,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 49.666666666666664,
+              "ms_per_phase_call": 2.5258496666666668,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 169.33333333333334,
+              "ms_per_phase_call": 0.44746966666666665,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 14.0,
+              "ms_per_phase_call": 0.180974,
+              "name": "norm_rope"
+            },
+            {
+              "calls_per_phase_call": 3.3333333333333335,
+              "ms_per_phase_call": 0.045253999999999996,
+              "name": "sampler"
+            },
+            {
+              "calls_per_phase_call": 3.3333333333333335,
+              "ms_per_phase_call": 0.03440033333333333,
+              "name": "attention"
+            },
+            {
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 0.00504,
+              "name": "combine_silu"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 23.347144,
+          "kernel_sum_ms_per_call": 26.219445,
+          "memory_copy_ops_per_call": 0.0,
+          "uncovered_marker_wall_ms_per_call": 7.777364333333333
+        },
+        "target_accept_commit_provider": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 6207.666666666667,
+          "hip_api_sum_ms_per_call": 180.553876,
+          "host_marker_ms_per_call": 238.20150333333333,
+          "kernel_calls_per_call": 3699.6666666666665,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1353.0,
+              "ms_per_phase_call": 106.20151633333334,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 307.0,
+              "ms_per_phase_call": 61.724240333333334,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 224.0,
+              "ms_per_phase_call": 17.622797000000002,
+              "name": "q5_t16"
+            },
+            {
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 8.530448999999999,
+              "name": "gdn_linear_attention"
+            },
+            {
+              "calls_per_phase_call": 1108.6666666666667,
+              "ms_per_phase_call": 5.776330000000001,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 21.0,
+              "ms_per_phase_call": 4.081743,
+              "name": "commit_repair"
+            },
+            {
+              "calls_per_phase_call": 331.0,
+              "ms_per_phase_call": 3.944914333333333,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 153.0,
+              "ms_per_phase_call": 1.869002,
+              "name": "norm_rope"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 196.55720333333335,
+          "kernel_sum_ms_per_call": 210.771147,
+          "memory_copy_ops_per_call": 0.0,
+          "top_kernels": [
+            {
+              "calls_per_phase_call": 1344.0,
+              "ms_per_phase_call": 102.83493966666667,
+              "name": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>"
+            },
+            {
+              "calls_per_phase_call": 298.6666666666667,
+              "ms_per_phase_call": 38.526702666666665,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>"
+            },
+            {
+              "calls_per_phase_call": 224.0,
+              "ms_per_phase_call": 17.622797000000002,
+              "name": "q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 4>"
+            },
+            {
+              "calls_per_phase_call": 6.666666666666667,
+              "ms_per_phase_call": 11.783049666666665,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>"
+            },
+            {
+              "calls_per_phase_call": 1.0,
+              "ms_per_phase_call": 10.382185666666667,
+              "name": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>"
+            },
+            {
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 7.660881333333333,
+              "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float>"
+            },
+            {
+              "calls_per_phase_call": 1108.6666666666667,
+              "ms_per_phase_call": 5.776330000000001,
+              "name": "__amd_rocclr_copyBuffer"
+            },
+            {
+              "calls_per_phase_call": 7.0,
+              "ms_per_phase_call": 3.7577806666666667,
+              "name": "linear_state_pair_commit_chunked_i32_kernel"
+            }
+          ],
+          "uncovered_marker_wall_ms_per_call": 41.6443
+        }
+      }
+    },
+    "8": {
+      "exact_ar_mtp_generated_ids": true,
+      "final_memory": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 30425278844
+      },
+      "group": {
+        "candidate_d2h_after_target": 0,
+        "complete_wall_seconds": 1.5960755227133632,
+        "generated_tokens": 96,
+        "operation_ledger": {
+          "call_counts": {
+            "ar_decode": 1,
+            "arm_complete": 1,
+            "cycle_total": 3,
+            "nextn_prompt_prime": 8,
+            "proposal": 3,
+            "provider_k0_attach": 1,
+            "provider_open": 3,
+            "provider_streaming_open": 1,
+            "resident_owner_transition": 32,
+            "target_accept_commit_provider": 3,
+            "target_prefill": 1,
+            "terminal_reclaim": 8
+          },
+          "totals_ms": {
+            "ar_decode": 1.241937279701233,
+            "arm_complete": 1596.0529521107674,
+            "cycle_total": 904.164525680244,
+            "nextn_prompt_prime": 278.54695077985525,
+            "proposal": 100.42436420917511,
+            "provider_k0_attach": 0.025141052901744843,
+            "provider_open": 0.04564039409160614,
+            "provider_streaming_open": 0.37604570388793945,
+            "resident_owner_transition": 0.02464279532432556,
+            "target_accept_commit_provider": 803.2748969271779,
+            "target_prefill": 620.258797891438,
+            "terminal_reclaim": 53.46859712153673
+          }
+        },
+        "per_cycle_ms": {
+          "accept_enqueue_ms": 0.40171947330236435,
+          "accept_tail_ms": 0.1413185770312945,
+          "accept_upload_ms": 0.11706942071517308,
+          "accept_window_ms": 178.78762756784758,
+          "candidate_readback_ms": 0.0,
+          "nonoverlap_named_sum_ms": 290.872217155993,
+          "proposal_ms": 32.62564198424419,
+          "provider_update_ms": 5.328483258684476,
+          "selected_commit_ms": 43.472644252081714,
+          "target_readback_ms": 134.91019730766615,
+          "target_submit_ms": 74.13046434521675
+        },
+        "physical_cycles": 3,
+        "proposal_physical_rows": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "recoverable_failures": 0,
+        "request_rows": 8,
+        "service_capacity": 8,
+        "target_physical_rows": [
+          36,
+          36,
+          24
+        ]
+      },
+      "host_stage_share_of_nonoverlap_sum": {
+        "accept_window_ms": 0.6146603801351191,
+        "proposal_ms": 0.11216486161257284,
+        "provider_update_ms": 0.018318983197445918,
+        "target_submit_ms": 0.2548557750548621
+      },
+      "raw_sources": {
+        "child": "/tmp/he-k3-c6c8-amdahl/profile/c8/child.json",
+        "child_sha256": "c1b0314a688d8887a5a7f2a305a84945a8e98228480e4663ca5a2e07202f0e86",
+        "hip_api_csv": "/tmp/he-k3-c6c8-amdahl/profile/c8/trace/epyc/1632708_hip_api_trace.csv",
+        "hipengine_commit": "a81e42440b5ae199d623a30c78e3bb838379f842",
+        "kernel_csv": "/tmp/he-k3-c6c8-amdahl/profile/c8/trace/epyc/1632708_kernel_trace.csv",
+        "kernel_csv_sha256": "3c982413f8b25aa7c2f59787b142be53bf3d14fe678973817c6003ebf75819ad",
+        "marker_csv": "/tmp/he-k3-c6c8-amdahl/profile/c8/trace/epyc/1632708_marker_api_trace.csv",
+        "marker_csv_sha256": "b448be90070f3735969e8eeaf61c375b5bfec146392c3a847bbe34d29c528528",
+        "memory_allocation_csv": "/tmp/he-k3-c6c8-amdahl/profile/c8/trace/epyc/1632708_memory_allocation_trace.csv",
+        "memory_copy_csv": "/tmp/he-k3-c6c8-amdahl/profile/c8/trace/epyc/1632708_memory_copy_trace.csv",
+        "trace_dir": "/tmp/he-k3-c6c8-amdahl/profile/c8/trace",
+        "tracked_clean": true
+      },
+      "trace_phases": {
+        "cycle_total": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 6355.333333333333,
+          "hip_api_sum_ms_per_call": 235.47694066666665,
+          "host_marker_ms_per_call": 301.3931586666667,
+          "kernel_calls_per_call": 3955.6666666666665,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1089.6666666666667,
+              "ms_per_phase_call": 130.63468500000002,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 352.0,
+              "ms_per_phase_call": 90.477209,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 256.0,
+              "ms_per_phase_call": 19.122905,
+              "name": "q5_t16"
+            },
+            {
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 10.161051333333333,
+              "name": "gdn_linear_attention"
+            },
+            {
+              "calls_per_phase_call": 1504.6666666666667,
+              "ms_per_phase_call": 7.397037,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 394.6666666666667,
+              "ms_per_phase_call": 5.727889,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 24.0,
+              "ms_per_phase_call": 4.651134333333333,
+              "name": "commit_repair"
+            },
+            {
+              "calls_per_phase_call": 167.0,
+              "ms_per_phase_call": 2.015908,
+              "name": "norm_rope"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 253.36096733333335,
+          "kernel_sum_ms_per_call": 271.105294,
+          "memory_copy_ops_per_call": 0.0,
+          "uncovered_marker_wall_ms_per_call": 48.03219133333334
+        },
+        "proposal": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 467.6666666666667,
+          "hip_api_sum_ms_per_call": 25.25149,
+          "host_marker_ms_per_call": 33.476758,
+          "kernel_calls_per_call": 334.0,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 21.453552666666667,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 13.666666666666666,
+              "ms_per_phase_call": 4.838536333333333,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 55.0,
+              "ms_per_phase_call": 1.8486960000000001,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 242.33333333333334,
+              "ms_per_phase_call": 0.838995,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 13.0,
+              "ms_per_phase_call": 0.15906733333333334,
+              "name": "norm_rope"
+            },
+            {
+              "calls_per_phase_call": 3.3333333333333335,
+              "ms_per_phase_call": 0.04977433333333334,
+              "name": "sampler"
+            },
+            {
+              "calls_per_phase_call": 3.3333333333333335,
+              "ms_per_phase_call": 0.033534,
+              "name": "attention"
+            },
+            {
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 0.005026666666666666,
+              "name": "combine_silu"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 26.532257333333334,
+          "kernel_sum_ms_per_call": 29.22718233333333,
+          "memory_copy_ops_per_call": 0.0,
+          "uncovered_marker_wall_ms_per_call": 6.944500666666667
+        },
+        "target_accept_commit_provider": {
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls_per_call": 5887.666666666667,
+          "hip_api_sum_ms_per_call": 210.22545066666666,
+          "host_marker_ms_per_call": 267.76225566666665,
+          "kernel_calls_per_call": 3620.6666666666665,
+          "kernel_families": [
+            {
+              "calls_per_phase_call": 1075.3333333333333,
+              "ms_per_phase_call": 125.36109133333333,
+              "name": "q4_t16"
+            },
+            {
+              "calls_per_phase_call": 350.3333333333333,
+              "ms_per_phase_call": 69.02365633333334,
+              "name": "q6_t16"
+            },
+            {
+              "calls_per_phase_call": 256.0,
+              "ms_per_phase_call": 19.122905,
+              "name": "q5_t16"
+            },
+            {
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 10.161051333333333,
+              "name": "gdn_linear_attention"
+            },
+            {
+              "calls_per_phase_call": 1262.0,
+              "ms_per_phase_call": 6.556922,
+              "name": "copy_fill"
+            },
+            {
+              "calls_per_phase_call": 24.0,
+              "ms_per_phase_call": 4.651134333333333,
+              "name": "commit_repair"
+            },
+            {
+              "calls_per_phase_call": 339.6666666666667,
+              "ms_per_phase_call": 3.8791930000000003,
+              "name": "other"
+            },
+            {
+              "calls_per_phase_call": 154.0,
+              "ms_per_phase_call": 1.8568406666666668,
+              "name": "norm_rope"
+            }
+          ],
+          "kernel_interval_union_ms_per_call": 226.39253266666665,
+          "kernel_sum_ms_per_call": 241.44193433333334,
+          "memory_copy_ops_per_call": 0.0,
+          "top_kernels": [
+            {
+              "calls_per_phase_call": 1024.0,
+              "ms_per_phase_call": 63.928460333333334,
+              "name": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>"
+            },
+            {
+              "calls_per_phase_call": 42.666666666666664,
+              "ms_per_phase_call": 58.40913733333333,
+              "name": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false>"
+            },
+            {
+              "calls_per_phase_call": 341.3333333333333,
+              "ms_per_phase_call": 41.706306,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 6, false>"
+            },
+            {
+              "calls_per_phase_call": 256.0,
+              "ms_per_phase_call": 19.122905,
+              "name": "q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6, 4>"
+            },
+            {
+              "calls_per_phase_call": 8.0,
+              "ms_per_phase_call": 15.363097000000002,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>"
+            },
+            {
+              "calls_per_phase_call": 1.0,
+              "ms_per_phase_call": 11.954253333333334,
+              "name": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>"
+            },
+            {
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 9.189482666666667,
+              "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float>"
+            },
+            {
+              "calls_per_phase_call": 1262.0,
+              "ms_per_phase_call": 6.556922,
+              "name": "__amd_rocclr_copyBuffer"
+            }
+          ],
+          "uncovered_marker_wall_ms_per_call": 41.369723
+        }
+      }
+    }
+  },
+  "model": {
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "kv": "BF16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106773984
+  },
+  "performance_claim": false,
+  "protocol": {
+    "candidate_budget": 3,
+    "classification": "single-prompt profiler packet; canonical full-suite rates below come from retained independent artifacts",
+    "concurrency": [
+      6,
+      7,
+      8
+    ],
+    "markers": [
+      "cycle_total",
+      "proposal",
+      "target_accept_commit_provider"
+    ],
+    "max_tokens": 12,
+    "profiled_processes": 3,
+    "prompt_id": "code_merge_intervals",
+    "purpose": "operation-complete Amdahl attribution only",
+    "resident_capacity": 8,
+    "sampling": "raw greedy",
+    "scope": "first canonical train prompt",
+    "traces": [
+      "kernel",
+      "marker",
+      "HIP runtime",
+      "memory copy",
+      "memory allocation"
+    ],
+    "warmup": "one complete true-AR/skipped-production-legacy/SPECDEC2 arm before measured arms"
+  },
+  "schema": 1,
+  "source": {
+    "compiler_cached_only": true,
+    "compiler_subprocess_observed": false,
+    "parser_commit": "5a384ff4b",
+    "profile_commit": "a81e42440b5ae199d623a30c78e3bb838379f842",
+    "profile_tracked_clean": true
+  },
+  "status": "diagnostic_retained"
+}

@@ -1258,6 +1258,30 @@ AR row now leads C1-C8. All 720 hipEngine repeat rows match; all peer cells are
 content-exact; both hipEngine packets drain. Evidence:
 [`full AR peer repeat and C2 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-c1c8-ar-peer-repeat-attribution.json).
 
+#### P13-J — One-group C6-C8 K3 residual attribution (#35 complete)
+
+- [x] Profile physical C6/C7/C8 at service capacity 8 through proposal,
+      target+accept+commit, HIP runtime, kernel, copy, and allocation traces.
+- [x] Preserve one-group ownership, exact AR/MTP generated IDs, zero recoverable
+      failures, and clean drain before using the trace for prioritization.
+- [x] Choose the next candidate from measured cycle growth rather than reopening
+      rejected verifier small-M or assuming copied accept/commit state.
+
+On clean `a81e42440`, average cycle wall is **216.67/269.49/301.39 ms** at
+C6/C7/C8. Target+accept+commit occupies **88.0-88.8%** and kernel interval union
+occupies **80.0-84.1%**. Of the **84.72 ms** C6→C8 cycle growth, **94.52%** is
+device-busy and **90.92%** lies inside the target composite; Q4 target kernels
+grow **82.56→125.36 ms** and account for **57.25%** of target kernel-sum growth.
+The fused Q4 gate/up owner is absent at C6/C7, then runs 64 times and costs
+**87.61 ms** in each R36 C8 cycle (two of three profiled cycles). Memory-copy
+trace records zero operations inside every cycle and telemetry reports no
+candidate D2H after target, so the prior accept/commit D2H theory is rejected.
+The next candidate is a direct exact-unfused-versus-fused R36 verifier screen;
+small-M stays closed. This one-prompt D12 profile is attribution only: retention
+still requires the complete category+heldout D24 exact/profile/lifecycle gate.
+Evidence:
+[`one-group K3 C6-C8 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json).
+
 ### 12.5 P13 stop rules
 
 - Do not use pre-grouping rates or acceptance to prioritize current work.
@@ -1269,18 +1293,51 @@ content-exact; both hipEngine packets drain. Evidence:
 - Stop on any ownership, state, KV, lifecycle, numerical, task, or repeat gate
   failure and localize it before further optimization.
 
-### 12.6 Durable handoff and exact strongest-peer matrix
+### 12.6 Durable handoff and exact strongest-peer comparisons
 
-This is the canonical retained matrix after the P13 rollup and full prefill/AR
-peer repeats. Each cell is `hipEngine / strongest peer (delta)` in total tok/s. “Current” and “Laurent” name
-the stronger of the two llama.cpp rows; the underlying exact protocol and
+These are the canonical retained comparisons after the P13 rollup and full
+prefill/AR peer repeats. Values are total tok/s. “Current” and “Laurent” name
+the stronger llama.cpp row at each width; the underlying exact protocol and
 artifacts remain linked from `benchmarks/README.md`.
 
-| Axis | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| True AR | 22.854 / 21.657 current (+5.53%) | 37.903 / 34.649 current (+9.39%) | 52.296 / 30.635 Laurent (+70.71%) | 63.613 / 27.850 Laurent (+128.41%) | 70.994 / 36.695 Laurent (+93.47%) | 77.046 / 46.091 Laurent (+67.16%) | 81.256 / 52.681 Laurent (+54.24%) | 83.939 / 58.840 Laurent (+42.66%) |
-| Explicit K3 diagnostic | 31.455 / 32.733 Laurent (**-3.90%**) | 39.820 / 41.042 current (**-2.98%**) | 54.590 / 45.947 Laurent (+18.81%) | 55.780 / 51.054 Laurent (+9.26%) | 57.345 / 61.013 Laurent (**-6.01%**) | 66.042 / 74.628 Laurent (**-11.50%**) | 62.719 / 78.281 Laurent (**-19.88%**) | 61.785 / 101.072 Laurent (**-38.87%**) |
-| Prefill | 166.784 / 184.024 Laurent (**-9.37%**) | 263.688 / 225.730 Laurent (+16.82%) | 351.141 / 221.227 Laurent (+58.72%) | 405.343 / 259.929 Laurent (+55.94%) | 440.200 / 316.711 Laurent (+38.99%) | 457.406 / 357.259 Laurent (+28.03%) | 469.752 / 365.592 Laurent (+28.49%) | 473.754 / 405.406 current (+16.86%) |
+**True AR decode**
+
+| Width | hipEngine | Strongest peer | Peer build | Delta |
+| --- | ---: | ---: | --- | ---: |
+| C1 | 22.854 | 21.657 | current | +5.53% |
+| C2 | 37.903 | 34.649 | current | +9.39% |
+| C3 | 52.296 | 30.635 | Laurent | +70.71% |
+| C4 | 63.613 | 27.850 | Laurent | +128.41% |
+| C5 | 70.994 | 36.695 | Laurent | +93.47% |
+| C6 | 77.046 | 46.091 | Laurent | +67.16% |
+| C7 | 81.256 | 52.681 | Laurent | +54.24% |
+| C8 | 83.939 | 58.840 | Laurent | +42.66% |
+
+**Explicit K3 MTP decode diagnostic**
+
+| Width | hipEngine | Strongest peer | Peer build | Delta |
+| --- | ---: | ---: | --- | ---: |
+| C1 | 31.455 | 32.733 | Laurent | **-3.90%** |
+| C2 | 39.820 | 41.042 | current | **-2.98%** |
+| C3 | 54.590 | 45.947 | Laurent | +18.81% |
+| C4 | 55.780 | 51.054 | Laurent | +9.26% |
+| C5 | 57.345 | 61.013 | Laurent | **-6.01%** |
+| C6 | 66.042 | 74.628 | Laurent | **-11.50%** |
+| C7 | 62.719 | 78.281 | Laurent | **-19.88%** |
+| C8 | 61.785 | 101.072 | Laurent | **-38.87%** |
+
+**Prefill**
+
+| Width | hipEngine | Strongest peer | Peer build | Delta |
+| --- | ---: | ---: | --- | ---: |
+| C1 | 166.784 | 184.024 | Laurent | **-9.37%** |
+| C2 | 263.688 | 225.730 | Laurent | +16.82% |
+| C3 | 351.141 | 221.227 | Laurent | +58.72% |
+| C4 | 405.343 | 259.929 | Laurent | +55.94% |
+| C5 | 440.200 | 316.711 | Laurent | +38.99% |
+| C6 | 457.406 | 357.259 | Laurent | +28.03% |
+| C7 | 469.752 | 365.592 | Laurent | +28.49% |
+| C8 | 473.754 | 405.406 | current | +16.86% |
 
 Completed recovery work has no hidden “remaining #22/#23/#11/#12” tail:
 

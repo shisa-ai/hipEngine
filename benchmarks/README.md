@@ -118,19 +118,31 @@ AR)**; every category is ≥1.1363x. C3/C4 remain K0.
 [`P11 integrated`](results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json) ·
 [`P12 promotion`](results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json).
 
-W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
+W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall results (total tok/s), separated by workload:
 
-| Engine / arm | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+**True AR decode**
+
+| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine AR | **22.854** | **37.903** | **52.296** | **63.613** | **70.994** | **77.046** | **81.256** | **83.939** |
-| llama.cpp current HIP AR | 21.657 | 34.649 | 30.367 | 27.748 | 36.248 | 45.343 | 51.757 | 57.687 |
-| llama.cpp Laurent HIP AR | 21.298 | 34.151 | 30.635 | 27.850 | 36.695 | 46.091 | 52.681 | 58.840 |
-| hipEngine explicit K3 | 31.455 | 39.820 | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
-| llama.cpp current HIP K3 | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
-| llama.cpp Laurent HIP K3 | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
-| hipEngine prefill | 166.784 | **263.688** | **351.141** | **405.343** | **440.200** | **457.406** | **469.752** | **473.754** |
-| llama.cpp current HIP prefill | 179.035 | 206.603 | 207.636 | 258.750 | 308.960 | 330.059 | 360.231 | 405.406 |
-| llama.cpp Laurent HIP prefill | **184.024** | 225.730 | 221.227 | 259.929 | 316.711 | 357.259 | 365.592 | 404.240 |
+| hipEngine | **22.854** | **37.903** | **52.296** | **63.613** | **70.994** | **77.046** | **81.256** | **83.939** |
+| llama.cpp current HIP | 21.657 | 34.649 | 30.367 | 27.748 | 36.248 | 45.343 | 51.757 | 57.687 |
+| llama.cpp Laurent HIP | 21.298 | 34.151 | 30.635 | 27.850 | 36.695 | 46.091 | 52.681 | 58.840 |
+
+**Explicit K3 MTP decode diagnostic**
+
+| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine | 31.455 | 39.820 | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
+| llama.cpp current HIP | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
+| llama.cpp Laurent HIP | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
+
+**Prefill**
+
+| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine | 166.784 | **263.688** | **351.141** | **405.343** | **440.200** | **457.406** | **469.752** | **473.754** |
+| llama.cpp current HIP | 179.035 | 206.603 | 207.636 | 258.750 | 308.960 | 330.059 | 360.231 | 405.406 |
+| llama.cpp Laurent HIP | **184.024** | 225.730 | 221.227 | 259.929 | 316.711 | 357.259 | 365.592 | 404.240 |
 
 The current AR rows are arithmetic means from a counterbalanced two-run, full-
 C1-C8 same-host D1/D24 repeat. hipEngine leads the strongest peer at every
@@ -193,7 +205,8 @@ and the K3 row measures the engine, not the product. [`automatic route gating`](
 [`default-AR ready-cohort retention`](results/2026-08-31-w7900-q4km-default-ar-ready-cohort-retained.json) ·
 [`initial C8 physical-group retention`](results/2026-08-31-w7900-q4km-c8-physical-group-retained.json) ·
 [`final C5/C8 physical-group closure`](results/2026-08-31-w7900-q4km-c5c8-physical-group-closure.json) ·
-[`P13 final audit and C6/C7 refresh`](results/2026-08-31-w7900-q4km-p13-final-audit.json).
+[`P13 final audit and C6/C7 refresh`](results/2026-08-31-w7900-q4km-p13-final-audit.json) ·
+[`one-group K3 C6-C8 cycle attribution`](results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json).
 
 The explicit K3 C5/C8 cells now use one production physical group instead of
 serial `[4,1]`/`[4,4]` C4 groups. The final tracked-clean, same-commit C5/C8
@@ -214,6 +227,16 @@ stale. Its clean completion pair moves C6 `[4,2]→[6]`,
 **55.983→62.719 (+12.03%)**. Every prompt/category improves, all 260
 candidate/rollback rows match, and both packets drain. Canonical C6/C7 therefore
 move **49.020→66.042 (+34.73%)** and **55.225→62.719 (+13.57%)**.
+A cached-only one-group C6-C8 profile localizes the residual K3 gap to the target
+and GPU rather than copied accept/commit state. Target+accept+commit consumes
+**88.0-88.8%** of cycle wall and kernel interval union consumes **80.0-84.1%**.
+From C6→C8, **94.52%** of the **84.72 ms** cycle growth is device-busy;
+**90.92%** is target-composite growth and Q4 target kernels account for
+**42.80 ms (57.25%)** of target kernel-sum growth. The fused Q4 gate/up owner is
+absent at C6/C7 but costs **87.61 ms per R36 C8 cycle**. All profiled cycles have
+zero memory-copy operations, exact AR/MTP generated IDs, one physical group,
+and clean drain. The next measured candidate is therefore the exact unfused
+R36 verifier chain, not another accept/commit D2H change or rejected small-M.
 
 **2026-08-31 audit note:** do not use the pre-grouping refresh's 31 tok/s K3 plateau or width-dependent acceptance as current evidence; pre-#30 grouped acceptance was 0.7889 at every width, while the current one-group C8 packet records 0.7850 with the same accepted-token count as its rollback. Task #25 repaired the fixed-order T16 protocol: tracked-clean forward/reverse repeats confirm the `(5120,17408)` and `(5120,10240)` row-128 defaults, every measured losing shape, and ULP-0/finite output; `(5120,12288)` narrows from row 128 to row 112 after a five-pair repeat measured rows 120/124/128 at 0.9943x/0.9949x/0.9992x. W7900 has 96 CUs; the down projection's 107 blocks are 428 wave32s (~4.46 waves/CU), not 107 blocks against 512 CUs. A current full-suite repeat pair showed that “grouped prefill” was not a binary route fact: explicit AR queued each C2/C3 request independently and formed a full resident group only 5/20 times at each width. Task #29 now closes that race with one EngineService admission command for every compatible cohort already inside the frontend batch window, while preserving per-request handles and lifecycle. The same-build rollback/default packet moves full native groups from 2/10→10/10 at C2 and 0/10→10/10 at C3; explicit AR moves 158.868→157.774, 178.504→261.748, and 223.643→346.923 prompt tok/s at C1/C2/C3. All 120 cross-packet generated rows match and both packets finish with zero active allocations. Task #11 is now complete: an exact row64 sibling reduces the `(17408,5120)` owner's 256-row padding and owns rows 33-192, with five-pair leaf speedups of 1.009x-1.855x; row193+ keeps the parent after a sharp 0.897x crossover. The same-build full-suite pair improves C1 prompt throughput by 4.63%/4.51% in both exact arms; the stable full-group control is +0.62% at C2 and flat-positive at C3, so no canonical row is replaced. A fresh pre-#30 K3 D1/D24 diagnostic confirmed that each prompt-local accept sequence and aggregate 0.788944724 acceptance were identical at C1/C3/C5/C8. The then-current capacity-8 owner was physically capped at four requests, producing `[1]`, `[3]`, `[4,1]`, and `[4,4]`; C8 paid two stable size-4 stage sums, with accept/commit/blocking-readback at 70.9% of the named-stage sum. Task #30 has now removed that ceiling for gfx1100 production: server admission, frontier, proposal, target, accept, and cycle owners resolve C8 while strict and rollback remain C4. The final same-commit C5/C8 D1/D24 gate measures **49.227→57.345 tok/s (+16.49%)** at C5 and **56.414→61.785 (+9.52%)** at C8, with every prompt/category positive, 520/520 candidate/rollback generated rows equal, clean D1 K0 ownership, clean D24 drain, proposal C5/C8, and target rows through R24/R36. The recovery audit closes the omitted changed cells: C6 improves **50.421→66.042 (+30.98%)** and C7 **55.983→62.719 (+12.03%)**, with 260/260 generated rows equal. Automatic C5-C8 is still K0. A production-materializer sidecar sweep separately closes the leaf question: small-M is strict-exact in 35/35 Q4 role/row cells but is 2.52-14.84x slower than rowtile by HIP events and 2.51-13.53x operation-complete, so the existing rowtile owner remains default.
 
