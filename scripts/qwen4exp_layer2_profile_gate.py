@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Qualify the Qwen4Exp layer-2 grouped-Q5_K route against strict.
+"""Qualify a Qwen4Exp execution-profile candidate against its strict parent.
 
 The strict and candidate sessions use the same GGUF/BF16-KV configuration and
-prompt/teacher-token schedule. Strict runs under the registered strict profile;
-the candidate uses the registered production stack plus the post-binder
-``HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1`` experiment. The gate records 450
+prompt/teacher-token schedule. Strict runs under the registered strict profile.
+T0 exact candidates also use strict plus their post-binder override; T1/T2
+candidates use the registered production stack plus their override. The gate records 450
 full-vocabulary rows by default (18 prompts x prefill-last plus 24 c1 rows),
 three candidate repeats, request-local state fingerprints, and 32-token free
 outputs. A cross-route free-output difference requires a separate task review;
@@ -54,6 +54,7 @@ class CandidateSpec:
     classification: str
     mechanism: str
     environment: Mapping[str, str]
+    base_profile: str
     scenario_id: str
     candidate_key: tuple[str, str, str, str]
     fallback_key: tuple[str, str, str, str]
@@ -65,6 +66,7 @@ CANDIDATES = {
         classification="T2",
         mechanism="layer-2 Q5_K/Q5_K compact f16-WMMA grouped prefill",
         environment={"HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "1"},
+        base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-layer2-grouped-q5k",
         candidate_key=(
             "hip_gfx1151", "moe_linear", "gguf_q5_k",
@@ -80,6 +82,7 @@ CANDIDATES = {
         classification="T0",
         mechanism="fuse GR sigmoid materialization with gated mean through 256 rows",
         environment={"HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED": "1"},
+        base_profile="strict",
         scenario_id="qwen4exp-ud-q4-k-xl-gr-sigmoid-mean-fused",
         candidate_key=(
             "hip_gfx1151", "gr_gated_mean_sigmoid", "f32", "strict",
@@ -93,6 +96,7 @@ CANDIDATES = {
         classification="T2",
         mechanism="extend guarded Q8 MMQ F32 prefill to GDN attn_gate K2560/N6144",
         environment={"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"},
+        base_profile="production",
         scenario_id="qwen4exp-ud-q4-k-xl-q8-mmq-attn-gate",
         candidate_key=(
             "hip_gfx1151", "linear", "gguf_q8_0",
@@ -466,7 +470,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_states: list[list[dict[str, Any]]] = []
     candidate_tasks: dict[str, list[dict[str, Any]]] = {}
     reset_memory_stats()
-    candidate_generator, production_profile, _ = _make_generator(args, "production")
+    candidate_generator, candidate_profile, _ = _make_generator(
+        args, candidate_spec.base_profile
+    )
     bound_environment = {
         key: os.environ.get(key) for key in candidate_spec.environment
     }
@@ -576,6 +582,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "classification": candidate_spec.classification,
             "mechanism": candidate_spec.mechanism,
             "environment": dict(candidate_spec.environment),
+            "base_profile": candidate_spec.base_profile,
             "bound_environment": bound_environment,
             "candidate_kernel": getattr(candidate_kernel, "__name__", str(candidate_kernel)),
             "strict_fallback": getattr(strict_fallback, "__name__", str(strict_fallback)),
@@ -585,8 +592,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "profiles": {
             "strict_manifest": _json_value(strict_profile.manifest),
             "strict_manifest_sha256": strict_profile.manifest_sha256,
-            "production_manifest": _json_value(production_profile.manifest),
-            "production_manifest_sha256": production_profile.manifest_sha256,
+            "candidate_base_profile": candidate_spec.base_profile,
+            "candidate_manifest": _json_value(candidate_profile.manifest),
+            "candidate_manifest_sha256": candidate_profile.manifest_sha256,
             "candidate_named_profile_intact": False,
         },
         "protocol": {

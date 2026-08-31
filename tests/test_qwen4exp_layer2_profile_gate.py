@@ -90,6 +90,7 @@ def test_gr_sigmoid_mean_candidate_is_t0_and_fail_closed() -> None:
         "HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED": "1"
     }
     assert candidate.classification == "T0"
+    assert candidate.base_profile == "strict"
     assert candidate.candidate_key[-1] == "strict"
     assert candidate.fallback_key[-1] == "strict"
     assert "through 256 rows" in candidate.mechanism
@@ -101,6 +102,7 @@ def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
 
     assert candidate.environment == {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"}
     assert candidate.classification == "T2"
+    assert candidate.base_profile == "production"
     assert candidate.candidate_key[-1] == (
         "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
     )
