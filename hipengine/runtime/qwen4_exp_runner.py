@@ -2685,9 +2685,7 @@ def _qwen4_exp_q8_mmq_policy(policy):
 def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
     """Select the exact four-token F32 router producer for multirow work."""
 
-    return rows >= 2 and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4", "0"
-    ) not in {"", "0", "false", "False"}
+    return rows >= 2
 
 
 def _qwen4_exp_production_moe_prefill_enabled(

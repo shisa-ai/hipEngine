@@ -77,21 +77,6 @@ CANDIDATES = {
             "selected_gemv_bf16_bf16_out",
         ),
     ),
-    "router_f32_tile4": CandidateSpec(
-        name="router_f32_tile4",
-        classification="T0",
-        mechanism="reuse each F32 router weight across four prompt rows",
-        environment={"HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4": "1"},
-        base_profile="strict",
-        scenario_id="qwen4exp-ud-q4-k-xl-router-f32-tile4",
-        candidate_key=(
-            "hip_gfx1151", "router_logits", "f32",
-            "f32_hidden_token_tile4_dense_exact",
-        ),
-        fallback_key=(
-            "hip_gfx1151", "router_logits", "f32", "f32_hidden",
-        ),
-    ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
         classification="T2",
