@@ -71,6 +71,9 @@ _SYM_Q8_1_DP4A_TOP1_ROW_GATHER_F32 = (
     "hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f32"
 )
 _SYM_TOP1_STAGE2_GATHER_F32 = "hipengine_gguf_q6_k_pack8_top1_stage2_gather_f32"
+_SYM_TOP1_STAGE2_GATHER_MAPPED_F32 = (
+    "hipengine_gguf_q6_k_pack8_top1_stage2_gather_mapped_f32"
+)
 _Q6_K_BLOCK = 256
 _Q6_TOP1_STAGE1_THREADS_ENV = "HIPENGINE_GGUF_Q6_TOP1_STAGE1_THREADS"
 
@@ -1258,6 +1261,54 @@ def gguf_q6_k_pack8_top1_stage2_gather_f32(
         runtime.check(int(err))
 
 
+def gguf_q6_k_pack8_top1_stage2_gather_mapped_f32(
+    block_values_f32_ptr: int,
+    block_indices_i32_ptr: int,
+    token_map_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int | None,
+    rows: int,
+    num_blocks: int,
+    compact_vocab: int,
+    full_vocab: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Reduce compact block winners and map the selected ID to full vocab."""
+
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if num_blocks <= 0:
+        raise ValueError("num_blocks must be positive")
+    if compact_vocab <= 0 or compact_vocab > full_vocab:
+        raise ValueError("compact_vocab must be positive and no larger than full_vocab")
+    library = library or build_gguf_q6_k_pack8_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYM_TOP1_STAGE2_GATHER_MAPPED_F32)
+    fn.argtypes = [
+        *([ctypes.c_void_p] * 5),
+        *([ctypes.c_int64] * 4),
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(block_values_f32_ptr),
+        ctypes.c_void_p(block_indices_i32_ptr),
+        ctypes.c_void_p(token_map_i32_ptr),
+        ctypes.c_void_p(out_indices_i32_ptr),
+        ctypes.c_void_p(out_values_f32_ptr) if out_values_f32_ptr is not None else ctypes.c_void_p(),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_blocks),
+        ctypes.c_int64(compact_vocab),
+        ctypes.c_int64(full_vocab),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
 def gguf_q6_k_proposal_top1_exact_bf16(
     weight: object,
     x_ptr: int,
@@ -1482,6 +1533,7 @@ __all__ = [
     "gguf_q6_k_pack8_gemv_decode_fp16_f32_out",
     "gguf_q6_k_pack8_gemv_decode_fp16_fp16_out",
     "gguf_q6_k_pack8_top1_stage2_gather_f32",
+    "gguf_q6_k_pack8_top1_stage2_gather_mapped_f32",
     "gguf_q6_k_proposal_top1_exact_bf16",
     "plan_gguf_q6_k_pack8_gemv_build",
     "register_gguf_q6_k_pack8_gemv_kernels",

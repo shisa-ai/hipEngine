@@ -1013,6 +1013,65 @@ def test_nextn_executor_prepares_exact_top1_through_quant_registry(
     }
 
 
+def test_nextn_executor_prefers_model_bound_hot_vocab_with_full_head_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    full_weight = SimpleNamespace(spec=SimpleNamespace(quant_key="gguf_q6_k_t16_qmicro_planar_v1"))
+    hot_weight = SimpleNamespace(spec=SimpleNamespace(quant_key="gguf_q6_k_t16_qmicro_planar_v1"))
+    hot_vocab = SimpleNamespace(
+        lm_head=hot_weight,
+        size=256,
+        token_ids=SimpleNamespace(tensor=SimpleNamespace(ptr=0x9000)),
+    )
+    executor.weights = SimpleNamespace(
+        backend="hip_gfx1100",
+        hot_vocab=hot_vocab,
+        fallback=lambda slot: full_weight,
+    )
+    executor.hidden_size = 512
+    executor.vocab_size = 1024
+    executor.compiler_version = "compiler"
+    executor.require_cached_build = True
+    executor.runtime = object()
+    executor._lm_head_top1_kernel = None
+    executor._lm_head_top1_weight = None
+    executor._lm_head_top1_block_values = None
+    executor._lm_head_top1_block_indices = None
+    executor._lm_head_top1_result = None
+    executor._lm_head_top1_libraries = None
+    kernel = object()
+    keys = []
+    malloc_calls = []
+
+    def fake_is_registered(key) -> bool:
+        keys.append(key)
+        return key.variant == "proposal_top1_mapped_bf16"
+
+    monkeypatch.setattr(nextn_mod, "is_registered", fake_is_registered)
+    monkeypatch.setattr(nextn_mod, "resolve", lambda **kwargs: kernel)
+    monkeypatch.setattr(nextn_mod, "build_gguf_q6_k_pack8_gemv", lambda **kwargs: object())
+    monkeypatch.setattr(nextn_mod, "build_gguf_q6_k_t16_gemv", lambda **kwargs: object())
+    monkeypatch.setattr(
+        nextn_mod,
+        "malloc",
+        lambda nbytes, **kwargs: (
+            malloc_calls.append(nbytes)
+            or SimpleNamespace(ptr=0xA000 + len(malloc_calls) * 0x100, nbytes=nbytes)
+        ),
+    )
+
+    executor._prepare_exact_lm_head_top1()
+
+    assert [key.variant for key in keys] == ["proposal_top1_mapped_bf16"]
+    assert malloc_calls == [128, 128, 8]
+    assert executor._lm_head_top1_kernel is kernel
+    assert executor._lm_head_top1_weight is hot_weight
+    assert executor._lm_head_top1_token_map_ptr == 0x9000
+    assert executor._lm_head_top1_vocab_size == 256
+    assert executor._lm_head_top1_mapped is True
+
+
 def test_nextn_executor_exact_top1_reads_only_token_and_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1061,6 +1120,41 @@ def test_nextn_executor_exact_top1_reads_only_token_and_value(
         1024,
     )
     assert kwargs == {"stream": 7, "libraries": libraries, "runtime": runtime}
+
+
+def test_nextn_executor_mapped_top1_passes_compact_and_full_vocab() -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    calls = []
+    executor.runtime = object()
+    executor.hidden_size = 512
+    executor.vocab_size = 1024
+    executor._logits_buf = SimpleNamespace(ptr=0x6000)
+    executor._lm_head_top1_kernel = lambda *args, **kwargs: calls.append((args, kwargs))
+    executor._lm_head_top1_weight = object()
+    executor._lm_head_top1_block_values = SimpleNamespace(ptr=0x3000)
+    executor._lm_head_top1_block_indices = SimpleNamespace(ptr=0x4000)
+    executor._lm_head_top1_libraries = {"q6_pack8": object(), "q6_t16": object()}
+    executor._lm_head_top1_token_map_ptr = 0x7000
+    executor._lm_head_top1_vocab_size = 256
+    executor._lm_head_top1_mapped = True
+
+    assert executor._enqueue_exact_lm_head_top1(0x1000, 0x5000, 0x5004, stream=7)
+
+    args, kwargs = calls[0]
+    assert args[1:] == (
+        0x1000,
+        0x6000,
+        0x3000,
+        0x4000,
+        0x5000,
+        0x5004,
+        0x7000,
+        1,
+        512,
+        256,
+        1024,
+    )
+    assert kwargs["stream"] == 7
 
 
 def test_nextn_executor_sample_prefers_compact_top1_without_logits(

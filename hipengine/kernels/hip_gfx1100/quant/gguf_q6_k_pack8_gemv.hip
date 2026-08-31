@@ -1340,9 +1340,11 @@ __launch_bounds__(64, 1) __global__ void gguf_q6_k_q8_1_dp4a_top1_row_stage1_ker
   }
 }
 
+template <bool Mapped>
 __global__ void top1_stage2_gather_kernel(
     const float* __restrict__ block_values,
     const int32_t* __restrict__ block_indices,
+    const int32_t* __restrict__ token_map,
     int32_t* __restrict__ out_indices,
     float* __restrict__ out_values,
     const float* __restrict__ embed_table,
@@ -1381,7 +1383,11 @@ __global__ void top1_stage2_gather_kernel(
     }
     __syncthreads();
   }
-  const int32_t id = indices[0];
+  const int32_t compact_id = indices[0];
+  int32_t id = compact_id;
+  if constexpr (Mapped) {
+    id = compact_id < 0 ? compact_id : token_map[compact_id];
+  }
   if (tid == 0) {
     out_indices[row] = id;
     if (out_values != nullptr) {
@@ -1481,13 +1487,14 @@ int launch_top1_stage2_gather(
   constexpr int stage2_threads = 256;
   const size_t stage2_smem = static_cast<size_t>(stage2_threads) * (sizeof(float) + sizeof(int32_t));
   hipLaunchKernelGGL(
-      top1_stage2_gather_kernel,
+      (top1_stage2_gather_kernel<false>),
       dim3(static_cast<unsigned int>(rows)),
       dim3(stage2_threads),
       stage2_smem,
       stream,
       block_values,
       block_indices,
+      nullptr,
       out_indices,
       out_values,
       embed_table,
@@ -1496,6 +1503,45 @@ int launch_top1_stage2_gather(
       num_blocks,
       hidden,
       vocab);
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_top1_stage2_gather_mapped(
+    const float* block_values,
+    const int32_t* block_indices,
+    const int32_t* token_map,
+    int32_t* out_indices,
+    float* out_values,
+    int64_t rows,
+    int64_t num_blocks,
+    int64_t compact_vocab,
+    int64_t full_vocab,
+    hipStream_t stream) {
+  if (block_values == nullptr || block_indices == nullptr || token_map == nullptr ||
+      out_indices == nullptr || rows <= 0 || num_blocks <= 0 || compact_vocab <= 0 ||
+      full_vocab <= 0 || compact_vocab > full_vocab) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int stage2_threads = 256;
+  const size_t stage2_smem =
+      static_cast<size_t>(stage2_threads) * (sizeof(float) + sizeof(int32_t));
+  hipLaunchKernelGGL(
+      (top1_stage2_gather_kernel<true>),
+      dim3(static_cast<unsigned int>(rows)),
+      dim3(stage2_threads),
+      stage2_smem,
+      stream,
+      block_values,
+      block_indices,
+      token_map,
+      out_indices,
+      out_values,
+      nullptr,
+      nullptr,
+      rows,
+      num_blocks,
+      0,
+      full_vocab);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -2552,6 +2598,30 @@ extern "C" int hipengine_gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_row_gather_f
       in_features,
       out_features,
       hidden,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q6_k_pack8_top1_stage2_gather_mapped_f32(
+    const float* block_values,
+    const int32_t* block_indices,
+    const int32_t* token_map,
+    int32_t* out_indices,
+    float* out_values,
+    int64_t rows,
+    int64_t num_blocks,
+    int64_t compact_vocab,
+    int64_t full_vocab,
+    hipStream_t stream) {
+  return launch_top1_stage2_gather_mapped(
+      block_values,
+      block_indices,
+      token_map,
+      out_indices,
+      out_values,
+      rows,
+      num_blocks,
+      compact_vocab,
+      full_vocab,
       stream);
 }
 

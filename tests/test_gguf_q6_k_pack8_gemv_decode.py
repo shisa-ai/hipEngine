@@ -44,6 +44,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_gemv_decode_fp16_f32_out,
     gguf_q6_k_pack8_gemv_decode_fp16_fp16_out,
     gguf_q6_k_pack8_top1_stage2_gather_f32,
+    gguf_q6_k_pack8_top1_stage2_gather_mapped_f32,
     gguf_q6_k_x8_dscale_gemv_decode_q8_1_dp4a_top1_gather_f32,
     gguf_q6_k_x8_dscale_gemv_decode_q8_1_dp4a_top1_stage1_f32,
     gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32,
@@ -225,6 +226,45 @@ def test_q6_k_top1_gather_wrapper_validates_before_gpu_load() -> None:
         gguf_q6_k_pack8_gemv_decode_q8_1_dp4a_top1_stage1_f32(0, 0, 0, 0, 1, 256, 8, stage1_threads=96)
     with pytest.raises(ValueError, match="num_blocks"):
         gguf_q6_k_pack8_top1_stage2_gather_f32(0, 0, 0, None, None, None, 1, 0, 0, 8)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_top1_stage2_maps_compact_winner_to_full_vocab(q6_k_dense_library) -> None:
+    block_values = np.asarray([[1.0, 4.0, 3.0, 2.0], [5.0, 5.0, 1.0, 0.0]], dtype=np.float32)
+    block_indices = np.asarray([[1, 17, 33, 49], [18, 2, 34, 50]], dtype=np.int32)
+    token_map = np.arange(64, dtype=np.int32) * 3 + 101
+    out_indices = np.empty((2,), dtype=np.int32)
+    out_values = np.empty((2,), dtype=np.float32)
+    buffers = []
+    try:
+        for array in (block_values, block_indices, token_map):
+            buffer = malloc(array.nbytes)
+            buffers.append(buffer)
+            copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
+        out_indices_buf = malloc(out_indices.nbytes)
+        out_values_buf = malloc(out_values.nbytes)
+        buffers.extend((out_indices_buf, out_values_buf))
+
+        gguf_q6_k_pack8_top1_stage2_gather_mapped_f32(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            out_indices_buf.ptr,
+            out_values_buf.ptr,
+            2,
+            4,
+            64,
+            1024,
+            library=q6_k_dense_library,
+        )
+        copy_device_to_host(host_array_ptr(out_indices), out_indices_buf, out_indices.nbytes)
+        copy_device_to_host(host_array_ptr(out_values), out_values_buf, out_values.nbytes)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer)
+
+    assert out_indices.tolist() == [int(token_map[17]), int(token_map[2])]
+    np.testing.assert_array_equal(out_values, np.asarray([4.0, 5.0], dtype=np.float32))
 
 
 _HALF_TOL = dict(atol=1.0e-3, rtol=1.0e-2)

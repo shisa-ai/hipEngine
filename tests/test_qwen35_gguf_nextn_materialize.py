@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
+import numpy as np
 import pytest
 
 from hipengine.loading.gguf import GGUFReader, GGUFTensorInfo
+from hipengine.loading.gguf_mtp_hot_vocab import GGUFHotVocabSelection
 from hipengine.loading import qwen35_gguf_nextn_materialize as nextn_materialize
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q4_K_T16,
@@ -122,6 +124,65 @@ def test_moe_q4km_nextn_map_accepts_actual_expert_qtypes() -> None:
     assert model_map.tensor("ffn_gate_exps").ggml_type_name == "Q4_K"
     assert model_map.tensor("ffn_up_exps").ggml_type_name == "Q4_K"
     assert model_map.tensor("ffn_down_exps").ggml_type_name == "Q5_K"
+
+
+def test_hot_vocab_materializer_repacks_individually_selected_q6_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = _tensor("output.weight", GGMLQuantizationType.Q6_K, (32, 256))
+    spec = _spec(
+        "root.lm_head",
+        source,
+        quant_key="gguf_q6_k_t16_qmicro_planar_v1",
+        layout=LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        allocation="tiles",
+    )
+    selection = GGUFHotVocabSelection(
+        token_ids=tuple(range(0, 32, 2)),
+        tokenizer_tokens_sha256="fixture",
+        source_path=tmp_path / "hot.json",
+        metadata={},
+    )
+    raw = np.arange(32 * 210, dtype=np.uint8).reshape(32, 210)
+    reader = SimpleNamespace(
+        info=SimpleNamespace(metadata={"tokenizer.ggml.tokens": [str(i) for i in range(32)]}),
+        tensor_data=lambda name: raw,
+    )
+    repacked_rows = []
+    allocations = []
+
+    def fake_repack(selected):
+        repacked_rows.append(selected.copy())
+        return SimpleNamespace(tiles=np.zeros((1, 1, 1, 3360), dtype=np.uint8))
+
+    def fake_load(name, array, dtype, **kwargs):
+        allocation = SimpleNamespace(
+            name=name,
+            array=np.asarray(array).copy(),
+            tensor=SimpleNamespace(ptr=0x1000 + len(allocations) * 0x100),
+            free=lambda **free_kwargs: None,
+        )
+        allocations.append(allocation)
+        return allocation
+
+    monkeypatch.setattr(nextn_materialize, "repack_gguf_q6_k_tile16_qmicro_planar", fake_repack)
+    monkeypatch.setattr(nextn_materialize, "load_host_array_to_device_as_dtype", fake_load)
+
+    hot = nextn_materialize._materialize_hot_vocab(
+        reader,
+        spec,
+        selection,
+        device=None,
+        runtime=None,
+        backend="hip_gfx1100",
+    )
+
+    np.testing.assert_array_equal(repacked_rows[0][0], raw[list(selection.token_ids)])
+    assert hot.size == 16
+    assert hot.lm_head.spec.slot_path == "draft.hot_lm_head"
+    assert hot.lm_head.allocation("tiles") is allocations[0]
+    np.testing.assert_array_equal(allocations[1].array, np.asarray(selection.token_ids, dtype=np.int32))
 
 
 def test_nextn_materialization_borrows_compatible_target_fallbacks_without_owning_them(

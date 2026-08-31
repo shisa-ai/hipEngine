@@ -202,6 +202,7 @@ _GGUF_INT8_KV_DIAGNOSTIC_OVERRIDE_ENVS = (
 )
 _GGUF_DECODE_GRAPH_ENV = "HIPENGINE_GGUF_DECODE_GRAPH"
 _GGUF_MTP_SERVER_PACKED_PREFILL_ENV = "HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL"
+_GGUF_MTP_HOT_VOCAB_ENV = "HIPENGINE_GGUF_MTP_HOT_VOCAB"
 _GGUF_SPECDEC2_STREAMING_PROMPT_ENV = "HIPENGINE_GGUF_SPECDEC2_STREAMING_PROMPT"
 _GGUF_MTP_SERVER_STARTUP_WARMUP_ENV = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
 _GGUF_MTP_SERVER_STREAM_DRAFT_ENV = "HIPENGINE_GGUF_MTP_SERVER_STREAM_DRAFT"
@@ -1507,11 +1508,13 @@ class Qwen35GGUFBringupGenerator:
         )
 
         self._ensure_shared_pools()
+        hot_vocab_path = os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV, "").strip() or None
         key = (
             int(id(target.runtime)),
             "dense_nextn",
             int(max_positions),
             int(max_requests),
+            hot_vocab_path,
         )
         if pool_enabled:
             with self._shared_mtp_draft_pool_lock:
@@ -1526,6 +1529,7 @@ class Qwen35GGUFBringupGenerator:
             runtime=target.runtime,
             require_cached_build=bool(target.require_cached_build),
             borrowed_fallback_weights=borrow_qwen35_gguf_nextn_fallback_weights(target),
+            hot_vocab_path=hot_vocab_path,
         )
         return provider, key if pool_enabled else None, False
 
