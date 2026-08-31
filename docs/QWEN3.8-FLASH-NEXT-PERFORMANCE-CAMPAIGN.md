@@ -1,16 +1,17 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
-Status: **active plan, reviewed 2026-08-30.** The category-balanced exact-token
+Status: **active plan, reviewed 2026-08-31.** The category-balanced exact-token
 screening baseline now covers p512/p1024/p4096 plus 128 autoregressive
 transitions after each prefix. Named hipEngine production measures
-**82.51/81.22/67.93 tok/s** prefill and **13.82/13.79/10.40 tok/s** decode.
-Repeatability-valid screening comparators remain **2.90–4.34x** ahead on HIP
-prefill and **2.92–3.93x** ahead on Vulkan prefill; decode gaps are
-**1.24–1.42x** and **1.46–1.74x**. The first depth-specific blocker is the
-2,051-token QSA path transition: p1024→p4096 adds **23.67 ms/token** in
+**83.70/83.16/69.10 tok/s** prefill and **14.40/14.42/10.42 tok/s** decode.
+Repeatability-valid screening comparators remain **2.86–4.26x** ahead on HIP
+prefill and **2.87–3.86x** ahead on Vulkan prefill; decode gaps are
+**1.18–1.42x** and **1.39–1.74x**. The first depth-specific blocker is the
+2,051-token QSA path transition: p1024→p4096 adds **26.64 ms/token** in
 hipEngine versus **5.61–8.47 ms/token** on the repeatability-valid upstream
-lanes. This is not section-6 closure: the run used three repetitions, several
-rows exceed 2% CV, and cold-PLE plus heldout modes remain open. The frozen
+lanes. This is not section-6 closure: the run used three repetitions rather
+than five pairs, and cold-PLE plus heldout modes remain open. Shape CV is at
+most 1.155% prefill and 0.625% decode. The frozen
 p508/tg32 role baseline remains the attribution anchor.
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
@@ -83,7 +84,7 @@ tokens per second.
 
 | Engine | p512 | p1024 | p4096 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
-| hipEngine production | **82.51 / 13.82** | **81.22 / 13.79** | **67.93 / 10.40** | 12/12 exact |
+| hipEngine production `61b1cef1b` | **83.70 / 14.40** | **83.16 / 14.42** | **69.10 / 10.42** | 12/12 exact |
 | Upstream Vulkan `f1793c1c4` | 240.53 / 22.97 | 259.73 / 20.11 | 266.98 / 18.07 | 12/12 exact |
 | Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
 | EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; `code-p4096` alternates |
@@ -148,7 +149,7 @@ are:
 
 | Lane | tg128 p512 | tg128 p1024 | tg128 p4096 | Added ms/token, p1024→p4096 | p512→p4096 |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| hipEngine production | 13.823 | 13.787 | 10.395 | **+23.67** | **-24.8%** |
+| hipEngine production | 14.399 | 14.421 | 10.416 | **+26.64** | **-27.7%** |
 | Upstream Vulkan | 22.974 | 20.113 | 18.075 | +5.61 | -21.3% |
 | Patched-upstream HIP | 17.741 | 16.881 | 14.768 | +8.47 | -16.8% |
 | EngramHalo HIP | 17.439 | 17.044 | 15.989 | +3.87 | -8.3% (p4096 diagnostic) |
@@ -176,9 +177,9 @@ The repeatability-valid screening targets and current hipEngine gaps are:
 
 | Shape | HIP target and gap | Vulkan target and gap |
 | --- | ---: | ---: |
-| p512 / tg128 | patched upstream, **2.90x / 1.28x** | upstream, **2.92x / 1.66x** |
-| p1024 / tg128 | EngramHalo, **3.88x / 1.24x** | upstream, **3.20x / 1.46x** |
-| p4096 / tg128 | patched upstream, **4.34x / 1.42x** | upstream, **3.93x / 1.74x** |
+| p512 / tg128 | patched upstream, **2.86x / 1.23x** | upstream, **2.87x / 1.60x** |
+| p1024 / tg128 | EngramHalo, **3.79x / 1.18x** | upstream, **3.12x / 1.39x** |
+| p4096 / tg128 | patched upstream, **4.26x / 1.42x** | upstream, **3.86x / 1.74x** |
 
 These are screening ratios, not match/loss verdicts. Section 6 still requires
 five same-thermal counterbalanced pairs, per-row CV at or below 2% for a match,
@@ -856,16 +857,15 @@ graph scope.
 - [x] Keep full logits/probabilities as an explicit API/debug path; do not
       silently change public response semantics. Direct runner, MTP, numerical,
       and debug calls retain full logits by default.
-- [ ] Feed the device-owned token into the next embedding path where possible;
-      PLE hashing currently consumes the compact host token without a
-      248K-logit copy, but the next step is not yet device-to-device.
-- [ ] Reduce the current 28 blocking and 12 async memcpy calls/token to a
+- [x] Feed the device-owned token into the next embedding path where possible.
+      PLE hashing consumes the compact host token, while the next embedding
+      lookup reuses the resident device token without an H2D round trip.
+- [x] Reduce the current 28 blocking and 12 async memcpy calls/token to a
       role-explained minimum and record bytes/directions, synchronization count,
-      first-token, steady-state, and exact-ID/logit controls. The four-step
-      HIP-API ledger is now complete: compact output retains 28 blocking plus
-      12 async copies/token, reduces blocking bytes **1,024,200→30,928**, and
-      removes one `hipDeviceSynchronize`/token. The remaining calls are
-      role-attributed; reducing them is still open.
+      first-token, steady-state, and exact-ID/logit controls. The final ledger is
+      **26 blocking + 12 async**: no explicit sync, 10,440 blocking bytes/token,
+      and no unused normal-AR hidden D2D. The remaining 24 scalar H2D calls are
+      QSA position/context ownership and require a separate shared-state design.
 - [x] Re-run natural multi-prompt decode, not only the repeated `9707` steady
       diagnostic. The complete 18-prompt/category-heldout T0 packet has 450/450
       logits at KL=0, 18/18 exact generated ID sequences/tasks, repeat-exact
