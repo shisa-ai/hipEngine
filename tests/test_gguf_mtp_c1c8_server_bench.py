@@ -10,6 +10,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _diagnostic_plan,
     _generated_ids,
     _install_diagnostic_plan,
+    _install_native_prefill_probe,
     _memory_delta,
     _mtp_budget_conformed,
     _mtp_engaged,
@@ -18,9 +19,11 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _request_mtp_value,
     _render_messages,
     _resident_observability,
+    _response_attribution,
     build_parser,
     summarize,
     summarize_acceptance,
+    summarize_prefill_attribution,
     verdict_reasons,
 )
 
@@ -45,12 +48,17 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     automatic = parser.parse_args(
         ("--mtp-request-mode", "automatic", "--output", "/tmp/out.json")
     )
+    attribution = parser.parse_args(
+        ("--capture-prefill-attribution", "--output", "/tmp/out.json")
+    )
 
     assert default.execution_profile == "production"
     assert default.mtp_request_mode == "explicit"
     assert default.resident_capacity is None
     assert strict.execution_profile == "strict"
     assert automatic.mtp_request_mode == "automatic"
+    assert default.capture_prefill_attribution is False
+    assert attribution.capture_prefill_attribution is True
     assert normal_owner.widths == (2,)
     assert normal_owner.resident_capacity == 4
 
@@ -115,6 +123,162 @@ def test_mtp_c1c8_extracts_authoritative_ids_and_engagement() -> None:
     assert not _mtp_budget_conformed(
         {"draft_tokens": 0, "draft_cycles": 0}, budget=2
     )
+
+
+def test_mtp_c1c8_extracts_response_timing_and_generation_shape() -> None:
+    payload = {
+        "choices": [
+            {
+                "hipengine": {
+                    "timing": {
+                        "render_ms": 1,
+                        "tokenize_ms": 2.5,
+                        "admission_prepare_ms": 3,
+                        "prefill_ms": 200,
+                        "request_total_ms": 240,
+                    },
+                    "timing_scope": "choice",
+                    "batch_id": "batch-7",
+                    "group_rows": 2,
+                    "timing_owner": True,
+                    "decode_state": {"execution_path": "gguf_packed_ar_server_decode"},
+                }
+            }
+        ],
+        "hipengine": {
+            "generation_shape": {
+                "queue_group": {"id": "queue-1", "request_count": 2},
+                "backend_groups": [{"input_rows": 2, "actual_group_rows": [2]}],
+            }
+        },
+    }
+
+    attribution = _response_attribution(payload)
+
+    assert attribution["timing"] == {
+        "render_ms": 1.0,
+        "tokenize_ms": 2.5,
+        "admission_prepare_ms": 3.0,
+        "prefill_ms": 200.0,
+        "request_total_ms": 240.0,
+    }
+    assert attribution["timing_scope"] == "choice"
+    assert attribution["batch_id"] == "batch-7"
+    assert attribution["group_rows"] == 2
+    assert attribution["timing_owner"] is True
+    assert attribution["execution_path"] == "gguf_packed_ar_server_decode"
+    assert attribution["generation_shape"]["queue_group"]["request_count"] == 2
+
+
+def test_mtp_c1c8_native_prefill_probe_records_actual_handled_rows() -> None:
+    class Owner:
+        def _try_prefill_native_work_batch(self, work):
+            return frozenset((11, 13))
+
+    owner = Owner()
+    llm = SimpleNamespace(
+        _get_text_generator=lambda: SimpleNamespace(
+            _driver=SimpleNamespace(_runner=owner)
+        )
+    )
+    probe = _install_native_prefill_probe(llm)
+    cursor = probe.cursor()
+
+    handled = owner._try_prefill_native_work_batch(
+        SimpleNamespace(
+            request_ids=(11, 12, 13),
+            token_rows=((1, 2, 3), (4,), (5, 6)),
+            kind="prefill",
+        )
+    )
+
+    assert handled == frozenset((11, 13))
+    records = probe.since(cursor)
+    assert len(records) == 1
+    elapsed_ms = records[0].pop("elapsed_ms")
+    assert records == [
+        {
+            "work_rows": 3,
+            "handled_rows": 2,
+            "handled_request_ids": [11, 13],
+            "prompt_lengths": [3, 2],
+            "work_kind": "prefill",
+        }
+    ]
+    assert elapsed_ms >= 0.0
+
+
+def test_mtp_c1c8_prefill_attribution_closes_critical_wave_wall() -> None:
+    timing = {
+        "render_ms": 1.0,
+        "tokenize_ms": 2.0,
+        "admission_prepare_ms": 3.0,
+        "prefill_ms": 200.0,
+        "request_total_ms": 240.0,
+    }
+    cells = [
+        {
+            "width": 2,
+            "prompt_id": "p0",
+            "ar": {
+                "wall_seconds": 0.300,
+                "rows": [
+                    {
+                        "started": 1.0,
+                        "completed": 1.290,
+                        "attribution": {"timing": dict(timing), "generation_shape": {}},
+                    },
+                    {
+                        "started": 1.0,
+                        "completed": 1.300,
+                        "attribution": {
+                            "timing": dict(timing),
+                            "generation_shape": {
+                                "queue_group": {"request_count": 2},
+                            },
+                        },
+                    },
+                ],
+                "native_prefill_groups": [
+                    {
+                        "work_rows": 2,
+                        "handled_rows": 2,
+                        "handled_request_ids": [11, 12],
+                        "prompt_lengths": [45, 45],
+                        "work_kind": "prefill",
+                        "elapsed_ms": 201.0,
+                    }
+                ],
+                "native_full_prefill_groups_delta": 1,
+            },
+            "mtp": {
+                "wall_seconds": 0.300,
+                "rows": [],
+                "native_prefill_groups": [],
+                "native_full_prefill_groups_delta": 0,
+            },
+        }
+    ]
+
+    summary = summarize_prefill_attribution(cells, arms=("ar",))
+    row = summary["by_width"]["2"]["ar"]
+
+    assert row["cells"] == 1
+    assert row["mean_ms"] == {
+        "wave_wall": 300.0,
+        "render": 1.0,
+        "tokenize": 2.0,
+        "admission_prepare": 3.0,
+        "native_prefill": 200.0,
+        "remaining": 94.0,
+        "engine_loop_residual": 40.0,
+        "server_queue_response_residual": 54.0,
+        "request_total": 240.0,
+    }
+    assert row["native_group_size_histogram"] == {"2": 1}
+    assert row["native_full_prefill_groups_delta"] == 1
+    assert row["queue_request_count_histogram"] == {"2": 1}
+    assert summary["refused_cells"] == []
 
 
 def test_mtp_c1c8_compacts_nested_resident_observability() -> None:
