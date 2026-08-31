@@ -282,6 +282,19 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
 )
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS = frozenset({6})
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS = frozenset({6})
+# Default-off Q6 launch-composition screen for larger physical target groups.
+# Actual Qwen3.8 weights select only R24/R30/R36: every recurrent-QKV,
+# full-attention-V, and FFN-down leaf is BF16-bit exact and 1.079x-1.234x
+# faster. R18 remains repeated R6 after recurrent QKV lost and FFN-down was
+# noise-flat.
+GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS = {
+    24: (8, 8, 8),
+    30: (8, 8, 8, 6),
+    36: (8, 8, 8, 6, 6),
+}
+GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES = frozenset(
+    {(5_120, 10_240), (5_120, 1_024), (17_408, 5_120)}
+)
 # Exact C2/K3 R8 is the retained production default. It eliminates the four
 # inactive rows required by the rows6-multiple fallback; every Q4/Q5/Q6
 # actual-weight leaf is BF16-bit exact to the active rows of R12 and
@@ -966,6 +979,8 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
+    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS",
+    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
     "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
