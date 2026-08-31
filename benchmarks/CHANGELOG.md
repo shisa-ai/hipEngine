@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 GR up+sigmoid+mean — retained] The exact rows>256 composite preserves each raw-Q8 coltile reduction and materialized gate/mean outputs, cuts the rows508 operation window **4.831→4.369 ms (1.1055x)**, improves p508 **91.219→91.807 tok/s (1.00645x, 95% CI 1.00420–1.00870)** and code-p1024 **88.754→89.239 tok/s (1.00547x, 95% CI 1.00258–1.00835)**. The T0 gate passes **450/450 KL=0**, **18/18 exact state/tasks**, lifecycle, and a 1.056 ms gfx1151 trace. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 shared-down combine — rejected] The exact composite preserves F32 down, BF16 down, and final sigmoid-gated BF16 output while improving the rows508 GPU window **1.376→1.292 ms (1.0648x)**, but p508 is flat at **0.99974x (95% CI 0.99772–1.00176)**. It fails the complete-wall gate and is removed before p1024/full-profile work. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-down-combine-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 shared-Q8 activation pair — rejected] One F32 D4x3 pack reused across gate/up is bit-exact and improves the complete two-projection GPU window **1.134→1.077 ms (1.0525x)**, but combined p508 is **0.9988x (95% CI 0.9971–1.0005)** and code-p1024 is **0.9997x (95% CI 0.9980–1.0014)**. It fails the campaign's complete-wall requirement and is removed. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-q8-pair-rejected.json`.
