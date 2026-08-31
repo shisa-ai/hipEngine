@@ -364,6 +364,22 @@ fallback count is not a success metric.
   same-protocol repeat, remove the environment lookup/cache while preserving
   the shape/range policy and explicit registered parent fallback.
 
+## gfx1100 planar-Q6 exact prefill retile bisection
+
+- Added 2026-08-31 during the P13 C1-prefill attribution follow-up. Backend
+  shape/range policy selects exact cooperative siblings only for planar-Q6
+  `(17408,5120)` prompt-prefill rows33-511; the one-wave parent is separately
+  registered and `HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL=0` restores it on the
+  same build. The resolved boolean is cached because this wrapper is reached by
+  every qualifying projection launch. Decode, non-WMMA physical verification,
+  peer backends, unqualified shapes, and out-of-range rows keep their prior
+  owners.
+- Removal trigger: after a tracked-clean full-suite C1-C3 packet and one later
+  same-protocol repeat retain the policy, remove the environment lookup/cache
+  while preserving the backend policy and registered one-wave fallback. If the
+  binding packet is neutral or negative, remove production selection and the
+  environment seam together; retain only exact leaves with an active oracle.
+
 ## SPECDEC2 dense NextN host/device proposal duplication
 
 - Added 2026-08-25 with the S4 C2/C4 device-candidate handoff. The exact

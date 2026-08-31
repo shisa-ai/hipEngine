@@ -8,12 +8,14 @@ P9.H3 extension for the qwen35moe Q6_K lm-head fallback.  The kernel consumes
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 from typing import Mapping
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.specdec2_scope import q6_t16_physical_rowtile_enabled
+from hipengine.kernels.hip_gfx1100 import GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     launch_physical_rows6_chunked,
 )
@@ -76,6 +78,10 @@ _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_BF16_BF16 = (
 _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4_ROW64_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_"
+    "shared4_row64_bf16_bf16_out"
+)
 _Q6_T16_WMMA_PREFILL_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_wmma_prefill_bf16_bf16_out"
 )
@@ -84,6 +90,26 @@ _Q6_T16_WMMA_PREFILL_SHARED4_BF16_BF16 = (
 )
 _QK_K = 256
 _T16_COLS = 16
+_ENV_Q6_PLANAR_EXACT_PREFILL = "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
+_Q6_PLANAR_EXACT_PREFILL_RESOLVED: bool | None = None
+
+
+def _q6_planar_exact_prefill_enabled() -> bool:
+    """Whether the exact gfx1100 retile is active (0 restores one-wave parent)."""
+
+    global _Q6_PLANAR_EXACT_PREFILL_RESOLVED
+    if _Q6_PLANAR_EXACT_PREFILL_RESOLVED is None:
+        raw = os.environ.get(_ENV_Q6_PLANAR_EXACT_PREFILL, "1").strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            value = True
+        elif raw in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(
+                f"{_ENV_Q6_PLANAR_EXACT_PREFILL} must be a boolean value"
+            )
+        _Q6_PLANAR_EXACT_PREFILL_RESOLVED = value
+    return _Q6_PLANAR_EXACT_PREFILL_RESOLVED
 
 
 def plan_gguf_q6_k_t16_gemv_build(
@@ -415,6 +441,78 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out(
 
     _launch(
         _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4_BF16_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the four-wave, one-rowtile-per-wave planar Q6 prefill leaf."""
+
+    _launch(
+        _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4_ROW64_BF16_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Select the exact W7900 row retile for one qualified planar-Q6 shape."""
+
+    fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
+    if _q6_planar_exact_prefill_enabled():
+        bands = GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS.get(
+            (int(in_features), int(out_features)), ()
+        )
+        functions = {
+            "t16_wmma_prefill_shared4_row64_bf16_bf16_out": (
+                gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out
+            ),
+            "t16_wmma_prefill_shared4_bf16_bf16_out": (
+                gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
+            ),
+        }
+        for min_rows, max_rows, variant in bands:
+            if int(min_rows) <= int(rows) <= int(max_rows):
+                fn = functions[str(variant)]
+                break
+    fn(
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1301,16 +1399,34 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
         replace=replace,
     )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
+    for variant, fn in (
+        (
             "t16_wmma_prefill_bf16_bf16_out",
+            gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out,
         ),
-        gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
-        replace=replace,
-    )
+        (
+            "t16_wmma_prefill_single_wave_bf16_bf16_out",
+            gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_shared4_bf16_bf16_out",
+            gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_shared4_row64_bf16_bf16_out",
+            gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out,
+        ),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                "gguf_q6_k_t16_qmicro_planar_v1",
+                variant,
+            ),
+            fn,
+            replace=replace,
+        )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1388,7 +1504,9 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_q8_1_threads",
     "gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out",
     "gguf_q6_k_t16_proposal_top1_exact_bf16",
     "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out",
