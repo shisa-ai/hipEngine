@@ -1,0 +1,661 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_current_post_grouping_k3_attribution",
+  "date": "2026-08-31",
+  "status": "diagnostic",
+  "source": {
+    "commit": "8a4943e8afffc764965d290466da20b020001f30",
+    "dirty": false
+  },
+  "commands": [
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 1,3,5,8 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --expected-mtp-widths none --max-tokens 1 --output /tmp/he-k3-postgroup-current/d1.json",
+    "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 1,3,5,8 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --expected-mtp-widths 1,3,5,8 --max-tokens 24 --output /tmp/he-k3-postgroup-current/d24.json"
+  ],
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "full_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "full_sha256_source": "frozen Qwen3.8 lane identity in docs/CONCURRENCY2-GFX1100-MTP-CN-PROMOTION.md section 11.1; current packet independently matches path and 17106773984-byte size",
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "exists": true,
+      "path_type": "file"
+    },
+    "quant": "gguf_q4_k_m",
+    "execution_tier": "T16"
+  },
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": null,
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "visible_device": "0"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      1,
+      3,
+      5,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      1,
+      3,
+      5,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "paired_max_tokens": [
+      1,
+      24
+    ],
+    "d1_expected_mtp_widths": [],
+    "d24_expected_mtp_widths": [
+      1,
+      3,
+      5,
+      8
+    ],
+    "decode_only_definition": "sum(D24 generated-D1 generated) / sum(D24 barrier wall-D1 barrier wall), matched by width/prompt/arm",
+    "classification": "single clean current-source diagnostic packet pair; not a retained scoreboard replacement"
+  },
+  "correctness": {
+    "passed": true,
+    "packet_statuses": [
+      "complete",
+      "complete"
+    ],
+    "d1_exact_cells": 40,
+    "d24_exact_cells": 40,
+    "d24_engaged_cells": 40,
+    "cross_packet_first_token_rows": {
+      "ar": 170,
+      "mtp": 170,
+      "mismatches": 0
+    }
+  },
+  "raw_packets": {
+    "d1": {
+      "path": "/tmp/he-k3-postgroup-current/d1.json",
+      "sha256": "84ae56a24e92d78af864d28a5ae74885804165d734037ac94fb46da4cb5a920c"
+    },
+    "d24": {
+      "path": "/tmp/he-k3-postgroup-current/d24.json",
+      "sha256": "0b04327f497b578f311659b2fed7bc99fbdd97bcbbf3ea2f50c78f7a36740a13"
+    }
+  },
+  "adapter": {
+    "owner_capacity": 8,
+    "source_max_requests_expression": "min(4, max(1, owner.capacity))",
+    "resolved_max_requests": 4,
+    "partition_max_requests_bound": 4,
+    "cycle_workspace_shapes": [
+      [
+        4,
+        5120
+      ]
+    ],
+    "scheduler_partition_semantics": "stable contiguous subgroups executed serially in one scheduler tick",
+    "source_locations": [
+      "hipengine/generation/qwen35_gguf_mtp2.py:1029-1063",
+      "hipengine/generation/qwen35_gguf_mtp2.py:1074-1092",
+      "hipengine/generation/engine_loop.py:2335-2371"
+    ]
+  },
+  "measurements": {
+    "1": {
+      "complete_wall_tok_s": {
+        "ar": 22.120798,
+        "mtp": 31.775065,
+        "mtp_vs_ar_ratio": 1.436434
+      },
+      "d1_d24_decode_only": {
+        "ar": {
+          "generated_token_delta": 230,
+          "wall_seconds_delta": 7.878179055,
+          "tok_s": 29.194564
+        },
+        "mtp": {
+          "generated_token_delta": 230,
+          "wall_seconds_delta": 4.574729131,
+          "tok_s": 50.276201
+        },
+        "mtp_vs_ar_ratio": 1.722108
+      },
+      "acceptance": {
+        "requests": 10,
+        "per_request_min": 0.652173913,
+        "per_request_mean": 0.79777682,
+        "per_request_max": 1.0,
+        "aggregate_draft_acceptance": 0.788944724,
+        "conditional_position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.836065574,
+          "3": 0.833333333
+        },
+        "position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.772727273,
+          "3": 0.64516129
+        }
+      },
+      "physical_partition": {
+        "groups_per_wave": [
+          1
+        ],
+        "wave_observations": 10,
+        "group_count_histogram": {
+          "1": 10
+        },
+        "group_size_histogram": {
+          "1": 10
+        },
+        "timing_by_group_size": {
+          "1": {
+            "physical_groups": 10,
+            "physical_group_cycles": 71,
+            "proposal_physical_rows_observed": [
+              1
+            ],
+            "target_frontier_rows_observed": [
+              6
+            ],
+            "mean_ms_per_physical_group_cycle": {
+              "proposal_ms": 5.181676,
+              "target_submit_ms": 21.170786,
+              "provider_update_ms": 1.146725,
+              "accept_window_ms": 31.062326,
+              "accept_enqueue_ms": 0.171638,
+              "accept_upload_ms": 0.063147,
+              "accept_tail_ms": 0.023601,
+              "selected_commit_ms": 0.343842,
+              "target_readback_ms": 30.54539
+            }
+          }
+        }
+      },
+      "serial_cycle_timing_ms_per_logical_cycle": {
+        "proposal_ms": 5.181676,
+        "target_submit_ms": 21.170786,
+        "provider_update_ms": 1.146725,
+        "accept_window_ms": 31.062326,
+        "accept_enqueue_ms": 0.171638,
+        "accept_upload_ms": 0.063147,
+        "accept_tail_ms": 0.023601,
+        "selected_commit_ms": 0.343842,
+        "target_readback_ms": 30.54539,
+        "named_stage_sum_ms": 58.561513,
+        "d1_d24_decode_residual_ms_per_logical_cycle": 64.432805,
+        "unattributed_residual_ms_per_logical_cycle": 5.871292
+      },
+      "logical_speculative_cycles": 71
+    },
+    "3": {
+      "complete_wall_tok_s": {
+        "ar": 44.905962,
+        "mtp": 55.899487,
+        "mtp_vs_ar_ratio": 1.244812
+      },
+      "d1_d24_decode_only": {
+        "ar": {
+          "generated_token_delta": 690,
+          "wall_seconds_delta": 10.315749164,
+          "tok_s": 66.888016
+        },
+        "mtp": {
+          "generated_token_delta": 690,
+          "wall_seconds_delta": 9.003962264,
+          "tok_s": 76.632929
+        },
+        "mtp_vs_ar_ratio": 1.14569
+      },
+      "acceptance": {
+        "requests": 30,
+        "per_request_min": 0.652173913,
+        "per_request_mean": 0.79777682,
+        "per_request_max": 1.0,
+        "aggregate_draft_acceptance": 0.788944724,
+        "conditional_position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.836065574,
+          "3": 0.833333333
+        },
+        "position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.772727273,
+          "3": 0.64516129
+        }
+      },
+      "physical_partition": {
+        "groups_per_wave": [
+          3
+        ],
+        "wave_observations": 10,
+        "group_count_histogram": {
+          "1": 10
+        },
+        "group_size_histogram": {
+          "3": 10
+        },
+        "timing_by_group_size": {
+          "3": {
+            "physical_groups": 10,
+            "physical_group_cycles": 71,
+            "proposal_physical_rows_observed": [
+              3
+            ],
+            "target_frontier_rows_observed": [
+              6,
+              12
+            ],
+            "mean_ms_per_physical_group_cycle": {
+              "proposal_ms": 3.895211,
+              "target_submit_ms": 45.862335,
+              "provider_update_ms": 3.753264,
+              "accept_window_ms": 65.077394,
+              "accept_enqueue_ms": 0.193384,
+              "accept_upload_ms": 0.05788,
+              "accept_tail_ms": 0.050152,
+              "selected_commit_ms": 15.780052,
+              "target_readback_ms": 49.102401
+            }
+          }
+        }
+      },
+      "serial_cycle_timing_ms_per_logical_cycle": {
+        "proposal_ms": 3.895211,
+        "target_submit_ms": 45.862335,
+        "provider_update_ms": 3.753264,
+        "accept_window_ms": 65.077394,
+        "accept_enqueue_ms": 0.193384,
+        "accept_upload_ms": 0.05788,
+        "accept_tail_ms": 0.050152,
+        "selected_commit_ms": 15.780052,
+        "target_readback_ms": 49.102401,
+        "named_stage_sum_ms": 118.588204,
+        "d1_d24_decode_residual_ms_per_logical_cycle": 126.81637,
+        "unattributed_residual_ms_per_logical_cycle": 8.228166
+      },
+      "logical_speculative_cycles": 71
+    },
+    "5": {
+      "complete_wall_tok_s": {
+        "ar": 64.025947,
+        "mtp": 48.639377,
+        "mtp_vs_ar_ratio": 0.759682
+      },
+      "d1_d24_decode_only": {
+        "ar": {
+          "generated_token_delta": 1150,
+          "wall_seconds_delta": 11.973797212,
+          "tok_s": 96.04305
+        },
+        "mtp": {
+          "generated_token_delta": 1150,
+          "wall_seconds_delta": 19.61230595,
+          "tok_s": 58.636654
+        },
+        "mtp_vs_ar_ratio": 0.610525
+      },
+      "acceptance": {
+        "requests": 50,
+        "per_request_min": 0.652173913,
+        "per_request_mean": 0.79777682,
+        "per_request_max": 1.0,
+        "aggregate_draft_acceptance": 0.788944724,
+        "conditional_position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.836065574,
+          "3": 0.833333333
+        },
+        "position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.772727273,
+          "3": 0.64516129
+        }
+      },
+      "physical_partition": {
+        "groups_per_wave": [
+          4,
+          1
+        ],
+        "wave_observations": 10,
+        "group_count_histogram": {
+          "2": 10
+        },
+        "group_size_histogram": {
+          "1": 10,
+          "4": 10
+        },
+        "timing_by_group_size": {
+          "1": {
+            "physical_groups": 10,
+            "physical_group_cycles": 71,
+            "proposal_physical_rows_observed": [
+              1
+            ],
+            "target_frontier_rows_observed": [
+              6
+            ],
+            "mean_ms_per_physical_group_cycle": {
+              "proposal_ms": 5.209185,
+              "target_submit_ms": 21.318696,
+              "provider_update_ms": 1.168055,
+              "accept_window_ms": 31.78075,
+              "accept_enqueue_ms": 0.167369,
+              "accept_upload_ms": 0.060819,
+              "accept_tail_ms": 0.022558,
+              "selected_commit_ms": 4.162523,
+              "target_readback_ms": 27.449418
+            }
+          },
+          "4": {
+            "physical_groups": 10,
+            "physical_group_cycles": 71,
+            "proposal_physical_rows_observed": [
+              4
+            ],
+            "target_frontier_rows_observed": [
+              12,
+              18
+            ],
+            "mean_ms_per_physical_group_cycle": {
+              "proposal_ms": 4.423267,
+              "target_submit_ms": 33.679718,
+              "provider_update_ms": 4.102911,
+              "accept_window_ms": 103.890677,
+              "accept_enqueue_ms": 0.204914,
+              "accept_upload_ms": 0.065623,
+              "accept_tail_ms": 0.040918,
+              "selected_commit_ms": 24.437875,
+              "target_readback_ms": 79.246142
+            }
+          }
+        }
+      },
+      "serial_cycle_timing_ms_per_logical_cycle": {
+        "proposal_ms": 9.632452,
+        "target_submit_ms": 54.998414,
+        "provider_update_ms": 5.270965,
+        "accept_window_ms": 135.671427,
+        "accept_enqueue_ms": 0.372283,
+        "accept_upload_ms": 0.126443,
+        "accept_tail_ms": 0.063476,
+        "selected_commit_ms": 28.600398,
+        "target_readback_ms": 106.69556,
+        "named_stage_sum_ms": 205.573257,
+        "d1_d24_decode_residual_ms_per_logical_cycle": 276.229661,
+        "unattributed_residual_ms_per_logical_cycle": 70.656404
+      },
+      "logical_speculative_cycles": 71
+    },
+    "8": {
+      "complete_wall_tok_s": {
+        "ar": 78.009651,
+        "mtp": 56.57898,
+        "mtp_vs_ar_ratio": 0.725282
+      },
+      "d1_d24_decode_only": {
+        "ar": {
+          "generated_token_delta": 1840,
+          "wall_seconds_delta": 15.937130942,
+          "tok_s": 115.453654
+        },
+        "mtp": {
+          "generated_token_delta": 1840,
+          "wall_seconds_delta": 26.444041822,
+          "tok_s": 69.580891
+        },
+        "mtp_vs_ar_ratio": 0.602674
+      },
+      "acceptance": {
+        "requests": 80,
+        "per_request_min": 0.652173913,
+        "per_request_mean": 0.79777682,
+        "per_request_max": 1.0,
+        "aggregate_draft_acceptance": 0.788944724,
+        "conditional_position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.836065574,
+          "3": 0.833333333
+        },
+        "position_acceptance": {
+          "1": 0.929577465,
+          "2": 0.772727273,
+          "3": 0.64516129
+        }
+      },
+      "physical_partition": {
+        "groups_per_wave": [
+          4,
+          4
+        ],
+        "wave_observations": 10,
+        "group_count_histogram": {
+          "2": 10
+        },
+        "group_size_histogram": {
+          "4": 20
+        },
+        "timing_by_group_size": {
+          "4": {
+            "physical_groups": 20,
+            "physical_group_cycles": 142,
+            "proposal_physical_rows_observed": [
+              4
+            ],
+            "target_frontier_rows_observed": [
+              12,
+              18
+            ],
+            "mean_ms_per_physical_group_cycle": {
+              "proposal_ms": 4.408685,
+              "target_submit_ms": 33.845933,
+              "provider_update_ms": 4.341546,
+              "accept_window_ms": 103.744242,
+              "accept_enqueue_ms": 0.212598,
+              "accept_upload_ms": 0.069813,
+              "accept_tail_ms": 0.045015,
+              "selected_commit_ms": 24.416059,
+              "target_readback_ms": 79.113896
+            }
+          }
+        }
+      },
+      "serial_cycle_timing_ms_per_logical_cycle": {
+        "proposal_ms": 8.817371,
+        "target_submit_ms": 67.691867,
+        "provider_update_ms": 8.683091,
+        "accept_window_ms": 207.488484,
+        "accept_enqueue_ms": 0.425195,
+        "accept_upload_ms": 0.139626,
+        "accept_tail_ms": 0.09003,
+        "selected_commit_ms": 48.832119,
+        "target_readback_ms": 158.227792,
+        "named_stage_sum_ms": 292.680812,
+        "d1_d24_decode_residual_ms_per_logical_cycle": 372.451293,
+        "unattributed_residual_ms_per_logical_cycle": 79.770481
+      },
+      "logical_speculative_cycles": 71
+    }
+  },
+  "per_prompt_request_sequence_stability": {
+    "code_lru_cache": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 7,
+      "draft_acceptance": 0.842105263
+    },
+    "code_markdown_table": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 6,
+      "draft_acceptance": 1.0
+    },
+    "code_merge_intervals": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 8,
+      "draft_acceptance": 0.681818182
+    },
+    "code_topological_sort": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 7,
+      "draft_acceptance": 0.714285714
+    },
+    "general_en_explain": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 7,
+      "draft_acceptance": 0.8
+    },
+    "general_en_plan": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 6,
+      "draft_acceptance": 0.888888889
+    },
+    "general_ja_explain": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 8,
+      "draft_acceptance": 0.652173913
+    },
+    "general_ja_plan": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 8,
+      "draft_acceptance": 0.714285714
+    },
+    "mixed_ja_en_review": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 7,
+      "draft_acceptance": 0.842105263
+    },
+    "mixed_ja_en_translate": {
+      "widths": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "identical_across_widths": true,
+      "cycles": 7,
+      "draft_acceptance": 0.842105263
+    }
+  },
+  "decision": {
+    "classification": "physical max_requests=4 group ceiling with a dominant per-subgroup accept/commit/readback dependency window; direct verifier submit is secondary in host timing",
+    "evidence": [
+      "Every one of 10 waves per width resolves exactly [1], [3], [4,1], and [4,4] physical request groups at C1/C3/C5/C8; the owner capacity is 8 but capability/partition max_requests is 4 and the workspace is [4,5120].",
+      "The EngineLoop executes contiguous subgroups serially inside one scheduler tick. At C8, two size-4 groups therefore pay two complete speculative subcycles before events are returned.",
+      "Size-4 timing is invariant from C5 to C8: named stage 146.097->146.340 ms/group-cycle; accept 103.891->103.744 ms and target submit 33.680->33.846 ms. The width deficit is subgroup replication, not slower group-4 arithmetic at C8.",
+      "At C8 the two serial groups total 207.488 ms accept out of 292.681 ms named stages (70.9%); selected commit plus blocking readback account for 207.060 ms. The readback timer is a dependency wait that retires queued device work, not pure transfer compute.",
+      "Draft acceptance, conditional positional acceptance, and each prompt/request candidate/accepted sequence are identical across C1/C3/C5/C8. Acceptance degradation is excluded.",
+      "D1-D24 decode-only MTP/AR falls from 1.722x at C1 and 1.146x at C3 to 0.611x at C5 and 0.603x at C8."
+    ],
+    "next": "Price widening the physical request/frontier/accept workspace to eight, or issue bounded subgroups before one shared dependency readback. Any implementation needs a RED ownership/lifecycle test, strict fallback, full execution-profile gate, and the complete multi-prompt suite. Rows2-8 verifier sidecar timing can bound a leaf but is not the primary remedy."
+  },
+  "limitations": [
+    "The D1/D24 pair is one current-source diagnostic measurement, not a repeated performance promotion and does not replace the canonical C1-C8 score row.",
+    "Host timers identify where dependency waits are charged. In particular target_readback_ms includes retirement of queued verifier/accept/commit work and is not device-transfer duration.",
+    "Physical groups are reconstructed from exact per-group counters copied to every member row; proposal_physical_rows and the source partition bound independently confirm the sizes.",
+    "The unrelated pre-existing untracked scripts/gguf_packed_prefill_grouping_probe.py was present but neither imported nor executed."
+  ],
+  "linked_evidence": [
+    "benchmarks/results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json",
+    "benchmarks/results/2026-08-31-w7900-q4km-c1c3-current-server-prefill-attribution.json",
+    "worklog/entries/20260830T163534.455602Z-lhl-accept-per-batch-readback-f11c82.md"
+  ]
+}
