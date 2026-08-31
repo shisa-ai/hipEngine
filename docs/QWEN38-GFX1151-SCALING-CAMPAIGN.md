@@ -1,7 +1,8 @@
 # Qwen3.8-27B gfx1151 Scaling Campaign (MTP batch scaling + prefill)
 
 Status: **punchlist closed; post-closeout review corrections recorded
-2026-08-31**. Successor to the closed
+2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01**.
+Successor to the closed
 [`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
 Owner: scaling loop.
 
@@ -140,7 +141,7 @@ only the two package keys.
 E0 measured **746.7 ms** prompt prime and a **41.26 ms/cycle** proposal head on
 this route, so both keys are sized to matter at C1.
 
-### C. Q4 is a major verify cost and has no rowtile owner above R12
+### C. At campaign entry, Q4 was a major verify cost with no owner above R12
 
 `GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = {6, 8, 9, 12}`
 (`:1604`). Q6 R16 is admitted through
@@ -300,6 +301,11 @@ is made.
   M1's trace names Q4 as the binding class; the leaf-only stop and
   operation-complete revisit set the entry condition — weighted GPU work must
   not rise.
+  **Successor update 2026-09-01:** exact R16 Q4 owners are now retained for
+  K17408/N5120 and K5120/N1024 only. Four peer shapes remain on their measured
+  winners. These scoped owners lift C8 K1 to 43.421 tok/s but do not close the
+  compound target; the remaining named blocker is the multi-family
+  packed-verifier dataflow wall recorded in the post-audit successor ledger.
   **C5-C8 K3 closure (reviewed 2026-08-31, measured named blocker per cell):**
   the tracked-clean all-ten current-head refresh measures
   **27.980/32.807/33.106/35.423** vs gates 40.876/45.892/49.579/52.827
@@ -504,6 +510,7 @@ sources whose path, size, and digest are recorded inside the artifacts.
 | C6/K1 R12 dual-Q4 verifier owner | `ff2e8423bdd109a6b90f4d19c40dc0b4d3c26dff` — `2026-09-01T02:22:09+09:00` | Replaced the R8+R4 gate/up chain with one exact two-wave R12 WMMA+SiLU owner. Clean C6 improves 35.956→37.130 tok/s (+3.26%, every category positive); C8 is an unchanged control. C6 remains 0.9289x AR and unpromoted; the pair owner stays excluded at R16. | [`artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-c6-r12-dual-wmma-retained.json), [`implementation entry`](../worklog/entries/20260831T171926.381120Z-lhl-qwen38-c6-r12-dual-wmma-4f715e.md), [`publication entry`](../worklog/entries/20260831T173126.288409Z-lhl-qwen38-c6-r12-dual-wmma-publication-1be814.md) |
 | C8/K1 R16 shared-B2R1 down owner | `6eb922c90dd4bb4d528e9d1b5272d90db504f133` — `2026-09-01T03:31:27+09:00` | Replaced the 128-row-capacity shared-B2W2 K17408/N5120 down owner with an exact 32-row-capacity shared-B specialization. Leaf 0.735→0.534 ms; clean C8 42.571→43.225 tok/s (+1.54%, every category positive). C6 is unchanged; C8 remains 0.9148x AR and unpromoted. | [`artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-c8-r16-shared-b2r1-retained.json), [`implementation entry`](../worklog/entries/20260831T182934.577633Z-lhl-qwen38-c8-r16-shared-b2r1-3dd8b5.md), [`publication entry`](../worklog/entries/20260831T184018.797123Z-lhl-qwen38-c8-r16-shared-b2r1-publication-23f53d.md) |
 | C8/K1 R16 shared-B2R1 narrow-V extension | `1f4687cab17ac8dc341e12134d2870221429eb4f` — `2026-09-01T04:13:10+09:00` | Extended the exact owner only to K5120/N1024 after rejecting four peer shapes. Leaf 0.191→0.110 ms; clean C8 43.234→43.421 tok/s (+0.43%, every category positive). C6 is unchanged; C8 remains 0.9192x AR and unpromoted. | [`artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-c8-r16-shared-b2r1-narrow-retained.json), [`implementation entry`](../worklog/entries/20260831T191134.431488Z-lhl-qwen38-c8-r16-shared-b2r1-narrow-b88453.md), [`publication entry`](../worklog/entries/20260831T192213.298947Z-lhl-qwen38-c8-r16-shared-b2r1-narrow-publication-dc9c0b.md) |
+| C6/C8 K1 ten-iteration closeout | `be72258c12af255a992e083fca1c0990c9877d05` — `2026-09-01T04:26:52+09:00` is the final retained source before this documentation unit. | Four exact units cumulatively improve clean C6 35.458→37.074 tok/s (+4.56%) and C8 41.842→43.421 (+3.78%); the loop metric rises 0.88256→0.91779 (+3.99%). The 1.15x target remains blocked: the clean endpoint needs another 19.2%/20.1% full-wall reduction at C6/C8. Existing exact Q4 R16 owner geometries are exhausted, Q5 true R16 is retained, and exact Q6 R8+R8 is the measured winner. Reopen with a multi-family packed-verifier dataflow, not another single-owner morphology. Automatic serving remains K0. | [`closeout artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json), [`entry`](../worklog/entries/20260831T194251.679968Z-lhl-qwen38-c6c8-k1-ten-iteration-closeout-f9ae7d.md) |
 
 ## 5. Order
 
