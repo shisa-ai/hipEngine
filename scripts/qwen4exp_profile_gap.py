@@ -353,6 +353,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--decode-steps", type=int, default=16)
+    parser.add_argument(
+        "--decode-output",
+        choices=("compact", "full_logits"),
+        default="compact",
+        help=(
+            "Decode result boundary: normal compact device argmax or explicit "
+            "full-logit diagnostic capture"
+        ),
+    )
     parser.add_argument("--warm-decode-steps", type=int, default=8)
     parser.add_argument("--warm-trajectory-repetitions", type=int, default=0)
     parser.add_argument("--max-sequence-length", type=int, help="Defaults to 768 for prefill and 128 for decode")
@@ -435,6 +444,7 @@ def main() -> None:
         "schema": 1,
         "kind": "qwen4exp_profile_gap_window",
         "mode": args.mode,
+        "decode_output": args.decode_output if args.mode == "decode" else None,
         "profile": bool(args.profile),
         "model_root": str(args.model_root),
         "prompt_file": str(args.prompt_file) if args.prompt_file else None,
@@ -496,7 +506,10 @@ def main() -> None:
                 census.close()
             prompt_tokens = len(ids)
         else:
-            result_kwargs = {"capture_logits": False}
+            result_kwargs = (
+                {} if args.decode_output == "full_logits"
+                else {"capture_logits": False}
+            )
             for _ in range(args.warm_trajectory_repetitions):
                 result = runner.prefill([9707], **result_kwargs)
                 for _ in range(args.warm_decode_steps + args.decode_steps):

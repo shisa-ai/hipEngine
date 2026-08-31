@@ -156,6 +156,29 @@ def test_parser_collects_moe_telemetry_flag(tmp_path: Path) -> None:
     assert args.moe_telemetry is True
 
 
+def test_parser_selects_explicit_decode_output_boundary(tmp_path: Path) -> None:
+    module = _load_script()
+
+    default_args = module.build_parser().parse_args(
+        [
+            "--model-root", str(tmp_path / "model"),
+            "--mode", "decode",
+            "--output", str(tmp_path / "compact.json"),
+        ]
+    )
+    full_args = module.build_parser().parse_args(
+        [
+            "--model-root", str(tmp_path / "model"),
+            "--mode", "decode",
+            "--decode-output", "full_logits",
+            "--output", str(tmp_path / "full.json"),
+        ]
+    )
+
+    assert default_args.decode_output == "compact"
+    assert full_args.decode_output == "full_logits"
+
+
 def test_parser_collects_repeated_overrides(tmp_path: Path) -> None:
     module = _load_script()
 
