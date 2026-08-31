@@ -52,14 +52,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         if not eligible:
             children.append({"chunk_size": chunk, "status": "not_applicable", "reason": "chunk exceeds every selected prompt"})
             continue
-        child_fixture = dict(fixture)
-        child_fixture["cases"] = eligible
-        fixture_path = args.child_root / f"fixture-chunk{chunk}.json"
         output_path = args.child_root / f"run-chunk{chunk}.json"
-        fixture_path.write_text(json.dumps(child_fixture, indent=2) + "\n")
         child_command = [
             sys.executable, str(ROOT / "scripts" / "qwen4exp_canonical_ar_bench.py"),
-            "hipengine", "--model-root", str(args.model_root), "--fixture", str(fixture_path),
+            "hipengine", "--model-root", str(args.model_root), "--fixture", str(args.fixture),
+            "--case-id", *[str(row["id"]) for row in eligible],
             "--prefill-chunk-size", str(chunk), "--warmups", str(args.warmups),
             "--repetitions", str(args.repetitions), "--output", str(output_path),
         ]
@@ -73,7 +70,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         payload = json.loads(output_path.read_text())
         children.append({
             "chunk_size": chunk, "status": payload["status"], "command": child_command,
-            "fixture": str(fixture_path), "output": str(output_path), "source": payload["source"],
+            "fixture": str(args.fixture), "output": str(output_path), "source": payload["source"],
             "host": payload["host"], "profile": payload["profile"], "protocol": payload["protocol"],
             "summary": payload["summary"], "memory_before_close": payload["memory_before_close"],
             "memory_after_close": payload["memory_after_close"],
