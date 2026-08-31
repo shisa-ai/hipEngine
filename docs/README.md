@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-28
+Last updated: 2026-08-31
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -22,6 +22,7 @@ working on.
 | [`QWEN35-08B-GFX1151-VULKAN-PARITY.md`](QWEN35-08B-GFX1151-VULKAN-PARITY.md) | Active Radeon 8060S campaign to profile every Qwen3.5-0.8B dense GGUF module and match or beat llama.cpp Vulkan before 27B transfer. |
 | [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) | RX 7900 XTX campaign to eliminate GGUF weight-layout duplication and beat same-card llama.cpp HIP/Vulkan in speed and memory. |
 | [`QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md`](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md) | Planned gfx1100/gfx1151 campaign for exact Qwen3.8-27B `UD-Q4_K_M`: dense Q3/IQ codec support, operation-complete strict execution, and same-host Q4_K_M plus llama.cpp performance gates. |
+| [`GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md`](GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md) | Planned shape-aware gfx1100 GEMV campaign seeded by Qingming: exact alpha/beta local128/SPLIT4 screening, cache-regime protocol, RX 7900 XTX relative comparison, and independent W7900 promotion gates. |
 | [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | Replanned gfx1151 physical-C3 decode-economics campaign: matched C1 acceptance is already at parity; adjudicate physical activation, then prioritize exact multi-row proposal-head reuse, true R12/R16 target amortization, and oracle-gated fixed K4. Appendix analyzes a DFlash2 revival. |
 | [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | Next INT8 KV campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
