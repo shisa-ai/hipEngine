@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 three-layer graph segment] Complete GDN layers 0–2 remain output/state exact through four graph replays and improve synchronized segment wall **9.801→3.896 ms (2.52x)** over 30 samples. Cached profiling confirms 105 dispatches/launch and zero post-launch device allocation; production remains unchanged pending mixed GDN/QSA ownership. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 stateful-layer graph] Strict layer 0's complete 34-kernel GR→Conv/GDN→MoE transition remains output/state exact through four replays and improves synchronized operation wall **4.051→1.258 ms (3.22x)** over 30 samples. Cached profiling records 34 dispatches per graph launch and zero device allocations after first launch; production binding remains off pending larger-rung gates. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P8 GDN graph replay localization] The historical third-replay fault does not reproduce in a 72-kernel graph covering 36 independent production-shape Conv+GDN state pairs: output plus both state families remain bit-exact through four replays/reset, capture is non-executing, and teardown returns 251,311,104 tracked bytes to zero. Capture widening remains blocked pending full-layer composition. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p8-gdn-graph-replay-probe.json`.

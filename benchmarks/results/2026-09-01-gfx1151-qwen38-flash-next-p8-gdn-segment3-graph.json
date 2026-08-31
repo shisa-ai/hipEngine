@@ -1,0 +1,205 @@
+{
+  "capture_nonexecuting": true,
+  "command": [
+    "qwen4exp_stateful_layer_graph_probe.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--prompt-file",
+    "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "--segment-length",
+    "3",
+    "--output",
+    "/tmp/qwen4exp-stateful-segment3-graph-clean.json"
+  ],
+  "decision": {
+    "finding": "three complete consecutive GDN physical layers are graph-safe through four replays and contract 105 direct submissions to one graph launch",
+    "next_rung": "mixed GDN/QSA segment with device-owned dynamic position/KV-span state",
+    "production_binding": false
+  },
+  "first_mismatch": null,
+  "gdn_state_indices": [
+    0,
+    1,
+    2
+  ],
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_stateful_layer_graph_probe",
+  "layers": [
+    0,
+    1,
+    2
+  ],
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 82741321248,
+      "peak_allocations": 1638,
+      "total_allocated_bytes": 82741321248,
+      "total_freed_bytes": 82741321248
+    },
+    "passed": true
+  },
+  "model": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "profile": {
+    "manifest_sha256": "e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca",
+    "name": "strict"
+  },
+  "profiler": {
+    "device_allocations_at_or_after_first_graph_launch": 0,
+    "graph_launches": 7,
+    "kernel_dispatches_per_graph_launch": [
+      105,
+      105,
+      105,
+      105,
+      105,
+      105,
+      105
+    ],
+    "profiled_timing": {
+      "eager_median_ms": 11.814211000455543,
+      "graph_median_ms": 4.570509001496248,
+      "speedup": 2.5848786199935114
+    },
+    "trace_sha256": {
+      "hip_api": "a7f4a0e287ae816d5af302ee96aedadad1e96e8fe101feae9f721599bfe80549",
+      "kernel": "fc2f5cd7edbd6fb01a5ab9843025d4f0beccbb5c423339627662b4f7b6ed9c3f",
+      "memory_allocation": "c437c620f3558cc0e97297d5c9d292a9870cd8ed1a2a3f5e48f505ca1330295c"
+    }
+  },
+  "prompt_tokens": 8,
+  "rows": [
+    {
+      "output_exact": true,
+      "replay": 1,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 2,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 3,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    },
+    {
+      "output_exact": true,
+      "replay": 4,
+      "state_exact": true,
+      "state_owners": {
+        "gdn_conv": true,
+        "gdn_matrix": true,
+        "ple_conv": true,
+        "residual": true
+      }
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "head": "bdcd81246025dd9165a6bdd41989ee2e0312bcbb",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": true
+  },
+  "status": "passed",
+  "timing": {
+    "eager_median_ms": 9.800662501220359,
+    "eager_ms": [
+      10.938686995359603,
+      9.52959799906239,
+      9.65366200398421,
+      9.687044002930634,
+      10.276622000674251,
+      9.569593996275216,
+      10.399642997072078,
+      9.648992003349122,
+      10.333739999623504,
+      9.731697995448485,
+      10.154192001209594,
+      9.738621003634762,
+      10.191160996328108,
+      9.670553001342341,
+      10.397099002148025,
+      9.709715995995793,
+      10.301659000106156,
+      10.285780001140665,
+      9.73548500041943,
+      9.689718994195573,
+      10.19592000375269,
+      10.392358999524731,
+      9.834060998400673,
+      9.767264004040044,
+      9.277625002141576,
+      9.535650002362672,
+      10.216449001745787,
+      10.227290003967937,
+      9.649472995079122,
+      10.19336599711096
+    ],
+    "graph_median_ms": 3.895800997270271,
+    "graph_ms": [
+      4.352619995188434,
+      4.139207994739991,
+      4.192950000287965,
+      4.020915999717545,
+      3.988415002822876,
+      3.946356999222189,
+      4.00890399760101,
+      3.962796996347606,
+      3.9441119952243753,
+      3.912782995030284,
+      3.9249460023711435,
+      3.8821660054964013,
+      3.9546519983559847,
+      3.908283993951045,
+      3.9376390050165355,
+      3.8904109969735146,
+      3.73359600052936,
+      3.8658340054098517,
+      3.8952899994910695,
+      3.8321710017044097,
+      3.7017360009485856,
+      3.7279360039974563,
+      3.872999004670419,
+      3.896311995049473,
+      3.8342850020853803,
+      3.871285000059288,
+      3.8777670051786117,
+      3.835677998722531,
+      3.834035000181757,
+      3.8308389994199388
+    ],
+    "samples": 30,
+    "speedup": 2.515698955898295
+  }
+}
