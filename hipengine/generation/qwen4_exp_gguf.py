@@ -32,8 +32,16 @@ from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
 from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
 
 
-def _qwen4_exp_device_argmax_kwargs() -> dict[str, bool]:
-    return {"capture_logits": False}
+def _qwen4_exp_compact_prefill_kwargs() -> dict[str, bool]:
+    return {"capture_logits": False, "capture_target_hidden": False}
+
+
+def _qwen4_exp_compact_step_kwargs() -> dict[str, bool]:
+    return {
+        "capture_logits": False,
+        "capture_target_hidden": False,
+        "token_id_resident": True,
+    }
 
 
 class Qwen4ExpGGUFTextGenerator:
@@ -222,7 +230,7 @@ class Qwen4ExpGGUFTextGenerator:
                 raise ValueError("Qwen4Exp request exceeds dense runner capacity")
             result = self.runner.prefill(
                 token_ids,
-                **_qwen4_exp_device_argmax_kwargs(),
+                **_qwen4_exp_compact_prefill_kwargs(),
             )
             raise_if_generation_deadline_expired(request)
             generated: list[int] = []
@@ -237,7 +245,7 @@ class Qwen4ExpGGUFTextGenerator:
                 if index + 1 < request.max_tokens:
                     result = self.runner.step(
                         token,
-                        **_qwen4_exp_device_argmax_kwargs(),
+                        **_qwen4_exp_compact_step_kwargs(),
                     )
             outputs.append(
                 GenerationOutput(
@@ -369,7 +377,7 @@ class Qwen4ExpGGUFTextGenerator:
         result = self.runner.prefill(
             token_ids,
             embedding_overrides=overrides,
-            **_qwen4_exp_device_argmax_kwargs(),
+            **_qwen4_exp_compact_prefill_kwargs(),
             mrope_positions=mrope_positions,
         )
         generated: list[int] = []
@@ -386,7 +394,7 @@ class Qwen4ExpGGUFTextGenerator:
                 result = self.runner.step(
                     token,
                     rope_positions=(position, position, position),
-                    **_qwen4_exp_device_argmax_kwargs(),
+                    **_qwen4_exp_compact_step_kwargs(),
                 )
         return GenerationOutput(
             text=self.tokenizer.decode(generated, skip_special=False),
@@ -581,7 +589,7 @@ class Qwen4ExpResidentServingRunner:
             if row.prefill_tokens_seen == len(row.prompt_ids):
                 row.next_result = row.runner.prefill(
                     row.prompt_ids,
-                    **_qwen4_exp_device_argmax_kwargs(),
+                    **_qwen4_exp_compact_prefill_kwargs(),
                 )
                 raise_if_generation_deadline_expired(row.request)
 
@@ -638,7 +646,7 @@ class Qwen4ExpResidentServingRunner:
             if finish is None:
                 row.next_result = row.runner.step(
                     token,
-                    **_qwen4_exp_device_argmax_kwargs(),
+                    **_qwen4_exp_compact_step_kwargs(),
                 )
                 raise_if_generation_deadline_expired(row.request)
         return tuple(generated)

@@ -130,9 +130,18 @@ def test_qwen4_exp_resident_c2_uses_compact_output_by_default(monkeypatch) -> No
         assert len(created) == 1
         assert all(runner.calls for runner in runners)
         assert all(
-            kwargs == {"capture_logits": False}
+            kwargs
+            == (
+                {"capture_logits": False, "capture_target_hidden": False}
+                if method == "prefill"
+                else {
+                    "capture_logits": False,
+                    "capture_target_hidden": False,
+                    "token_id_resident": True,
+                }
+            )
             for runner in runners
-            for _, kwargs in runner.calls
+            for method, kwargs in runner.calls
         )
     finally:
         driver.close()

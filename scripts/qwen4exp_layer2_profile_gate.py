@@ -301,14 +301,25 @@ def _free_trajectory(
     compact_output: bool = False,
 ) -> dict[str, Any]:
     runner.reset()
-    kwargs = {"capture_logits": False} if compact_output else {}
-    result = runner.prefill([int(token) for token in prompt_ids], **kwargs)
+    prefill_kwargs = (
+        {"capture_logits": False, "capture_target_hidden": False}
+        if compact_output else {}
+    )
+    step_kwargs = (
+        {
+            "capture_logits": False,
+            "capture_target_hidden": False,
+            "token_id_resident": True,
+        }
+        if compact_output else {}
+    )
+    result = runner.prefill([int(token) for token in prompt_ids], **prefill_kwargs)
     ids: list[int] = []
     for index in range(int(steps)):
         token = int(result.token_id)
         ids.append(token)
         if index + 1 < steps:
-            result = runner.step(token, **kwargs)
+            result = runner.step(token, **step_kwargs)
     return {
         "ids": ids,
         "ids_sha256": _ids_sha256(ids),
