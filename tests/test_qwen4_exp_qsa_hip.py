@@ -31,6 +31,7 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
         plan_qwen4_exp_qsa_build,
         qwen4_exp_qsa_score_f32,
+        qwen4_exp_qsa_scatter_index_key_device_position_f32,
         qwen4_exp_qsa_scatter_index_keys_f32,
         qwen4_exp_qsa_split_norm_rope_rows_f32,
         qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
@@ -51,6 +52,15 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
             variant="strict_rows_paged",
         )
         is qwen4_exp_qsa_scatter_index_keys_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="qsa_index_append",
+            quant="f32",
+            variant="strict_device_position_c1",
+        )
+        is qwen4_exp_qsa_scatter_index_key_device_position_f32
     )
     assert (
         resolve(
@@ -133,6 +143,49 @@ def test_qwen4_exp_qsa_index_row_scatter_matches_paged_positions() -> None:
             start,
             rows,
             block_size,
+            index_dim,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        actual = _download(d_destination, destination.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_qsa_device_position_index_scatter_matches_strict() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        build_qwen4_exp_qsa,
+        qwen4_exp_qsa_scatter_index_key_device_position_f32,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_qwen4_exp_qsa(load=True)
+    index_dim, block_size = 128, 4
+    source = np.arange(index_dim, dtype=np.float32)
+    block_table = np.asarray([1, 0], dtype=np.int32)
+    position = np.asarray([5], dtype=np.int64)
+    destination = np.full((8, index_dim), -1.0, dtype=np.float32)
+    expected = destination.copy()
+    physical = int(block_table[position[0] // block_size]) * block_size + position[0] % block_size
+    expected[physical] = source
+    allocations = []
+    try:
+        d_source = _upload(source, runtime, allocations)
+        d_blocks = _upload(block_table, runtime, allocations)
+        d_position = _upload(position, runtime, allocations)
+        d_destination = _upload(destination, runtime, allocations)
+        qwen4_exp_qsa_scatter_index_key_device_position_f32(
+            d_source.ptr,
+            d_destination.ptr,
+            d_blocks.ptr,
+            d_position.ptr,
+            block_size,
+            block_table.size,
             index_dim,
             library=library,
             runtime=runtime,
