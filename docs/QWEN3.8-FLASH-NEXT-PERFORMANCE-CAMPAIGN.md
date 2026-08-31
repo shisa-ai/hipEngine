@@ -812,8 +812,15 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       A strict-order prepared-QKV/scalar route is exact in output and recurrent
       state but rejected/removed at rows508: **12.716→12.757 ms (0.9967x)**.
       Prepared tensor traffic offsets removed norm/transcendental work; require
-      direct column ownership or state-layout reuse instead. Evidence:
-      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`.
+      direct column ownership or state-layout reuse instead. A direct four-block
+      column candidate improves rows508 **12.628→12.227 ms (1.0328x)** and keeps
+      recurrent state exact, but production output parity fails (about 25% of
+      each 32-column quarter); the one-block reduced fixture masked it. It is
+      rejected/removed before model timing. Future layout work requires a
+      production-width output oracle from RED. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json`.
 - [ ] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
       packets; keep every rejected early layer strict.
 - [ ] For QSA, compare current key-parallel head-dim-256 flash geometry with the
