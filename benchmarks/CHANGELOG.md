@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 GR down+scaled-SiLU — rejected] The exact composite preserves coltile8/rowbatch4 reduction/output bits and improves rows2 **1.118x**, but regresses the binding rows508 operation window **1.655→1.667 ms (0.9926x)**. Candidate code is removed before whole-model timing. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next stacked P3 profile — diagnostic] Fresh clean named-production p508 re-ranks P3 owners to GR projection/read **651.16 ms**, `attn_qkv+attn_gate` **536.26 ms**, `ssm_out` **137.62 ms**, shared expert **122.04 ms**, and retained router producer **94.77 ms**. The 36-layer qkv+gate boundary remains the next uniform target; GR down+inject is secondary. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-stacked-profile.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 GR up+sigmoid+mean — retained] The exact rows>256 composite preserves each raw-Q8 coltile reduction and materialized gate/mean outputs, cuts the rows508 operation window **4.831→4.369 ms (1.1055x)**, improves clean p508 **91.158→91.600 tok/s (1.00484x, 95% CI 1.00213–1.00755)** and code-p1024 **88.754→89.239 tok/s (1.00547x, 95% CI 1.00258–1.00835)**. The T0 gate passes **450/450 KL=0**, **18/18 exact state/tasks**, lifecycle, and a 1.056 ms gfx1151 trace. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json`.
