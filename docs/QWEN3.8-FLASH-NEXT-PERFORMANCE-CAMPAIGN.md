@@ -981,10 +981,18 @@ request-owned transition submission.
       **12.160→4.955 ms (2.45x)**, with 142 dispatches/launch and no post-launch
       allocation. It is diagnostic only: scalar position/live-counts and the
       host QSA index cursor do not advance (`host_cursor_replay_safe=false`).
-      Device-owned paired QSA control advance is the next binding gate. Evidence:
+      Its device-owned successor now passes positions 8–11 exactly across
+      position/context, K/V, raw index, GDN state, and output, and measures
+      **13.882→4.974 ms (2.79x)** over 30 advancing samples. Each graph launch
+      contains one device-position append plus one paired advance among 143
+      dispatches and allocates nothing post-launch. This admits the dynamic
+      four-layer research rung, not production: PLE, all 12 QSA owners, token/
+      head control, bucket transitions, fallback, c2, and full lifecycle remain.
+      Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`,
-      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`.
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.
