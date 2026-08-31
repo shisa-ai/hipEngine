@@ -254,6 +254,14 @@ multi-row weight reuse/output tiling in both projection halves, not the <0.6%
 tail. Telemetry was collected separately and its D2H wall is excluded.
 [`P2 early-MoE profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p2-early-moe-profile.json).
 
+The P3 split names another **1.670 s** of primary p508 roles outside routed MoE:
+GR projection/read **709.32 ms**, Q8 `attn_qkv+attn_gate` **532.36 ms**, router
+**181.91 ms**, `ssm_out` **137.84 ms**, and shared projections **121.61 ms**.
+The first operation-complete target is the 36-layer qkv+gate boundary; it must
+preserve current qkv-MMQ and exact-gate arithmetic or qualify a declared T1
+pair, with both singleton routes retained as fallbacks.
+[`P3 prefill profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json).
+
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
 **296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local
