@@ -105,11 +105,17 @@ def analyze(trace_dir: Path, measure_prefix: str) -> dict[str, Any]:
 
     grouped: dict[str, list[Any]] = defaultdict(lambda: [0, 0, set()])
     exact: dict[str, list[Any]] = defaultdict(lambda: [0, 0, set()])
+    exact_role_kernels: dict[tuple[str, str, str], list[int]] = defaultdict(
+        lambda: [0, 0]
+    )
     for row in rows:
         for table, key in ((grouped, row["role"]), (exact, row["exact_role"])):
             table[key][0] += row["ns"]
             table[key][1] += 1
             table[key][2].add(row["kernel"])
+        exact_kernel_key = (row["exact_role"], row["kernel"], row["api"])
+        exact_role_kernels[exact_kernel_key][0] += row["ns"]
+        exact_role_kernels[exact_kernel_key][1] += 1
 
     unattributed: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for row in rows:
@@ -129,6 +135,18 @@ def analyze(trace_dir: Path, measure_prefix: str) -> dict[str, Any]:
         "exact_roles": [
             {"name": name, "ms": values[0] / 1e6, "rows": values[1], "symbols": len(values[2])}
             for name, values in sorted(exact.items(), key=lambda item: -item[1][0])
+        ],
+        "exact_role_kernels": [
+            {
+                "role": role,
+                "kernel": kernel,
+                "api": api,
+                "ms": values[0] / 1e6,
+                "rows": values[1],
+            }
+            for (role, kernel, api), values in sorted(
+                exact_role_kernels.items(), key=lambda item: -item[1][0]
+            )
         ],
         "unattributed_top": [
             {"name": name, "ms": values[0] / 1e6, "rows": values[1]}
