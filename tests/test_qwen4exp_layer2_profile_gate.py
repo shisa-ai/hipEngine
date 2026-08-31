@@ -82,6 +82,17 @@ def test_state_repeat_gate_requires_candidate_repeatability_and_layout() -> None
     assert failed["mismatches"][0]["repeat_exact"] is False
 
 
+def test_router_f32_tile4_candidate_is_t0_and_fail_closed() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["router_f32_tile4"]
+
+    assert candidate.environment == {"HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4": "1"}
+    assert candidate.classification == "T0"
+    assert candidate.base_profile == "strict"
+    assert candidate.candidate_key[-1] == "f32_hidden_token_tile4_dense_exact"
+    assert candidate.fallback_key[-1] == "f32_hidden"
+
+
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]
