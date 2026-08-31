@@ -1168,7 +1168,10 @@ __global__ void gguf_q4_qmicro_expand_dual_metadata_kernel(
 // K16 association. The two 16-KiB weight slabs share LDS; after the final K
 // block that storage holds independently rounded BF16 gate/up tiles so SiLU
 // observes the exact unfused projection boundary without global intermediates.
-template <bool qmicro = false, bool external_meta = false>
+template <
+    bool qmicro = false,
+    bool external_meta = false,
+    int row_tiles_per_wave = 4>
 __launch_bounds__(128, 1)
 __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -1182,8 +1185,11 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     int64_t out_features) {
   constexpr int MATRICES = 2;
   constexpr int OUT_TILES_PER_BLOCK = 2;
-  constexpr int ROW_TILES_PER_WAVE = 4;
+  constexpr int ROW_TILES_PER_WAVE = row_tiles_per_wave;
   constexpr int WAVES_PER_BLOCK = 4;
+  static_assert(
+      ROW_TILES_PER_WAVE >= 1 && ROW_TILES_PER_WAVE <= 4,
+      "dense dual WMMA row tiles per wave must be in [1, 4]");
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
@@ -1834,7 +1840,10 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool qmicro = false, bool external_meta = false>
+template <
+    bool qmicro = false,
+    bool external_meta = false,
+    int row_tiles_per_wave = 4>
 int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     const uint16_t* x,
     const uint8_t* tiles_a,
@@ -1875,7 +1884,7 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     }
   }
   constexpr int Q4_DENSE_TILE_COLS = 2 * T16_COLS;
-  constexpr int Q4_DENSE_TILE_ROWS = 4 * 4 * 16;
+  constexpr int Q4_DENSE_TILE_ROWS = 4 * row_tiles_per_wave * 16;
   const dim3 block(128);
   const dim3 grid(
       static_cast<unsigned int>(
@@ -1884,7 +1893,7 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
       (gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<
-          qmicro, external_meta>),
+          qmicro, external_meta, row_tiles_per_wave>),
       grid,
       block,
       0,
@@ -2115,6 +2124,34 @@ extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_ou
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false>(
+      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
+      out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false, 1>(
+      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
+      out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false, 2>(
       x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
       out_features, stream);
 }

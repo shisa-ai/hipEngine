@@ -191,6 +191,8 @@ _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 # selector exists (docs/REFACTOR.md). The floor also stays clear of the
 # dedicated small-B rowtile/GEMV domain (rows<=8).
 _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33
+_Q4_T16_DUAL_SILU_RETILE_ENV = "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE"
+_Q4_T16_DUAL_SILU_RETILE_RESOLVED: bool | None = None
 _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
 _Q4_T16_DENSE_QUANTS = frozenset(
     {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"}
@@ -1825,6 +1827,23 @@ def _pack8_dual_wmma_silu_dispatch(
     return candidate if is_registered(candidate) else None
 
 
+def _q4_t16_dual_silu_retile_enabled() -> bool:
+    """Return the same-build rollback state for exact short-prefill retiles."""
+
+    global _Q4_T16_DUAL_SILU_RETILE_RESOLVED
+    if _Q4_T16_DUAL_SILU_RETILE_RESOLVED is None:
+        raw = os.environ.get(_Q4_T16_DUAL_SILU_RETILE_ENV, "0").strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            _Q4_T16_DUAL_SILU_RETILE_RESOLVED = True
+        elif raw in {"0", "false", "no", "off"}:
+            _Q4_T16_DUAL_SILU_RETILE_RESOLVED = False
+        else:
+            raise ValueError(
+                f"{_Q4_T16_DUAL_SILU_RETILE_ENV} must be a boolean value"
+            )
+    return _Q4_T16_DUAL_SILU_RETILE_RESOLVED
+
+
 def _q4_t16_dual_wmma_silu_dispatch(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -1847,18 +1866,33 @@ def _q4_t16_dual_wmma_silu_dispatch(
         or (expanded_metadata and dispatch_a.key.quant != "gguf_q4_k_qmicro_t16_v1")
     ):
         return None
-    candidate = KernelKey(
-        dispatch_a.key.backend,
-        "linear_pair_silu",
-        dispatch_a.key.quant,
-        (
-            "dense_dual_wmma_prefill_expanded_meta_bf16_bf16_out"
-            if expanded_metadata
-            else "dense_dual_wmma_prefill_bf16_bf16_out"
-        ),
+    parent_variant = (
+        "dense_dual_wmma_prefill_expanded_meta_bf16_bf16_out"
+        if expanded_metadata
+        else "dense_dual_wmma_prefill_bf16_bf16_out"
     )
-    _ensure_linear_kernel_registered(candidate)
-    return candidate if is_registered(candidate) else None
+    variants = []
+    if (
+        not expanded_metadata
+        and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
+        and _q4_t16_dual_silu_retile_enabled()
+    ):
+        if rows <= 64:
+            variants.append("dense_dual_wmma_prefill_row64_bf16_bf16_out")
+        elif rows <= 128:
+            variants.append("dense_dual_wmma_prefill_row128_bf16_bf16_out")
+    variants.append(parent_variant)
+    for variant in variants:
+        candidate = KernelKey(
+            dispatch_a.key.backend,
+            "linear_pair_silu",
+            dispatch_a.key.quant,
+            variant,
+        )
+        _ensure_linear_kernel_registered(candidate)
+        if is_registered(candidate):
+            return candidate
+    return None
 
 
 def _q4_t16_dual_rowtile_silu_dispatch(

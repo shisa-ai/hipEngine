@@ -25,6 +25,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_expanded_meta_silu_bf16_bf16_out,
     gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
     gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
@@ -818,8 +820,102 @@ def test_q4_t16_dense_small_row_pair_silu_uses_canonical_tiles() -> None:
     assert calls[0][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
 
 
-@pytest.mark.parametrize("rows", [33, 45, 48, 128, 256, 511, 512])
-def test_q4_t16_dense_bulk_pair_silu_uses_canonical_tiles(rows: int) -> None:
+@pytest.mark.parametrize(
+    ("rows", "expected_variant"),
+    (
+        (33, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+        (64, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+        (65, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
+        (128, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
+        (129, "dense_dual_wmma_prefill_bf16_bf16_out"),
+        (256, "dense_dual_wmma_prefill_bf16_bf16_out"),
+        (511, "dense_dual_wmma_prefill_bf16_bf16_out"),
+        (512, "dense_dual_wmma_prefill_bf16_bf16_out"),
+    ),
+)
+def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
+    rows: int,
+    expected_variant: str,
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import gguf_linear as gguf_linear_module
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", "1")
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
+        None,
+    )
+    weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
+    weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
+    variants = (
+        "dense_dual_wmma_prefill_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row128_bf16_bf16_out",
+    )
+    keys = {
+        variant: KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
+            "gguf_q4_k_t16_v1",
+            variant,
+        )
+        for variant in variants
+    }
+    originals = {
+        variant: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for variant, key in keys.items()
+    }
+    calls: list[tuple[str, tuple]] = []
+    try:
+        for variant, key in keys.items():
+            register(
+                key,
+                lambda *args, _variant=variant, **kwargs: calls.append(
+                    (_variant, args)
+                ),
+                replace=True,
+            )
+        launched = launch_gguf_linear_pair_silu(
+            weight_a,
+            weight_b,
+            0x3000,
+            0x4000,
+            rows,
+            5_120,
+            17_408,
+        )
+    finally:
+        for variant, key in keys.items():
+            register(key, originals[variant], replace=True)
+        monkeypatch.setattr(
+            gguf_linear_module,
+            "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
+            None,
+        )
+        clear_gguf_linear_dispatch_cache()
+
+    assert launched
+    assert calls == [
+        (expected_variant, (0x3000, 0x1000, 0x2000, 0x4000, rows, 5_120, 17_408))
+    ]
+
+
+def test_q4_t16_dense_pair_silu_retile_rollback(monkeypatch) -> None:
+    from hipengine.runtime import gguf_linear as gguf_linear_module
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", "0")
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
+        None,
+        raising=False,
+    )
     weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
     key = KernelKey(
@@ -837,21 +933,26 @@ def test_q4_t16_dense_bulk_pair_silu_uses_canonical_tiles(rows: int) -> None:
     calls: list[tuple] = []
     try:
         register(key, lambda *args, **kwargs: calls.append(args), replace=True)
-        launched = launch_gguf_linear_pair_silu(
+        assert launch_gguf_linear_pair_silu(
             weight_a,
             weight_b,
             0x3000,
             0x4000,
-            rows,
+            35,
             5_120,
             17_408,
         )
     finally:
         register(key, original, replace=True)
+        monkeypatch.setattr(
+            gguf_linear_module,
+            "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",
+            None,
+            raising=False,
+        )
         clear_gguf_linear_dispatch_cache()
 
-    assert launched
-    assert calls[0][:4] == (0x3000, 0x1000, 0x2000, 0x4000)
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("rows", [2, 5, 8, 11, 16, 32])
@@ -1558,9 +1659,21 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [45, 96, 192, 511, 512])
+@pytest.mark.parametrize(
+    ("rows", "candidate"),
+    [
+        (45, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
+        (96, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
+        (192, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
+        (511, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
+        (512, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
+        (64, gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out),
+        (67, gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out),
+    ],
+)
 def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape(
     rows: int,
+    candidate,
 ) -> None:
     """Fused dual+SiLU prefill must equal the unfused chain at the dispatched shape.
 
@@ -1641,7 +1754,7 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape(
             library=build_paro_silu(load=True),
             runtime=runtime,
         )
-        gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+        candidate(
             x_dev.ptr,
             tiles_a_dev.ptr,
             tiles_b_dev.ptr,
