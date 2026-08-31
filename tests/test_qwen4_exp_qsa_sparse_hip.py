@@ -186,6 +186,7 @@ def test_qwen4_exp_sparse_wave32_h128_matches_strict_production_envelope() -> No
 def test_qwen4_exp_sparse_paged_rows_write_and_attend_variable_selections() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+        qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
         qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     )
     from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
@@ -255,6 +256,7 @@ def test_qwen4_exp_sparse_paged_rows_write_and_attend_variable_selections() -> N
         d_contexts = _upload(contexts, runtime, allocations)
         d_output = _alloc(expected.shape, np.float32, runtime, allocations)
         d_dense_output = _alloc(expected_dense.shape, np.float32, runtime, allocations)
+        d_dense_fixed = _alloc(expected_dense.shape, np.float32, runtime, allocations)
         device = Device("hip", 0)
         spans = KVLiveSpans.paged_uniform(
             block_table=Tensor.from_handle(
@@ -319,10 +321,28 @@ def test_qwen4_exp_sparse_paged_rows_write_and_attend_variable_selections() -> N
             head_dim ** -0.5,
             runtime=runtime,
         )
+        qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans(
+            d_query.ptr,
+            d_key.ptr,
+            d_value.ptr,
+            d_dense_fixed.ptr,
+            dense_spans,
+            rows,
+            capacity,
+            block_size,
+            q_heads,
+            kv_heads,
+            head_dim,
+            head_dim ** -0.5,
+            runtime=runtime,
+        )
         runtime.device_synchronize()
         actual = _download(d_output, expected.shape, np.float32, runtime)
         actual_dense = _download(
             d_dense_output, expected_dense.shape, np.float32, runtime
+        )
+        actual_dense_fixed = _download(
+            d_dense_fixed, expected_dense.shape, np.float32, runtime
         )
         actual_key = _download(d_key, physical_key_bits.shape, np.uint16, runtime)
         actual_value = _download(d_value, physical_value_bits.shape, np.uint16, runtime)
@@ -337,6 +357,9 @@ def test_qwen4_exp_sparse_paged_rows_write_and_attend_variable_selections() -> N
         np.testing.assert_array_equal(actual_value[physical_block * block_size:(physical_block + 1) * block_size], logical_value_bits[start:stop])
     np.testing.assert_allclose(actual, expected, rtol=2e-5, atol=2e-5)
     np.testing.assert_allclose(actual_dense, expected_dense, rtol=2e-5, atol=2e-5)
+    np.testing.assert_array_equal(
+        actual_dense_fixed.view(np.uint32), actual_dense.view(np.uint32)
+    )
 
 
 def _upload(array: np.ndarray, runtime, allocations):
