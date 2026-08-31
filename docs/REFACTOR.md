@@ -57,6 +57,12 @@ should be removed or collapsed.
 
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
+- `HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED=1` fuses GR sigmoid
+  materialization with gated mean for rows <=256 while preserving both outputs.
+  Strict and named production bind it off during admission. Remove the flag
+  after the complete T0 exact/state/trace gate: promote the fused registry owner
+  if same-suite non-regressive, otherwise remove the candidate kernel.
+
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
   K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
   policy. It wins p508 and passes numerical scopes but is production-rejected:

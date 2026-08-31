@@ -125,6 +125,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
+    qwen4_exp_gated_mean_sigmoid_f32,
     qwen4_exp_grouped_rmsnorm_bf16_f32,
     qwen4_exp_grouped_rmsnorm_f32,
     qwen4_exp_gr_write_bf16_f32,
@@ -2616,13 +2617,15 @@ def run_qwen4_exp_gr_read(
         stream=stream,
         runtime=active_runtime,
     )
-    qwen4_exp_sigmoid_f32(
-        scratch.gate.ptr,
-        scratch.gate.ptr,
-        rows * residual_width,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    fused_sigmoid_mean = _qwen4_exp_gr_sigmoid_mean_fused(rows)
+    if not fused_sigmoid_mean:
+        qwen4_exp_sigmoid_f32(
+            scratch.gate.ptr,
+            scratch.gate.ptr,
+            rows * residual_width,
+            stream=stream,
+            runtime=active_runtime,
+        )
     if inject_weight is None:
         active_runtime.memset(scratch.inject_logits.ptr, 0, rows * branches * 4)
     else:
@@ -2638,7 +2641,12 @@ def run_qwen4_exp_gr_read(
             stream=stream,
             runtime=active_runtime,
         )
-    qwen4_exp_gated_mean_f32(
+    gated_mean = (
+        qwen4_exp_gated_mean_sigmoid_f32
+        if fused_sigmoid_mean
+        else qwen4_exp_gated_mean_f32
+    )
+    gated_mean(
         scratch.normalized.ptr,
         scratch.gate.ptr,
         scratch.mixed.ptr,
@@ -2654,6 +2662,14 @@ def run_qwen4_exp_gr_read(
         mixed=scratch.mixed,
         inject_logits=scratch.inject_logits,
     )
+
+
+def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
+    """Select the launch-contracted GR epilogue only in its measured row range."""
+
+    return rows <= 256 and os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED", "0"
+    ) not in {"", "0", "false", "False"}
 
 
 def _qwen4_exp_q8_mmq_policy(policy):

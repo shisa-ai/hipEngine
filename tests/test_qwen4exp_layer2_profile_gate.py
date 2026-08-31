@@ -82,6 +82,19 @@ def test_state_repeat_gate_requires_candidate_repeatability_and_layout() -> None
     assert failed["mismatches"][0]["repeat_exact"] is False
 
 
+def test_gr_sigmoid_mean_candidate_is_t0_and_fail_closed() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["gr_sigmoid_mean_fused"]
+
+    assert candidate.environment == {
+        "HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED": "1"
+    }
+    assert candidate.classification == "T0"
+    assert candidate.candidate_key[-1] == "strict"
+    assert candidate.fallback_key[-1] == "strict"
+    assert "through 256 rows" in candidate.mechanism
+
+
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["q8_mmq_attn_gate"]
