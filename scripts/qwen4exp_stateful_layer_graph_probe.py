@@ -10,12 +10,13 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata,_host_metadata
 
 def build_parser():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);p.add_argument('--prompt-file',type=Path,required=True);p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);p.add_argument('--prompt-file',type=Path,required=True);p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--dynamic-ple',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
 def _first_mismatch(rows):
  for row in rows:
   if not row['state_exact']:
    return {'replay':row['replay'],'kind':'state','owner':next(name for name,exact in row['state_owners'].items() if not exact)}
   if not row['output_exact']:return {'replay':row['replay'],'kind':'output','owner':None}
+  if not row.get('token_exact',True):return {'replay':row['replay'],'kind':'token','owner':'root.token_id'}
  return None
 def _make_generator(args):
  from hipengine.execution_profiles import ExecutionProfile,resolve_runtime_profile
@@ -35,6 +36,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
  from hipengine.core.memory import host_array_ptr,memory_stats,reset_memory_stats
  from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
  from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+ from hipengine.kernels.cpu_reference.qwen4_exp import ple_hash_rows
  from hipengine.kernels.hip_gfx1100.runtime.state import advance_decode_position_i64
  from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import qwen4_exp_repeat_bf16_branches
  from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32
@@ -57,6 +59,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
   layers=tuple(range(layer,layer+int(args.segment_length)))
   if not layers or layers[-1]>=len(cfg.layer_types):raise ValueError('selected segment exceeds model layers')
   if args.include_root_head and (layers[0]!=0 or len(layers)!=len(cfg.layer_types)):raise ValueError('root/head capture requires all physical layers')
+  if args.dynamic_ple and not (args.include_root_head and args.advance_position and not args.omit_ple):raise ValueError('dynamic PLE requires advancing all-layer root/head capture with PLE')
   layer_kinds=tuple(cfg.layer_types[item] for item in layers)
   if any(kind not in {'gdn','qsa'} for kind in layer_kinds):raise ValueError('selected segment contains an unsupported layer kind')
   assert runner.state is not None and runner.gdn_scratch is not None and runner.qsa_scratch is not None and runner.ple_scratch is not None
@@ -72,6 +75,8 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
   mutable_buffers={f'decode.{name}':buffer for name,buffer in runner.state.owned_buffers.items()}
   if args.include_root_head:
    mutable_buffers['root.token_id']=runner.token_id_buffer
+  if args.dynamic_ple:
+   mutable_buffers['input.ple_embedding']=runner.ple_embedding_buffer
   for qsa_index in qsa_indices:
    attention=runner.attention_states[qsa_index];index=runner.index_states[qsa_index]
    for name in ('key_cache','value_cache','position','context'):mutable_buffers[f'qsa.{qsa_index}.attention.{name}']=getattr(attention,name)
@@ -88,6 +93,14 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
     attention=runner.attention_states[qsa_index];attention.position_host[0]=position;attention.context_host[0]=position+1
     index=runner.index_states[qsa_index];index.count,index.pooled_count=base_index_cursors[qsa_index]
   def state_hashes(snapshot):return {name:hashlib.sha256(value).hexdigest() for name,value in snapshot.items()}
+  base_ple_states=dict(runner._ple_hash_states)
+  def read_token():
+   token=np.empty(1,np.int64);rt.memcpy(int(token.ctypes.data),runner.token_id_buffer.ptr,token.nbytes,HipMemcpyKind.DEVICE_TO_HOST);return int(token[0])
+  def stage_ple_input(current_position,states,input_token):
+   rows,next_states=ple_hash_rows([input_token],positions=[current_position],sequence_ids=[0],states=states,eos_token_id=cfg.ple_eos_token_id,layer_multipliers=cfg.ple_layer_multipliers,head_offsets=cfg.ple_head_offsets,head_vocab_sizes=cfg.ple_head_vocab_sizes,heads_per_ngram=cfg.ple_heads_per_ngram,ngram_size=cfg.ple_ngram_size)
+   staged=runner.resident.ple_staging.stage(rows[0]).reshape(1,cfg.hidden_size)
+   rt.memcpy(runner.ple_embedding_buffer.ptr,int(staged.ctypes.data),staged.nbytes,HipMemcpyKind.HOST_TO_DEVICE)
+   return next_states,input_token
   def prepare_fixed_qsa_control():
    for qsa_index in qsa_indices:
     runner.attention_states[qsa_index].set_position(position)
@@ -121,34 +134,52 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
   final_buffer=runner.logits_buffer if args.include_root_head else runner.qsa_scratch.output if layer_kinds[-1]=='qsa' else runner.gdn_scratch.output
   def output_bytes():
    out=np.empty(final_buffer.nbytes,np.uint8);rt.memcpy(int(out.ctypes.data),final_buffer.ptr,out.nbytes,HipMemcpyKind.DEVICE_TO_HOST);return out
-  base=snapshot_state();prepare_fixed_qsa_control();launch(0,position);rt.device_synchronize() # warm all dispatch/JIT paths
-  restore_state(base);prepare_fixed_qsa_control();refs=[]
+  base=snapshot_state();initial_token=read_token() if args.include_root_head else None
+  warm_ple_states=dict(base_ple_states);prepare_fixed_qsa_control()
+  if args.dynamic_ple: warm_ple_states,_=stage_ple_input(position,warm_ple_states,int(initial_token))
+  launch(0,position);rt.device_synchronize() # warm all dispatch/JIT paths
+  restore_state(base);prepare_fixed_qsa_control();refs=[];ref_ple_states=dict(base_ple_states);ref_token=initial_token
   for replay in range(1,args.replays+1):
    current_position=position+replay-1 if args.advance_position else position
    if not args.advance_position:
     for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position
-   launch(0,current_position);rt.device_synchronize();refs.append((state_hashes(snapshot_state()),hashlib.sha256(output_bytes()).hexdigest()))
+   input_token=ref_token
+   if args.dynamic_ple: ref_ple_states,_=stage_ple_input(current_position,ref_ple_states,int(input_token))
+   launch(0,current_position);rt.device_synchronize();ref_token=read_token() if args.include_root_head else None
+   refs.append((state_hashes(snapshot_state()),hashlib.sha256(output_bytes()).hexdigest(),input_token,ref_token))
   restore_state(base);prepare_fixed_qsa_control();before=state_hashes(snapshot_state());stream=rt.stream_create(nonblocking=True);rt.stream_begin_capture(stream,2);launch(stream,position,graph_owned=args.advance_position);graph=rt.stream_end_capture(stream);exec_=rt.graph_instantiate(graph);after=state_hashes(snapshot_state());capture_nonexecuting=before==after
-  rows=[]
-  for replay,(expected_state,expected_output) in enumerate(refs,1):
-   rt.graph_launch(exec_,0);rt.device_synchronize()
+  rows=[];graph_ple_states=dict(base_ple_states);graph_token=initial_token
+  for replay,(expected_state,expected_output,expected_input_token,expected_output_token) in enumerate(refs,1):
+   current_position=position+replay-1 if args.advance_position else position
+   input_token=graph_token
+   if args.dynamic_ple: graph_ple_states,_=stage_ple_input(current_position,graph_ple_states,int(input_token))
+   rt.graph_launch(exec_,0);rt.device_synchronize();graph_token=read_token() if args.include_root_head else None
    if args.advance_position:
     for qsa_index in qsa_indices:
      attention=runner.attention_states[qsa_index];attention.position_host[0]=position+replay;attention.context_host[0]=position+replay+1;runner.index_states[qsa_index].count=position+replay
-   got_state=state_hashes(snapshot_state());got_output=hashlib.sha256(output_bytes()).hexdigest();owners={name:got_state[name]==digest for name,digest in expected_state.items()};rows.append({'replay':replay,'position':position+replay-1 if args.advance_position else position,'state_exact':all(owners.values()),'state_owners':owners,'output_exact':got_output==expected_output})
-  restore_state(base);prepare_fixed_qsa_control();eager_ms=[]
+   got_state=state_hashes(snapshot_state());got_output=hashlib.sha256(output_bytes()).hexdigest();owners={name:got_state[name]==digest for name,digest in expected_state.items()};rows.append({'replay':replay,'position':current_position,'input_token':input_token,'output_token':graph_token,'token_exact':input_token==expected_input_token and graph_token==expected_output_token,'state_exact':all(owners.values()),'state_owners':owners,'output_exact':got_output==expected_output})
+  restore_state(base);prepare_fixed_qsa_control();eager_ms=[];eager_ple_states=dict(base_ple_states);eager_token=initial_token
   for sample in range(args.samples):
    current_position=position+sample if args.advance_position else position
    if not args.advance_position:
     for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position
-   rt.device_synchronize();start=time.perf_counter();launch(0,current_position);rt.device_synchronize();eager_ms.append((time.perf_counter()-start)*1e3)
-  restore_state(base);prepare_fixed_qsa_control();graph_ms=[]
+   rt.device_synchronize();start=time.perf_counter()
+   if args.dynamic_ple:eager_ple_states,_=stage_ple_input(current_position,eager_ple_states,int(eager_token))
+   launch(0,current_position);rt.device_synchronize()
+   if args.include_root_head:eager_token=read_token()
+   eager_ms.append((time.perf_counter()-start)*1e3)
+  restore_state(base);prepare_fixed_qsa_control();graph_ms=[];timed_ple_states=dict(base_ple_states);timed_token=initial_token
   for sample in range(args.samples):
-   rt.device_synchronize();start=time.perf_counter();rt.graph_launch(exec_,0);rt.device_synchronize();graph_ms.append((time.perf_counter()-start)*1e3)
+   current_position=position+sample if args.advance_position else position
+   rt.device_synchronize();start=time.perf_counter()
+   if args.dynamic_ple:timed_ple_states,_=stage_ple_input(current_position,timed_ple_states,int(timed_token))
+   rt.graph_launch(exec_,0);rt.device_synchronize()
+   if args.include_root_head:timed_token=read_token()
+   graph_ms.append((time.perf_counter()-start)*1e3)
    if args.advance_position:
     for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position+sample+1
   eager_median=statistics.median(eager_ms);graph_median=statistics.median(graph_ms);mismatch=_first_mismatch(rows);correct=bool(capture_nonexecuting and mismatch is None)
-  payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':'strict','manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'root_head_included':bool(args.include_root_head),'ple_input_dynamic':False,'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median,'eager_ms':eager_ms,'graph_ms':graph_ms}}
+  payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':'strict','manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'root_head_included':bool(args.include_root_head),'ple_input_dynamic':bool(args.dynamic_ple),'ple_publication':'host_hash_mmap_stage_h2d' if args.dynamic_ple else 'static_device_buffer','ple_table':{'semantic_rows':runner.resident.ple_table.semantic_rows,'row_width':runner.resident.ple_table.row_width,'ggml_type':runner.resident.ple_table.tensor.ggml_type_name,'nbytes':runner.resident.ple_table.tensor.nbytes,'rows_per_token':len(cfg.ple_head_offsets)} if args.dynamic_ple else None,'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median,'eager_ms':eager_ms,'graph_ms':graph_ms}}
  finally:
   if exec_ and generator:generator.runner.runtime.graph_exec_destroy(exec_)
   if graph and generator:generator.runner.runtime.graph_destroy(graph)
