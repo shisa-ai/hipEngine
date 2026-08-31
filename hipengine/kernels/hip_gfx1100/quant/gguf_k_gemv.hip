@@ -734,6 +734,120 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
   }
 }
 
+// Qwen4Exp GR up projection plus sigmoid-gated branch mean. Every output keeps
+// the retained Q8 coltile8/rowbatch4 K ownership, FMA order, wave shuffle, and
+// serial wave publication. The eight output slots are remapped to two hidden
+// columns across four branches so the publication threads can emit the exact
+// materialized sigmoid gate and branch-ordered mean.
+__launch_bounds__(128, 2)
+__global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
+    const float* __restrict__ x,
+    const uint8_t* __restrict__ qweight,
+    const float* __restrict__ normalized,
+    float* __restrict__ gate,
+    float* __restrict__ mixed,
+    int rows,
+    int in_features,
+    int branches,
+    int hidden) {
+  constexpr int ROW_BATCH = 4;
+  constexpr int HIDDEN_TILE = 2;
+  constexpr int BRANCHES = 4;
+  const int hidden_base = static_cast<int>(blockIdx.x) * HIDDEN_TILE;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_BATCH;
+  const int tid = threadIdx.x;
+  if (hidden_base >= hidden || row_base >= rows || branches != BRANCHES) return;
+  const int row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  const uint8_t* weight_rows[BRANCHES][HIDDEN_TILE];
+#pragma unroll
+  for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+    for (int col = 0; col < HIDDEN_TILE; ++col) {
+      const int output = branch * hidden + hidden_base + col;
+      weight_rows[branch][col] =
+          qweight + static_cast<int64_t>(output) * row_bytes;
+    }
+  }
+  float acc[ROW_BATCH][BRANCHES][HIDDEN_TILE] = {};
+  for (int k = tid; k < in_features; k += blockDim.x) {
+    float weights[BRANCHES][HIDDEN_TILE];
+#pragma unroll
+    for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+      for (int col = 0; col < HIDDEN_TILE; ++col) {
+        weights[branch][col] = q8_0_weight(weight_rows[branch][col], k);
+      }
+    }
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+      const int row = row_base + row_idx;
+      if (row < rows) {
+        const float xv = x[static_cast<int64_t>(row) * in_features + k];
+#pragma unroll
+        for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+          for (int col = 0; col < HIDDEN_TILE; ++col) {
+            acc[row_idx][branch][col] =
+                fmaf(xv, weights[branch][col], acc[row_idx][branch][col]);
+          }
+        }
+      }
+    }
+  }
+#pragma unroll
+  for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+    for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+      for (int col = 0; col < HIDDEN_TILE; ++col) {
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          acc[row_idx][branch][col] +=
+              __shfl_down(acc[row_idx][branch][col], offset);
+        }
+      }
+    }
+  }
+  __shared__ float wave_sums[4][ROW_BATCH][BRANCHES][HIDDEN_TILE];
+  const int wave = tid >> 5;
+  const int lane = tid & 31;
+  if (lane == 0) {
+#pragma unroll
+    for (int row_idx = 0; row_idx < ROW_BATCH; ++row_idx) {
+#pragma unroll
+      for (int branch = 0; branch < BRANCHES; ++branch) {
+#pragma unroll
+        for (int col = 0; col < HIDDEN_TILE; ++col) {
+          wave_sums[wave][row_idx][branch][col] = acc[row_idx][branch][col];
+        }
+      }
+    }
+  }
+  __syncthreads();
+  if (tid < ROW_BATCH * HIDDEN_TILE) {
+    const int row_idx = tid / HIDDEN_TILE;
+    const int col = tid - row_idx * HIDDEN_TILE;
+    const int row = row_base + row_idx;
+    if (row < rows && hidden_base + col < hidden) {
+      float value = 0.0f;
+#pragma unroll
+      for (int branch = 0; branch < BRANCHES; ++branch) {
+        float total = 0.0f;
+#pragma unroll
+        for (int wave_idx = 0; wave_idx < 4; ++wave_idx) {
+          total += wave_sums[wave_idx][row_idx][branch][col];
+        }
+        const int64_t index = static_cast<int64_t>(row) * BRANCHES * hidden
+            + branch * hidden + hidden_base + col;
+        const float sigmoid_gate = 1.0f / (1.0f + expf(-total));
+        gate[index] = sigmoid_gate;
+        value += normalized[index] * sigmoid_gate;
+      }
+      mixed[static_cast<int64_t>(row) * hidden + hidden_base + col] =
+          value / static_cast<float>(BRANCHES);
+    }
+  }
+}
+
 // WPF-H7C preserves the raw-Q6 coltile kernel's ordered FMAs, four-wave LDS
 // publication, serial wave sum, output layout, and ABI. Only the exact
 // shuffle16->8->4->2->1 wave tree changes instruction form.
@@ -4413,6 +4527,44 @@ HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(16)
 HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
 
 #undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
+
+extern "C" int hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+    const float* x,
+    const uint8_t* qweight,
+    const float* normalized,
+    float* gate,
+    float* mixed,
+    int64_t rows,
+    int64_t in_features,
+    int64_t branches,
+    int64_t hidden,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || qweight == nullptr || normalized == nullptr ||
+      gate == nullptr || mixed == nullptr || rows <= 0 || in_features <= 0 ||
+      in_features % Q8_0_BLOCK != 0 || branches != 4 || hidden <= 0 ||
+      hidden % 2 != 0 || threads != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel,
+      dim3(
+          static_cast<unsigned int>(hidden / 2),
+          static_cast<unsigned int>((rows + 3) / 4)),
+      dim3(128),
+      0,
+      stream,
+      x,
+      qweight,
+      normalized,
+      gate,
+      mixed,
+      static_cast<int>(rows),
+      static_cast<int>(in_features),
+      static_cast<int>(branches),
+      static_cast<int>(hidden));
+  return static_cast<int>(hipGetLastError());
+}
 
 #define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
 extern "C" int hipengine_gguf_q8_0_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_f32_f32_out( \
