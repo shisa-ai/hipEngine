@@ -1011,9 +1011,11 @@ request-owned transition submission.
       28.8-GB sparse mmap. The honest transition is host hash + 16-row mmap
       gather/dequant + 10-KiB H2D, then one graph launch and token readback.
       Across positions 8–11 the trajectory `3147→278→18407→2129→69422`, full
-      logits, and 138 owners are exact; operation-complete wall including PLE
-      and readback is **199.086→60.887 ms (3.27x)** over 30 samples. Profiling
-      confirms 1,708 dispatches/launch and no post-launch device allocation.
+      logits, and 138 owners are exact; reset→replay and graph→forced-eager→
+      graph resumption are also exact. Operation-complete wall including PLE
+      and readback is **194.758→61.910 ms (3.15x)** over 30 samples. Profiling
+      confirms 10 launches with 1,708 dispatches each and no post-launch device
+      allocation.
       Production binding stays off pending request graph keys/lifecycle,
       multi-prompt generation, context buckets, fallback, cold PLE, and c2.
       Evidence:

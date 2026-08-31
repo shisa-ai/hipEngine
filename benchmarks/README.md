@@ -244,9 +244,10 @@ covers active PLE, all 48 layers, all 12 QSA owners, and 136 device-state owners
 at **154.346→57.900 ms (2.67x)** without reproducing third-replay corruption.
 The complete host-staged transition then adds generated-token PLE publication,
 embedding, final full-vocabulary head, device argmax, and token feedback: the
-changing-token trajectory and 138 owners are exact at **199.086→60.887 ms
-(3.27x)**. It is not yet bound to production; request/lifecycle, multi-prompt,
-cold-PLE, bucket-transition, and c2 gates remain open.
+changing-token trajectory and 138 owners are exact; reset→replay and forced-
+eager→graph resumption also pass. Operation wall is **194.758→61.910 ms
+(3.15x)**. It is not yet bound to production; request-cache, multi-prompt,
+cold-PLE, bucket-transition, retained-prefix, and c2 gates remain open.
 [`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
 [`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
 [`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json),
