@@ -203,7 +203,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     assert single_wave_max_rows == 128
     assert single_wave_max_rows_by_shape == {(5_120, 12_288): 112}
     assert shared_b_row64_shapes == frozenset({(17_408, 5_120)})
-    assert shared_b_row64_rows == range(33, 68)
+    assert shared_b_row64_rows == range(33, 193)
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -247,7 +247,8 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     selector(1, 2, 3, 113, 5_120, 12_288)
     selector(1, 2, 3, 128, 5_120, 10_240)
     selector(1, 2, 3, 67, 17_408, 5_120)
-    selector(1, 2, 3, 68, 17_408, 5_120)
+    selector(1, 2, 3, 192, 17_408, 5_120)
+    selector(1, 2, 3, 193, 17_408, 5_120)
     assert calls == ["rowtile"] * len(shape_policy) + [
         "single_wave",
         "rowtile",
@@ -265,6 +266,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "single_wave",
         "shared_b",
         "single_wave",
+        "shared_b_row64",
         "shared_b_row64",
         "shared_b",
     ]
@@ -287,7 +289,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     monkeypatch.setenv(t16_prefill._ENV_SHARED_B_ROW64_MAX_ROWS, "0")
     monkeypatch.setattr(t16_prefill, "_SHARED_B_ROW64_MAX_ROWS_RESOLVED", None)
     selector(1, 2, 3, 35, 17_408, 5_120)
-    selector(1, 2, 3, 67, 17_408, 5_120)
+    selector(1, 2, 3, 192, 17_408, 5_120)
     selector(1, 2, 3, 6, 17_408, 5_120)
     assert calls == ["shared_b", "shared_b", "rowtile"]
     monkeypatch.delenv(t16_prefill._ENV_SHARED_B_ROW64_MAX_ROWS)
@@ -1159,7 +1161,7 @@ def test_q4_t16_dense_wmma_prefill_matches_cpu_reference(rows: int) -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [35, 48, 67])
+@pytest.mark.parametrize("rows", [35, 48, 67, 192])
 def test_q4_t16_shared_b_row64_matches_shared_b_parent(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime
 

@@ -322,13 +322,13 @@ fallback count is not a success metric.
 
 ## gfx1100 Q4-T16 row64 down-projection bisection
 
-- Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-67 owner is
+- Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is
   selected by backend shape/range policy; the separately registered 256-row
   shared-B parent remains the strict fallback.
   `HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS=0` restores that parent on the
   same build for performance bisection. The resolved value is cached because
   selection runs on every projection launch and the knob cannot widen beyond
-  the qualified 33..67 range.
+  the qualified 33..192 range.
 - Removal trigger: after one release window with the row64 default and a clean
   same-protocol repeat, remove the environment lookup/cache while preserving
   the shape/range policy and explicit registered parent fallback.
