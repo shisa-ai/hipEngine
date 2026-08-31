@@ -140,9 +140,9 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall results (total tok/s), s
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | 166.784 | **263.688** | **351.141** | **405.343** | **440.200** | **457.406** | **469.752** | **473.754** |
+| hipEngine | **189.074** | **289.870** | **370.318** | **405.343** | **440.200** | **457.406** | **469.752** | **473.754** |
 | llama.cpp current HIP | 179.035 | 206.603 | 207.636 | 258.750 | 308.960 | 330.059 | 360.231 | 405.406 |
-| llama.cpp Laurent HIP | **184.024** | 225.730 | 221.227 | 259.929 | 316.711 | 357.259 | 365.592 | 404.240 |
+| llama.cpp Laurent HIP | 184.024 | 225.730 | 221.227 | 259.929 | 316.711 | 357.259 | 365.592 | 404.240 |
 
 The current AR rows are arithmetic means from a counterbalanced two-run, full-
 C1-C8 same-host D1/D24 repeat. hipEngine leads the strongest peer at every
@@ -165,20 +165,21 @@ anti-repetition guards. Automatic capacity-8 requests remain K0, distinct from
 the promoted capacity-2/C2/K2 product key. Prefill uses the peer one-token
 protocol (10 prompts x C1-C8, content-exact).
 
-The canonical rows are arithmetic means from a counterbalanced two-run, full-
-C1-C8 same-host repeat: hipEngine is **166.784/263.688/351.141/405.343/440.200/
+The canonical hipEngine C1-C3 rows are arithmetic means from the counterbalanced
+same-build exact fused-Q4-retile gate; C4-C8 remain from the counterbalanced full-
+width same-host repeat. hipEngine is **189.074/289.870/370.318/405.343/440.200/
 457.406/469.752/473.754 prompt tok/s**; current HIP is **179.035/206.603/
 207.636/258.750/308.960/330.059/360.231/405.406** and Laurent HIP is
 **184.024/225.730/221.227/259.929/316.711/357.259/365.592/404.240**. hipEngine
-forms full native groups in 10/10 cells at every C2-C8 width and leads the
-strongest peer from C2 through C8; only C1 remains behind, by **9.37%**. The
-formerly published C5/C6/C8 deficits are closed at **+38.99%/+28.03%/+16.86%**
-on the repeated means. Even the slower hipEngine run beats the faster peer run
-by **+35.83%/+26.73%/+12.14%**, and every category and heldout scope is
-positive. No kernel change is attributed to this refresh. The earlier exact
-planar-Q6 FFN-down retile remains independently established by its same-build
-rollback: **+6.70%/+2.45%/+2.24%** at C1/C2/C3 with every category and heldout
-scope positive. An older two-run explicit-K3 packet bounded then-current K3
+forms full native groups in 10/10 cells at every C2-C8 width and now leads the
+strongest peer at every width: **+2.74%/+28.41%/+67.39%** at C1/C2/C3. The
+exact retiles improve their same-build AR means by **+12.02%/+8.23%/+4.01%**;
+all combined category and heldout scopes are positive in both exact arms, all
+paired and repeated generated rows match, and every process drains. The formerly
+published C5/C6/C8 deficits remain closed at **+38.99%/+28.03%/+16.86%**. The
+earlier exact planar-Q6 FFN-down retile remains independently established by
+its same-build rollback: **+6.70%/+2.45%/+2.24%** at C1/C2/C3 with every
+category and heldout scope positive. An older two-run explicit-K3 packet bounded then-current K3
 repeat spread at **0.01%-1.06%** through C7; it is superseded for AR rates by the
 full repeat above ([`older repeat`](results/2026-08-30-w7900-q4km-c1c8-parity-refresh-repeat-pair.json)).
 The K3 arm is forced: with `--mtp-request-mode automatic` on this host and model,
@@ -191,7 +192,8 @@ and the K3 row measures the engine, not the product. [`automatic route gating`](
 [`grouped-prefill promotion`](results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json) ·
 [`admission/decode decomposition, post-grouping`](results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json) ·
 [`exact planar-Q6 prefill retention`](results/2026-08-31-w7900-q4km-planar-q6-prefill-retained.json) ·
-[`full C1-C8 prefill peer repeat (current rows)`](results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json) ·
+[`exact fused-Q4 prefill retiles (current C1-C3 rows)`](results/2026-08-31-w7900-q4km-fused-q4-prefill-retiles-retained.json) ·
+[`full C1-C8 prefill peer repeat (current C4-C8 rows)`](results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json) ·
 [`full C1-C8 AR peer repeat and C2 attribution (current rows)`](results/2026-08-31-w7900-q4km-c1c8-ar-peer-repeat-attribution.json) ·
 [`admission/decode decomposition, pre-grouping (superseded AR arm)`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json) ·
 [`single-wave exact route, counterbalanced speed confirmed`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json) ·
