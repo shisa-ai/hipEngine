@@ -763,6 +763,12 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`
       and
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json`.
+      Exact Q8 down+scaled-SiLU publication is rejected/removed before
+      whole-model timing: rows2 improves 1.118x, but binding rows508 regresses
+      1.655→1.667 ms (0.9926x). Keep the separate scaled-SiLU fallback and do
+      not add transcendental work to the register-heavy down publication.
+      Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
 - [ ] Evaluate output-projection+GR-write composites for attention and MoE
       boundaries, including the exact inject ordering. Start with the 36-layer
       Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact
