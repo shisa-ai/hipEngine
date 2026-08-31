@@ -25,6 +25,9 @@ normative in [`TESTING.md`](TESTING.md),
 [`KERNELS.md`](KERNELS.md), and [`BENCHMARK.md`](BENCHMARK.md). The active
 gap-closure plan, profiling recipe, external-source audit, and punchlist are
 [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md).
+The matched cross-engine speed, static-logit, autoregressive-repeatability,
+MTP-equivalence, and absolute-quality evidence is consolidated in
+[`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md).
 
 ---
 
@@ -182,7 +185,7 @@ committed.
 | llama.cpp PR #27739 | `dfa0c0fee2b704fd2ac228d365d40502c3006c40`; MTP design reference, used through EngramHalo's Qwen4Exp port rather than as the target-text/quantizer authority |
 | EngramHalo.cpp | `Aristo94/EngramHalo.cpp@4ff3affc2ac5861f7dda42bcf5ff653c776b816f`; PR #27742-based gfx1151 reference. MTP runtime `0f1c3e2ef41117033d91a83d7634fca4dfe12107`, MTP converter `2cc66f08ca03c6e3f385ec15412f92ad6d490794`; performance patches are ideas to validate in-tree, not inherited evidence. |
 | EngramHalo Q8_0 MTP sidecar | `EasiiX/Qwen3.8-Flash-Next-MTP-Strix-Halo-GGUF@6f7900648b1c6b14f067a182c640e47971e9ab35`; one 4,137,429,088-byte GGUF, SHA-256 `9db03a687670608286e99b563fcc86d0ee76c8dd863f64b2afc0b54eb0eb975d`; strict 34-tensor inventory/shape/qtype map passes; execution remains unqualified |
-| apepojken llama.cpp fork | `github.com/apepojken/llama.cpp` default branch `qwen4exp-spec-mtp` (PR #27742 base + speculative-decode rollback fixes, native MTP head with distinct-stream combiner, 4-pass 8-bit radix top-k, incremental pooled-key cache, gathered decode attention, GDN concat fix, epilog fusion). Not yet commit-pinned: clone and freeze before porting. Reported rates (Vulkan/RADV, `UD-Q3_K_XL`, 50.4 tok/s decode at 0.96 acceptance, 338 tok/s prefill at 32k) are cross-runtime target lines only, not evidence. Sidecar: `jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF` (4.1 GB Q8_0) |
+| apepojken llama.cpp fork | `apepojken/llama.cpp@843d5750579a15ed4a42d73eb862855c271021ac`, branch `qwen4exp-spec-mtp` (PR #27742 base + speculative-decode rollback fixes, native MTP head with distinct-stream combiner, 4-pass 8-bit radix top-k, incremental pooled-key cache, gathered decode attention, GDN concat fix, epilog fusion). The clean local Vulkan build passes TOP_K 445/445 and is fast on matched Q4, but only 8/12 canonical AR cases repeat and MTP is 9/10 AR-message exact; see the Strix Halo survey. Reported Q3 rates (50.4 tok/s code at 0.963 acceptance, 338 tok/s p32K) remain author-reported. Sidecar: `jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF@69da733459b737b79273c0a322340de9c9c08fa2`, 4,135,893,184 bytes, SHA-256 `713109a7f0dfd5bde305c296b4252daf576aa4c2e380f043f3323aa00dc2cde8`. |
 | vLLM PR #53896 | `vllm-project/vllm@2a4cd640ff1a61b66124ddbaaf02a73781f7295a`; paged raw/persistent-compressed QSA caches, GPU scoring/top-k/expansion, split-k sparse attention, MTP step-0 index reuse, and AMD path reference |
 | vLLM PR #53899 | `vllm-project/vllm@95dc96d1d012a25ff5c3823a1e77197c8dae4654`; PLE CPU-offload protocol/reference; known TP1 warmup deadlock is explicitly not inherited |
 | SGLang PR #36497 | `sgl-project/sglang@7c66045d71f067c1c5da2b85baad3c47d9a19cb7`; persistent compressed-QSA cache, fused exact index prep/compression, fast top-k, sparse attention, PLE offload, HC and MTP reference |
