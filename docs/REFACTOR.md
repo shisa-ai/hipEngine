@@ -55,14 +55,7 @@ should be removed or collapsed.
   first. Do not leave the ambiguous broad flag as a latent production route.
   Retain the strict selected Q5_K gemv chain as fallback.
 
-## 2026-08-31 Qwen4Exp P3 candidates
-
-- `HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4=1` replaces the multirow dense F32
-  router projection with an exact four-token tile that reuses each weight row.
-  Strict and named production now bind it on after complete T0 performance,
-  450-row exactness, state/task, lifecycle, and trace admission; c1 stays dense.
-  Remove the flag after one clean promoted-default versus `=0` confirmation,
-  keeping the registered `f32_hidden` strict fallback in the manifest.
+## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
   K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
