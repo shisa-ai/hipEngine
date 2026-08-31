@@ -1090,7 +1090,7 @@ Evidence: [`current post-grouping K3 attribution`](../benchmarks/results/2026-08
 
 #### P13-E — Lifecycle and tooling cleanup (#26, #27)
 
-- [ ] Make accept-staging release failure-safe through all subsequent cleanup.
+- [x] Make accept-staging release failure-safe through all subsequent cleanup.
 - [ ] Repair the packed-prefill runner probe to share the owner's runtime/runner
       and label it runner-level only; serving attribution comes from server
       route counters.
