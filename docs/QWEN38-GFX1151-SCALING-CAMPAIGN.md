@@ -496,6 +496,12 @@ sources whose path, size, and digest are recorded inside the artifacts.
    do not rewrite the historical entries or reinterpret raw-only evidence as a
    retained gate.
 
+### Post-audit successor ledger
+
+| Scope | Exact commit and committer timestamp | Result | Durable evidence |
+| --- | --- | --- | --- |
+| C6/C8 K1 direct verifier state | `5f7b3cb6b1b193c134ca93799c76be30e3a7084e` — `2026-09-01T01:14:52+09:00` | Bound read-only packed-verifier roots to the stable resident Conv/GDN slab, removing 9,216 C8 imports / 8.0 GB. Clean same-process MTP improves C6 35.458→35.966 (+1.43%) and C8 41.842→42.594 tok/s (+1.80%); both remain ~0.899x AR and unpromoted. | [`artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-c6c8-direct-verifier-state-retained.json), [`implementation entry`](../worklog/entries/20260831T161329.846325Z-lhl-qwen38-c6c8-direct-verify-state-043f5a.md), [`publication entry`](../worklog/entries/20260831T162416.883411Z-lhl-qwen38-c6c8-direct-state-publication-bc13f3.md) |
+
 ## 5. Order
 
 Planned order was `X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` ->
