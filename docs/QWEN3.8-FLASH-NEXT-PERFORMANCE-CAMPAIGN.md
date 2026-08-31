@@ -820,8 +820,8 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       selected llama kernel family, including key tiles, online-softmax merge,
       grid sufficiency, and register/LDS pressure. The non-flash multirow dense
       owner now selects the registered fixed256/precomputed-offset/vector2
-      kernel: real primitive **6.846→2.485 ms (2.755x)**, p508
-      **91.345→92.391 tok/s**, code-p1024 **89.150→90.634 tok/s**, and the
+      kernel: real primitive **6.846→2.485 ms (2.755x)**, clean p508
+      **91.529→92.442 tok/s**, code-p1024 **89.150→90.634 tok/s**, and the
       complete 450-row/state/task gate is exact. Generic batch attention remains
       fallback. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json`.
