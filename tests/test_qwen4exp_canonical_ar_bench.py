@@ -234,6 +234,7 @@ def test_hipengine_parser_accepts_case_filter(tmp_path: Path) -> None:
         ]
     )
     assert args.case_id == ["code-p512", "code-p4096"]
+    assert args.ple_cache_mode == "warm"
 
 
 def test_compare_rejects_different_case_sets(tmp_path: Path) -> None:

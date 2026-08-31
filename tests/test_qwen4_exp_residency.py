@@ -156,6 +156,48 @@ def test_qwen4_exp_ple_mmap_gathers_only_requested_iq4_nl_rows() -> None:
         table.gather_rows([0])
 
 
+def test_qwen4_exp_ple_cache_advice_is_file_scoped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    raw = _iq4_nl_rows((1.0, 2.0, 3.0))
+
+    class Mapping:
+        def __init__(self) -> None:
+            self.advice = []
+
+        def madvise(self, advice: int) -> None:
+            self.advice.append(advice)
+
+    mapping = Mapping()
+
+    class Raw:
+        _mmap = mapping
+
+        def __getitem__(self, item):
+            return raw[item]
+
+    mapped_raw = Raw()
+    source = tmp_path / "part.gguf"
+    source.write_bytes(b"0" * 1024)
+    reader = SimpleNamespace(path=source, tensor_data=lambda name: mapped_raw)
+    calls = []
+    monkeypatch.setattr(
+        "hipengine.loading.qwen4_exp_materialize.os.posix_fadvise",
+        lambda fd, offset, length, advice: calls.append((offset, length, advice)),
+    )
+    table = Qwen4ExpPLEMMapTable(reader, _ple_tensor(3), semantic_rows=3)
+
+    cold = table.advise_cache("cold")
+    warm = table.advise_cache("warm")
+
+    assert cold["scope"] == "ple_tensor_file_range"
+    assert cold["mode"] == "cold"
+    assert warm["mode"] == "warm"
+    assert len(mapping.advice) == 2
+    assert len(calls) == 2
+    assert calls[0][0:2] == (0, 270)
+
+
 class _FakeRuntime:
     def __init__(self) -> None:
         self.registered: list[tuple[int, int]] = []
