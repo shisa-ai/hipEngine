@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 fused GR sigmoid+mean — retained] The exact rows<=256 owner removes one launch per GR read and improves counterbalanced p508+128-step decode **14.037→15.083 tok/s (1.0746x, 95% CI 1.0548–1.0945)** with all five pairs and output sequences exact. The complete T0 gate passes **450/450 logits at KL=0**, **18/18 exact state/task prompts**, three repeats, lifecycle, and a 1,924 ns gfx1151 trace; rows>256 retain the unfused fallback. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 Q8 MMQ attention-gate — rejected] Extending guarded F32 Q8 MMQ to K2560/N6144 wins p508 **1.0352x (95% CI 1.0332–1.0371)** and passes all 450-row numerical scopes at mean/p95/max KL **3.16e-4/0.00180/0.00668**, **447/450 top-1**, but candidate state repeat 1 differs from repeats 2–3 on the first code prompt. Binding same-schedule repeatability rejects promotion; default stays exact coltile. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 prefill profile — diagnostic] Fresh current-production p508 names **1.670 s** of primary P3 roles: GR projection/read **709.32 ms**, Q8 `attn_qkv+attn_gate` **532.36 ms**, router **181.91 ms**, `ssm_out` **137.84 ms**, and shared projections **121.61 ms**. The 36-layer qkv+gate boundary is the first operation-complete target. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json`.

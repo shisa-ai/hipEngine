@@ -88,7 +88,7 @@ CANDIDATES = {
             "hip_gfx1151", "gr_gated_mean_sigmoid", "f32", "strict",
         ),
         fallback_key=(
-            "hip_gfx1151", "gr_gated_mean", "f32", "strict",
+            "hip_gfx1151", "gr_gated_mean_sigmoid", "f32", "strict_unfused",
         ),
     ),
     "q8_mmq_attn_gate": CandidateSpec(

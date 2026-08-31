@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,6 +47,62 @@ def test_parser_accepts_selected_fixture_cases(tmp_path: Path) -> None:
 
     assert args.prompt_file is None
     assert args.case_id == ["code-p512", "general_en-p512"]
+
+
+def test_parser_accepts_decode_mode(tmp_path: Path) -> None:
+    module = _load_script()
+
+    args = module.build_parser().parse_args(
+        [
+            "--model-root",
+            str(tmp_path / "model"),
+            "--mode",
+            "decode",
+            "--decode-transitions",
+            "64",
+            "--prompt-file",
+            str(tmp_path / "prompt.txt"),
+            "--override",
+            "HIPENGINE_ROUTE=1",
+            "--output",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    assert args.mode == "decode"
+    assert args.decode_transitions == 64
+
+
+def test_decode_route_excludes_prefill_and_hashes_complete_sequence() -> None:
+    module = _load_script()
+
+    class Runtime:
+        def __init__(self) -> None:
+            self.synchronizations = 0
+
+        def device_synchronize(self) -> None:
+            self.synchronizations += 1
+
+    class Runner:
+        def __init__(self) -> None:
+            self.runtime = Runtime()
+
+        def prefill(self, _ids):
+            return SimpleNamespace(token_id=10)
+
+        def step(self, token_id):
+            return SimpleNamespace(token_id=token_id + 1)
+
+    runner = Runner()
+    sample = module._run_route(
+        runner, [1, 2, 3], mode="decode", decode_transitions=3
+    )
+
+    assert sample["output_token_ids"] == [10, 11, 12, 13]
+    assert sample["token_id"] == 13
+    assert sample["seconds"] >= 0
+    assert len(sample["logits_sha256"]) == 64
+    assert runner.runtime.synchronizations == 2
 
 
 def test_paired_summary_reports_ratio_cv_and_output_identity() -> None:

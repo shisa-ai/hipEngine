@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Counterbalanced same-process Qwen4Exp prefill route A/B.
+"""Counterbalanced same-process Qwen4Exp prefill or decode route A/B.
 
 The named production profile is constructed once. ``--override`` values define
 one diagnostic route and are toggled against the values bound by the profile.
 Each pair reverses its first route, so monotonic thermal drift cannot masquerade
-as a route win. Override runs are never named-profile evidence.
+as a route win. Decode mode excludes prefill from timing and hashes the complete
+generated token sequence. Override runs are never named-profile evidence.
 """
 
 from __future__ import annotations
@@ -102,7 +103,7 @@ def _route_summary(rows: list[dict[str, Any]], prompt_tokens: int) -> dict[str, 
 
 
 def _paired_summary(
-    samples: list[dict[str, Any]], *, prompt_tokens: int
+    samples: list[dict[str, Any]], *, prompt_tokens: int, unit_name: str = "prompt_tokens"
 ) -> dict[str, Any]:
     routes = {
         route: _route_summary(
@@ -130,7 +131,7 @@ def _paired_summary(
         )
     ratios = [row["throughput_ratio_override_vs_bound"] for row in pairs]
     return {
-        "prompt_tokens": int(prompt_tokens),
+        unit_name: int(prompt_tokens),
         "counterbalanced": True,
         "routes": routes,
         "pairs": pairs,
@@ -158,9 +159,52 @@ def _set_environment(values: dict[str, str | None]) -> None:
             os.environ[key] = value
 
 
+def _run_route(
+    runner: Any,
+    token_ids: list[int],
+    *,
+    mode: str,
+    decode_transitions: int,
+) -> dict[str, Any]:
+    """Run one synchronized route sample and return its timing/identity."""
+
+    if mode == "prefill":
+        started = time.perf_counter()
+        result = runner.prefill(token_ids)
+        runner.runtime.device_synchronize()
+        return {
+            "seconds": time.perf_counter() - started,
+            "token_id": int(result.token_id),
+            "logits_sha256": hashlib.sha256(result.logits.tobytes()).hexdigest(),
+        }
+    if mode != "decode":
+        raise ValueError(f"unsupported route mode: {mode}")
+    if decode_transitions <= 0:
+        raise ValueError("decode_transitions must be positive")
+    result = runner.prefill(token_ids)
+    runner.runtime.device_synchronize()
+    output_ids = [int(result.token_id)]
+    current = int(result.token_id)
+    started = time.perf_counter()
+    for _ in range(decode_transitions):
+        result = runner.step(current)
+        current = int(result.token_id)
+        output_ids.append(current)
+    runner.runtime.device_synchronize()
+    return {
+        "seconds": time.perf_counter() - started,
+        "token_id": current,
+        "logits_sha256": hashlib.sha256(
+            json.dumps(output_ids, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "output_token_ids": output_ids,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
+    parser.add_argument("--mode", choices=("prefill", "decode"), default="prefill")
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument("--prompt-file", type=Path)
     input_group.add_argument("--fixture", type=Path)
@@ -175,6 +219,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--warmups", type=int, default=1)
     parser.add_argument("--max-sequence-length", type=int, default=768)
     parser.add_argument("--prefill-chunk-size", type=int, default=512)
+    parser.add_argument("--decode-transitions", type=int, default=128)
     parser.add_argument("--hip-arch", default="gfx1151")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
@@ -198,6 +243,8 @@ def main() -> int:
         raise SystemExit("--pairs must be positive")
     if args.warmups < 0:
         raise SystemExit("--warmups must be non-negative")
+    if args.mode == "decode" and args.decode_transitions <= 0:
+        raise SystemExit("--decode-transitions must be positive in decode mode")
 
     os.environ.setdefault("HIPENGINE_HIP_ARCH", args.hip_arch)
     if args.compiler_version_file is not None:
@@ -253,7 +300,7 @@ def main() -> int:
     prompt_bytes = args.prompt_file.read_bytes() if args.prompt_file else None
     report: dict[str, Any] = {
         "schema": 1,
-        "kind": "qwen4exp_prefill_route_counterbalanced_ab",
+        "kind": f"qwen4exp_{args.mode}_route_counterbalanced_ab",
         "status": "running",
         "configuration_class": "diagnostic_counterbalanced_post_binder_override",
         "named_profile_intact": False,
@@ -276,6 +323,14 @@ def main() -> int:
             "pairs": int(args.pairs),
             "warmups_per_route": int(args.warmups),
             "prefill_chunk_size": int(args.prefill_chunk_size),
+            "decode_transitions": (
+                int(args.decode_transitions) if args.mode == "decode" else None
+            ),
+            "timing_boundary": (
+                "synchronized runner.prefill including first greedy output"
+                if args.mode == "prefill"
+                else "prefill excluded; synchronized autoregressive runner.step transitions"
+            ),
             "override_stage": "post_profile_binder_pre_warmup_and_measurement",
         },
         "overrides": dict(overrides),
@@ -362,18 +417,20 @@ def main() -> int:
             for warmup in range(args.warmups):
                 for route in _counterbalanced_order(warmup + case_index):
                     _set_environment(route_values[route])
-                    result = generator.runner.prefill(ids)
-                    generator.runner.runtime.device_synchronize()
+                    sample = _run_route(
+                        generator.runner,
+                        ids,
+                        mode=args.mode,
+                        decode_transitions=int(args.decode_transitions),
+                    )
                     report["warmups"].append(
                         {
                             "case_id": case["id"],
                             "category": case["category"],
                             "warmup": warmup,
                             "route": route,
-                            "token_id": int(result.token_id),
-                            "logits_sha256": hashlib.sha256(
-                                result.logits.tobytes()
-                            ).hexdigest(),
+                            "token_id": sample["token_id"],
+                            "logits_sha256": sample["logits_sha256"],
                         }
                     )
             for pair in range(args.pairs):
@@ -381,9 +438,12 @@ def main() -> int:
                     _counterbalanced_order(pair + case_index)
                 ):
                     _set_environment(route_values[route])
-                    started = time.perf_counter()
-                    result = generator.runner.prefill(ids)
-                    generator.runner.runtime.device_synchronize()
+                    sample = _run_route(
+                        generator.runner,
+                        ids,
+                        mode=args.mode,
+                        decode_transitions=int(args.decode_transitions),
+                    )
                     row = {
                         "case_id": case["id"],
                         "category": case["category"],
@@ -391,11 +451,7 @@ def main() -> int:
                         "pair": pair,
                         "order_index": order_index,
                         "route": route,
-                        "seconds": time.perf_counter() - started,
-                        "token_id": int(result.token_id),
-                        "logits_sha256": hashlib.sha256(
-                            result.logits.tobytes()
-                        ).hexdigest(),
+                        **sample,
                     }
                     report["samples"].append(row)
                     _write_json(args.output, report)
@@ -407,7 +463,14 @@ def main() -> int:
         report["case_summaries"] = {
             case["id"]: _paired_summary(
                 [row for row in report["samples"] if row["case_id"] == case["id"]],
-                prompt_tokens=len(case["token_ids"]),
+                prompt_tokens=(
+                    len(case["token_ids"])
+                    if args.mode == "prefill"
+                    else int(args.decode_transitions)
+                ),
+                unit_name=(
+                    "prompt_tokens" if args.mode == "prefill" else "decode_transitions"
+                ),
             )
             for case in cases
         }

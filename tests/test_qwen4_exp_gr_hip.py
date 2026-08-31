@@ -33,6 +33,7 @@ def test_qwen4_exp_gr_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
         plan_qwen4_exp_gr_build,
         qwen4_exp_gated_mean_sigmoid_f32,
+        qwen4_exp_gated_mean_sigmoid_unfused_f32,
         qwen4_exp_gr_write_bf16_f32,
         register_qwen4_exp_gr_kernels,
     )
@@ -50,6 +51,15 @@ def test_qwen4_exp_gr_build_and_registry_contract() -> None:
             variant="strict",
         )
         is qwen4_exp_gated_mean_sigmoid_f32
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gr_gated_mean_sigmoid",
+            quant="f32",
+            variant="strict_unfused",
+        )
+        is qwen4_exp_gated_mean_sigmoid_unfused_f32
     )
     assert (
         resolve(

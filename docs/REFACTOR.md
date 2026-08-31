@@ -55,13 +55,14 @@ should be removed or collapsed.
   first. Do not leave the ambiguous broad flag as a latent production route.
   Retain the strict selected Q5_K gemv chain as fallback.
 
-## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
+## 2026-08-31 Qwen4Exp P3 candidates
 
 - `HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED=1` fuses GR sigmoid
   materialization with gated mean for rows <=256 while preserving both outputs.
-  Strict and named production bind it off during admission. Remove the flag
-  after the complete T0 exact/state/trace gate: promote the fused registry owner
-  if same-suite non-regressive, otherwise remove the candidate kernel.
+  Strict and named production now bind it on after exact T0/state/task/trace
+  admission; `=0` retains the registered unfused rollback. Remove the env flag
+  after one clean post-promotion default-versus-fallback confirmation, keeping
+  the row policy and registered `strict_unfused` fallback in the manifest.
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
   K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
