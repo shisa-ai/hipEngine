@@ -2682,12 +2682,6 @@ def _qwen4_exp_q8_mmq_policy(policy):
     return replace(policy, min_rows=minimums)
 
 
-def _qwen4_exp_shared_down_combine_enabled(rows: int) -> bool:
-    return rows >= 2 and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_SHARED_DOWN_COMBINE", "0"
-    ) not in {"", "0", "false", "False"}
-
-
 def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
     """Select the exact four-token F32 router producer for multirow work."""
 
@@ -3581,84 +3575,47 @@ def run_qwen4_exp_moe(
         runtime=active_runtime,
     )
     launch_gguf_linear(
+        weights["shared_down"], scratch.shared_intermediate.ptr, scratch.shared_down.ptr,
+        rows, ffn, hidden,
+        activation_dtype=GGUF_ACTIVATION_F32,
+        output_dtype=GGUF_OUTPUT_F32,
+        stream=stream, runtime=active_runtime,
+    )
+    launch_gguf_linear(
         weights["shared_gate_weight"], mixed_ptr, scratch.shared_gate_logits.ptr,
         rows, hidden, 1,
         activation_dtype=GGUF_ACTIVATION_F32,
         output_dtype=GGUF_OUTPUT_F32,
         stream=stream, runtime=active_runtime,
     )
-    shared_down_weight = weights["shared_down"]
-    fused_shared_down_key = KernelKey(
-        backend,
-        "linear+shared_gate_combine",
-        shared_down_weight.spec.quant_key,
-        "coltile8_rowbatch4_f32_bf16_out_exact",
+    f32_to_bf16(
+        scratch.shared_down.ptr,
+        scratch.shared_down_bf16.ptr,
+        rows * hidden,
+        stream=stream,
+        runtime=active_runtime,
     )
-    fused_shared_down = (
-        _qwen4_exp_shared_down_combine_enabled(rows)
-        and is_registered(fused_shared_down_key)
-    )
-    if fused_shared_down:
-        resolve(
-            backend=fused_shared_down_key.backend,
-            layer=fused_shared_down_key.layer,
-            quant=fused_shared_down_key.quant,
-            variant=fused_shared_down_key.variant,
-        )(
-            scratch.shared_intermediate.ptr,
-            shared_down_weight.allocation("raw").tensor.ptr,
+    if rows == 1:
+        shared_gate_combine_out_bf16(
             scratch.routed.ptr,
-            scratch.shared_gate_logits.ptr,
-            scratch.shared_down.ptr,
             scratch.shared_down_bf16.ptr,
+            scratch.shared_gate_logits.ptr,
             scratch.output.ptr,
-            rows,
-            ffn,
             hidden,
             stream=stream,
             runtime=active_runtime,
         )
     else:
-        launch_gguf_linear(
-            shared_down_weight,
-            scratch.shared_intermediate.ptr,
-            scratch.shared_down.ptr,
-            rows,
-            ffn,
-            hidden,
-            activation_dtype=GGUF_ACTIVATION_F32,
-            output_dtype=GGUF_OUTPUT_F32,
-            stream=stream,
-            runtime=active_runtime,
-        )
-        f32_to_bf16(
-            scratch.shared_down.ptr,
+        shared_gate_combine_batch_out_bf16(
+            scratch.routed.ptr,
             scratch.shared_down_bf16.ptr,
-            rows * hidden,
+            scratch.shared_gate_logits.ptr,
+            scratch.output.ptr,
+            rows,
+            hidden,
             stream=stream,
             runtime=active_runtime,
         )
-        if rows == 1:
-            shared_gate_combine_out_bf16(
-                scratch.routed.ptr,
-                scratch.shared_down_bf16.ptr,
-                scratch.shared_gate_logits.ptr,
-                scratch.output.ptr,
-                hidden,
-                stream=stream,
-                runtime=active_runtime,
-            )
-        else:
-            shared_gate_combine_batch_out_bf16(
-                scratch.routed.ptr,
-                scratch.shared_down_bf16.ptr,
-                scratch.shared_gate_logits.ptr,
-                scratch.output.ptr,
-                rows,
-                hidden,
-                stream=stream,
-                runtime=active_runtime,
-            )
     return Qwen4ExpMoEDeviceResult(scratch.output, scratch.selected, scratch.routing)
 
 

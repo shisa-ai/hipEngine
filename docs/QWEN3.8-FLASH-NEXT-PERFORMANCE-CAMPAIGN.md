@@ -743,6 +743,12 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       resolution; require a larger gate/up+SiLU or down+gate+combine boundary.
       Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-q8-pair-rejected.json`.
+      An exact shared-down+BF16-boundary+sigmoid-combine composite is likewise
+      rejected/removed: its rows508 GPU window improves 1.376→1.292 ms, but
+      p508 is flat at 0.99974x (95% CI 0.99772–1.00176). Small shared-expert
+      epilogue launch contractions are now exhausted; move to a larger data-
+      reuse boundary. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-down-combine-rejected.json`.
 - [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
       add down+scaled-SiLU and up+sigmoid+gated-mean epilogues. The exact
       sigmoid+gated-mean subunit is now retained for rows <=256: it removes one
