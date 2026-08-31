@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-31**
+Last updated: **2026-09-01**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -230,7 +230,12 @@ ms/output (1.25×)**. The main p508 owners are MoE **3.161 s** (layers 0–26:
 **2.526 s**), GDN **634.94 ms**, and QSA **110.49 ms**. The largest single miss
 is layer-2 Q5_K gate/up at **301.47 vs 15.38 ms**. Decode submits **1,195
 direct kernels plus 48 MoE graphs/token**; 625 additional rows/token are
-graph-expanded nodes.
+graph-expanded nodes. A strict, layer-local stateful graph diagnostic now
+captures one complete 34-kernel GDN+MoE physical layer: output and all request
+state owners remain exact through four replays, while synchronized layer wall
+falls **4.051→1.258 ms (3.22x)**. This is not yet bound to production; larger
+transition and full-token lifecycle gates remain open.
+[`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json).
 
 A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
 the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up

@@ -967,7 +967,13 @@ request-owned transition submission.
       layer composition. Do not widen production capture yet. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p8-gdn-graph-replay-probe.json`.
 - [ ] Capture in rungs: one stateful layer, one complete attention/FFN
-      transition, a multi-layer segment, then the full token step.
+      transition, a multi-layer segment, then the full token step. **Rung 1 is
+      complete:** strict layer 0's full 34-kernel GR→Conv/GDN→MoE transition is
+      output/state exact through four replays and measures **4.051→1.258 ms
+      (3.22x)** over 30 synchronized samples; cached profiling confirms 34
+      dispatches per `hipGraphLaunch` and no post-launch device allocation.
+      This is layer-local evidence only, not a production binding. Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.
