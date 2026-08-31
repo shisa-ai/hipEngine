@@ -389,7 +389,7 @@ class Qwen35GGUFMTP2Adapter:
                 )
             )
             if str(profile) == "production"
-            and _env_enabled(_EXACT_TARGET_ROWS_ENV)
+            and _env_enabled(_EXACT_TARGET_ROWS_ENV, default=True)
             else ()
         )
         self._target_pad_token_scratch: DeviceBuffer | None = None

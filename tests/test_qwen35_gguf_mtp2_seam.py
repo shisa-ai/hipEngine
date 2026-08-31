@@ -290,7 +290,7 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     strict.close()
 
 
-def test_unpadded_r8_target_is_production_candidate_scoped(
+def test_unpadded_r8_target_is_production_default_with_rollback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = SimpleNamespace(
@@ -304,6 +304,18 @@ def test_unpadded_r8_target_is_production_candidate_scoped(
     monkeypatch.delenv(
         "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", raising=False
     )
+    default = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert default.production_exact_target_row_counts == (8,)
+    assert default._target_group_pad_rows(request_count=2, candidate_rows=6) == 0
+    assert default._target_group_pad_rows(request_count=1, candidate_rows=3) == 2
+    default.close()
+
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "0")
     rollback = Qwen35GGUFMTP2Adapter(
         owner,
         enabled=True,
@@ -315,17 +327,6 @@ def test_unpadded_r8_target_is_production_candidate_scoped(
     rollback.close()
 
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "1")
-    candidate = Qwen35GGUFMTP2Adapter(
-        owner,
-        enabled=True,
-        target_verify_mode="native",
-        candidate_budget=3,
-    )
-    assert candidate.production_exact_target_row_counts == (8,)
-    assert candidate._target_group_pad_rows(request_count=2, candidate_rows=6) == 0
-    assert candidate._target_group_pad_rows(request_count=1, candidate_rows=3) == 2
-    candidate.close()
-
     strict_owner = SimpleNamespace(
         generator=SimpleNamespace(
             execution_profile="strict",
