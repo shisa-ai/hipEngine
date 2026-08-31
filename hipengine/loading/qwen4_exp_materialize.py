@@ -461,6 +461,16 @@ class Qwen4ExpPLEMMapTable:
             if selected == "warm"
             else os.POSIX_FADV_DONTNEED
         )
+        mapping = getattr(self._raw, "_mmap", None)
+        mapping_applied = False
+        remapped = False
+        if mapping is not None and hasattr(mapping, "madvise"):
+            mapping.madvise(mmap_advice)
+            mapping_applied = True
+        if selected == "cold" and mapping is not None and hasattr(mapping, "close"):
+            mapping.close()
+            self._raw = None
+            remapped = True
         file_applied = False
         source = getattr(self.reader, "path", None)
         fadvise = getattr(os, "posix_fadvise", None)
@@ -476,11 +486,8 @@ class Qwen4ExpPLEMMapTable:
                 file_applied = True
             finally:
                 os.close(descriptor)
-        mapping = getattr(self._raw, "_mmap", None)
-        mapping_applied = False
-        if mapping is not None and hasattr(mapping, "madvise"):
-            mapping.madvise(mmap_advice)
-            mapping_applied = True
+        if remapped:
+            self._raw = self.reader.tensor_data(self.tensor.name)
         return {
             "mode": selected,
             "scope": "ple_tensor_file_range",
@@ -488,6 +495,7 @@ class Qwen4ExpPLEMMapTable:
             "nbytes": int(self.tensor.nbytes),
             "file_advice_applied": file_applied,
             "mapping_advice_applied": mapping_applied,
+            "mapping_reopened": remapped,
         }
 
     def close(self) -> None:
