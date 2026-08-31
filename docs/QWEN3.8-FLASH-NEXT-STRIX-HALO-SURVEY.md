@@ -1,10 +1,10 @@
 # Qwen3.8-Flash-Next Strix Halo engine survey
 
-Status: **surveyed 2026-08-31 on `zbook` / Ryzen AI Max+ Pro 395 / Radeon
-8060S (`gfx1151`)**. The central result is that static-logit agreement and
-multi-step reliability are different questions: several fast forks compute
-plausible logits for a fixed batch but fail deterministic autoregressive or
-MTP output checks.
+Status: **external lanes surveyed 2026-08-31; hipEngine evidence refreshed
+2026-09-01 on `zbook` / Ryzen AI Max+ Pro 395 / Radeon 8060S (`gfx1151`)**.
+The central result is that static-logit agreement and multi-step reliability
+are different questions: several fast forks compute plausible logits for a
+fixed batch but fail deterministic autoregressive or MTP output checks.
 
 ## 1. Speed topline
 
@@ -16,7 +16,7 @@ rates, not closure-grade confidence intervals.
 
 | Engine and backend | p512 | p1024 | p4096 | Output repeatability |
 | --- | ---: | ---: | ---: | --- |
-| hipEngine production, HIP | 82.51 / 13.82 | 81.22 / 13.79 | 67.93 / 10.40 | 12/12 cases |
+| hipEngine production `61b1cef1b`, HIP | **83.70 / 14.40** | **83.16 / 14.42** | **69.10 / 10.42** | 12/12 cases |
 | Upstream llama.cpp `f1793c1c4`, Vulkan | 240.53 / 22.97 | 259.73 / 20.11 | 266.98 / 18.07 | 12/12 cases |
 | Patched upstream `f1793c1c4`, HIP | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 cases; non-stock loader |
 | EngramHalo `1423f689`, HIP | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 pass; one p4096 case fails |
@@ -30,9 +30,37 @@ EngramHalo's p4096 rate has the same restriction. The repeatability-valid
 short-context ceilings remain patched upstream HIP and upstream Vulkan, plus
 EngramHalo only at p512/p1024. Full timings, hashes, and first-difference
 positions are in the
-[canonical screen](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
+[canonical screen](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json),
+the [current hipEngine row](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json),
 and the
 [survey artifact](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json).
+
+Relative to the original hipEngine survey row, current production prefill is
+**+1.44%/+2.38%/+1.72%** and decode is **+4.17%/+4.60%/+0.20%** at
+p512/p1024/p4096. All 36 current samples are deterministic. Against the
+repeatability-valid patched-upstream HIP row, hipEngine now reaches
+**81.2%/85.4%/70.5%** of decode throughput and **35.0%/27.6%/23.5%** of
+prefill throughput. Against upstream Vulkan, it reaches
+**62.7%/71.7%/57.6%** of decode throughput and **34.8%/32.0%/25.9%** of
+prefill throughput. Production therefore remains the slowest matched lane,
+although its short-context decode gap narrowed.
+
+### hipEngine P8 graph research—not a matched survey row
+
+| Boundary | Eager median | Graph-transition median | Speedup | Correctness and status |
+| --- | ---: | ---: | ---: | --- |
+| Host PLE publication + embedding + all 48 layers + full logits + device argmax/readback, positions 8–37 | 194.758 ms/step (5.13 step/s) | **61.910 ms/step (16.15 step/s)** | **3.15x** | Positions 8–11: exact changing-token trajectory, full logits, 138 mutable owners, reset→replay, and graph→forced-eager→graph resumption; research only |
+
+This P8 row includes exact host hashing, 16-row IQ4_NL mmap gather/dequant, one
+10-KiB H2D PLE row, one full graph launch, synchronization, and token readback.
+It does **not** use the canonical p512/p1024/p4096 prefixes, production profile,
+or 128-transition protocol, so **16.15 step/s must not replace 14.40 tok/s in
+the matched table**. It demonstrates that submission contraction can pay while
+preserving state through the historical third/fourth replay; production binding
+still requires request-local graph caching, multi-prompt trajectories, cold-PLE
+economics, context-bucket and retained-prefix transitions, c2 isolation, and
+serving cancellation. Evidence:
+[full transition artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json).
 
 ### MTP speed versus true AR
 
@@ -161,6 +189,8 @@ and teardown before promotion.
 - **For correctness-valid AR today:** use upstream llama.cpp HIP/Vulkan or
   hipEngine under its declared profile. Patched upstream HIP is required to
   start this 111 GB artifact on this host and must remain labeled non-stock.
+  hipEngine's P8 graph transition is exact research evidence, not yet a public
+  production route or a replacement for the matched canonical row.
 - **For fastest experimental AR:** apepojken is the strongest raw p1024/p4096
   result measured here, but 4/12 request shapes are nondeterministic. Nathan's
   p512 lead is likewise unusable as a binding target because all 12 cases fail.
@@ -254,8 +284,10 @@ sidecar Qwen4Exp MTP and loaded this artifact successfully.
 
 ### 6.1 hipEngine
 
-hipEngine is the slowest short-context lane in this survey, especially for
-prefill, but it has the strongest locally retained correctness packet:
+hipEngine production remains the slowest short-context matched lane in this
+survey, especially for prefill, but it has the strongest locally retained
+correctness packet. Its current canonical row is **83.70/83.16/69.10 pp/s** and
+**14.40/14.42/10.42 tg/s**, with all 36 samples deterministic:
 
 - same-Q4 frozen-llama text gate: mean/p95/p99/max KL
   `0.01406/0.04154/0.04776/0.04931`, 10/10 top-1;
@@ -264,15 +296,21 @@ prefill, but it has the strongest locally retained correctness packet:
   `2.79e-4/5.98e-3`, 446/450 top-1, all scopes at least 98.67%;
 - 18/18 repeat-exact free generation with four task-valid alternatives;
 - exact c2/isolation and zero tracked teardown;
-- 10/10 AR↔MTP exact, although MTP is 0.955x AR.
+- 10/10 AR↔MTP exact, although MTP is 0.955x AR;
+- P8 full host-staged graph transition: exact changing-token trajectory, full
+  logits, 138 owners, reset/replay, forced-eager/resumption, and clean teardown;
+  **194.758→61.910 ms/step (3.15x)** at the separate shallow transition protocol.
 
 The evidence establishes implementation fidelity and profile non-inferiority,
 not official benchmark retention. Relevant artifacts are the
 [text gate](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-text-bringup.json),
 [heldout gate](../benchmarks/results/2026-08-27-gfx1151-qwen38-flash-next-heldout-logits.json),
 [production packet](../benchmarks/results/2026-08-29-gfx1151-qwen38-flash-next-wmma-moe27-production.json),
-and
-[MTP suite](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json).
+the
+[MTP suite](../benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json),
+the [current canonical row](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json),
+and the
+[P8 full transition](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json).
 
 ### 6.2 Upstream llama.cpp
 
@@ -400,6 +438,10 @@ larger than a speed screenshot:
   [`2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json)
 - Existing canonical AR matrix:
   [`2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
+- Current hipEngine canonical AR row:
+  [`2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json)
+- P8 full host-staged graph transition:
+  [`2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json)
 - Existing external-fork refresh:
   [`2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json)
 - Model/implementation authority:
