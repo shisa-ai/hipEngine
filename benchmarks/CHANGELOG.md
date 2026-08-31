@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next stacked P4 profile — diagnostic] QSA fixed256 cuts dense attention **82.33→29.18 ms** and total QSA role **103.32→50.61 ms**. Remaining GDN is early strict recurrence **522.58 ms**, admitted columnwarps **63.11 ms** + **5.16 ms** tail, and Conv **7.28 ms**. Early strict state layout remains the P4 blocker; P5 can proceed independently. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-stacked-profile.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P4 early-GDN columnblocks4 — rejected] Four 32-column blocks improve rows508 device wall **12.628→12.227 ms (1.0328x)** and preserve recurrent-state bits, but production output parity fails across every column quarter; the reduced one-block fixture masked it. Candidate is removed before model timing. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P4 QSA dense fixed256 — retained] The exact precomputed-offset/vector2 owner cuts the real dense primitive **6.846→2.485 ms (2.755x)**, improves clean p508 **91.529→92.442 tok/s (1.00997x, 95% CI 1.00732–1.01262)** and code-p1024 **89.150→90.634 tok/s (1.01665x, 95% CI 1.01423–1.01907)**. The T0 gate passes **450/450 KL=0**, **18/18 exact state/tasks**, lifecycle, and the expected gfx1151 trace. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json`.
