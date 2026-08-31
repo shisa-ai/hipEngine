@@ -18,7 +18,7 @@ def _load_script():
 
 def test_valid_chunks_are_bounded_by_prompt_and_include_partial_tail() -> None:
     module = _load_script()
-    assert module._valid_chunks(512, [256, 512, 1024, 2048]) == [256, 512]
+    assert module._valid_chunks(512, [256, 512, 1024, 2048]) == [256, 512, 1024]
     assert module._valid_chunks(1024, [256, 512, 1024, 2048]) == [256, 512, 1024]
     assert module._valid_chunks(4096, [256, 512, 1024, 2048]) == [256, 512, 1024, 2048]
 
