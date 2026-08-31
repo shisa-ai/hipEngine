@@ -1,0 +1,385 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c2_unpadded_r8_retained",
+  "date": "2026-08-31",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "claim": "The exact physical C2/K3 verifier now executes its eight real root+candidate rows directly instead of padding to R12. Two counterbalanced full-suite pairs improve arithmetic-mean C2 MTP 42.350 to 51.769 tok/s (+22.24%), lift true-AR speedup 1.0909x to 1.3376x, and preserve every generated ID.",
+  "source": {
+    "candidate_commit": "2585cb7dcff51587137097d9f4361d2b8566b2a1",
+    "candidate_tracked_clean": true,
+    "promotion_commit": null
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "change": {
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_m",
+    "scope": "production explicit physical C2/K3 with eight real target rows",
+    "candidate": "R8 Q4/Q5/Q6 exact rowtiles; no inactive target rows",
+    "rollback": "R12 as two exact rows6 chunks; four inactive padding rows",
+    "same_build_rollback": "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS=0",
+    "isolation": "C1 remains R6; C3-C8 retain rows6-multiple decompositions; strict and peer backends cannot enter the exact-R8 request scope."
+  },
+  "commands": {
+    "counterbalanced_gate": "COMMON=(--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 1,2 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --expected-mtp-widths 1,2 --max-tokens 24); env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS=<0-or-1> PYTHONUNBUFFERED=1 .venv/bin/python -u scripts/gguf_mtp_c1c8_server_bench.py \"${COMMON[@]}\" --output <packet>; process order rollback,candidate,candidate,rollback",
+    "affected_test_bundle": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 .venv/bin/python -m pytest -q tests/test_specdec2_target_row_pad.py tests/test_qwen35_gguf_mtp2_seam.py tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_t16_selected_gemv_decode.py tests/test_gguf_q6_k_t16_gemv_decode.py"
+  },
+  "actual_weight_leaf_gate": {
+    "input_output": "actual Qwen3.8 weights, BF16 input and BF16 output",
+    "timing": "five warmups and 15 alternating three-launch rounds per arm using HIP events",
+    "families": "Q4 gate/up and four singleton roles, Q5 recurrent output, and three planar-Q6 roles",
+    "correctness": "R8 is BF16-bit exact to the first eight active rows of R12 in every family",
+    "speedup_range_vs_r12": [
+      1.31,
+      1.84
+    ],
+    "rejected_r4": "bit exact but mixed at 0.86x-1.33x; C1 remains R6"
+  },
+  "server_gate": {
+    "protocol": "Ten code/general_en/general_ja/mixed_ja_en prompts including four heldouts, C1/C2, explicit K3, D24, resident capacity 8, complete barrier-to-last wall, two counterbalanced process pairs",
+    "packet_order": [
+      "r1-rollback",
+      "r1-candidate",
+      "r2-candidate",
+      "r2-rollback"
+    ],
+    "packet_sha256": {
+      "r1-rollback": "a3a14e5c3a105703832b17ecdb06e77b18dec9ea77737df5bd692155b587909d",
+      "r1-candidate": "06a9475b9dc25d532158cecb9163c31744c606ca10e2ef610b773a562fcb5023",
+      "r2-candidate": "af922bc71539e4d2dbeedac37fa918b0a639be8717fe6cfafd80bd44411e94ac",
+      "r2-rollback": "866c623e759c6aaea3d2c7df9b1f2a35cf7d835293fe1e3222bc414a7a96d804"
+    },
+    "per_run": {
+      "r1-rollback": {
+        "source": {
+          "commit": "2585cb7dcff51587137097d9f4361d2b8566b2a1",
+          "dirty": false
+        },
+        "elapsed_seconds": 110.75918612070382,
+        "passed": true,
+        "failure_reasons": [],
+        "widths": {
+          "1": {
+            "ar_tok_s": 23.775275570979783,
+            "mtp_tok_s": 35.13515451314085,
+            "mtp_vs_ar_ratio": 1.4778021986852168,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          },
+          "2": {
+            "ar_tok_s": 39.15002586292506,
+            "mtp_tok_s": 42.8337611934661,
+            "mtp_vs_ar_ratio": 1.094092794304627,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          }
+        },
+        "final_memory": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 26518982644,
+          "total_allocated_bytes": 29741537238,
+          "total_freed_bytes": 29741537238,
+          "active_allocations": 0,
+          "peak_allocations": 1767
+        },
+        "sha256": "a3a14e5c3a105703832b17ecdb06e77b18dec9ea77737df5bd692155b587909d"
+      },
+      "r1-candidate": {
+        "source": {
+          "commit": "2585cb7dcff51587137097d9f4361d2b8566b2a1",
+          "dirty": false
+        },
+        "elapsed_seconds": 109.4496721662581,
+        "passed": true,
+        "failure_reasons": [],
+        "widths": {
+          "1": {
+            "ar_tok_s": 23.58276179846142,
+            "mtp_tok_s": 34.718748676543925,
+            "mtp_vs_ar_ratio": 1.4722087672873427,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          },
+          "2": {
+            "ar_tok_s": 38.77157823642262,
+            "mtp_tok_s": 51.911297472105,
+            "mtp_vs_ar_ratio": 1.3389008091328798,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          }
+        },
+        "final_memory": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 25870988676,
+          "total_allocated_bytes": 29092928774,
+          "total_freed_bytes": 29092928774,
+          "active_allocations": 0,
+          "peak_allocations": 1767
+        },
+        "sha256": "06a9475b9dc25d532158cecb9163c31744c606ca10e2ef610b773a562fcb5023"
+      },
+      "r2-candidate": {
+        "source": {
+          "commit": "2585cb7dcff51587137097d9f4361d2b8566b2a1",
+          "dirty": false
+        },
+        "elapsed_seconds": 109.29450565204024,
+        "passed": true,
+        "failure_reasons": [],
+        "widths": {
+          "1": {
+            "ar_tok_s": 23.460220537917515,
+            "mtp_tok_s": 34.52640789478188,
+            "mtp_vs_ar_ratio": 1.4717000566545688,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          },
+          "2": {
+            "ar_tok_s": 38.63253049491459,
+            "mtp_tok_s": 51.627449830274486,
+            "mtp_vs_ar_ratio": 1.3363724604338432,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          }
+        },
+        "final_memory": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 25870988676,
+          "total_allocated_bytes": 29092928774,
+          "total_freed_bytes": 29092928774,
+          "active_allocations": 0,
+          "peak_allocations": 1767
+        },
+        "sha256": "af922bc71539e4d2dbeedac37fa918b0a639be8717fe6cfafd80bd44411e94ac"
+      },
+      "r2-rollback": {
+        "source": {
+          "commit": "2585cb7dcff51587137097d9f4361d2b8566b2a1",
+          "dirty": false
+        },
+        "elapsed_seconds": 112.00305205304176,
+        "passed": true,
+        "failure_reasons": [],
+        "widths": {
+          "1": {
+            "ar_tok_s": 23.412638595490144,
+            "mtp_tok_s": 34.393084210310576,
+            "mtp_vs_ar_ratio": 1.468996502467498,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          },
+          "2": {
+            "ar_tok_s": 38.494464594555495,
+            "mtp_tok_s": 41.865549535512024,
+            "mtp_vs_ar_ratio": 1.0875732388140118,
+            "exact_cells": 10,
+            "engaged_cells": 10,
+            "budget_conformed_cells": 10,
+            "cells": 10
+          }
+        },
+        "final_memory": {
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 26518982644,
+          "total_allocated_bytes": 29741537238,
+          "total_freed_bytes": 29741537238,
+          "active_allocations": 0,
+          "peak_allocations": 1767
+        },
+        "sha256": "866c623e759c6aaea3d2c7df9b1f2a35cf7d835293fe1e3222bc414a7a96d804"
+      }
+    },
+    "arithmetic_mean": {
+      "rollback": {
+        "1": {
+          "ar_tok_s": 23.59395708323496,
+          "mtp_tok_s": 34.76411936172571,
+          "mtp_vs_ar_ratio": 1.473433186263947
+        },
+        "2": {
+          "ar_tok_s": 38.82224522874028,
+          "mtp_tok_s": 42.34965536448907,
+          "mtp_vs_ar_ratio": 1.0908605392337647
+        }
+      },
+      "candidate": {
+        "1": {
+          "ar_tok_s": 23.521491168189467,
+          "mtp_tok_s": 34.622578285662904,
+          "mtp_vs_ar_ratio": 1.4719550745356902
+        },
+        "2": {
+          "ar_tok_s": 38.7020543656686,
+          "mtp_tok_s": 51.76937365118974,
+          "mtp_vs_ar_ratio": 1.3376389057298403
+        }
+      }
+    },
+    "candidate_vs_rollback": {
+      "1": {
+        "ratio": 0.9959285297984957,
+        "delta_percent": -0.40714702015043347,
+        "interpretation": "no-op scope control; both arms execute R6"
+      },
+      "2": {
+        "ratio": 1.2224272713822193,
+        "delta_percent": 22.24272713822193
+      }
+    },
+    "c2_scope_rates": {
+      "all": {
+        "rollback_tok_s": 42.34965536448907,
+        "candidate_tok_s": 51.76937365118974,
+        "ratio": 1.2224272713822193,
+        "delta_percent": 22.24272713822193
+      },
+      "train": {
+        "rollback_tok_s": 41.984689406445,
+        "candidate_tok_s": 51.467293181791064,
+        "ratio": 1.2258586143998103,
+        "delta_percent": 22.585861439981024
+      },
+      "heldout": {
+        "rollback_tok_s": 42.9091716351858,
+        "candidate_tok_s": 52.22920341281305,
+        "ratio": 1.2172037217792562,
+        "delta_percent": 21.72037217792562
+      },
+      "category:code": {
+        "rollback_tok_s": 42.89566569386248,
+        "candidate_tok_s": 52.62969428347586,
+        "ratio": 1.2269233600215725,
+        "delta_percent": 22.692336002157255
+      },
+      "category:general_en": {
+        "rollback_tok_s": 44.31817362218224,
+        "candidate_tok_s": 54.28433343261689,
+        "ratio": 1.2248774937206879,
+        "delta_percent": 22.487749372068787
+      },
+      "category:general_ja": {
+        "rollback_tok_s": 40.293080253053255,
+        "candidate_tok_s": 49.24766949260567,
+        "ratio": 1.2222364034547561,
+        "delta_percent": 22.223640345475616
+      },
+      "category:mixed_ja_en": {
+        "rollback_tok_s": 41.5668582775524,
+        "candidate_tok_s": 50.36870008486014,
+        "ratio": 1.2117514330415742,
+        "delta_percent": 21.175143304157416
+      }
+    },
+    "physical_target": {
+      "rollback": {
+        "physical_group_cycles": 142,
+        "target_physical_rows_histogram": {
+          "6": 18,
+          "12": 124
+        },
+        "proposal_ms": 490.65277073532343,
+        "target_enqueue_ms": 3949.3129262700677,
+        "accept_boundary_ms": 8899.032772518694,
+        "selected_commit_ms": 1876.0301629081368,
+        "outer_stage_sum_ms": 15215.028632432222,
+        "timing_note": "Target launch is asynchronous; pending target work may be charged at accept/readback. Compare the complete outer stage sum, not target enqueue alone."
+      },
+      "candidate": {
+        "physical_group_cycles": 142,
+        "target_physical_rows_histogram": {
+          "6": 18,
+          "8": 124
+        },
+        "proposal_ms": 489.5995380356908,
+        "target_enqueue_ms": 4968.782544136047,
+        "accept_boundary_ms": 5529.761015437543,
+        "selected_commit_ms": 1353.198460303247,
+        "outer_stage_sum_ms": 12341.341557912529,
+        "timing_note": "Target launch is asynchronous; pending target work may be charged at accept/readback. Compare the complete outer stage sum, not target enqueue alone."
+      },
+      "candidate_vs_rollback_outer_stage_ratio": 0.8111283820791393,
+      "candidate_vs_rollback_outer_stage_delta_percent": -18.887161792086072
+    },
+    "correctness": {
+      "within_packet_exact_cells": 80,
+      "within_packet_cells": 80,
+      "sequences_per_packet": 60,
+      "cross_packet_compared_sequences": 240,
+      "cross_packet_generated_ids_equal": true,
+      "all_packets_passed": true,
+      "all_expected_widths_engaged": true,
+      "all_budget_conformed": true,
+      "all_processes_drained": true
+    }
+  },
+  "tests": {
+    "affected_bundle": "386/386 passed before the clean counterbalanced gate",
+    "focused_default_flip": "65/65 padding and MTP adapter seam tests passed after promotion"
+  },
+  "scoreboard_update": {
+    "prior_explicit_k3_tok_s": {
+      "1": 31.455,
+      "2": 39.82
+    },
+    "retained_explicit_k3_tok_s": {
+      "1": 34.622578285662904,
+      "2": 51.76937365118974
+    },
+    "strongest_peer_tok_s": {
+      "1": 32.733,
+      "2": 41.042
+    },
+    "lead_percent": {
+      "1": 5.772701205703434,
+      "2": 26.13755092634311
+    },
+    "note": "C1 is a current-source refresh after accumulated exact prefill promotions; the R8 policy is a C2-only change. C3-C8 rows are unchanged.",
+    "peer_source": "benchmarks/results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json"
+  },
+  "decision": "Retain exact R8 as the gfx1100 production default. Preserve explicit =0 R12 rollback for one release checkpoint. Do not infer automatic capacity-8 MTP promotion from this explicit-route gate."
+}

@@ -33,6 +33,7 @@ The root README exports this compact retained summary verbatim.
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **36.726 tok/s** | **1.1970x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K3 D24 explicit | **51.769 tok/s** | **1.3376x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
@@ -132,7 +133,7 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall results (total tok/s), s
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | 31.455 | 39.820 | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
+| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
 | llama.cpp current HIP | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
 
@@ -157,13 +158,20 @@ C2 trace records a **38.26 ms** marker wall, **23.19 ms** kernel interval union,
 argmax with one i32-vector readback; it is attribution only, not a throughput sample. No
 runtime or kernel change is attributed to this refresh.
 
-The explicit K3 row is a separate engine diagnostic. Its C5-C8 cells use the
-current one-group physical owner; K3 leads peers only at C3/C4 and trails our
-own AR from C5 onward. All current peer K3 cells and 78/80 Laurent cells are
-content-exact; Laurent's two C8 differences are deterministic and pass the
-anti-repetition guards. Automatic capacity-8 requests remain K0, distinct from
-the promoted capacity-2/C2/K2 product key. Prefill uses the peer one-token
-protocol (10 prompts x C1-C8, content-exact).
+The explicit K3 row is a separate engine diagnostic. Its current C1/C2 cells
+come from the counterbalanced exact-R8 gate: C1 is the no-op R6 control and
+refreshes the accumulated current runtime at **34.623 tok/s**, while C2 omits
+four inactive verifier rows and improves padded R12 **42.350→51.769 tok/s
+(+22.24%)**. C1/C2 now lead the strongest peer by **5.77%/26.14%**; every C2
+category plus heldout scope gains **21.18%-22.69%**, the true-AR ratio rises
+**1.0909x→1.3376x**, all 240 cross-packet sequences match, and all processes
+drain. Target telemetry changes only R12→R8 and the non-overlapping outer stage
+sum falls **18.89%**. C5-C8 use the current one-group physical owner; C4-C8
+trail our own AR. All current peer K3 cells and 78/80 Laurent cells are content-exact;
+Laurent's two C8 differences are deterministic and pass the anti-repetition
+guards. Automatic capacity-8 requests remain K0, distinct from the promoted
+capacity-2/C2/K2 product key. Prefill uses the peer one-token protocol (10
+prompts x C1-C8, content-exact).
 
 The canonical hipEngine C1-C3 rows are arithmetic means from the counterbalanced
 same-build exact fused-Q4-retile gate; C4-C8 remain from the counterbalanced full-
@@ -193,6 +201,7 @@ and the K3 row measures the engine, not the product. [`automatic route gating`](
 [`admission/decode decomposition, post-grouping`](results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json) ·
 [`exact planar-Q6 prefill retention`](results/2026-08-31-w7900-q4km-planar-q6-prefill-retained.json) ·
 [`exact fused-Q4 prefill retiles (current C1-C3 rows)`](results/2026-08-31-w7900-q4km-fused-q4-prefill-retiles-retained.json) ·
+[`exact unpadded-R8 C2/K3 retention (current K3 C1/C2 rows)`](results/2026-08-31-w7900-q4km-k3-c2-unpadded-r8-retained.json) ·
 [`full C1-C8 prefill peer repeat (current C4-C8 rows)`](results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json) ·
 [`full C1-C8 AR peer repeat and C2 attribution (current rows)`](results/2026-08-31-w7900-q4km-c1c8-ar-peer-repeat-attribution.json) ·
 [`admission/decode decomposition, pre-grouping (superseded AR arm)`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json) ·
