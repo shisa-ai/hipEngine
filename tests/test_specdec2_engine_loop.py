@@ -246,6 +246,12 @@ class _PartitionedRunner(_CycleRunner):
         return 2
 
 
+class _WholeBatchARPolicyRunner(_CycleRunner):
+    def speculative_partition_max_requests(self, work):
+        del work
+        return 0
+
+
 def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> None:
     runner = _CycleRunner()
     loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8)
@@ -381,6 +387,34 @@ def test_wide_due_work_partitions_each_speculative_row_once_per_tick() -> None:
         request_ids
     )
     assert all(loop.completed[request_id].generated_tokens for request_id in request_ids)
+
+
+def test_zero_partition_bound_routes_wide_due_work_to_one_ar_batch() -> None:
+    runner = _WholeBatchARPolicyRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=5,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=1,
+            desired_candidate_count=1,
+        )
+        for index in range(5)
+    )
+
+    events = loop.poll(max_ticks=7)
+
+    assert runner.cycle_plans == []
+    assert [work.request_ids for work in runner.decodes] == [request_ids]
+    assert loop.last_speculative_plan is not None
+    assert loop.last_speculative_plan.is_ar_only
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
 
 
 def test_wide_mixed_due_work_partitions_spec_rows_and_decodes_ar_once() -> None:

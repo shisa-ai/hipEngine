@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-reviewed-current-head-c1c8",
+  "date": "2026-08-31",
+  "status": "reviewed_current_head_refresh_with_cn_followup",
+  "performance_claim": true,
+  "title": "Qwen3.8 standard-Q4 current-head survey refresh and C=N MTP review",
+  "source": {
+    "commit": "b768516f2b387c8a83f4c97376ca243d663f9c02",
+    "tracked_dirty": false,
+    "backend": "hip_gfx1151",
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
+  },
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "prompt_cache": false,
+    "widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "prefill_max_tokens": 1,
+    "ar_mtp_max_tokens": 24,
+    "mtp_candidate_budget": 3,
+    "batch_window_ms": 50,
+    "timing": "barrier-to-last-completion complete wall per prompt; aggregate rates are total tokens divided by summed wall across all ten prompts",
+    "correctness_contract": "mtp_self_exact plus engaged-route and budget conformance for the explicit diagnostic; automatic production promotion remains a separate numerical/task/serving gate"
+  },
+  "hipengine_current": {
+    "prefill_prompt_tok_s": [
+      147.00826932943866,
+      139.82012562670846,
+      169.89687250022652,
+      188.90959902161185,
+      211.82246109768124,
+      227.74578190417506,
+      237.1453040580569,
+      247.3329115783039
+    ],
+    "ar_complete_wall_tok_s": [
+      11.112160332316517,
+      18.09022281390879,
+      23.87930089529761,
+      30.150438924843634,
+      35.77755783764412,
+      40.34287220326711,
+      43.9738334471368,
+      47.19383910573251
+    ],
+    "mtp_k3_explicit_complete_wall_tok_s": [
+      15.753023473240301,
+      28.440660378520356,
+      30.540570714460618,
+      35.47449124884584,
+      27.979951819842174,
+      32.80685803419497,
+      33.1060269373522,
+      35.42337057694373
+    ],
+    "mtp_over_own_ar": [
+      1.4176382451418714,
+      1.572156444455375,
+      1.2789558140068817,
+      1.1765829126824168,
+      0.7820531503802776,
+      0.8132008516621716,
+      0.752857423202611,
+      0.7505931123251415
+    ],
+    "correctness": {
+      "cells": 80,
+      "exact_cells": 80,
+      "engaged_cells": 80,
+      "budget_conformed_cells": 80,
+      "draft_acceptance": 0.7829716193656093
+    }
+  },
+  "best_preserved_external": {
+    "source_artifact": "benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json",
+    "source_sha256": "a5d4effea74eb17371042b3c513a75fe17171aad28798975f7266f6ace5a2fed",
+    "prefill": [
+      {"engine": "nathan_vulkan", "tok_s": 153.40053802932582},
+      {"engine": "laurent_vulkan", "tok_s": 211.8877023492164},
+      {"engine": "laurent_vulkan", "tok_s": 192.41881304590981},
+      {"engine": "stock_hip", "tok_s": 200.4625595430168},
+      {"engine": "stock_hip", "tok_s": 226.11668910375403},
+      {"engine": "laurent_vulkan", "tok_s": 250.414801801425},
+      {"engine": "laurent_vulkan", "tok_s": 252.2718512933287},
+      {"engine": "laurent_vulkan", "tok_s": 305.84734658268803}
+    ],
+    "ar": [
+      {"engine": "nathan_vulkan", "tok_s": 11.161941629745177},
+      {"engine": "laurent_vulkan", "tok_s": 19.83543435406354},
+      {"engine": "laurent_vulkan", "tok_s": 16.35918075845632},
+      {"engine": "nathan_vulkan", "tok_s": 14.32126170620167},
+      {"engine": "laurent_vulkan", "tok_s": 20.29394996927176},
+      {"engine": "laurent_vulkan", "tok_s": 28.322192997312364},
+      {"engine": "laurent_vulkan", "tok_s": 35.89566880220477},
+      {"engine": "laurent_vulkan", "tok_s": 45.61415123492383}
+    ],
+    "mtp": [
+      {"engine": "laurent_vulkan", "tok_s": 21.125930076668563},
+      {"engine": "laurent_vulkan", "tok_s": 32.22134350260536},
+      {"engine": "laurent_vulkan", "tok_s": 28.06732802857161},
+      {"engine": "mainline_vulkan", "tok_s": 26.954553388675617},
+      {"engine": "mainline_vulkan", "tok_s": 32.712908835858904},
+      {"engine": "laurent_vulkan", "tok_s": 37.15409759326455},
+      {"engine": "stock_hip", "tok_s": 46.083535265690436},
+      {"engine": "stock_hip", "tok_s": 56.22204769948231}
+    ]
+  },
+  "hipengine_vs_best_external_pct": {
+    "prefill": [-4.17, -34.01, -11.70, -5.76, -6.32, -9.05, -6.00, -19.13],
+    "ar": [-0.45, -8.80, 45.97, 110.53, 76.30, 42.44, 22.50, 3.46],
+    "mtp": [-25.43, -11.73, 8.81, 31.61, -14.47, -11.70, -28.16, -36.99]
+  },
+  "cn_execution_review": {
+    "proposal": "Qwen NextN: K sequential autoregressive draft depths, with all requests in the physical group batched at each depth",
+    "target_c1_c4": "one packed target-model forward over all request roots and candidates",
+    "target_c5_c8_default": "server admission caps explicit MTP groups at 4; C5-C8 therefore execute serial complete subgroups rather than one flattened C=N target pass",
+    "full_width_mechanism": "implemented and correctness-proven through C8; production bound remains 4 because wide K3 economics regress",
+    "wide_k1_screen": {
+      "variant": "diagnostic GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS production=8, M5 above-bound AR route disabled, candidate budget 1",
+      "mtp_tok_s": {"C5": 22.537173880258916, "C6": 35.38268351053837, "C7": 24.167045328275194, "C8": 39.25958928410815},
+      "delta_vs_current_split_k3_pct": {"C5": -19.45242069975073, "C6": 7.851484813506349, "C7": -27.001070306601815, "C8": 10.829626443456863},
+      "target_rows": {"C5": 10, "C6": 12, "C7": 14, "C8": 16},
+      "mtp_over_own_ar": {"C5": 0.6308248371555677, "C6": 0.872751493212849, "C7": 0.5704737312764979, "C8": 0.8544584515741686},
+      "draft_acceptance": 0.9565217391304348,
+      "cells": 40,
+      "exact_cells": 40,
+      "engaged_cells": 40,
+      "budget_conformed_cells": 40,
+      "decision": "C6/R12 and C8/R16 are retained follow-up candidates, not promotions: they improve explicit split-K3 but still lose own AR and require width-specific admission plus the production numerical/task/serving gate. C5/R10 and C7/R14 are rejected."
+    }
+  },
+  "review_corrections": [
+    "The M3/M4 compact artifact headline rates are arithmetic means over six non-heldout prompts; they are valid internal promotion summaries but not the survey's all-ten aggregate metric.",
+    "The M3/M4/M2j raw sources contain 80/80 exact/engaged/budget cells; the compact prose's 48/48 refers only to six non-heldout prompts and was mislabeled as the full suite.",
+    "C2 external parity is blocked by operation-complete R8 target plus proposal work (2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json), not an acceptance-rate ceiling.",
+    "M4 width-4 prompt streaming changes the acceptance trajectory, so it is an explicit diagnostic T3 scope; generated-ID equality does not constitute an automatic production numerical/task promotion.",
+    "M2 owner work landed before M3 despite the campaign's recorded M3-before-M2 order.",
+    "The prior closeout's 'no remaining in-scope mechanism' statement is superseded by the measured C6/C8 one-pass K1 candidates."
+  ],
+  "raw_sources": [
+    {"path": "/tmp/review-qwen38-ar-mtp-c1c8.json", "sha256": "61d902e6f68e9276e1d56e6b27d1290631447e51263901e9657540d2646b401d", "size_bytes": 22320488},
+    {"path": "/tmp/review-qwen38-prefill-c1c8.json", "sha256": "ea6cb023c2516b1956d92516057397855f0c59275eccfb0fec356fd31ee7af2a", "size_bytes": 3568481},
+    {"path": "/tmp/review-qwen38-wide-k1-c5c8.json", "sha256": "01435f0f65eebeffae6f4838c102abe6476e62c735f01304eb7452eef229f919", "size_bytes": 11452965},
+    {"path": "/tmp/review_qwen38_wide_k1.py", "sha256": "de296434758cddca397827f0d427818eb24e0d113434d8a961180274bdb3b329", "size_bytes": 942},
+    {"path": "/tmp/m5-routed-24tok.json", "sha256": "99ccce03e1ef5071dcb998acdfbec3b5f05b0b59a4109804429988da22861f01", "size_bytes": 22320681}
+  ],
+  "commands": {
+    "current_ar_mtp": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/review-qwen38-ar-mtp-c1c8.json",
+    "current_prefill": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --expected-mtp-widths none --output /tmp/review-qwen38-prefill-c1c8.json",
+    "wide_k1": "HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/review_qwen38_wide_k1.py"
+  }
+}

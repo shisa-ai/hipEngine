@@ -5,7 +5,9 @@ Purpose: test the premise behind
 diagnosis A2 — whether production speculative engines flatten draft
 verification for all in-flight requests into one target pass, or issue
 sequential per-request/per-group complete cycles like our width-4 partition.
-Reading pass only: no vendoring, no code port, no perf claim.
+Original X1 scope: reading pass only—no vendoring, code port, or performance
+claim. The 2026-08-31 implementation review adds a separately measured in-tree
+follow-up linked to its compact artifact.
 
 All local pins were read at their checked-out commits on 2026-08-30 under
 `/home/lhl/.local/state/hipengine-external-survey/repos/`. vLLM and SGLang are
@@ -48,6 +50,26 @@ the same day.
    all rows instead of twice. The surveyed caps support bounding by rows
    (C8 × D24+8 ≈ 200 rows stays under a 2048-token budget), which is what
    M1's capability-owned bound should express.
+
+## hipEngine implementation review (2026-08-31)
+
+The mechanism is now clearer than the original X1 summary:
+
+- Qwen NextN proposal generation is autoregressive across draft depth, but each
+  depth batches all requests in the physical group.
+- C1-C4 target verification is already flattened into one packed target-model
+  forward over `sum_requests(1 + K)` rows.
+- The production explicit-MTP server still caps groups at four, so C5-C8 K3
+  executes serial complete subgroups. M1's full-width mechanism passed 80/80
+  correctness and one target pass/cycle through C8, but K3 lost the fast
+  R<=16 proposal/target owners and regressed C6-C8.
+- A reviewed full-width K1 screen shows that depth and row bucket must be
+  selected together: C6/R12 improves split K3 **32.807 -> 35.383 tok/s
+  (+7.85%)** and C8/R16 improves **35.423 -> 39.260 (+10.83%)**, while C5/R10
+  and C7/R14 regress. All 40 cells are exact/engaged/budget-conformant. Neither
+  retained candidate beats own AR, so this is a follow-up for a
+  prompt-independent width×depth policy and full production gates—not a
+  promotion. See the [review artifact](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json).
 
 Caveat: this is a batch-dimension reading, not an acceptance-rate or
 scheduler-economics equivalence claim. Rejection handling (checkpoint

@@ -1,6 +1,7 @@
 # Qwen3.8-27B gfx1151 Scaling Campaign (MTP batch scaling + prefill)
 
-Status: **open**, 2026-08-30. Successor to the closed
+Status: **punchlist closed; post-closeout review corrections recorded
+2026-08-31**. Successor to the closed
 [`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
 Owner: scaling loop.
 
@@ -278,16 +279,17 @@ is made.
   eight-request accept interval costs +69.6%. Full numbers:
   [`m1-wide-cycle-blocked`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json).
   [`Entry`](../worklog/entries/20260830T142143.717427Z-lhl-qwen38-m1-wide-bound-blocker-8b3ed2.md)
-- [x] M2 **Per-row verify cost (A1). Done 2026-08-31: C4 gate PASS via the
-  M4 streaming promotion (35.618 >= 34.596); C5-C8 closed with the measured
-  named blockers below.** Using M1's per-quant attribution, close the
+- [x] M2 **Per-row verify cost (A1). Done 2026-08-31: explicit C4 gate PASS
+  (reviewed all-ten 35.474 >= 34.596); C5-C8 K3 closed with measured blockers
+  and C6/C8 K1 follow-ups identified below.** Using M1's per-quant attribution, close the
   gap between MTP ms/target-row and AR ms/row at matched width.
   **Interim (2026-08-31):** the M2i hip-API/copy/kernel trace closed every
   host-side explanation (the accept window is 98% GPU-busy; the drain is Q4/Q5/Q6
   verify math). M2j promoted the bit-exact low-VGPR/shared-B2W2 Q4 owners to
   physical rows 2-16 (C1 **+75.5% to 13.759**, C4 **+15.8% to 34.201 = 1.138x
-  AR, 1.14% short of the 34.596 gate**, C5-C8 **26.059/31.885/32.395/33.491**,
-  48/48 exact). M2k screened Q5/Q6 siblings: the admitted rowtiles already win
+  AR, 1.14% short of the 34.596 gate**, C5-C8 **26.059/31.885/32.395/33.491**;
+  raw suite 80/80 exact/engaged/budget, including 48 non-heldout cells).
+  M2k screened Q5/Q6 siblings: the admitted rowtiles already win
   every bit-exact cell and association-different WMMA alternatives save <5 ms
   per pass - strict-owner recovery is exhausted at the certified bound.
   [`M2j`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json)
@@ -298,21 +300,24 @@ is made.
   M1's trace names Q4 as the binding class; the leaf-only stop and
   operation-complete revisit set the entry condition — weighted GPU work must
   not rise.
-  **C5-C8 closure (2026-08-31, measured named blocker per cell):** after M2j
-  owners and the M4 width-4 streaming subgroup gain, C5-C8 stand at
-  **28.03/31.38/31.80/34.17** vs gates 40.876/45.892/49.579/52.827
-  (`/tmp/m5-routed-24tok.json`, frozen protocol, 48/48 exact, engaged 6/6).
-  The binding mechanism is shared and measured: every width>=5 cycle is
-  sub-group interleaving (28.0/31.4/31.8/34.2 = 0.74-0.80x own AR, M5 entry)
-  whose per-cycle floor is the verify-pass GPU drain (M2i: 98-100% GPU-busy,
-  ~145 ms per R16 pass at the Q4/Q5/Q6 wmma family's ~19-24 TF/s structural
-  rate, P2 micro). Sub-group scheduling is measured null-to-negative (M5),
-  wide-row owners are the M1 blocker, strict-owner recovery is exhausted
-  (M2k), and the whole-batch AR ceiling (36.5/39.2/42.2/46.1) still sits
-  10-12% under these gates pending the campaign-owner engagement amendment.
-  No remaining in-scope mechanism can reach the gates for these cells.
+  **C5-C8 K3 closure (reviewed 2026-08-31, measured named blocker per cell):**
+  the tracked-clean all-ten current-head refresh measures
+  **27.980/32.807/33.106/35.423** vs gates 40.876/45.892/49.579/52.827
+  (80/80 C1-C8 exact/engaged/budget). Every width>=5 K3 cycle is sub-group
+  interleaving at 0.75-0.81x own AR whose per-cycle floor includes the
+  GPU-busy verify drain; M1's one-pass K3 loses the R<=16 owners and M2k
+  exhausts exact siblings at the certified bound.
+  **Review correction:** this is not a terminal all-depth result. A new
+  one-pass K1 screen keeps target rows at R10/R12/R14/R16 and measures
+  C5-C8 **22.537/35.383/24.167/39.260**: C6 **+7.85%** and C8 **+10.83%**
+  over split K3, while C5/C7 regress. All 40 cells are exact/engaged/budget
+  with 95.65% acceptance. C6/C8 K1 remain below own AR and need a
+  width×depth admission implementation plus the full production gate; they
+  supersede the prior "no remaining mechanism" claim. See the
+  [review artifact](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json).
 - [x] M3 **C1 coverage (B). Done 2026-08-31:** all clauses closed below; the
-  18.191 aspiration's -14.0% residual is named to the shared accept-window
+  18.191 aspiration residual is -14.0% on the compact non-heldout metric and
+  -13.4% on the reviewed all-ten aggregate, named to the shared accept-window
   verify math (same wmma-family structural rate as M2/P2). Extend `_physical_prompt_streaming_widths()` to
   admit width 1 without broadening the unqualified `>4` range; add the width-1
   package-policy key and qualify the rows1 proposal rowtile owner. Re-screen the
@@ -323,27 +328,30 @@ is made.
   must prove strict automatic behavior is unchanged.
   **Interim (2026-08-31):** validator + width-1 production policy key retained
   (streaming screen: IDs/acceptance/route/budget identical to replay, +24.1%;
-  full protocol production C1 **7.841 -> 15.646 tok/s, 1.408x own AR, 48/48
-  exact**); the rows1 proposal-head clause needs no wrapper change (rows1
+  the promotion artifact's six-non-heldout arithmetic headline is **15.646**;
+  the reviewed all-ten aggregate is **7.841 -> 15.753 tok/s, 1.418x own AR,
+  80/80 C1-C8 exact/engaged/budget**); the rows1 proposal-head clause needs no wrapper change (rows1
   lm-head is the qualified decode GEMV and multi-row proposals stay in the
   admitted rows2-8 band); the native-graph re-screen closes no-capture on the
   staged route (0 graph buckets; N2/N3 belongs to the llama_compat adapter and
-  M2i shows the window GPU-busy). -14.0% residual to the 18.191 aspiration
-  lives in the shared accept-window verify math (C1 accept-member 111
+  M2i shows the window GPU-busy). The residual to the 18.191 aspiration lives
+  in the shared accept-window verify math (C1 accept-member 111
   ms/cycle vs 33.6 ms/pass target kernels).
   [`M3`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json)
-- [x] M4 **C4 prompt-streaming acceptance blocker. Done 2026-08-31.**
-  Contract decided: the binding frozen gate is per-cell `mtp_self_exact` IDs +
-  route + budget; acceptance trajectory is an observational diagnostic
-  (self-exactness makes any trajectory ID-exact by verifier construction).
-  Re-screened at head the historical drift did not reproduce (92/121 vs
-  93/120, every cell ID-equal) and C4 passed: **34.182 -> 35.618 (>= 34.596,
-  1.178x own AR, every category >= own AR)**, production key (1,2,3,4),
-  48/48 exact - a retention, not a terminal blocker.
+- [x] M4 **C4 prompt-streaming acceptance blocker. Done 2026-08-31; scope
+  corrected in review.** The explicit diagnostic binds `mtp_self_exact` IDs +
+  route + budget, but acceptance changed (92/121 vs 93/120), so this is a T3
+  explicit scope under `EXECUTION-PROFILES.md`, not an automatic production
+  numerical/task promotion. The six-non-heldout arithmetic headline is
+  **34.182 -> 35.618**; the reviewed all-ten aggregate is **35.474 tok/s,
+  1.177x own AR**, and 80/80 C1-C8 cells pass. Production key (1,2,3,4) is
+  retained for explicit MTP; automatic C4 remains K0.
   [`M4`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c4-streaming-retained.json)
-- [x] M5 **Concurrency-aware admission. Done 2026-08-31, named blocker.**
-  Frozen-protocol economics: sub-group interleaving costs **0.74-0.80x own AR**
-  at widths 5-8 (28.0/31.4/31.8/34.2 vs AR 36.5/39.2/42.2/46.1, engaged 6/6).
+- [x] M5 **Concurrency-aware admission. Done 2026-08-31, named blocker;
+  artifact gap repaired in review.** Current-head all-ten economics:
+  sub-group K3 costs **0.75-0.81x own AR** at widths 5-8
+  (27.980/32.807/33.106/35.423 vs AR 35.778/40.343/43.974/47.194, 40/40
+  exact/engaged/budget).
   The engine-surface whole-batch AR route (`GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS`,
   seam-tested) is implemented but measured inert on the server-bench surface:
   admission caps explicit-MTP groups at 4 upstream, so over-width batches never
@@ -352,7 +360,8 @@ is made.
   (route ceiling = AR, still 10-12% under the 1.15x gates) - a campaign-owner
   decision, not silent scope. An interim +67-90% reading was retracted as a
   `--max-tokens 512` protocol artifact. See RF-M5 in
-  [`REFACTOR.md`](REFACTOR.md) and the M5 entry.
+  [`REFACTOR.md`](REFACTOR.md), the M5 entry, and the committed
+  [review artifact](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json).
 
 ### P — prefill (secondary track, two cells only)
 
@@ -399,12 +408,34 @@ is made.
   as [`REFACTOR.md`](REFACTOR.md) RF-OI5 with an explicit removal condition tied
   to M1's outcome, success or blocker.
 
+## 4a. Post-closeout review (2026-08-31)
+
+The review re-ran both standardized hipEngine matrices at tracked-clean
+`b768516f2` and audited the implementation path:
+
+- Public survey rates use total tokens / summed wall over all ten prompts.
+  M2j/M3/M4 compact headlines used an arithmetic mean over six non-heldout
+  prompts; their raw sources still contain all 80 cells. Public comparison now
+  uses 15.753/28.441/30.541/35.474/27.980/32.807/33.106/35.423 K3 tok/s.
+- NextN proposal depth is serial because each draft token conditions on the
+  prior draft, but every depth batches the physical request group. C1-C4 target
+  verification is one flattened packed forward. C5-C8 production-server K3
+  remains two serial complete groups because admission caps explicit MTP at 4.
+- One full-width K1 pass is not a universal solution, but C6/R12 and C8/R16
+  are real +7.85%/+10.83% follow-ups. The next policy must resolve both width
+  and K before mutation; prompt/content-dependent selection remains forbidden.
+- C2's external-gap blocker is the measured operation-complete R8 target plus
+  proposal work, not an acceptance-rate ceiling.
+- M4 is retained only as an explicit diagnostic T3 scope; automatic C2-C8
+  remains K0 pending the complete production numerical/task/serving gates.
+
 ## 5. Order
 
-`X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` -> `P2` -> `M5` -> `P3`,
-(`R1` closed at campaign open). X1 and M0 are cheap and de-risk the
-expensive M1 unit. M3 is placed early because it tests the leading coverage
-hypothesis and is the largest single-cell deficit in the matrix (-63.03%).
+Planned order was `X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` ->
+`P2` -> `M5` -> `P3` (`R1` closed at campaign open). Historical execution
+**deviated**: M2 proposal/Q4 owner work landed before M3. The evidence remains
+independently scoped, but the prior claim that every item ran in recorded order
+was inaccurate. X1 and M0 were completed before the expensive M1 unit.
 
 ## 6. Non-goals
 

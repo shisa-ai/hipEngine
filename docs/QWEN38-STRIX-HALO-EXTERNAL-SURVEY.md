@@ -20,16 +20,15 @@ results and invalid state-contaminated output.
   C7-C8; mainline Vulkan leads MTP at C5; hipEngine leads AR at C3-C8 and MTP
   at C3-C4.
 - **hipEngine AR is the strongest part of the current result:** it wins six of
-  eight standardized widths, C3-C8. At C1 it is 1.26% behind Nathan, and at C2
-  it is 9.66% behind Laurent.
-- **hipEngine prefill is now competitive, but it does not lead a width:** it is
-  0.35% ahead of stock HIP at C1, then 3.9-23.6% behind stock HIP at C2-C8.
-  The remaining prefill gap is real, but the old description of hipEngine
-  prefill as uniformly poor is no longer accurate.
-- **hipEngine MTP has a narrow strong region and weak broad-concurrency
-  scaling:** it leads the standardized matrix at C3-C4 and beats its own AR at
-  C2-C3, but it loses to its own AR at C1 and C4-C8. The largest deficits are
-  C1 and C5-C8, where it trails the best competing engine by 24.1-63.0%.
+  eight standardized widths, C3-C8. At C1 it is 0.45% behind Nathan, and at C2
+  it is 8.80% behind Laurent.
+- **hipEngine prefill is competitive at six widths but still does not lead a
+  width:** it trails the best external result by 4.2-11.7% at C1/C3-C7 and by
+  19.1%/34.0% at C8/C2. The remaining gap is concentrated rather than uniform.
+- **hipEngine explicit K3 MTP now wins its own AR at C1-C4 and leads the
+  standardized matrix at C3-C4, but broad-concurrency scaling is still weak:**
+  C5-C8 run at 0.75-0.81x own AR and trail the best external result by
+  11.7-37.0%. C1/C2 trail the best external route by 25.4%/11.7%.
 - **Laurent's ordinary built-in MTP path provides broad, usable gains:** it
   leads standardized MTP at C1-C2 and C6. Stock HIP is stronger at C7-C8.
   This is separate from Laurent adaptive DFlash2, which remains unsafe across
@@ -49,10 +48,10 @@ results and invalid state-contaminated output.
   text.
 - **MTP must be routed by concurrency:** Mike's Q8 result was 2.23x AR at C1,
   neutral at C3, and 0.84x AR at C4.
-- **hipEngine is usable with the standard `Q4_K_M`:** it passed the
-  standardized correctness gates, leads AR at C3-C8, and leads MTP at C3-C4.
-  Prefill remains behind the best external route at every width, and MTP is
-  still materially behind at C1-C2 and C5-C8.
+- **hipEngine is usable with the standard `Q4_K_M`:** the reviewed current-head
+  run passed 80/80 explicit-MTP exact/route/budget cells, leads AR at C3-C8,
+  and leads K3 MTP at C3-C4. Prefill remains behind the best external route at
+  every width, and explicit K3 MTP remains behind at C1-C2 and C5-C8.
 
 ### Route decisions
 
@@ -63,7 +62,7 @@ equal model quality.
 
 | Route | Usable? | Decision |
 | --- | :---: | --- |
-| hipEngine `bc6a2679c` with the standard `Q4_K_M` baseline | **Yes** | Runs C1-C8 and passed the standardized AR/MTP self-exact gates. It leads AR at C3-C8 and MTP at C3-C4; prefill and broad MTP scaling remain open. |
+| hipEngine `b768516f2` with the standard `Q4_K_M` baseline | **Yes** | Runs C1-C8 and passed the reviewed AR/MTP exact/route/budget gates. It leads AR at C3-C8 and explicit K3 MTP at C3-C4; prefill and broad MTP scaling remain open. |
 | `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
 | Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Broad reusable llama.cpp route; it leads standardized MTP at C1-C2 and C6. |
 | Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |
@@ -101,14 +100,18 @@ The prefill pass generated one token per request and reports prompt tokens divid
 by barrier-to-last-completion wall time. It therefore includes one generated
 token and API overhead. We use this common end-to-end boundary because llama.cpp
 exposes internal prompt timing but hipEngine does not expose an equivalent field.
-The tables below refresh the original survey with the final same-host matrix
-recorded on 2026-08-30 ([L6]).
+The external rows below remain the same-host measurements recorded on
+2026-08-30 ([L6]). The hipEngine rows were re-run from tracked-clean current
+head `b768516f2` on the same physical host and protocol on 2026-08-31 ([L9]).
+Rates are total tokens divided by summed wall across **all ten prompts**. The
+M3/M4 compact headlines (15.646 and 35.618 tok/s) are six-non-heldout
+arithmetic means and are not substituted into this aggregate table.
 
 #### Prefill-dominant throughput
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine `bc6a2679c` | 146.8 | 142.8 | 174.9 | 188.9 | 211.7 | 226.6 | 240.7 | 247.2 |
+| hipEngine `b768516f2` | 147.0 | 139.8 | 169.9 | 188.9 | 211.8 | 227.7 | 237.1 | 247.3 |
 | Mainline Vulkan `4e97ac86` | 111.2 | 133.6 | 127.0 | 127.0 | 137.6 | 146.8 | 148.1 | 162.3 |
 | Stock HIP `9d57ce456` | 146.2 | 186.9 | 190.3 | **200.5** | **226.1** | 250.1 | 250.3 | 283.5 |
 | Laurent Vulkan `c28d538df` | 149.1 | **211.9** | **192.4** | 191.9 | 222.1 | **250.4** | **252.3** | **305.8** |
@@ -119,7 +122,7 @@ recorded on 2026-08-30 ([L6]).
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine `bc6a2679c` | 11.021 | 17.918 | **23.659** | **30.083** | **35.544** | **39.906** | **43.112** | **45.936** |
+| hipEngine `b768516f2` | 11.112 | 18.090 | **23.879** | **30.150** | **35.778** | **40.343** | **43.974** | **47.194** |
 | Mainline Vulkan `4e97ac86` | 10.226 | 17.471 | 14.905 | 13.246 | 18.086 | 24.083 | 29.342 | 35.376 |
 | Stock HIP `9d57ce456` | 10.635 | 17.681 | 15.266 | 13.537 | 18.271 | 23.296 | 26.544 | 30.325 |
 | Laurent Vulkan `c28d538df` | 11.047 | **19.835** | 16.359 | 14.255 | 20.294 | 28.322 | 35.896 | 45.614 |
@@ -130,7 +133,7 @@ recorded on 2026-08-30 ([L6]).
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine `bc6a2679c` | 7.809 | 25.740 | **29.468** | **29.385** | 18.657 | 28.195 | 29.305 | 28.577 |
+| hipEngine `b768516f2` | 15.753 | 28.441 | **30.541** | **35.474** | 27.980 | 32.807 | 33.106 | 35.423 |
 | Mainline Vulkan `4e97ac86` | 21.022 | 30.840 | 27.283 | 26.955 | **32.713** | 32.307 | 38.282 | 45.458 |
 | Stock HIP `9d57ce456` | 17.351 | 23.530 | 23.087 | 25.287 | 22.293 | 25.212 | **46.084** | **56.222** |
 | Laurent Vulkan `c28d538df` | **21.126** | **32.221** | 28.067 | 26.184 | 31.737 | **37.154** | 43.888 | 50.837 |
@@ -138,10 +141,11 @@ recorded on 2026-08-30 ([L6]).
 | `q38rocm` normal Vulkan `5d097740` | 20.357 | 27.163 | 26.178 | 26.482 | 32.297 | 31.613 | 38.314 | 45.342 |
 
 All llama.cpp outputs passed the character-window and word-trigram repetition
-guards. hipEngine passed its AR and MTP self-exact contracts. hipEngine's MTP
-route beat its own AR at C2-C3, was 0.9768x AR at C4, and lost at C1 and C5-C8.
-Its AR path led the complete matrix at C3-C8. The MTP rows are explicit K3
-measurements, not automatic-admission claims for every width.
+guards. hipEngine passed 80/80 explicit-MTP generated-ID, route, and budget
+cells. Its K3 route reached 1.418x/1.572x/1.279x/1.177x own AR at C1-C4 and
+0.782x/0.813x/0.753x/0.751x at C5-C8. AR still leads the complete matrix at
+C3-C8. The MTP row is an explicit K3 diagnostic, not an automatic-admission
+claim; automatic production C2-C8 remains K0.
 
 ## 1. Test method
 
@@ -179,10 +183,11 @@ verifying the source claim.
 | Prompt coverage | 10 prompts: code, general English, general Japanese, and mixed Japanese/English; four heldouts |
 | Common sampling | Greedy; prompt cache disabled |
 
-The [final matrix][L6] records the current engine commits, shared protocol,
-rates, source hashes, and correctness status. The [source-reproduction
-artifact][L0] records the additional model sizes, commands, acceptance, and
-route decisions. Raw logs stay outside Git because the repository does not
+The [reviewed matrix][L9] records the current hipEngine commit, raw hashes,
+commands, rates, and C=N follow-up. The preserved [external matrix][L6] records
+the external commits and shared protocol. The [source-reproduction artifact][L0]
+records the additional model sizes, commands, acceptance, and route decisions.
+Raw logs stay outside Git because the repository does not
 retain model files, binaries, or raw server logs.
 
 ### Timing terms
@@ -225,26 +230,48 @@ to reproduce source-specific claims.
 **Verdict: Yes.** hipEngine runs the standard `Q4_K_M` baseline used by every
 row in the standardized comparison.
 
-hipEngine `bc6a2679c` ran C1-C8 with production-profile BF16 arithmetic. It led
-AR at C3-C8, reaching 23.659-45.936 complete-wall tok/s. It was close at C1
-(11.021 versus the 11.162 winner) and remained 9.66% behind at C2.
+hipEngine `b768516f2` ran C1-C8 with production-profile BF16 arithmetic. It led
+AR at C3-C8, reaching 23.879-47.194 complete-wall tok/s. It was 0.45% behind
+Nathan at C1 (11.112 versus 11.162) and 8.80% behind Laurent at C2.
 
-Prefill reached 146.8-247.2 tok/s. It no longer has the large deficit recorded
-by the original survey, but it still trails the best engine at every width. It
-is narrowly ahead of stock HIP at C1 and behind stock HIP at C2-C8.
+Prefill reached 139.8-247.3 tok/s across C2-C8 (147.0 at C1). It still trails
+the best engine at every width; the largest gaps are C2 (-34.0%) and C8
+(-19.1%).
 
-MTP K3 is mixed rather than broadly competitive. It led C3-C4 at
-29.468/29.385 tok/s and beat matched AR at C2-C3, but reached only 0.7086x AR at
-C1 and 0.5249-0.7065x AR at C5-C8. Against the best engine in each column,
-hipEngine trails 63.0% at C1, 20.1% at C2, and 24.1-49.2% at C5-C8. All AR and
-MTP self-exact checks passed. The current C3/K3 production numerical gate also
+Explicit K3 MTP is strong at C1-C4 and weak at C5-C8. It led C3-C4 at
+30.541/35.474 tok/s and beat matched AR at every width C1-C4. Against the best
+external engine in each column, hipEngine is +8.81%/+31.61% at C3/C4 and
+trails by 25.43%/11.73% at C1/C2 and 11.70-36.99% at C5-C8. All 80 generated-ID,
+route, and budget cells passed. The C3/K3 production numerical gate previously
 passed 240/240 canonical and 192/192 heldout top-1 checks, with maximum KL
-8.69e-4 and 8.45e-4 respectively ([L8]).
+8.69e-4 and 8.45e-4 respectively ([L8]). Width-4 prompt streaming changed its
+acceptance trajectory, so that T3 scope remains an explicit diagnostic rather
+than an automatic production promotion.
 
 Automatic serving remains narrower than the diagnostic table. Strict/BF16
 C1/K3/context1-67 remains automatic at **18.191 versus 11.062 AR tok/s**
-([L7]). C2-C4 remain automatic K0 pending their E6 and width-specific
-production gates, and unqualified wider axes remain K0.
+([L7]). Production C2-C8 remain automatic K0 pending their width-specific
+numerical/task/serving gates; the explicit rows above do not change that policy.
+
+### C=N MTP execution review (2026-08-31)
+
+hipEngine does use the Qwen NextN draft module, but “NextN” does not mean one
+model call predicts all K tokens. Draft depth is autoregressive: K draft steps
+run serially, while each step batches every request in the physical group. For
+C1-C4, verification is already flattened: one call to
+`verify_target_blocks_batch()` packs each request's root plus K candidates and
+runs one target-model forward. The production server caps explicit MTP groups
+at four, so C5-C8 still execute serial complete subgroups.
+
+The full-width verifier mechanism is implemented and has passed one-target-pass
+correctness through C8; K3 remains slower because R20-R32 and wide proposal /
+accept paths miss their best owners. A reviewed one-pass K1 screen tested a
+smaller physical frontier: C5/R10 and C7/R14 regressed, but C6/R12 improved
+split K3 **32.807 -> 35.383 tok/s (+7.85%)** and C8/R16 improved **35.423 ->
+39.260 (+10.83%)**, with 40/40 exact/engaged/budget cells and 95.65% draft
+acceptance ([L9]). Both still lose own AR. The next credible path is therefore
+a prompt-independent width×depth admission table plus full production gates,
+not more serial per-request verification or acceptance-only tuning.
 
 ## 4. `q38rocm` / ROCmFPX
 
@@ -637,16 +664,18 @@ alone cannot decide whether to enable speculation.
 
 ### hipEngine follow-up
 
-The current matrix narrows the remaining work:
+The reviewed matrix and C=N screen narrow the remaining work:
 
-1. Preserve the AR path. It already leads C3-C8; C1-C2 need different
+1. Preserve the AR path. It leads C3-C8; C1-C2 need different
    operation-complete dataflows rather than broad retuning.
-2. Treat prefill as a remaining optimization gap, not a broken path. The next
-   work must beat the measured stock-HIP C2-C8 rows on the same protocol.
-3. Treat MTP as width-specific. Keep the exact C2-C4 improvements, but do not
-   promote automatic C2-C4 serving until the E6 and width-specific gates pass.
-   C1 and C5-C8 need lower proposal, replay, provider-group, or target-cycle
-   cost—not acceptance-only tuning.
+2. Treat prefill as a concentrated kernel gap. C2 and C8 retain measured Q4
+   prefill-owner blockers; scheduling changes were measured null.
+3. Keep automatic C2-C8 on K0 until the complete profile gates pass. For
+   explicit MTP, develop a prompt-independent width×depth table: C6/K1 and
+   C8/K1 are measured follow-ups, while C5/K1 and C7/K1 are rejected.
+4. For standardized K3 C5-C8 parity, retain one flattened target cycle and add
+   R20-R32 proposal/target owners plus cheaper accept/selected-state commit.
+   Do not return to serial per-request verification or acceptance-only tuning.
 
 Sequential ownership, lifecycle, and contamination gates are now part of the
 hipEngine correctness evidence. The external results still do not justify
@@ -654,9 +683,10 @@ copying an entire fork.
 
 ## 10. Evidence
 
-Current standardized matrix:
+Current reviewed matrix:
 
-- [`2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json`][L6]
+- [current-head hipEngine refresh and C=N review][L9]
+- [preserved same-host external matrix][L6]
 
 Source-claim reproduction artifact:
 
@@ -689,6 +719,7 @@ Related hipEngine evidence uses different scopes or protocols:
 [L6]: ../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json
 [L7]: ../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json
 [L8]: ../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-e5-combined-correctness.json
+[L9]: ../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json
 [S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
 [S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc52706409b0c550636ff068b06894d27079d734/README.md
 [S3]: https://github.com/julianmb/q38rocm/blob/5d0977403b0dac778598b1af499bf178b46c0b35/README.md
