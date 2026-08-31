@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from scripts.gguf_t16_sidecar_row_bench import (
     ARMS,
     DEFAULT_ROWS,
+    _bf16_comparison,
     _counterbalanced_order,
     _sample_summary,
     build_parser,
@@ -36,6 +38,27 @@ def test_sidecar_row_bench_parser_requires_rows2_through8_and_output() -> None:
         parser.parse_args(["--rows", "1,8", "--output", "/tmp/result.json"])
     with pytest.raises(SystemExit):
         parser.parse_args(["--rows", "2,2", "--output", "/tmp/result.json"])
+
+
+def test_sidecar_row_bench_reports_bf16_exactness_and_ulp_distance() -> None:
+    expected = np.asarray([0x0000, 0x3F80, 0xBF80], dtype=np.uint16)
+    exact = _bf16_comparison(expected.copy(), expected)
+    one_ulp = _bf16_comparison(
+        np.asarray([0x0000, 0x3F81, 0xBF80], dtype=np.uint16),
+        expected,
+    )
+
+    assert exact == {
+        "exact": True,
+        "mismatched_values": 0,
+        "total_values": 3,
+        "max_bf16_ulp": 0,
+        "max_abs_error": 0.0,
+    }
+    assert one_ulp["exact"] is False
+    assert one_ulp["mismatched_values"] == 1
+    assert one_ulp["max_bf16_ulp"] == 1
+    assert one_ulp["max_abs_error"] == pytest.approx(1.0 / 128.0)
 
 
 def test_sidecar_row_bench_sample_summary_is_sorted_and_uses_median() -> None:
