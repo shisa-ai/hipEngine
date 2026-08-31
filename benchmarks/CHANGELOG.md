@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P0 canonical chunk sweep — diagnostic] The deterministic 256/512/1024/2048 ladder finds chunk1024 **+2.55%/+2.25%** at p1024/p4096 but **-2.05%** weighted at p512 versus chunk512 and +720 MiB peak; chunk2048 loses to1024. The incumbent p512 arm is noisy, so default512 is retained without a promotion claim. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-canonical-chunk-sweep.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P6 contiguous H256 QSA — rejected] Contiguous wave chunks improve the 2K-selected primitive **2.157→0.496 ms (4.346x)** and lower mean/p95/max KL to **0.000565/0.002551/0.004372**, but top-1 is **97/100**, five scopes fail, and free generation is **1/4 exact**. Candidate is removed; partial-softmax merging is exhausted. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-contiguous-h256-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P6 H256 wave8 QSA — rejected] Token-parallel wave8 improves the real 2K-selected primitive **2.179→0.481 ms (4.534x)** and live-2,052 decode **95.88→67.84 ms (1.413x)**, but p4096 strict-teacher top-1 is only **98/100**, three category scopes fail, and free-generation is **2/4 exact**. Candidate/selector are removed; strict stays default. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`.
