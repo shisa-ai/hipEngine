@@ -1,0 +1,165 @@
+{
+  "backend": "hip_gfx1100",
+  "equal_length": 45,
+  "generated": "2026-08-31T10:40:43.401554+00:00",
+  "kind": "gguf_runner_packed_prefill_grouping_probe",
+  "lanes": 2,
+  "lengths": [
+    35,
+    48
+  ],
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "orders": {
+    "equal_packed,equal_serial,mixed_packed,mixed_serial": {
+      "equal_packed": {
+        "tok_s": 311.648,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 288.79,
+        "wall_ms_samples": [288.79]
+      },
+      "equal_serial": {
+        "tok_s": 184.733,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 487.19,
+        "wall_ms_samples": [487.19]
+      },
+      "mixed_packed": {
+        "tok_s": 289.988,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 286.22,
+        "wall_ms_samples": [286.22]
+      },
+      "mixed_serial": {
+        "tok_s": 170.998,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 485.39,
+        "wall_ms_samples": [485.39]
+      }
+    },
+    "mixed_serial,mixed_packed,equal_serial,equal_packed": {
+      "equal_packed": {
+        "tok_s": 311.767,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 288.68,
+        "wall_ms_samples": [288.68]
+      },
+      "equal_serial": {
+        "tok_s": 184.833,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 486.93,
+        "wall_ms_samples": [486.93]
+      },
+      "mixed_packed": {
+        "tok_s": 290.921,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 285.3,
+        "wall_ms_samples": [285.3]
+      },
+      "mixed_serial": {
+        "tok_s": 155.146,
+        "token_ids": [9707, 9707],
+        "token_ids_identical_across_reps": true,
+        "wall_ms_median": 534.98,
+        "wall_ms_samples": [534.98]
+      }
+    }
+  },
+  "ownership": {
+    "all_sessions_share_owner_runner": true,
+    "all_sessions_share_owner_runtime": true,
+    "model_load_owners": 1,
+    "sessions": 2
+  },
+  "provenance": {
+    "build_profile": "production",
+    "collected_at": "2026-08-31T10:40:43.359360+00:00",
+    "command": [
+      "/home/lhl/hipEngine-main/.venv/bin/python",
+      "scripts/gguf_packed_prefill_grouping_probe.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--quant",
+      "gguf_q4_k_m",
+      "--lengths",
+      "35,48",
+      "--equal-length",
+      "45",
+      "--warmup",
+      "0",
+      "--reps",
+      "1",
+      "--require-clean-source",
+      "--output",
+      "/tmp/he-p27-runner-smoke.json"
+    ],
+    "configured_backend": "hip_gfx1100",
+    "device_name": "AMD Radeon Pro W7900",
+    "dirty": false,
+    "environment": {
+      "HIPENGINE_EXECUTION_PROFILE": "production",
+      "HIPENGINE_REQUIRE_CACHED_BUILD": null,
+      "HIP_VISIBLE_DEVICES": "0",
+      "ROCR_VISIBLE_DEVICES": "0"
+    },
+    "git_branch": "campaign/gfx1100-mtp-cn-promotion",
+    "hipcc_version": "HIP version: 7.2.53211-3d9ef42\nAMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /opt/rocm/lib/llvm/bin",
+    "hipengine_commit": "3d2f1bc444e2bbdc1e021871e72a18eea75b17f6",
+    "host_name": "epyc",
+    "kind": "hipengine_artifact_provenance",
+    "kv_dtype": "bf16",
+    "model_fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "exists": true,
+      "path_type": "file",
+      "sample_offsets": [0, 8552862704, 17105725408],
+      "sampled_bytes": 3145728,
+      "size_bytes": 17106773984,
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+    },
+    "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_revision": null,
+    "profiler": {"enabled": false},
+    "quant": "gguf_q4_k_m",
+    "repetitions": 1,
+    "repo_root": "/home/lhl/hipEngine-main",
+    "resolved_backend": "hip_gfx1100",
+    "rocm_version": "HIP version: 7.2.53211-3d9ef42",
+    "schema_version": 2,
+    "staged_dirty": false,
+    "target_arch": "gfx1100",
+    "timing_protocol": "blocking wall around reset plus direct resident-runner prefill and device_synchronize; forward/reverse arm orders; median; no best-of",
+    "unstaged_dirty": false,
+    "untracked_count": 0,
+    "untracked_dirty": false,
+    "warmups": 0
+  },
+  "quant": "gguf_q4_k_m",
+  "reps": 1,
+  "schema": 1,
+  "scope": {
+    "level": "runner",
+    "serving_attribution_source": "scripts/gguf_mtp_c1c8_server_bench.py --capture-prefill-attribution",
+    "serving_path_claim_eligible": false
+  },
+  "status": "complete",
+  "total_rows": 83,
+  "verdict": {
+    "equal_packed_vs_serial_forward_order": 1.6867,
+    "equal_packed_vs_serial_reversed_order": 1.687,
+    "equal_prompt_pair_exact": true,
+    "mixed_packed_vs_serial_forward_order": 1.8751,
+    "mixed_packed_vs_serial_reversed_order": 1.6959,
+    "mixed_prompt_pair_exact": true,
+    "passed": true
+  },
+  "warmup": 0
+}

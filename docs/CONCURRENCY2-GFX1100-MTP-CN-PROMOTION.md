@@ -1091,9 +1091,17 @@ Evidence: [`current post-grouping K3 attribution`](../benchmarks/results/2026-08
 #### P13-E — Lifecycle and tooling cleanup (#26, #27)
 
 - [x] Make accept-staging release failure-safe through all subsequent cleanup.
-- [ ] Repair the packed-prefill runner probe to share the owner's runtime/runner
+- [x] Repair the packed-prefill runner probe to share the owner's runtime/runner
       and label it runner-level only; serving attribution comes from server
       route counters.
+
+The repaired #27 harness loads one owner, identity-checks every peer against its
+runtime/runner, compares mixed/equal packed arms only with their identical
+serial prompts, and emits canonical clean-source provenance. A two-lane W7900
+smoke passes both arm orders (direct-runner packed/serial **1.70x-1.88x**) but is
+explicitly `serving_path_claim_eligible=false`; these smoke ratios do not alter
+server attribution or any scoreboard row. Evidence:
+[`runner-only grouping probe`](../benchmarks/results/2026-08-31-w7900-q4km-packed-prefill-runner-probe.json).
 
 #### P13-F — Recovery audit (#28)
 
