@@ -861,9 +861,11 @@ graph scope.
       248K-logit copy, but the next step is not yet device-to-device.
 - [ ] Reduce the current 28 blocking and 12 async memcpy calls/token to a
       role-explained minimum and record bytes/directions, synchronization count,
-      first-token, steady-state, and exact-ID/logit controls. The normal-output
-      Python-visible census confirms the full-vocabulary D2H was removed; the
-      complete HIP-API ledger remains open.
+      first-token, steady-state, and exact-ID/logit controls. The four-step
+      HIP-API ledger is now complete: compact output retains 28 blocking plus
+      12 async copies/token, reduces blocking bytes **1,024,200→30,928**, and
+      removes one `hipDeviceSynchronize`/token. The remaining calls are
+      role-attributed; reducing them is still open.
 - [x] Re-run natural multi-prompt decode, not only the repeated `9707` steady
       diagnostic. The complete 18-prompt/category-heldout T0 packet has 450/450
       logits at KL=0, 18/18 exact generated ID sequences/tasks, repeat-exact
