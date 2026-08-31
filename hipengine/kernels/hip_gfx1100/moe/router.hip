@@ -218,6 +218,78 @@ void qwen35_router_logits_bf16_f32w_wave0_tree_anyorder_kernel(
   }
 }
 
+template <int TOKENS_PER_BLOCK>
+__global__ void qwen35_router_logits_f32_token_tile_dense_exact_kernel(
+    const float* __restrict__ hidden,
+    const float* __restrict__ weight,
+    float* __restrict__ logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_experts) {
+  extern __shared__ float partial[];
+  const int64_t expert = blockIdx.x;
+  const int64_t token_base = static_cast<int64_t>(blockIdx.y) * TOKENS_PER_BLOCK;
+  if (expert >= num_experts) return;
+  float acc[TOKENS_PER_BLOCK] = {};
+  const int64_t weight_row = expert * hidden_size;
+  const int64_t vec_stride = static_cast<int64_t>(blockDim.x) * 8;
+  const int64_t main_end = (hidden_size / vec_stride) * vec_stride;
+  for (int64_t k_base = static_cast<int64_t>(threadIdx.x) * 8;
+       k_base < main_end;
+       k_base += vec_stride) {
+    const float* w_ptr = weight + weight_row + k_base;
+#pragma unroll
+    for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+      const int64_t token = token_base + t;
+      if (token < tokens) {
+        const float* x_ptr = hidden + token * hidden_size + k_base;
+        acc[t] = fmaf(x_ptr[0], w_ptr[0], acc[t]);
+        acc[t] = fmaf(x_ptr[1], w_ptr[1], acc[t]);
+        acc[t] = fmaf(x_ptr[2], w_ptr[2], acc[t]);
+        acc[t] = fmaf(x_ptr[3], w_ptr[3], acc[t]);
+        acc[t] = fmaf(x_ptr[4], w_ptr[4], acc[t]);
+        acc[t] = fmaf(x_ptr[5], w_ptr[5], acc[t]);
+        acc[t] = fmaf(x_ptr[6], w_ptr[6], acc[t]);
+        acc[t] = fmaf(x_ptr[7], w_ptr[7], acc[t]);
+      }
+    }
+  }
+  for (int64_t k = main_end + threadIdx.x; k < hidden_size; k += blockDim.x) {
+    const float w = weight[weight_row + k];
+#pragma unroll
+    for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+      const int64_t token = token_base + t;
+      if (token < tokens) {
+        acc[t] = fmaf(hidden[token * hidden_size + k], w, acc[t]);
+      }
+    }
+  }
+#pragma unroll
+  for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+    partial[t * blockDim.x + threadIdx.x] = acc[t];
+  }
+  __syncthreads();
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+    if (threadIdx.x < stride) {
+#pragma unroll
+      for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+        partial[t * blockDim.x + threadIdx.x] +=
+            partial[t * blockDim.x + threadIdx.x + stride];
+      }
+    }
+    __syncthreads();
+  }
+  if (threadIdx.x == 0) {
+#pragma unroll
+    for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
+      const int64_t token = token_base + t;
+      if (token < tokens) {
+        logits[token * num_experts + expert] = partial[t * blockDim.x];
+      }
+    }
+  }
+}
+
 template <typename scalar_t, typename weight_t, int TOKENS_PER_BLOCK>
 __global__ void qwen35_router_logits_token_tile_kernel(
     const scalar_t* hidden,
@@ -936,6 +1008,37 @@ extern "C" int hipengine_qwen35_router_logits_fp16_f32w(
       num_rows,
       threads,
       stream));
+}
+
+extern "C" int hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
+    const float* hidden,
+    const float* weight,
+    float* logits,
+    int64_t tokens,
+    int64_t hidden_size,
+    int64_t num_rows,
+    int64_t threads,
+    hipStream_t stream) {
+  if (hidden == nullptr || weight == nullptr || logits == nullptr || tokens <= 0 ||
+      hidden_size <= 0 || num_rows <= 0 || threads != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int tokens_per_block = 4;
+  hipLaunchKernelGGL(
+      (qwen35_router_logits_f32_token_tile_dense_exact_kernel<tokens_per_block>),
+      dim3(
+          static_cast<unsigned int>(num_rows),
+          static_cast<unsigned int>((tokens + tokens_per_block - 1) / tokens_per_block)),
+      dim3(256),
+      256 * tokens_per_block * sizeof(float),
+      stream,
+      hidden,
+      weight,
+      logits,
+      tokens,
+      hidden_size,
+      num_rows);
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_qwen35_router_logits_f32_f32w(

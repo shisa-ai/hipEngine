@@ -2682,6 +2682,14 @@ def _qwen4_exp_q8_mmq_policy(policy):
     return replace(policy, min_rows=minimums)
 
 
+def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
+    """Select the exact four-token F32 router producer for multirow work."""
+
+    return rows >= 2 and os.environ.get(
+        "HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4", "0"
+    ) not in {"", "0", "false", "False"}
+
+
 def _qwen4_exp_production_moe_prefill_enabled(
     weight: GGUFDeviceWeight, *, rows: int
 ) -> bool:
@@ -2767,13 +2775,32 @@ def run_qwen4_exp_moe(
         raise ValueError("missing Qwen4Exp MoE weights: " + ", ".join(missing))
     backend = str(weights["expert_gate"].backend)
     load_backend_kernel_package(backend)
-    launch_gguf_linear(
-        weights["router"], mixed_ptr, scratch.router_logits.ptr,
-        rows, hidden, experts,
-        activation_dtype=GGUF_ACTIVATION_F32,
-        output_dtype=GGUF_OUTPUT_F32,
-        stream=stream, runtime=active_runtime,
-    )
+    router_tile4 = _qwen4_exp_router_f32_tile4_enabled(rows)
+    if router_tile4:
+        router_logits = resolve(
+            backend=backend,
+            layer="router_logits",
+            quant="f32",
+            variant="f32_hidden_token_tile4_dense_exact",
+        )
+        router_logits(
+            mixed_ptr,
+            weights["router"].allocation("raw").tensor.ptr,
+            scratch.router_logits.ptr,
+            rows,
+            hidden,
+            experts,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        launch_gguf_linear(
+            weights["router"], mixed_ptr, scratch.router_logits.ptr,
+            rows, hidden, experts,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream, runtime=active_runtime,
+        )
     qwen35_router_select(
         scratch.router_logits.ptr,
         scratch.selected.ptr,

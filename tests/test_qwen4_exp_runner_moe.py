@@ -51,11 +51,12 @@ def _hip_available() -> bool:
 
 
 @pytest.mark.parametrize(
-    ("rows", "grouped_prefill"), [(1, False), (3, False), (16, True)]
+    ("rows", "grouped_prefill", "router_tile4"),
+    [(1, False, False), (3, False, False), (3, False, True), (16, True, False)],
 )
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
-    rows: int, grouped_prefill: bool, monkeypatch
+    rows: int, grouped_prefill: bool, router_tile4: bool, monkeypatch
 ) -> None:
     from hipengine.core.hip import get_hip_runtime
 
@@ -64,6 +65,9 @@ def test_qwen4_exp_runner_moe_matches_reduced_topk_shared_cpu_oracle(
         monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
     else:
         monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", raising=False)
+    monkeypatch.setenv(
+        "HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4", "1" if router_tile4 else "0"
+    )
     rng = np.random.default_rng(510)
     hidden, ffn, experts, top_k = 256, 256, 4, 2
     mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
