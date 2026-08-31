@@ -6,9 +6,9 @@ experts with a single device-driven launch that reads ``expert_start`` on
 device and iterates experts internally (fixed worker grid, no host roundtrip).
 It mirrors the Q5_1 device-driven grouped rowbatch8 dataflow.
 
-RED contract: for compact rows grouped by expert, each output row equals
-``gguf_q8_0_gemv(x_row, weight[expert])`` (the strict Q8_0 gemv reference)
-within one bf16 ULP.
+RED contract: for compact rows grouped by expert, each BF16 output row is
+bit-exact to ``gguf_q8_0_gemv(x_row, weight[expert])`` (the strict Q8_0 gemv
+reference) after the reference output is rounded to BF16.
 """
 
 from __future__ import annotations
@@ -171,9 +171,8 @@ def test_qwen4_exp_q8_0_grouped_down_matches_reference(
     )
     actual = _run_grouped_gpu(fixture)
     ref_bits = _f32_to_bf16_bits(fixture["reference"])
-    ref = _bf16_bits_to_f32(ref_bits)
-    # Every grouped output row must equal the strict Q8_0 gemv within one bf16
-    # ULP of the reference output (the reference is already bf16-rounded the
-    # same way the kernel stores).
-    np.testing.assert_allclose(actual, ref, rtol=1e-3, atol=1e-3)
+    # Both arrays contain BF16-representable FP32 values. Compare their BF16
+    # payloads directly so a near-zero mismatch cannot hide under an absolute
+    # tolerance.
+    np.testing.assert_array_equal(_f32_to_bf16_bits(actual), ref_bits)
     assert np.all(np.isfinite(actual))

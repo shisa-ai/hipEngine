@@ -572,9 +572,10 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       (runner-level regression RED, 30a2fad9e)
 - [x] Route the existing selected Q5_K WMMA body for layer 2; classify its
       arithmetic before timing and preserve the strict selected chain.
-      **MEASURED: ~1% REGRESSION, REJECTED.** 5 counterbalanced p512 pairs
-      (t=-5.28) show grouped WMMA routing is slower than strict at the real
-      layer-2 active-row distribution (20260830T223941). Layer 2 stays strict.
+      **MEASURED: ~1% REGRESSION, REJECTED.** Five reported paired p512 runs
+      (reported t=-5.28; raw order artifact not retained) show grouped WMMA
+      routing slower than strict at the real layer-2 active-row distribution
+      (20260830T223941). Layer 2 stays strict.
       Microbench showed the WMMA body wins 3.85x sparse / 1.73x wide, but that
       does not transfer to the real p512 profile (20260830T202526).
 - [x] Replace the Q8 path's `group_expert_start` D2H copy and Python loop over
@@ -595,11 +596,16 @@ Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
 role range; its maximum standalone p508 contribution is about 6.6%.
 
 **Actual P1 outcome (2026-08-30):** layer-2 grouped routing does NOT close the
-isolated Q5_K miss; it is a measured ~1% regression. The ~19x layer-2 gap vs
-llama is a Q5_K gate/up dataflow problem (neither the strict selected chain nor
-the current grouped WMMA body is competitive), requiring a batched-over-rows
-kernel rewrite. The Q8_0 down strict-fallback regression from the device owner
-refactor was caught and fixed (30a2fad9e), restoring heldout max KL 0.0287.
+isolated Q5_K miss; the reported five pairs show a ~1% regression. The ~19x
+layer-2 gap vs llama is a Q5_K gate/up dataflow problem (neither the strict
+selected chain nor the current grouped WMMA body is competitive), requiring a
+batched-over-rows kernel rewrite. The Q8_0 down strict-fallback regression from
+the device owner refactor was caught and fixed (30a2fad9e), restoring heldout
+max KL 0.0287. A 2026-08-31 audit recomputed the reported mean, median, and
+t-statistic but found no committed raw pair artifact or exact command/order
+log; the magnitude and significance therefore remain diagnostic rather than
+closure-grade. The conservative rejection and strict default do not depend on
+accepting a performance win.
 
 ### Phase P2 — early routed MoE layers 0-26
 
