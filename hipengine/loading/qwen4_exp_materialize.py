@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+import mmap
+import os
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
@@ -442,6 +444,51 @@ class Qwen4ExpPLEMMapTable:
         values = values.reshape(indices.size, self.row_width)
         self.rows_gathered += int(indices.size)
         return values
+
+    def advise_cache(self, mode: str) -> dict[str, Any]:
+        """Apply file-scoped warm/cold advice to only the PLE tensor range."""
+
+        if self._raw is None:
+            raise RuntimeError("PLE mmap table is closed")
+        selected = str(mode)
+        if selected not in {"warm", "cold"}:
+            raise ValueError("PLE cache mode must be warm or cold")
+        mmap_advice = (
+            mmap.MADV_WILLNEED if selected == "warm" else mmap.MADV_DONTNEED
+        )
+        fadvise_advice = (
+            os.POSIX_FADV_WILLNEED
+            if selected == "warm"
+            else os.POSIX_FADV_DONTNEED
+        )
+        file_applied = False
+        source = getattr(self.reader, "path", None)
+        fadvise = getattr(os, "posix_fadvise", None)
+        if source is not None and callable(fadvise):
+            descriptor = os.open(os.fspath(source), os.O_RDONLY)
+            try:
+                fadvise(
+                    descriptor,
+                    int(self.tensor.data_offset),
+                    int(self.tensor.nbytes),
+                    fadvise_advice,
+                )
+                file_applied = True
+            finally:
+                os.close(descriptor)
+        mapping = getattr(self._raw, "_mmap", None)
+        mapping_applied = False
+        if mapping is not None and hasattr(mapping, "madvise"):
+            mapping.madvise(mmap_advice)
+            mapping_applied = True
+        return {
+            "mode": selected,
+            "scope": "ple_tensor_file_range",
+            "offset": int(self.tensor.data_offset),
+            "nbytes": int(self.tensor.nbytes),
+            "file_advice_applied": file_applied,
+            "mapping_advice_applied": mapping_applied,
+        }
 
     def close(self) -> None:
         if self._raw is None:
