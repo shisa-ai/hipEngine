@@ -166,7 +166,23 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
         None,
     )
+    shared_b_row64_shapes = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES",
+        None,
+    )
+    shared_b_row64_rows = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS",
+        None,
+    )
+    shared_b_row64_fn = getattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
+        None,
+    )
     assert callable(selector)
+    assert callable(shared_b_row64_fn)
     assert rows_policy == frozenset({6})
     assert shape_policy == frozenset(
         {
@@ -186,6 +202,8 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     # benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json.
     assert single_wave_max_rows == 128
     assert single_wave_max_rows_by_shape == {(5_120, 12_288): 112}
+    assert shared_b_row64_shapes == frozenset({(17_408, 5_120)})
+    assert shared_b_row64_rows == range(33, 68)
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -203,6 +221,11 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         t16_prefill,
         "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
         lambda *args, **kwargs: calls.append("shared_b"),
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared_b_row64"),
     )
     for in_features, out_features in shape_policy:
         selector(1, 2, 3, 6, in_features, out_features)
@@ -223,6 +246,8 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     selector(1, 2, 3, 112, 5_120, 12_288)
     selector(1, 2, 3, 113, 5_120, 12_288)
     selector(1, 2, 3, 128, 5_120, 10_240)
+    selector(1, 2, 3, 67, 17_408, 5_120)
+    selector(1, 2, 3, 68, 17_408, 5_120)
     assert calls == ["rowtile"] * len(shape_policy) + [
         "single_wave",
         "rowtile",
@@ -232,7 +257,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "single_wave",
         "single_wave",
         "shared_b",
-        "shared_b",
+        "shared_b_row64",
         "rowtile",
         "single_wave",
         "single_wave",
@@ -240,6 +265,8 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "single_wave",
         "shared_b",
         "single_wave",
+        "shared_b_row64",
+        "shared_b",
     ]
 
     # Bisection switch: forcing the band to 0 must return every non-row-6 call to
@@ -272,6 +299,12 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         quant="gguf_q4_k_t16_v1",
         variant="t16_wmma_prefill_shared_b_bf16_bf16_out",
     )
+    row64 = resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
+    )
     default = resolve(
         backend="hip_gfx1100",
         layer="linear",
@@ -281,6 +314,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     assert selected is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
     assert single_wave is gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    assert row64 is shared_b_row64_fn
     assert default is selector
 
 
@@ -1108,6 +1142,84 @@ def test_q4_t16_dense_wmma_prefill_matches_cpu_reference(rows: int) -> None:
     )
     # Match the established Q4_K WMMA gate: independent FP16 fragments may
     # differ near zero while BF16-scale outputs remain bounded.
+    np.testing.assert_allclose(actual, expected, rtol=0.012, atol=0.5)
+    assert np.isfinite(actual).all()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [35, 48, 67])
+def test_q4_t16_shared_b_row64_matches_shared_b_parent(rows: int) -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    candidate = getattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
+        None,
+    )
+    assert callable(candidate)
+    runtime = get_hip_runtime()
+    in_features = 256
+    out_features = 96
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    rng = np.random.default_rng(0x640000 + rows)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    parent_bits = np.zeros((rows, out_features), dtype=np.uint16)
+    candidate_bits = np.zeros_like(parent_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_dev = malloc(tiles.nbytes, runtime=runtime)
+        parent_dev = malloc(parent_bits.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate_bits.nbytes, runtime=runtime)
+        buffers.extend((x_dev, tiles_dev, parent_dev, candidate_dev))
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(tiles_dev, host_array_ptr(tiles), runtime=runtime)
+        library = build_gguf_k_t16_selected_prefill(load=True)
+        gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
+            x_dev.ptr,
+            tiles_dev.ptr,
+            parent_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        candidate(
+            x_dev.ptr,
+            tiles_dev.ptr,
+            candidate_dev.ptr,
+            rows,
+            in_features,
+            out_features,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(parent_bits), parent_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(candidate_bits), candidate_dev, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate_bits, parent_bits)
+    actual = _bf16_bits_to_f32(candidate_bits)
+    expected = _bf16_bits_to_f32(
+        _f32_to_bf16_bits(
+            gguf_quant_gemv(
+                _bf16_bits_to_f32(x_bits),
+                raw,
+                GGMLQuantizationType.Q4_K,
+            )
+        )
+    )
     np.testing.assert_allclose(actual, expected, rtol=0.012, atol=0.5)
     assert np.isfinite(actual).all()
 

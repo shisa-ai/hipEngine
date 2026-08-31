@@ -650,22 +650,23 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
   }
 }
 
-// Cooperative dense Q4T16 producer. Four waves keep the same 48-column x
-// 64-row arithmetic owner as the single-wave kernel, but share one decoded
-// K256 weight slab through LDS across 256 input rows. The slab is output-major
-// so one lane's K16 B fragment is contiguous and compiles to vector LDS loads.
-// Every output retains the same FP16 operand, K16 WMMA sequence, FP32
-// accumulator, and BF16 store.
-__launch_bounds__(128, 1)
-__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
+// Cooperative dense Q4T16 producer body. Four waves keep the same 48-column
+// arithmetic owner as the single-wave kernel and share one decoded K256 weight
+// slab through LDS. ROW_TILES_PER_WAVE controls only row ownership/padding:
+// four is the retained 256-row parent; one is the exact 64-row occupancy
+// candidate. Every output retains the same FP16 operand, K16 WMMA sequence,
+// FP32 accumulator, and BF16 store.
+template <int ROW_TILES_PER_WAVE>
+__device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
-    int64_t out_features) {
+    int64_t out_features,
+    half_t* __restrict__ weight_tile) {
+  static_assert(ROW_TILES_PER_WAVE > 0, "row tiles per wave must be positive");
   constexpr int OUT_TILES_PER_BLOCK = 3;
-  constexpr int ROW_TILES_PER_WAVE = 4;
   constexpr int WAVES_PER_BLOCK = 4;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
@@ -680,7 +681,6 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
   const int64_t blocks_per_row = in_features / QK_K;
   const int64_t out_tiles = out_features / T16_COLS;
 
-  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
   float8_t acc[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
 #pragma unroll
   for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
@@ -810,6 +810,34 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
       }
     }
   }
+}
+
+__launch_bounds__(128, 1)
+__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
+  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
+  gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<4>(
+      x, tiles, out, rows, in_features, out_features, weight_tile);
+}
+
+__launch_bounds__(128, 1)
+__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
+  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
+  gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<1>(
+      x, tiles, out, rows, in_features, out_features, weight_tile);
 }
 
 // Exact unequal-width same-input Q4T16 pair. The paired kernel owns the
@@ -1770,6 +1798,42 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int Q4_DENSE_TILE_COLS = 3 * T16_COLS;
+  constexpr int Q4_DENSE_TILE_ROWS = 4 * 1 * 16;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(
+          (out_features + Q4_DENSE_TILE_COLS - 1) / Q4_DENSE_TILE_COLS),
+      static_cast<unsigned int>(
+          (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
+  hipLaunchKernelGGL(
+      gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 template <bool qmicro = false, bool external_meta = false>
 int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     const uint16_t* x,
@@ -2026,6 +2090,18 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

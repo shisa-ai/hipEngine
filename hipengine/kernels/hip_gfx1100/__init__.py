@@ -265,6 +265,11 @@ GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset(
 # benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json.
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS = 128
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE = {(5_120, 12_288): 112}
+# Exact four-wave shared-B sibling with one 16-row tile per wave. On the W7900
+# down projection it reduces 256-row padding to 64 rows while retaining the
+# parent's 48-column weight-sharing block: 1.24x-1.85x at every suite row 33-67.
+GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS = range(33, 68)
 # Production C2 reuses C1-equivalent rows6 rowtiles for the remaining Q4
 # gate/up and full-attention output shapes. Complete strict-teacher, repeat,
 # permutation-isolation, task, and lifecycle packets qualify this arithmetic
@@ -932,6 +937,8 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
+    "GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES",
+    "GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",

@@ -19,6 +19,8 @@ from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES,
+    GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS,
+    GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE,
@@ -59,6 +61,9 @@ _Q4_DENSE_WMMA_SMALLM_BF16 = (
 )
 _Q4_DENSE_WMMA_SHARED_B_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out"
+)
+_Q4_DENSE_WMMA_SHARED_B_ROW64_BF16 = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out"
 )
 _Q4_DENSE_DUAL_WMMA_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out"
@@ -341,12 +346,18 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         # single-wave leaf is bit-identical on this shape across rows 2..128, so
         # this is an ownership change, not an arithmetic change, and shared-B
         # stays the registered sibling and strict fallback.
-        fn = (
-            gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
-            if shape in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES
+        if (
+            shape in GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES
+            and int(rows) in GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS
+        ):
+            fn = gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out
+        elif (
+            shape in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES
             and 2 <= int(rows) <= _single_wave_max_rows(shape)
-            else gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
-        )
+        ):
+            fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+        else:
+            fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:
         fn = gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
     elif (
@@ -419,6 +430,37 @@ def gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     del tile_m, tile_n
     _launch_dense_t16(
         _Q4_DENSE_WMMA_SHARED_B_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch exact 64-row cooperative dense Q4T16 WMMA prefill."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_SHARED_B_ROW64_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -989,6 +1031,10 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
             gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
         ),
+        (
+            "t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out,
+        ),
     ):
         register(
             KernelKey(
@@ -1122,6 +1168,7 @@ __all__ = [
     "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out",
