@@ -846,6 +846,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear+gr_gated_mean",
+            "gguf_q8_0",
+            "coltile8_rowbatch4_f32_f32_out",
+        ),
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear_pair",
             "gguf_q5_k",
             "pack8_gemv_decode_bf16_bf16_out",

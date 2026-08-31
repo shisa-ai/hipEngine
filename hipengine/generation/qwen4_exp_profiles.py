@@ -57,6 +57,10 @@ _ROUTER_F32_TILE4_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json"
 )
+_GR_UP_SIGMOID_MEAN_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json"
+)
 
 
 def _selection(
@@ -80,6 +84,14 @@ def _selection(
 
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "linear+gr_gated_mean",
+            "qwen4exp_rows_gt256_gr_up",
+            "coltile2_branch4_rowbatch4_f32_exact",
+            "coltile8_rowbatch4_f32_f32_out",
+            "gguf_q8_0",
+            evidence=_GR_UP_SIGMOID_MEAN_EVIDENCE,
+        ),
         _selection(
             "router_logits",
             "qwen4exp_multirow_f32_router",
@@ -136,6 +148,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "linear+gr_gated_mean",
+            "qwen4exp_rows_gt256_gr_up",
+            "coltile2_branch4_rowbatch4_f32_exact",
+            "coltile2_branch4_rowbatch4_f32_exact",
+            "gguf_q8_0",
+            evidence=_GR_UP_SIGMOID_MEAN_EVIDENCE,
+        ),
         _selection(
             "router_logits",
             "qwen4exp_multirow_f32_router",
@@ -210,7 +230,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
-        "HIPENGINE_QWEN4_EXP_GR_UP_SIGMOID_MEAN": "0",
+        "HIPENGINE_QWEN4_EXP_GR_UP_SIGMOID_MEAN": "1",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",

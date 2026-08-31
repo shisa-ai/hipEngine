@@ -754,9 +754,15 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       sigmoid+gated-mean subunit is now retained for rows <=256: it removes one
       launch per GR read, improves clean counterbalanced p508+128-step decode
       14.162→15.111 tok/s, and passes 450/450 logits, 18/18 state/task prompts,
-      and lifecycle exactly. Rows >256 keep the unfused owner after the fused
-      kernel measured 0.889x at rows508. Evidence:
-      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`.
+      and lifecycle exactly. The first all-row tail-only fusion lost at rows508;
+      a replacement rows>256 Q8-up composite keeps each output's coltile8
+      reduction but groups two hidden columns across four branches and emits
+      sigmoid gates plus branch mean. It improves p508 91.219→91.807 tok/s and
+      code-p1024 88.754→89.239 tok/s; the complete 450-row/state/task gate is
+      exact. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json`.
 - [ ] Evaluate output-projection+GR-write composites for attention and MoE
       boundaries, including the exact inject ordering. Start with the 36-layer
       Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact

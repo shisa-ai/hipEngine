@@ -273,10 +273,15 @@ teardown**. Rows >256 remain unfused after a rows508 primitive loss. The
 multirow F32 router projection also reuses each weight row across four prompt
 rows while preserving dense arithmetic: clean p508 improves **89.689→91.121
 tok/s (1.0160x, 95% CI 1.0143–1.0177)**, with 450/450 logits and 18/18 state/task
-prompts exact. c1 remains on the dense owner.
+prompts exact. c1 remains on the dense owner. The rows>256 GR-up composite also
+preserves the exact Q8 reduction while emitting sigmoid gates and branch mean:
+p508 improves **91.219→91.807 tok/s (1.00645x)** and code-p1024
+**88.754→89.239 tok/s (1.00547x)**, with 450/450 logits and 18/18 state/task
+prompts exact.
 [`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
 [`P3 fused GR`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json).
 [`P3 F32 router tile4`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json).
+[`P3 GR up+sigmoid+mean`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json).
 
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
