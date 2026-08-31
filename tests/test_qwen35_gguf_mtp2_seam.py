@@ -3042,3 +3042,63 @@ def test_prompt_streaming_resolver_accepts_width_one_and_rejects_out_of_range(
                 target_verify_mode="native",
                 candidate_budget=3,
             )
+
+
+def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() -> None:
+    # M5 whole-batch routing: sub-group interleaving measured 0.74-0.80x AR at
+    # physical widths 5-8, so a due batch wider than the production economic
+    # bound must partition to 0 (one full-batch AR decode) instead of
+    # chaining MTP sub-groups.
+    from hipengine.kernels.hip_gfx1151 import (
+        GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS,
+    )
+
+    assert GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"] == 4
+
+    row = SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=True,
+        lease=SimpleNamespace(
+            session=SimpleNamespace(
+                runner=SimpleNamespace(fp16_recurrent_state=False),
+                _target_scratch_owner=SimpleNamespace(slot_count=8),
+                target_layout=SimpleNamespace(max_sequence_length=1024),
+                kv_storage_dtype="bf16",
+            )
+        ),
+        slot=SimpleNamespace(),
+    )
+    ids = tuple(range(1, 9))
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.enabled = True
+    adapter.candidate_budget = 3
+    adapter.target_verify_mode = "native"
+    adapter.quant = "gguf_q4_k_m"
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1151",
+        execution_profile="production",
+    )
+    adapter.owner = SimpleNamespace(capacity=8, _row=lambda rid: row)
+    adapter._intents = {rid: 3 for rid in ids}
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_physical_c4",
+            max_candidate_count=3,
+            max_realized_group_rows=4,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-route-{rid}",
+            evidence_fingerprint=f"sha256:test-route-{rid}",
+        )
+        for rid in ids
+    }
+    adapter._disabled_requests = set()
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {}
+
+    # Within-bound batches keep the certified MTP cycle.
+    assert adapter.partition_max_requests(ids[:4]) == 4
+    # Over-width due batches route to a single full-batch AR decode.
+    assert adapter.partition_max_requests(ids) == 0
+    assert adapter.partition_max_requests(ids[:5]) == 0

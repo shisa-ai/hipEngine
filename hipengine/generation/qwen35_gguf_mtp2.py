@@ -967,9 +967,26 @@ class Qwen35GGUFMTP2Adapter:
             self._max_physical_requests(),
             *(int(row.max_realized_group_rows) for row in eligibility if row is not None),
         )
-        # Exact automatic-singleton evidence must fail the composed due group to
-        # K0; it may not be reinterpreted as many independently profitable C1s.
-        return bound if bound > 1 else 0
+        if bound <= 1:
+            # Exact automatic-singleton evidence must fail the composed due
+            # group to K0; it may not be reinterpreted as many independently
+            # profitable C1s.
+            return 0
+        # M5 whole-batch routing: over-width due batches are measured slower as
+        # MTP sub-groups than as one full-batch AR decode, so route them to the
+        # strict fallback instead of chaining sub-group cycles.
+        route = backend_package_capability(
+            str(getattr(self.generator, "backend", "") or ""),
+            "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS",
+            {},
+        )
+        if isinstance(route, Mapping):
+            profile_value = getattr(self.generator, "execution_profile", None)
+            profile = str(getattr(profile_value, "value", profile_value) or "")
+            threshold = route.get(profile)
+            if threshold is not None and len(ids) > int(threshold):
+                return 0
+        return bound
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
         request_ids = tuple(int(value) for value in plan.speculative_request_ids)

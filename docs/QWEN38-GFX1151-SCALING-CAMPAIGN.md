@@ -320,10 +320,18 @@ is made.
   binding contract is exactness of the replayed prompt or of the acceptance
   count, then either qualify a streaming variant that preserves it or record the
   contract as the terminal blocker.
-- [ ] M5 Concurrency-aware admission. **Only after M1-M3.** Route by measured
-  physical concurrency and cycle economics, not a global switch: our own C4 sits
-  at 0.9768x AR and the external MikeVeerman result is 2.23x at C1 and 0.84x at
-  C4. This is admission policy work, not acceptance tuning.
+- [x] M5 **Concurrency-aware admission. Done 2026-08-31, named blocker.**
+  Frozen-protocol economics: sub-group interleaving costs **0.74-0.80x own AR**
+  at widths 5-8 (28.0/31.4/31.8/34.2 vs AR 36.5/39.2/42.2/46.1, engaged 6/6).
+  The engine-surface whole-batch AR route (`GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS`,
+  seam-tested) is implemented but measured inert on the server-bench surface:
+  admission caps explicit-MTP groups at 4 upstream, so over-width batches never
+  reach the partitioner. Production demotion therefore needs an **admission-route
+  change plus a frozen-protocol amendment of the C5-C8 engagement contract**
+  (route ceiling = AR, still 10-12% under the 1.15x gates) - a campaign-owner
+  decision, not silent scope. An interim +67-90% reading was retracted as a
+  `--max-tokens 512` protocol artifact. See RF-M5 in
+  [`REFACTOR.md`](REFACTOR.md) and the M5 entry.
 
 ### P — prefill (secondary track, two cells only)
 
