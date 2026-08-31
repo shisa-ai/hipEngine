@@ -240,6 +240,44 @@ def qwen4_exp_gated_mean_f32(
     )
 
 
+def qwen4_exp_gated_mean_sigmoid_unfused_f32(
+    normalized_ptr: int,
+    gate_logits_ptr: int,
+    output_ptr: int,
+    rows: int,
+    branches: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Strict unfused sigmoid + gated-mean fallback with the fused ABI."""
+
+    _check_shape(rows, branches, hidden)
+    library = library or build_qwen4_exp_gr(load=True)
+    runtime = runtime or get_hip_runtime()
+    qwen4_exp_sigmoid_f32(
+        gate_logits_ptr,
+        gate_logits_ptr,
+        rows * branches * hidden,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+    qwen4_exp_gated_mean_f32(
+        normalized_ptr,
+        gate_logits_ptr,
+        output_ptr,
+        rows,
+        branches,
+        hidden,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def qwen4_exp_gated_mean_sigmoid_f32(
     normalized_ptr: int,
     gate_logits_ptr: int,
@@ -458,6 +496,12 @@ def register_qwen4_exp_gr_kernels(*, replace: bool = True) -> None:
         ): qwen4_exp_gated_mean_sigmoid_f32,
         KernelKey(
             "hip_gfx1100",
+            "gr_gated_mean_sigmoid",
+            "f32",
+            "strict_unfused",
+        ): qwen4_exp_gated_mean_sigmoid_unfused_f32,
+        KernelKey(
+            "hip_gfx1100",
             "gr_write",
             "bf16_f32",
             "strict",
@@ -509,6 +553,7 @@ __all__ = [
     "plan_qwen4_exp_gr_build",
     "qwen4_exp_gated_mean_f32",
     "qwen4_exp_gated_mean_sigmoid_f32",
+    "qwen4_exp_gated_mean_sigmoid_unfused_f32",
     "qwen4_exp_repeat_bf16_branches",
     "qwen4_exp_gr_write_bf16_f32",
     "qwen4_exp_grouped_rmsnorm_bf16_f32",

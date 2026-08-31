@@ -92,7 +92,7 @@ def test_gr_sigmoid_mean_candidate_is_t0_and_fail_closed() -> None:
     assert candidate.classification == "T0"
     assert candidate.base_profile == "strict"
     assert candidate.candidate_key[-1] == "strict"
-    assert candidate.fallback_key[-1] == "strict"
+    assert candidate.fallback_key[-1] == "strict_unfused"
     assert "through 256 rows" in candidate.mechanism
 
 

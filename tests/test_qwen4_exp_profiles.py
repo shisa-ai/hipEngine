@@ -79,12 +79,21 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
 
     strict = _resolve(ExecutionProfile.STRICT)
     production = _resolve(ExecutionProfile.PRODUCTION)
+    strict_gr = _selection_map(strict)[
+        ("gr_gated_mean_sigmoid", "all_gr_reads_rows_le256")
+    ]
+    assert strict_gr["selected_variant"] == "strict"
+    assert strict_gr["strict_fallback_variant"] == "strict_unfused"
     assert strict.manifest_sha256 == strict.strict_manifest_sha256
     assert production.manifest_sha256 != production.strict_manifest_sha256
     assert not production.fell_back_to_strict
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
+    gr = selections[("gr_gated_mean_sigmoid", "all_gr_reads_rows_le256")]
+    assert gr["selected_variant"] == "strict"
+    assert gr["strict_fallback_variant"] == "strict"
+    assert gr["evidence_artifact"].endswith("p3-gr-sigmoid-mean.json")
     gate = selections[("moe_linear", "prefill_rows_ge2_layers27_47_gate_up")]
     assert gate["selected_variant"] == (
         "selected_dual_wmma_prefill_compact_bf16_bf16_out"
@@ -141,7 +150,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED"] == "1"
     # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
     # route; their envs stay off so they cannot preempt it.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
@@ -203,7 +212,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
