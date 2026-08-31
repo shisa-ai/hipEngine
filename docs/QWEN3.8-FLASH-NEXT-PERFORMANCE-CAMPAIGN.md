@@ -959,7 +959,13 @@ Goal: contract 48 small MoE graphs plus 1,195 direct launches/token toward one
 request-owned transition submission.
 
 - [ ] Reproduce and localize the historical third-replay state corruption
-      before changing capture scope.
+      before changing capture scope. A faithful recurrent-subgraph probe now
+      captures 36 independent production-shape Conv+GDN state pairs (72 kernels)
+      and remains bit-exact through four replays, reset, capture non-execution,
+      and teardown. The old fault is therefore **not** an isolated Conv/GDN
+      relaunch hazard on current ROCm; localization moves to cross-kernel/full-
+      layer composition. Do not widen production capture yet. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p8-gdn-graph-replay-probe.json`.
 - [ ] Capture in rungs: one stateful layer, one complete attention/FFN
       transition, a multi-layer segment, then the full token step.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P8 GDN graph replay localization] The historical third-replay fault does not reproduce in a 72-kernel graph covering 36 independent production-shape Conv+GDN state pairs: output plus both state families remain bit-exact through four replays/reset, capture is non-executing, and teardown returns 251,311,104 tracked bytes to zero. Capture widening remains blocked pending full-layer composition. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p8-gdn-graph-replay-probe.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P7 transposed GDN integration — rejected] Exact layout conversion and wave-per-value output/state envelopes pass, but operation-complete prepare+recurrence+gate regresses **0.07535→0.08535 ms (0.883x)**. Runner integration is removed; strict remains default. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-transposed-integration-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P7 GDN t128 — rejected] Skipping the t256 zero-only reduction half remains exact but is neutral/slower at production geometry: **0.06633→0.06754 ms (0.982x)**. Candidate is removed; P7 requires persistent transposed-state dataflow. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-t128-rejected.json`.
