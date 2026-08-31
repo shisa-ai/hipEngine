@@ -14,7 +14,8 @@ identical protocol and makes the comparator reproducible:
   decode all sit inside a single boundary;
 * a ``prefill`` arm at ``--prefill-tokens`` (default 1) plus an ``ar`` arm at
   ``--decode-tokens`` (default 24). Pass ``--decode-tokens 4`` for the short arm
-  that separates steady-state decode from first-token cost;
+  that separates steady-state decode from first-token cost, or 0 for a
+  comparator-prefill-only packet;
 * an optional built-in MTP arm (``--spec-draft-n-max N``) timed with the same
   boundary;
 * per-lane anti-repetition guards and cross-lane content exactness.
@@ -83,7 +84,11 @@ def load_prompts(path: Path) -> list[dict[str, str]]:
             {
                 "id": str(row["id"]),
                 "category": str(row.get("category", "")),
-                "rendered": "<|im_start|>user\n" + content + "\n<|im_start|>assistant\n",
+                "rendered": (
+                    "<|im_start|>user\n"
+                    + content
+                    + "<|im_end|>\n<|im_start|>assistant\n"
+                ),
             }
         )
     return prompts
@@ -94,6 +99,32 @@ def _widths(raw: str) -> tuple[int, ...]:
     if not values or any(value < 1 or value > 32 for value in values):
         raise argparse.ArgumentTypeError("widths must be positive integers <= 32")
     return values
+
+
+def _workload_arms(
+    prefill_tokens: int,
+    decode_tokens: int,
+    spec_draft_n_max: int,
+) -> tuple[tuple[str, int], ...]:
+    """Resolve measured arms; zero disables an unrelated non-spec arm."""
+
+    prefill_tokens = int(prefill_tokens)
+    decode_tokens = int(decode_tokens)
+    spec_draft_n_max = int(spec_draft_n_max)
+    if prefill_tokens < 0 or decode_tokens < 0 or spec_draft_n_max < 0:
+        raise ValueError("token counts and speculative depth must be non-negative")
+    if spec_draft_n_max:
+        if decode_tokens <= 0:
+            raise ValueError("speculative measurement requires positive decode tokens")
+        return (("mtp", decode_tokens),)
+    arms: list[tuple[str, int]] = []
+    if prefill_tokens:
+        arms.append(("prefill", prefill_tokens))
+    if decode_tokens:
+        arms.append(("ar", decode_tokens))
+    if not arms:
+        raise ValueError("at least one measured arm must be enabled")
+    return tuple(arms)
 
 
 def guard(text: str) -> dict[str, Any]:
@@ -304,12 +335,11 @@ def run_matrix(args: argparse.Namespace) -> dict[str, Any]:
     sampling = {"temperature": 0.0, "top_p": 1.0}
     if args.flavor == "llamacpp":
         sampling.update({"top_k": 1, "seed": int(args.seed), "cache_prompt": False, "stream": False})
-    arms: list[tuple[str, int]] = []
-    if args.prefill_tokens:
-        arms.append(("prefill", int(args.prefill_tokens)))
-    arms.append(("ar", int(args.decode_tokens)))
-    if int(args.spec_draft_n_max) > 0:
-        arms = [("mtp", int(args.decode_tokens))]
+    arms = _workload_arms(
+        int(args.prefill_tokens),
+        int(args.decode_tokens),
+        int(args.spec_draft_n_max),
+    )
     process: subprocess.Popen | None = None
     log_path = Path(args.output).with_suffix(".server.log")
     started = time.perf_counter()
