@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_c8_physical_group_retained",
+  "date": "2026-08-31",
+  "status": "accepted",
+  "decision": "retain gfx1100 production C8 physical MTP ownership and explicit-route admission as the default; automatic serving qualification is unchanged",
+  "source": {
+    "commit": "675410167c79e94459b01d2ac334d810c0e55dc0",
+    "tracked_clean": true,
+    "rollback": "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106773984,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "includes_category_heldouts": true,
+    "width": 8,
+    "resident_capacity": 8,
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "mtp_request_mode": "explicit",
+    "generation2_diagnostic_plan": true,
+    "batch_window_ms": 20.0,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "arm_order": "alternated by prompt plus one warmup per arm",
+    "classification": "retained engine-path performance; explicit diagnostic K3 remains distinct from automatic product qualification"
+  },
+  "commands": {
+    "candidate": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 PYTHONPATH=/tmp/he-c8-validate timeout 600 /home/lhl/hipEngine-main/.venv/bin/python /tmp/he-c8-validate/scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts /tmp/he-c8-validate/benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 8 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --correctness-contract ar_exact --expected-mtp-widths 8 --max-tokens 24 --output /tmp/he-c8-final-d24-675410167.json",
+    "rollback": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4 PYTHONUNBUFFERED=1 PYTHONPATH=/tmp/he-c8-validate timeout 600 /home/lhl/hipEngine-main/.venv/bin/python /tmp/he-c8-validate/scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts /tmp/he-c8-validate/benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 8 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --correctness-contract ar_exact --expected-mtp-widths 8 --max-tokens 24 --output /tmp/he-c4-final-d24-675410167.json"
+  },
+  "correctness": {
+    "candidate_packet_passed": true,
+    "rollback_packet_passed": true,
+    "exact_cells_per_arm": 10,
+    "engaged_cells_per_arm": 10,
+    "budget_conformed_cells_per_arm": 10,
+    "candidate_vs_rollback_ar_generated_rows": 80,
+    "candidate_vs_rollback_ar_mismatches": 0,
+    "candidate_vs_rollback_mtp_generated_rows": 80,
+    "candidate_vs_rollback_mtp_mismatches": 0,
+    "candidate_final_active_allocations": 0,
+    "rollback_final_active_allocations": 0,
+    "candidate_final_allocated_bytes": 0,
+    "rollback_final_allocated_bytes": 0,
+    "passed": true
+  },
+  "measurements": {
+    "rollback_c4": {
+      "generated_tokens": 1920,
+      "wall_seconds": 33.791033015586436,
+      "tok_s": 56.819807761259675,
+      "ar_tok_s": 84.86393948059211,
+      "mtp_vs_ar_ratio": 0.669540067418789,
+      "aggregate_draft_acceptance": 0.7889447236180904,
+      "peak_allocated_bytes": 27456478028,
+      "physical": {
+        "route_admission_max_requests": 4,
+        "adapter_max_requests": 4,
+        "cycle_workspace_shape": [4, 5120],
+        "proposal_rows_histogram": {"4": 1592},
+        "target_rows_histogram": {"12": 72, "18": 496}
+      }
+    },
+    "candidate_c8": {
+      "generated_tokens": 1920,
+      "wall_seconds": 30.48343262542039,
+      "tok_s": 62.98503267636912,
+      "ar_tok_s": 86.0639300471218,
+      "mtp_vs_ar_ratio": 0.7318400710016787,
+      "aggregate_draft_acceptance": 0.785,
+      "peak_allocated_bytes": 30427818364,
+      "physical": {
+        "route_admission_max_requests": 8,
+        "adapter_max_requests": 8,
+        "cycle_workspace_shape": [8, 5120],
+        "proposal_rows_histogram": {"8": 1600},
+        "target_rows_histogram": {"18": 48, "24": 32, "36": 496}
+      }
+    },
+    "candidate_vs_rollback": {
+      "ratio": 1.108504853466135,
+      "percent": 10.850485346613503,
+      "wall_seconds_percent_reduction": 9.78839678751574,
+      "published_c8_tok_s_before": 55.86,
+      "published_c8_tok_s_after": 62.985,
+      "published_percent": 12.755160537717725,
+      "peak_allocated_bytes_delta": 2971340336
+    },
+    "category_tok_s": {
+      "code": {"rollback": 58.150074, "candidate": 64.519852, "ratio": 1.10954},
+      "general_en": {"rollback": 60.423213, "candidate": 66.401691, "ratio": 1.098943},
+      "general_ja": {"rollback": 53.803238, "candidate": 59.324372, "ratio": 1.102617},
+      "mixed_ja_en": {"rollback": 54.149053, "candidate": 60.718695, "ratio": 1.121325}
+    },
+    "prompt_ratios": {
+      "code_merge_intervals": 1.114842,
+      "code_topological_sort": 1.106061,
+      "code_lru_cache": 1.110559,
+      "code_markdown_table": 1.106276,
+      "general_en_plan": 1.087667,
+      "general_en_explain": 1.109962,
+      "general_ja_plan": 1.112507,
+      "general_ja_explain": 1.093181,
+      "mixed_ja_en_translate": 1.108208,
+      "mixed_ja_en_review": 1.133805
+    }
+  },
+  "raw_packets": {
+    "candidate": {
+      "path": "/tmp/he-c8-final-d24-675410167.json",
+      "sha256": "3e5cc91f6fb524f77add33381381733bcbbfacb61798d70100da261b4837f190"
+    },
+    "rollback": {
+      "path": "/tmp/he-c4-final-d24-675410167.json",
+      "sha256": "40cb54f44192e9a0e17235cb9219974ff11bc05a97d288655d41d866ebc0a9e2"
+    }
+  },
+  "caveats": [
+    "This promotes the exact production engine path and explicit-route physical ownership; automatic C8 serving remains K0 until its separate economics and profile gate passes.",
+    "The candidate allocates a wider resident owner and raises measured process peak by 2.971 GB versus the full C4 rollback; both arms drain to zero tracked allocations.",
+    "Production generated-ID equality is diagnostic under the execution-profile contract, but this same-input pair is also exactly equal across all 160 candidate/rollback rows."
+  ]
+}
