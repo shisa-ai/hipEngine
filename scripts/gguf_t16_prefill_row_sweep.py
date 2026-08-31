@@ -26,8 +26,10 @@ Arms (all registered leaves, same tiles/x/out buffers):
   rows6_rowtile   gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
 
 Ratios are always reference/candidate, so > 1.0 means the candidate is faster.
-Each row is timed in both arm orders; an arm that wins in only one order is not
-a win.
+Each row is timed with a counterbalanced forward/reverse schedule. Repeated
+order pairs also reverse pair order (forward/reverse, then reverse/forward) so
+a candidate must be non-regressive in both arm orders rather than benefit from
+a fixed position or a best-of-two selection.
 
 Usage:
     .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py \
@@ -177,6 +179,36 @@ def _resolve_arms() -> dict[str, object]:
     return arms
 
 
+def _counterbalanced_schedule(
+    arm_names: tuple[str, ...], *, order_pairs: int
+) -> list[dict[str, object]]:
+    """Return balanced forward/reverse passes, including pair-order reversal."""
+
+    if order_pairs < 1:
+        raise ValueError("order_pairs must be at least 1")
+    forward = tuple(arm_names)
+    reverse = tuple(reversed(arm_names))
+    schedule: list[dict[str, object]] = []
+    pass_index = 0
+    for pair_index in range(order_pairs):
+        directions = (
+            (("forward", forward), ("reverse", reverse))
+            if pair_index % 2 == 0
+            else (("reverse", reverse), ("forward", forward))
+        )
+        for direction, names in directions:
+            schedule.append(
+                {
+                    "pass_index": pass_index,
+                    "pair_index": pair_index,
+                    "direction": direction,
+                    "arms": names,
+                }
+            )
+            pass_index += 1
+    return schedule
+
+
 def _timed(
     fn: object,
     buffers: _Buffers,
@@ -190,27 +222,28 @@ def _timed(
     *,
     capture: bool = False,
     out_buf: object = None,
-) -> dict[str, float]:
+) -> tuple[dict[str, float], np.ndarray | None]:
     for _ in range(warmup):
         fn(x_ptr, buffers.tiles_ptr, out_ptr, rows, in_features, out_features)
         buffers.sync()
     samples: list[float] = []
-    for index in range(reps):
+    for _ in range(reps):
         start = time.perf_counter()
         fn(x_ptr, buffers.tiles_ptr, out_ptr, rows, in_features, out_features)
         buffers.sync()
         samples.append((time.perf_counter() - start) * 1e3)
-        if capture and index == reps - 2:
-            # One output snapshot per arm, taken before the next arm overwrites
-            # the shared output buffer.
-            buffers.captured = _read_out(buffers, out_buf, rows, out_features).copy()
     samples.sort()
     out = {
-        "best_median_ms": statistics.median(samples),
+        "median_ms": statistics.median(samples),
         "min_ms": samples[0],
         "p90_ms": samples[-max(1, len(samples) // 10)],
     }
-    return out
+    # Capture after timing and return an owned copy. Keeping the snapshot on the
+    # shared buffers object lets the next arm silently overwrite provenance.
+    captured = (
+        _read_out(buffers, out_buf, rows, out_features).copy() if capture else None
+    )
+    return out, captured
 
 
 def _read_out(buffers: _Buffers, out_buf: object, rows: int, out_features: int) -> np.ndarray:
@@ -222,8 +255,8 @@ def _read_out(buffers: _Buffers, out_buf: object, rows: int, out_features: int) 
     return host
 
 
-def _finite(buffers: _Buffers, out_buf: object, rows: int, out_features: int) -> bool:
-    f32 = (_read_out(buffers, out_buf, rows, out_features).astype(np.uint32) << 16).view(np.float32)
+def _bf16_finite(bits: np.ndarray) -> bool:
+    f32 = (bits.astype(np.uint32) << 16).view(np.float32)
     return bool(np.all(np.isfinite(f32)))
 
 
@@ -253,12 +286,39 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--reps", type=int, default=25)
     parser.add_argument("--warmup", type=int, default=6)
+    parser.add_argument(
+        "--order-pairs",
+        type=int,
+        default=1,
+        help="number of counterbalanced forward/reverse arm-order pairs",
+    )
+    parser.add_argument(
+        "--arms",
+        default="",
+        help="optional comma-separated subset of registered arm names",
+    )
     parser.add_argument("--seed", type=int, default=20260830)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
 
+    if args.reps < 1:
+        parser.error("--reps must be at least 1")
+    if args.warmup < 0:
+        parser.error("--warmup must be non-negative")
+    if args.order_pairs < 1:
+        parser.error("--order-pairs must be at least 1")
     rows_list = [int(v) for v in str(args.rows).split(",") if v.strip()]
+    if not rows_list or any(rows < 1 for rows in rows_list):
+        parser.error("--rows must contain positive integers")
     arms = _resolve_arms()
+    requested_arms = [name.strip() for name in args.arms.split(",") if name.strip()]
+    if requested_arms:
+        unknown = [name for name in requested_arms if name not in arms]
+        if unknown:
+            parser.error(f"unknown --arms: {','.join(unknown)}")
+        if "shared_b" not in requested_arms:
+            parser.error("--arms must include shared_b as the timing/correctness reference")
+        arms = {name: arms[name] for name in requested_arms}
     shapes: list[tuple[int, int]] = [(int(args.in_features), int(args.out_features))]
     if args.all_shapes:
         shapes = shapes + [tuple(s) for s in OTHER_SHAPES]  # type: ignore[arg-type]
@@ -275,52 +335,130 @@ def main(argv: list[str] | None = None) -> int:
             out_buf = buffers.malloc(rows * out_features * 2)
             out_ptr = int(out_buf.ptr)
             results: dict[str, object] = {}
-            medians: dict[str, list[float]] = {}
-            reference_out: np.ndarray | None = None
-            for name in list(arms):
-                try:
-                    first = _timed(
-                        arms[name], buffers, x_ptr, out_ptr, rows, in_features,
-                        out_features, args.reps, args.warmup, capture=True, out_buf=out_buf,
+            measurements: dict[str, list[dict[str, object]]] = {
+                name: [] for name in arms
+            }
+            captures: dict[str, dict[int, np.ndarray]] = {name: {} for name in arms}
+            errors: dict[str, str] = {}
+            schedule = _counterbalanced_schedule(
+                tuple(arms), order_pairs=args.order_pairs
+            )
+            for sweep_pass in schedule:
+                pass_index = int(sweep_pass["pass_index"])
+                for position, name in enumerate(sweep_pass["arms"]):
+                    if name in errors:
+                        continue
+                    try:
+                        timing, captured = _timed(
+                            arms[name],
+                            buffers,
+                            x_ptr,
+                            out_ptr,
+                            rows,
+                            in_features,
+                            out_features,
+                            args.reps,
+                            args.warmup,
+                            capture=True,
+                            out_buf=out_buf,
+                        )
+                    except Exception as exc:  # leaf may reject a shape/tile combination
+                        errors[name] = f"{type(exc).__name__}: {exc}"[:160]
+                        continue
+                    measurements[name].append(
+                        {
+                            "pass_index": pass_index,
+                            "pair_index": int(sweep_pass["pair_index"]),
+                            "direction": str(sweep_pass["direction"]),
+                            "position": position,
+                            **timing,
+                        }
                     )
-                    second = _timed(
-                        arms[name], buffers, x_ptr, out_ptr, rows, in_features,
-                        out_features, args.reps, args.warmup, capture=True, out_buf=out_buf,
-                    )
-                except Exception as exc:  # a leaf may reject a shape/tile combination
-                    results[name] = {"error": f"{type(exc).__name__}: {exc}"[:160]}
+                    if captured is not None:
+                        captures[name][pass_index] = captured
+
+            aggregate_ms: dict[str, float] = {}
+            for name in arms:
+                if name in errors:
+                    results[name] = {"error": errors[name]}
                     continue
-                medians[name] = [first["best_median_ms"], second["best_median_ms"]]
-                results.setdefault(name, {})
-                if name == "shared_b":
-                    reference_out = getattr(buffers, "captured", None)
-                elif reference_out is not None:
-                    candidate = getattr(buffers, "captured", None)
-                    if candidate is not None:
-                        results[name] = {"ulp_vs_shared_b": _ulp_distance(reference_out, candidate)}
-            best_of: dict[str, float] = {}
-            for name in list(arms):
-                entry = results.get(name)
-                if not isinstance(entry, dict) or "error" in entry:  # type: ignore[operator]
-                    continue
-                passes = medians[name]
-                best = min(passes)
-                entry = entry or {}
-                entry.update(
-                    {
-                        "pass_medians_ms": passes,
-                        "best_median_ms": best,
-                        "spread_pct": abs(passes[0] - passes[1]) * 100.0 / max(best, 1e-9),
-                        "ms_per_row": best / rows,
-                        "effective_gbps": weight_bytes / (best * 1e-3) / 1e9,
+                passes = measurements[name]
+                if len(passes) != len(schedule):
+                    results[name] = {
+                        "error": f"incomplete schedule: {len(passes)}/{len(schedule)} passes"
                     }
-                )
+                    continue
+                pass_medians = [float(item["median_ms"]) for item in passes]
+                counterbalanced_median = statistics.median(pass_medians)
+                direction_medians = {
+                    direction: statistics.median(
+                        float(item["median_ms"])
+                        for item in passes
+                        if item["direction"] == direction
+                    )
+                    for direction in ("forward", "reverse")
+                }
+                entry: dict[str, object] = {
+                    "pass_measurements": passes,
+                    "finite": all(
+                        _bf16_finite(captured)
+                        for captured in captures[name].values()
+                    ),
+                    "counterbalanced_median_ms": counterbalanced_median,
+                    "direction_medians_ms": direction_medians,
+                    "spread_pct": (
+                        (max(pass_medians) - min(pass_medians))
+                        * 100.0
+                        / max(counterbalanced_median, 1e-9)
+                    ),
+                    "ms_per_row": counterbalanced_median / rows,
+                    "effective_gbps": weight_bytes
+                    / (counterbalanced_median * 1e-3)
+                    / 1e9,
+                }
                 results[name] = entry
-                best_of[name] = best
-            baseline = best_of.get("shared_b")
+                aggregate_ms[name] = counterbalanced_median
+
+            reference_captures = captures.get("shared_b", {})
             for name, value in results.items():
-                if isinstance(value, dict) and "best_median_ms" in value and baseline:
-                    value["shared_b_over_candidate"] = baseline / value["best_median_ms"]
+                if not isinstance(value, dict) or "error" in value:
+                    continue
+                if name == "shared_b":
+                    value["ulp_vs_shared_b"] = 0
+                    continue
+                common_passes = sorted(
+                    set(reference_captures).intersection(captures.get(name, {}))
+                )
+                if common_passes:
+                    value["ulp_vs_shared_b"] = max(
+                        _ulp_distance(reference_captures[index], captures[name][index])
+                        for index in common_passes
+                    )
+                    value["output_capture_passes"] = common_passes
+
+            baseline = aggregate_ms.get("shared_b")
+            baseline_entry = results.get("shared_b")
+            for name, value in results.items():
+                if (
+                    isinstance(value, dict)
+                    and "counterbalanced_median_ms" in value
+                    and baseline
+                ):
+                    value["shared_b_over_candidate"] = (
+                        baseline / float(value["counterbalanced_median_ms"])
+                    )
+                    if name != "shared_b" and isinstance(baseline_entry, dict):
+                        baseline_directions = baseline_entry["direction_medians_ms"]
+                        candidate_directions = value["direction_medians_ms"]
+                        order_ratios = {
+                            direction: float(baseline_directions[direction])
+                            / float(candidate_directions[direction])
+                            for direction in ("forward", "reverse")
+                        }
+                        value["direction_shared_b_over_candidate"] = order_ratios
+                        value["non_regressive_in_both_orders"] = all(
+                            ratio >= 1.0 for ratio in order_ratios.values()
+                        )
                 # A leaf can time fast while reading buffers this harness does not
                 # supply, which is not a speedup. Mark the divergence so a ratio can
                 # never be read as a win: (17408, 5120) dense_rowtile timed 14.3x at
@@ -328,18 +466,26 @@ def main(argv: list[str] | None = None) -> int:
                 if isinstance(value, dict) and value.get("ulp_vs_shared_b") not in (None, 0):
                     value["output_diverges_from_owner"] = True
                     value.pop("shared_b_over_candidate", None)
+                    value.pop("direction_shared_b_over_candidate", None)
+                    value.pop("non_regressive_in_both_orders", None)
+            successful_entries = [
+                value
+                for value in results.values()
+                if isinstance(value, dict) and "error" not in value
+            ]
             per_row.append(
                 {
                     "rows": rows,
                     "arms": results,
-                    "finite": _finite(buffers, out_buf, rows, out_features),
+                    "all_successful_arm_outputs_finite": bool(successful_entries)
+                    and all(bool(value.get("finite")) for value in successful_entries),
                 }
             )
             line = f"shape=({in_features},{out_features}) rows={rows:>4}"
             for name in list(arms):
                 value = results.get(name, {})
-                if isinstance(value, dict) and "best_median_ms" in value:
-                    line += f"  {name}={value['best_median_ms']:>8.3f}ms"
+                if isinstance(value, dict) and "counterbalanced_median_ms" in value:
+                    line += f"  {name}={value['counterbalanced_median_ms']:>8.3f}ms"
                     if name != "shared_b":
                         if value.get("output_diverges_from_owner"):
                             line += "(DIV ulp=%s)" % value.get("ulp_vs_shared_b")
@@ -358,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     payload = {
-        "schema": 2,
+        "schema": 3,
         "kind": "gguf_t16_prefill_row_sweep",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "git": {
@@ -371,8 +517,13 @@ def main(argv: list[str] | None = None) -> int:
         "protocol": {
             "reps": args.reps,
             "warmup": args.warmup,
+            "order_pairs": args.order_pairs,
+            "arm_names": list(arms),
+            "schedule": _counterbalanced_schedule(
+                tuple(arms), order_pairs=args.order_pairs
+            ),
             "seed": args.seed,
-            "timing": "wall around one launch plus device_synchronize; two passes per arm; best-of-two; ratios are shared_b/candidate so >1.0 means faster",
+            "timing": "wall around one launch plus device_synchronize; counterbalanced median over forward/reverse passes; ratios are shared_b/candidate so >1.0 means faster; no best-of selection",
             "payload": "repack_gguf_q4_k_tile16 output over a valid Q4_K block image",
             "ulp": "worst BF16 ULP distance against the shared-B output, an upper bound where signs differ",
         },
