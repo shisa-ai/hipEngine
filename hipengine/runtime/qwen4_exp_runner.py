@@ -55,7 +55,6 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
-    qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
     qwen4_exp_qsa_split_norm_rope_rows_f32,
@@ -2177,14 +2176,6 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             not in {"", "0", "false", "False"}
         ):
             sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32
-        elif (
-            head_dim == 256
-            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32_H256", "0")
-            not in {"", "0", "false", "False"}
-        ):
-            sparse_attention = (
-                qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32
-            )
         sparse_attention(
             scratch.query.ptr,
             attention_state.key_cache.ptr,

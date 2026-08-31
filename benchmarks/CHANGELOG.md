@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P6 H256 wave8 QSA — rejected] Token-parallel wave8 improves the real 2K-selected primitive **2.179→0.481 ms (4.534x)** and live-2,052 decode **95.88→67.84 ms (1.413x)**, but p4096 strict-teacher top-1 is only **98/100**, three category scopes fail, and free-generation is **2/4 exact**. Candidate/selector are removed; strict stays default. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P6 context transition — diagnostic] Exact repeated decode is **66.61/95.88/96.02 ms** at live counts 2,051/2,052/4,097. The boundary adds **30.77 ms** kernel time: sparse QSA attention contributes **+27.47 ms**, versus **+0.92 ms** score/top-k. The flat deep-context row identifies fixed selected-budget attention as the next owner. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next current P5 canonical AR — retained] The repeat-exact p512/p1024/p4096 matrix is now **83.70/83.16/69.10 pp/s** and **14.40/14.42/10.42 tg/s**. Against the same-host campaign start, pp changes **+1.44%/+2.38%/+1.72%** and tg changes **+4.17%/+4.60%/+0.20%**; all **36/36** measured samples are deterministic. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json`.

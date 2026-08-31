@@ -890,8 +890,16 @@ direct-launch surface before graph capture hides it.
       **66.61/95.88/96.02 ms**. The 2,051→2,052 kernel delta is **30.77 ms**:
       sparse attention adds **27.47 ms**, score/top-k adds **0.92 ms**, and the
       rest is launch/secondary-owner variance. The flat 2,052→4,097 result shows
-      a fixed selected-budget activation cost, not O(context) growth. Evidence:
-      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`.
+      a fixed selected-budget activation cost, not O(context) growth. The first
+      T1 wave8 H256 candidate improves the 2K-selected primitive **4.534x** and
+      removes the cliff (**95.88→67.84 ms** at 2,052), but is correctness-
+      rejected and removed: p4096 teacher top-1 is **98/100**, three category
+      scopes fail, and only **2/4** free-generation tasks match strict. Future
+      attention dataflow must preserve global selected-token softmax order or
+      pass this same gate. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
