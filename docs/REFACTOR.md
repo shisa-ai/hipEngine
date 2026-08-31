@@ -351,6 +351,22 @@ fallback count is not a success metric.
   lookup and old independent launch branch. Preserve the atomic EngineService
   cohort seam and per-child handles.
 
+## gfx1100 fused Q4-T16 prefill row-retile bisection
+
+- Added 2026-08-31 with task #37. The separately registered standard-Q4
+  gate/up+SiLU row64 and row128 siblings preserve the 256-row parent's K16
+  WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
+  Actual-weight crossover evidence selects row64 only at rows33-64 and row128
+  only at rows65-128; rows129+ and every quant/shape/backend miss retain the
+  parent. `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=1` opts into the candidate
+  while the complete full-category gate is pending; `0` is the current default
+  and same-build strict rollback. The resolved value is cached on the launch
+  path and cannot broaden beyond the measured bands.
+- Removal trigger: if the complete C1-C3 category+heldout gate rejects the
+  candidate, remove the siblings, selector, and env lookup. If it promotes,
+  flip the default and retain `0` for one release window, then remove the env
+  lookup/cache while permanently keeping the 256-row registered fallback.
+
 ## gfx1100 Q4-T16 row64 down-projection bisection
 
 - Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is
