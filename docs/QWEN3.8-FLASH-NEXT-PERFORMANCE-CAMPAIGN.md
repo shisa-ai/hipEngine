@@ -445,8 +445,20 @@ The analyzer reports the selected marker window, kernel sum/span, row counts,
 family totals, HIP API launch correlations, unmatched graph/copy rows, and
 memory-copy rows. The role analyzer correlates ROCTX ranges to HIP launch
 correlation IDs and kernel rows, then reports normalized/exact role totals plus
-a flat exact-role kernel/API breakdown. `scripts/qwen4exp_perf_gap_report.py`
-renders the compact artifact as markdown tables:
+a flat exact-role kernel/API breakdown. Collect actual per-layer expert-row
+distributions in a **separate**, non-profiled instrumentation run so its D2H
+telemetry cannot contaminate the role trace:
+
+```bash
+uv run python scripts/qwen4exp_profile_gap.py \
+  --model-root "$MODEL_ROOT" --mode prefill \
+  --prompt-file benchmarks/prompts/qwen4exp-p508.txt \
+  --expected-prompt-tokens 508 --repetitions 1 --moe-telemetry \
+  --require-cached-build --output /tmp/qwen4exp-p508-moe-telemetry.json
+```
+
+`scripts/qwen4exp_perf_gap_report.py` renders the compact artifact as markdown
+tables:
 
 ```bash
 uv run python scripts/qwen4exp_perf_gap_report.py \
