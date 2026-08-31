@@ -77,6 +77,22 @@ CANDIDATES = {
             "selected_gemv_bf16_bf16_out",
         ),
     ),
+    "gr_up_sigmoid_mean": CandidateSpec(
+        name="gr_up_sigmoid_mean",
+        classification="T0",
+        mechanism="group exact Q8 GR up across four branches and emit sigmoid mean",
+        environment={"HIPENGINE_QWEN4_EXP_GR_UP_SIGMOID_MEAN": "1"},
+        base_profile="strict",
+        scenario_id="qwen4exp-ud-q4-k-xl-gr-up-sigmoid-mean",
+        candidate_key=(
+            "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+            "coltile2_branch4_rowbatch4_f32_exact",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "coltile8_rowbatch4_f32_f32_out",
+        ),
+    ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
         classification="T2",

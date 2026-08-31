@@ -2605,20 +2605,51 @@ def run_qwen4_exp_gr_read(
         stream=stream,
         runtime=active_runtime,
     )
-    launch_gguf_linear(
-        up_weight,
-        scratch.low_rank.ptr,
-        scratch.gate.ptr,
-        rows,
-        low_rank,
-        residual_width,
-        activation_dtype=GGUF_ACTIVATION_F32,
-        output_dtype=GGUF_OUTPUT_F32,
-        stream=stream,
-        runtime=active_runtime,
+    fused_up_key = KernelKey(
+        str(up_weight.backend),
+        "linear+gr_gated_mean",
+        up_weight.spec.quant_key,
+        "coltile2_branch4_rowbatch4_f32_exact",
     )
-    fused_sigmoid_mean = _qwen4_exp_gr_sigmoid_mean_fused(rows)
-    if not fused_sigmoid_mean:
+    fused_up = (
+        _qwen4_exp_gr_up_sigmoid_mean_enabled(rows)
+        and branches == 4
+        and is_registered(fused_up_key)
+    )
+    if fused_up:
+        resolve(
+            backend=fused_up_key.backend,
+            layer=fused_up_key.layer,
+            quant=fused_up_key.quant,
+            variant=fused_up_key.variant,
+        )(
+            scratch.low_rank.ptr,
+            up_weight.allocation("raw").tensor.ptr,
+            scratch.normalized.ptr,
+            scratch.gate.ptr,
+            scratch.mixed.ptr,
+            rows,
+            low_rank,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    else:
+        launch_gguf_linear(
+            up_weight,
+            scratch.low_rank.ptr,
+            scratch.gate.ptr,
+            rows,
+            low_rank,
+            residual_width,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    fused_sigmoid_mean = not fused_up and _qwen4_exp_gr_sigmoid_mean_fused(rows)
+    if not fused_up and not fused_sigmoid_mean:
         qwen4_exp_sigmoid_f32(
             scratch.gate.ptr,
             scratch.gate.ptr,
@@ -2641,27 +2672,34 @@ def run_qwen4_exp_gr_read(
             stream=stream,
             runtime=active_runtime,
         )
-    gated_mean = (
-        qwen4_exp_gated_mean_sigmoid_f32
-        if fused_sigmoid_mean
-        else qwen4_exp_gated_mean_f32
-    )
-    gated_mean(
-        scratch.normalized.ptr,
-        scratch.gate.ptr,
-        scratch.mixed.ptr,
-        rows,
-        branches,
-        hidden,
-        stream=stream,
-        runtime=active_runtime,
-    )
+    if not fused_up:
+        gated_mean = (
+            qwen4_exp_gated_mean_sigmoid_f32
+            if fused_sigmoid_mean
+            else qwen4_exp_gated_mean_f32
+        )
+        gated_mean(
+            scratch.normalized.ptr,
+            scratch.gate.ptr,
+            scratch.mixed.ptr,
+            rows,
+            branches,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
     return Qwen4ExpGRReadDeviceResult(
         normalized=scratch.normalized,
         gate=scratch.gate,
         mixed=scratch.mixed,
         inject_logits=scratch.inject_logits,
     )
+
+
+def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
+    return rows > 256 and os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GR_UP_SIGMOID_MEAN", "0"
+    ) not in {"", "0", "false", "False"}
 
 
 def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:

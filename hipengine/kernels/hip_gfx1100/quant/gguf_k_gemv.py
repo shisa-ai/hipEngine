@@ -315,6 +315,53 @@ def _symbol(quant: str, variant: str) -> str:
     return f"hipengine_{quant}_{variant}"
 
 
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    normalized_ptr: int,
+    gate_ptr: int,
+    mixed_ptr: int,
+    rows: int,
+    in_features: int,
+    branches: int,
+    hidden: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean."""
+
+    _validate("gguf_q8_0", rows, in_features, branches * hidden, threads)
+    if branches != 4:
+        raise ValueError("branches must equal 4")
+    if hidden <= 0 or hidden % 2:
+        raise ValueError("hidden must be a positive multiple of 2")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
+        [_VOID, _VOID, _VOID, _VOID, _VOID,
+         _I64, _I64, _I64, _I64, _I64, _VOID],
+    )
+    err = fn(
+        x_ptr,
+        qweight_ptr,
+        normalized_ptr,
+        gate_ptr,
+        mixed_ptr,
+        rows,
+        in_features,
+        branches,
+        hidden,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
 gguf_q8_0_gemv_f32_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_f32_out"))
 gguf_q8_0_gemv_f32_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_fp16_out"))
 gguf_q8_0_gemv_fp16_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_fp16_f32_out"))
@@ -786,6 +833,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+gr_gated_mean",
+            "gguf_q8_0",
+            "coltile2_branch4_rowbatch4_f32_exact",
+        ),
+        gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1484,6 +1541,7 @@ __all__ = [
     "gguf_q8_0_gemv_rowbatch32_f32_f32_out",
     "gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
     "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out",
