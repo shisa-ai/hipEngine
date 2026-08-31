@@ -1,0 +1,201 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_c1c8_prefill_peer_repeat",
+  "date": "2026-08-31",
+  "status": "complete_scoreboard_refresh_no_kernel_work",
+  "claim": "A counterbalanced two-run full C1-C8 same-host repeat finds that the published hipEngine C5/C6/C8 prefill deficits are stale, not current optimization targets. hipEngine measures 440.200/457.406/473.754 prompt tok/s versus the strongest repeated current/Laurent peer means 316.711/357.259/405.406: +38.99%/+28.03%/+16.86%. The worst hipEngine run still leads the best peer run by +35.83%/+26.73%/+12.14%, and every category plus heldout scope leads at all three widths.",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "revisions": {
+    "hipengine": "50adc772fa3a9a72ea8df1e46bfeebe171d7c97b",
+    "llama_cpp_current": "b19cbe925be361d229f0fe03435affe4a2717f37",
+    "llama_cpp_laurent": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+    "comparator_harness": "scripts/llamacpp_c1c8_engine_matrix.py at hipengine 50adc772f"
+  },
+  "execution_profile": {
+    "hipengine_requested": "production",
+    "hipengine_resolved": "production",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d",
+    "hipengine_kv": "BF16",
+    "llama_cpp_kv": "F16"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "parallel_capacity": 8,
+    "sampling": "greedy; temperature=0, top_k=1, top_p=1, seed=1 for llama.cpp",
+    "prompt_cache": false,
+    "generated_tokens_per_request": 1,
+    "timing": "per-prompt barrier-to-last-completion complete wall, summed across ten prompts; prompt tokens divided by total wall",
+    "aggregation": "arithmetic mean of the two independently aggregated run rates",
+    "process_order": [
+      "r1 hipEngine",
+      "r1 llama.cpp current",
+      "r1 llama.cpp Laurent",
+      "r2 llama.cpp Laurent",
+      "r2 llama.cpp current",
+      "r2 hipEngine"
+    ],
+    "llama_cpp_server": "-c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -t 16 -tb 16 -fa on -ctk f16 -ctv f16",
+    "hipengine": "resident capacity 8, automatic MTP request mode with expected MTP widths none, production profile, max sequence length 1024"
+  },
+  "commands": {
+    "hipengine": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 900 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-prefill-p13/near-parity-peer-repeat/r1-hipengine.json",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 900 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-prefill-p13/near-parity-peer-repeat/r2-hipengine.json"
+    ],
+    "llama_cpp_current": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 900 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10671' --source-commit b19cbe925be361d229f0fe03435affe4a2717f37 --label current-hip-r1 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 0 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-prefill-p13/near-parity-peer-repeat/r1-current.json",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 900 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10671' --source-commit b19cbe925be361d229f0fe03435affe4a2717f37 --label current-hip-r2 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 0 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-prefill-p13/near-parity-peer-repeat/r2-current.json"
+    ],
+    "llama_cpp_laurent": [
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 900 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10681' --source-commit c28d538df5c02643e701a8004db84dbf1bb0ffb2 --label laurent-hip-r1 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 0 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-prefill-p13/near-parity-peer-repeat/r1-laurent.json",
+      "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 900 .venv/bin/python scripts/llamacpp_c1c8_engine_matrix.py --server /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server --server-version '0.3.0-dev build10681' --source-commit c28d538df5c02643e701a8004db84dbf1bb0ffb2 --label laurent-hip-r2 --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3,4,5,6,7,8 --parallel 8 --prefill-tokens 1 --decode-tokens 0 --port 18080 --threads 16 --context 8192 --batch 2048 --ubatch 512 --output /tmp/he-prefill-p13/near-parity-peer-repeat/r2-laurent.json"
+    ]
+  },
+  "prompt_processing_tok_s": {
+    "hipengine": {
+      "samples": {
+        "C1": [168.812973, 164.754473],
+        "C2": [267.451191, 259.925754],
+        "C3": [355.055407, 347.226357],
+        "C4": [409.443231, 401.241830],
+        "C5": [444.988876, 435.411218],
+        "C6": [461.026576, 453.786233],
+        "C7": [471.702955, 467.801706],
+        "C8": [474.368119, 473.140300]
+      },
+      "mean": [166.783723, 263.688472, 351.140882, 405.342530, 440.200047, 457.406405, 469.752331, 473.754209],
+      "spread_percent": [2.4634, 2.8952, 2.2547, 2.0440, 2.1997, 1.5955, 0.8340, 0.2595]
+    },
+    "llama_cpp_current": {
+      "samples": {
+        "C1": [164.591925, 193.477520],
+        "C2": [178.692738, 234.513049],
+        "C3": [167.773479, 247.499189],
+        "C4": [249.724636, 267.776256],
+        "C5": [309.001058, 308.918246],
+        "C6": [307.417586, 352.699640],
+        "C7": [359.740434, 360.721054],
+        "C8": [414.663055, 396.148659]
+      },
+      "mean": [179.034723, 206.602894, 207.636334, 258.750446, 308.959652, 330.058613, 360.230744, 405.405857],
+      "spread_percent": [17.5498, 31.2382, 47.5199, 7.2286, 0.0268, 14.7298, 0.2726, 4.6736]
+    },
+    "llama_cpp_laurent": {
+      "samples": {
+        "C1": [183.825905, 184.222507],
+        "C2": [223.019294, 228.440869],
+        "C3": [198.701085, 243.753616],
+        "C4": [250.923977, 268.934951],
+        "C5": [320.560005, 312.862701],
+        "C6": [358.061436, 356.455856],
+        "C7": [370.715316, 360.467981],
+        "C8": [386.553409, 421.927561]
+      },
+      "mean": [184.024206, 225.730082, 221.227350, 259.929464, 316.711353, 357.258646, 365.591648, 404.240485],
+      "spread_percent": [0.2157, 2.4310, 22.6735, 7.1779, 2.4603, 0.4504, 2.8428, 9.1512]
+    }
+  },
+  "target_width_closure": {
+    "C5": {
+      "hipengine_mean": 440.200047,
+      "strongest_peer": "llama.cpp Laurent",
+      "strongest_peer_mean": 316.711353,
+      "mean_delta_percent": 38.9909,
+      "worst_hipengine_vs_best_peer_delta_percent": 35.8283,
+      "minimum_category_delta_percent": 12.0919,
+      "heldout_delta_percent": 44.0144
+    },
+    "C6": {
+      "hipengine_mean": 457.406405,
+      "strongest_peer": "llama.cpp Laurent",
+      "strongest_peer_mean": 357.258646,
+      "mean_delta_percent": 28.0323,
+      "worst_hipengine_vs_best_peer_delta_percent": 26.7342,
+      "minimum_category_delta_percent": 15.2644,
+      "heldout_delta_percent": 14.3402
+    },
+    "C8": {
+      "hipengine_mean": 473.754209,
+      "strongest_peer": "llama.cpp current",
+      "strongest_peer_mean": 405.405857,
+      "mean_delta_percent": 16.8592,
+      "worst_hipengine_vs_best_peer_delta_percent": 12.1378,
+      "minimum_category_delta_percent": 5.3469,
+      "heldout_delta_percent": 5.8832
+    },
+    "decision": "Close the C5/C6/C8 prefill gaps without kernel work. Current hipEngine leads exceed both repeat variance and every category/heldout gate."
+  },
+  "hipengine_attribution": {
+    "full_native_group_histograms": {
+      "C2": {"2": 10},
+      "C3": {"3": 10},
+      "C4": {"4": 10},
+      "C5": {"5": 10},
+      "C6": {"6": 10},
+      "C7": {"7": 10},
+      "C8": {"8": 10}
+    },
+    "target_mean_native_prefill_ms": {"C5": 448.2898, "C6": 520.2666, "C8": 676.5844},
+    "target_mean_wave_wall_ms": {"C5": 510.0558, "C6": 589.0098, "C8": 758.2003},
+    "target_mean_remaining_ms": {"C5": 61.3255, "C6": 68.3484, "C8": 81.1927}
+  },
+  "correctness_and_lifecycle": {
+    "hipengine_within_packet_exact_cells": 160,
+    "hipengine_repeat_rows": {"ar": 360, "automatic_k0_comparator": 360},
+    "hipengine_repeat_mismatches": 0,
+    "hipengine_all_generated_ids": [248068],
+    "llama_cpp_current_lane_exact_cells": 160,
+    "llama_cpp_laurent_lane_exact_cells": 160,
+    "llama_cpp_repeat_exact_cells_each": 80,
+    "llama_cpp_cross_engine_exact_cells": 80,
+    "llama_cpp_all_content": "<think>",
+    "hipengine_final_allocated_bytes": [0, 0],
+    "hipengine_final_active_allocations": [0, 0],
+    "hipengine_peak_allocated_bytes_each": 22541385164
+  },
+  "raw_packet_sha256": {
+    "r1_hipengine": "89e6b24779cc5854460fcada94faca8801802a187aa618ae5e5bad0dc7f35a9c",
+    "r2_hipengine": "daba2bb355f2ec42159678f82a5471a7a03e7191c64bb279b9e9754dc3e3e6cf",
+    "r1_current": "4880cee28ffdde5f6b8b0ed4f4764055d9f506e80ab05140f7afe22c8c3edb33",
+    "r2_current": "9fe52b621987a19eaee697f852c6a516b9a60526818fae4ee376c02e35f37c27",
+    "r1_laurent": "8b80556d878440fdbdfafb57dd5df8f4ac2f1817aea14f5dbd9f40ee88a81da6",
+    "r2_laurent": "45ee9a164f09e29db5b7a79e5e2a16119199634e733707a2a3bf3693f68a7b69"
+  },
+  "scoreboard_update": {
+    "prior_hipengine": [168.217, 266.440, 353.722, 318.412, 312.682, 347.625, 426.692, 397.655],
+    "current_hipengine": [166.784, 263.688, 351.141, 405.343, 440.200, 457.406, 469.752, 473.754],
+    "hipengine_delta_percent": [-0.852, -1.033, -0.730, 27.301, 40.782, 31.580, 10.092, 19.137],
+    "current_llama_cpp": [179.035, 206.603, 207.636, 258.750, 308.960, 330.059, 360.231, 405.406],
+    "laurent_llama_cpp": [184.024, 225.730, 221.227, 259.929, 316.711, 357.259, 365.592, 404.240],
+    "hipengine_vs_strongest_peer_percent": [-9.369, 16.816, 58.724, 55.943, 38.991, 28.032, 28.491, 16.859]
+  },
+  "void_attempts": [
+    "A C5/C6-only current-HIP packet used -np 6 because measured width and server capacity were coupled. It is void and deleted; commit 50adc772f adds independent --parallel 8.",
+    "Narrow C5/C6/C8 packets omitted the published C1-C4 same-server sequence and are void/deleted. All retained rows come from complete C1-C8 processes."
+  ],
+  "limitations": [
+    "Current-HIP C1-C3 and C6 and Laurent C3/C8 show material two-run spread; means and per-run samples are retained rather than selecting the faster run.",
+    "The target C5/C6/C8 conclusion is robust to that spread because the worst hipEngine run beats the best peer run at each width.",
+    "This is a deployable-configuration comparison: hipEngine production uses BF16 KV and llama.cpp uses F16 KV.",
+    "No kernel or runtime change is attributed to this refresh; it measures the accumulated current tree and closes stale scoreboard targets."
+  ]
+}
