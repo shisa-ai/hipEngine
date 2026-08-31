@@ -547,6 +547,52 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32(
     )
 
 
+def qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    selected_positions_ptr: int,
+    output_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    selected_count: int,
+    block_size: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """T1 H256 sparse attention using eight token-parallel waves per head."""
+
+    if spans.spans_mode != "uniform" or spans.storage_dtype != DType.BF16:
+        raise ValueError("sparse QSA attention requires uniform BF16 KVLiveSpans")
+    if selected_count <= 0 or block_size <= 0 or query_heads <= 0 or kv_heads <= 0:
+        raise ValueError("selected_count, block_size, and head counts must be positive")
+    if query_heads % kv_heads or head_dim != 256:
+        raise ValueError("H256 wave8 QSA requires divisible GQA with head_dim=256")
+    attention_scale = head_dim ** -0.5 if scale is None else float(scale)
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32",
+        _ARGS_SPARSE_ATTN,
+        ctypes.c_int,
+    )
+    _check_launch(
+        runtime,
+        fn(
+            query_ptr, key_cache_ptr, value_cache_ptr, selected_positions_ptr,
+            spans.base_offsets.ptr, output_ptr, selected_count, block_size,
+            spans.base_offsets.numel, query_heads, kv_heads, head_dim,
+            attention_scale, stream,
+        ),
+    )
+
+
 def qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
     query_ptr: int,
     key_cache_ptr: int,
@@ -981,6 +1027,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "qsa_sparse_attention",
             "bf16_kv",
+            "production_wave8_h256_spans",
+        ): qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32,
+        KernelKey(
+            "hip_gfx1100",
+            "qsa_sparse_attention",
+            "bf16_kv",
             "production_rows_wave32_h128_spans",
         ): qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
         KernelKey(
@@ -1053,6 +1105,7 @@ __all__ = [
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32",
+    "qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32",
     "register_qwen4_exp_qsa_kernels",
 ]

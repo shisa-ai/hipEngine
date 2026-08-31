@@ -183,6 +183,89 @@ def test_qwen4_exp_sparse_wave32_h128_matches_strict_production_envelope() -> No
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_sparse_wave8_h256_matches_strict_production_envelope() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
+        qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
+        qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32,
+    )
+
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4623)
+    capacity, block_size = 4_096, 256
+    q_heads, kv_heads, head_dim = 12, 2, 256
+    query = rng.normal(0.0, 0.1, size=(q_heads, head_dim)).astype(np.float32)
+    key_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.1, size=(capacity, kv_heads, head_dim)).astype(np.float32)
+    )
+    value_bits = float_array_to_bf16_bits(
+        rng.normal(0.0, 0.1, size=(capacity, kv_heads, head_dim)).astype(np.float32)
+    )
+    selected = np.sort(
+        rng.choice(capacity, size=2_048, replace=False).astype(np.int64)
+    )
+    block_table = np.arange(capacity // block_size, dtype=np.int32)
+    live = np.array([capacity], dtype=np.int64)
+
+    allocations = []
+    try:
+        d_query = _upload(query, runtime, allocations)
+        d_key = _upload(key_bits, runtime, allocations)
+        d_value = _upload(value_bits, runtime, allocations)
+        d_selected = _upload(selected, runtime, allocations)
+        d_table = _upload(block_table, runtime, allocations)
+        d_live = _upload(live, runtime, allocations)
+        d_strict = _alloc(query.shape, np.float32, runtime, allocations)
+        d_wave32 = _alloc(query.shape, np.float32, runtime, allocations)
+        device = Device("hip", 0)
+        spans = KVLiveSpans.paged_uniform(
+            block_table=Tensor.from_handle(
+                d_table.ptr, block_table.shape, DType.INT32, device
+            ),
+            live_counts=Tensor.from_handle(
+                d_live.ptr, live.shape, DType.INT64, device
+            ),
+            max_live_count=capacity,
+            storage_dtype=DType.BF16,
+        )
+        common = dict(
+            selected_count=selected.size,
+            block_size=block_size,
+            query_heads=q_heads,
+            kv_heads=kv_heads,
+            head_dim=head_dim,
+            runtime=runtime,
+        )
+        qwen4_exp_qsa_sparse_attention_paged_bf16_f32(
+            d_query.ptr,
+            d_key.ptr,
+            d_value.ptr,
+            d_selected.ptr,
+            d_strict.ptr,
+            spans,
+            **common,
+        )
+        qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_h256_f32(
+            d_query.ptr,
+            d_key.ptr,
+            d_value.ptr,
+            d_selected.ptr,
+            d_wave32.ptr,
+            spans,
+            **common,
+        )
+        runtime.device_synchronize()
+        strict = _download(d_strict, query.shape, np.float32, runtime)
+        wave32 = _download(d_wave32, query.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_allclose(wave32, strict, rtol=3e-5, atol=2e-8)
+    assert float(np.max(np.abs(wave32 - strict))) <= 2e-8
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_sparse_paged_rows_write_and_attend_variable_selections() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
