@@ -431,6 +431,54 @@ __global__ void qwen4_exp_gdn_state_transpose_f32_kernel(
   }
 }
 
+__global__ void qwen4_exp_gdn_decode_transposed_f32_kernel(
+    const float* __restrict__ query, const float* __restrict__ key,
+    const float* __restrict__ value, const float* __restrict__ beta,
+    const float* __restrict__ decay, float* __restrict__ state,
+    float* __restrict__ core, int64_t num_k_heads, int64_t num_v_heads,
+    int64_t head_k_dim, int64_t head_v_dim) {
+  const int64_t v_head = blockIdx.x;
+  const int64_t value_index = blockIdx.y;
+  const int lane = threadIdx.x;
+  if (v_head >= num_v_heads || value_index >= head_v_dim) return;
+  const int64_t k_head = v_head % num_k_heads;
+  const int64_t state_base = (v_head * head_v_dim + value_index) * head_k_dim;
+  float memory = 0.0f;
+  for (int64_t column = lane; column < head_k_dim; column += 32) {
+    memory += key[k_head * head_k_dim + column]
+        * state[state_base + column] * decay[v_head];
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) memory += __shfl_down(memory, offset, 32);
+  float delta = 0.0f;
+  if (lane == 0) delta = (value[v_head * head_v_dim + value_index] - memory) * beta[v_head];
+  delta = __shfl(delta, 0, 32);
+  float result = 0.0f;
+  for (int64_t column = lane; column < head_k_dim; column += 32) {
+    const float next = state[state_base + column] * decay[v_head]
+        + key[k_head * head_k_dim + column] * delta;
+    state[state_base + column] = next;
+    result += query[k_head * head_k_dim + column] * next;
+  }
+  for (int offset = 16; offset > 0; offset >>= 1) result += __shfl_down(result, offset, 32);
+  if (lane == 0) {
+    core[v_head * head_v_dim + value_index] = result
+        * rsqrtf(static_cast<float>(head_k_dim));
+  }
+}
+
+__global__ void qwen4_exp_gdn_state_transpose_inplace_f32_kernel(
+    float* state, int64_t matrices, int64_t dimension) {
+  const int64_t matrix = blockIdx.y;
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t row = index / dimension;
+  const int64_t col = index % dimension;
+  if (matrix >= matrices || row >= dimension || col <= row) return;
+  const int64_t base = matrix * dimension * dimension;
+  const float value = state[base + row * dimension + col];
+  state[base + row * dimension + col] = state[base + col * dimension + row];
+  state[base + col * dimension + row] = value;
+}
+
 __global__ void qwen4_exp_gdn_core_norm_gate_f32_kernel(
     float* __restrict__ core,
     const float* __restrict__ output_gate,
@@ -513,6 +561,34 @@ extern "C" int hipengine_qwen4_exp_gdn_state_transpose_f32(
       dim3(threads), 0, stream, static_cast<const float*>(source),
       static_cast<float*>(destination), heads, key_dim, value_dim,
       strict_to_transposed != 0);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gdn_state_transpose_inplace_f32(
+    void* state, int64_t matrices, int64_t dimension, hipStream_t stream) {
+  if (!state || matrices <= 0 || dimension <= 0) return static_cast<int>(hipErrorInvalidValue);
+  constexpr int threads = 256;
+  const int64_t elements = dimension * dimension;
+  hipLaunchKernelGGL(qwen4_exp_gdn_state_transpose_inplace_f32_kernel,
+      dim3(static_cast<uint32_t>((elements + threads - 1) / threads), static_cast<uint32_t>(matrices)),
+      dim3(threads), 0, stream, static_cast<float*>(state), matrices, dimension);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gdn_decode_transposed_f32(
+    const void* query, const void* key, const void* value, const void* beta,
+    const void* decay, void* state, void* core, int64_t num_k_heads,
+    int64_t num_v_heads, int64_t head_k_dim, int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!query || !key || !value || !beta || !decay || !state || !core ||
+      num_k_heads <= 0 || num_v_heads <= 0 || num_v_heads % num_k_heads ||
+      head_k_dim != 128 || head_v_dim != 128) return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL(qwen4_exp_gdn_decode_transposed_f32_kernel,
+      dim3(static_cast<uint32_t>(num_v_heads), static_cast<uint32_t>(head_v_dim)),
+      dim3(32), 0, stream, static_cast<const float*>(query), static_cast<const float*>(key),
+      static_cast<const float*>(value), static_cast<const float*>(beta), static_cast<const float*>(decay),
+      static_cast<float*>(state), static_cast<float*>(core), num_k_heads, num_v_heads,
+      head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
 

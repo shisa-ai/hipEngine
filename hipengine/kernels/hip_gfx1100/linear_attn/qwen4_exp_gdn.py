@@ -17,6 +17,8 @@ _PREFILL_ARGS = (ctypes.c_void_p,) * 9 + (ctypes.c_int64,) * 5 + (ctypes.c_void_
 _PREPARE_ARGS = (ctypes.c_void_p,) * 10 + (ctypes.c_int64,) * 5 + (ctypes.c_void_p,)
 _GATE_ARGS = (ctypes.c_void_p,) * 3 + (ctypes.c_int64,) * 3 + (ctypes.c_void_p,)
 _STATE_LAYOUT_ARGS = (ctypes.c_void_p,) * 2 + (ctypes.c_int64,) * 3 + (ctypes.c_int32, ctypes.c_void_p)
+_STATE_INPLACE_ARGS = (ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64, ctypes.c_void_p)
+_TRANSPOSED_DECODE_ARGS = (ctypes.c_void_p,) * 7 + (ctypes.c_int64,) * 4 + (ctypes.c_void_p,)
 
 
 def plan_qwen4_exp_gdn_build(
@@ -130,6 +132,20 @@ def qwen4_exp_gdn_state_strict_to_transposed_f32(*args, **kwargs) -> None:
 def qwen4_exp_gdn_state_transposed_to_strict_f32(*args, **kwargs) -> None:
     kwargs["strict_to_transposed"] = False
     _qwen4_exp_gdn_state_transpose_f32(*args, **kwargs)
+
+
+def qwen4_exp_gdn_state_transpose_inplace_f32(state_ptr: int, matrices: int, dimension: int, *, stream: int = 0, library=None, runtime=None) -> None:
+    library = library or build_qwen4_exp_gdn(load=True); runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_qwen4_exp_gdn_state_transpose_inplace_f32", _STATE_INPLACE_ARGS, ctypes.c_int)
+    error = fn(state_ptr, matrices, dimension, stream)
+    if int(error) != HIP_SUCCESS: runtime.check(int(error))
+
+
+def qwen4_exp_gdn_decode_transposed_f32(query_ptr: int, key_ptr: int, value_ptr: int, beta_ptr: int, decay_ptr: int, state_ptr: int, core_ptr: int, num_k_heads: int, num_v_heads: int, head_k_dim: int, head_v_dim: int, *, stream: int = 0, library=None, runtime=None) -> None:
+    library = library or build_qwen4_exp_gdn(load=True); runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_qwen4_exp_gdn_decode_transposed_f32", _TRANSPOSED_DECODE_ARGS, ctypes.c_int)
+    error = fn(query_ptr, key_ptr, value_ptr, beta_ptr, decay_ptr, state_ptr, core_ptr, num_k_heads, num_v_heads, head_k_dim, head_v_dim, stream)
+    if int(error) != HIP_SUCCESS: runtime.check(int(error))
 
 
 def qwen4_exp_gdn_prefill_prepare_f32(
@@ -421,6 +437,16 @@ def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100", "gdn_state_layout", "f32_state", "transpose_inplace"),
+        qwen4_exp_gdn_state_transpose_inplace_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_recurrence_norm_gate", "f32_state_transposed", "wave_value_t1"),
+        qwen4_exp_gdn_decode_transposed_f32,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "gdn_state_layout", "f32_state", "transposed_to_strict"),
         qwen4_exp_gdn_state_transposed_to_strict_f32,
         replace=replace,
@@ -437,6 +463,8 @@ __all__ = [
     "qwen4_exp_gdn_decode_f32",
     "qwen4_exp_gdn_state_strict_to_transposed_f32",
     "qwen4_exp_gdn_state_transposed_to_strict_f32",
+    "qwen4_exp_gdn_state_transpose_inplace_f32",
+    "qwen4_exp_gdn_decode_transposed_f32",
     "qwen4_exp_gdn_peer_prefill_f32",
     "qwen4_exp_gdn_prefill_f32",
     "qwen4_exp_gdn_prefill_prepare_f32",
