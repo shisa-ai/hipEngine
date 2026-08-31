@@ -599,15 +599,14 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       (runner-level regression RED, 30a2fad9e)
 - [x] Route the existing selected Q5_K WMMA body for layer 2; classify its
       arithmetic before timing and preserve the strict selected chain.
-      **REOPENED: MEASURED WIN, FULL GATE PENDING.** A durable p508 role trace
-      cuts layer-2 MoE 371.10→88.13 ms (4.21x) and Q5_K gate/up
-      279.86→16.66 ms. Same-process five-pair p508 improves 5.34% (ratio 95%
-      CI 1.0479–1.0589); all 20 category-balanced p512 pairs win, with each
-      category's five-pair CI above 1.0. Both modes repeat exactly but cross-
-      route logits differ, so the T2 candidate stays default-off until the
-      complete profile gate. The earlier unretained ~1% regression is
-      superseded. Evidence:
-      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-reopened.json`.
+      **PROFILE-REJECTED; DEFAULT OFF.** A durable p508 role trace cuts
+      layer-2 MoE 371.10→88.13 ms (4.21x) and Q5_K gate/up 279.86→16.66 ms;
+      p508 improves 5.34%, and all 20 category-balanced p512 pairs win. The
+      complete 450-row gate nevertheless fails the binding prefill-last /
+      prefill-to-c1 mean-KL scope at 0.001179 > 0.001. Overall/category,
+      repeat, state, and lifecycle checks pass, but no scope can be averaged
+      away. The T2 route is rejected and remains default-off. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-profile-rejected.json`.
 - [x] Replace the Q8 path's `group_expert_start` D2H copy and Python loop over
       512 experts with a device-driven grouped Q8 owner. Use a fixed-capacity
       grid guarded by device counts or an equivalent no-host-roundtrip design.
@@ -620,21 +619,22 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       strict/T2 contract passes. (Not attempted.)
 - [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
       lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
-      certified scopes. The durable strict-teacher/state/task adapter is
-      `scripts/qwen4exp_layer2_profile_gate.py`; its one-prompt real-model smoke
-      passes every exercised check. Next run the complete 18-prompt packet.
+      certified scopes. The 450-row/three-repeat numerical, state, task-screen,
+      and lifecycle rung ran and rejected the candidate. Physical c2 and depth
+      timing were not run because later gates cannot compensate for a binding
+      numerical failure. A future materially new candidate restarts this rung.
 
 Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
 role range; its maximum standalone p508 contribution is about 6.6%.
 
 **Actual P1 status (2026-08-31):** the durable recheck supersedes the initial
-unretained rejection. The existing grouped WMMA dataflow closes the isolated
-Q5_K gate/up gap from 19.61x to about 1.08x versus the frozen llama role and
-produces a low-variance 4.8–5.2% p512 prefill win in every category. The
-remaining layer-2 device time is principally the unchanged strict Q8_0 down
-owner. This is not yet a retained production win: cross-route logits differ,
-and the complete current-stack numerical/task/state/c2/lifecycle/manifest plus
-p1024/p4096 gate has not run. The Q8_0 down strict-fallback regression from the
+unretained performance reading, but the complete profile gate rejects the same
+T2 route. It closes the isolated Q5_K gate/up device gap and wins about 5% at
+p512, yet prefill-last mean KL is 0.001179 versus the binding 0.001 ceiling.
+The route remains default-off; no c2/depth/promotion work is warranted for this
+unchanged arithmetic. A future attempt requires a materially different exact
+or T1 Q5_K dataflow and restarts the profile gate. Otherwise proceed to the
+larger P2 early-MoE owner. The Q8_0 down strict-fallback regression from the
 earlier device-owner refactor remains fixed by 30a2fad9e.
 
 ### Phase P2 — early routed MoE layers 0-26
