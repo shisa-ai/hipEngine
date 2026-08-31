@@ -26,11 +26,12 @@ should be removed or collapsed.
   `expert_start` on device and iterates experts via a fixed worker grid,
   replacing the `group_expert_start` D2H copy + Python loop over 512 experts
   (`HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA`). The strict per-expert selected
-  gemv remains the default. After the P1 full 450-row/task/c2/lifecycle/packet
-  gate and paired p512/p1024/p4096 evidence pass, promote the device-driven
-  owner to default and remove the `Q8_0_GROUPED` / `Q8_0_GROUPED_WMMA` opt-out
-  flags together with the D2H branch. Never leave the D2H loop as the sole
-  path.
+  gemv remains the default. Do not run a promotion packet for the current
+  perf-negative owner. First replace its grid/dataflow and prove that the new
+  candidate beats strict; only after the full 450-row/task/c2/lifecycle packet
+  and paired p512/p1024/p4096 evidence pass may it become the default. Then
+  remove the `Q8_0_GROUPED` / `Q8_0_GROUPED_WMMA` experiment flags together
+  with the D2H branch. Never leave the D2H loop as the sole path.
 
   > **Perf-negative as of 2026-08-30** — `scripts/gguf_q8_0_grouped_down_microbench.py`
   > (layer-2 shape, 512 experts, in=640/out=2560) measured the grouped owner at
