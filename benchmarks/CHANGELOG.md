@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P2 exact wider output tiles — rejected] Exact Q4 output4→8 / Q5_1 output8→16 variants are removed: both-wide **0.9944x (95% CI 0.9897–0.9992)**, Q4-only **0.9968x**, Q5_1-only **0.9980x**. All logits are bit-exact; serial per-CTA work outweighs the smaller output grid. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-wider-output-tiles-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P2 exact expert-grid128 — rejected] Exact 64→128 expert-worker CTA variants are neutral/negative and removed: both-family **1.0016x (95% CI 0.9993–1.0039)**, Q4-only **1.0026x (0.9981–1.0070)**, Q5_1-only **0.9981x (0.9950–1.0011)**. All logits are bit-exact; more workers alone do not improve data reuse. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-expertgrid128-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P2 early-MoE profile — diagnostic] Fresh named-production p508 split: layers 0–26 **2.366 s**, including gate/up **1.200 s**, down **1.152 s**, and activation+routing/shared tails only **13.25 ms**; layers 3–26 remain **1.849 s** after excluding rejected layer 2. Separate telemetry finds 166–298 active experts and median 9 rows/active expert, selecting exact/T1 multi-row weight-reuse/output-tiling work over the <0.6% tail. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-early-moe-profile.json`.
