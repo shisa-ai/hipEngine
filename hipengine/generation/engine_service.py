@@ -290,6 +290,23 @@ class EngineService:
         response.result(timeout=self._command_timeout_seconds)
         return tuple(EngineServiceHandle(self, state) for state in states)
 
+    def submit_request_batches(
+        self,
+        requests: Sequence[GenerationRequest],
+    ) -> tuple[tuple[EngineServiceHandle, ...], ...]:
+        """Admit ready request batches in one command while retaining child handles."""
+
+        child_groups = tuple(_split_generation_request(request) for request in requests)
+        flat_children = tuple(child for group in child_groups for child in group)
+        flat_handles = self.submit_children(flat_children)
+        grouped: list[tuple[EngineServiceHandle, ...]] = []
+        offset = 0
+        for children in child_groups:
+            end = offset + len(children)
+            grouped.append(tuple(flat_handles[offset:end]))
+            offset = end
+        return tuple(grouped)
+
     def submit_speculative_child(
         self,
         request: GenerationRequest,

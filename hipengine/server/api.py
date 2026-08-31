@@ -2062,6 +2062,7 @@ class _RequestControl:
 
 
 _STREAM_DONE = object()
+_DEFAULT_AR_READY_COHORT_ENV = "HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT"
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -3020,7 +3021,39 @@ class _GenerationBatcher:
                             )
                         await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
                         continue
-                    self._launch_independent_generation(first)
+                    submit_ready = getattr(
+                        engine,
+                        "submit_independent_batches_detailed",
+                        None,
+                    )
+                    if not callable(submit_ready) or not _env_flag(
+                        _DEFAULT_AR_READY_COHORT_ENV,
+                        default=True,
+                    ):
+                        self._launch_independent_generation(first)
+                        continue
+                    key = self._group_key(first)
+                    ready_group = [first]
+                    ready_rows = child_rows
+                    capacity = (
+                        None
+                        if active_limit is None
+                        else active_limit - self._active_requests
+                    )
+                    deferred: deque[_QueuedGeneration] = deque()
+                    while self._queue:
+                        item = self._queue.popleft()
+                        if _queued_generation_cancelled(item):
+                            continue
+                        item_rows = len(item.prompts)
+                        fits = capacity is None or ready_rows + item_rows <= capacity
+                        if self._group_key(item) == key and fits:
+                            ready_group.append(item)
+                            ready_rows += item_rows
+                        else:
+                            deferred.append(item)
+                    self._queue.extendleft(reversed(deferred))
+                    self._launch_independent_group(ready_group, engine)
                     continue
                 key = self._group_key(first)
                 group = [first]
@@ -3075,6 +3108,120 @@ class _GenerationBatcher:
             self._independent_tasks.discard(done)
 
         task.add_done_callback(finished)
+
+    def _launch_independent_group(
+        self,
+        group: Sequence[_QueuedGeneration],
+        engine: Any,
+    ) -> None:
+        if not group:
+            return
+        for item in group:
+            self._active_requests += len(item.prompts)
+            self._active_items[id(item)] = item
+        task = asyncio.create_task(self._run_independent_group(tuple(group), engine))
+        for item in group:
+            item.producer_task = task
+        self._independent_tasks.add(task)
+        task.add_done_callback(self._independent_tasks.discard)
+
+    def _release_independent_item(self, item: _QueuedGeneration) -> None:
+        if self._active_items.pop(id(item), None) is not None:
+            self._active_requests = max(0, self._active_requests - len(item.prompts))
+
+    async def _run_independent_group(
+        self,
+        group: tuple[_QueuedGeneration, ...],
+        engine: Any,
+    ) -> None:
+        submit = getattr(engine, "submit_independent_batches_detailed")
+        batches = tuple((item.prompts, item.sampling) for item in group)
+        try:
+            handle_groups = tuple(
+                tuple(handles)
+                for handles in await run_in_threadpool(submit, batches)
+            )
+            if len(handle_groups) != len(group) or any(
+                len(handles) != len(item.prompts)
+                for item, handles in zip(group, handle_groups, strict=True)
+            ):
+                raise RuntimeError(
+                    "independent batch submission must return one handle per prompt"
+                )
+        except Exception as exc:
+            for item in group:
+                _finish_queued_generation(item, exception=exc)
+                self._release_independent_item(item)
+            return
+
+        queue_group_id = f"queue-{uuid.uuid4().hex}"
+        total_rows = sum(len(item.prompts) for item in group)
+        route_cap = self._route_request_cap(group[0].route)
+
+        async def finish_item(
+            item_index: int,
+            item: _QueuedGeneration,
+            handles: tuple[Any, ...],
+            prompt_offset: int,
+        ) -> None:
+            try:
+                outputs = list(
+                    await asyncio.gather(
+                        *(asyncio.to_thread(handle.result) for handle in handles)
+                    )
+                )
+                item_outputs: Sequence[Any] = outputs
+                if not item.detailed:
+                    item_outputs = [
+                        _coerce_generation_output(output).text for output in outputs
+                    ]
+                if item.include_batch_metadata:
+                    backend_groups = (
+                        _backend_generation_group_shape(
+                            engine,
+                            input_rows=total_rows,
+                        ),
+                    )
+                    _finish_queued_generation(
+                        item,
+                        result=_QueuedBatchResult(
+                            outputs=list(item_outputs),
+                            scheduler_token_chunks=None,
+                            backend_groups=backend_groups,
+                            generation_shape=_queue_generation_shape(
+                                route=str(item.route),
+                                route_cap=route_cap,
+                                queue_group_id=queue_group_id,
+                                queue_request_count=len(group),
+                                queue_prompt_rows=total_rows,
+                                item_index=item_index,
+                                item_prompt_offset=prompt_offset,
+                                item_prompt_rows=len(item.prompts),
+                                backend_groups=backend_groups,
+                                route_decision=item.route_decision,
+                            ),
+                        ),
+                    )
+                else:
+                    _finish_queued_generation(item, outputs=item_outputs)
+            except Exception as exc:
+                _finish_queued_generation(item, exception=exc)
+            finally:
+                self._release_independent_item(item)
+
+        offsets: list[int] = []
+        offset = 0
+        for item in group:
+            offsets.append(offset)
+            offset += len(item.prompts)
+        await asyncio.gather(
+            *(
+                finish_item(index, item, handles, offsets[index])
+                for index, (item, handles) in enumerate(
+                    zip(group, handle_groups, strict=True)
+                )
+            )
+        )
 
     async def _run_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
         try:
