@@ -728,8 +728,8 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
 - [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
       add down+scaled-SiLU and up+sigmoid+gated-mean epilogues. The exact
       sigmoid+gated-mean subunit is now retained for rows <=256: it removes one
-      launch per GR read, improves counterbalanced p508+128-step decode
-      14.037→15.083 tok/s, and passes 450/450 logits, 18/18 state/task prompts,
+      launch per GR read, improves clean counterbalanced p508+128-step decode
+      14.162→15.111 tok/s, and passes 450/450 logits, 18/18 state/task prompts,
       and lifecycle exactly. Rows >256 keep the unfused owner after the fused
       kernel measured 0.889x at rows508. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`.

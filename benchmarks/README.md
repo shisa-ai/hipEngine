@@ -265,8 +265,9 @@ numerical scopes, but is rejected because candidate state repeat 1 differs from
 repeats 2–3 on the first prompt. Ignoring the first same-schedule run as warmup
 is not a valid production rule; exact coltile remains default. The next P3
 subunit fuses GR sigmoid materialization with gated mean for rows <=256. It
-removes one launch per GR read and improves counterbalanced p508+128-step decode
-**14.037→15.083 tok/s (1.0746x, 95% CI 1.0548–1.0945)**. The complete T0 gate
+removes one launch per GR read and improves clean counterbalanced
+p508+128-step decode **14.162→15.111 tok/s (1.0670x, 95% CI
+1.0543–1.0797)**. The complete T0 gate
 is exact: **450/450 logits, 18/18 state/task prompts, three repeats, and clean
 teardown**. Rows >256 remain unfused after a rows508 primitive loss.
 [`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
