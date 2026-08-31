@@ -113,9 +113,11 @@ incremental pooled-key cache, gathered decode attention, GDN concat fix,
 permute-free scoring, and distinct-stream MTP combiner are **already covered
 in-tree** — verified in source with retained evidence. The remaining campaigns:
 
-1. **Fresh profile order:** (a) move to early MoE layers 0–26, which own
-   **2.526 s** of p508. The existing layer-2 grouped-WMMA route is closed as a
-   rejection: it cuts Q5_K gate/up **279.86→16.66 ms** and wins about 5% at
+1. **Fresh profile order:** (a) move to early MoE layers 0–26. The fresh p508
+   split is **2.366 s** total: gate/up **1.200 s**, down **1.152 s**, and all
+   activation/routing/shared tails only **13.25 ms**; layers 3–26 retain
+   **1.849 s** after excluding layer 2. The existing layer-2 grouped-WMMA route
+   is closed as a rejection: it cuts Q5_K gate/up **279.86→16.66 ms** and wins about 5% at
    p512, but its complete 450-row gate fails prefill-last mean KL
    (**0.001179 > 0.001**). Do not rescreen unchanged T2 arithmetic; revisit
    layer 2 only with a materially new exact/T1 dataflow. (b) decode GR

@@ -651,17 +651,26 @@ earlier device-owner refactor remains fixed by 30a2fad9e.
 
 ### Phase P2 — early routed MoE layers 0-26
 
-Goal: attack the **2.526 s** early-MoE owner without repeating the failed broad
-WMMA suffix experiment.
+Goal: attack the **2.366 s** fresh early-MoE owner without repeating the failed
+broad WMMA suffix experiment. The current p508 split is Q4/Q5_K gate/up
+**1.200 s**, Q5_1/Q8 down **1.152 s**, and activation+routing/shared tails only
+**13.25 ms**. Excluding rejected layer 2, layers 3–26 still own **1.849 s**.
+Active experts span 166–298 with median 9 rows/active expert across layers 0–26.
+Evidence:
+[`2026-08-31 P2 profile`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-early-moe-profile.json).
 
-- [ ] Split the role into Q4 gate/up, activation, Q5_1/Q8 down, route-weight
+- [x] Split the role into Q4 gate/up, activation, Q5_1/Q8 down, route-weight
       reduction, and host synchronization by layer and actual active-row count.
+      A clean role/API/copy trace plus separately instrumented routing census is
+      retained; telemetry wall is excluded from performance evidence.
 - [ ] Remove the per-layer `group_wmma_total` stream sync/D2H read. Launch a
       safe maximum tile grid with a device count guard, or prove a different
       device-only submission scheme.
 - [ ] Optimize T0 exact association first: physical-lane contraction,
       multi-row weight reuse, coalesced metadata, and output grouping while
-      preserving the strict reduction/publication tree.
+      preserving the strict reduction/publication tree. Gate/up and down are
+      co-primary owners; start with an actual-weight counterbalanced leaf screen
+      on layers 3–26 rather than the <0.6% routing/activation tail.
 - [ ] Add operation-complete grouped dual gate/up+SiLU and
       down+route-weight+scatter/ordered-reduce candidates. Keep primitive
       chains registered.
