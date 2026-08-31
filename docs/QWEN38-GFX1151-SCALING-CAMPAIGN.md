@@ -311,7 +311,9 @@ is made.
   (M2k), and the whole-batch AR ceiling (36.5/39.2/42.2/46.1) still sits
   10-12% under these gates pending the campaign-owner engagement amendment.
   No remaining in-scope mechanism can reach the gates for these cells.
-- [ ] M3 **C1 coverage** (B). Extend `_physical_prompt_streaming_widths()` to
+- [x] M3 **C1 coverage (B). Done 2026-08-31:** all clauses closed below; the
+  18.191 aspiration's -14.0% residual is named to the shared accept-window
+  verify math (same wmma-family structural rate as M2/P2). Extend `_physical_prompt_streaming_widths()` to
   admit width 1 without broadening the unqualified `>4` range; add the width-1
   package-policy key and qualify the rows1 proposal rowtile owner. Re-screen the
   reusable native target graph for the production route. Use M0's refreshed
@@ -330,11 +332,15 @@ is made.
   lives in the shared accept-window verify math (C1 accept-member 111
   ms/cycle vs 33.6 ms/pass target kernels).
   [`M3`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json)
-- [ ] M4 C4 prompt-streaming acceptance blocker. Streaming at C4 changed
-  acceptance 628/796 -> 624/800 and was rejected. Decide explicitly whether the
-  binding contract is exactness of the replayed prompt or of the acceptance
-  count, then either qualify a streaming variant that preserves it or record the
-  contract as the terminal blocker.
+- [x] M4 **C4 prompt-streaming acceptance blocker. Done 2026-08-31.**
+  Contract decided: the binding frozen gate is per-cell `mtp_self_exact` IDs +
+  route + budget; acceptance trajectory is an observational diagnostic
+  (self-exactness makes any trajectory ID-exact by verifier construction).
+  Re-screened at head the historical drift did not reproduce (92/121 vs
+  93/120, every cell ID-equal) and C4 passed: **34.182 -> 35.618 (>= 34.596,
+  1.178x own AR, every category >= own AR)**, production key (1,2,3,4),
+  48/48 exact - a retention, not a terminal blocker.
+  [`M4`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c4-streaming-retained.json)
 - [x] M5 **Concurrency-aware admission. Done 2026-08-31, named blocker.**
   Frozen-protocol economics: sub-group interleaving costs **0.74-0.80x own AR**
   at widths 5-8 (28.0/31.4/31.8/34.2 vs AR 36.5/39.2/42.2/46.1, engaged 6/6).
