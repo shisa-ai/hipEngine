@@ -67,6 +67,7 @@ from hipengine.generation import (
 )
 from hipengine.generation.constraints import JsonObjectConstraintState, ToolCallConstraintSpec
 from hipengine.generation.registry import normalize_prompt_input
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kvcache import resolve_prefix_cache_mode
 from hipengine.speculative.policy import (
     DEFAULT_AUTO_DEPTH_POLICY,
@@ -498,6 +499,29 @@ def _server_model_uses_gguf(config: ServerConfig, engine: Any | None = None) -> 
     if path.is_file():
         return path.suffix.lower() == ".gguf"
     return path.is_dir() and any(path.glob("*.gguf"))
+
+
+def _gguf_mtp_batch_route_max_active_requests(
+    config: ServerConfig,
+    engine: Any | None = None,
+) -> int:
+    """Resolve the production physical MTP width from backend metadata."""
+
+    profile = _server_execution_profile(config, engine).get("resolved")
+    if profile != "production":
+        return _GGUF_MTP_MAX_ACTIVE_REQUESTS
+    backend = _server_model_identity(config, engine)["backend"]
+    try:
+        physical_max = int(
+            backend_package_capability(
+                backend,
+                "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
+                _GGUF_MTP_MAX_ACTIVE_REQUESTS,
+            )
+        )
+    except (ImportError, TypeError, ValueError):
+        return _GGUF_MTP_MAX_ACTIVE_REQUESTS
+    return physical_max if physical_max > 0 else _GGUF_MTP_MAX_ACTIVE_REQUESTS
 
 
 class OpenAIHTTPError(Exception):
@@ -4482,7 +4506,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
             **(
                 {
                     _SPECULATIVE_MTP_DEFAULT_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
-                    _SPECULATIVE_MTP_BATCH_ROUTE: _GGUF_MTP_MAX_ACTIVE_REQUESTS,
+                    _SPECULATIVE_MTP_BATCH_ROUTE: (
+                        _gguf_mtp_batch_route_max_active_requests(config, llm)
+                    ),
                     _SPECULATIVE_MTP_AUTO_ROUTE: _GGUF_DEFAULT_AR_MAX_ACTIVE_REQUESTS,
                 }
                 if _server_model_uses_gguf(config, llm)
