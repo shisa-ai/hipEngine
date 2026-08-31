@@ -411,6 +411,26 @@ qwen4_exp_gdn_prefill_columnwarps_f32_kernel(
   }
 }
 
+__global__ void qwen4_exp_gdn_state_transpose_f32_kernel(
+    const float* __restrict__ source,
+    float* __restrict__ destination,
+    int64_t heads,
+    int64_t key_dim,
+    int64_t value_dim,
+    bool strict_to_transposed) {
+  const int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  const int64_t elements = heads * key_dim * value_dim;
+  if (index >= elements) return;
+  const int64_t value = index % value_dim;
+  const int64_t key = (index / value_dim) % key_dim;
+  const int64_t head = index / (key_dim * value_dim);
+  if (strict_to_transposed) {
+    destination[(head * value_dim + value) * key_dim + key] = source[index];
+  } else {
+    destination[index] = source[(head * value_dim + value) * key_dim + key];
+  }
+}
+
 __global__ void qwen4_exp_gdn_core_norm_gate_f32_kernel(
     float* __restrict__ core,
     const float* __restrict__ output_gate,
@@ -475,6 +495,24 @@ extern "C" int hipengine_qwen4_exp_gdn_decode_f32(
       static_cast<const float*>(dt_bias), static_cast<const float*>(a),
       static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
       static_cast<float*>(output), num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gdn_state_transpose_f32(
+    const void* source, void* destination, int64_t heads, int64_t key_dim,
+    int64_t value_dim, int32_t strict_to_transposed, hipStream_t stream) {
+  if (!source || !destination || heads <= 0 || key_dim <= 0 || value_dim <= 0 ||
+      (strict_to_transposed != 0 && strict_to_transposed != 1)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const int64_t elements = heads * key_dim * value_dim;
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_state_transpose_f32_kernel,
+      dim3(static_cast<uint32_t>((elements + threads - 1) / threads)),
+      dim3(threads), 0, stream, static_cast<const float*>(source),
+      static_cast<float*>(destination), heads, key_dim, value_dim,
+      strict_to_transposed != 0);
   return static_cast<int>(hipGetLastError());
 }
 

@@ -225,6 +225,33 @@ def test_qwen4_exp_bulk_conv_prefill_matches_serial_decode_bits() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_gdn_state_layout_roundtrip_is_exact_at_actual_shape() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+        qwen4_exp_gdn_state_strict_to_transposed_f32,
+        qwen4_exp_gdn_state_transposed_to_strict_f32,
+    )
+    runtime = get_hip_runtime()
+    rng = np.random.default_rng(4051)
+    heads, key_dim, value_dim = 48, 128, 128
+    strict = rng.normal(0, 0.02, (heads, key_dim, value_dim)).astype(np.float32)
+    allocations = []
+    try:
+        d_strict = _upload(strict, runtime, allocations)
+        d_transposed = _alloc((heads, value_dim, key_dim), np.float32, runtime, allocations)
+        d_roundtrip = _alloc(strict.shape, np.float32, runtime, allocations)
+        qwen4_exp_gdn_state_strict_to_transposed_f32(d_strict.ptr, d_transposed.ptr, heads, key_dim, value_dim, runtime=runtime)
+        qwen4_exp_gdn_state_transposed_to_strict_f32(d_transposed.ptr, d_roundtrip.ptr, heads, key_dim, value_dim, runtime=runtime)
+        runtime.device_synchronize()
+        transposed = _download(d_transposed, (heads, value_dim, key_dim), np.float32, runtime)
+        roundtrip = _download(d_roundtrip, strict.shape, np.float32, runtime)
+    finally:
+        for allocation in reversed(allocations): free(allocation, runtime=runtime)
+    np.testing.assert_array_equal(transposed, np.transpose(strict, (0, 2, 1)))
+    np.testing.assert_array_equal(roundtrip, strict)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_gdn_prefill_is_exact_to_serial_decode() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
