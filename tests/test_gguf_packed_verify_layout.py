@@ -163,6 +163,52 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
     assert owner._direct_resident_linear_state((SimpleNamespace(),)) is None
 
 
+def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    slab = SimpleNamespace(
+        slot_count=8,
+        layer_conv_states=(object(),),
+        layer_recurrent_states=(object(),),
+    )
+    sessions = (SimpleNamespace(), SimpleNamespace())
+    owner._direct_resident_linear_state = MethodType(
+        lambda self, selected: ((3, 6), slab) if selected == sessions else None,
+        owner,
+    )
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(21, 22), start_position=7),
+        ),
+        slot_capacity=16,
+    )
+    packed_state = SimpleNamespace(
+        layer_conv_states=("packed-conv",),
+        layer_recurrent_states=("packed-recurrent",),
+    )
+
+    direct_layout, state_owner, imported = owner._packed_verify_initial_linear_state(
+        sessions,
+        layout,
+        packed_state,
+    )
+
+    assert direct_layout.state_indices.tolist() == [3, 6]
+    assert state_owner is slab
+    assert imported is False
+
+    owner._direct_resident_linear_state = MethodType(
+        lambda self, selected: None,
+        owner,
+    )
+    fallback_layout, fallback_owner, imported = (
+        owner._packed_verify_initial_linear_state(sessions, layout, packed_state)
+    )
+    assert fallback_layout is layout
+    assert fallback_owner is packed_state
+    assert imported is True
+
+
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner._buffers = ()
