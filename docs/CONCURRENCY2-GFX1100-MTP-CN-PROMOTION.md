@@ -1,7 +1,7 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
 - Status: **Qwen3.6 lanes complete; 27B Dense and 35B MoE physical C2 promoted
-  automatically. Qwen3.8 P7-P12 complete; P13 audit recovery and cross-engine parity continuation open**
+  automatically. Qwen3.8 P7-P12 complete; P13 recovery audit complete and cross-engine parity continuation open**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -938,13 +938,14 @@ each cell of the standardized W7900 matrix:
 
 | Axis | Current result | Remaining strongest-peer deficits |
 | --- | --- | --- |
-| True AR / decode | wins 7/8 | C2 **-9.9%**; C1 is only +1.3%, while C3-C8 lead +32.6% to +95.1% |
-| Explicit K3 diagnostic | wins C3/C4 | C1 -3.9%, C2 -3.0%, C5 -21.4%, C6 -34.3%, C7 -29.5%, C8 -44.7% |
-| Prefill | wins C4/C7 | C1 -25.8%, C2 -26.6%, C3 -18.1%, C5 -3.2%, C6 -5.1%, C8 -6.3% |
+| True AR / decode | wins 7/8 | C2 **-9.94%**; C1 is +1.28%, while C3-C8 lead +32.55% to +95.07% |
+| Explicit K3 diagnostic | wins C3/C4 | C1 -3.90%, C2 -2.98%, C5 -6.01%, C6 -11.50%, C7 -19.88%, C8 -38.87% |
+| Prefill | wins C2/C3/C4/C7 | C1 -21.48%, C5 -3.21%, C6 -5.08%, C8 -6.26% |
 
-Material prefill work is C1-C3. The C5/C6/C8 differences are near parity and
-must be judged against a same-protocol repeat band rather than used as a kernel
-tuning target from one packet.
+Material prefill work is now C1. Atomic ready-cohort admission moved C2/C3 past
+the strongest peer; the C5/C6/C8 differences remain near parity and must be
+judged against a same-protocol repeat band rather than used as a kernel tuning
+target from one packet. The exact final per-cell matrix is in §12.6.
 
 P13 is complete only when:
 
@@ -966,7 +967,9 @@ P13 is complete only when:
 - **Stale K3 packet.** `...hipengine-refresh-post-promotions.json` was produced
   before grouped prefill. Its 31 tok/s plateau and width-dependent acceptance
   are historical pre-grouping evidence. They cannot drive current tasks.
-  Current grouped evidence reports draft acceptance **0.7889 at C1-C8**.
+  Pre-#30 grouped evidence reports draft acceptance **0.7889 at C1-C8**. The
+  final one-group C8 packet records **0.7850** (1,256/1,600) versus the C4
+  rollback's **0.7889** (the same 1,256 accepted from 1,592 proposals).
 - **Serving path.** The serial loop in `_generate_greedy_batch` is a direct
   compatibility/control path. Current resident serving groups mixed-length
   full prompts in `_try_prefill_native_work_batch`, with grouped counters
@@ -1074,7 +1077,7 @@ composition races, as assigned to #29. Split-K was not attempted because the
 reduction-free exact owner already wins. Evidence:
 [`row64 down-projection retention`](../benchmarks/results/2026-08-31-w7900-q4km-t16-downproj-row64-retained.json).
 
-#### P13-D — Current K3 attribution (#23/#12 complete; #30 remedy)
+#### P13-D — Current K3 attribution and physical-width remedy (#23/#12/#30 complete)
 
 - [x] From a post-grouping packet, report decode-only rate, request-local and
       conditional positional acceptance, physical group sizes, adapter
@@ -1083,6 +1086,11 @@ reduction-free exact owner already wins. Evidence:
       proposal, or verifier work before changing verify kernels.
 - [x] Measure rowtile versus small-M only through the production sidecar payload;
       never reconstruct the layout that previously wedged the GPU.
+- [x] Widen the qualified gfx1100 production physical transaction through C8,
+      including server admission, frontier, cycle/accept owners, exact fallback,
+      failure cleanup, and a full-stack C4 rollback.
+- [x] Close C5/C8 with tracked-clean D1/D24 full-category+heldout packets,
+      exact candidate/rollback trajectories, physical-shape evidence, and drain.
 
 A clean current D1/D24 pair excludes acceptance: aggregate draft acceptance is
 **0.788944724** and conditional P1/P2/P3 is
@@ -1107,6 +1115,28 @@ promotion. #30 owns a RED-first wider-physical-group or shared-readback design.
 Evidence: [`current post-grouping K3 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-current-post-grouping-k3-attribution.json) ·
 [`production-sidecar small-M rejection`](../benchmarks/results/2026-08-31-w7900-q4km-t16-production-sidecar-smallm-rejected.json).
 
+Task #30 removes the measured serial ceiling without changing arithmetic. The
+package-qualified production owner and explicit server route now resolve through
+C8; strict, automatic/default-AR, and the full-stack environment rollback stay
+at C4. In the final clean `477ee2471` gate, C5 changes `[4,1]→[5]` and improves
+**49.227→57.345 tok/s (+16.49%)**; C8 changes `[4,4]→[8]` and improves
+**56.414→61.785 (+9.52%)**. Every prompt/category is positive, all 520 D1/D24
+candidate/rollback generated rows match, D1 remains K0 without an MTP owner,
+D24 has zero recoverable failures, and all four processes drain. The canonical
+C5 row moves **47.960→57.345**; the final non-best-of C8 repeat replaces
+**62.985→61.785** and remains +10.61% over the pre-task 55.860 cell. Automatic
+C5-C8 remains K0. Evidence:
+[`C5/C8 physical-group closure`](../benchmarks/results/2026-08-31-w7900-q4km-c5c8-physical-group-closure.json).
+
+The final audit found that the canonical C6/C7 cells still named the old split
+route even though the retained capability changes those widths too. A clean
+same-commit completion packet closes that rollup hole: C6 `[4,2]→[6]` improves
+**50.421→66.042 tok/s (+30.98%)** and C7 `[4,3]→[7]` improves
+**55.983→62.719 (+12.03%)**, positive in every prompt/category with 260/260
+candidate/rollback rows equal and clean drain. The published C6/C7 cells move
+**49.020→66.042 (+34.73%)** and **55.225→62.719 (+13.57%)**. Evidence:
+[`P13 final audit`](../benchmarks/results/2026-08-31-w7900-q4km-p13-final-audit.json).
+
 #### P13-E — Lifecycle and tooling cleanup (#26, #27)
 
 - [x] Make accept-staging release failure-safe through all subsequent cleanup.
@@ -1122,10 +1152,35 @@ explicitly `serving_path_claim_eligible=false`; these smoke ratios do not alter
 server attribution or any scoreboard row. Evidence:
 [`runner-only grouping probe`](../benchmarks/results/2026-08-31-w7900-q4km-packed-prefill-runner-probe.json).
 
-#### P13-F — Recovery audit (#28)
+#### P13-F — Recovery audit (#28 complete)
 
-- [ ] Run all changed focused bundles plus worklog/README/provenance/command
+- [x] Run all changed focused bundles plus worklog/README/provenance/command
       gates, refresh this punchlist, and publish a durable handoff.
+
+Final gate at `34efd0614` plus this documentation tree:
+
+- **273 focused tests pass**: all 241 tests in the nine files changed since the
+  audit reset, plus 32 server batcher/EngineService/physical-route nodes.
+- Worklog validates **1,289** immutable entries; README exports are synchronized.
+- Artifact provenance parses **65/65** cited artifacts with zero violations and
+  three pre-existing warnings; published-command drift has zero violations and
+  four matched historical exceptions.
+- `git diff --check` is clean for the final tree and for
+  `dbf5d263c..34efd0614`. Kernel lineage reports 18 tracked references and four
+  known external-parent drift entries; the later pinned entries for those
+  parent files are clean, and no unreviewed parent code entered P13.
+- The audit's missing C6/C7 current-route packet passes 20/20 exact/engaged/
+  budget cells per arm, 260/260 candidate/rollback generated rows, every
+  prompt/category performance check, physical C6/C7 ownership, zero recoverable
+  failures, and zero final tracked allocations.
+- The repository-wide concurrency completion audit has integrity `passed=true`,
+  no missing evidence, and no false passes. Its expected nonzero status records
+  three unrelated declared global blockers (external serving engines, full
+  continuous-SpecDec product economics, and no trained DMS checkpoint), not a
+  P13 regression.
+
+P13 recovery is closed. Its parity success criteria are not weakened: the
+cross-engine objective remains open at the exact deficits below.
 
 ### 12.5 P13 stop rules
 
@@ -1137,3 +1192,40 @@ server attribution or any scoreboard row. Evidence:
   that misses the exact promoted automatic key.
 - Stop on any ownership, state, KV, lifecycle, numerical, task, or repeat gate
   failure and localize it before further optimization.
+
+### 12.6 Durable handoff and exact strongest-peer matrix
+
+This is the canonical retained matrix after the final P13 rollup. Each cell is
+`hipEngine / strongest peer (delta)` in total tok/s. “Current” and “Laurent” name
+the stronger of the two llama.cpp rows; the underlying exact protocol and
+artifacts remain linked from `benchmarks/README.md`.
+
+| Axis | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| True AR | 21.999 / 21.720 current (+1.28%) | 31.916 / 35.440 current (**-9.94%**) | 45.309 / 30.787 current (+47.17%) | 54.151 / 27.760 current (+95.07%) | 61.881 / 36.473 Laurent (+69.66%) | 71.226 / 45.826 Laurent (+55.43%) | 74.903 / 52.537 Laurent (+42.57%) | 78.667 / 59.348 Laurent (+32.55%) |
+| Explicit K3 diagnostic | 31.455 / 32.733 Laurent (**-3.90%**) | 39.820 / 41.042 current (**-2.98%**) | 54.590 / 45.947 Laurent (+18.81%) | 55.780 / 51.054 Laurent (+9.26%) | 57.345 / 61.013 Laurent (**-6.01%**) | 66.042 / 74.628 Laurent (**-11.50%**) | 62.719 / 78.281 Laurent (**-19.88%**) | 61.785 / 101.072 Laurent (**-38.87%**) |
+| Prefill | 157.774 / 200.946 current (**-21.48%**) | 261.748 / 239.658 current (+9.22%) | 346.923 / 259.036 current (+33.93%) | 318.412 / 281.828 current (+12.98%) | 312.682 / 323.043 current (**-3.21%**) | 347.625 / 366.213 current (**-5.08%**) | 426.692 / 374.207 current (+14.03%) | 397.655 / 424.202 Laurent (**-6.26%**) |
+
+Completed recovery work has no hidden “remaining #22/#23/#11/#12” tail:
+
+- #22/#29 measured the real server prefill path and fixed default-AR admission;
+  C2/C3 now beat the peer. C1 remains **89.9% complete native-prefill call** and
+  is the only material prefill deficit.
+- #25/#11 repaired T16 evidence and retained the exact row64 down-projection
+  owner. It improved C1 in both arms, but C1 remains **-21.48%**, so future work
+  starts from a fresh complete-prefill profile rather than another guessed tile.
+- #23/#12 rejected acceptance and verifier small-M as the C5-C8 cause. #30 then
+  removed the serial physical ceiling across C5-C8. The remaining K3 deficit is
+  no longer attributable to split groups; C6/C7/C8 still trail by
+  **11.50%/19.88%/38.87%** and require a fresh one-group proposal/target/accept/
+  commit Amdahl trace before another kernel change.
+- AR remains ahead at seven widths. C2's **-9.94%** is still open and has no
+  P13 measurement that localizes it to admission, decode kernels, or host wall;
+  do not infer its cause from the now-fixed one-token prefill race.
+- Prefill C5/C6/C8 and K3 C1/C2/C5 are repeat-sensitive near-parity cells.
+  Re-run the same-host peer and hipEngine protocols in a counterbalanced packet
+  before treating them as optimization targets.
+
+Product truth is unchanged: only the bounded capacity-2/C2/K2 automatic key is
+promoted. Capacity-8 automatic requests and every scope miss remain ordinary
+K0; every K3 number above is an explicit engine diagnostic.

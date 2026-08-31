@@ -1,0 +1,264 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_p13_final_audit",
+  "date": "2026-08-31",
+  "status": "accepted",
+  "decision": "close the P13 evidence-recovery audit, retain the missing C6/C7 one-group production measurements, and keep the cross-engine parity objective open without weakening automatic-product gates",
+  "parity_goal_status": "open",
+  "source": {
+    "audit_head": "34efd0614",
+    "benchmark_commit": "477ee2471320e0bf3aceb5934500e2dcd9b75722",
+    "benchmark_tracked_clean": true,
+    "rollback": "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4"
+  },
+  "hardware": {
+    "host_name": "epyc",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon Pro W7900",
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106773984,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "c6_c7_protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "includes_category_heldouts": true,
+    "widths": [6, 7],
+    "resident_capacity": 8,
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "mtp_request_mode": "explicit",
+    "generation2_diagnostic_plan": true,
+    "batch_window_ms": 20.0,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "arm_order": "alternated by prompt plus one warmup per arm",
+    "classification": "retained explicit engine-path performance; not automatic product evidence"
+  },
+  "commands": {
+    "c6_c7_candidate": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 PYTHONPATH=/tmp/he-c8-validate timeout 600 /home/lhl/hipEngine-main/.venv/bin/python /tmp/he-c8-validate/scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts /tmp/he-c8-validate/benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 6,7 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --correctness-contract ar_exact --expected-mtp-widths 6,7 --max-tokens 24 --output /tmp/he-p28-c6c7/c8-d24-477ee2471.json",
+    "c6_c7_rollback": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 PYTHONPATH=/tmp/he-c8-validate HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4 timeout 600 /home/lhl/hipEngine-main/.venv/bin/python /tmp/he-c8-validate/scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production --prompts /tmp/he-c8-validate/benchmarks/prompts/mtpbench-code-general-ja.jsonl --mtp-request-mode explicit --widths 6,7 --resident-capacity 8 --candidate-budget 3 --batch-window-ms 20 --generation2-diagnostic --correctness-contract ar_exact --expected-mtp-widths 6,7 --max-tokens 24 --output /tmp/he-p28-c6c7/c4-d24-477ee2471.json",
+    "focused_changed_files": ".venv/bin/python -m pytest -q tests/test_generation_engine_service.py tests/test_gguf_mtp_c1c8_server_bench.py tests/test_gguf_packed_prefill_grouping_probe.py tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_t16_prefill_row_sweep.py tests/test_gguf_t16_sidecar_row_bench.py tests/test_qwen35_gguf_mtp2_accept_staging.py tests/test_qwen35_gguf_mtp2_seam.py tests/test_specdec2_engine_loop.py",
+    "focused_server": ".venv/bin/python -m pytest -q tests/test_server_api.py -k 'generation_batcher or independent_batch or engine_service or backend_physical_mtp_route_limit or width_rollback_restores_c4_route'",
+    "metadata_gates": "python3 scripts/worklog.py check && python3 scripts/sync_benchmark_readme.py --check && .venv/bin/python scripts/check_artifact_provenance.py --show-warnings && .venv/bin/python scripts/check_published_command_drift.py && git diff --check && git diff --check dbf5d263c52eec24b4f5b5224c210bfeaf82d3dc..HEAD",
+    "lineage_gate": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "global_completion_audit": ".venv/bin/python scripts/concurrency2_completion_audit.py --json /tmp/he-p13-concurrency2-audit.json"
+  },
+  "audit_validation": {
+    "focused_changed_file_tests": 241,
+    "focused_server_tests": 32,
+    "focused_tests_total": 273,
+    "focused_tests_passed": 273,
+    "worklog_entries_valid": 1289,
+    "readme_benchmark_blocks_synchronized": true,
+    "artifact_provenance": {
+      "cited_artifacts": 65,
+      "parsed": 65,
+      "violations": 0,
+      "warnings": 3,
+      "warning_scope": "pre-existing unique-hardware and labelled-placeholder candidates; no new P13 violation"
+    },
+    "published_command_drift": {
+      "cited_artifacts": 65,
+      "violations": 0,
+      "historical_exceptions_matched": 4
+    },
+    "diff_check": {
+      "final_tree": "passed",
+      "audit_range_dbf5d263c_to_34efd0614": "passed"
+    },
+    "kernel_lineage": {
+      "tracked_sources": 18,
+      "changed_or_dirty_external_parent_entries": 4,
+      "interpretation": "known external-parent drift entries reported by the manifest; later pinned entries for those parent files are clean; P13 copied no unreviewed parent code"
+    },
+    "global_concurrency2_completion_audit": {
+      "integrity_passed": true,
+      "goal_complete": false,
+      "missing_evidence": 0,
+      "false_passes": 0,
+      "status_counts": {"passed": 38, "blocked": 2, "unavailable": 1},
+      "expected_nonzero_reason": "three declared global blockers remain: external serving engines unavailable, full continuous SpecDec product economics, and no trained DMS checkpoint; none is a P13 regression"
+    },
+    "passed": true
+  },
+  "c6_c7_correctness": {
+    "candidate_packet_passed": true,
+    "rollback_packet_passed": true,
+    "exact_cells_per_packet": 20,
+    "engaged_cells_per_packet": 20,
+    "budget_conformed_cells_per_packet": 20,
+    "candidate_vs_rollback_ar_generated_rows": 130,
+    "candidate_vs_rollback_ar_mismatches": 0,
+    "candidate_vs_rollback_mtp_generated_rows": 130,
+    "candidate_vs_rollback_mtp_mismatches": 0,
+    "recoverable_failures": 0,
+    "candidate_final_active_allocations": 0,
+    "rollback_final_active_allocations": 0,
+    "candidate_final_allocated_bytes": 0,
+    "rollback_final_allocated_bytes": 0,
+    "passed": true
+  },
+  "c6_c7_measurements": {
+    "c6": {
+      "rollback_c4": {
+        "generated_tokens": 1440,
+        "wall_seconds": 28.559515667147934,
+        "tok_s": 50.421023128779275,
+        "ar_tok_s": 77.38297593384596,
+        "mtp_vs_ar_ratio": 0.6515777213309007,
+        "aggregate_draft_acceptance": 0.7889447236180904,
+        "physical_groups": [4, 2],
+        "proposal_physical_rows": [2, 4],
+        "target_physical_rows": [6, 12, 18],
+        "cycle_workspace_shape": [4, 5120]
+      },
+      "candidate_c8_owner": {
+        "generated_tokens": 1440,
+        "wall_seconds": 21.804203743115067,
+        "tok_s": 66.04231078397883,
+        "ar_tok_s": 78.7384195143417,
+        "mtp_vs_ar_ratio": 0.8387558601166696,
+        "aggregate_draft_acceptance": 0.7889447236180904,
+        "physical_groups": [6],
+        "proposal_physical_rows": [6],
+        "target_physical_rows": [12, 18, 24],
+        "cycle_workspace_shape": [8, 5120]
+      },
+      "candidate_vs_rollback": {
+        "ratio": 1.3098169510622892,
+        "percent": 30.981695106228923,
+        "wall_seconds_percent_reduction": 23.653454080818026,
+        "published_tok_s_before": 49.02,
+        "published_tok_s_after": 66.04231078397883,
+        "published_percent": 34.72523619742724
+      }
+    },
+    "c7": {
+      "rollback_c4": {
+        "generated_tokens": 1680,
+        "wall_seconds": 30.009312919341028,
+        "tok_s": 55.98262127878438,
+        "ar_tok_s": 81.1806496931033,
+        "mtp_vs_ar_ratio": 0.6896054846865851,
+        "aggregate_draft_acceptance": 0.7889447236180904,
+        "physical_groups": [4, 3],
+        "proposal_physical_rows": [3, 4],
+        "target_physical_rows": [6, 12, 18],
+        "cycle_workspace_shape": [4, 5120]
+      },
+      "candidate_c8_owner": {
+        "generated_tokens": 1680,
+        "wall_seconds": 26.786350726149976,
+        "tok_s": 62.71850978042755,
+        "ar_tok_s": 81.95943314657913,
+        "mtp_vs_ar_ratio": 0.7652384523970482,
+        "aggregate_draft_acceptance": 0.7889447236180904,
+        "physical_groups": [7],
+        "proposal_physical_rows": [7],
+        "target_physical_rows": [18, 24, 30],
+        "cycle_workspace_shape": [8, 5120]
+      },
+      "candidate_vs_rollback": {
+        "ratio": 1.1203210629973817,
+        "percent": 12.032106299738166,
+        "wall_seconds_percent_reduction": 10.739873324836601,
+        "published_tok_s_before": 55.225,
+        "published_tok_s_after": 62.71850978042755,
+        "published_percent": 13.569053472933557
+      }
+    },
+    "peak_allocated_bytes": {
+      "rollback_c4": 27458449004,
+      "candidate_c8": 29452696960,
+      "delta": 1994247956
+    },
+    "category_tok_s": {
+      "c6": {
+        "code": {"rollback": 51.460692, "candidate": 66.358552, "ratio": 1.2895},
+        "general_en": {"rollback": 53.271199, "candidate": 71.49781, "ratio": 1.342148},
+        "general_ja": {"rollback": 47.720796, "candidate": 63.793006, "ratio": 1.336797},
+        "mixed_ja_en": {"rollback": 48.606748, "candidate": 62.863021, "ratio": 1.293298}
+      },
+      "c7": {
+        "code": {"rollback": 56.550589, "candidate": 63.073937, "ratio": 1.115354},
+        "general_en": {"rollback": 59.371052, "candidate": 68.975921, "ratio": 1.161777},
+        "general_ja": {"rollback": 53.202694, "candidate": 58.498755, "ratio": 1.099545},
+        "mixed_ja_en": {"rollback": 54.622119, "candidate": 60.900338, "ratio": 1.114939}
+      }
+    },
+    "prompt_ratio_ranges": {
+      "c6": {"minimum": 1.2551763614570026, "maximum": 1.355486000051674},
+      "c7": {"minimum": 1.0963103537237464, "maximum": 1.1714691890094218}
+    }
+  },
+  "canonical_strongest_peer_matrix": {
+    "cell_format": "hipEngine tok/s, strongest peer tok/s, strongest peer engine, hipEngine/peer percent",
+    "ar": {
+      "hipengine": [21.999, 31.916, 45.309, 54.151, 61.881, 71.226, 74.903, 78.667],
+      "strongest_peer": [21.72, 35.44, 30.787, 27.76, 36.473, 45.826, 52.537, 59.348],
+      "peer_engine": ["current", "current", "current", "current", "Laurent", "Laurent", "Laurent", "Laurent"],
+      "percent": [1.2845303867403235, -9.943566591422115, 47.169259752492934, 95.06844380403459, 69.66249006114111, 55.42705014620522, 42.571901707368156, 32.55206578149221]
+    },
+    "explicit_k3": {
+      "hipengine": [31.455, 39.82, 54.59, 55.78, 57.345, 66.04231078397883, 62.71850978042755, 61.785],
+      "strongest_peer": [32.733, 41.042, 45.947, 51.054, 61.013, 74.628, 78.281, 101.072],
+      "peer_engine": ["Laurent", "current", "Laurent", "Laurent", "Laurent", "Laurent", "Laurent", "Laurent"],
+      "percent": [-3.9043167445696914, -2.977437746698508, 18.81080375214921, 9.256865279899706, -6.011833543671019, -11.504648678808449, -19.880290516948495, -38.870310273864185]
+    },
+    "prefill": {
+      "hipengine": [157.774, 261.748, 346.923, 318.412, 312.682, 347.625, 426.692, 397.655],
+      "strongest_peer": [200.946, 239.658, 259.036, 281.828, 323.043, 366.213, 374.207, 424.202],
+      "peer_engine": ["current", "current", "current", "current", "current", "current", "current", "Laurent"],
+      "percent": [-21.484378887860423, 9.217301321049165, 33.928488704272766, 12.980967114694074, -3.2073129583368165, -5.075734613462668, 14.025659594823182, -6.2581034507145255]
+    }
+  },
+  "task_closure": {
+    "completed": [22, 23, 25, 26, 27, 29, 11, 12, 30],
+    "remaining_from_original_handoff": [],
+    "open_parity_work": [
+      "true AR C2 remains 9.94% behind and lacks a current structural attribution",
+      "prefill C1 remains 21.48% behind after the exact row64 win; 89.9% of measured wall is the complete native-prefill call",
+      "explicit K3 C6/C7/C8 remains 11.50%/19.88%/38.87% behind after removing split groups; next evidence is a one-group Amdahl trace",
+      "near-parity prefill C5/C6/C8 and K3 C1/C2/C5 require a counterbalanced same-host peer repeat before tuning"
+    ],
+    "automatic_product_truth": "only bounded capacity-2/C2/K2 is promoted; capacity-8 and every scope miss remain K0"
+  },
+  "raw_packets": {
+    "candidate": {
+      "path": "/tmp/he-p28-c6c7/c8-d24-477ee2471.json",
+      "sha256": "c9320a5d82361cfac5f98acc3a18f48b9541ea2b505b08205045608935cd06e8"
+    },
+    "rollback": {
+      "path": "/tmp/he-p28-c6c7/c4-d24-477ee2471.json",
+      "sha256": "1e3b6e03c4903187e2a94d93927c83943a1a2517cbf73900ec1385440b4724ce"
+    }
+  },
+  "links": [
+    "2026-08-31-w7900-q4km-default-ar-ready-cohort-retained.json",
+    "2026-08-31-w7900-q4km-t16-downproj-row64-retained.json",
+    "2026-08-31-w7900-q4km-current-post-grouping-k3-attribution.json",
+    "2026-08-31-w7900-q4km-t16-production-sidecar-smallm-rejected.json",
+    "2026-08-31-w7900-q4km-c5c8-physical-group-closure.json"
+  ],
+  "caveats": [
+    "The canonical matrix is a retained-source rollup, not one simultaneous all-width packet; each changed cell keeps its own exact command and artifact.",
+    "C6/C7 were measured only after the audit found their stale split-route cells; the candidate was not tuned to these prompts or widths, and the complete category+heldout suite is reported.",
+    "Explicit K3 remains a diagnostic and trails true AR at C5-C8; no automatic C5-C8 promotion follows from these improvements.",
+    "Three provenance warnings and four command exceptions are pre-existing named audit debt, not silently ignored clean results."
+  ]
+}
