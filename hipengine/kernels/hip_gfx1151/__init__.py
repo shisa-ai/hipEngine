@@ -1605,6 +1605,9 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
 # target shape. Planar K5120/N1024 and K17408/N5120 lose their all-shape leaf
 # screen and retain R8+R4.
 GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
+    ("gguf_q4_k_t16_v1", 16, 5_120, 1_024): (
+        "t16_wmma_prefill_shared_b2r1_bf16_bf16_out"
+    ),
     ("gguf_q4_k_t16_v1", 16, 17_408, 5_120): (
         "t16_wmma_prefill_shared_b2r1_bf16_bf16_out"
     ),

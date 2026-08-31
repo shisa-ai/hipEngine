@@ -5111,7 +5111,14 @@ def test_gfx1151_production_verifier_q5_true_rowtile_uses_one_launch(
     ]
 
 
-def test_gfx1151_production_verifier_q4_true_r16_down_uses_shared_b2r1() -> None:
+@pytest.mark.parametrize(
+    ("in_features", "out_features"),
+    ((17_408, 5_120), (5_120, 1_024)),
+)
+def test_gfx1151_production_verifier_q4_true_r16_uses_shared_b2r1(
+    in_features: int,
+    out_features: int,
+) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
@@ -5147,8 +5154,8 @@ def test_gfx1151_production_verifier_q4_true_r16_down_uses_shared_b2r1() -> None
                 x_ptr=100,
                 out_ptr=400,
                 rows=16,
-                in_features=17_408,
-                out_features=5_120,
+                in_features=in_features,
+                out_features=out_features,
                 backend="hip_gfx1151",
                 stream=7,
                 runtime="runtime-sentinel",
@@ -5160,7 +5167,7 @@ def test_gfx1151_production_verifier_q4_true_r16_down_uses_shared_b2r1() -> None
 
     assert calls == [
         (
-            (100, 14, 400, 16, 17_408, 5_120),
+            (100, 14, 400, 16, in_features, out_features),
             {"stream": 7, "runtime": "runtime-sentinel"},
         )
     ]
