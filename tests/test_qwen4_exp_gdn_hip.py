@@ -276,11 +276,15 @@ def test_qwen4_exp_gdn_transposed_decode_matches_strict_envelope() -> None:
         qwen4_exp_gdn_state_transpose_inplace_f32(trans_state.ptr,vh,d,runtime=runtime)
         qwen4_exp_gdn_decode_transposed_f32(prepared.ptr,prepared.ptr+kh*d*4,prepared.ptr+2*kh*d*4,prep_beta.ptr,prep_decay.ptr,trans_state.ptr,trans_core.ptr,kh,vh,d,d,runtime=runtime)
         qwen4_exp_gdn_prefill_sigmoid_gate_f32(trans_core.ptr,dg.ptr,dn.ptr,1,vh,d,runtime=runtime)
-        runtime.memcpy(trans_out.ptr,trans_core.ptr,trans_out.nbytes,3); runtime.device_synchronize()
+        runtime.memcpy(trans_out.ptr,trans_core.ptr,trans_out.nbytes,3)
+        qwen4_exp_gdn_state_transpose_inplace_f32(trans_state.ptr,vh,d,runtime=runtime)
+        runtime.device_synchronize()
         strict=_download(strict_out,(core,),np.float32,runtime); trans=_download(trans_out,(core,),np.float32,runtime)
+        strict_matrix=_download(strict_state,state.shape,np.float32,runtime); trans_matrix=_download(trans_state,state.shape,np.float32,runtime)
     finally:
         for allocation in reversed(allocations): free(allocation,runtime=runtime)
     np.testing.assert_allclose(trans,strict,rtol=5e-4,atol=5e-5)
+    np.testing.assert_allclose(trans_matrix,strict_matrix,rtol=2e-5,atol=2e-7)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
