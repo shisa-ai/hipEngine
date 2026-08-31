@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-30**
+Last updated: **2026-08-31**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -211,12 +211,14 @@ prefix:
 | hipEngine production | **82.51 / 13.82** | **81.22 / 13.79** | **67.93 / 10.40** | 12/12 exact |
 | Upstream Vulkan `f1793c1c4` | 240.53 / 22.97 | 259.73 / 20.11 | 266.98 / 18.07 | 12/12 exact |
 | Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
-| EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | — | p512/p1024 exact; p4096 fails |
+| EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; p4096 fails |
+| Nathan Vulkan `ad914eb` | 348.31 / 23.23 | 354.93 / 20.36 | 350.54 / 18.44 | diagnostic: 0/12 exact |
+| apepojken Vulkan `843d575` | 291.73 / 23.21 | 375.23 / 22.42 | 397.43 / 22.25 | diagnostic: 8/12 exact |
 
-Nathan produced 16 different outputs from 16 identical-prompt requests; its
-rates and EngramHalo's p4096 row remain only in the diagnostic artifact and
-changelog. Pristine upstream HIP did not finish loading in two 1,800-second
-attempts, so the
+Nathan produced 16 different outputs from 16 identical-prompt requests;
+apepojken varies on four canonical cases; EngramHalo varies on one p4096 case.
+Their affected rates remain diagnostics rather than correctness-valid targets.
+Pristine upstream HIP did not finish loading in two 1,800-second attempts, so the
 measured patched-upstream lane is explicitly non-stock. This is a three-repeat
 screen, not section-6 closure: several rows exceed 2% CV, and five paired runs,
 cold-PLE isolation, and category heldouts remain open.
@@ -239,6 +241,22 @@ lazy-on/off averages **413.04/329.23 p508 (1.255x)** but converges by p1012;
 an Engram MTP diagnostic is 1.128x complete-wall at 94.55% acceptance but only
 **9/10** AR-message exact, so it is not a valid speed target.
 [`external fork refresh`](results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json).
+
+The cross-engine survey adds a 160-row, full-vocabulary, same-GGUF packet.
+Current upstream HIP is 160/160 top-1 and effectively identical to frozen
+#27742 HIP. EngramHalo is 159/160 with mean/max KL **9.85e-4/0.01431**.
+Upstream Vulkan, Nathan, and apepojken are each 159/160 versus frozen HIP, but
+Nathan is effectively identical to upstream Vulkan (160/160, mean KL about
+**2e-10**) and apepojken remains 160/160 versus upstream Vulkan at mean/max KL
+**0.00109/0.01576**. This localizes Nathan's failure to multi-step execution
+rather than broad static math. Short Q8-KV apepojken MTP is **1.807x**
+complete-wall at 92.8% acceptance but only **9/10** AR-message exact, matching
+EngramHalo's failing prompt. Nathan MTP is provisionally **1.161x** at 95.45%
+acceptance, but AR and MTP each self-repeat only 9/10 and just **8/10** prompts
+match across both repeats of both modes. All affected speed rows are invalid as
+targets. The survey also compares upstream/fork test coverage and
+absolute-quality evidence.
+[`Strix Halo survey artifact`](results/2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json).
 
 The previous GDN decode-all claim is **invalid**: its selector was unreachable,
 so the packet compared the strict owner to itself; the 16.2 tok/s helper also

@@ -14,7 +14,10 @@ rows exceed 2% CV, and cold-PLE plus heldout modes remain open. The frozen
 p508/tg32 role baseline remains the attribution anchor.
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
-authority; this file owns only the gap-closure campaign.
+authority; this file owns only the gap-closure campaign. Cross-engine speed,
+static-logit, autoregressive-repeatability, MTP-equivalence, test-coverage, and
+absolute-quality evidence is consolidated in
+[`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md).
 
 ## 1. Objective and boundaries
 
@@ -442,6 +445,7 @@ None of these numbers are hipEngine results.
 | Source | Mechanism or claim | Status for this campaign |
 | --- | --- | --- |
 | [Sleeping Robots, 2026-08-29](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/) | Independently tested EngramHalo on Strix Halo with a different quant. MTP reaches 28-38 tok/s at working depths; 26K MTP regresses to 15.0; kernel-only prefill improves up to about 35% at 26K. | Useful cross-check of the direction, not a same-quant baseline. Confidence: medium-high for the external fork, low for transfer magnitude. |
+| [apepojken/llama.cpp `843d575`](https://github.com/apepojken/llama.cpp/commit/843d5750579a15ed4a42d73eb862855c271021ac) and local survey, 2026-08-31 | Vulkan rollback/MTP fixes, pooled QSA keys, gathered attention, radix top-k, GDN/inject dataflow, and epilog fusion. Matched Q4/BF16 reaches 291.73/23.21, 375.23/22.42, and 397.43/22.25 pp/tg128 at p512/p1024/p4096. Static logits remain 160/160 top-1 vs upstream Vulkan, but only 8/12 AR cases repeat and Q8-KV MTP is 9/10 AR-message exact. | Fast experimental lane only. Its published Q3 50.4 tok/s headline remains author-reported; the matched AR and MTP rows fail this campaign's exact-output contract. See the Strix Halo survey. |
 | Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Historical same-host shape evidence, superseded for AR targets by the exact-token screening in section 2.1. The MTP speed row fails correctness and remains diagnostic only. |
 | [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), refreshed at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), and load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. The published container additionally applies the tracked #25992 host-buffer and per-buffer-mmap patches. | Code and build mechanisms verified by source inspection and a local gfx1151 HIP build. hipEngine already covers the QSA selector/gather direction; PLE advice/prefetch, loader drop-behind, full-step graphing, and MTP economics remain open. |
 | [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), toolbox HEAD `a8631dfbf0aeb6a4004866fce1fd7e5c10370049`, source `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone loses; merged `WILLNEED` row prefetch is the paying half (`77362a8`). Qwen4Exp also adds host PLE gather and reusable decode topology (`631b9ff`), per-block QSA bias (`024b7ad`), and MTP graph/context (`3543908` + `39817c4`). Vulkan lineage includes MoE row lists (`212cca8`), route-scale epilogue, SiLU/mul fusion, transposed concat (`30d8bb0`), dense wave32 (`25c45fe`), and LDS padding (`baf6360`). | Source mechanisms verified; release and local source builds agree within 1% on this host. Vulkan shader topology is not portable to HIP, but the removed data movement, host synchronization, graph rebuild, and LDS-bank mechanisms are actionable. |
@@ -948,6 +952,8 @@ cleanup, and commits are complete.
   [omlx PR #3260](https://github.com/jundot/omlx/pull/3260).
 - Canonical exact-token screening:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
+- Cross-engine Strix Halo speed/accuracy survey:
+  [`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md)
 - Fresh profile artifact:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json)
 - External fork refresh:
