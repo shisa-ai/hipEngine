@@ -4524,7 +4524,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             )
             // cfg.qsa_compression_ratio,
         )
-        argmax_blocks = lm_head_argmax_stage1_blocks(cfg.vocab_size, 256)
+        argmax_blocks = lm_head_argmax_stage1_blocks(cfg.vocab_size, threads=256)
         for nbytes in (
             np.dtype(np.int64).itemsize,
             cfg.hidden_size * 2,
