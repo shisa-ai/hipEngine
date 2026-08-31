@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-import os
 import threading
 import time
 from typing import Any, Sequence
@@ -33,14 +32,8 @@ from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
 from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
 
 
-def _qwen4_exp_device_argmax_enabled() -> bool:
-    return os.environ.get("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0") not in {
-        "", "0", "false", "False"
-    }
-
-
 def _qwen4_exp_device_argmax_kwargs() -> dict[str, bool]:
-    return {"capture_logits": False} if _qwen4_exp_device_argmax_enabled() else {}
+    return {"capture_logits": False}
 
 
 class Qwen4ExpGGUFTextGenerator:

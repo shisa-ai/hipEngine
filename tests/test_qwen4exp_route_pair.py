@@ -73,9 +73,7 @@ def test_parser_accepts_decode_mode(tmp_path: Path) -> None:
     assert args.decode_transitions == 64
 
 
-def test_decode_route_excludes_prefill_and_hashes_complete_sequence(
-    monkeypatch,
-) -> None:
+def test_decode_route_excludes_prefill_and_hashes_complete_sequence() -> None:
     module = _load_script()
 
     class Runtime:
@@ -98,7 +96,6 @@ def test_decode_route_excludes_prefill_and_hashes_complete_sequence(
             self.kwargs.append(kwargs)
             return SimpleNamespace(token_id=token_id + 1)
 
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "1")
     runner = Runner()
     sample = module._run_route(
         runner, [1, 2, 3], mode="decode", decode_transitions=3

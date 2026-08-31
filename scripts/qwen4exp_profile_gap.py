@@ -496,10 +496,7 @@ def main() -> None:
                 census.close()
             prompt_tokens = len(ids)
         else:
-            device_argmax = os.environ.get(
-                "HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0"
-            ) not in {"", "0", "false", "False"}
-            result_kwargs = {"capture_logits": False} if device_argmax else {}
+            result_kwargs = {"capture_logits": False}
             for _ in range(args.warm_trajectory_repetitions):
                 result = runner.prefill([9707], **result_kwargs)
                 for _ in range(args.warm_decode_steps + args.decode_steps):
