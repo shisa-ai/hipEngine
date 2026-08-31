@@ -436,6 +436,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     strict_trajectories: dict[str, tuple[Mapping[str, Any], ...]] = {}
     strict_states: list[dict[str, Any]] = []
     strict_tasks: dict[str, dict[str, Any]] = {}
+    strict_compact_state_runs: dict[str, list[dict[str, Any]]] = {}
     prompt_manifest: list[dict[str, Any]] = []
 
     reset_memory_stats()
@@ -460,6 +461,20 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 prompt_tokens[prompt_id],
                 int(args.free_tokens),
             )
+            if candidate_spec.compact_output:
+                strict_compact_state_runs[prompt_id] = [
+                    dict(strict_tasks[prompt_id]["state"])
+                ]
+                for _ in range(1, int(args.free_runs)):
+                    repeat = _free_trajectory(
+                        strict_generator.runner,
+                        strict_generator.tokenizer,
+                        prompt_tokens[prompt_id],
+                        int(args.free_tokens),
+                    )
+                    strict_compact_state_runs[prompt_id].append(
+                        dict(repeat["state"])
+                    )
             prompt_manifest.append(
                 {
                     "id": prompt_id,
@@ -565,6 +580,24 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             candidate_task_states.append(runs)
         compact_state_gate = _state_repeat_gate(
             strict_task_states, candidate_task_states
+        )
+        strict_repeat_mismatches = []
+        for prompt_id, runs in strict_compact_state_runs.items():
+            hashes = [str(run["state_sha256"]) for run in runs]
+            if len(set(hashes)) != 1:
+                strict_repeat_mismatches.append(
+                    {"prompt_id": prompt_id, "state_sha256": hashes}
+                )
+        compact_state_gate["strict_repeat_mismatches"] = strict_repeat_mismatches
+        compact_state_gate["strict_repeat_exact"] = not strict_repeat_mismatches
+        compact_state_gate["all_strict_candidate_state_exact"] = all(
+            bool(prompt["strict_candidate_state_exact"])
+            for prompt in compact_state_gate["prompts"]
+        )
+        compact_state_gate["passed"] = bool(
+            compact_state_gate["passed"]
+            and compact_state_gate["strict_repeat_exact"]
+            and compact_state_gate["all_strict_candidate_state_exact"]
         )
     categories = {str(row["id"]): str(row["category"]) for row in prompt_rows}
     task_gate = _task_gate(strict_tasks, candidate_tasks, categories=categories)
