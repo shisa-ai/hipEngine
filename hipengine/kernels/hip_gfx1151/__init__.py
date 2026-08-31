@@ -1621,6 +1621,11 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # native-verify divergence localized there; strict small-M/shared-B WMMA
 # remains the manifest fallback.
 GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({6, 8, 9, 12})
+# Successor C6/K1 screen: one exact two-wave R12 gate/up owner replaces the
+# R8+R4 rowtile chain. R16 regresses and deliberately remains absent.
+GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS = {
+    (12, 5_120, 17_408): "dense_dual_wmma_smallm_bf16_bf16_out",
+}
 GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES = frozenset(
     {
         (5_120, 6_144),
@@ -3007,6 +3012,7 @@ __all__ = [
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS",
+    "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",

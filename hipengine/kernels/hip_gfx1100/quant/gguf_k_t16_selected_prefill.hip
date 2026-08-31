@@ -1137,6 +1137,136 @@ __global__ void gguf_q4_qmicro_expand_dual_metadata_kernel(
   *output = qmicro_unpack_record(source);
 }
 
+// Low-M operation-complete Q4T16 gate/up. Two waves own the same 16x16
+// output/row tile, one matrix per wave. Both waves preserve the parent's K16
+// WMMA sequence and independent BF16 projection boundary; the final SiLU reads
+// the two rounded shared tiles. This removes the 256-row generic body's idle
+// waves and accumulator footprint at verifier R12/R16.
+__launch_bounds__(64, 1)
+__global__ void gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int MATRICES = 2;
+  constexpr int ROWS_PER_BLOCK = 16;
+  constexpr int OUT_COLS_PER_BLOCK = T16_COLS;
+  union SharedStorage {
+    half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+    uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
+  };
+  __shared__ SharedStorage shared;
+
+  const int wave = threadIdx.x >> 5;
+  const int lane16 = threadIdx.x & 15;
+  const int half_id = (threadIdx.x & 31) >> 4;
+  const int64_t col_tile = static_cast<int64_t>(blockIdx.x);
+  const int64_t block_row_base =
+      static_cast<int64_t>(blockIdx.y) * ROWS_PER_BLOCK;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  float8_t acc = zero_float8();
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const int decode_pair = threadIdx.x >> 2;
+    const int matrix = decode_pair / (T16_COLS / 2);
+    const int tile_pair = decode_pair % (T16_COLS / 2);
+    const int tile_col0 = tile_pair * 2;
+    const uint8_t* __restrict__ tiles = matrix == 0 ? tiles_a : tiles_b;
+    const uint8_t* __restrict__ tile = k_t16_tile_ptr(
+        tiles, 0, col_tile, blk, out_tiles, blocks_per_row,
+        Q4_T16_BLOCK_BYTES);
+    const float d0 = fp16_bytes_to_float(
+        tile + Q4_T16_D_OFFSET + tile_col0 * 2);
+    const float d1 = fp16_bytes_to_float(
+        tile + Q4_T16_D_OFFSET + (tile_col0 + 1) * 2);
+    const float dmin0 = fp16_bytes_to_float(
+        tile + Q4_T16_DMIN_OFFSET + tile_col0 * 2);
+    const float dmin1 = fp16_bytes_to_float(
+        tile + Q4_T16_DMIN_OFFSET + (tile_col0 + 1) * 2);
+    const int k_segment = (threadIdx.x & 3) * 8;
+#pragma unroll
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+      const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(
+          tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + tile_col0);
+      const uint16_t min_pair = *reinterpret_cast<const uint16_t*>(
+          tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + tile_col0);
+      const float scale0 = d0 * static_cast<float>(scale_pair & 0xFFu);
+      const float scale1 = d1 * static_cast<float>(scale_pair >> 8);
+      const float min0 = dmin0 * static_cast<float>(min_pair & 0xFFu);
+      const float min1 = dmin1 * static_cast<float>(min_pair >> 8);
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        const int lane32 = k_segment + kk;
+        const uint8_t packed = tile[
+            Q4_T16_Q_OFFSET +
+            (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + tile_pair];
+        const int k = sb * Q4_SUBBLOCK + lane32;
+        shared.weights[matrix][tile_col0 * QK_K + k] =
+            static_cast<half_t>(
+                scale0 * static_cast<float>(packed & 0x0Fu) - min0);
+        shared.weights[matrix][(tile_col0 + 1) * QK_K + k] =
+            static_cast<half_t>(
+                scale1 * static_cast<float>(packed >> 4) - min1);
+      }
+    }
+    __syncthreads();
+
+    const int64_t block_k_base = blk * QK_K;
+#pragma unroll 1
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+        const int64_t input_row = block_row_base + lane16;
+        const bool valid_row = input_row < rows;
+        const half16_t a = load_compact_row_half16<uint16_t>(
+            x, valid_row ? input_row : 0, in_features,
+            block_k_base + k_off, valid_row);
+        half16_t b;
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+          b[kk] = shared.weights[wave][lane16 * QK_K + k_off + kk];
+        }
+        acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
+      }
+    }
+    __syncthreads();
+  }
+
+  const int64_t out_col = col_tile * T16_COLS + lane16;
+  if (out_col < out_features) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int local_row = half_id + j * 2;
+      const int64_t out_row = block_row_base + local_row;
+      if (out_row < rows) {
+        shared.rounded[wave][local_row * T16_COLS + lane16] =
+            float_to_bf16_bits(acc[j]);
+      }
+    }
+  }
+  __syncthreads();
+
+  constexpr int RESULT_COUNT = ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK;
+  for (int index = threadIdx.x; index < RESULT_COUNT; index += blockDim.x) {
+    const int local_row = index / OUT_COLS_PER_BLOCK;
+    const int local_col = index - local_row * OUT_COLS_PER_BLOCK;
+    const int64_t out_row = block_row_base + local_row;
+    const int64_t result_col = col_tile * T16_COLS + local_col;
+    if (out_row < rows && result_col < out_features) {
+      const float gate = bf16_bits_to_float(shared.rounded[0][index]);
+      const float up = bf16_bits_to_float(shared.rounded[1][index]);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out[out_row * out_features + result_col] =
+          float_to_bf16_bits(gate * sig * up);
+    }
+  }
+}
+
 // Operation-complete dense Q4T16 gate/up prefill. Four waves own one 32-column
 // x 256-row tile. Each wave loads each activation K16 fragment once, then
 // applies independently decoded gate and up fragments with the retained WMMA
@@ -1848,6 +1978,41 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_impl(
   return static_cast<int>(hipGetLastError());
 }
 
+int launch_q4_t16_dense_dual_wmma_smallm_silu_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles_a == nullptr || tiles_b == nullptr ||
+      out == nullptr || rows < 2 || rows > 16 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(64);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>((rows + 15) / 16));
+  hipLaunchKernelGGL(
+      gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles_a,
+      tiles_b,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
 template <bool qmicro = false, bool external_meta = false>
 int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     const uint16_t* x,
@@ -2191,6 +2356,19 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 4>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_smallm_silu_bf16(
+      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(

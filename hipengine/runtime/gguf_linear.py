@@ -2857,6 +2857,52 @@ def _target_verifier_production_q4_rowtile_scope_enabled(
         return False
 
 
+def _target_verifier_production_q4_pair_key(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> KernelKey | None:
+    """Resolve a package-qualified operation-complete verifier pair."""
+
+    if not (
+        _target_verifier_production_q4_rowtile_scope_enabled(
+            dispatch_a,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        and _target_verifier_production_q4_rowtile_scope_enabled(
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        and dispatch_a.key.quant == dispatch_b.key.quant
+    ):
+        return None
+    table = backend_package_capability(
+        dispatch_a.key.backend,
+        "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS",
+        {},
+    )
+    if not isinstance(table, Mapping):
+        raise RuntimeError("production Q4 verifier pair variants must be a mapping")
+    variant = table.get((int(rows), int(in_features), int(out_features)))
+    if variant is None:
+        return None
+    key = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        dispatch_a.key.quant,
+        str(variant),
+    )
+    _ensure_linear_kernel_registered(key)
+    return key if is_registered(key) else None
+
+
 def _q4_t16_dense_native_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -4364,6 +4410,39 @@ def launch_gguf_linear_pair_silu(
             and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
             else None
         )
+        production_q4_pair_key = _target_verifier_production_q4_pair_key(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if production_q4_pair_key is not None:
+            fn = resolve(
+                backend=production_q4_pair_key.backend,
+                layer=production_q4_pair_key.layer,
+                quant=production_q4_pair_key.quant,
+                variant=production_q4_pair_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None
+                if libraries is None
+                else libraries.get(production_q4_pair_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         production_q4_chunk_groups = (
             _rowtile8_row_chunks(rows)
             if rows > _ROWTILE_MAX_ROWS
