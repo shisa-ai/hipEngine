@@ -407,6 +407,7 @@ and task evidence.
 
 ## 11. Related documents
 
+- [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) — dated evidence review of the frozen cutoffs, calibration limits, practical impact, excluded performance, and recalibration triggers; it does not change this normative policy.
 - [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) — active
   implementation, calibration, historical-recovery, and c1/cN campaign.
 - [`RELAXED.md`](RELAXED.md) — historical relaxed-mode inventory and provenance;
