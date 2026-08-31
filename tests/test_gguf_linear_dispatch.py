@@ -5116,7 +5116,6 @@ def test_gfx1151_production_verifier_q5_true_rowtile_uses_one_launch(
     (
         (6, ((6, 0),)),
         (9, ((7, 0), (2, 7))),
-        (12, ((8, 0), (4, 8))),
     ),
 )
 def test_gfx1151_production_verifier_q4_scope_chunks_gate_up_rowtiles(
@@ -5184,6 +5183,78 @@ def test_gfx1151_production_verifier_q4_scope_chunks_gate_up_rowtiles(
         )
         for chunk_rows, row_base in chunks
     ]
+
+
+def test_gfx1151_production_verifier_q4_r12_uses_smallm_dual_wmma() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_wmma_smallm_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_rowtile_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    candidate_calls: list[tuple[tuple, dict]] = []
+    fallback_calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: candidate_calls.append((args, kwargs)),
+        replace=True,
+    )
+    register(
+        fallback_key,
+        lambda *args, **kwargs: fallback_calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with target_verifier_production_q4_rowtile_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=400,
+                rows=12,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert candidate_calls == [
+        (
+            (100, 14, 14, 400, 12, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+    assert fallback_calls == []
 
 
 def test_gfx1151_qmicro_q8x2_rowbatch_quantizes_once(

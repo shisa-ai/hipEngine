@@ -26,6 +26,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
     gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
+    gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
 )
@@ -1075,7 +1076,7 @@ def test_q4_t16_dense_unequal_dual_wmma_matches_singletons(rows: int) -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [512, 513, 1_024])
+@pytest.mark.parametrize("rows", [12, 16, 512, 513, 1_024])
 def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
@@ -1153,7 +1154,12 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
             library=build_paro_silu(load=True),
             runtime=runtime,
         )
-        gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
+        candidate = (
+            gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out
+            if rows <= 16
+            else gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out
+        )
+        candidate(
             x_dev.ptr,
             tiles_a_dev.ptr,
             tiles_b_dev.ptr,
@@ -1176,6 +1182,24 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
             free(buffer, runtime=runtime)
 
     np.testing.assert_array_equal(actual_bits, expected_bits)
+    if rows <= 16:
+        x_f32 = _bf16_bits_to_f32(x_bits)
+        gate_bits = _f32_to_bf16_bits(
+            gguf_quant_gemv(x_f32, raw_a, GGMLQuantizationType.Q4_K)
+        )
+        up_bits = _f32_to_bf16_bits(
+            gguf_quant_gemv(x_f32, raw_b, GGMLQuantizationType.Q4_K)
+        )
+        gate_f32 = _bf16_bits_to_f32(gate_bits)
+        up_f32 = _bf16_bits_to_f32(up_bits)
+        sigmoid = 1.0 / (1.0 + np.exp(-np.clip(gate_f32, -80.0, 80.0)))
+        expected_cpu = gate_f32 * sigmoid * up_f32
+        np.testing.assert_allclose(
+            _bf16_bits_to_f32(actual_bits),
+            expected_cpu,
+            rtol=0.012,
+            atol=0.5,
+        )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

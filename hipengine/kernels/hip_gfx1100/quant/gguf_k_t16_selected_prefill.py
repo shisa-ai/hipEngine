@@ -68,6 +68,9 @@ _Q4_DENSE_WMMA_SHARED_B2W4_BF16 = (
 _Q4_DENSE_DUAL_WMMA_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out"
 )
+_Q4_DENSE_DUAL_WMMA_SMALLM_SILU_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out"
+)
 _Q4_QMICRO_DENSE_DUAL_WMMA_SILU_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_"
     "bf16_bf16_out"
@@ -533,6 +536,59 @@ def gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
     lib = library or build_gguf_k_t16_selected_prefill(load=True)
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_DUAL_WMMA_SILU_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_a_ptr),
+        ctypes.c_void_p(tiles_b_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        rt.check(int(err))
+
+
+def gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact two-wave Q4T16 gate/up owner for rows 2-16."""
+
+    if not 2 <= int(rows) <= 16:
+        raise ValueError("small-M dual Q4T16 WMMA requires rows in 2..16")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    if in_features % _QK_K != 0:
+        raise ValueError(
+            f"in_features must be divisible by GGUF K-family block size {_QK_K}"
+        )
+    if out_features % 16 != 0:
+        raise ValueError("out_features must be a multiple of 16")
+    lib = library or build_gguf_k_t16_selected_prefill(load=True)
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q4_DENSE_DUAL_WMMA_SMALLM_SILU_BF16)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -1152,6 +1208,16 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
         KernelKey(
             "hip_gfx1100",
             "linear_pair_silu",
+            "gguf_q4_k_t16_v1",
+            "dense_dual_wmma_smallm_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear_pair_silu",
             "gguf_q4_k_qmicro_t16_v1",
             "dense_dual_wmma_prefill_bf16_bf16_out",
         ),
@@ -1251,6 +1317,7 @@ __all__ = [
     "build_gguf_k_t16_selected_prefill",
     "gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_expanded_meta_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out",
