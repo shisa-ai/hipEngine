@@ -326,9 +326,10 @@ fallback count is not a success metric.
   dense MTP2 physical group through eight requests; capability/frontier,
   provider, cycle-hidden, padded target, and accept owners derive their bounds
   from that package declaration. Strict remains on its existing C4/exact
-  fallback route. `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4` restores the
-  prior serial `[4,1]`/`[4,4]` production decomposition on the same build and
-  cannot widen beyond the package limit.
+  fallback route. `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4` restores both
+  the explicit server route admission cap and the prior `[4,1]`/`[4,4]`
+  production decomposition on the same build; it cannot widen beyond the
+  package limit.
 - Removal trigger: after one release window with repeated full-category C5/C8
   production D1/D24 evidence, exact control/ownership, deterministic/isolation
   and lifecycle gates, remove the environment read while preserving the package

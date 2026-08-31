@@ -5666,6 +5666,31 @@ def test_server_production_gguf_uses_backend_physical_mtp_route_limit() -> None:
     asyncio.run(run())
 
 
+def test_server_production_gguf_width_rollback_restores_c4_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    llm = FakeLLM()
+    llm.resolved_execution_profile = "production"
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS", "4")
+
+    app = create_app(
+        ServerConfig(
+            model="/models/Qwen3.6-35B-A3B-Q4_K_M.gguf",
+            backend="hip_gfx1100",
+            execution_profile="production",
+            eager_load=False,
+            max_active_requests=8,
+        ),
+        llm=llm,
+    )
+
+    assert app.state.hipengine_generation_batcher._route_max_active_requests == {
+        _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+        _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+        _SPECULATIVE_MTP_AUTO_ROUTE: 4,
+    }
+
+
 def test_generation_batcher_applies_mtp_route_group_limit() -> None:
     async def run() -> None:
         class FakeMTPLLM(FakeLLM):
