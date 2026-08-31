@@ -128,7 +128,7 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 | hipEngine explicit K3 | 31.455 | 39.820 | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
 | llama.cpp current HIP K3 | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP K3 | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
-| hipEngine prefill | 157.774 | **261.748** | **346.923** | **318.412** | 312.682 | 347.625 | **426.692** | 397.655 |
+| hipEngine prefill | 168.217 | **266.440** | **353.722** | **318.412** | 312.682 | 347.625 | **426.692** | 397.655 |
 | llama.cpp current HIP prefill | **200.946** | 239.658 | 259.036 | 281.828 | **323.043** | **366.213** | **374.207** | 424.072 |
 | llama.cpp Laurent HIP prefill | 195.803 | 231.307 | 252.893 | 274.520 | 316.169 | 358.053 | 368.136 | **424.202** |
 
@@ -148,13 +148,14 @@ versus 0.7889 for the C4 rollback (the same 1,256 accepted from 1,592 proposals)
 the peers only at C3 (1.19x Laurent) and C4 (1.09x), and is behind our own AR from
 C5 onward; K3 remains an engine-ranking diagnostic, distinct from hipEngine's
 automatic C2/K2 product key. Prefill uses the peer one-token protocol (10 prompts x C1-C8, content-exact).
-The current C1-C3 packet is **157.774/261.748/346.923 prompt tok/s**. Atomic
-ready-cohort admission raises C2/C3 by **46.6%/55.1%** against its same-build
-rollback, forms full native groups in 10/10 cells at each width, and leads the
-strongest peer by **1.092x/1.339x**. C1 is unchanged within controlled drift:
-the candidate and an untouched K0 control both move about -0.68%, while
-non-native residual wall is flat. C4-C8 remain sourced from the original grouped
-packet and are non-monotone (C4 > C5, C7 > C8), reported as measured. An independent
+The current C1-C3 packet is **168.217/266.440/353.722 prompt tok/s**. Atomic
+ready-cohort admission still forms full native groups in 10/10 cells at C2/C3.
+The later exact planar-Q6 FFN-down retile improves its two-pair same-build
+rollback by **6.70%/2.45%/2.24%** at C1/C2/C3, with every category and heldout
+scope positive, and moves the canonical row by **+6.62%/+1.79%/+1.96%**. C2/C3
+lead the strongest peer by **1.112x/1.366x**; C1 narrows to **-16.29%** and
+remains open. C4-C8 remain sourced from the original grouped packet and are
+non-monotone (C4 > C5, C7 > C8), reported as measured. An independent
 same-protocol repeat pair on the current tree (two 24-token explicit-K3 runs) reproduces the
 AR row to within **4.09%** and the then-current K3 C1-C7 cells to within **1.24%**, with run-to-run spread of
 **0.66%-5.29%** on AR and **0.01%-1.06%** on K3; the verdicts against the carried-forward
@@ -174,8 +175,8 @@ above that are reads. [`automatic route gating`](results/2026-08-30-w7900-q4km-a
 [`prefill row`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row.json) ·
 [`prefill row, grouped`](results/2026-08-30-w7900-q4km-c1c8-hipengine-prefill-row-grouped.json) ·
 [`grouped-prefill promotion`](results/2026-08-30-w7900-q4km-c1c8-hipengine-grouped-prefill-promotion.json) ·
-[`admission/decode decomposition, post-grouping (current)`](results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json)
-·
+[`admission/decode decomposition, post-grouping`](results/2026-08-30-w7900-q4km-c1c8-admission-decomposition-post-grouping.json) ·
+[`exact planar-Q6 prefill retention (current C1-C3)`](results/2026-08-31-w7900-q4km-planar-q6-prefill-retained.json) ·
 [`admission/decode decomposition, pre-grouping (superseded AR arm)`](results/2026-08-30-w7900-q4km-c1c8-submodule-decomposition.json) ·
 [`single-wave exact route, counterbalanced speed confirmed`](results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json) ·
 [`single-wave shape extension, band corrected`](results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json) ·

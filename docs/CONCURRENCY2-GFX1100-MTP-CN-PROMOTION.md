@@ -1182,6 +1182,33 @@ Final gate at `34efd0614` plus this documentation tree:
 P13 recovery is closed. Its parity success criteria are not weakened: the
 cross-engine objective remains open at the exact deficits below.
 
+#### P13-G — Post-recovery C1 prefill follow-up (#31/#32 complete)
+
+- [x] Profile all ten C1 category+heldout prompts after P13 with cached JIT and
+      operation-complete `rocprofv3` boundaries.
+- [x] Retain one content-agnostic exact owner only after strict fallback,
+      measured crossover, expected-symbol tracing, counterbalanced full-suite
+      C1-C3 controls, exact trajectories, and clean drain.
+
+The one-wave rollback profile averages **255.792 ms** operation span,
+**242.517 ms** kernel sum, and 1,322.4 launches/prompt. Fused Q4 gate/up is the
+largest family at 77.258 ms; planar-Q6 is the best isolated exact target at
+**60.704 ms / 64 launches**. The retained gfx1100 package policy applies only
+to planar-Q6 FFN-down `(K,N)=(17408,5120)`: row64 owns rows33-128 and the
+existing shared256 sibling owns rows129-511; all misses and the non-WMMA
+physical verifier keep their prior owners, and one-wave remains separately
+registered.
+
+Two tracked-clean counterbalanced full-suite pairs improve mean AR prompt
+throughput **157.659→168.217 (+6.70%)** at C1,
+**260.070→266.440 (+2.45%)** at C2, and **345.956→353.722 (+2.24%)** at C3.
+Every category and heldout scope improves in both exact arms; all 240 paired
+rows and both 120-row repeat sets match, all C2/C3 waves remain full native
+groups, and all four packets drain. The expected row64 symbol executes 32 times
+per public C1 operation. The canonical C1 deficit narrows from **-21.48% to
+-16.29%**; fused Q4 gate/up is a separate future optimization unit. Evidence:
+[`planar-Q6 prefill retention`](../benchmarks/results/2026-08-31-w7900-q4km-planar-q6-prefill-retained.json).
+
 ### 12.5 P13 stop rules
 
 - Do not use pre-grouping rates or acceptance to prioritize current work.
@@ -1204,16 +1231,19 @@ artifacts remain linked from `benchmarks/README.md`.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | True AR | 21.999 / 21.720 current (+1.28%) | 31.916 / 35.440 current (**-9.94%**) | 45.309 / 30.787 current (+47.17%) | 54.151 / 27.760 current (+95.07%) | 61.881 / 36.473 Laurent (+69.66%) | 71.226 / 45.826 Laurent (+55.43%) | 74.903 / 52.537 Laurent (+42.57%) | 78.667 / 59.348 Laurent (+32.55%) |
 | Explicit K3 diagnostic | 31.455 / 32.733 Laurent (**-3.90%**) | 39.820 / 41.042 current (**-2.98%**) | 54.590 / 45.947 Laurent (+18.81%) | 55.780 / 51.054 Laurent (+9.26%) | 57.345 / 61.013 Laurent (**-6.01%**) | 66.042 / 74.628 Laurent (**-11.50%**) | 62.719 / 78.281 Laurent (**-19.88%**) | 61.785 / 101.072 Laurent (**-38.87%**) |
-| Prefill | 157.774 / 200.946 current (**-21.48%**) | 261.748 / 239.658 current (+9.22%) | 346.923 / 259.036 current (+33.93%) | 318.412 / 281.828 current (+12.98%) | 312.682 / 323.043 current (**-3.21%**) | 347.625 / 366.213 current (**-5.08%**) | 426.692 / 374.207 current (+14.03%) | 397.655 / 424.202 Laurent (**-6.26%**) |
+| Prefill | 168.217 / 200.946 current (**-16.29%**) | 266.440 / 239.658 current (+11.17%) | 353.722 / 259.036 current (+36.55%) | 318.412 / 281.828 current (+12.98%) | 312.682 / 323.043 current (**-3.21%**) | 347.625 / 366.213 current (**-5.08%**) | 426.692 / 374.207 current (+14.03%) | 397.655 / 424.202 Laurent (**-6.26%**) |
 
 Completed recovery work has no hidden “remaining #22/#23/#11/#12” tail:
 
 - #22/#29 measured the real server prefill path and fixed default-AR admission;
-  C2/C3 now beat the peer. C1 remains **89.9% complete native-prefill call** and
-  is the only material prefill deficit.
-- #25/#11 repaired T16 evidence and retained the exact row64 down-projection
-  owner. It improved C1 in both arms, but C1 remains **-21.48%**, so future work
-  starts from a fresh complete-prefill profile rather than another guessed tile.
+  C2/C3 beat the peer and C1 remained complete-prefill shaped. Post-recovery
+  #31/#32 then traced the complete suite and retained the exact planar-Q6
+  sibling, narrowing C1 from **-21.48% to -16.29%** while preserving C2/C3
+  full-group gains.
+- #25/#11 repaired T16 evidence and retained the exact Q4 row64 down-projection
+  owner. #31/#32 independently measured and retained the planar-Q6 row64/
+  shared256 composition; the remaining largest exact family is fused Q4
+  gate/up, not another unprofiled down-projection tile.
 - #23/#12 rejected acceptance and verifier small-M as the C5-C8 cause. #30 then
   removed the serial physical ceiling across C5-C8. The remaining K3 deficit is
   no longer attributable to split groups; C6/C7/C8 still trail by
