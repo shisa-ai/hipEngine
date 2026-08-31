@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-08-31**
+Last updated: **2026-09-01**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -105,9 +105,11 @@ for C1-C8, or 1.418x/1.572x/1.279x/1.177x/0.782x/0.813x/0.753x/0.751x own AR;
 80/80 generated-ID/route/budget cells pass. The earlier M3/M4 15.646/35.618
 headlines are six-non-heldout arithmetic means, not this survey metric. C2-C8
 remain automatic K0 pending width-specific production gates; width-4 streaming
-is an explicit T3 diagnostic because acceptance changed. A full-width K1 screen
-finds follow-ups at C6 **35.383 (+7.85% vs split K3)** and C8 **39.260
-(+10.83%)**, but both remain below own AR and are not promoted.
+is an explicit T3 diagnostic because acceptance changed. The retained direct
+resident-state dataflow lifts clean same-process explicit K1 to C6 **35.966**
+and C8 **42.594 tok/s** (1.43%/1.80% over its exact control), or
+0.8988x/0.8990x own AR. Both remain unpromoted below AR.
+[`K1 state dataflow`](results/2026-09-01-gfx1151-qwen38-c6c8-direct-verifier-state-retained.json) ·
 [`Reviewed matrix`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
 [`Scaling review`](../docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md)
 
@@ -383,6 +385,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 24.042 | **29.564** | **1.2297x** | Exact prompt streaming, proposal-head reuse, and standard-Q6/Q5 true-R12 improve MTP 38.27% from E0; exact 471/597 acceptance and every category positive. This beats the frozen external row by 7.45%; automatic C3 remains K0 pending complete production/serving gates. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C4 K3 D24, explicit diagnostic | 30.120 | **27.450** | **0.9114x** | Exact Q6 R8+R8 improves MTP 34.66%, preserves 628/796 acceptance, and beats the frozen external row by 1.61%. Overall and three categories remain below AR, so automatic C4 stays K0. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C6/C8 K1 D24, explicit diagnostic | 40.014 / 47.380 | **35.966 / 42.594** | **0.8988x / 0.8990x** | Direct resident verifier roots remove 9,216 redundant C8 state imports; same-process MTP improves 1.43%/1.80%, all 40 control/candidate cells pass, and every category improves. Automatic C6/C8 stays K0 below AR. [`artifact`](results/2026-09-01-gfx1151-qwen38-c6c8-direct-verifier-state-retained.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |
