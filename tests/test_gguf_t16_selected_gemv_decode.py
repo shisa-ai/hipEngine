@@ -10,7 +10,6 @@ import pytest
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.specdec2_scope import (
     physical_exact_rowtiles_session,
-    q5_t16_physical_mixed_rowtiles_session,
     q5_t16_physical_rowtile_session,
 )
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
@@ -1284,57 +1283,6 @@ def test_q5_t16_dense_decode_uses_request_scoped_physical_rowtile(
         selected_t16_mod._Q5_DENSE_ROWTILE_BF16,
         selected_t16_mod._Q5_DENSE_DIRECT_BF16,
     ]
-
-
-def test_q5_t16_mixed_r8_chunks_are_candidate_and_shape_bounded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[tuple[int, int, int]] = []
-    monkeypatch.setattr(
-        selected_t16_mod,
-        "_launch_dense_q5_t16",
-        lambda _symbol, x, _tiles, out, rows, *_args, **_kwargs: calls.append(
-            (int(rows), int(x), int(out))
-        ),
-    )
-    launch = gguf_q5_k_t16_gemv_decode_bf16_bf16_out
-    x_ptr = 0x100_000
-    out_ptr = 0x200_000
-
-    with q5_t16_physical_rowtile_session(True):
-        launch(x_ptr, 2, out_ptr, 24, 6_144, 5_120)
-        assert [call[0] for call in calls] == [6, 6, 6, 6]
-        calls.clear()
-
-        with q5_t16_physical_mixed_rowtiles_session(True):
-            launch(x_ptr, 2, out_ptr, 18, 6_144, 5_120)
-            assert [call[0] for call in calls] == [6, 6, 6]
-            calls.clear()
-
-            launch(x_ptr, 2, out_ptr, 24, 6_144, 5_120)
-            assert [call[0] for call in calls] == [8, 8, 8]
-            assert [call[1] for call in calls] == [
-                x_ptr,
-                x_ptr + 8 * 6_144 * 2,
-                x_ptr + 16 * 6_144 * 2,
-            ]
-            assert [call[2] for call in calls] == [
-                out_ptr,
-                out_ptr + 8 * 5_120 * 2,
-                out_ptr + 16 * 5_120 * 2,
-            ]
-            calls.clear()
-
-            launch(x_ptr, 2, out_ptr, 30, 6_144, 5_120)
-            assert [call[0] for call in calls] == [8, 8, 8, 6]
-            calls.clear()
-
-            launch(x_ptr, 2, out_ptr, 36, 6_144, 5_120)
-            assert [call[0] for call in calls] == [8, 8, 8, 6, 6]
-            calls.clear()
-
-            launch(x_ptr, 2, out_ptr, 24, 512, 256)
-            assert [call[0] for call in calls] == [6, 6, 6, 6]
 
 
 @pytest.mark.parametrize("rows", [1, 2, 3, 4, 5, 6, 7, 8])

@@ -81,7 +81,6 @@ from hipengine.core.specdec2_scope import (
     moe_physical_c2_pairreuse_session,
     physical_exact_rowtiles_session,
     q4_t16_physical_extra_rowtiles_session,
-    q5_t16_physical_mixed_rowtiles_session,
     q5_t16_physical_rowtile_session,
     q6_t16_physical_mixed_rowtiles_session,
     q6_t16_physical_rowtile_session,
@@ -98,9 +97,6 @@ _NGRAM_MOD_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
 _NGRAM_MOD_N_MATCH_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH"
 _PHYSICAL_MAX_REQUESTS_ENV = "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS"
 _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
-_Q5_MIXED_TARGET_ROWTILES_ENV = (
-    "HIPENGINE_GGUF_SPECDEC2_Q5_MIXED_TARGET_ROWTILES"
-)
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
 )
@@ -366,15 +362,6 @@ class Qwen35GGUFMTP2Adapter:
                 "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
                 (),
             )
-        )
-        self.production_physical_q5_mixed_rowtiles = bool(
-            self.production_physical_q5_rowtile
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_MIXED_ROWTILE_CHUNKS",
-                {},
-            )
-            and _env_enabled(_Q5_MIXED_TARGET_ROWTILES_ENV)
         )
         self.production_physical_q6_rowtile = bool(
             str(profile) == "production"
@@ -1132,8 +1119,6 @@ class Qwen35GGUFMTP2Adapter:
                 f"{int(getattr(self, 'production_physical_extra_rowtiles', False))}:"
                 "q5-rowtile"
                 f"{int(getattr(self, 'production_physical_q5_rowtile', False))}:"
-                "q5-mixed-rowtiles"
-                f"{int(getattr(self, 'production_physical_q5_mixed_rowtiles', False))}:"
                 "q6-rowtile"
                 f"{int(getattr(self, 'production_physical_q6_rowtile', False))}:"
                 "q6-mixed-rowtiles"
@@ -3063,15 +3048,6 @@ class Qwen35GGUFMTP2Adapter:
             ),
             q5_t16_physical_rowtile_session(
                 bool(getattr(self, "production_physical_q5_rowtile", False))
-            ),
-            q5_t16_physical_mixed_rowtiles_session(
-                bool(
-                    getattr(
-                        self,
-                        "production_physical_q5_mixed_rowtiles",
-                        False,
-                    )
-                )
             ),
             q6_t16_physical_rowtile_session(
                 bool(getattr(self, "production_physical_q6_rowtile", False))
