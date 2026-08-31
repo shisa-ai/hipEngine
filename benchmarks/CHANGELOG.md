@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P4 prepared strict GDN — rejected] Precomputing strict-order normalized Q/K, value, beta, and decay preserves rows508 output/recurrent-state bits exactly, but real 16-head/128-dim wall regresses **12.716→12.757 ms (0.9967x)**. Prepared traffic offsets removed compute; candidate code is removed. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 attention-gate geometry — exhausted] At rows508/K2560/N6144 every registered exact geometry is bit-exact, but incumbent c8r4 is fastest at **8.04 ms**, versus c4r8/c16r2/c8r8/c16r4/c32r1 **10.59/9.69/12.46/18.06/37.92 ms**. Retain c8r4; qkv+gate now requires true F32/MMQ ownership rather than another tile sweep. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 GR down+scaled-SiLU — rejected] The exact composite preserves coltile8/rowbatch4 reduction/output bits and improves rows2 **1.118x**, but regresses the binding rows508 operation window **1.655→1.667 ms (0.9926x)**. Candidate code is removed before whole-model timing. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
