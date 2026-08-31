@@ -282,11 +282,36 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
 )
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS = frozenset({6})
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS = frozenset({6})
-# Default-off exact-row screen for C2/K3. R8 eliminates the four inactive rows
-# required by the rows6-multiple fallback; every Q4/Q5/Q6 actual-weight leaf is
-# BF16-bit exact to the active rows of R12 and 1.31x-1.84x faster. The adapter
-# enables this capability only inside its request-local candidate scope.
+# Exact C2/K3 R8 is the retained production default. It eliminates the four
+# inactive rows required by the rows6-multiple fallback; every Q4/Q5/Q6
+# actual-weight leaf is BF16-bit exact to the active rows of R12 and
+# 1.31x-1.84x faster. The adapter enables this capability only inside its
+# request-local production scope and retains explicit padded-R12 rollback.
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS = frozenset({8})
+# Default-off Q4 launch-composition screen for larger physical target groups.
+# Actual-weight counterbalanced leaves select only total rows where the mixed
+# R8/R6 sequence beats repeated R6 on every admitted Q4 role. R18 remains R6;
+# R36 excludes full-attention Q after two neutral/negative screens.
+GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_CHUNKS = {
+    24: (8, 8, 8),
+    30: (8, 8, 8, 6),
+    36: (8, 8, 8, 6, 6),
+}
+_GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES = frozenset(
+    {
+        (5_120, 1_024),
+        (5_120, 6_144),
+        (5_120, 12_288),
+        (5_120, 17_408),
+        (6_144, 5_120),
+    }
+)
+GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES_BY_ROWS = {
+    24: _GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES,
+    30: _GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES,
+    36: _GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES
+    - {(5_120, 12_288)},
+}
 # The production dense adapter owns one physical request group through C8. The
 # adapter derives frontier/accept workspaces from this package capability and
 # retains an environment rollback to the previous C4 ceiling. Strict remains
@@ -966,6 +991,8 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
+    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_CHUNKS",
+    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES_BY_ROWS",
     "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
