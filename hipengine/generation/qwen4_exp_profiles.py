@@ -61,6 +61,10 @@ _GR_UP_SIGMOID_MEAN_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json"
 )
+_QSA_DENSE_FIXED256_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json"
+)
 
 
 def _selection(
@@ -84,6 +88,14 @@ def _selection(
 
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "paged_attn_decode",
+            "qwen4exp_multirow_dense_qsa",
+            "bf16_context_batch_paged_c1_exact_spans",
+            "bf16_context_batch_spans",
+            "w4_paro",
+            evidence=_QSA_DENSE_FIXED256_EVIDENCE,
+        ),
         _selection(
             "linear+gr_gated_mean",
             "qwen4exp_rows_gt256_gr_up",
@@ -148,6 +160,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "paged_attn_decode",
+            "qwen4exp_multirow_dense_qsa",
+            "bf16_context_batch_paged_c1_exact_spans",
+            "bf16_context_batch_paged_c1_exact_spans",
+            "w4_paro",
+            evidence=_QSA_DENSE_FIXED256_EVIDENCE,
+        ),
         _selection(
             "linear+gr_gated_mean",
             "qwen4exp_rows_gt256_gr_up",
@@ -230,7 +250,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
-        "HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256": "0",
+        "HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256": "1",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",

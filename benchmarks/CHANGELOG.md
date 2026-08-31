@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P4 QSA dense fixed256 — retained] The exact precomputed-offset/vector2 owner cuts the real dense primitive **6.846→2.485 ms (2.755x)**, improves p508 **91.345→92.391 tok/s (1.01144x, 95% CI 1.00828–1.01461)** and code-p1024 **89.150→90.634 tok/s (1.01665x, 95% CI 1.01423–1.01907)**. The T0 gate passes **450/450 KL=0**, **18/18 exact state/tasks**, lifecycle, and the expected gfx1151 trace. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P4 prepared strict GDN — rejected] Precomputing strict-order normalized Q/K, value, beta, and decay preserves rows508 output/recurrent-state bits exactly, but real 16-head/128-dim wall regresses **12.716→12.757 ms (0.9967x)**. Prepared traffic offsets removed compute; candidate code is removed. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 attention-gate geometry — exhausted] At rows508/K2560/N6144 every registered exact geometry is bit-exact, but incumbent c8r4 is fastest at **8.04 ms**, versus c4r8/c16r2/c8r8/c16r4/c32r1 **10.59/9.69/12.46/18.06/37.92 ms**. Retain c8r4; qkv+gate now requires true F32/MMQ ownership rather than another tile sweep. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.

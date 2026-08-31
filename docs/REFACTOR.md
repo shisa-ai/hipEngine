@@ -59,9 +59,10 @@ should be removed or collapsed.
 
 - `HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256=1` selects the registered exact
   fixed256/precomputed-offset/vector2 QSA dense attention owner for multirow
-  non-flash layers. Strict and production bind it off during admission; generic
-  batch attention remains fallback. Remove the flag after the complete T0
-  p508/p1024/exact/state/trace verdict.
+  non-flash layers. Strict and production now bind it on after p508/p1024,
+  complete T0 exact/state/task/lifecycle, and trace admission; generic batch
+  attention remains fallback. Remove the flag after one clean promoted-default
+  versus `=0` confirmation.
 
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
