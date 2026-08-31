@@ -252,6 +252,38 @@ def test_qwen4_exp_gdn_state_layout_roundtrip_is_exact_at_actual_shape() -> None
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_qwen4_exp_gdn_transposed_decode_matches_strict_envelope() -> None:
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
+        qwen4_exp_gdn_decode_f32, qwen4_exp_gdn_decode_transposed_f32,
+        qwen4_exp_gdn_prefill_prepare_f32, qwen4_exp_gdn_prefill_sigmoid_gate_f32,
+        qwen4_exp_gdn_state_transpose_inplace_f32,
+    )
+    runtime=get_hip_runtime(); rng=np.random.default_rng(4052); kh,vh,d=16,48,128
+    qkv=2*kh*d+vh*d; core=vh*d
+    conv=rng.normal(0,.05,qkv).astype(np.float32); gate=rng.normal(0,.05,core).astype(np.float32)
+    alpha=rng.normal(0,.05,vh).astype(np.float32); beta=rng.normal(0,.05,vh).astype(np.float32)
+    dt=rng.normal(0,.05,vh).astype(np.float32); a=-np.abs(rng.normal(.2,.05,vh)).astype(np.float32)
+    norm=rng.normal(1,.05,d).astype(np.float32); state=rng.normal(0,.02,(vh,d,d)).astype(np.float32)
+    allocations=[]
+    try:
+        ds=[_upload(x,runtime,allocations) for x in (conv,gate,alpha,beta,dt,a,norm,state,state)]
+        dc, dg, da, db, ddt, d_a, dn, strict_state, trans_state=ds
+        strict_out=_alloc((core,),np.float32,runtime,allocations); trans_out=_alloc((core,),np.float32,runtime,allocations)
+        prepared=_alloc((qkv,),np.float32,runtime,allocations); prep_beta=_alloc((vh,),np.float32,runtime,allocations); prep_decay=_alloc((vh,),np.float32,runtime,allocations); trans_core=_alloc((core,),np.float32,runtime,allocations)
+        qwen4_exp_gdn_decode_f32(dc.ptr,dg.ptr,da.ptr,db.ptr,ddt.ptr,d_a.ptr,dn.ptr,strict_state.ptr,strict_out.ptr,kh,vh,d,d,runtime=runtime)
+        qwen4_exp_gdn_prefill_prepare_f32(dc.ptr,da.ptr,db.ptr,ddt.ptr,d_a.ptr,prepared.ptr,prepared.ptr+kh*d*4,prepared.ptr+2*kh*d*4,prep_beta.ptr,prep_decay.ptr,1,kh,vh,d,d,runtime=runtime)
+        qwen4_exp_gdn_state_transpose_inplace_f32(trans_state.ptr,vh,d,runtime=runtime)
+        qwen4_exp_gdn_decode_transposed_f32(prepared.ptr,prepared.ptr+kh*d*4,prepared.ptr+2*kh*d*4,prep_beta.ptr,prep_decay.ptr,trans_state.ptr,trans_core.ptr,kh,vh,d,d,runtime=runtime)
+        qwen4_exp_gdn_prefill_sigmoid_gate_f32(trans_core.ptr,dg.ptr,dn.ptr,1,vh,d,runtime=runtime)
+        runtime.memcpy(trans_out.ptr,trans_core.ptr,trans_out.nbytes,3); runtime.device_synchronize()
+        strict=_download(strict_out,(core,),np.float32,runtime); trans=_download(trans_out,(core,),np.float32,runtime)
+    finally:
+        for allocation in reversed(allocations): free(allocation,runtime=runtime)
+    np.testing.assert_allclose(trans,strict,rtol=5e-4,atol=5e-5)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_gdn_prefill_is_exact_to_serial_decode() -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
