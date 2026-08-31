@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P7 GDN t128 — rejected] Skipping the t256 zero-only reduction half remains exact but is neutral/slower at production geometry: **0.06633→0.06754 ms (0.982x)**. Candidate is removed; P7 requires persistent transposed-state dataflow. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-t128-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P0 PLE cache modes — diagnostic] File-scoped remap+DONTNEED separates code-p512 **91.676 warm vs 56.214 cold pp/s (0.613x)**. Advice covers only the 28.8-GB PLE tensor range before each cold request; outputs are deterministic/equal and teardown is zero. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-ple-cache-modes.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P0 canonical chunk sweep — diagnostic] The deterministic 256/512/1024/2048 ladder finds chunk1024 **+2.55%/+2.25%** at p1024/p4096 but **-2.05%** weighted at p512 versus chunk512 and +720 MiB peak; chunk2048 loses to1024. The incumbent p512 arm is noisy, so default512 is retained without a promotion claim. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-canonical-chunk-sweep.json`.
