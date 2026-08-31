@@ -757,7 +757,7 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       and lifecycle exactly. The first all-row tail-only fusion lost at rows508;
       a replacement rows>256 Q8-up composite keeps each output's coltile8
       reduction but groups two hidden columns across four branches and emits
-      sigmoid gates plus branch mean. It improves p508 91.219→91.807 tok/s and
+      sigmoid gates plus branch mean. Clean p508 improves 91.158→91.600 tok/s and
       code-p1024 88.754→89.239 tok/s; the complete 450-row/state/task gate is
       exact. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`
