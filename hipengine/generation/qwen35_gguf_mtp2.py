@@ -81,7 +81,6 @@ from hipengine.core.specdec2_scope import (
     moe_physical_c2_pairreuse_session,
     physical_exact_rowtiles_session,
     q4_t16_physical_extra_rowtiles_session,
-    q4_t16_physical_mixed_rowtiles_session,
     q5_t16_physical_rowtile_session,
     q6_t16_physical_rowtile_session,
 )
@@ -97,9 +96,6 @@ _NGRAM_MOD_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
 _NGRAM_MOD_N_MATCH_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH"
 _PHYSICAL_MAX_REQUESTS_ENV = "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS"
 _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
-_Q4_MIXED_TARGET_ROWTILES_ENV = (
-    "HIPENGINE_GGUF_SPECDEC2_Q4_MIXED_TARGET_ROWTILES"
-)
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -354,15 +350,6 @@ class Qwen35GGUFMTP2Adapter:
                 "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
                 (),
             )
-        )
-        self.production_physical_q4_mixed_rowtiles = bool(
-            str(profile) == "production"
-            and backend_package_capability(
-                str(self.generator.backend),
-                "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_CHUNKS",
-                {},
-            )
-            and _env_enabled(_Q4_MIXED_TARGET_ROWTILES_ENV)
         )
         self.production_physical_q5_rowtile = bool(
             str(profile) == "production"
@@ -1117,8 +1104,6 @@ class Qwen35GGUFMTP2Adapter:
                 f"{int(getattr(self, 'physical_prompt_streaming', False))}:"
                 "extra-rowtiles"
                 f"{int(getattr(self, 'production_physical_extra_rowtiles', False))}:"
-                "q4-mixed-rowtiles"
-                f"{int(getattr(self, 'production_physical_q4_mixed_rowtiles', False))}:"
                 "q5-rowtile"
                 f"{int(getattr(self, 'production_physical_q5_rowtile', False))}:"
                 "q6-rowtile"
@@ -3042,15 +3027,6 @@ class Qwen35GGUFMTP2Adapter:
         with (
             q4_t16_physical_extra_rowtiles_session(
                 bool(getattr(self, "production_physical_extra_rowtiles", False))
-            ),
-            q4_t16_physical_mixed_rowtiles_session(
-                bool(
-                    getattr(
-                        self,
-                        "production_physical_q4_mixed_rowtiles",
-                        False,
-                    )
-                )
             ),
             physical_exact_rowtiles_session(
                 bool(getattr(self, "production_exact_target_row_counts", ()))

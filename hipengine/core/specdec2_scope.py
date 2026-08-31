@@ -11,10 +11,6 @@ _q4_t16_physical_extra_rowtiles: ContextVar[bool] = ContextVar(
     "q4_t16_physical_extra_rowtiles",
     default=False,
 )
-_q4_t16_physical_mixed_rowtiles: ContextVar[bool] = ContextVar(
-    "q4_t16_physical_mixed_rowtiles",
-    default=False,
-)
 _q5_t16_physical_rowtile: ContextVar[bool] = ContextVar(
     "q5_t16_physical_rowtile",
     default=False,
@@ -56,23 +52,6 @@ def q4_t16_physical_extra_rowtiles_enabled() -> bool:
     """Return whether the current target selected its production extra rowtiles."""
 
     return bool(_q4_t16_physical_extra_rowtiles.get())
-
-
-@contextlib.contextmanager
-def q4_t16_physical_mixed_rowtiles_session(enabled: bool) -> Iterator[None]:
-    """Select measured mixed R8/R6 chunks for one physical Q4 target."""
-
-    token = _q4_t16_physical_mixed_rowtiles.set(bool(enabled))
-    try:
-        yield
-    finally:
-        _q4_t16_physical_mixed_rowtiles.reset(token)
-
-
-def q4_t16_physical_mixed_rowtiles_enabled() -> bool:
-    """Return whether this target selected mixed Q4 rowtile chunks."""
-
-    return bool(_q4_t16_physical_mixed_rowtiles.get())
 
 
 @contextlib.contextmanager
@@ -188,8 +167,6 @@ __all__ = [
     "physical_exact_rowtiles_session",
     "q4_t16_physical_extra_rowtiles_enabled",
     "q4_t16_physical_extra_rowtiles_session",
-    "q4_t16_physical_mixed_rowtiles_enabled",
-    "q4_t16_physical_mixed_rowtiles_session",
     "q5_t16_physical_rowtile_enabled",
     "q5_t16_physical_rowtile_session",
     "q6_t16_physical_rowtile_enabled",

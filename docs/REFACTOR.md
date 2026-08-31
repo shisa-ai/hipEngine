@@ -322,16 +322,6 @@ fallback count is not a success metric.
 - Removal trigger: after one release checkpoint, remove the exact-R8 env flag
   and fold R8 into the profile-resolved physical-target variant manifest while
   retaining the padded rows6 decomposition as the registered strict fallback.
-  `HIPENGINE_GGUF_SPECDEC2_Q4_MIXED_TARGET_ROWTILES=1` is a separate
-  default-off launch-composition screen for Q4 only: R24 uses `8+8+8`, R30
-  uses `8+8+8+6`, and R36 uses `8+8+8+6+6` except full-attention Q. R18 and
-  every unmeasured shape retain repeated R6. Two counterbalanced actual-weight
-  screens are exact in 40/40 cells; all admitted R24/R30 cells and the bounded
-  R36 shapes win, while R18 and R36 full-Q losses are excluded.
-- Removal trigger: reject and remove the mixed-Q4 flag/scope/maps if the full
-  C5-C8 gate is not exact and non-regressive. If retained, flip the default and
-  keep `0` through one release checkpoint before folding the partitions into
-  the profile manifest.
 - Removal trigger: after one release window with the exact automatic C2 key and
   rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding, and
   these boolean scopes into a general profile-resolved physical-target variant

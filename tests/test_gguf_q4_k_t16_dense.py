@@ -55,7 +55,6 @@ from hipengine.quant.gguf_q4_k import (
 from hipengine.core.specdec2_scope import (
     physical_exact_rowtiles_session,
     q4_t16_physical_extra_rowtiles_session,
-    q4_t16_physical_mixed_rowtiles_session,
 )
 from hipengine.runtime.gguf_linear import (
     clear_gguf_linear_dispatch_cache,
@@ -334,60 +333,6 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     assert row64 is shared_b_row64_fn
     assert default is selector
-
-
-def test_gfx1100_mixed_r8_q4_chunks_are_candidate_and_shape_bounded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    selector = (
-        t16_prefill.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
-    )
-    calls: list[tuple[int, int, int]] = []
-    monkeypatch.setattr(
-        t16_prefill,
-        "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
-        lambda x, _tiles, out, rows, *_args, **_kwargs: calls.append(
-            (int(rows), int(x), int(out))
-        ),
-    )
-
-    x_ptr = 0x100_000
-    out_ptr = 0x200_000
-    with q4_t16_physical_extra_rowtiles_session(True):
-        selector(x_ptr, 2, out_ptr, 24, 5_120, 6_144)
-        assert [call[0] for call in calls] == [6, 6, 6, 6]
-        calls.clear()
-
-        with q4_t16_physical_mixed_rowtiles_session(True):
-            selector(x_ptr, 2, out_ptr, 18, 5_120, 6_144)
-            assert [call[0] for call in calls] == [6, 6, 6]
-            calls.clear()
-
-            selector(x_ptr, 2, out_ptr, 24, 5_120, 6_144)
-            assert [call[0] for call in calls] == [8, 8, 8]
-            assert [call[1] for call in calls] == [
-                x_ptr,
-                x_ptr + 8 * 5_120 * 2,
-                x_ptr + 16 * 5_120 * 2,
-            ]
-            assert [call[2] for call in calls] == [
-                out_ptr,
-                out_ptr + 8 * 6_144 * 2,
-                out_ptr + 16 * 6_144 * 2,
-            ]
-            calls.clear()
-
-            selector(x_ptr, 2, out_ptr, 30, 5_120, 6_144)
-            assert [call[0] for call in calls] == [8, 8, 8, 6]
-            calls.clear()
-
-            selector(x_ptr, 2, out_ptr, 36, 5_120, 6_144)
-            assert [call[0] for call in calls] == [8, 8, 8, 6, 6]
-            calls.clear()
-
-            # Full-attention Q was neutral/negative in both R36 screens.
-            selector(x_ptr, 2, out_ptr, 36, 5_120, 12_288)
-            assert [call[0] for call in calls] == [6, 6, 6, 6, 6, 6]
 
 
 def test_gfx1100_unpadded_r8_q4_rowtile_is_candidate_scoped(
