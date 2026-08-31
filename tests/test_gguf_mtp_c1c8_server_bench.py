@@ -17,6 +17,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _parse_widths,
     _render_messages,
     _resident_observability,
+    _select_diagnostic_prompts,
     build_parser,
     summarize,
     summarize_acceptance,
@@ -45,6 +46,21 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     assert strict.execution_profile == "strict"
     assert normal_owner.widths == (2,)
     assert normal_owner.resident_capacity == 4
+    assert default.diagnostic_prompt_count == 0
+
+
+def test_mtp_c1c8_diagnostic_prompt_subset_is_fail_closed() -> None:
+    prompts = tuple({"id": str(index)} for index in range(10))
+    assert _select_diagnostic_prompts(
+        prompts, count=1, generation2_diagnostic=True
+    ) == ({"id": "0"},)
+    assert _select_diagnostic_prompts(
+        prompts, count=0, generation2_diagnostic=False
+    ) == prompts
+    with pytest.raises(ValueError, match="generation2-diagnostic"):
+        _select_diagnostic_prompts(prompts, count=1, generation2_diagnostic=False)
+    with pytest.raises(ValueError, match="between 1 and 10"):
+        _select_diagnostic_prompts(prompts, count=11, generation2_diagnostic=True)
 
 
 def test_mtp_c1c8_parses_complete_widths() -> None:
