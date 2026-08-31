@@ -588,8 +588,13 @@ matrix before implementation claims parity.
       `amd_iommu`, power/clock samples, free/available/swap, and active GPU
       processes in the canonical screening artifact. Repeat the capture for the
       eventual closure artifact.
-- [ ] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
-      or compare them as one workload.
+- [x] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
+      or compare them as one workload. Cold mode closes/remaps and applies
+      DONTNEED only to the 28.8-GB PLE tensor range before every request; it
+      never uses global `drop_caches`. Matched code-p512 is **91.676 warm vs
+      56.214 cold pp/s (0.613x)** with deterministic equal outputs and zero
+      teardown. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-ple-cache-modes.json`.
 - [x] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
       permits) at p512/p1024/p4096 with memory and correctness controls; select
       by model evidence rather than copying an external `ubatch` value. All
