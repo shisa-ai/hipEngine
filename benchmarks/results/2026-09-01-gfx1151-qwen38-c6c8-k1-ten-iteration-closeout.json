@@ -1,0 +1,210 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c6c8_k1_ten_iteration_closeout",
+  "date": "2026-09-01",
+  "status": "blocked_named",
+  "performance_claim": true,
+  "performance_claim_scope": "retained exact C6/C8 K1 intermediates and bounded-loop closeout",
+  "promotion": false,
+  "source": {
+    "commit": "be72258c12af255a992e083fca1c0990c9877d05",
+    "dirty": false
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_version": "7.15.26333-0000000",
+    "amd_clang": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard_q4_k_m",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "widths": [6, 8],
+    "candidate_budget": 1,
+    "max_tokens": 24,
+    "batch_window_ms": 50,
+    "sampling": "raw greedy, no prompt cache",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "execution_profile": "production",
+    "profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "correctness_contract": "mtp_self_exact plus engaged route and candidate-budget conformance; promotion remains separately gated"
+  },
+  "objective": {
+    "metric": "min(C6 MTP / own true AR, C8 MTP / own true AR)",
+    "target": 1.15,
+    "stop_rule": "success, ten measured iterations, escalation exhaustion, or a true blocker",
+    "automatic_serving_constraint": "C5/C7 remain K0 or diagnostic; no promotion before complete production gates"
+  },
+  "loop": {
+    "lane": "qwen38-wide-mtp/q38-c6c8-115x-r2",
+    "mode": "optimize",
+    "iteration_count": 10,
+    "keeps": 4,
+    "reverts": 6,
+    "initial_metric": 0.8825625837623193,
+    "best_metric": 0.9177854407603969,
+    "relative_metric_gain": 0.03990975557554721,
+    "target_reached": false,
+    "state": {
+      "path": ".multiloop/active/qwen38-wide-mtp/q38-c6c8-115x-r2/state.json",
+      "sha256": "43bac6f899506d08aacf6816c5fd3166bc4f7ca83e03d6fa6f11d991972b6130",
+      "size_bytes": 4408
+    },
+    "results": {
+      "path": ".multiloop/active/qwen38-wide-mtp/q38-c6c8-115x-r2/results.jsonl",
+      "sha256": "8309bf3a1db94527fe321e7a3b8a20aea2b3550b9bbc89ede21c5134f650f487",
+      "size_bytes": 37337
+    },
+    "iterations": [
+      {"iteration": 1, "action": "revert", "metric": 0.8830106904230985, "result": "ROCTX attributed Q4 as dominant; K2 and an initial R16 fusion screen regressed."},
+      {"iteration": 2, "action": "revert", "metric": 0.8774090128599463, "result": "Q4 qmicro/Q8_1x2 and generic rowtile16_w2 transfers regressed or were neutral."},
+      {"iteration": 3, "action": "keep", "metric": 0.8934436091867152, "result": "Bound packed-verifier roots to stable resident Conv/GDN state."},
+      {"iteration": 4, "action": "keep", "metric": 0.8986026113382902, "result": "Added exact C6/R12 dual-Q4 gate/up owner; R16 stayed excluded."},
+      {"iteration": 5, "action": "revert", "metric_median": 0.8977116993234178, "measurements": [0.8977116993234178, 0.8988573065623336, 0.8976931088524742], "result": "Width-6 prompt streaming repeated about +4.0% at C6 but failed the compound minimum gate because C8 did not engage."},
+      {"iteration": 6, "action": "keep", "metric": 0.909786065744358, "result": "Added exact C8/R16 shared-B2R1 K17408/N5120 owner."},
+      {"iteration": 7, "action": "revert", "metric": 0.9186306057645958, "result": "Narrow-V extension was mechanically positive but rerun because configured check identities were not recorded."},
+      {"iteration": 8, "action": "keep", "metric": 0.9177854407603969, "result": "Protocol-correct rerun retained exact C8/R16 shared-B2R1 K5120/N1024 extension."},
+      {"iteration": 9, "action": "revert", "metric": 0.9146269456654359, "result": "Last shared-B2R1 peer H5120/N17408 lost 0.610 vs 0.402 ms; existing Q4 R16 owner-transfer space exhausted."},
+      {"iteration": 10, "action": "revert", "metric": 0.9153165305967566, "result": "Wall-gap and Q5/Q6 owner census named the multi-family packed-verifier dataflow blocker."}
+    ]
+  },
+  "retained_units": [
+    {
+      "scope": "direct resident verifier state",
+      "implementation_commit": "5f7b3cb6b1b193c134ca93799c76be30e3a7084e",
+      "publication_commit": "b5149e140e59a9b978f48a864a274c0cfcfbc857",
+      "result": "removed 9,216 C8 initial imports / 8,002,732,032 bytes; clean MTP C6 35.458351 to 35.966019 and C8 41.841778 to 42.593560 tok/s",
+      "artifact": "benchmarks/results/2026-09-01-gfx1151-qwen38-c6c8-direct-verifier-state-retained.json"
+    },
+    {
+      "scope": "C6/R12 exact dual-Q4 gate-up owner",
+      "implementation_commit": "ff2e8423bdd109a6b90f4d19c40dc0b4d3c26dff",
+      "publication_commit": "c7426ed8c14fd2ffe8206f8532a34509f996b340",
+      "result": "clean C6 MTP 35.955735 to 37.129561 tok/s (+3.26%); C8 control unchanged",
+      "artifact": "benchmarks/results/2026-09-01-gfx1151-qwen38-c6-r12-dual-wmma-retained.json"
+    },
+    {
+      "scope": "C8/R16 exact shared-B2R1 down owner",
+      "implementation_commit": "6eb922c90dd4bb4d528e9d1b5272d90db504f133",
+      "publication_commit": "2609b24660209f83621e78bb0f9025e1f76a8bb5",
+      "result": "leaf 0.735 to 0.534 ms; clean C8 MTP 42.570560 to 43.224736 tok/s (+1.54%); C6 control unchanged",
+      "artifact": "benchmarks/results/2026-09-01-gfx1151-qwen38-c8-r16-shared-b2r1-retained.json"
+    },
+    {
+      "scope": "C8/R16 exact shared-B2R1 narrow-V extension",
+      "implementation_commit": "1f4687cab17ac8dc341e12134d2870221429eb4f",
+      "publication_commit": "be72258c12af255a992e083fca1c0990c9877d05",
+      "result": "leaf 0.191 to 0.110 ms; clean C8 MTP 43.233558 to 43.421382 tok/s (+0.43%); C6 control unchanged",
+      "artifact": "benchmarks/results/2026-09-01-gfx1151-qwen38-c8-r16-shared-b2r1-narrow-retained.json"
+    }
+  ],
+  "clean_retained_endpoint": {
+    "source": "clean same-process narrow-extension pair",
+    "6": {
+      "ar_tok_s": 39.907964852020484,
+      "mtp_tok_s": 37.07379577277245,
+      "mtp_vs_ar": 0.9289823700667977,
+      "initial_clean_mtp_tok_s": 35.458350959021935,
+      "cumulative_mtp_speedup": 1.0455589380233004,
+      "full_suite_ar_wall_s": 36.0830226582475,
+      "full_suite_mtp_wall_s": 38.841450409498064
+    },
+    "8": {
+      "ar_tok_s": 47.239776641148325,
+      "mtp_tok_s": 43.421382180419414,
+      "mtp_vs_ar": 0.9191699298297933,
+      "initial_clean_mtp_tok_s": 41.841777863141786,
+      "cumulative_mtp_speedup": 1.0377518451162442,
+      "full_suite_ar_wall_s": 40.64371460909024,
+      "full_suite_mtp_wall_s": 44.21784622198902
+    },
+    "correctness": "40/40 control+candidate cells exact, engaged, and budget-conformant; acceptance 1,540/1,610 in both arms",
+    "automatic_promotion": false
+  },
+  "rejected_or_deferred": [
+    {
+      "candidate": "K2 depth",
+      "result": "C6 25.32/41.80=0.606x and C8 27.73/51.61=0.537x; rejected"
+    },
+    {
+      "candidate": "Q4 qmicro/Q8_1x2 and generic rowtile16_w2 transfers",
+      "result": "qmicro regressed both widths; rowtile16_w2 was neutral C6 and negative C8; rejected"
+    },
+    {
+      "candidate": "physical width-6 prompt streaming",
+      "result": "C6 MTP repeated 38.616/38.599/38.602 tok/s, about +4.0%, but C8 did not engage and the three-run compound minimum failed the configured keep gate; reverted and preserved as a scoped future candidate"
+    },
+    {
+      "candidate": "shared-B2R1 peer Q4 R16 shapes",
+      "result": "retained only K17408/N5120 and K5120/N1024; K5120/N6144, N10240, N12288, N17408 and K6144/N5120 lose to existing owners; H5120/N17408 is 0.610 vs 0.402 ms"
+    },
+    {
+      "candidate": "Q5/Q6 owner transfers",
+      "result": "Q5 true R16 is already retained; exact Q6 R8+R8 beats prior true-R16 candidates in all 45 pairs by 65.9-84.1%; association-changing Q5/Q6 WMMA alternatives save under 5 ms per pass combined and require a separate numerical campaign"
+    }
+  ],
+  "named_blocker": {
+    "name": "multi-family packed-verifier dataflow wall",
+    "clean_endpoint_gap": {
+      "6": {
+        "target_mtp_tok_s": 45.89415957982355,
+        "additional_mtp_gain_required": 0.23791369680924102,
+        "target_full_suite_wall_s": 31.37654144195435,
+        "wall_reduction_required_s": 7.464908967543713,
+        "wall_reduction_required_fraction": 0.19218924342017588
+      },
+      "8": {
+        "target_mtp_tok_s": 54.32574313732057,
+        "additional_mtp_gain_required": 0.25112883121943574,
+        "target_full_suite_wall_s": 35.34236052964369,
+        "wall_reduction_required_s": 8.875485692345326,
+        "wall_reduction_required_fraction": 0.20072180014800564
+      }
+    },
+    "attribution": "Every existing exact Q4 R16 geometry has been screened, Q5 true R16 is already retained, and exact Q6 R8+R8 is the measured winner. The remaining 19-20% full-wall reduction is larger than any single registered exact family can supply.",
+    "reopen_condition": "Design a prompt-independent multi-family packed-verifier dataflow that removes weight sweeps or operation-complete stages across Q4/Q5/Q6 while preserving exact ownership and strict fallback. Do not reopen single-owner morphology screens without a new mechanism and a sized full-wall bound."
+  },
+  "final_validation": {
+    "raw": {
+      "path": "/tmp/q38-c6c8-current.json",
+      "sha256": "42ea48674e84503f9de5af74e316b6e1451d585e0aa76b54515b6fd78ce6ec08",
+      "size_bytes": 5628532
+    },
+    "6": {
+      "ar_tok_s": 39.89088183927856,
+      "mtp_tok_s": 37.06784756841547,
+      "mtp_vs_ar": 0.9292310888930164,
+      "ar_wall_s": 36.098474979866296,
+      "mtp_wall_s": 38.84768322040327
+    },
+    "8": {
+      "ar_tok_s": 47.470181514111054,
+      "mtp_tok_s": 43.45024185029442,
+      "mtp_vs_ar": 0.9153165305967566,
+      "ar_wall_s": 40.44644319359213,
+      "mtp_wall_s": 44.188476708950475
+    },
+    "cells": "20/20 exact, engaged, and budget-conformant",
+    "focused_tests": "97 passed"
+  },
+  "decision": {
+    "retain": true,
+    "target_reached": false,
+    "automatic_mtp_promotion": false,
+    "reason": "Four exact intermediates improve the full-suite endpoint, but C6/C8 remain below own AR and materially below 1.15x. The ten-iteration cap and named structural blocker are both reached.",
+    "next": "Keep automatic C6/C8 serving at K0. Reopen only with a sized multi-family packed-verifier dataflow and run the full production numerical, determinism, isolation, task, lifecycle, and serving gates before promotion."
+  }
+}
