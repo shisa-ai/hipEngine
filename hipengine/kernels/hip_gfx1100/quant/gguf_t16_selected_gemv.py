@@ -16,7 +16,13 @@ from pathlib import Path
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.dtype import DType
-from hipengine.core.specdec2_scope import q5_t16_physical_rowtile_enabled
+from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_enabled,
+    q5_t16_physical_rowtile_enabled,
+)
+from hipengine.kernels.hip_gfx1100 import (
+    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
+)
 from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_t16_selected_gemv.hip")
@@ -1700,7 +1706,17 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
         runtime=runtime,
     ):
         return
-    physical_rowtile = q5_t16_physical_rowtile_enabled() and int(rows) == 6
+    physical_rowtile = bool(
+        q5_t16_physical_rowtile_enabled()
+        and (
+            int(rows) == 6
+            or (
+                physical_exact_rowtiles_enabled()
+                and int(rows)
+                in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS
+            )
+        )
+    )
     _check_dense_q5_t16_shape(
         rows,
         in_features,

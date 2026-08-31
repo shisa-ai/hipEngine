@@ -79,6 +79,7 @@ from hipengine.core.specdec2_scope import (
     moe_physical_c2_exact_linear_session,
     moe_physical_c2_numerics_session,
     moe_physical_c2_pairreuse_session,
+    physical_exact_rowtiles_session,
     q4_t16_physical_extra_rowtiles_session,
     q5_t16_physical_rowtile_session,
     q6_t16_physical_rowtile_session,
@@ -94,6 +95,7 @@ from hipengine.speculative.transaction import (
 _NGRAM_MOD_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MOD"
 _NGRAM_MOD_N_MATCH_ENV = "HIPENGINE_GGUF_SPECDEC2_NGRAM_MATCH"
 _PHYSICAL_MAX_REQUESTS_ENV = "HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS"
+_EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -375,6 +377,19 @@ class Qwen35GGUFMTP2Adapter:
                 )
             )
             if str(profile) == "production"
+            else ()
+        )
+        self.production_exact_target_row_counts = (
+            tuple(
+                int(value)
+                for value in backend_package_capability(
+                    str(self.generator.backend),
+                    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
+                    (),
+                )
+            )
+            if str(profile) == "production"
+            and _env_enabled(_EXACT_TARGET_ROWS_ENV)
             else ()
         )
         self._target_pad_token_scratch: DeviceBuffer | None = None
@@ -1092,7 +1107,9 @@ class Qwen35GGUFMTP2Adapter:
                 "q5-rowtile"
                 f"{int(getattr(self, 'production_physical_q5_rowtile', False))}:"
                 "q6-rowtile"
-                f"{int(getattr(self, 'production_physical_q6_rowtile', False))}"
+                f"{int(getattr(self, 'production_physical_q6_rowtile', False))}:"
+                "exact-target-rows"
+                f"{','.join(str(value) for value in getattr(self, 'production_exact_target_row_counts', ()))}"
             ),
             execution_profile=profile,
             kv_backend_key=str(getattr(target, "kv_storage_dtype", "bf16")),
@@ -2147,6 +2164,7 @@ class Qwen35GGUFMTP2Adapter:
             request_count,
             candidate_rows,
             int(getattr(self, "physical_accept_max_rows", _PHYSICAL_ACCEPT_MIN_ROWS)),
+            exact_counts=getattr(self, "production_exact_target_row_counts", ()),
         )
 
     def _target_pad_token_tensor(
@@ -3009,6 +3027,9 @@ class Qwen35GGUFMTP2Adapter:
         with (
             q4_t16_physical_extra_rowtiles_session(
                 bool(getattr(self, "production_physical_extra_rowtiles", False))
+            ),
+            physical_exact_rowtiles_session(
+                bool(getattr(self, "production_exact_target_row_counts", ()))
             ),
             q5_t16_physical_rowtile_session(
                 bool(getattr(self, "production_physical_q5_rowtile", False))

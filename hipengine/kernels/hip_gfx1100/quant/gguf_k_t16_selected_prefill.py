@@ -24,6 +24,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE,
+    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
@@ -32,6 +33,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 )
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_enabled,
     q4_t16_physical_extra_rowtiles_enabled,
 )
 
@@ -371,7 +373,14 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         )
     ):
         return
-    if int(rows) not in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS:
+    exact_physical_rowtile = bool(
+        physical_exact_rowtiles_enabled()
+        and int(rows) in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS
+    )
+    if (
+        int(rows) not in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS
+        and not exact_physical_rowtile
+    ):
         # The shared-B kernel is launched on a 256-row tile, so below the measured
         # crossover it charges a full 256-row cost for a few dozen rows. The
         # single-wave leaf is bit-identical on this shape across rows 2..128, so

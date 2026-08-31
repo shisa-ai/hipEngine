@@ -19,6 +19,10 @@ _q6_t16_physical_rowtile: ContextVar[bool] = ContextVar(
     "q6_t16_physical_rowtile",
     default=False,
 )
+_physical_exact_rowtiles: ContextVar[bool] = ContextVar(
+    "physical_exact_rowtiles",
+    default=False,
+)
 _moe_physical_c2_disable_f32_residual: ContextVar[bool] = ContextVar(
     "moe_physical_c2_disable_f32_residual",
     default=False,
@@ -85,6 +89,23 @@ def q6_t16_physical_rowtile_enabled() -> bool:
 
 
 @contextlib.contextmanager
+def physical_exact_rowtiles_session(enabled: bool) -> Iterator[None]:
+    """Admit independently screened exact-row physical target rowtiles."""
+
+    token = _physical_exact_rowtiles.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _physical_exact_rowtiles.reset(token)
+
+
+def physical_exact_rowtiles_enabled() -> bool:
+    """Return whether this physical target selected exact-row rowtiles."""
+
+    return bool(_physical_exact_rowtiles.get())
+
+
+@contextlib.contextmanager
 def moe_physical_c2_numerics_session(enabled: bool) -> Iterator[None]:
     """Select the independently gated packed-MoE C2 numerical boundary."""
 
@@ -142,6 +163,8 @@ __all__ = [
     "moe_physical_c2_numerics_session",
     "moe_physical_c2_pairreuse_enabled",
     "moe_physical_c2_pairreuse_session",
+    "physical_exact_rowtiles_enabled",
+    "physical_exact_rowtiles_session",
     "q4_t16_physical_extra_rowtiles_enabled",
     "q4_t16_physical_extra_rowtiles_session",
     "q5_t16_physical_rowtile_enabled",

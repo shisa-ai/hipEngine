@@ -503,6 +503,8 @@ def physical_group_pad_rows(
     request_count: int,
     candidate_rows: int,
     max_rows: int,
+    *,
+    exact_counts: Sequence[int] = (),
 ) -> int:
     """Return inactive pad rows lifting a physical group to admitted multiples.
 
@@ -510,14 +512,19 @@ def physical_group_pad_rows(
     exactly that launch shape. Groups pad up to the next multiple of the
     smallest admitted count so a chunked dispatch can run every launch at the
     admitted shape; groups whose next multiple exceeds the accept-buffer row
-    capacity stay unpadded (they keep the strict fallback route).
+    capacity stay unpadded (they keep the strict fallback route). Independently
+    qualified exact row counts bypass padding without changing that fallback
+    multiple for any other width.
     """
 
-    counts = tuple(int(value) for value in admitted_counts if int(value) > 0)
-    if not counts:
-        return 0
     physical = int(request_count) + int(candidate_rows)
     if physical <= 0:
+        return 0
+    exact = frozenset(int(value) for value in exact_counts if int(value) > 0)
+    if physical in exact:
+        return 0
+    counts = tuple(int(value) for value in admitted_counts if int(value) > 0)
+    if not counts:
         return 0
     step = min(counts)
     if physical % step == 0:

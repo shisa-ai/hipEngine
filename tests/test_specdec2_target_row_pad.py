@@ -158,6 +158,20 @@ class TestPhysicalGroupPadRows:
         assert physical_group_pad_rows((6,), 4, 12, 24) == 2  # 16 -> 18
         assert physical_group_pad_rows((6,), 4, 14, 24) == 0  # 18 exact
 
+    def test_exact_count_bypasses_padding_without_changing_other_widths(self) -> None:
+        from hipengine.speculative.frontier import physical_group_pad_rows
+
+        assert physical_group_pad_rows((6,), 2, 6, 24) == 4
+        assert physical_group_pad_rows(
+            (6,), 2, 6, 24, exact_counts=(8,)
+        ) == 0
+        assert physical_group_pad_rows(
+            (6,), 1, 3, 24, exact_counts=(8,)
+        ) == 2
+        assert physical_group_pad_rows(
+            (6,), 3, 6, 24, exact_counts=(8,)
+        ) == 3
+
     def test_no_pad_when_multiple_exceeds_capacity(self) -> None:
         from hipengine.speculative.frontier import physical_group_pad_rows
 

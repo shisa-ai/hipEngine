@@ -8,7 +8,10 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
-from hipengine.core.specdec2_scope import q5_t16_physical_rowtile_session
+from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_session,
+    q5_t16_physical_rowtile_session,
+)
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
@@ -1266,9 +1269,16 @@ def test_q5_t16_dense_decode_uses_request_scoped_physical_rowtile(
     gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 6, 6_144, 5_120)
     with q5_t16_physical_rowtile_session(True):
         gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 6, 6_144, 5_120)
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 8, 6_144, 5_120)
+        with physical_exact_rowtiles_session(True):
+            gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+                1, 2, 3, 8, 6_144, 5_120
+            )
         gguf_q5_k_t16_gemv_decode_bf16_bf16_out(1, 2, 3, 3, 6_144, 5_120)
 
     assert symbols == [
+        selected_t16_mod._Q5_DENSE_DIRECT_BF16,
+        selected_t16_mod._Q5_DENSE_ROWTILE_BF16,
         selected_t16_mod._Q5_DENSE_DIRECT_BF16,
         selected_t16_mod._Q5_DENSE_ROWTILE_BF16,
         selected_t16_mod._Q5_DENSE_DIRECT_BF16,

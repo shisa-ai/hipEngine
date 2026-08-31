@@ -9,7 +9,10 @@ import numpy as np
 import pytest
 
 from hipengine.core.memory import copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
-from hipengine.core.specdec2_scope import q6_t16_physical_rowtile_session
+from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_session,
+    q6_t16_physical_rowtile_session,
+)
 from hipengine.kernels.cpu_reference import gguf_quant_gemv
 from hipengine.kernels.hip_gfx1100.quant import gguf_q6_k_t16_gemv as t16_mod
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
@@ -141,10 +144,19 @@ def test_q6_planar_decode_uses_request_scoped_physical_rowtile(monkeypatch) -> N
             1, 2, 3, 6, 5_120, 10_240
         )
         gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 8, 5_120, 10_240
+        )
+        with physical_exact_rowtiles_session(True):
+            gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+                1, 2, 3, 8, 5_120, 10_240
+            )
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
             1, 2, 3, 3, 5_120, 10_240
         )
 
     assert symbols == [
+        t16_mod._Q6_T16_QMICRO_PLANAR_BF16_BF16,
+        t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
         t16_mod._Q6_T16_QMICRO_PLANAR_BF16_BF16,
         t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
         t16_mod._Q6_T16_QMICRO_PLANAR_BF16_BF16,

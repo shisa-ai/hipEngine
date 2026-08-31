@@ -14,8 +14,14 @@ from typing import Mapping
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
-from hipengine.core.specdec2_scope import q6_t16_physical_rowtile_enabled
-from hipengine.kernels.hip_gfx1100 import GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS
+from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_enabled,
+    q6_t16_physical_rowtile_enabled,
+)
+from hipengine.kernels.hip_gfx1100 import (
+    GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS,
+    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     launch_physical_rows6_chunked,
 )
@@ -262,9 +268,20 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
         runtime=runtime,
     ):
         return
+    physical_rowtile = bool(
+        q6_t16_physical_rowtile_enabled()
+        and (
+            int(rows) == 6
+            or (
+                physical_exact_rowtiles_enabled()
+                and int(rows)
+                in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS
+            )
+        )
+    )
     symbol = (
         _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
-        if q6_t16_physical_rowtile_enabled() and int(rows) == 6
+        if physical_rowtile
         else _Q6_T16_QMICRO_PLANAR_BF16_BF16
     )
     _launch(
