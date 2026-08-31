@@ -1,7 +1,7 @@
 # gfx1100 shape-aware GEMV campaign
 
-- **Status:** planned; the opening GPU1 scheduling spike is authorized but no
-  production route is admitted
+- **Status:** opening G1A GPU1 spike rejected; G1B and W7900 G2 were not
+  admitted, and no production route changed
 - **Created:** 2026-08-31
 - **Primary hardware lanes:** RX 7900 XTX / `hip_gfx1100` for screening; Radeon
   Pro W7900 / `hip_gfx1100` for binding production decisions
@@ -174,6 +174,28 @@ No dynamic workspace, global counter, atomic stitch, new resident payload, or
 host synchronization is admitted in G1. The current pair and two singleton
 primitives remain registered fallbacks.
 
+### 4.1 Opening result — G1A rejected on GPU1
+
+The exact G1A body was implemented, passed rows1-4 BF16-bit parent parity, and
+was screened against all 48 immutable Qwen3.8 alpha/beta pairs on the RX 7900
+XTX. It lost all 15/15 counterbalanced pairs in every cache regime:
+
+| Regime | Control | G1A | Control/G1A speed ratio |
+| --- | ---: | ---: | ---: |
+| One 1.875-MiB pair repeated 256x | 1.077831 ms | 1.187396 ms | 0.90773x |
+| All 48 pairs / 90 MiB, repeated 4x | 1.212919 ms | 1.410239 ms | 0.86008x |
+| 128-MiB thrash, then one 90-MiB rotation | 0.401280 ms | 0.435120 ms | 0.92223x |
+
+The candidate retained 24 VGPR and zero scratch while reducing local size
+256->128 and LDS 1,024->512 bytes, but its cached profiler median was
+12.539 us/dispatch versus 10.5865 us for the parent. Serializing two virtual
+partitions per physical thread costs more than the reduced coordination saves.
+G1B was not attempted: halving the grid to 48 two-output workgroups had no
+credible premise after the 96-workgroup G1A loss. The transient kernel, wrapper,
+registry key, and tests were removed; the existing registered fallbacks are
+unchanged. Evidence:
+[`2026-08-31-gpu1-gfx1100-dense-f32-alpha-beta-g1a-rejected.json`](../benchmarks/results/2026-08-31-gpu1-gfx1100-dense-f32-alpha-beta-g1a-rejected.json).
+
 ## 5. Cache/roofline protocol
 
 Every timer labels one of these regimes:
@@ -290,14 +312,15 @@ A failed result is durable evidence, not an invitation to retune the evaluator.
 
 ## 9. Deliverables
 
-- [ ] GPU1 control artifact for current singleton and pair schedules.
-- [ ] Exact G1A local128/virtual256 candidate and focused RED/GREEN fixture.
-- [ ] Conditional G1B two-output/SPLIT4 candidate.
-- [ ] Hot, 90-MiB rotating, and cache-thrashed relative comparison.
-- [ ] Cached `rocprofv3` trace with kernel name/resources/duration.
-- [ ] Accepted or rejected compact artifact and immutable worklog entry.
-- [ ] W7900 G2 only if GPU1 advances.
-- [ ] Registry admission plus strict fallback only if every binding gate passes.
+- [x] GPU1 control artifact for the current pair schedule.
+- [x] Exact G1A local128/virtual256 RED/GREEN screen; rejected and removed.
+- [x] Conditional G1B two-output/SPLIT4 disposition; not admitted after G1A.
+- [x] Hot, 90-MiB rotating, and cache-thrashed relative comparison.
+- [x] Cached `rocprofv3` trace with kernel name/resources/duration.
+- [x] Rejected compact artifact and immutable worklog entry.
+- [x] W7900 G2 disposition; not run because GPU1 did not advance.
+- [x] Registry admission disposition; no new key retained, strict fallbacks
+      unchanged.
 
 ## 10. Source-use policy
 
