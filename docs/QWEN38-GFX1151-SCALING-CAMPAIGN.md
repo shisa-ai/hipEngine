@@ -2,7 +2,9 @@
 
 Status: **punchlist closed; post-closeout review corrections recorded
 2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01; extension W
-(dataflow-wall successor punchlist) opened 2026-09-01, no W unit measured yet**.
+(dataflow-wall successor punchlist) opened 2026-09-01, no W unit measured yet;
+extension Y (prefill sweep-multiplicity punchlist) opened 2026-09-01, no Y
+unit measured yet**.
 Successor to the closed
 [`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
 Owner: scaling loop.
@@ -692,3 +694,130 @@ carries a measured named blocker whose sized bounds sum below the remaining
 gap. Any promotion to automatic serving additionally requires the complete
 production numerical, determinism, isolation, task, lifecycle, and serving
 gates — the W punchlist alone never changes admission policy.
+
+## 9. Extension Y (opened 2026-09-01): breaking the prefill sweep-multiplicity wall
+
+Successor to the closed P track (P1/P2 named blockers, P3 measured negative).
+Same frozen product key and rules as sections 1-4 and 8. Objective: close the
+campaign's goal-2 prefill cells to best-external parity —
+**C2 `>= 211.888`** and **C8 `>= 305.847`** prefill tok/s (Laurent's frozen
+2026-08-30 rates; the C8 value is P2's existing named target) — from the
+reviewed refresh's 139.8 / 247.3, i.e. **+51.6% / +23.7%**. The
+[survey](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md) refresh shows hipEngine
+trailing the best external prefill at all eight widths (-4.2..-11.7% at
+C1/C3-C7, -34.0%/-19.1% at C2/C8); gates stay on C2/C8 per section 1, and
+section 6's per-width non-goal stands — no width-specific kernels for the
+other six, but their collateral movement under shared-owner changes is
+recorded in each retained unit's artifact.
+
+### 9.1 Why prefill trails (byte-multiplicity analysis)
+
+Re-reading the three P closures together names one structural defect rather
+than three independent walls.
+
+**The Q4 prefill owner's swept bytes scale with `ceil(rows/16)`, not with
+sweeps.** [P1](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json)
+measured ticks 100.0% GPU-busy, rows<=48 all ~278 ms — one ~16.3 GB Q4
+weight pass at ~57 GB/s aggregate — and the owner re-streaming the full
+weight set **per 16-row M-tile at ~184 GB/s/tile**. Cross-check against P1's
+own rows256 tick: 16 tiles x 16.3 GB / 184 GB/s = **1417 ms** vs measured
+**1418 ms**. The rows256 prefill tick is ~100% explained by re-streamed
+weight bytes at near-roof per-tile rate (221 GB/s practical,
+[ROOFLINE-gfx1151.md](ROOFLINE-gfx1151.md)): the owner is efficient per tile
+and multiplicative per tick. Define **sweep multiplicity** = swept
+family-bytes per tick / resident family-bytes; the Q4 owner runs at
+multiplicity ~= `ceil(rows/16)` (C2 rows35-48: 3; C8 rows256+: 16+) where one
+sweep suffices. P1's external attribution says exactly this from the other
+side: external engines rise 20-42% C1->C2 because their prefill GEMMs
+amortize weight streaming across all grouped rows; we *fall* C1->C2.
+
+**This is the same disease extension W names in the verify path** — cost
+scaling with row tiles instead of staying sweep-bound — appearing in the
+prefill owner instead of the verify ladder. Both external gaps that remain
+in the survey (C6/C8 MTP, all-width prefill) are byte-multiplicity defects.
+
+**The dequant/LDS/issue wall is the second wall behind the first.**
+[P2](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c8-current-trace-blocker.json)
+measured the standalone owner at 19-24 TF/s (~35% of peak) at rows256+; that
+wall binds only once multiplicity ~= 1 makes large-M tiles compute-bound.
+[P3](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-p3-int-wmma-negative.json)
+closed **data-format-only** change (INT8 WMMA == BF16 at 59.4 TOP/s;
+dequant-free bodies hit the same LDS-staging/issue structure at 0.81x). P3
+did **not** close loop-order/dataflow change, and did not test INT4 — the
+only raised tensor roof on gfx1151 (118.8 TOP/s).
+
+**Screening arithmetic (not a measurement; Y0 must replace it with sized
+bounds before any Y code, per the extension rule inherited from W):**
+multiplicity-1 at P1's measured per-tile rate puts a rows256 Q4 pass near
+~90 ms vs today's 1418; even fully issue-bound at P2's 19-24 TF/s, the Q4
+family's 60% share of the C8 trace (16.8 s of 27.9 s) collapses far past the
+>=2x that P2's written sizing already projected to ~330 >= 305.847. At C2,
+removing two of three sweeps attacks a +51.6% gate with ~3x headroom on the
+dominant owner. Both gates sit inside sized headroom; no new physics is
+required.
+
+**The requirement, stated once:** prefill weight bytes swept per tick per
+quant family must be ~= 1.0 sweeps regardless of grouped rows (multiplicity
+flatness in M), with dequantization performed once per weight tile per sweep.
+
+### 9.2 Y punchlist
+
+Rules unchanged (frozen protocol, exact ownership + strict fallback,
+applicable `docs/EXECUTION-PROFILES.md` gate per unit, no
+prompt-conditioned tuning, sized full-wall bound before code).
+
+- [ ] Y0 **Prefill sweep-multiplicity instrumentation (entry gate for all of
+  Y).** Extend the prefill trace harness to publish, per family
+  (Q4/Q5/Q6/GDN/other) at representative grouped-row points
+  (16/35/48/72/96/256/288/536/1024): swept weight-bytes per tick, sweep
+  multiplicity, per-tile GB/s, TF/s, and tick wall vs hipEvent GPU span, as a
+  durable committed artifact (P1/P2 raw sources live under `/tmp` — the
+  audit-limitation-1 pattern). Confirms the `ceil(rows/16)` attribution per
+  family and sizes Y1's full-wall bound per width. No perf claim.
+- [ ] Y1 **Single-sweep (B-stationary) Q4 prefill dataflow.** Restructure the
+  Q4 prefill owner family so each weight tile is fetched and dequantized once
+  per tick and looped across all M-tiles (workgroup-owns-weight-tile with an
+  in-kernel M-loop; persistent variants allowed). Gates: measured
+  multiplicity <= ~1.25 from rows16 to rows1024 (flatness in M), exact
+  BF16-out parity or production-profile numerical RED, strict fallback
+  registered, frozen C1-C8 prefill row re-run with C2/C8 movement recorded.
+  **Shared lineage with W1:** M1's wide-verify trace shows Q4 falling back to
+  `wmma_prefill<false,2>` at R>16 — a multiplicity-1 M-loop GEMM body is the
+  same shape W1 needs for row-invariant R20-R32 verify owners. Build the tile
+  machinery once, register it under both keys.
+- [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
+  (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
+  binding share after Y1. Extend the single-sweep dataflow per Y0's measured
+  multiplicities; opens per family only where Y0 sizes it above ~2% of the
+  remaining wall.
+- [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
+  tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
+  the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
+  restructure, dual-issue scheduling) per the parity campaign's closing
+  instruction — a new high-row Q4 algorithm/fusion, not more threshold
+  tuning. Entry: the post-Y1 trace shows compute/issue-bound.
+- [ ] Y4 **(Conditional) INT4-WMMA Q4 body.** The only raised tensor roof on
+  gfx1151 (118.8 vs 59.4 TOP/s). Opens only if Y3's trace shows
+  tensor-rate-bound; P3's INT8 negative is standing evidence that a format
+  change without fixing the LDS/issue structure loses, so Y4 never opens
+  before Y3 closes.
+- [ ] Y5 **(Conditional) non-GEMM prefill tail.** P1.3 traced 1380 launches /
+  534.2 ms at M=45 with ~174 ms outside the wmma family. Size with Y0; drop
+  if under ~2% of the remaining wall.
+
+### 9.3 Order, priority, and success criteria
+
+`Y0` -> `Y1` -> (`Y2` and `Y3` as sized) -> `Y4`/`Y5` conditional.
+
+MTP (extension W) remains the campaign's priority-1 track and W0 stays the
+next unit. Y touches disjoint owners (prefill bodies vs verify/proposal/
+accept), so Y units may interleave with W without contention; the W1/Y1
+shared tile machinery is the deliberate exception and should be built once.
+
+The extension closes when C2 `>= 211.888` and C8 `>= 305.847` prefill tok/s
+on the frozen protocol (same prefill-dominant boundary: prompt tokens over
+barrier-to-last-completion wall, one generated token, API overhead included
+for every engine), or when every Y item carries a measured named blocker
+whose sized bounds sum below the remaining gap. External rows stay frozen at
+their 2026-08-30 pinned commits; any lead claim against moving upstream
+requires a re-measured external matrix.
