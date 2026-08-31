@@ -990,14 +990,21 @@ request-owned transition submission.
       six GDN states, and two QSA owners; it remains exact at positions 8–11 and
       measures **26.739→10.112 ms (2.64x)**, with 294 dispatches, two dynamic
       appends, two advances, and no post-launch allocation per graph replay.
-      Neither is production: the remaining 40 layers/10 QSA owners, token/head
-      control, bucket transitions, fallback, c2, and full lifecycle remain.
+      The all-physical-layer rung also passes: layer-1 PLE plus all 48 layers,
+      all 12 QSA owners, and 136 hashed device-state owners are exact at
+      positions 8–11; wall is **154.346→57.900 ms (2.67x)**. Profiling confirms
+      1,697 dispatches, 12 dynamic appends, 12 advances, and no post-launch
+      allocation per replay. The historical third-replay corruption therefore
+      does not reproduce on the current full physical stack. This still is not
+      production: token/PLE row publication, final mix/head/argmax, generated-
+      token feedback, bucket transitions, fallback, c2, and lifecycle remain.
       Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`,
-      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json`.
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json`.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.

@@ -239,13 +239,16 @@ GDN/QSA diagnostic remains device-state/output exact at **12.160→4.955 ms
 (2.45x)**. Its advancing-position successor passes positions 8–11 across
 position/context, K/V, QSA index, GDN state, and output at **13.882→4.974 ms
 (2.79x)**. An eight-layer successor adds active PLE and a second QSA owner and
-remains exact at **26.739→10.112 ms (2.64x)**. None is yet bound to production;
-full-token and lifecycle gates remain open.
+remains exact at **26.739→10.112 ms (2.64x)**. The all-physical-layer rung
+covers active PLE, all 48 layers, all 12 QSA owners, and 136 device-state owners
+at **154.346→57.900 ms (2.67x)** without reproducing third-replay corruption.
+None is yet bound to production; root/head and lifecycle gates remain open.
 [`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
 [`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
 [`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json),
 [`advancing mixed segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json),
-[`eight-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json).
+[`eight-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json),
+[`all 48 physical layers`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json).
 
 A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
 the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up

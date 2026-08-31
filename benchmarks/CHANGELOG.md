@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 all-48-layer graph] Layer-1 PLE plus all 48 physical layers, 12 QSA owners, and 136 device-state owners remain exact at positions 8–11; the historical third-replay corruption does not reproduce. Wall improves **154.346→57.900 ms (2.67x)**; profiling confirms 1,697 dispatches/launch, 12 dynamic appends/advances, and zero post-launch allocation. Research rung only. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 eight-layer advancing graph] Layers 0–7, including active layer-1 PLE, six GDN states, and two QSA K/V/index/control owners, remain exact through positions 8–11 and improve **26.739→10.112 ms (2.64x)** over 30 samples. Profiling confirms 294 dispatches/launch, two dynamic appends, two advances, and zero post-launch allocation. Research rung only. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 advancing mixed graph] Device-owned QSA append plus graph-tail position/context advance makes layers 0–3 exact across positions 8–11 for output, K/V, raw index, GDN, and control state; 30-sample wall improves **13.882→4.974 ms (2.79x)**. Profiling confirms 143 dispatches/launch including one dynamic append and one advance, with zero post-launch allocation. Research rung only; no production binding. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`.
