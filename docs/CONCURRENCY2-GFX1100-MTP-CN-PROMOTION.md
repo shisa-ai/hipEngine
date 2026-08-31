@@ -1001,7 +1001,7 @@ P13 is complete only when:
       ratios, stale citations, and 96-CU geometry.
 - [x] Pass JSON/worklog/README/provenance/command checks and commit atomically.
 
-#### P13-B — Current prefill attribution (#22 complete; #29 follow-up)
+#### P13-B — Current prefill attribution and admission repair (#22/#29 complete)
 
 - [x] On current HEAD, collect a C1-C3 same-protocol repeat pair with current
       single-wave ownership and observe whether each wave actually groups.
@@ -1010,6 +1010,10 @@ P13 is complete only when:
       group sizes, not only cumulative counters.
 - [x] Reconcile the conflicting “~97% WMMA kernel” and “~0.4 s non-kernel”
       readings before choosing host versus kernel work.
+- [x] Publish ready default-AR children to EngineService atomically without
+      coupling their completion, cancellation, error, or reclaim lifecycle.
+- [x] Retain only after a tracked-clean same-build rollback/default C1-C3
+      packet proves full groups, exact IDs, clean memory, and no C1-specific loss.
 
 The pair separates two regimes. C1 is **89.9% complete native-prefill call**
 (268.3/298.4 ms), with under 1 ms of listed frontend work and 29.7 ms residual,
@@ -1023,6 +1027,21 @@ executes exact K0/default, but queues full waves 20/20 and measures stable
 #25 is complete; #11 subsequently retained the exact row64 down-projection
 owner described below. Evidence:
 [`current server attribution`](../benchmarks/results/2026-08-31-w7900-q4km-c1c3-current-server-prefill-attribution.json).
+
+Task #29 now closes that race. Compatible default-route items already ready
+inside the configured frontend window enter one EngineService admission command;
+per-request handles preserve independent completion, cancellation, failure,
+backpressure, and reclaim, and dynamic arrivals use later free capacity. In a
+tracked-clean same-build rollback/default packet, explicit C2 full native groups
+move **2/10→10/10** and C3 full groups **0/10→10/10**. Prompt throughput moves
+**178.504→261.748 (+46.63%)** at C2 and **223.643→346.923 (+55.12%)** at C3,
+positive in every category and **1.092x/1.339x** the strongest peer. C1 is
+**158.868→157.774 (-0.69%)**, but the untouched grouped K0 control moves the same
+-0.68%; candidate non-native residual decreases by 0.057 ms, so no candidate-
+specific C1 loss is measured. All 120 cross-packet generated rows match, both
+runs end with zero active allocations, and 58 lifecycle/admission contracts
+pass. Evidence:
+[`ready-cohort retention`](../benchmarks/results/2026-08-31-w7900-q4km-default-ar-ready-cohort-retained.json).
 
 #### P13-C — T16 evidence and down-projection occupancy (#25, then #11)
 

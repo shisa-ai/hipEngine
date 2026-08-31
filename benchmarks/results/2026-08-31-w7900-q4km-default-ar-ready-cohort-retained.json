@@ -1,0 +1,202 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_default_ar_ready_cohort_retained",
+  "date": "2026-08-31",
+  "status": "accepted",
+  "decision": "retain ready-cohort admission as the default non-streaming default-AR server path",
+  "source": {
+    "commit": "544287ebfa878f645a3ad44279a7e2412c24c793",
+    "tracked_clean": true,
+    "rollback": "HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT=0"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106773984,
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "widths": [1, 2, 3],
+    "resident_capacity": 8,
+    "max_tokens": 1,
+    "candidate_budget": 3,
+    "mtp_request_mode": "automatic",
+    "expected_mtp_widths": [],
+    "batch_window_ms": 20.0,
+    "max_sequence_length": 1024,
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "arms": {
+      "explicit_ar": "explicit K0/default request; route changed only by the ready-cohort candidate",
+      "automatic_omitted_request_k0": "MTP omitted; runtime declines MTP and executes exact K0/default through the pre-existing grouped server route; causal run-drift control"
+    }
+  },
+  "commands": {
+    "rollback": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT=0 timeout 1800 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-p29/544287ebf-rollback.json",
+    "candidate": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 timeout 1800 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-p29/544287ebf-cohort.json"
+  },
+  "correctness": {
+    "rollback_packet_passed": true,
+    "candidate_packet_passed": true,
+    "exact_cells_per_packet": 30,
+    "within_packet_ar_mtp_generated_row_comparisons_per_packet": 60,
+    "within_packet_ar_mtp_mismatches": 0,
+    "cross_packet_generated_row_comparisons": 120,
+    "cross_packet_generated_row_mismatches": 0,
+    "mtp_engaged_cells": 0,
+    "budget_conformed_cells_per_packet": 30,
+    "initial_active_allocations": [0, 0],
+    "final_active_allocations": [0, 0],
+    "initial_current_allocated_bytes": [0, 0],
+    "final_current_allocated_bytes": [0, 0],
+    "passed": true
+  },
+  "measurements": {
+    "explicit_ar": {
+      "1": {
+        "rollback_prompt_tok_s": 158.867671,
+        "candidate_prompt_tok_s": 157.773583,
+        "candidate_vs_rollback_ratio": 0.993113,
+        "candidate_vs_rollback_percent": -0.688679,
+        "candidate_vs_strongest_peer_ratio": 0.78516,
+        "published_prompt_tok_s_before": 149.072,
+        "published_prompt_tok_s_after": 157.774
+      },
+      "2": {
+        "rollback_prompt_tok_s": 178.504461,
+        "candidate_prompt_tok_s": 261.747594,
+        "candidate_vs_rollback_ratio": 1.466336,
+        "candidate_vs_rollback_percent": 46.633643,
+        "candidate_vs_strongest_peer_ratio": 1.092163,
+        "published_prompt_tok_s_before": 175.905,
+        "published_prompt_tok_s_after": 261.748
+      },
+      "3": {
+        "rollback_prompt_tok_s": 223.643384,
+        "candidate_prompt_tok_s": 346.923333,
+        "candidate_vs_rollback_ratio": 1.551235,
+        "candidate_vs_rollback_percent": 55.12345,
+        "candidate_vs_strongest_peer_ratio": 1.339285,
+        "published_prompt_tok_s_before": 212.235,
+        "published_prompt_tok_s_after": 346.923
+      }
+    },
+    "automatic_omitted_request_k0_control": {
+      "1": {
+        "rollback_prompt_tok_s": 158.453637,
+        "candidate_prompt_tok_s": 157.371207,
+        "candidate_vs_rollback_ratio": 0.993169
+      },
+      "2": {
+        "rollback_prompt_tok_s": 265.180784,
+        "candidate_prompt_tok_s": 262.999157,
+        "candidate_vs_rollback_ratio": 0.991773
+      },
+      "3": {
+        "rollback_prompt_tok_s": 349.897835,
+        "candidate_prompt_tok_s": 346.58729,
+        "candidate_vs_rollback_ratio": 0.990539
+      }
+    },
+    "category_prompt_tok_s": {
+      "1": {
+        "code": {"rollback": 155.87815, "candidate": 154.76877, "ratio": 0.992883},
+        "general_en": {"rollback": 128.966696, "candidate": 128.390375, "ratio": 0.995531},
+        "general_ja": {"rollback": 140.882009, "candidate": 139.731355, "ratio": 0.991832},
+        "mixed_ja_en": {"rollback": 207.439811, "candidate": 205.888483, "ratio": 0.992522}
+      },
+      "2": {
+        "code": {"rollback": 177.223723, "candidate": 253.031278, "ratio": 1.427751},
+        "general_en": {"rollback": 134.362285, "candidate": 214.617747, "ratio": 1.597306},
+        "general_ja": {"rollback": 146.986395, "candidate": 233.98315, "ratio": 1.591869},
+        "mixed_ja_en": {"rollback": 264.53232, "candidate": 345.573505, "ratio": 1.306356}
+      },
+      "3": {
+        "code": {"rollback": 219.338968, "candidate": 337.084247, "ratio": 1.536819},
+        "general_en": {"rollback": 182.176458, "candidate": 294.038415, "ratio": 1.614031},
+        "general_ja": {"rollback": 198.689587, "candidate": 315.417497, "ratio": 1.587489},
+        "mixed_ja_en": {"rollback": 290.868892, "candidate": 434.555104, "ratio": 1.49399}
+      }
+    },
+    "explicit_ar_grouping": {
+      "1": {
+        "rollback_queue_request_count_histogram": {"1": 10},
+        "candidate_queue_request_count_histogram": {"1": 10},
+        "rollback_native_group_size_histogram": {},
+        "candidate_native_group_size_histogram": {}
+      },
+      "2": {
+        "rollback_queue_request_count_histogram": {"1": 10},
+        "candidate_queue_request_count_histogram": {"2": 10},
+        "rollback_native_group_size_histogram": {"2": 2},
+        "candidate_native_group_size_histogram": {"2": 10},
+        "rollback_full_native_group_delta": 2,
+        "candidate_full_native_group_delta": 10
+      },
+      "3": {
+        "rollback_queue_request_count_histogram": {"1": 10},
+        "candidate_queue_request_count_histogram": {"3": 10},
+        "rollback_native_group_size_histogram": {"2": 10},
+        "candidate_native_group_size_histogram": {"3": 10},
+        "rollback_full_native_group_delta": 0,
+        "candidate_full_native_group_delta": 10
+      }
+    },
+    "explicit_ar_attribution_mean_ms": {
+      "1": {
+        "rollback": {"wave_wall": 282.625155, "native_prefill": 252.3943, "remaining": 29.754979, "server_queue_response_residual": 28.763479},
+        "candidate": {"wave_wall": 284.585031, "native_prefill": 254.4101, "remaining": 29.698159, "server_queue_response_residual": 28.717359}
+      },
+      "2": {
+        "rollback": {"wave_wall": 503.06866, "native_prefill": 258.9726, "remaining": 243.661063, "server_queue_response_residual": 237.051063},
+        "candidate": {"wave_wall": 343.078607, "native_prefill": 302.6304, "remaining": 40.076535, "server_queue_response_residual": 32.426535}
+      },
+      "3": {
+        "rollback": {"wave_wall": 602.298166, "native_prefill": 296.23, "remaining": 305.624016, "server_queue_response_residual": 296.765116},
+        "candidate": {"wave_wall": 388.270223, "native_prefill": 342.3975, "remaining": 45.37033, "server_queue_response_residual": 37.19393}
+      }
+    }
+  },
+  "interpretation": [
+    "The rollback publishes each explicit C2/C3 HTTP item as a separate EngineService command. The resident driver can poll after the first command, so C2 produced only 2/10 full native groups and C3 produced ten partial size-2 groups with no full size-3 group.",
+    "The candidate publishes each ready default-route cohort in one command. Queue metadata and the resident native probe agree on full C2/C3 groups in all ten cells at each width.",
+    "C2/C3 explicit AR improves in every category and reaches the already-full automatic K0 control within 0.5%/0.1%, localizing the gain to removal of the admission race rather than changed model math.",
+    "C1 explicit AR is 0.689% lower in the later packet, but the unchanged automatic K0 control is simultaneously 0.683% lower. Candidate C1 remaining wall decreases by 0.057 ms while native prefill increases by 2.016 ms, so no path-specific C1 regression is measured.",
+    "Each request retains independent handles, completion, failure, cancellation token, active-capacity reclaim, and dynamically arriving cohort admission; these lifecycle properties are covered by 58 passing focused contracts."
+  ],
+  "scoreboard_update": {
+    "table": "benchmarks/README.md W7900 standardized Qwen3.8 Q4_K_M prefill",
+    "columns_changed": {
+      "C1": "149.072 -> 157.774 (+5.84% versus prior published packet)",
+      "C2": "175.905 -> 261.748 (+48.80%)",
+      "C3": "212.235 -> 346.923 (+63.46%)"
+    },
+    "columns_unchanged": ["C4", "C5", "C6", "C7", "C8"]
+  },
+  "limitations": [
+    "This is one tracked-clean same-build rollback/default pair. The unchanged automatic K0 arm supplies a same-packet drift control; release-window repetition remains the refactor-knob removal trigger.",
+    "The one-token packet measures prompt-prefill serving economics and first generated token. It does not replace the D24 AR or MTP generation rows.",
+    "The automatic omitted-request arm is a causal grouping control, not an MTP speed claim: no speculative cycle engaged in any cell."
+  ]
+}
