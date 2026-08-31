@@ -42,6 +42,19 @@ should be removed or collapsed.
   > default until a re-audited tile/grid version (weight reuse + output tiling
   > + empty-expert skip) beats `strict_ms`; see worklog entry 20260830T202256.
 
+## 2026-08-31 Qwen4Exp P1 layer-2 grouped Q5_K
+
+- `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1` now changes only the layer-2
+  Q5_K/Q5_K grouped-WMMA route under the stacked production composition; Q4_K
+  layers resolve through their independently owned exact/production paths. A
+  durable p508 trace and 20 category-balanced p512 pairs show a 4.21x layer-2
+  role contraction and about 5% complete-prefill win, but cross-route logits
+  differ. Keep the flag default-off until the complete numerical/task/state/c2/
+  lifecycle/manifest and p1024/p4096 gates pass. If admitted, move the scope to
+  explicit profile/registry ownership and remove this process-global transport;
+  if rejected, remove the candidate selector rather than leaving an ambiguous
+  broad flag. Retain the strict selected Q5_K gemv chain as fallback.
+
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
 - The named production manifest now owns `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL`,
