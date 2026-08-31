@@ -779,7 +779,13 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       warmup is diagnostic only, not a promotion rule. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json`.
 - [ ] Require each retained subunit to reduce its complete role and p512/p1024,
-      not merely an isolated GEMM; re-run p4096 at the phase gate.
+      not merely an isolated GEMM; re-run p4096 at the phase gate. A fresh
+      stacked profile after the retained router/GR paths re-ranks P3 to GR
+      projection/read **651.16 ms**, `attn_qkv+attn_gate` **536.26 ms**,
+      `ssm_out` **137.62 ms**, shared expert **122.04 ms**, and router producer
+      **94.77 ms**. The 36-layer qkv+gate boundary remains the largest uniform
+      next target; GR down+inject is secondary. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-stacked-profile.json`.
 
 ### Phase P4 — GDN and QSA prefill parity
 
