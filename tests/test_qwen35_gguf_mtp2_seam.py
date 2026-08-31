@@ -282,7 +282,7 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     assert production.production_physical_extra_rowtiles is True
     assert production.production_physical_q5_rowtile is True
     assert production.production_physical_q6_rowtile is True
-    assert production.production_physical_q6_mixed_rowtiles is False
+    assert production.production_physical_q6_mixed_rowtiles is True
     assert strict.physical_prompt_streaming is False
     assert strict.production_physical_extra_rowtiles is False
     assert strict.production_physical_q5_rowtile is False
@@ -292,11 +292,11 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     strict.close()
 
 
-def test_mixed_q6_target_rowtiles_are_default_off_and_profile_scoped(
+def test_mixed_q6_target_rowtiles_are_default_on_with_rollback_and_profile_scope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", "1"
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", raising=False
     )
     production = Qwen35GGUFMTP2Adapter(
         SimpleNamespace(
@@ -338,6 +338,23 @@ def test_mixed_q6_target_rowtiles_are_default_off_and_profile_scoped(
     production.close()
     strict.close()
     peer.close()
+
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES", "0"
+    )
+    rollback = Qwen35GGUFMTP2Adapter(
+        SimpleNamespace(
+            generator=SimpleNamespace(
+                execution_profile="production",
+                backend="hip_gfx1100",
+            )
+        ),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert rollback.production_physical_q6_mixed_rowtiles is False
+    rollback.close()
 
 
 def test_unpadded_r8_target_is_production_default_with_rollback(

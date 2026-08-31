@@ -133,7 +133,7 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall results (total tok/s), s
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | 57.345 | 66.042 | 62.719 | 61.785 |
+| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | 58.117 | 65.069 | 63.055 | 66.325 |
 | llama.cpp current HIP | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
 
@@ -254,7 +254,16 @@ D2H or rejected small-M. A subsequent Q4-only mixed-R8 composition was exact
 and faster in isolated actual-weight leaves, but the binding counterbalanced
 C5-C8 suite rejects it: aggregate complete-wall deltas are **−0.56%/−0.23%/
 −0.28%/+0.006%** at C5/C6/C7/C8. The default-off scope and launch maps were
-removed rather than retained as dead runtime selection.
+removed rather than retained as dead runtime selection. The next measured
+family, planar Q6, does survive the binding gate: exact mixed-R8/R6 partitions
+improve aggregate C5/C6/C7/C8 complete throughput **57.827→58.117 (+0.50%)**,
+**64.706→65.069 (+0.56%)**, **62.704→63.055 (+0.56%)**, and
+**65.953→66.325 tok/s (+0.56%)**. Every category and heldout scope improves;
+target-enqueue+blocking-accept operation-complete time falls **1.26–1.48%**,
+all 520 cross-arm MTP rows match, physical ownership remains one group, and all
+processes drain. The mixed Q6 route is now default for measured R24/R30/R36
+roles; R18, shape misses, strict, and `...Q6_MIXED_TARGET_ROWTILES=0` keep the
+repeated-R6 fallback. [`mixed-R8 planar-Q6 retention`](results/2026-08-31-w7900-q4km-k3-c5c8-mixed-r8-q6-chunks-retained.json)
 
 **2026-08-31 audit note:** do not use the pre-grouping refresh's 31 tok/s K3 plateau or width-dependent acceptance as current evidence; pre-#30 grouped acceptance was 0.7889 at every width, while the current one-group C8 packet records 0.7850 with the same accepted-token count as its rollback. Task #25 repaired the fixed-order T16 protocol: tracked-clean forward/reverse repeats confirm the `(5120,17408)` and `(5120,10240)` row-128 defaults, every measured losing shape, and ULP-0/finite output; `(5120,12288)` narrows from row 128 to row 112 after a five-pair repeat measured rows 120/124/128 at 0.9943x/0.9949x/0.9992x. W7900 has 96 CUs; the down projection's 107 blocks are 428 wave32s (~4.46 waves/CU), not 107 blocks against 512 CUs. A current full-suite repeat pair showed that “grouped prefill” was not a binary route fact: explicit AR queued each C2/C3 request independently and formed a full resident group only 5/20 times at each width. Task #29 now closes that race with one EngineService admission command for every compatible cohort already inside the frontend batch window, while preserving per-request handles and lifecycle. The same-build rollback/default packet moves full native groups from 2/10→10/10 at C2 and 0/10→10/10 at C3; explicit AR moves 158.868→157.774, 178.504→261.748, and 223.643→346.923 prompt tok/s at C1/C2/C3. All 120 cross-packet generated rows match and both packets finish with zero active allocations. Task #11 is now complete: an exact row64 sibling reduces the `(17408,5120)` owner's 256-row padding and owns rows 33-192, with five-pair leaf speedups of 1.009x-1.855x; row193+ keeps the parent after a sharp 0.897x crossover. The same-build full-suite pair improves C1 prompt throughput by 4.63%/4.51% in both exact arms; the stable full-group control is +0.62% at C2 and flat-positive at C3, so no canonical row is replaced. A fresh pre-#30 K3 D1/D24 diagnostic confirmed that each prompt-local accept sequence and aggregate 0.788944724 acceptance were identical at C1/C3/C5/C8. The then-current capacity-8 owner was physically capped at four requests, producing `[1]`, `[3]`, `[4,1]`, and `[4,4]`; C8 paid two stable size-4 stage sums, with accept/commit/blocking-readback at 70.9% of the named-stage sum. Task #30 has now removed that ceiling for gfx1100 production: server admission, frontier, proposal, target, accept, and cycle owners resolve C8 while strict and rollback remain C4. The final same-commit C5/C8 D1/D24 gate measures **49.227→57.345 tok/s (+16.49%)** at C5 and **56.414→61.785 (+9.52%)** at C8, with every prompt/category positive, 520/520 candidate/rollback generated rows equal, clean D1 K0 ownership, clean D24 drain, proposal C5/C8, and target rows through R24/R36. The recovery audit closes the omitted changed cells: C6 improves **50.421→66.042 (+30.98%)** and C7 **55.983→62.719 (+12.03%)**, with 260/260 generated rows equal. Automatic C5-C8 is still K0. A production-materializer sidecar sweep separately closes the leaf question: small-M is strict-exact in 35/35 Q4 role/row cells but is 2.52-14.84x slower than rowtile by HIP events and 2.51-13.53x operation-complete, so the existing rowtile owner remains default.
 

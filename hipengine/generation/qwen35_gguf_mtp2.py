@@ -378,7 +378,7 @@ class Qwen35GGUFMTP2Adapter:
                 "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS",
                 {},
             )
-            and _env_enabled(_Q6_MIXED_TARGET_ROWTILES_ENV)
+            and _env_enabled(_Q6_MIXED_TARGET_ROWTILES_ENV, default=True)
         )
         self.production_target_pad_row_counts = (
             tuple(
