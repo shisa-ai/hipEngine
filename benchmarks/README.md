@@ -125,7 +125,7 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 | hipEngine AR | **21.999** | 31.916 | **45.309** | **54.151** | **61.881** | **71.226** | **74.903** | **78.667** |
 | llama.cpp current HIP AR | 21.720 | **35.440** | 30.787 | 27.760 | 36.390 | 45.529 | 51.914 | 58.744 |
 | llama.cpp Laurent HIP AR | 21.463 | 35.100 | 30.635 | 27.667 | 36.473 | 45.826 | 52.537 | 59.348 |
-| hipEngine explicit K3 | 31.455 | 39.820 | **54.590** | **55.780** | 47.960 | 49.020 | 55.225 | 62.985 |
+| hipEngine explicit K3 | 31.455 | 39.820 | **54.590** | **55.780** | 57.345 | 49.020 | 55.225 | 61.785 |
 | llama.cpp current HIP K3 | 32.553 | **41.042** | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP K3 | **32.733** | 40.808 | 45.947 | 51.054 | **61.013** | **74.628** | **78.281** | **101.072** |
 | hipEngine prefill | 157.774 | **261.748** | **346.923** | **318.412** | 312.682 | 347.625 | **426.692** | 397.655 |
@@ -133,16 +133,18 @@ W7900 standardized Qwen3.8 `Q4_K_M` C1-C8 complete-wall matrix (total tok/s):
 | llama.cpp Laurent HIP prefill | 195.803 | 231.307 | 252.893 | 274.520 | 316.169 | 358.053 | 368.136 | **424.202** |
 
 All current rows and 78/80 Laurent AR/MTP cells are content-exact; Laurent's two
-C8 differences are deterministic and pass anti-repetition guards. The hipEngine AR row and K3 C1-C7 cells come from a packet taken after
+C8 differences are deterministic and pass anti-repetition guards. The hipEngine AR row and K3 cells except the final C5/C8 closure come from a packet taken after
 **grouped prefill was declared for gfx1100**
 (`GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8`), whose protocol block is byte-identical to
 the prior packet: 80/80 correctness cells, **720** cross-packet row comparisons with
 **0** mismatches on the one-token packet and **432** at full 24-token length. That
 change is AR **+3.5%..+72.2%** and K3 **+31.8%..+76.5%** versus the pre-declaration
-packet, and AR now leads **7 of 8 widths** - only C2, at 0.90x current. Draft
-acceptance is **0.7889 at every width** instead of falling to 0.4668 at C3:
+packet, and AR now leads **7 of 8 widths** - only C2, at 0.90x current. In that pre-#30
+packet, draft acceptance was **0.7889 at every width** instead of falling to 0.4668 at C3:
 bypassing the packed verify path moved acceptance by exactly **+0.000** at C1/C2/C4/C8,
-so the ungrouped prefill schedule, not verification, caused the collapse. K3 leads
+so the ungrouped prefill schedule, not verification, caused the collapse. The current
+one-group C8 packet records 0.7850 acceptance (1,256 accepted from 1,600 proposals)
+versus 0.7889 for the C4 rollback (the same 1,256 accepted from 1,592 proposals). K3 leads
 the peers only at C3 (1.19x Laurent) and C4 (1.09x), and is behind our own AR from
 C5 onward; K3 remains an engine-ranking diagnostic, distinct from hipEngine's
 automatic C2/K2 product key. Prefill uses the peer one-token protocol (10 prompts x C1-C8, content-exact).
@@ -184,18 +186,24 @@ above that are reads. [`automatic route gating`](results/2026-08-30-w7900-q4km-a
 [`exact row64 down-projection retention`](results/2026-08-31-w7900-q4km-t16-downproj-row64-retained.json) ·
 [`runner-only packed-prefill probe`](results/2026-08-31-w7900-q4km-packed-prefill-runner-probe.json) ·
 [`default-AR ready-cohort retention`](results/2026-08-31-w7900-q4km-default-ar-ready-cohort-retained.json) ·
-[`C8 physical-group retention`](results/2026-08-31-w7900-q4km-c8-physical-group-retained.json).
+[`initial C8 physical-group retention`](results/2026-08-31-w7900-q4km-c8-physical-group-retained.json) ·
+[`final C5/C8 physical-group closure`](results/2026-08-31-w7900-q4km-c5c8-physical-group-closure.json).
 
-The explicit K3 C8 cell now uses one production physical group instead of two
-serial C4 groups. A tracked-clean same-commit default/rollback pair improves
-**56.820→62.985 tok/s (+10.85%)**, reduces complete MTP wall by **9.79%**, and
-improves every prompt and category. Both arms pass 10/10 exact, engaged, and
-budget-conformance cells with zero final allocations; physical telemetry records
-C4/R18/`[4,5120]` versus C8/R36/`[8,5120]`. The published C8 cell therefore moves
-**55.860→62.985 (+12.76%)**. This is a retained explicit engine-path result;
-automatic C8 remains K0 pending its separate economics/profile gate.
+The explicit K3 C5/C8 cells now use one production physical group instead of
+serial `[4,1]`/`[4,4]` C4 groups. The final tracked-clean, same-commit C5/C8
+D1/D24 default/rollback gate improves D24 **49.227→57.345 tok/s (+16.49%)** at
+C5 and **56.414→61.785 (+9.52%)** at C8, reducing complete MTP wall by
+**14.16%/8.69%**. Every prompt and category improves. All four packets pass;
+all 520 candidate/rollback generated rows match and every process drains to zero
+tracked allocations. D1 stays K0 without allocating an MTP owner. D24 telemetry
+records C5 proposal/target C5/R24 and C8/R36 with `[8,5120]`, versus rollback
+C1+C4/R18 and C4/R18 with `[4,5120]`. The published C5 cell moves
+**47.960→57.345 (+19.57%)**; the final non-best-of C8 repeat replaces
+**62.985→61.785 (-1.91% repeat drift)** and remains **+10.61%** versus the
+pre-task 55.860 cell. These are retained explicit engine-path results; automatic
+C5/C8 remains K0 pending separate economics/profile gates.
 
-**2026-08-31 audit note:** do not use the pre-grouping refresh's 31 tok/s K3 plateau or width-dependent acceptance as current evidence; grouped acceptance is 0.7889 at every width. Task #25 repaired the fixed-order T16 protocol: tracked-clean forward/reverse repeats confirm the `(5120,17408)` and `(5120,10240)` row-128 defaults, every measured losing shape, and ULP-0/finite output; `(5120,12288)` narrows from row 128 to row 112 after a five-pair repeat measured rows 120/124/128 at 0.9943x/0.9949x/0.9992x. W7900 has 96 CUs; the down projection's 107 blocks are 428 wave32s (~4.46 waves/CU), not 107 blocks against 512 CUs. A current full-suite repeat pair showed that “grouped prefill” was not a binary route fact: explicit AR queued each C2/C3 request independently and formed a full resident group only 5/20 times at each width. Task #29 now closes that race with one EngineService admission command for every compatible cohort already inside the frontend batch window, while preserving per-request handles and lifecycle. The same-build rollback/default packet moves full native groups from 2/10→10/10 at C2 and 0/10→10/10 at C3; explicit AR moves 158.868→157.774, 178.504→261.748, and 223.643→346.923 prompt tok/s at C1/C2/C3. All 120 cross-packet generated rows match and both packets finish with zero active allocations. Task #11 is now complete: an exact row64 sibling reduces the `(17408,5120)` owner's 256-row padding and owns rows 33-192, with five-pair leaf speedups of 1.009x-1.855x; row193+ keeps the parent after a sharp 0.897x crossover. The same-build full-suite pair improves C1 prompt throughput by 4.63%/4.51% in both exact arms; the stable full-group control is +0.62% at C2 and flat-positive at C3, so no canonical row is replaced. A fresh pre-#30 K3 D1/D24 diagnostic confirmed that each prompt-local accept sequence and aggregate 0.788944724 acceptance were identical at C1/C3/C5/C8. The then-current capacity-8 owner was physically capped at four requests, producing `[1]`, `[3]`, `[4,1]`, and `[4,4]`; C8 paid two stable size-4 stage sums, with accept/commit/blocking-readback at 70.9% of the named-stage sum. Task #30 has now removed that ceiling for gfx1100 production: server admission, frontier, proposal, target, accept, and cycle owners resolve C8 while strict and rollback remain C4. The final same-commit full-suite pair measures C4 **56.820**→C8 **62.985 tok/s (+10.85%)**, with every category positive, exact generated rows, clean drain, proposal C8, and majority target R36. Automatic C8 is still K0. A production-materializer sidecar sweep separately closes the leaf question: small-M is strict-exact in 35/35 Q4 role/row cells but is 2.52-14.84x slower than rowtile by HIP events and 2.51-13.53x operation-complete, so the existing rowtile owner remains default.
+**2026-08-31 audit note:** do not use the pre-grouping refresh's 31 tok/s K3 plateau or width-dependent acceptance as current evidence; pre-#30 grouped acceptance was 0.7889 at every width, while the current one-group C8 packet records 0.7850 with the same accepted-token count as its rollback. Task #25 repaired the fixed-order T16 protocol: tracked-clean forward/reverse repeats confirm the `(5120,17408)` and `(5120,10240)` row-128 defaults, every measured losing shape, and ULP-0/finite output; `(5120,12288)` narrows from row 128 to row 112 after a five-pair repeat measured rows 120/124/128 at 0.9943x/0.9949x/0.9992x. W7900 has 96 CUs; the down projection's 107 blocks are 428 wave32s (~4.46 waves/CU), not 107 blocks against 512 CUs. A current full-suite repeat pair showed that “grouped prefill” was not a binary route fact: explicit AR queued each C2/C3 request independently and formed a full resident group only 5/20 times at each width. Task #29 now closes that race with one EngineService admission command for every compatible cohort already inside the frontend batch window, while preserving per-request handles and lifecycle. The same-build rollback/default packet moves full native groups from 2/10→10/10 at C2 and 0/10→10/10 at C3; explicit AR moves 158.868→157.774, 178.504→261.748, and 223.643→346.923 prompt tok/s at C1/C2/C3. All 120 cross-packet generated rows match and both packets finish with zero active allocations. Task #11 is now complete: an exact row64 sibling reduces the `(17408,5120)` owner's 256-row padding and owns rows 33-192, with five-pair leaf speedups of 1.009x-1.855x; row193+ keeps the parent after a sharp 0.897x crossover. The same-build full-suite pair improves C1 prompt throughput by 4.63%/4.51% in both exact arms; the stable full-group control is +0.62% at C2 and flat-positive at C3, so no canonical row is replaced. A fresh pre-#30 K3 D1/D24 diagnostic confirmed that each prompt-local accept sequence and aggregate 0.788944724 acceptance were identical at C1/C3/C5/C8. The then-current capacity-8 owner was physically capped at four requests, producing `[1]`, `[3]`, `[4,1]`, and `[4,4]`; C8 paid two stable size-4 stage sums, with accept/commit/blocking-readback at 70.9% of the named-stage sum. Task #30 has now removed that ceiling for gfx1100 production: server admission, frontier, proposal, target, accept, and cycle owners resolve C8 while strict and rollback remain C4. The final same-commit C5/C8 D1/D24 gate measures **49.227→57.345 tok/s (+16.49%)** at C5 and **56.414→61.785 (+9.52%)** at C8, with every prompt/category positive, 520/520 candidate/rollback generated rows equal, clean D1 K0 ownership, clean D24 drain, proposal C5/C8, and target rows through R24/R36. Automatic C5/C8 is still K0. A production-materializer sidecar sweep separately closes the leaf question: small-M is strict-exact in 35/35 Q4 role/row cells but is 2.52-14.84x slower than rowtile by HIP events and 2.51-13.53x operation-complete, so the existing rowtile owner remains default.
 
 Strix Halo Qwen3.8 `Q4_K_M`: [strict C1/B3 automatic at cap1 or cap4 singleton](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) is **15.609 vs 9.807 tok/s (1.5916x)**; [production c68-128 explicit](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) remains available. Exact C2 verifier [Q6](results/2026-08-28-gfx1151-qwen38-c2-q6-verifier-rowtiles-retained.json) and [Q5](results/2026-08-28-gfx1151-qwen38-c2-q5-verifier-rowtile-retained.json), followed by [production-profile Q4 rowtiles](results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json), lift K3 **11.724→17.031 tok/s (+45.27%)** and **0.8170x→1.1441x true AR**. Independently qualified [C3 R6/R9/R12 rowtiles](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) improve C3/K3 **19.070→19.934 tok/s (+4.53%)**, but remain **0.9589x AR**; production C2/K3 is automatic only for context1-128/D24, while C3-C8 and scope misses remain K0.
 
