@@ -45,12 +45,7 @@ def _hip_available() -> bool:
     return True
 
 
-def test_qwen4_exp_gr_sigmoid_mean_fusion_is_bounded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED", raising=False)
-    assert _qwen4_exp_gr_sigmoid_mean_fused(1) is False
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED", "1")
+def test_qwen4_exp_gr_sigmoid_mean_fusion_is_bounded() -> None:
     assert _qwen4_exp_gr_sigmoid_mean_fused(1) is True
     assert _qwen4_exp_gr_sigmoid_mean_fused(256) is True
     assert _qwen4_exp_gr_sigmoid_mean_fused(257) is False
@@ -93,18 +88,10 @@ def test_qwen4_exp_repeat_branches_preserves_distinct_prompt_rows() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("fused_sigmoid_mean", [False, True])
-def test_qwen4_exp_runner_gr_read_composes_dispatch_and_native_primitives(
-    monkeypatch: pytest.MonkeyPatch,
-    fused_sigmoid_mean: bool,
-) -> None:
+def test_qwen4_exp_runner_gr_read_composes_dispatch_and_native_primitives() -> None:
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
-    monkeypatch.setenv(
-        "HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED",
-        "1" if fused_sigmoid_mean else "0",
-    )
     rng = np.random.default_rng(4038)
     rows, branches, hidden, low_rank = 3, 2, 4, 3
     residual_bits = float_array_to_bf16_bits(

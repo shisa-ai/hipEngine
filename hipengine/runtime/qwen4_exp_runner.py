@@ -2665,11 +2665,9 @@ def run_qwen4_exp_gr_read(
 
 
 def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
-    """Select the launch-contracted GR epilogue only in its measured row range."""
+    """Select the exact launch-contracted GR epilogue in its measured row range."""
 
-    return rows <= 256 and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED", "0"
-    ) not in {"", "0", "false", "False"}
+    return rows <= 256
 
 
 def _qwen4_exp_q8_mmq_policy(policy):
