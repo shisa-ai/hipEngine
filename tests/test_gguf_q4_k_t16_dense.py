@@ -53,6 +53,7 @@ from hipengine.quant.gguf_q4_k import (
     repack_gguf_q4_k_tile16_qmicro,
 )
 from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_session,
     q4_t16_physical_extra_rowtiles_session,
 )
 from hipengine.runtime.gguf_linear import (
@@ -332,6 +333,39 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     assert row64 is shared_b_row64_fn
     assert default is selector
+
+
+def test_gfx1100_unpadded_r8_q4_rowtile_is_candidate_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = (
+        t16_prefill.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("rowtile"),
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("single_wave"),
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared_b"),
+    )
+
+    with q4_t16_physical_extra_rowtiles_session(True):
+        selector(1, 2, 3, 8, 5_120, 6_144)
+        selector(1, 2, 3, 8, 5_120, 17_408)
+        with physical_exact_rowtiles_session(True):
+            selector(1, 2, 3, 8, 5_120, 6_144)
+            selector(1, 2, 3, 8, 5_120, 17_408)
+
+    assert calls == ["shared_b", "single_wave", "rowtile", "rowtile"]
 
 
 def test_q4_t16_unequal_dual_prefill_leaf_contract() -> None:

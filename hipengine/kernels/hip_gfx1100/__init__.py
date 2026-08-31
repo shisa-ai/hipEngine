@@ -282,6 +282,11 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
 )
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS = frozenset({6})
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS = frozenset({6})
+# Default-off exact-row screen for C2/K3. R8 eliminates the four inactive rows
+# required by the rows6-multiple fallback; every Q4/Q5/Q6 actual-weight leaf is
+# BF16-bit exact to the active rows of R12 and 1.31x-1.84x faster. The adapter
+# enables this capability only inside its request-local candidate scope.
+GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS = frozenset({8})
 # The production dense adapter owns one physical request group through C8. The
 # adapter derives frontier/accept workspaces from this package capability and
 # retains an environment rollback to the previous C4 ceiling. Strict remains
@@ -960,6 +965,7 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
+    "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
     "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",

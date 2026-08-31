@@ -313,6 +313,14 @@ fallback count is not a success metric.
   K0. The device-resident proposal's enqueue-only call retains synchronized
   default behavior for every other caller, and physical accept relies on its
   bounded blocking D2H while the legacy diagnostic path remains synchronized.
+  `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS=1` is a default-off same-build
+  screen for an independently exact R8 owner: physical C2/K3 omits four inactive
+  padding rows and selects existing Q4/Q5/Q6 rows8 rowtiles, while R6 and every
+  other physical width retain the established rows6-multiple route.
+- Removal trigger: reject and remove the exact-R8 flag/capability/scope if its
+  full C2/K3 category+heldout gate is not exact and non-regressive. If retained,
+  flip the default and keep `0` for one release checkpoint before folding R8
+  into the profile manifest.
 - Removal trigger: after one release window with the exact automatic C2 key and
   rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding, and
   these boolean scopes into a general profile-resolved physical-target variant
