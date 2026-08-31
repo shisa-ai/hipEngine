@@ -34,6 +34,7 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
         qwen4_exp_qsa_scatter_index_keys_f32,
         qwen4_exp_qsa_split_norm_rope_rows_f32,
         qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
+        qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_contiguous_h256_f32,
         qwen4_exp_qsa_topk_expand_f32_i64,
         qwen4_exp_qsa_topk_expand_rows_f32_i64,
         register_qwen4_exp_qsa_kernels,
@@ -97,6 +98,16 @@ def test_qwen4_exp_qsa_build_and_registry_contract() -> None:
         )
         is qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32
     )
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="qsa_sparse_attention",
+            quant="bf16_kv",
+            variant="production_wave8_contiguous_h256_spans",
+        )
+        is qwen4_exp_qsa_sparse_attention_paged_bf16_wave8_contiguous_h256_f32
+    )
+
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_qwen4_exp_qsa_index_row_scatter_matches_paged_positions() -> None:
