@@ -315,6 +315,53 @@ def _symbol(quant: str, variant: str) -> str:
     return f"hipengine_{quant}_{variant}"
 
 
+def gguf_q8_0_shared_down_combine_coltile8_rowbatch4_f32(
+    x_ptr: int,
+    qweight_ptr: int,
+    expert_ptr: int,
+    gate_logits_ptr: int,
+    down_f32_ptr: int,
+    down_bf16_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact Q8 shared-down materialization and gated combine."""
+
+    _validate("gguf_q8_0", rows, in_features, out_features, threads)
+    if out_features % 8:
+        raise ValueError("out_features must be divisible by 8")
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = _cached_fn(
+        library,
+        "hipengine_gguf_q8_0_shared_down_combine_coltile8_rowbatch4_f32",
+        [_VOID, _VOID, _VOID, _VOID, _VOID, _VOID, _VOID,
+         _I64, _I64, _I64, _I64, _VOID],
+    )
+    err = fn(
+        x_ptr,
+        qweight_ptr,
+        expert_ptr,
+        gate_logits_ptr,
+        down_f32_ptr,
+        down_bf16_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
 gguf_q8_0_gemv_f32_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_f32_out"))
 gguf_q8_0_gemv_f32_fp16_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_fp16_out"))
 gguf_q8_0_gemv_fp16_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_fp16_f32_out"))
@@ -786,6 +833,16 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear+shared_gate_combine",
+            "gguf_q8_0",
+            "coltile8_rowbatch4_f32_bf16_out_exact",
+        ),
+        gguf_q8_0_shared_down_combine_coltile8_rowbatch4_f32,
+        replace=replace,
+    )
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1484,6 +1541,7 @@ __all__ = [
     "gguf_q8_0_gemv_rowbatch32_f32_f32_out",
     "gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out",
+    "gguf_q8_0_shared_down_combine_coltile8_rowbatch4_f32",
     "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out",
