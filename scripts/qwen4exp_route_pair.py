@@ -168,10 +168,18 @@ def _run_route(
 ) -> dict[str, Any]:
     """Run one synchronized route sample and return its timing/identity."""
 
-    result_kwargs = {"capture_logits": False}
+    prefill_kwargs = {
+        "capture_logits": False,
+        "capture_target_hidden": False,
+    }
+    step_kwargs = {
+        "capture_logits": False,
+        "capture_target_hidden": False,
+        "token_id_resident": True,
+    }
     if mode == "prefill":
         started = time.perf_counter()
-        result = runner.prefill(token_ids, **result_kwargs)
+        result = runner.prefill(token_ids, **prefill_kwargs)
         runner.runtime.device_synchronize()
         return {
             "seconds": time.perf_counter() - started,
@@ -186,13 +194,13 @@ def _run_route(
         raise ValueError(f"unsupported route mode: {mode}")
     if decode_transitions <= 0:
         raise ValueError("decode_transitions must be positive")
-    result = runner.prefill(token_ids, **result_kwargs)
+    result = runner.prefill(token_ids, **prefill_kwargs)
     runner.runtime.device_synchronize()
     output_ids = [int(result.token_id)]
     current = int(result.token_id)
     started = time.perf_counter()
     for _ in range(decode_transitions):
-        result = runner.step(current, **result_kwargs)
+        result = runner.step(current, **step_kwargs)
         current = int(result.token_id)
         output_ids.append(current)
     runner.runtime.device_synchronize()

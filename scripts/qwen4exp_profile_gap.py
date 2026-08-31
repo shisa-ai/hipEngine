@@ -506,18 +506,27 @@ def main() -> None:
                 census.close()
             prompt_tokens = len(ids)
         else:
-            result_kwargs = (
-                {} if args.decode_output == "full_logits"
-                else {"capture_logits": False}
-            )
+            if args.decode_output == "full_logits":
+                prefill_kwargs: dict[str, bool] = {}
+                step_kwargs: dict[str, bool] = {}
+            else:
+                prefill_kwargs = {
+                    "capture_logits": False,
+                    "capture_target_hidden": False,
+                }
+                step_kwargs = {
+                    "capture_logits": False,
+                    "capture_target_hidden": False,
+                    "token_id_resident": True,
+                }
             for _ in range(args.warm_trajectory_repetitions):
-                result = runner.prefill([9707], **result_kwargs)
+                result = runner.prefill([9707], **prefill_kwargs)
                 for _ in range(args.warm_decode_steps + args.decode_steps):
-                    result = runner.step(int(result.token_id), **result_kwargs)
+                    result = runner.step(int(result.token_id), **step_kwargs)
                 runner.runtime.device_synchronize()
-            result = runner.prefill([9707], **result_kwargs)
+            result = runner.prefill([9707], **prefill_kwargs)
             for _ in range(args.warm_decode_steps):
-                result = runner.step(int(result.token_id), **result_kwargs)
+                result = runner.step(int(result.token_id), **step_kwargs)
             runner.runtime.device_synchronize()
             report["graph_before"] = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
             census = RuntimeCensus(runner.runtime)
@@ -532,7 +541,7 @@ def main() -> None:
                     if roctx:
                         roctx.push(f"qwen4exp_decode_step_{step}")
                     started = time.perf_counter()
-                    result = runner.step(int(result.token_id), **result_kwargs)
+                    result = runner.step(int(result.token_id), **step_kwargs)
                     report["wall_seconds"].append(time.perf_counter() - started)
                     if roctx:
                         roctx.pop()

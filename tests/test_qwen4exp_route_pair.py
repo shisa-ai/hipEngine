@@ -106,7 +106,16 @@ def test_decode_route_excludes_prefill_and_hashes_complete_sequence() -> None:
     assert sample["seconds"] >= 0
     assert len(sample["logits_sha256"]) == 64
     assert runner.runtime.synchronizations == 2
-    assert runner.kwargs == [{"capture_logits": False}] * 4
+    assert runner.kwargs == [
+        {"capture_logits": False, "capture_target_hidden": False},
+        *[
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            }
+        ] * 3,
+    ]
 
 
 def test_paired_summary_reports_ratio_cv_and_output_identity() -> None:

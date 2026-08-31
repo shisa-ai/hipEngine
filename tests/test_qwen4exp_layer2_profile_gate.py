@@ -110,6 +110,59 @@ def test_compact_state_gate_binds_strict_candidate_equality() -> None:
     assert gate["passed"] is False
 
 
+def test_compact_free_trajectory_reuses_device_token_and_skips_hidden_copy(
+    monkeypatch,
+) -> None:
+    module = _load_script()
+
+    class Runner:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def reset(self) -> None:
+            return None
+
+        def prefill(self, token_ids, **kwargs):
+            self.calls.append(("prefill", tuple(token_ids), kwargs))
+            return SimpleNamespace(token_id=7)
+
+        def step(self, token_id, **kwargs):
+            self.calls.append(("step", int(token_id), kwargs))
+            return SimpleNamespace(token_id=int(token_id) + 1)
+
+    runner = Runner()
+    tokenizer = SimpleNamespace(decode=lambda ids, skip_special: str(list(ids)))
+    monkeypatch.setattr(module, "_state_summary", lambda _runner: {"state_sha256": "s"})
+
+    result = module._free_trajectory(
+        runner, tokenizer, [1, 2], 3, compact_output=True
+    )
+
+    assert result["ids"] == [7, 8, 9]
+    assert runner.calls == [
+        (
+            "prefill", (1, 2),
+            {"capture_logits": False, "capture_target_hidden": False},
+        ),
+        (
+            "step", 7,
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            },
+        ),
+        (
+            "step", 8,
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            },
+        ),
+    ]
+
+
 def test_device_argmax_candidate_is_t0_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["device_argmax"]

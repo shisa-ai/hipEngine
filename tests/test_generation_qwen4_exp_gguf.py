@@ -200,9 +200,26 @@ def test_qwen4_exp_generator_runs_greedy_serial_and_stops_at_eos() -> None:
     assert output.generated_token_ids == (4, 5, 9)
     assert output.finish_details.reason == "eos"
     assert runner.steps == [
-        ("prefill", (1, 2), {"capture_logits": False}),
-        ("step", 4, {"capture_logits": False}),
-        ("step", 5, {"capture_logits": False}),
+        (
+            "prefill", (1, 2),
+            {"capture_logits": False, "capture_target_hidden": False},
+        ),
+        (
+            "step", 4,
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            },
+        ),
+        (
+            "step", 5,
+            {
+                "capture_logits": False,
+                "capture_target_hidden": False,
+                "token_id_resident": True,
+            },
+        ),
     ]
     generator.close()
     assert runner.steps[-1] == ("close",)
@@ -223,7 +240,8 @@ def test_qwen4_exp_generator_accepts_exact_ids_and_length_finish() -> None:
     assert output.generated_token_ids == (4,)
     assert output.finish_details.reason == "length"
     assert runner.steps[0] == (
-        "prefill", (7, 8), {"capture_logits": False}
+        "prefill", (7, 8),
+        {"capture_logits": False, "capture_target_hidden": False}
     )
 
 

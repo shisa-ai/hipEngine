@@ -4755,6 +4755,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seed: bool = False,
         capture_logits: bool = True,
+        capture_target_hidden: bool = True,
+        token_id_resident: bool = False,
         rope_positions: tuple[int, int, int] | None = None,
     ) -> Qwen4ExpTokenResult:
         self._require_open()
@@ -4783,9 +4785,12 @@ class Qwen4ExpGGUFResidentModelRunner:
             rope_positions_ptr = self.rope_position_buffer.ptr
         if token_host[0] < 0 or token_host[0] >= cfg.vocab_size:
             raise ValueError("token_id is outside Qwen4Exp vocabulary")
-        copy_host_to_device(
-            self.token_id_buffer, host_array_ptr(token_host), runtime=self.runtime
-        )
+        if not token_id_resident:
+            copy_host_to_device(
+                self.token_id_buffer,
+                host_array_ptr(token_host),
+                runtime=self.runtime,
+            )
         token_weight = self.resident.weight("root.token_embedding")
         embedding = resolve(
             backend=self.backend,
@@ -4930,14 +4935,18 @@ class Qwen4ExpGGUFResidentModelRunner:
                         ),
                     ),
                 ).ptr
-        self.runtime.memcpy(
-            self.last_target_hidden.ptr,
-            residual_ptr,
-            self.last_target_hidden.nbytes,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-        )
+        if capture_target_hidden:
+            self.runtime.memcpy(
+                self.last_target_hidden.ptr,
+                residual_ptr,
+                self.last_target_hidden.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
         hidden_seeds = (
-            self._read_hidden_seed_rows(self.last_target_hidden.ptr, 1)
+            self._read_hidden_seed_rows(
+                self.last_target_hidden.ptr if capture_target_hidden else residual_ptr,
+                1,
+            )
             if capture_hidden_seed
             else None
         )
@@ -5214,6 +5223,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seeds: bool = False,
         capture_logits: bool = True,
+        capture_target_hidden: bool = True,
     ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
@@ -5225,6 +5235,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 int(token),
                 capture_hidden_seed=capture_hidden_seeds,
                 capture_logits=(capture_logits if index + 1 == len(token_ids) else False),
+                capture_target_hidden=capture_target_hidden,
             )
             if result.hidden_seeds is not None:
                 captured.append(result.hidden_seeds)
@@ -5243,6 +5254,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seeds: bool = False,
         capture_logits: bool = True,
+        capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
@@ -5314,12 +5326,13 @@ class Qwen4ExpGGUFResidentModelRunner:
                     captured.append(hidden_rows)
         cfg = self.config
         assert self.head_scratch is not None
-        self.runtime.memcpy(
-            self.last_target_hidden.ptr,
-            last_residual_ptr,
-            self.last_target_hidden.nbytes,
-            HipMemcpyKind.DEVICE_TO_DEVICE,
-        )
+        if capture_target_hidden:
+            self.runtime.memcpy(
+                self.last_target_hidden.ptr,
+                last_residual_ptr,
+                self.last_target_hidden.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
         head_read = run_qwen4_exp_gr_read(
             last_residual_ptr,
             self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
@@ -5359,6 +5372,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         *,
         capture_hidden_seeds: bool = False,
         capture_logits: bool = True,
+        capture_target_hidden: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
@@ -5366,6 +5380,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             token_ids,
             capture_hidden_seeds=capture_hidden_seeds,
             capture_logits=capture_logits,
+            capture_target_hidden=capture_target_hidden,
             embedding_overrides=embedding_overrides,
             mrope_positions=mrope_positions,
         )
@@ -5379,12 +5394,21 @@ class Qwen4ExpGGUFResidentModelRunner:
         count = int(max_new_tokens)
         if count <= 0:
             raise ValueError("max_new_tokens must be positive")
-        result = self.prefill(token_ids, capture_logits=False)
+        result = self.prefill(
+            token_ids,
+            capture_logits=False,
+            capture_target_hidden=False,
+        )
         output: list[int] = []
         for index in range(count):
             output.append(result.token_id)
             if index + 1 < count:
-                result = self.step(result.token_id, capture_logits=False)
+                result = self.step(
+                    result.token_id,
+                    capture_logits=False,
+                    capture_target_hidden=False,
+                    token_id_resident=True,
+                )
         return tuple(output)
 
     def close(self) -> None:
