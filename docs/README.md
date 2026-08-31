@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -13,6 +13,7 @@ working on.
 | --- | --- |
 | [`PLAN.md`](PLAN.md) | Source of truth for architecture, plugin boundaries, phase roadmap, LoC budgets, and invariants. |
 | [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) | Normative strict/production/batch-invariant contracts, exact ownership rules, numerical gates, and registry resolution policy. |
+| [`PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md`](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md) | Dated evidence review of production cutoffs, calibration limits, practical quality impact, cutoff-excluded performance, and recalibration triggers. |
 | [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, historical-recovery, c1, and c>N/A4 campaign. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
@@ -93,8 +94,9 @@ working on.
   [`PROCESS-EXPLORATION.md`](PROCESS-EXPLORATION.md), freeze the evaluator and
   generalization envelope, then seed genuinely distinct hypothesis families.
 - **Before changing math or correctness-sensitive code:** read
-  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md) and
-  [`TESTING.md`](TESTING.md), declare the applicable strict/production/
+  [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), the latest dated
+  [production accuracy policy review](PRODUCTION-ACCURACY-POLICY-REVIEW-2026-08-31.md),
+  and [`TESTING.md`](TESTING.md), declare the applicable strict/production/
   batch-invariant contract, and add or update a CPU-reference / fixture gate
   before relying on benchmark output.
 
