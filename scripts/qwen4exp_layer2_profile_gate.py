@@ -58,6 +58,7 @@ class CandidateSpec:
     scenario_id: str
     candidate_key: tuple[str, str, str, str]
     fallback_key: tuple[str, str, str, str]
+    compact_output: bool = False
 
 
 CANDIDATES = {
@@ -86,6 +87,7 @@ CANDIDATES = {
         scenario_id="qwen4exp-ud-q4-k-xl-device-argmax",
         candidate_key=("hip_gfx1151", "argmax", "f32", "top1_i64"),
         fallback_key=("hip_gfx1151", "argmax", "f32", "top1_i64"),
+        compact_output=True,
     ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
@@ -290,19 +292,28 @@ def _ids_sha256(ids: Sequence[int]) -> str:
     return token_ids_sha256(int(value) for value in ids)
 
 
-def _free_trajectory(runner: Any, tokenizer: Any, prompt_ids: Sequence[int], steps: int) -> dict[str, Any]:
+def _free_trajectory(
+    runner: Any,
+    tokenizer: Any,
+    prompt_ids: Sequence[int],
+    steps: int,
+    *,
+    compact_output: bool = False,
+) -> dict[str, Any]:
     runner.reset()
-    result = runner.prefill([int(token) for token in prompt_ids])
+    kwargs = {"capture_logits": False} if compact_output else {}
+    result = runner.prefill([int(token) for token in prompt_ids], **kwargs)
     ids: list[int] = []
     for index in range(int(steps)):
         token = int(result.token_id)
         ids.append(token)
         if index + 1 < steps:
-            result = runner.step(token)
+            result = runner.step(token, **kwargs)
     return {
         "ids": ids,
         "ids_sha256": _ids_sha256(ids),
         "text": str(tokenizer.decode(ids, skip_special=False)),
+        "state": _state_summary(runner),
     }
 
 
@@ -398,6 +409,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         raise GateError("selected prompt suite is empty")
     complete_suite = args.limit is None
     candidate_spec = CANDIDATES[str(args.candidate)]
+    if candidate_spec.compact_output and args.free_runs < 3:
+        raise GateError("compact-output candidates require at least three free runs")
 
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
@@ -498,6 +511,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     candidate_generator.tokenizer,
                     prompt_tokens[prompt_id],
                     int(args.free_tokens),
+                    compact_output=candidate_spec.compact_output,
                 )
                 for _ in range(int(args.free_runs))
             ]
@@ -534,6 +548,24 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         thresholds=thresholds,
     )
     state_gate = _state_repeat_gate(strict_states, candidate_states)
+    compact_state_gate = None
+    if candidate_spec.compact_output:
+        strict_task_states = []
+        candidate_task_states = []
+        for row in prompt_rows:
+            prompt_id = str(row["id"])
+            strict_state = dict(strict_tasks[prompt_id]["state"])
+            strict_state["prompt_id"] = prompt_id
+            strict_task_states.append(strict_state)
+            runs = []
+            for task in candidate_tasks[prompt_id]:
+                run_state = dict(task["state"])
+                run_state["prompt_id"] = prompt_id
+                runs.append(run_state)
+            candidate_task_states.append(runs)
+        compact_state_gate = _state_repeat_gate(
+            strict_task_states, candidate_task_states
+        )
     categories = {str(row["id"]): str(row["category"]) for row in prompt_rows}
     task_gate = _task_gate(strict_tasks, candidate_tasks, categories=categories)
     source = _git_metadata(ROOT)
@@ -548,7 +580,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     task_pass = task_gate["status"] == "passed_exact"
     measurement_valid = bool(
-        complete_suite and tracked_clean and teardown and state_gate["passed"]
+        complete_suite
+        and tracked_clean
+        and teardown
+        and state_gate["passed"]
+        and (compact_state_gate is None or compact_state_gate["passed"])
     )
     passed = bool(measurement_valid and numerical_pass and task_pass)
     status = (
@@ -612,6 +648,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "prompts": prompt_manifest,
         "quality": quality,
         "state_repeat_gate": state_gate,
+        "compact_output_state_repeat_gate": compact_state_gate,
         "task_gate": task_gate,
         "lifecycle": {
             "strict_after_close": strict_after_close,

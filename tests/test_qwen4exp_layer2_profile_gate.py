@@ -90,6 +90,7 @@ def test_device_argmax_candidate_is_t0_and_fail_closed() -> None:
     assert candidate.classification == "T0"
     assert candidate.base_profile == "strict"
     assert candidate.candidate_key[-1] == "top1_i64"
+    assert candidate.compact_output is True
 
 
 def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
