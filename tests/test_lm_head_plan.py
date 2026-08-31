@@ -79,6 +79,53 @@ def test_lm_head_stage1_block_count() -> None:
     assert lm_head_argmax_stage1_blocks(1025, threads=256) == 2
 
 
+def test_argmax_f32_matches_production_vocab_and_lower_tie() -> None:
+    _require_hip_runtime()
+    runtime = get_hip_runtime()
+    library = build_lm_head(load=True)
+    vocab_size = 248_320
+    logits = np.linspace(-3.0, 2.0, vocab_size, dtype=np.float32)
+    logits[17] = np.float32(9.0)
+    logits[200_000] = np.float32(9.0)
+    threads = 256
+    blocks = lm_head_argmax_stage1_blocks(vocab_size, threads=threads)
+    outputs = (
+        np.empty(blocks, dtype=np.float32),
+        np.empty(blocks, dtype=np.int64),
+        np.empty(1, dtype=np.int64),
+        np.empty(1, dtype=np.float32),
+    )
+    buffers = [malloc(logits.nbytes, runtime=runtime)] + [
+        malloc(array.nbytes, runtime=runtime) for array in outputs
+    ]
+    try:
+        copy_host_to_device(
+            buffers[0], host_array_ptr(logits), logits.nbytes, runtime=runtime
+        )
+        argmax_f32(
+            buffers[0].ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            buffers[3].ptr,
+            buffers[4].ptr,
+            vocab_size,
+            threads=threads,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        for host, device in zip(outputs, buffers[1:], strict=True):
+            copy_device_to_host(
+                host_array_ptr(host), device, host.nbytes, runtime=runtime
+            )
+    finally:
+        for buffer in buffers:
+            free(buffer, runtime=runtime)
+
+    assert outputs[2].tolist() == [17]
+    assert outputs[3].tolist() == [9.0]
+
+
 def test_batch_argmax_f32_matches_cpu_oracle() -> None:
     _require_hip_runtime()
     runtime = get_hip_runtime()
