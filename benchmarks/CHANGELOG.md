@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P0 PLE cache modes — diagnostic] File-scoped remap+DONTNEED separates code-p512 **91.676 warm vs 56.214 cold pp/s (0.613x)**. Advice covers only the 28.8-GB PLE tensor range before each cold request; outputs are deterministic/equal and teardown is zero. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-ple-cache-modes.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P0 canonical chunk sweep — diagnostic] The deterministic 256/512/1024/2048 ladder finds chunk1024 **+2.55%/+2.25%** at p1024/p4096 but **-2.05%** weighted at p512 versus chunk512 and +720 MiB peak; chunk2048 loses to1024. The incumbent p512 arm is noisy, so default512 is retained without a promotion claim. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-canonical-chunk-sweep.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P6 contiguous H256 QSA — rejected] Contiguous wave chunks improve the 2K-selected primitive **2.157→0.496 ms (4.346x)** and lower mean/p95/max KL to **0.000565/0.002551/0.004372**, but top-1 is **97/100**, five scopes fail, and free generation is **1/4 exact**. Candidate is removed; partial-softmax merging is exhausted. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-contiguous-h256-rejected.json`.
