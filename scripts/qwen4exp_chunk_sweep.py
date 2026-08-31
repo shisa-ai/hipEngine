@@ -16,7 +16,12 @@ DEFAULT_FIXTURE = ROOT / "benchmarks" / "fixtures" / "qwen4exp_canonical_ar_p512
 
 def _valid_chunks(prompt_tokens: int, chunks: Sequence[int]) -> list[int]:
     prompt = int(prompt_tokens)
-    return [int(chunk) for chunk in chunks if 0 < int(chunk) <= prompt]
+    # The binding ladder requires 256/512/1024 at every canonical shape.
+    # Chunk 2048 is the only conditional rung (p4096 in this fixture).
+    return [
+        int(chunk) for chunk in chunks
+        if 0 < int(chunk) <= max(prompt, 1024)
+    ]
 
 
 def build_parser() -> argparse.ArgumentParser:
