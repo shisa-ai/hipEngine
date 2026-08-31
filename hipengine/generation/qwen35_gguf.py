@@ -4906,6 +4906,10 @@ class _GGUFResidentLoopRow:
     mtp2_target_batch_calls: int = 0
     mtp2_target_physical_rows: list[int] = field(default_factory=list)
     mtp2_target_pass_ms: list[float] = field(default_factory=list)
+    mtp2_target_pass_start_ns: list[int] = field(default_factory=list)
+    mtp2_target_pass_end_ns: list[int] = field(default_factory=list)
+    mtp2_cycle_profile_start_ns: list[int] = field(default_factory=list)
+    mtp2_cycle_profile_end_ns: list[int] = field(default_factory=list)
     mtp2_accept_pass_ms: list[float] = field(default_factory=list)
     mtp2_provider_update_pass_ms: list[float] = field(default_factory=list)
     mtp2_candidate_device_handoffs: int = 0
@@ -8742,6 +8746,16 @@ class Qwen35GGUFResidentModelRunner:
                 row.mtp2_target_physical_rows
             ),
             "specdec2_mtp2_target_pass_ms": list(row.mtp2_target_pass_ms),
+            "specdec2_mtp2_target_pass_start_ns": list(
+                row.mtp2_target_pass_start_ns
+            ),
+            "specdec2_mtp2_target_pass_end_ns": list(row.mtp2_target_pass_end_ns),
+            "specdec2_mtp2_cycle_profile_start_ns": list(
+                row.mtp2_cycle_profile_start_ns
+            ),
+            "specdec2_mtp2_cycle_profile_end_ns": list(
+                row.mtp2_cycle_profile_end_ns
+            ),
             "specdec2_mtp2_accept_pass_ms": list(row.mtp2_accept_pass_ms),
             "specdec2_mtp2_provider_update_pass_ms": list(
                 row.mtp2_provider_update_pass_ms
