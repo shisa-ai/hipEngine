@@ -26,15 +26,19 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES,
+    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_CHUNKS,
+    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES_BY_ROWS,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+    launch_physical_row_chunks,
     launch_physical_rows6_chunked,
 )
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.core.specdec2_scope import (
     physical_exact_rowtiles_enabled,
     q4_t16_physical_extra_rowtiles_enabled,
+    q4_t16_physical_mixed_rowtiles_enabled,
 )
 
 _SOURCE = Path(__file__).with_name("gguf_k_t16_selected_prefill.hip")
@@ -356,6 +360,31 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES
         | GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES
     )
+    mixed_chunks = GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_CHUNKS.get(
+        int(rows)
+    )
+    mixed_shapes = (
+        GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q4_MIXED_ROWTILE_SHAPES_BY_ROWS.get(
+            int(rows), ()
+        )
+    )
+    if (
+        q4_t16_physical_mixed_rowtiles_enabled()
+        and mixed_chunks is not None
+        and shape in mixed_shapes
+        and launch_physical_row_chunks(
+            gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            tuple(mixed_chunks),
+            **kwargs,
+        )
+    ):
+        return
     if (
         int(rows) > 6
         and q4_t16_physical_extra_rowtiles_enabled()
