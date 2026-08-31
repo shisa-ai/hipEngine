@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 attention-gate geometry — exhausted] At rows508/K2560/N6144 every registered exact geometry is bit-exact, but incumbent c8r4 is fastest at **8.04 ms**, versus c4r8/c16r2/c8r8/c16r4/c32r1 **10.59/9.69/12.46/18.06/37.92 ms**. Retain c8r4; qkv+gate now requires true F32/MMQ ownership rather than another tile sweep. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 GR down+scaled-SiLU — rejected] The exact composite preserves coltile8/rowbatch4 reduction/output bits and improves rows2 **1.118x**, but regresses the binding rows508 operation window **1.655→1.667 ms (0.9926x)**. Candidate code is removed before whole-model timing. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next stacked P3 profile — diagnostic] Fresh clean named-production p508 re-ranks P3 owners to GR projection/read **651.16 ms**, `attn_qkv+attn_gate` **536.26 ms**, `ssm_out` **137.62 ms**, shared expert **122.04 ms**, and retained router producer **94.77 ms**. The 36-layer qkv+gate boundary remains the next uniform target; GR down+inject is secondary. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-stacked-profile.json`.

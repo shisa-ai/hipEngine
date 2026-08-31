@@ -774,7 +774,13 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact
       coltile gate arithmetic while sharing input/activation quantization, or
       declare and fully gate a T1 pair. Registered singleton routes remain
-      fallbacks. GR down+inject is the secondary operation-complete target.
+      fallbacks. The real rows508/K2560/N6144 exact gate geometry is exhausted:
+      incumbent c8r4 is **8.04 ms**, versus c4r8/c16r2/c8r8/c16r4/c32r1 at
+      **10.59/9.69/12.46/18.06/37.92 ms**, all bit-exact. A qkv+gate win now
+      requires true original-F32/MMQ ownership, not another tile constant.
+      Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.
+      GR down+inject is the secondary operation-complete target.
 - [ ] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic. The first default-off extension adds the
