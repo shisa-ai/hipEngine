@@ -29,6 +29,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     build_gguf_t16_selected_gemv,
@@ -898,6 +899,64 @@ def test_q4_t16_smallm_wmma_matches_current_wmma_and_cpu(rows: int) -> None:
     )
     np.testing.assert_allclose(actual, expected, rtol=0.012, atol=0.5)
     assert np.isfinite(actual).all()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_q4_t16_shared_b2r1_matches_shared_b_and_cpu_at_r16() -> None:
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    rows, in_features, out_features = 16, 256, 32
+    raw = make_q4_k_weight(out_features, in_features)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    rng = np.random.default_rng(0xB2_01)
+    x_bits = _f32_to_bf16_bits(
+        rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
+    )
+    candidate_bits = np.zeros((rows, out_features), dtype=np.uint16)
+    shared_bits = np.zeros_like(candidate_bits)
+    buffers = []
+    try:
+        x_dev = malloc(x_bits.nbytes, runtime=runtime)
+        tiles_dev = malloc(tiles.nbytes, runtime=runtime)
+        candidate_dev = malloc(candidate_bits.nbytes, runtime=runtime)
+        shared_dev = malloc(shared_bits.nbytes, runtime=runtime)
+        buffers.extend((x_dev, tiles_dev, candidate_dev, shared_dev))
+        copy_host_to_device(x_dev, host_array_ptr(x_bits), runtime=runtime)
+        copy_host_to_device(tiles_dev, host_array_ptr(tiles), runtime=runtime)
+        library = build_gguf_k_t16_selected_prefill(load=True)
+        for fn, output in (
+            (gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out, candidate_dev),
+            (gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out, shared_dev),
+        ):
+            fn(
+                x_dev.ptr,
+                tiles_dev.ptr,
+                output.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        copy_device_to_host(
+            host_array_ptr(candidate_bits), candidate_dev, runtime=runtime
+        )
+        copy_device_to_host(
+            host_array_ptr(shared_bits), shared_dev, runtime=runtime
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    np.testing.assert_array_equal(candidate_bits, shared_bits)
+    expected = gguf_quant_gemv(
+        _bf16_bits_to_f32(x_bits), raw, GGMLQuantizationType.Q4_K
+    )
+    np.testing.assert_allclose(
+        _bf16_bits_to_f32(candidate_bits), expected, rtol=0.012, atol=0.5
+    )
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
