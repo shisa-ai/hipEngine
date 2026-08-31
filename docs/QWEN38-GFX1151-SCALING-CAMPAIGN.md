@@ -429,6 +429,73 @@ The review re-ran both standardized hipEngine matrices at tracked-clean
 - M4 is retained only as an explicit diagnostic T3 scope; automatic C2-C8
   remains K0 pending the complete production numerical/task/serving gates.
 
+## 4b. Historical audit ledger (exact Git provenance)
+
+Audit cut: `a3ffbd8f8790fa4530523210b0941b89d9bfbdca`. Timestamps below are exact
+Git **committer timestamps** from `%cI`, including their `+09:00` offset; they
+are not inferred from artifact filenames or worklog front matter. Full hashes
+are intentional so a later dissection can reproduce the repository state
+without resolving an abbreviated hash.
+
+### Campaign and punchlist provenance
+
+| Scope | Exact commit and committer timestamp | Role and retained result | Durable evidence |
+| --- | --- | --- | --- |
+| Campaign definition | `b40bc9edb37b3beb86df26d703f1b03e1746da8d` — `2026-08-30T18:53:48+09:00`; `04d45c70e86b400340e71eefecbf006e53cd41dc` — `2026-08-30T18:53:48+09:00`; `d2c3721ff6b1e7f24a2b4aa96ad0fe7b9f3319c8` — `2026-08-30T19:01:46+09:00`; `112a50f9a4241e7f533c36b52a10a2f75a970a0e` — `2026-08-30T19:24:34+09:00` | Opened, independently hardened, corrected, then finalized the scope and evidence rules before measured units began. | [`opening entry`](../worklog/entries/20260830T075721.949466Z-lhl-qwen38-scaling-campaign-8fc9d4.md), [`scope correction`](../worklog/entries/20260830T095634.730287Z-lhl-qwen38-scaling-campaign-correction-b14b99.md), [`final correction`](../worklog/entries/20260830T102020.938305Z-lhl-qwen38-scaling-campaign-final-correction-e05ba0.md) |
+| R1 refactor ledger | `04d45c70e86b400340e71eefecbf006e53cd41dc` — `2026-08-30T18:53:48+09:00` | Introduced RF-OI5 with the width-cap inventory and an M1-dependent removal condition. Later commits update the condition; the historical insertion remains this commit. | [`REFACTOR.md` RF-OI5](REFACTOR.md) |
+| X1 external batching | `17bff8d283ff9e5405831e7f91c9c766b5830dc1` — `2026-08-30T19:43:21+09:00` | Closed the commit-pinned reading survey; found that surveyed engines flatten request verification into one token-budget-bounded target forward. | [`survey`](EXTERNAL-MTP-BATCHING.md), [`entry`](../worklog/entries/20260830T104252.968383Z-lhl-qwen38-x1-external-batching-a2a8b9.md) |
+| M0 instrumentation and re-freeze | `db360a4128ab233f3a0fc2f14c034148f9e33b5d` — `2026-08-30T19:52:52+09:00`; `7ad92a2690af3aa220188040e72679e3c0aac124` — `2026-08-30T19:55:53+09:00`; `2bc7c7742b90fdff124edc4f210550ea704dfd3c` — `2026-08-30T20:40:45+09:00` | Added append-only pass telemetry, added the cycle-accounting extractor, then committed the reproducible C1-C8 baseline and compact artifact. | [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-scaling-m0-refreeze-instrumentation.json), [`entry`](../worklog/entries/20260830T114000.239909Z-lhl-qwen38-m0-refreeze-instrumentation-77f32c.md) |
+| M1 physical C8 mechanism | `84f3744d8c8705875fa14886541ba8787fcc9c6f` — `2026-08-30T21:38:22+09:00`; `0e7b4f31a6ccd8c18aeb1251c0e90ce81695d853` — `2026-08-30T22:27:15+09:00` | Replaced scattered caps with one capability-owned bound and propagated it to server admission. | [`implementation entry`](../worklog/entries/20260830T115724.853542Z-lhl-qwen38-m1-single-group-wide-verify-68d526.md) |
+| M1 measured default decision | `f78556bf9118fa80cf7b9ce9c0ccc28d52357eb5` — `2026-08-30T23:23:12+09:00`; `47cb994f76ae2e96ba305b14e7126518f7d80ffe` — `2026-08-30T23:42:22+09:00` | Restored the certified production bound of four after C6-C8 K3 regressions, then committed the blocker artifact and rollup. The physical-C8 mechanism remains available behind policy. | [`artifact`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json), [`decision entry`](../worklog/entries/20260830T142143.717427Z-lhl-qwen38-m1-wide-bound-blocker-8b3ed2.md) |
+| M2a rows5-8 proposal owner | `e681dfa4d577fe5a4429042f85288e9a257e71ad` — `2026-08-31T00:25:43+09:00` | Qualified the existing exact rowtile producer for wide NextN proposal heads. It removes one M1 fallback but did not make global K3 C6-C8 non-regressive. | [`entry`](../worklog/entries/20260830T152531.233311Z-lhl-qwen38-m2-proposal-head-owner-9f7913.md) |
+| M2b-M2g accept-window diagnostics | No retained code or standalone Git evidence commit. Results were local probes under `.worklog/` and `/tmp`; reverted experiments are summarized by the later M2h entry. | Marker decomposition, cross-thread copy probe, and stack capture rejected the initial host/pageable-copy explanation. This is a historical reproducibility limitation: the committed entry records hashes and observations, but the raw probes are not durable repository artifacts. | [`M2h entry`](../worklog/entries/20260830T180550.268739Z-lhl-qwen38-m2h-pinned-null-23353c.md) |
+| M2h pinned staging | `f982f4d2d4a2ee41c6d4db5d91ebe6fabf4fa670` — `2026-08-31T03:06:13+09:00` | Recorded the measured-null pinned-host experiment after reverting its implementation. The copy waited on queued GPU work; host staging was not the blocker. | [`entry`](../worklog/entries/20260830T180550.268739Z-lhl-qwen38-m2h-pinned-null-23353c.md) |
+| M2i HIP API/copy/kernel attribution | No dedicated commit or compact artifact. Raw `rocprofv3` outputs lived at `/tmp/m2i-trace/gfx1151/`; their interpretation first became durable in M2j. | Measured the accept window at about 98% GPU busy and named Q4/Q5/Q6 verification work rather than host idle time. Later review must treat this as cited raw-only evidence, not as a self-contained retained artifact. | [`M2j entry`](../worklog/entries/20260830T195930.540628Z-lhl-qwen38-m2j-q4-owner-51ae23.md) |
+| M2j Q4 rows2-16 owners | `9d37394f2509e4f32f521755216f25fa353a3fc7` — `2026-08-31T04:59:59+09:00` | Promoted bit-exact low-VGPR/shared-B2W2 owners and retained the measured C1-C8 lift. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json), [`entry`](../worklog/entries/20260830T195930.540628Z-lhl-qwen38-m2j-q4-owner-51ae23.md) |
+| M2k Q5/Q6 screen | `b17178215e1993680b19a45886386a354df94add` — `2026-08-31T05:02:57+09:00` | Recorded exact sibling screens as measured null/negative; no production code changed. | [`entry`](../worklog/entries/20260830T200247.265778Z-lhl-qwen38-m2k-q5q6-screen-4a2805.md) |
+| M3 width-1 streaming | `aeb391dbbb2adea1520923b71a53635ebbdbd252` — `2026-08-31T03:05:23+09:00`; `c1612d2c468c622705df2a1f4415a2b319856a35` — `2026-08-31T05:43:50+09:00`; `46b117e106d558de1a9a9b8d6ba3523c0c51af5c` — `2026-08-31T13:45:40+09:00` | Added validator support, promoted production Q4_K_M C1 streaming, then marked the checklist item closed. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json), [`entry`](../worklog/entries/20260830T212000.000000Z-lhl-qwen38-m3-c1-streaming-retained-77c41b.md) |
+| M4 width-4 streaming | `38e781b719f06793f8469182c4ce04060b94893f` — `2026-08-31T06:42:13+09:00`; `46b117e106d558de1a9a9b8d6ba3523c0c51af5c` — `2026-08-31T13:45:40+09:00`; corrected by `a3ffbd8f8790fa4530523210b0941b89d9bfbdca` — `2026-08-31T17:18:47+09:00` | Retained explicit width-4 streaming and closed the checklist item. The review correction reclassified changed-acceptance M4 as explicit T3 rather than an automatic production numerical/task promotion. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-mtp-c4-streaming-retained.json), [`entry`](../worklog/entries/20260830T223000.000000Z-lhl-qwen38-m4-c4-streaming-decision-4e91c2.md), [`correction`](../worklog/entries/20260831T081311.905286Z-lhl-qwen38-cn-review-0462c4.md) |
+| P1 prefill C2 | `88160d1c863262ec213ab3179f15966d631519a5` — `2026-08-31T06:58:21+09:00` | Closed with the measured Q4 weight-stream/repeated-M-tile floor; the scheduling experiment was reverted. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json), [`entry`](../worklog/entries/20260831T001500.000000Z-lhl-qwen38-p1-prefill-c2-blocker-2a7f3d.md) |
+| P2 prefill C8 | `64fec87a87291004d49fd205bb842d7febebe84f` — `2026-08-31T07:08:00+09:00` | Closed with the dequantization/LDS/issue blocker and opened P3 under its written condition. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c8-current-trace-blocker.json), [`entry`](../worklog/entries/20260831T011000.000000Z-lhl-qwen38-p2-c8-trace-p3-open-9c4d7e.md) |
+| P3 integer MMQ | `07528c87603ec061a4e830cfee79901895cc367e` — `2026-08-31T07:11:43+09:00` | Closed measured-negative using already-built shared-MMQ bodies; no integer body beat selected WMMA. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-p3-int-wmma-negative.json), [`entry`](../worklog/entries/20260831T015500.000000Z-lhl-qwen38-p3-int-wmma-closed-5f8a1b.md) |
+| M5 whole-batch AR seam | `1f1f360e307e971c85ff83e2cebe75d59b999aed` — `2026-08-31T13:45:16+09:00`; artifact/test gap repaired by `a3ffbd8f8790fa4530523210b0941b89d9bfbdca` — `2026-08-31T17:18:47+09:00` | Added the engine-surface over-width AR route. Server admission made it inert; the review added an engine-loop integration test and committed the missing measured evidence. | [`entry`](../worklog/entries/20260831T053000.000000Z-lhl-qwen38-m5-routing-blocker-decision-6b2e9f.md), [`review artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) |
+| Original closeout | `b768516f2b387c8a83f4c97376ca243d663f9c02` — `2026-08-31T13:45:58+09:00` | Marked 11/11 items closed. Its immutable entry contains stale metric-boundary, C2, M4, and terminal-mechanism statements; use the correction row below when interpreting it. | [`entry`](../worklog/entries/20260831T061000.000000Z-lhl-qwen38-campaign-closeout-checkpoint-3d7c8a.md) |
+| Post-closeout correction and C=N review | `a3ffbd8f8790fa4530523210b0941b89d9bfbdca` — `2026-08-31T17:18:47+09:00` | Re-ran current-head all-ten AR/MTP and prefill, corrected metric boundaries and scopes, documented flattened C1-C4 verification, and identified C6/C8 one-pass K1 candidates without promotion. | [`artifact`](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json), [`entry`](../worklog/entries/20260831T081311.905286Z-lhl-qwen38-cn-review-0462c4.md) |
+
+### Primary compact-artifact digests at this audit cut
+
+These digests cover committed compact artifacts, not the larger `/tmp` raw
+sources whose path, size, and digest are recorded inside the artifacts.
+
+| Scope | SHA-256 |
+| --- | --- |
+| M0 | `e9626eac320a010a1021a77792066953a70a8a0097bd32d0bbcf07131bd6ab8c` |
+| M1 | `689506c43eae8cd6b7236629c71836e9d5bb3b24148ade04ee1081415e77b1a6` |
+| M2j | `9ee7953ef5c98052e76152b715604e9d0484c6cbd61e9e02f93995fb7e0b9057` |
+| M3 | `681cd7c0436a6e6505cbb81553221533979cfa013c2331add743ba179ffede62` |
+| M4 | `ddfe8f0bdb50cfb035c517ae03d72e6aeb4054b701c90bd2ff157412aef98078` |
+| P1 | `5cc4697da615cde0a71e81ead66f83ecef40d44b45dff30d685bee71e5c46200` |
+| P2 | `6c2f81540c175fb540b4148be4e2765926a1e0971b267709f72c702fc64af7ae` |
+| P3 | `3c7676004c67f364a16842bb0d8c0a23175f72240368ea84111393eaba83b0a9` |
+| Post-closeout review / M5 repair | `a3c494fd555baec66e2b7689bb4bc619a0012af251bd1e7788c82ae9f9a25fa6` |
+
+### Audit limitations and revisit rules
+
+1. M2b-M2g and M2i are not self-contained repository evidence. Preserve their
+   conclusions as historical attribution, but re-profile on the exact checkout
+   before using them for a new performance claim.
+2. Worklog timestamps describe when an entry was authored; the table above uses
+   Git committer timestamps to identify when evidence became durable.
+3. The compact M2j/M3/M4 artifacts include all prompt cells in their raw
+   sources, but their original prose headlines used six non-heldout arithmetic
+   means. Cross-engine comparisons must use the all-ten total-token/summed-wall
+   boundary in the post-closeout review artifact.
+4. M4 is an explicit T3 result because acceptance changed. Generated-ID equality
+   alone cannot promote it to automatic production.
+5. Every successor optimization must append a new immutable entry and artifact;
+   do not rewrite the historical entries or reinterpret raw-only evidence as a
+   retained gate.
+
 ## 5. Order
 
 Planned order was `X1` -> `M0` -> `M1` -> `M3` -> `M2` -> `M4` -> `P1` ->
