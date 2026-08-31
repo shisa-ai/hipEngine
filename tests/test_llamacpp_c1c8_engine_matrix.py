@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from scripts import llamacpp_c1c8_engine_matrix as matrix
 
 
@@ -36,3 +38,10 @@ def test_workload_arms_can_run_prefill_without_decode() -> None:
     assert matrix._workload_arms(1, 0, 0) == (("prefill", 1),)
     assert matrix._workload_arms(1, 24, 0) == (("prefill", 1), ("ar", 24))
     assert matrix._workload_arms(1, 24, 3) == (("mtp", 24),)
+
+
+def test_parallel_capacity_stays_independent_of_measured_width_subset() -> None:
+    assert matrix._parallel_capacity((5, 6), 8) == 8
+    assert matrix._parallel_capacity((8,), 8) == 8
+    with pytest.raises(ValueError, match="at least the largest measured width"):
+        matrix._parallel_capacity((5, 6), 5)

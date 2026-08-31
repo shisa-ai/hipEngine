@@ -18,7 +18,9 @@ identical protocol and makes the comparator reproducible:
   comparator-prefill-only packet;
 * an optional built-in MTP arm (``--spec-draft-n-max N``) timed with the same
   boundary;
-* per-lane anti-repetition guards and cross-lane content exactness.
+* per-lane anti-repetition guards and cross-lane content exactness;
+* server parallel capacity fixed independently by ``--parallel`` (default 8),
+  so a narrow ``--widths`` repeat preserves the published ``-np 8`` protocol.
 
 The server runs as a child process and is terminated on exit. Output packets are
 comparator evidence: they rank engines against each other and never become a
@@ -101,6 +103,15 @@ def _widths(raw: str) -> tuple[int, ...]:
     return values
 
 
+def _parallel_capacity(widths: tuple[int, ...], parallel: int) -> int:
+    """Keep server capacity fixed while selecting a measured width subset."""
+
+    parallel = int(parallel)
+    if parallel < max(int(width) for width in widths):
+        raise ValueError("parallel capacity must be at least the largest measured width")
+    return parallel
+
+
 def _workload_arms(
     prefill_tokens: int,
     decode_tokens: int,
@@ -176,7 +187,7 @@ def server_command(args: argparse.Namespace, port: int) -> list[str]:
         "-ngl",
         "999",
         "-np",
-        str(max(args.widths)),
+        str(_parallel_capacity(tuple(args.widths), int(args.parallel))),
         "--no-mmap",
         "-t",
         str(args.threads),
@@ -463,6 +474,7 @@ def finalize(
             "prompt_ids": [prompt["id"] for prompt in prompts],
             "suite_sha256": sha256_file(Path(args.prompts).resolve()),
             "widths": list(widths),
+            "parallel_capacity": int(args.parallel),
             "sampling": {"temperature": 0.0, "top_k": 1, "top_p": 1.0, "seed": int(args.seed)},
             "cache_prompt": False,
             "prefill_tokens": int(args.prefill_tokens),
@@ -510,6 +522,7 @@ def main() -> int:
         ),
     )
     parser.add_argument("--threads", type=int, default=16)
+    parser.add_argument("--parallel", type=int, default=8)
     parser.add_argument("--context", type=int, default=8192)
     parser.add_argument("--batch", type=int, default=2048)
     parser.add_argument("--ubatch", type=int, default=512)
