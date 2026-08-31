@@ -111,6 +111,12 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C4", False
     ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_MAX_REQUESTS", 4
+    ) == 8
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_SPECDEC2_MTP2_MAX_REQUESTS", 4
+    ) == 4
 
 
 def test_qwen_gguf_plugins_select_distinct_mtp2_adapters() -> None:
@@ -282,6 +288,135 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     assert strict.production_physical_q6_rowtile is False
     production.close()
     strict.close()
+
+
+def test_gfx1100_wide_physical_limit_has_same_build_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner = SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1100",
+            execution_profile="production",
+        ),
+        capacity=8,
+        _shared_runner=SimpleNamespace(hidden_size=4),
+    )
+    monkeypatch.delenv("HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS", raising=False)
+    wide = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert wide.physical_max_requests == 8
+    assert wide.physical_accept_max_rows == 36
+    wide.close()
+
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS", "4")
+    rollback = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert rollback.physical_max_requests == 4
+    assert rollback.physical_accept_max_rows == 24
+    rollback.close()
+
+
+def test_gfx1100_capability_owns_one_c8_k3_frontier() -> None:
+    request_ids = tuple(range(10, 18))
+    targets = {
+        request_id: SimpleNamespace(
+            runner=SimpleNamespace(fp16_recurrent_state=False),
+            target_layout=SimpleNamespace(max_sequence_length=1024),
+            kv_storage_dtype="bf16",
+        )
+        for request_id in request_ids
+    }
+    rows = {
+        request_id: SimpleNamespace(
+            native_greedy=True,
+            first_token_emitted=True,
+            lease=SimpleNamespace(session=targets[request_id]),
+            slot=SimpleNamespace(),
+        )
+        for request_id in request_ids
+    }
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.enabled = True
+    adapter.candidate_budget = 3
+    adapter.target_verify_mode = "native"
+    adapter.quant = "gguf_q4_k_m"
+    adapter.target_key = "qwen_dense_gguf"
+    adapter.provider_key = "qwen_nextn_dense"
+    adapter.policy_prefix = "dense-nextn"
+    adapter.physical_prompt_streaming = True
+    adapter.production_physical_extra_rowtiles = True
+    adapter.production_physical_q5_rowtile = True
+    adapter.production_physical_q6_rowtile = True
+    adapter.physical_max_requests = 8
+    adapter.generator = SimpleNamespace(
+        backend="hip_gfx1100",
+        execution_profile="production",
+    )
+    adapter.owner = SimpleNamespace(
+        capacity=8,
+        _row=lambda request_id: rows[int(request_id)],
+    )
+    adapter._intents = {request_id: 3 for request_id in request_ids}
+    adapter._static_eligibility_by_request = {
+        request_id: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_c8",
+            max_candidate_count=3,
+            max_realized_group_rows=8,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-c8-{request_id}",
+            evidence_fingerprint=f"sha256:test-c8-{request_id}",
+        )
+        for request_id in request_ids
+    }
+    adapter._disabled_requests = set()
+    adapter._prompt_hidden_rows = {}
+    adapter._states = {
+        request_id: _MTP2RequestState(
+            request_id=request_id,
+            provider=SimpleNamespace(),
+            provider_pool_key=None,
+            provider_group_key=request_ids,
+            verifier=SimpleNamespace(target_verify_mode="native"),
+            root_hidden_buffer=SimpleNamespace(ptr=request_id),
+        )
+        for request_id in request_ids
+    }
+    semantics = tuple(
+        SpeculativeRequestSemantics(
+            request_id,
+            "greedy",
+            "verify_chain",
+            32,
+            24,
+        )
+        for request_id in request_ids
+    )
+
+    capability = adapter.capability(semantics)
+
+    assert capability is not None
+    assert capability.max_requests == 8
+    assert capability.max_frontier_rows == 32
+    assert capability.proposal_widths == tuple(range(1, 9))
+    assert capability.target_row_buckets[-1] == 32
+    assert adapter.partition_max_requests(request_ids) == 8
+    adapter._active_claims = None
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=request_ids,
+            speculative_request_ids=request_ids,
+        )
+    ) is True
 
 
 def test_real_adapter_requires_ar_root_and_exact_prefill_hidden_rows() -> None:
@@ -2368,6 +2503,138 @@ def test_mtp2_cycle_hidden_workspace_reuses_stable_distinct_slabs() -> None:
 
     assert runtime.free_calls == [repair_a.ptr, proposal_a.ptr]
     assert adapter._cycle_workspace is None
+
+
+def test_mtp2_wide_cycle_and_accept_workspaces_own_c8_k3(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Runtime:
+        def __init__(self) -> None:
+            self.next_ptr = 0x1000
+            self.malloc_calls: list[int] = []
+            self.free_calls: list[int] = []
+
+        def malloc(self, nbytes: int) -> int:
+            ptr = self.next_ptr
+            self.next_ptr += 0x1000
+            self.malloc_calls.append(int(nbytes))
+            return ptr
+
+        def free(self, ptr: int) -> None:
+            self.free_calls.append(int(ptr))
+
+    runtime = Runtime()
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=8)
+    adapter.generator = SimpleNamespace(backend="hip_gfx1100")
+    adapter.candidate_budget = 3
+    adapter.physical_max_requests = 8
+    adapter.physical_accept_max_rows = 36
+    adapter._ngram = None
+    adapter._cycle_workspace = None
+    adapter._cycle_proposal_hidden = None
+    adapter._cycle_repair_hidden = None
+    adapter._cycle_ngram_tokens = None
+    adapter._cycle_workspace_shape = None
+    adapter._batch_accept_workspace = None
+    adapter._batch_accept_owner = None
+    adapter._batch_accept_remaining = None
+    adapter._batch_accept_payload = None
+
+    proposal, repair = adapter._cycle_hidden_tensors(runtime, hidden_size=8)
+    assert proposal.shape == repair.shape == (8, 8)
+
+    specs = []
+    reservations = []
+
+    class Workspace:
+        def __init__(self, *, device, runtime):
+            self.device = device
+            self.runtime = runtime
+            self.freed = False
+
+        def reserve_tensor(self, name, shape, dtype):
+            reservations.append((str(name), tuple(shape), dtype))
+            return Tensor.from_handle(
+                0xA000 + len(reservations) * 0x100,
+                shape,
+                dtype,
+                self.device,
+            )
+
+        def free(self):
+            self.freed = True
+
+    owner = object()
+    monkeypatch.setattr(mtp2_module, "RuntimeWorkspace", Workspace)
+    monkeypatch.setattr(
+        mtp2_module.TargetVerifyBufferOwner,
+        "allocate",
+        lambda spec, *, workspace: specs.append(spec) or owner,
+    )
+
+    actual_owner, remaining, payload = adapter._batch_accept_resources(runtime)
+
+    assert actual_owner is owner
+    assert specs[0].bucket == "gguf-mtp2-physical-r36-c8"
+    assert specs[0].max_rows == 36
+    assert specs[0].max_requests == 8
+    assert remaining.shape == (8,)
+    assert payload.shape == (8, mtp2_module.ACCEPT_PACKED_PAYLOAD_FIELDS)
+    assert [shape for _name, shape, _dtype in reservations] == [
+        (8,),
+        (8, mtp2_module.ACCEPT_PACKED_PAYLOAD_FIELDS),
+    ]
+
+
+def test_mtp2_accept_workspace_allocation_failure_releases_partial_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instances = []
+
+    class FailingWorkspace:
+        def __init__(self, *, device, runtime):
+            del runtime
+            self.device = device
+            self.reserve_calls = 0
+            self.freed = False
+            instances.append(self)
+
+        def reserve_tensor(self, name, shape, dtype):
+            del name
+            self.reserve_calls += 1
+            if self.reserve_calls == 2:
+                raise RuntimeError("payload allocation failed")
+            return Tensor.from_handle(0xB000, shape, dtype, self.device)
+
+        def free(self):
+            self.freed = True
+
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(capacity=8)
+    adapter.generator = SimpleNamespace(backend="hip_gfx1100")
+    adapter.physical_max_requests = 8
+    adapter.physical_accept_max_rows = 36
+    adapter._batch_accept_workspace = None
+    adapter._batch_accept_owner = None
+    adapter._batch_accept_remaining = None
+    adapter._batch_accept_payload = None
+    monkeypatch.setattr(mtp2_module, "RuntimeWorkspace", FailingWorkspace)
+    monkeypatch.setattr(
+        mtp2_module.TargetVerifyBufferOwner,
+        "allocate",
+        lambda spec, *, workspace: object(),
+    )
+
+    with pytest.raises(RuntimeError, match="payload allocation failed"):
+        adapter._batch_accept_resources(object())
+
+    assert len(instances) == 1
+    assert instances[0].freed is True
+    assert adapter._batch_accept_workspace is None
+    assert adapter._batch_accept_owner is None
+    assert adapter._batch_accept_remaining is None
+    assert adapter._batch_accept_payload is None
 
 
 def test_mtp2_physical_prompt_streaming_is_rejected_before_provider_open() -> None:

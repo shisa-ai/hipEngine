@@ -282,6 +282,11 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
 )
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS = frozenset({6})
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS = frozenset({6})
+# The production dense adapter owns one physical request group through C8. The
+# adapter derives frontier/accept workspaces from this package capability and
+# retains an environment rollback to the previous C4 ceiling. Strict remains
+# on its existing C4/exact-fallback route.
+GGUF_SPECDEC2_MTP2_MAX_REQUESTS = 8
 # Pad physical SPECDEC2 target verify groups up to the admitted rows6
 # production rowtile when the root+candidate total falls below it (K1 R4 and
 # ragged 2-5-row cycles otherwise ride the shared-B 256-row padded tile at a
@@ -944,6 +949,7 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS",
+    "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",

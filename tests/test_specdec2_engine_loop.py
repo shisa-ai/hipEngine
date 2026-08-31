@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
+import pytest
+
 from hipengine.dispatch import WorkKind
 from hipengine.generation.batch_scheduler import GeneratedToken
 from hipengine.generation.engine_loop import ResidentEngineLoop
@@ -287,6 +291,44 @@ class _PartitionedRunner(_CycleRunner):
         return 2
 
 
+class _WideCycleRunner(_CycleRunner):
+    def speculative_capability(self, request_semantics):
+        capability = super().speculative_capability(request_semantics)
+        return replace(
+            capability,
+            capability_key="fake:mtp2:c8:strict",
+            max_requests=8,
+            max_frontier_rows=32,
+            proposal_widths=tuple(range(1, 9)),
+            target_row_buckets=tuple(range(1, 33)),
+        )
+
+    def speculative_partition_max_requests(self, work):
+        del work
+        return 8
+
+
+class _WideRecoveringRunner(_WideCycleRunner):
+    def __init__(self) -> None:
+        super().__init__()
+        self.recovered = []
+        self.disabled = False
+
+    def speculative_capability(self, request_semantics):
+        if self.disabled:
+            return None
+        return super().speculative_capability(request_semantics)
+
+    def execute_speculative_cycle(self, plan, *, commit):
+        del commit
+        raise RuntimeError("wide precommit failure")
+
+    def recover_speculative_cycle_failure(self, plan, error):
+        self.recovered.append((plan, error))
+        self.disabled = True
+        return True
+
+
 def test_one_speculative_cycle_is_one_engine_tick_with_multi_token_events() -> None:
     runner = _CycleRunner()
     loop = ResidentEngineLoop(runner, capacity=2, prefill_chunk_size=8)
@@ -486,6 +528,64 @@ def test_ar_neighbor_uses_disjoint_decode_without_erasing_speculative_intent() -
         ar_id
     ]
     assert loop.active_count == 1
+
+@pytest.mark.parametrize("width", (5, 8))
+def test_wide_physical_due_work_owns_every_request_in_one_cycle(width: int) -> None:
+    runner = _WideCycleRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=width,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=1,
+        )
+        for index in range(width)
+    )
+
+    events = loop.poll(max_ticks=width + 2)
+
+    assert [plan.request_ids for plan in runner.cycle_plans] == [request_ids]
+    assert runner.cycle_plans[0].proposal_widths == (width,)
+    assert runner.decodes == []
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
+    assert loop.active_count == 0
+
+
+def test_wide_physical_failure_recovers_all_requests_without_partial_ownership() -> None:
+    runner = _WideRecoveringRunner()
+    loop = ResidentEngineLoop(
+        runner,
+        capacity=8,
+        prefill_chunk_size=8,
+        prefill_decode_policy="protect_ttft",
+    )
+    request_ids = tuple(
+        loop.submit_speculative(
+            [10 + index],
+            max_new_tokens=2,
+            desired_candidate_count=3,
+        )
+        for index in range(8)
+    )
+
+    events = loop.poll(max_ticks=10)
+
+    assert len(runner.recovered) == 1
+    assert runner.recovered[0][0].request_ids == request_ids
+    assert str(runner.recovered[0][1]) == "wide precommit failure"
+    assert [work.request_ids for work in runner.decodes] == [request_ids, request_ids]
+    assert [event.request_id for event in events if event.kind == "completed"] == list(
+        request_ids
+    )
+    assert loop.active_count == 0
+
 
 def test_wide_due_work_partitions_each_speculative_row_once_per_tick() -> None:
     runner = _PartitionedRunner()

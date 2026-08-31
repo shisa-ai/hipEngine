@@ -320,6 +320,20 @@ fallback count is not a success metric.
   fallbacks, synchronized caller fallback, unfused pair ownership, and focused
   offset/selector tests.
 
+## gfx1100 dense SPECDEC2 C8 physical-width rollback
+
+- Added 2026-08-31 with task #30. The gfx1100 production package qualifies one
+  dense MTP2 physical group through eight requests; capability/frontier,
+  provider, cycle-hidden, padded target, and accept owners derive their bounds
+  from that package declaration. Strict remains on its existing C4/exact
+  fallback route. `HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS=4` restores the
+  prior serial `[4,1]`/`[4,4]` production decomposition on the same build and
+  cannot widen beyond the package limit.
+- Removal trigger: after one release window with repeated full-category C5/C8
+  production D1/D24 evidence, exact control/ownership, deterministic/isolation
+  and lifecycle gates, remove the environment read while preserving the package
+  capability, derived owners, allocation-failure cleanup, and strict fallback.
+
 ## Server default-AR ready-cohort rollback
 
 - Added 2026-08-31 with task #29. Default-route HTTP items already inside the
