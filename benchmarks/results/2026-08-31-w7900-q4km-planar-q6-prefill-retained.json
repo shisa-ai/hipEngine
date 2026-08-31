@@ -1,0 +1,172 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_planar_q6_exact_prefill_retained",
+  "date": "2026-08-31",
+  "status": "retained_exact_default",
+  "claim": "On gfx1100, exact cooperative planar-Q6 siblings replace the one-wave Q6 FFN-down prefill parent for (K,N)=(17408,5120): row64 at rows 33-128 and shared256 at rows 129-511. A two-pair counterbalanced full-category C1-C3 server gate improves mean C1 AR prompt throughput 157.659 to 168.217 tok/s (+6.70%), with 240/240 paired generated rows equal, both 120/120 repeat sets equal, stable full C2/C3 groups, and zero final allocations.",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "bytes": 17106773984,
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "gguf_q4_k_m",
+    "execution_weight_tier": "q6_k_t16_qmicro_planar_v1 for the qualified FFN-down tensors"
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "revisions": {
+    "registered_leaf_and_initial_policy": "b51b17a354458588ed5e2f3d931f8bcc937a40fb",
+    "measured_row128_boundary": "48f25fa25dfef2fc5efe4deaafcd5a7cbe43b3ef",
+    "counterbalanced_server_gate_and_trace_source": "4cb55543ad53572dcfb7d681d8dd79ce23078a4a"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "change": {
+    "mechanism": "The row64 and shared256 leaves preserve the one-wave parent's per-output K16 WMMA, FP32 accumulation, and BF16 store order. They change only row ownership and cooperative weight sharing to avoid low-wave supply and padded row work.",
+    "scope": {
+      "backend": "hip_gfx1100",
+      "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+      "shape_k_n": [17408, 5120],
+      "row_bands": [
+        {"rows_inclusive": [33, 128], "variant": "t16_wmma_prefill_shared4_row64_bf16_bf16_out"},
+        {"rows_inclusive": [129, 511], "variant": "t16_wmma_prefill_shared4_bf16_bf16_out"}
+      ]
+    },
+    "misses": "Rows <=32, rows >=512, unqualified shapes, non-WMMA physical verification, decode, and peer backends retain their prior owners.",
+    "fallback": "t16_wmma_prefill_single_wave_bf16_bf16_out remains separately registered. HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL=0 restores it on the same build."
+  },
+  "commands": {
+    "counterbalanced_server_gate": "COMMON=(--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution); HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL=<0-or-1> timeout 420 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py \"${COMMON[@]}\" --output <packet>; process order r1=rollback,candidate and r2=candidate,rollback",
+    "actual_weight_crossover": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 timeout 300 .venv/bin/python /tmp/he-prefill-p13/q6_row64_{screen,mid_crossover,switch_crossover,crossover}.py",
+    "strict_kernel_gate": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 timeout 600 .venv/bin/python -m pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py",
+    "final_policy_gate": ".venv/bin/python -m pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py -k 'planar_exact_prefill_selects or p9_h3_q6_t16_registry'",
+    "retained_symbol_trace": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_EXECUTION_PROFILE=production HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/he-prefill-p13/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 timeout 300 rocprofv3 --kernel-trace --output-format csv -d /tmp/he-prefill-p13/c1-candidate-final-trace -o candidate-final -- .venv/bin/python /tmp/he-prefill-p13/c1_candidate_trace_driver.py"
+  },
+  "parent_amdahl_profile": {
+    "protocol": "Direct public LLM.generate child; all ten category+heldout prompts; two warmups then ten one-token C1 operations; production profile; cached rocprof kernel trace; one-wave rollback.",
+    "mean_operation_span_ms": 255.792,
+    "mean_kernel_sum_ms": 242.517,
+    "mean_launches": 1322.4,
+    "mean_span_minus_kernel_sum_ms": 13.275,
+    "dominant_exact_families_ms_per_prompt": {
+      "q4_fused_gate_up": 77.258,
+      "q6_planar": 60.704,
+      "q4_shared_b": 49.505,
+      "q5_wmma": 23.455,
+      "q4_unequal_dual": 9.846,
+      "q4_single_wave": 7.690
+    },
+    "trace_sha256": "267afe25d563cc3f811ebb979f375eb30e0ba4c99fe660165ef16da4f756a53a"
+  },
+  "actual_weight_leaf_gate": {
+    "weight": "blk.0.ffn_down.weight",
+    "shape_k_n": [17408, 5120],
+    "source_and_planar_bytes": 73113600,
+    "timing": "25 launches/pass, five forward/reverse order pairs, median of pass medians, actual model weight and deterministic BF16 activations",
+    "correctness": "Every captured candidate output is finite and BF16-bit exact to the separately registered one-wave parent.",
+    "selected_examples_ms": {
+      "33": {"parent": 1.5466, "row64": 0.8264, "speedup": 1.8716},
+      "64": {"parent": 1.6868, "row64": 0.8649, "speedup": 1.9502},
+      "65": {"row64": 1.1882, "shared256": 1.3126},
+      "96": {"row64": 1.2837, "shared256": 1.3873},
+      "128": {"row64": 1.3159, "shared256": 1.4192},
+      "129": {"row64": 1.6243, "shared256": 1.4287},
+      "192": {"row64": 1.6796, "shared256": 1.5928},
+      "511": {"parent": 3.8518, "shared256": 3.4482}
+    },
+    "boundary": "Row64 wins both order directions through row128; shared256 wins both directions from row129 through the tested row511. Row512 remains outside this exact policy because the independently qualified source-F16 route owns that regime."
+  },
+  "server_gate": {
+    "protocol": "Canonical mtp-bench code/general_en/general_ja/mixed_ja_en suite, ten prompts including four heldouts, C1-C3, AR plus automatic omitted-request exact K0 comparator, one output token, production profile, complete blocking barrier-to-last-response wall, actual native-group capture.",
+    "source_clean": true,
+    "order": ["r1 rollback", "r1 candidate", "r2 candidate", "r2 rollback"],
+    "prompt_tokens_per_c1_packet": 449,
+    "packet_sha256": {
+      "r1_rollback": "98344515d0975bd7c28691856f3bc2166f2aefada14e5460bbd136ba6a4abc8d",
+      "r1_candidate": "1705525bee9de504108bb5f699b3ef1e5632a282c8f3de98615259b4650240d9",
+      "r2_candidate": "dbb6e2bda35284e6281546bed18434872f159387e98535f9620fc991d2033781",
+      "r2_rollback": "f1dcf5500d372b96d6389a0c2b552cf5435d463ee7dca28ea5d27f453c046efd"
+    },
+    "prompt_processing_tok_s": {
+      "ar": {
+        "C1": {"rollback": [158.733748, 156.583935], "candidate": [168.552640, 167.882005], "candidate_mean": 168.217323, "same_build_ratio_of_means": 1.066970},
+        "C2": {"rollback": [262.746326, 257.394510], "candidate": [266.990602, 265.888821], "candidate_mean": 266.439711, "same_build_ratio_of_means": 1.024491},
+        "C3": {"rollback": [349.262555, 342.649887], "candidate": [354.902085, 352.542343], "candidate_mean": 353.722214, "same_build_ratio_of_means": 1.022448}
+      },
+      "automatic_k0_comparator": {
+        "C1": {"rollback": [158.363113, 156.059419], "candidate": [167.972738, 167.373207], "candidate_mean": 167.672973, "same_build_ratio_of_means": 1.066546},
+        "C2": {"rollback": [264.663993, 259.364551], "candidate": [269.128712, 267.578690], "candidate_mean": 268.353701, "same_build_ratio_of_means": 1.024195},
+        "C3": {"rollback": [349.599990, 342.063423], "candidate": [354.076651, 352.133324], "candidate_mean": 353.104988, "same_build_ratio_of_means": 1.021031}
+      }
+    },
+    "mean_native_prefill_ms": {
+      "ar": {
+        "C1": {"rollback": 254.7365, "candidate": 236.7617, "delta_percent": -7.0562},
+        "C2": {"rollback": 304.1070, "candidate": 295.7953, "delta_percent": -2.7331},
+        "C3": {"rollback": 343.8163, "candidate": 335.0907, "delta_percent": -2.5379}
+      },
+      "automatic_k0_comparator": {
+        "C1": {"rollback": 254.8634, "candidate": 236.8598, "delta_percent": -7.0640},
+        "C2": {"rollback": 303.8602, "candidate": 295.6342, "delta_percent": -2.7072},
+        "C3": {"rollback": 343.6511, "candidate": 335.1814, "delta_percent": -2.4646}
+      }
+    },
+    "scope_minimum_improvement_percent": {
+      "C1": {"ar_category": 4.8648, "ar_heldout": 5.8926, "comparator_category": 5.0520, "comparator_heldout": 5.9028},
+      "C2": {"ar_category": 2.3895, "ar_heldout": 2.3324, "comparator_category": 2.2445, "comparator_heldout": 2.3506},
+      "C3": {"ar_category": 1.9256, "ar_heldout": 2.4355, "comparator_category": 1.8403, "comparator_heldout": 2.3975}
+    },
+    "native_groups": "Both arms and both repeats form full size-2 groups in 10/10 C2 cells and full size-3 groups in 10/10 C3 cells.",
+    "correctness": {
+      "within_packet_cells": 120,
+      "paired_candidate_rollback_generated_rows": 240,
+      "paired_mismatches": 0,
+      "rollback_repeat_generated_rows": 120,
+      "rollback_repeat_mismatches": 0,
+      "candidate_repeat_generated_rows": 120,
+      "candidate_repeat_mismatches": 0
+    },
+    "memory": "All four packets finish at zero current bytes and zero active allocations; each peaks at 22,526,457,124 tracked bytes."
+  },
+  "retained_symbol_trace": {
+    "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_kernel",
+    "dispatches": 96,
+    "dispatches_per_public_operation": 32,
+    "grid_x": 13696,
+    "workgroup_threads": 128,
+    "runtime_vgpr": 248,
+    "runtime_sgpr": 128,
+    "lds_bytes": 24576,
+    "duration_ms": {"median": 0.785129, "min": 0.766448, "max": 0.834529},
+    "trace_sha256": "a2a98aa8d78d577f12091a8d884478f4f20e50b0d176d5578714c296c9ef64df"
+  },
+  "gates": {
+    "strict_parent_parity": "Rows 17/35/64/65 are byte-exact to the one-wave parent; the complete Q6 kernel file passes 60/60 on W7900.",
+    "selector_and_fallback": "Focused package band, rollback, registration, and parent-fallback contracts pass 2/2 after the measured row128 boundary update.",
+    "outer_gate": "Both counterbalanced full-suite pairs pass all harness correctness, route, grouping, and memory gates.",
+    "trace": "The expected row64 symbol executes 32 times per public operation with plausible resources and durations."
+  },
+  "scoreboard_update": {
+    "prior_prefill_tok_s": {"C1": 157.774, "C2": 261.748, "C3": 346.923},
+    "retained_prefill_tok_s": {"C1": 168.217, "C2": 266.440, "C3": 353.722},
+    "delta_percent": {"C1": 6.619, "C2": 1.792, "C3": 1.960},
+    "strongest_peer_tok_s": {"C1": 200.946, "C2": 239.658, "C3": 259.036},
+    "retained_vs_peer_percent": {"C1": -16.288, "C2": 11.174, "C3": 36.554}
+  },
+  "limitations": [
+    "This exact route removes one diagnosed planar-Q6 sub-window; fused Q4 gate/up remains the largest traced family and is a separate optimization unit.",
+    "C1 remains behind the strongest same-host peer by 16.29%, so overall cross-engine prefill parity remains open.",
+    "Generated-ID equality is diagnostic under the production profile; this candidate is arithmetic-exact to its registered strict parent, so no production-numerics threshold is consumed.",
+    "The comparison environment seam remains through one release checkpoint per docs/REFACTOR.md; the separately registered parent remains permanently as numerical and peer-backend fallback."
+  ]
+}
