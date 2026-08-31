@@ -2706,12 +2706,6 @@ def run_qwen4_exp_gr_read(
     )
 
 
-def _qwen4_exp_device_argmax_enabled() -> bool:
-    return os.environ.get("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0") not in {
-        "", "0", "false", "False"
-    }
-
-
 def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
 
@@ -5385,17 +5379,12 @@ class Qwen4ExpGGUFResidentModelRunner:
         count = int(max_new_tokens)
         if count <= 0:
             raise ValueError("max_new_tokens must be positive")
-        result = self.prefill(
-            token_ids, capture_logits=not _qwen4_exp_device_argmax_enabled()
-        )
+        result = self.prefill(token_ids, capture_logits=False)
         output: list[int] = []
         for index in range(count):
             output.append(result.token_id)
             if index + 1 < count:
-                result = self.step(
-                    result.token_id,
-                    capture_logits=not _qwen4_exp_device_argmax_enabled(),
-                )
+                result = self.step(result.token_id, capture_logits=False)
         return tuple(output)
 
     def close(self) -> None:

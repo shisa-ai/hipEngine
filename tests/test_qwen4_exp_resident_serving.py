@@ -97,8 +97,7 @@ def test_qwen4_exp_resident_c2_preserves_request_owned_state(monkeypatch) -> Non
         driver.close()
 
 
-def test_qwen4_exp_resident_c2_uses_compact_output_when_bound(monkeypatch) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "1")
+def test_qwen4_exp_resident_c2_uses_compact_output_by_default(monkeypatch) -> None:
     generator = _generator()
     created = []
 

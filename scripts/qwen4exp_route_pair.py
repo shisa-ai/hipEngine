@@ -168,10 +168,7 @@ def _run_route(
 ) -> dict[str, Any]:
     """Run one synchronized route sample and return its timing/identity."""
 
-    device_argmax = os.environ.get(
-        "HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0"
-    ) not in {"", "0", "false", "False"}
-    result_kwargs = {"capture_logits": False} if device_argmax else {}
+    result_kwargs = {"capture_logits": False}
     if mode == "prefill":
         started = time.perf_counter()
         result = runner.prefill(token_ids, **result_kwargs)

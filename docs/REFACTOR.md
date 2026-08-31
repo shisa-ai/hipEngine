@@ -55,16 +55,6 @@ should be removed or collapsed.
   first. Do not leave the ambiguous broad flag as a latent production route.
   Retain the strict selected Q5_K gemv chain as fallback.
 
-## 2026-08-31 Qwen4Exp P5 candidates
-
-- `HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX=1` runs registered F32 top-1 on device
-  and returns only one int64 token for normal greedy generation. Direct runner,
-  MTP, and debug calls keep full logits by default. Strict and production bind
-  it on after the complete exact token/state, natural-AR, lifecycle, transfer,
-  and trace gates passed. Remove this now-redundant rollback flag after one clean
-  default confirmation; the explicit full-logit runner API is the durable debug
-  path.
-
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted

@@ -114,7 +114,7 @@ def test_device_argmax_candidate_is_t0_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["device_argmax"]
 
-    assert candidate.environment == {"HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX": "1"}
+    assert candidate.environment == {}
     assert candidate.classification == "T0"
     assert candidate.base_profile == "strict"
     assert candidate.candidate_key[-1] == "top1_i64"
