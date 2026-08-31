@@ -2027,6 +2027,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     index_dim: int = 0,
     index_rotary_dim: int = 0,
     rope_positions_ptr: int | None = None,
+    position_prepared: bool = False,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -2044,7 +2045,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     missing = sorted(required - set(weights.projections))
     if missing:
         raise ValueError("missing Qwen4Exp QSA weights: " + ", ".join(missing))
-    attention_state.set_position(position)
+    if not position_prepared:
+        attention_state.set_position(position)
     q_width = query_heads * head_dim
     kv_width = kv_heads * head_dim
     for slot, output, out_features in (
@@ -3693,6 +3695,7 @@ def run_qwen4_exp_dense_qsa_layer(
     index_dim: int = 0,
     index_rotary_dim: int = 0,
     rope_positions_ptr: int | None = None,
+    position_prepared: bool = False,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     moe_graph_cache: MoeGraphCache | None = None,
@@ -3726,6 +3729,7 @@ def run_qwen4_exp_dense_qsa_layer(
         index_state=index_state, index_heads=index_heads, index_dim=index_dim,
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
+        position_prepared=position_prepared,
         stream=stream, runtime=active_runtime,
     )
     qwen4_exp_gr_write_bf16_f32(
