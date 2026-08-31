@@ -435,6 +435,7 @@ class Qwen35GGUFMTP2Adapter:
             _PHYSICAL_ACCEPT_MIN_ROWS,
             padded_frontier_rows,
         )
+        self._last_partition_contract: dict[str, Any] = {}
         self._intents: dict[int, int] = {}
         self._static_eligibility_by_request: dict[
             int, SpeculativeMTPStaticEligibility
@@ -1119,16 +1120,33 @@ class Qwen35GGUFMTP2Adapter:
         if not self.enabled or not ids:
             return 0
         eligibility = tuple(self._static_eligibility(request_id) for request_id in ids)
-        if any(row is None or not row.eligible for row in eligibility):
-            return 0
-        bound = min(
-            int(getattr(self, "physical_max_requests", 4)),
-            max(1, int(getattr(self.owner, "capacity", 1))),
-            *(int(row.max_realized_group_rows) for row in eligibility if row is not None),
+        physical_max_requests = int(getattr(self, "physical_max_requests", 4))
+        owner_capacity = max(1, int(getattr(self.owner, "capacity", 1)))
+        static_bounds = [
+            0 if row is None else int(row.max_realized_group_rows)
+            for row in eligibility
+        ]
+        valid = not any(row is None or not row.eligible for row in eligibility)
+        bound = (
+            min(
+                physical_max_requests,
+                owner_capacity,
+                *static_bounds,
+            )
+            if valid
+            else 0
         )
         # Exact automatic-singleton evidence must fail the composed due group to
         # K0; it may not be reinterpreted as many independently profitable C1s.
-        return bound if bound > 1 else 0
+        resolved = bound if bound > 1 else 0
+        self._last_partition_contract = {
+            "request_ids": list(ids),
+            "static_max_realized_group_rows": static_bounds,
+            "owner_capacity": owner_capacity,
+            "physical_max_requests": physical_max_requests,
+            "resolved_max_requests": resolved,
+        }
+        return resolved
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
         request_ids = tuple(int(value) for value in plan.speculative_request_ids)
@@ -1342,6 +1360,23 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden = None
         self._cycle_ngram_tokens = None
         self._cycle_workspace_shape = None
+
+    def physical_width_contract(self) -> dict[str, Any]:
+        return {
+            "physical_max_requests": int(
+                getattr(self, "physical_max_requests", 4)
+            ),
+            "physical_accept_max_rows": int(
+                getattr(
+                    self,
+                    "physical_accept_max_rows",
+                    _PHYSICAL_ACCEPT_MIN_ROWS,
+                )
+            ),
+            "last_partition": dict(
+                getattr(self, "_last_partition_contract", {})
+            ),
+        }
 
     def cycle_workspace_contract(self) -> dict[str, Any]:
         return {
