@@ -358,14 +358,13 @@ fallback count is not a success metric.
   WMMA, FP32 accumulation, BF16 projection boundary, and SiLU association.
   Actual-weight crossover evidence selects row64 only at rows33-64 and row128
   only at rows65-128; rows129+ and every quant/shape/backend miss retain the
-  parent. `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=1` opts into the candidate
-  while the complete full-category gate is pending; `0` is the current default
-  and same-build strict rollback. The resolved value is cached on the launch
-  path and cannot broaden beyond the measured bands.
-- Removal trigger: if the complete C1-C3 category+heldout gate rejects the
-  candidate, remove the siblings, selector, and env lookup. If it promotes,
-  flip the default and retain `0` for one release window, then remove the env
-  lookup/cache while permanently keeping the 256-row registered fallback.
+  parent. `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=0` restores that parent on
+  the same build; the exact retiles are now the default after the complete
+  counterbalanced C1-C3 category+heldout gate passed. The resolved value is
+  cached on the launch path and cannot broaden beyond the measured bands.
+- Removal trigger: after one release window with a defaults-only repeated
+  C1-C3 gate, remove the environment lookup/cache while preserving the bounded
+  shape/range policy and permanent 256-row registered fallback.
 
 ## gfx1100 Q4-T16 row64 down-projection bisection
 

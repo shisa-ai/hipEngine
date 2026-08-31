@@ -1,0 +1,851 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_exact_fused_q4_prefill_retiles_retained",
+  "date": "2026-08-31",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "claim": "Exact fused-Q4 gate/up+SiLU row64 (R33-R64) and row128 (R65-R128) siblings replace the 256-row parent on gfx1100. The counterbalanced full-suite C1-C3 gate improves mean AR prompt throughput 168.779 to 189.074 tok/s at C1 (+12.03%), closes the final prefill peer deficit, preserves 240/240 paired and 240/240 repeat generated rows, full C2/C3 groups, and clean drain.",
+  "source": {
+    "candidate_commit": "7ca0f1308c2a634f6513c6799bb906e235ee7c8a",
+    "candidate_tracked_clean": true,
+    "promotion_commit": null
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+      "size_bytes": 17106773984,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552862704,
+        17105725408
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "change": {
+    "backend": "hip_gfx1100",
+    "quant": "gguf_q4_k_t16_v1",
+    "shape_k_n": [
+      5120,
+      17408
+    ],
+    "row_bands": [
+      {
+        "rows_inclusive": [
+          33,
+          64
+        ],
+        "variant": "dense_dual_wmma_prefill_row64_bf16_bf16_out"
+      },
+      {
+        "rows_inclusive": [
+          65,
+          128
+        ],
+        "variant": "dense_dual_wmma_prefill_row128_bf16_bf16_out"
+      }
+    ],
+    "fallback": "dense_dual_wmma_prefill_bf16_bf16_out",
+    "misses": "rows<=32, rows>=129, qmicro, shape misses, unregistered variants, and peer backends retain prior owners",
+    "rollback": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=0"
+  },
+  "commands": {
+    "full_gate": "COMMON=(--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution); HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_EXECUTION_PROFILE=production HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=<0-or-1> PYTHONUNBUFFERED=1 timeout 420 .venv/bin/python -u scripts/gguf_mtp_c1c8_server_bench.py \"${COMMON[@]}\" --output <packet>; process order r1=rollback,candidate and r2=candidate,rollback",
+    "strict_kernel_gate": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 .venv/bin/python -m pytest -q tests/test_gguf_q4_k_t16_dense.py",
+    "trace": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_EXECUTION_PROFILE=production HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/he-prefill-p13/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. timeout 300 rocprofv3 --kernel-trace --output-format csv -d /tmp/he-q4-fused-retile/trace -o fused-retile -- .venv/bin/python -u /tmp/he-q4-fused-retile/trace_driver.py"
+  },
+  "actual_weight_leaf_gate": {
+    "weights": [
+      "blk.0.ffn_gate.weight",
+      "blk.0.ffn_up.weight"
+    ],
+    "shape_k_n": [
+      5120,
+      17408
+    ],
+    "timing": "HIP events, five warmup rounds, all six arm-order permutations; 18 samples/arm on production prompt rows and 12 samples/arm on crossover rows; three launches/sample",
+    "cells": {
+      "35": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.2903766632080078,
+          "row64": 0.8495421806971233,
+          "row128": 0.9306556781133016
+        },
+        "speedup_vs_parent": {
+          "row64": 1.518908292639621,
+          "row128": 1.3865242468879155
+        },
+        "best": "row64"
+      },
+      "36": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.2078497012456257,
+          "row64": 0.7937886714935303,
+          "row128": 0.8662819862365723
+        },
+        "speedup_vs_parent": {
+          "row64": 1.521626277398279,
+          "row128": 1.3942916053154255
+        },
+        "best": "row64"
+      },
+      "39": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.2599298159281411,
+          "row64": 0.8297820091247559,
+          "row128": 0.9045223395029705
+        },
+        "speedup_vs_parent": {
+          "row64": 1.518386518475015,
+          "row128": 1.3929228288827724
+        },
+        "best": "row64"
+      },
+      "43": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.2712898254394531,
+          "row64": 0.8373155196507771,
+          "row128": 0.91358216603597
+        },
+        "speedup_vs_parent": {
+          "row64": 1.5182924424590571,
+          "row128": 1.391544047926828
+        },
+        "best": "row64"
+      },
+      "46": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.2750698328018188,
+          "row64": 0.8380554914474487,
+          "row128": 0.9151623249053955
+        },
+        "speedup_vs_parent": {
+          "row64": 1.521462296726414,
+          "row128": 1.393271770593953
+        },
+        "best": "row64"
+      },
+      "48": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.2719564835230508,
+          "row64": 0.8384419679641724,
+          "row128": 0.9142889976501465
+        },
+        "speedup_vs_parent": {
+          "row64": 1.517047729148743,
+          "row128": 1.3911974078132416
+        },
+        "best": "row64"
+      },
+      "60": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.3740168412526448,
+          "row64": 0.8632754882176717,
+          "row128": 0.9141688346862793
+        },
+        "speedup_vs_parent": {
+          "row64": 1.5916319413741902,
+          "row128": 1.5030230621722893
+        },
+        "best": "row64"
+      },
+      "67": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.3443102836608887,
+          "row64": 1.6251043478647866,
+          "row128": 0.9014289776484171
+        },
+        "speedup_vs_parent": {
+          "row64": 0.8272147480419757,
+          "row128": 1.4913102607016566
+        },
+        "best": "row128"
+      },
+      "61": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.4186824957529702,
+          "row64": 0.8867416779200237,
+          "row128": 0.9388949871063232
+        },
+        "speedup_vs_parent": {
+          "row64": 1.5998825036403928,
+          "row128": 1.5110129622966177
+        },
+        "best": "row64"
+      },
+      "63": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.3433090051015217,
+          "row64": 0.8414878447850545,
+          "row128": 0.890541672706604
+        },
+        "speedup_vs_parent": {
+          "row64": 1.5963498622426924,
+          "row128": 1.5084179059457508
+        },
+        "best": "row64"
+      },
+      "64": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.3139905134836833,
+          "row64": 0.8156153361002604,
+          "row128": 0.8666091759999592
+        },
+        "speedup_vs_parent": {
+          "row64": 1.6110419401458627,
+          "row128": 1.5162434807680194
+        },
+        "best": "row64"
+      },
+      "65": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.3431633313496907,
+          "row64": 1.6291042168935141,
+          "row128": 0.9005353450775146
+        },
+        "speedup_vs_parent": {
+          "row64": 0.8244796848607544,
+          "row128": 1.491516505922459
+        },
+        "best": "row128"
+      },
+      "66": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.3477567036946616,
+          "row64": 1.6308910051981607,
+          "row128": 0.9033954938252766
+        },
+        "speedup_vs_parent": {
+          "row64": 0.8263928732201837,
+          "row128": 1.4918789311066984
+        },
+        "best": "row128"
+      },
+      "96": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.396263837814331,
+          "row64": 1.6833111445109048,
+          "row128": 0.9600627024968464
+        },
+        "speedup_vs_parent": {
+          "row64": 0.8294745997300594,
+          "row128": 1.4543465069344441
+        },
+        "best": "row128"
+      },
+      "112": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.401177167892456,
+          "row64": 1.6831978162129722,
+          "row128": 0.9459691445032756
+        },
+        "speedup_vs_parent": {
+          "row64": 0.8324494925052632,
+          "row128": 1.4812081092012872
+        },
+        "best": "row128"
+      },
+      "128": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.422657330830892,
+          "row64": 1.7237446308135986,
+          "row128": 0.9583693345387777
+        },
+        "speedup_vs_parent": {
+          "row64": 0.8253295212060531,
+          "row128": 1.4844562316004783
+        },
+        "best": "row128"
+      },
+      "129": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.435364007949829,
+          "row64": 2.3555931250254316,
+          "row128": 1.8312981923421225
+        },
+        "speedup_vs_parent": {
+          "row64": 0.6093429262892472,
+          "row128": 0.7837958962401874
+        },
+        "best": "parent256"
+      },
+      "160": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.473850965499878,
+          "row64": 2.40062681833903,
+          "row128": 1.8927321434020996
+        },
+        "speedup_vs_parent": {
+          "row64": 0.6139442225008638,
+          "row128": 0.7786896686029213
+        },
+        "best": "parent256"
+      },
+      "192": {
+        "exact": {
+          "row64": true,
+          "row128": true
+        },
+        "median_ms": {
+          "parent256": 1.6217180093129477,
+          "row64": 2.450373649597168,
+          "row128": 1.8648587067921958
+        },
+        "speedup_vs_parent": {
+          "row64": 0.661824783162989,
+          "row128": 0.8696197751638342
+        },
+        "best": "parent256"
+      }
+    },
+    "boundary": "row64 wins through R64; row128 wins R65-R128; parent wins immediately at R129",
+    "correctness": "Every row64 and row128 output is BF16-bit exact to the parent."
+  },
+  "server_gate": {
+    "protocol": "Ten code/general_en/general_ja/mixed_ja_en prompts including four heldouts, C1-C3, AR plus automatic K0 comparator, D1, fixed capacity 8, complete wall, two counterbalanced process pairs",
+    "packet_order": [
+      "r1 rollback",
+      "r1 candidate",
+      "r2 candidate",
+      "r2 rollback"
+    ],
+    "packet_sha256": {
+      "r1-rollback": "230f5e3c72b91c1bd76400331a11e72accef856ee33df01a10a6180f0286be90",
+      "r1-candidate": "5bad83fa47ef36412bdfa070e5f3e5d8ddda71e2f8bb2299cf744420466c6d40",
+      "r2-candidate": "eb1ba2c04a1370b9a5beb3cedc05e7502a436d2ff0eb2d308789d881385898d9",
+      "r2-rollback": "4777257d3a371c07eea89ef14a3b172a41c899a9871356ef04db5444f18d06de"
+    },
+    "prompt_processing_tok_s_per_run": {
+      "r1-rollback": {
+        "1": {
+          "ar": 169.97164603842853,
+          "mtp": 169.53044826535705
+        },
+        "2": {
+          "ar": 270.4327909825194,
+          "mtp": 271.8928133747858
+        },
+        "3": {
+          "ar": 359.32216250096224,
+          "mtp": 359.43911327203153
+        }
+      },
+      "r1-candidate": {
+        "1": {
+          "ar": 189.5527474722433,
+          "mtp": 188.72818918780143
+        },
+        "2": {
+          "ar": 290.4115580904238,
+          "mtp": 292.353480226536
+        },
+        "3": {
+          "ar": 371.382537760631,
+          "mtp": 370.62163120100263
+        }
+      },
+      "r2-candidate": {
+        "1": {
+          "ar": 188.59447963124035,
+          "mtp": 188.02462017552884
+        },
+        "2": {
+          "ar": 289.3275402508878,
+          "mtp": 290.6994986191805
+        },
+        "3": {
+          "ar": 369.252830513398,
+          "mtp": 368.68620473607393
+        }
+      },
+      "r2-rollback": {
+        "1": {
+          "ar": 167.58576183828126,
+          "mtp": 167.3716814325501
+        },
+        "2": {
+          "ar": 265.2241091221709,
+          "mtp": 267.79234991324324
+        },
+        "3": {
+          "ar": 352.7299494832547,
+          "mtp": 352.6097999964839
+        }
+      }
+    },
+    "prompt_processing_tok_s_mean": {
+      "candidate": {
+        "1": {
+          "ar": 189.07361355174183,
+          "mtp": 188.37640468166512
+        },
+        "2": {
+          "ar": 289.8695491706558,
+          "mtp": 291.5264894228583
+        },
+        "3": {
+          "ar": 370.3176841370145,
+          "mtp": 369.6539179685383
+        }
+      },
+      "rollback": {
+        "1": {
+          "ar": 168.7787039383549,
+          "mtp": 168.4510648489536
+        },
+        "2": {
+          "ar": 267.82845005234515,
+          "mtp": 269.84258164401456
+        },
+        "3": {
+          "ar": 356.02605599210847,
+          "mtp": 356.0244566342577
+        }
+      }
+    },
+    "candidate_vs_rollback_ratio_of_means": {
+      "1": {
+        "ar": 1.1202456775636782,
+        "mtp": 1.118285627048889
+      },
+      "2": {
+        "ar": 1.0822955855287324,
+        "mtp": 1.0803576205309577
+      },
+      "3": {
+        "ar": 1.0401420848400569,
+        "mtp": 1.0382823738097353
+      }
+    },
+    "combined_scope_ratios": {
+      "1": {
+        "category:code": {
+          "ar": 1.1202047912171769,
+          "mtp": 1.1196107619900257
+        },
+        "category:general_en": {
+          "ar": 1.1230020247674664,
+          "mtp": 1.1214906253780266
+        },
+        "category:general_ja": {
+          "ar": 1.1224723976725732,
+          "mtp": 1.11790256497227
+        },
+        "category:mixed_ja_en": {
+          "ar": 1.1161570814812642,
+          "mtp": 1.1136560282029209
+        },
+        "heldout:False": {
+          "ar": 1.1240288143729162,
+          "mtp": 1.1212654316995616
+        },
+        "heldout:True": {
+          "ar": 1.1149287922801152,
+          "mtp": 1.1141087894052182
+        }
+      },
+      "2": {
+        "category:code": {
+          "ar": 1.0916028018884751,
+          "mtp": 1.088369910654626
+        },
+        "category:general_en": {
+          "ar": 1.093297917049704,
+          "mtp": 1.0944589841242307
+        },
+        "category:general_ja": {
+          "ar": 1.094986197528508,
+          "mtp": 1.097655040209038
+        },
+        "category:mixed_ja_en": {
+          "ar": 1.0456426920610207,
+          "mtp": 1.0395653269567504
+        },
+        "heldout:False": {
+          "ar": 1.0935404037147678,
+          "mtp": 1.0913486031555737
+        },
+        "heldout:True": {
+          "ar": 1.0662344439564828,
+          "mtp": 1.0648210956429163
+        }
+      },
+      "3": {
+        "category:code": {
+          "ar": 1.019717840851795,
+          "mtp": 1.0173955227380642
+        },
+        "category:general_en": {
+          "ar": 1.0896337952044821,
+          "mtp": 1.087425824338741
+        },
+        "category:general_ja": {
+          "ar": 1.0860939192324814,
+          "mtp": 1.0857719865663291
+        },
+        "category:mixed_ja_en": {
+          "ar": 1.0021599168293651,
+          "mtp": 1.000216599066025
+        },
+        "heldout:False": {
+          "ar": 1.0400795952308521,
+          "mtp": 1.0382230735310816
+        },
+        "heldout:True": {
+          "ar": 1.040432514790229,
+          "mtp": 1.0385873941086103
+        }
+      }
+    },
+    "minimum_combined_scope_ratio": {
+      "ar": 1.0021599168293651,
+      "mtp": 1.000216599066025
+    },
+    "paired_exact": {
+      "r1": {
+        "mismatches": 0,
+        "rows": 120
+      },
+      "r2": {
+        "mismatches": 0,
+        "rows": 120
+      }
+    },
+    "repeat_exact": {
+      "candidate": {
+        "mismatches": 0,
+        "rows": 120
+      },
+      "rollback": {
+        "mismatches": 0,
+        "rows": 120
+      }
+    },
+    "native_groups": {
+      "r1-rollback": {
+        "1": {
+          "ar": {},
+          "mtp": {}
+        },
+        "2": {
+          "ar": {
+            "2": 10
+          },
+          "mtp": {
+            "2": 10
+          }
+        },
+        "3": {
+          "ar": {
+            "3": 10
+          },
+          "mtp": {
+            "3": 10
+          }
+        }
+      },
+      "r1-candidate": {
+        "1": {
+          "ar": {},
+          "mtp": {}
+        },
+        "2": {
+          "ar": {
+            "2": 10
+          },
+          "mtp": {
+            "2": 10
+          }
+        },
+        "3": {
+          "ar": {
+            "3": 10
+          },
+          "mtp": {
+            "3": 10
+          }
+        }
+      },
+      "r2-candidate": {
+        "1": {
+          "ar": {},
+          "mtp": {}
+        },
+        "2": {
+          "ar": {
+            "2": 10
+          },
+          "mtp": {
+            "2": 10
+          }
+        },
+        "3": {
+          "ar": {
+            "3": 10
+          },
+          "mtp": {
+            "3": 10
+          }
+        }
+      },
+      "r2-rollback": {
+        "1": {
+          "ar": {},
+          "mtp": {}
+        },
+        "2": {
+          "ar": {
+            "2": 10
+          },
+          "mtp": {
+            "2": 10
+          }
+        },
+        "3": {
+          "ar": {
+            "3": 10
+          },
+          "mtp": {
+            "3": 10
+          }
+        }
+      }
+    },
+    "final_memory": {
+      "r1-rollback": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 22526457124,
+        "total_allocated_bytes": 24766098288,
+        "total_freed_bytes": 24766098288,
+        "active_allocations": 0,
+        "peak_allocations": 1351
+      },
+      "r1-candidate": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 22526457124,
+        "total_allocated_bytes": 24766098288,
+        "total_freed_bytes": 24766098288,
+        "active_allocations": 0,
+        "peak_allocations": 1351
+      },
+      "r2-candidate": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 22526457124,
+        "total_allocated_bytes": 24766098288,
+        "total_freed_bytes": 24766098288,
+        "active_allocations": 0,
+        "peak_allocations": 1351
+      },
+      "r2-rollback": {
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 22526457124,
+        "total_allocated_bytes": 24766098288,
+        "total_freed_bytes": 24766098288,
+        "active_allocations": 0,
+        "peak_allocations": 1351
+      }
+    }
+  },
+  "retained_symbol_trace": {
+    "families": {
+      "row64": {
+        "calls": 128,
+        "median_ms": 0.770307,
+        "min_ms": 0.759767,
+        "max_ms": 0.819448,
+        "lds_bytes": [
+          32768
+        ],
+        "vgpr": [
+          248
+        ],
+        "accum_vgpr": [
+          0
+        ],
+        "sgpr": [
+          128
+        ],
+        "workgroup": [
+          128
+        ],
+        "grid_x": [
+          69632
+        ],
+        "grid_y": [
+          1
+        ],
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 1>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)"
+        ]
+      },
+      "row128": {
+        "calls": 128,
+        "median_ms": 0.871588,
+        "min_ms": 0.830568,
+        "max_ms": 0.925289,
+        "lds_bytes": [
+          32768
+        ],
+        "vgpr": [
+          248
+        ],
+        "accum_vgpr": [
+          0
+        ],
+        "sgpr": [
+          128
+        ],
+        "workgroup": [
+          128
+        ],
+        "grid_x": [
+          69632
+        ],
+        "grid_y": [
+          1
+        ],
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 2>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)"
+        ]
+      }
+    },
+    "trace_sha256": "d545ff2e356612e2b4ad70837fd7e0018abf47dd3431a44edb4f91b00aa188d5",
+    "total_dispatches": 5905
+  },
+  "gates": {
+    "strict_parent_parity": "100/100 tests pass; production-shape R64/R67 are BF16-bit exact to the unfused chain.",
+    "full_suite": "All combined category and heldout scopes improve in both AR and automatic-K0 arms; all packets pass, group, and drain.",
+    "trace": "Both expected template instantiations execute 64 times per public operation at the R36 and R67 prompts with plausible duration/resources and cached-only compilation."
+  },
+  "scoreboard_update": {
+    "prior_prefill_tok_s": {
+      "1": 166.784,
+      "2": 263.688,
+      "3": 351.141
+    },
+    "retained_prefill_tok_s": {
+      "1": 189.07361355174183,
+      "2": 289.8695491706558,
+      "3": 370.3176841370145
+    },
+    "delta_percent": {
+      "1": 13.364359621871301,
+      "2": 9.928987731961936,
+      "3": 5.461248939034324
+    },
+    "strongest_peer_tok_s": {
+      "1": 184.024,
+      "2": 225.73,
+      "3": 221.227
+    },
+    "retained_vs_peer_percent": {
+      "1": 2.7439972784755406,
+      "2": 28.414277752472337,
+      "3": 67.39262573601528
+    },
+    "remaining_prefill_deficits": []
+  },
+  "raw_sources": {
+    "production_leaf_sha256": "a02930cbd9c3276e4b639b231345acfa632f24878aa2d20620dfc5b022e78b1f",
+    "crossover_leaf_sha256": "a725b6dda44261ce0e77ad90a50f1bce12d3e1b9aa5e1810c879f3749bc859b6",
+    "full_gate_summary_sha256": "da1326470f3f16f05229f01c135d5b815b84bb4a549cbe1af5711da68c4a5732",
+    "trace_sha256": "d545ff2e356612e2b4ad70837fd7e0018abf47dd3431a44edb4f91b00aa188d5"
+  },
+  "limitations": [
+    "The public scoreboard updates C1-C3 only; C4-C8 retain the independent full peer-repeat rows.",
+    "Automatic capacity-8 MTP remains K0; the automatic arm here is an exact prefill comparator, not an MTP throughput claim.",
+    "The temporary same-build env rollback remains for one release checkpoint per docs/REFACTOR.md."
+  ]
+}

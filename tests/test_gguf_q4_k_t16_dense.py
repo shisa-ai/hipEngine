@@ -840,7 +840,7 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
 ) -> None:
     from hipengine.runtime import gguf_linear as gguf_linear_module
 
-    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", raising=False)
     monkeypatch.setattr(
         gguf_linear_module,
         "_Q4_T16_DUAL_SILU_RETILE_RESOLVED",

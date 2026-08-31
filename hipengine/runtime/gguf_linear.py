@@ -1832,7 +1832,7 @@ def _q4_t16_dual_silu_retile_enabled() -> bool:
 
     global _Q4_T16_DUAL_SILU_RETILE_RESOLVED
     if _Q4_T16_DUAL_SILU_RETILE_RESOLVED is None:
-        raw = os.environ.get(_Q4_T16_DUAL_SILU_RETILE_ENV, "0").strip().lower()
+        raw = os.environ.get(_Q4_T16_DUAL_SILU_RETILE_ENV, "1").strip().lower()
         if raw in {"1", "true", "yes", "on"}:
             _Q4_T16_DUAL_SILU_RETILE_RESOLVED = True
         elif raw in {"0", "false", "no", "off"}:
