@@ -18,6 +18,18 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-01 W1 wide-Q6 shared4 candidate context — open
+
+- `target_verifier_wide_q6_shared4_session()` exposes the existing B-stationary
+  standard/planar Q6 shared4 owners at physical R20/R24/R32 only for the W1
+  production-numerics campaign. The context defaults off; current chunk/direct
+  owners remain the strict fallback, and automatic C6/C8 serving remains K0.
+- Remove the candidate context after the complete C6/C8 strict-teacher,
+  determinism/isolation/task, full-suite performance, and profiler gates either
+  promote the shape policy or reject it. A promotion should leave one immutable
+  profile/capability selection plus registered strict fallbacks, not a second
+  runtime experiment axis.
+
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
 - `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved

@@ -1388,6 +1388,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_wmma_prefill_shared4_bf16_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear+argmax",
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_gemv_decode_bf16_f32_top1_stage1",
@@ -1413,6 +1423,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
             "t16_wmma_prefill_bf16_bf16_out",
         ),
         gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_v1",
+            "t16_wmma_prefill_shared4_bf16_bf16_out",
+        ),
+        gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
         replace=replace,
     )
     register(
