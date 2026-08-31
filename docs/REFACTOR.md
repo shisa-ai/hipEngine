@@ -59,10 +59,11 @@ should be removed or collapsed.
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
   K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
-  policy. Both strict and named production bind it off; it is a post-binder
-  candidate only. Remove the flag after the complete 450-row admission or
-  rejection. If admitted, encode the shape in the production policy/manifest
-  and retain exact raw-Q8 coltile8/rowbatch4 as strict fallback.
+  policy. It wins p508 and passes numerical scopes but is production-rejected:
+  candidate state repeat 1 differs from repeats 2–3 on the first prompt. Both
+  strict and named production bind it off. Remove the flag after MMQ warmup/
+  correction state is localized or at P3 cleanup; never promote by ignoring the
+  first same-schedule run. Exact raw-Q8 coltile8/rowbatch4 remains fallback.
 
 ## 2026-08-31 Qwen4Exp P2 exact grouped scheduling screens
 
