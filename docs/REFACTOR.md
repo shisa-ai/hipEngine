@@ -354,6 +354,20 @@ fallback count is not a success metric.
   and lifecycle gates, remove the environment read while preserving the package
   capability, derived owners, allocation-failure cleanup, and strict fallback.
 
+## Qwen3.8 NextN selected-vocabulary proposal head
+
+- Added 2026-08-31 as a default-off screen sourced from exllamav3 PR #303.
+  `HIPENGINE_GGUF_MTP_HOT_VOCAB=<artifact.json>` loads a tokenizer-hash-bound,
+  sorted individual-token map, repacks those Q6 output rows into a compact
+  planar-T16 proposal head, and maps the compact winner to the full token ID in
+  the registered stage-2 reduction. The full target head remains authoritative;
+  unset keeps the existing exact full-vocabulary proposal owner.
+- Removal trigger: reject and remove the loader/map/composite if the complete
+  counterbalanced C5-C8 category+heldout gate is not exact and non-regressive
+  after acceptance. If retained, replace the environment path with a model
+  plugin artifact declaration after one release checkpoint while preserving the
+  full-head registered fallback and tokenizer identity check.
+
 ## Server default-AR ready-cohort rollback
 
 - Added 2026-08-31 with task #29. Default-route HTTP items already inside the

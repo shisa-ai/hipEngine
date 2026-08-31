@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     gguf_q6_k_pack8_top1_stage2_gather_f32,
+    gguf_q6_k_pack8_top1_stage2_gather_mapped_f32,
 )
 from hipengine.kernels.registry import KernelKey, register
 
@@ -757,6 +758,59 @@ def gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16(
         out_features // _T16_COLS,
         0,
         out_features,
+        stream=stream,
+        library=pack8_library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_proposal_top1_mapped_bf16(
+    weight: object,
+    x_ptr: int,
+    logits_f32_ptr: int,
+    tile_values_f32_ptr: int,
+    tile_indices_i32_ptr: int,
+    out_indices_i32_ptr: int,
+    out_values_f32_ptr: int,
+    token_map_i32_ptr: int,
+    rows: int,
+    in_features: int,
+    compact_vocab: int,
+    full_vocab: int,
+    *,
+    stream: int = 0,
+    libraries: Mapping[str, ctypes.CDLL] | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Score a compact planar-Q6 head and return its mapped full-vocab ID."""
+
+    if rows != 1:
+        raise ValueError("mapped Q6T16 proposal top-1 currently requires rows=1")
+    allocation = getattr(weight, "allocation")("tiles")
+    t16_library = None if libraries is None else libraries.get("q6_t16")
+    pack8_library = None if libraries is None else libraries.get("q6_pack8")
+    gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1(
+        x_ptr,
+        int(allocation.tensor.ptr),
+        logits_f32_ptr,
+        tile_values_f32_ptr,
+        tile_indices_i32_ptr,
+        in_features,
+        compact_vocab,
+        stream=stream,
+        library=t16_library,
+        runtime=runtime,
+    )
+    gguf_q6_k_pack8_top1_stage2_gather_mapped_f32(
+        tile_values_f32_ptr,
+        tile_indices_i32_ptr,
+        token_map_i32_ptr,
+        out_indices_i32_ptr,
+        out_values_f32_ptr,
+        rows,
+        compact_vocab // _T16_COLS,
+        compact_vocab,
+        full_vocab,
         stream=stream,
         library=pack8_library,
         runtime=runtime,
@@ -1498,6 +1552,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear+argmax",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "proposal_top1_mapped_bf16",
+        ),
+        gguf_q6_k_t16_qmicro_planar_proposal_top1_mapped_bf16,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear",
             "gguf_q6_k_t16_v1",
             "t16_wmma_prefill_bf16_bf16_out",
@@ -1551,6 +1615,7 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_q8_1_threads",
     "gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16",
+    "gguf_q6_k_t16_qmicro_planar_proposal_top1_mapped_bf16",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",

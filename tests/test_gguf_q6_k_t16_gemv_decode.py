@@ -369,6 +369,12 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="proposal_top1_exact_bf16",
     ) is t16_mod.gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear+argmax",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="proposal_top1_mapped_bf16",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_proposal_top1_mapped_bf16
     dense_wmma = getattr(
         t16_mod,
         "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
@@ -445,6 +451,57 @@ def test_q6_t16_proposal_top1_adapter_uses_tiles_and_half_vocab_blocks(
     )
     assert calls["stage2"] == (
         (0x3000, 0x4000, 0x5000, 0x6000, None, None, 1, 64, 0, 1024),
+        {"stream": 7, "library": pack8_library, "runtime": runtime},
+    )
+
+
+def test_q6_t16_mapped_proposal_top1_maps_compact_winner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, tuple[tuple[object, ...], dict[str, object]]] = {}
+    runtime = object()
+    t16_library = object()
+    pack8_library = object()
+    weight = SimpleNamespace(
+        allocation=lambda name: SimpleNamespace(tensor=SimpleNamespace(ptr=0xA000))
+        if name == "tiles"
+        else (_ for _ in ()).throw(KeyError(name))
+    )
+    monkeypatch.setattr(
+        t16_mod,
+        "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
+        lambda *args, **kwargs: calls.__setitem__("stage1", (args, kwargs)),
+    )
+    monkeypatch.setattr(
+        t16_mod,
+        "gguf_q6_k_pack8_top1_stage2_gather_mapped_f32",
+        lambda *args, **kwargs: calls.__setitem__("stage2", (args, kwargs)),
+    )
+
+    t16_mod.gguf_q6_k_t16_qmicro_planar_proposal_top1_mapped_bf16(
+        weight,
+        0x1000,
+        0x2000,
+        0x3000,
+        0x4000,
+        0x5000,
+        0x6000,
+        0x7000,
+        1,
+        512,
+        256,
+        1024,
+        stream=7,
+        libraries={"q6_t16": t16_library, "q6_pack8": pack8_library},
+        runtime=runtime,
+    )
+
+    assert calls["stage1"] == (
+        (0x1000, 0xA000, 0x2000, 0x3000, 0x4000, 512, 256),
+        {"stream": 7, "library": t16_library, "runtime": runtime},
+    )
+    assert calls["stage2"] == (
+        (0x3000, 0x4000, 0x7000, 0x5000, 0x6000, 1, 16, 256, 1024),
         {"stream": 7, "library": pack8_library, "runtime": runtime},
     )
 

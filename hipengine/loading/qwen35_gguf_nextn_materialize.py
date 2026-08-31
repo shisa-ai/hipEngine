@@ -8,10 +8,19 @@ from types import MappingProxyType
 from typing import Mapping
 
 from hipengine.core.device import Device
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HipRuntime
 from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.loading.gguf import GGUFReader
+from hipengine.loading.gguf_mtp_hot_vocab import (
+    GGUFHotVocabSelection,
+    load_gguf_hot_vocab_selection,
+)
+from hipengine.loading.materialize import (
+    DeviceTensorAllocation,
+    load_host_array_to_device_as_dtype,
+)
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFDeviceWeight,
@@ -21,6 +30,8 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weight_spec,
     plan_qwen35_gguf_weight_spec,
 )
+from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro_planar
 from hipengine.loading.qwen35_gguf_nextn import (
     Qwen35GGUFNextNMap,
     build_qwen35_gguf_nextn_tensor_map,
@@ -53,6 +64,23 @@ class Qwen35GGUFNextNMaterializationPlan:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFNextNHotVocab:
+    """Owned compact proposal head and compact-to-full token map."""
+
+    selection: GGUFHotVocabSelection
+    lm_head: Qwen35GGUFDeviceWeight
+    token_ids: DeviceTensorAllocation
+
+    @property
+    def size(self) -> int:
+        return self.selection.size
+
+    def free(self, *, runtime: HipRuntime | None = None) -> None:
+        self.token_ids.free(runtime=runtime)
+        self.lm_head.free(runtime=runtime)
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFNextNResidentWeights:
     """Owned draft weights plus target embedding/output fallback records."""
 
@@ -62,6 +90,7 @@ class Qwen35GGUFNextNResidentWeights:
     fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight]
     owned_weights: tuple[Qwen35GGUFDeviceWeight, ...]
     backend: str
+    hot_vocab: Qwen35GGUFNextNHotVocab | None = None
 
     @property
     def config(self):
@@ -111,8 +140,74 @@ class Qwen35GGUFNextNResidentWeights:
         )
 
     def free(self, *, runtime: HipRuntime | None = None) -> None:
+        if self.hot_vocab is not None:
+            self.hot_vocab.free(runtime=runtime)
         for weight in reversed(self.owned_weights):
             weight.free(runtime=runtime)
+
+
+def _materialize_hot_vocab(
+    reader: GGUFReader,
+    spec: Qwen35GGUFWeightSpec,
+    selection: GGUFHotVocabSelection,
+    *,
+    device: Device | None,
+    runtime: HipRuntime | None,
+    backend: str,
+) -> Qwen35GGUFNextNHotVocab:
+    """Pack individually selected raw Q6 rows into a compact planar-T16 head."""
+
+    import numpy as np
+
+    if GGMLQuantizationType(spec.source.ggml_type) != GGMLQuantizationType.Q6_K:
+        raise ValueError("GGUF MTP hot vocabulary requires a Q6_K output head")
+    if spec.quant_key != "gguf_q6_k_t16_qmicro_planar_v1":
+        raise ValueError("GGUF MTP hot vocabulary requires the planar Q6 T16 output layout")
+    raw = np.asarray(reader.tensor_data(spec.source.name))
+    if raw.ndim != 2 or int(raw.shape[0]) != len(
+        reader.info.metadata["tokenizer.ggml.tokens"]
+    ):
+        raise ValueError("GGUF MTP hot-vocabulary output head has an unexpected shape")
+    selected_raw = np.ascontiguousarray(
+        raw[np.asarray(selection.token_ids, dtype=np.int64)],
+        dtype=np.uint8,
+    )
+    packed = repack_gguf_q6_k_tile16_qmicro_planar(selected_raw[None, ...])
+    head_allocation: DeviceTensorAllocation | None = None
+    token_allocation: DeviceTensorAllocation | None = None
+    try:
+        head_allocation = load_host_array_to_device_as_dtype(
+            f"{spec.source.name}.mtp_hot_vocab{selection.size}.tiles",
+            packed.tiles,
+            DType.INT8,
+            source_dtype="I8",
+            device=device,
+            runtime=runtime,
+        )
+        token_allocation = load_host_array_to_device_as_dtype(
+            f"{spec.source.name}.mtp_hot_vocab{selection.size}.token_ids",
+            np.asarray(selection.token_ids, dtype=np.int32),
+            DType.INT32,
+            source_dtype="I32",
+            device=device,
+            runtime=runtime,
+        )
+    except Exception:
+        if token_allocation is not None:
+            token_allocation.free(runtime=runtime)
+        if head_allocation is not None:
+            head_allocation.free(runtime=runtime)
+        raise
+    hot_spec = replace(spec, slot_path="draft.hot_lm_head")
+    return Qwen35GGUFNextNHotVocab(
+        selection=selection,
+        lm_head=Qwen35GGUFDeviceWeight(
+            spec=hot_spec,
+            allocations=MappingProxyType({"tiles": head_allocation}),
+            backend=str(backend),
+        ),
+        token_ids=token_allocation,
+    )
 
 
 def plan_qwen35_gguf_nextn_materialization(
@@ -161,6 +256,7 @@ def materialize_qwen35_gguf_nextn_weights(
     reader_or_path: GGUFReader | str | Path,
     *,
     borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
+    hot_vocab_path: str | Path | None = None,
     decode_repack: bool = True,
     device: Device | None = None,
     runtime: HipRuntime | None = None,
@@ -246,6 +342,18 @@ def materialize_qwen35_gguf_nextn_weights(
             slot: borrowed[slot] if borrowed is not None and slot in borrowed else load(spec)
             for slot, spec in plan.fallback_specs.items()
         }
+        hot_vocab = (
+            _materialize_hot_vocab(
+                reader,
+                plan.fallback_specs["lm_head"],
+                load_gguf_hot_vocab_selection(hot_vocab_path, reader.info),
+                device=device,
+                runtime=runtime,
+                backend=str(backend),
+            )
+            if hot_vocab_path is not None
+            else None
+        )
     except Exception:
         for weight in reversed(tuple(materialized.values())):
             weight.free(runtime=runtime)
@@ -257,10 +365,12 @@ def materialize_qwen35_gguf_nextn_weights(
         fallback_weights=MappingProxyType(fallback_weights),
         owned_weights=tuple(materialized.values()),
         backend=str(backend),
+        hot_vocab=hot_vocab,
     )
 
 
 __all__ = [
+    "Qwen35GGUFNextNHotVocab",
     "Qwen35GGUFNextNMaterializationPlan",
     "Qwen35GGUFNextNResidentWeights",
     "materialize_qwen35_gguf_nextn_weights",

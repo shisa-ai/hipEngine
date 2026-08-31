@@ -343,6 +343,7 @@ class Qwen35GGUFNextNExecutor:
         compiler_version: str | None = None,
         require_cached_build: bool = False,
         borrowed_fallback_weights: Mapping[str, Qwen35GGUFDeviceWeight] | None = None,
+        hot_vocab_path: str | Path | None = None,
         backend: str | None = None,
     ) -> None:
         if max_positions <= 0:
@@ -362,6 +363,7 @@ class Qwen35GGUFNextNExecutor:
         self.weights: Qwen35GGUFNextNResidentWeights | None = materialize_qwen35_gguf_nextn_weights(
             self.model,
             borrowed_fallback_weights=borrowed_fallback_weights,
+            hot_vocab_path=hot_vocab_path,
             runtime=self.runtime,
             backend=self.backend,
         )
@@ -479,6 +481,9 @@ class Qwen35GGUFNextNExecutor:
         self._lm_head_top1_block_indices: DeviceBuffer | None = None
         self._lm_head_top1_result: DeviceBuffer | None = None
         self._lm_head_top1_libraries: Mapping[str, object] | None = None
+        self._lm_head_top1_token_map_ptr: int | None = None
+        self._lm_head_top1_vocab_size = self.vocab_size
+        self._lm_head_top1_mapped = False
         self.last_lm_head_path = "unobserved"
         self._prepare_exact_lm_head_top1()
         self._proposal_graphs: dict[tuple[int, int], _Qwen35GGUFNextNProposalGraph] = {}
@@ -537,28 +542,49 @@ class Qwen35GGUFNextNExecutor:
         )
 
     def _prepare_exact_lm_head_top1(self) -> None:
-        """Bind compact exact top-1 scoring when the resident head supports it."""
+        """Bind full or selected-vocabulary top-1 scoring with strict fallback."""
 
         if self.weights is None or self.hidden_size % 256 != 0 or self.vocab_size % 8 != 0:
             return
-        weight = self.weights.fallback("lm_head")
-        key = KernelKey(
-            self.weights.backend,
-            "linear+argmax",
-            weight.spec.quant_key,
-            "proposal_top1_exact_bf16",
-        )
-        if not is_registered(key):
-            return
-        try:
-            kernel = resolve(
-                backend=key.backend,
-                layer=key.layer,
-                quant=key.quant,
-                variant=key.variant,
+        full_weight = self.weights.fallback("lm_head")
+        hot_vocab = getattr(self.weights, "hot_vocab", None)
+        candidates: list[tuple[object, int, str, int | None]] = []
+        if hot_vocab is not None and int(hot_vocab.size) % 16 == 0:
+            candidates.append(
+                (
+                    hot_vocab.lm_head,
+                    int(hot_vocab.size),
+                    "proposal_top1_mapped_bf16",
+                    int(hot_vocab.token_ids.tensor.ptr),
+                )
             )
-        except MissingKernelError:
+        candidates.append(
+            (full_weight, self.vocab_size, "proposal_top1_exact_bf16", None)
+        )
+        selected: tuple[object, int, str, int | None, object] | None = None
+        for weight, score_vocab, variant, token_map_ptr in candidates:
+            key = KernelKey(
+                self.weights.backend,
+                "linear+argmax",
+                weight.spec.quant_key,
+                variant,
+            )
+            if not is_registered(key):
+                continue
+            try:
+                kernel = resolve(
+                    backend=key.backend,
+                    layer=key.layer,
+                    quant=key.quant,
+                    variant=key.variant,
+                )
+            except MissingKernelError:
+                continue
+            selected = (weight, score_vocab, variant, token_map_ptr, kernel)
+            break
+        if selected is None:
             return
+        weight, score_vocab, variant, token_map_ptr, kernel = selected
         libraries = {
             "q6_pack8": build_gguf_q6_k_pack8_gemv(
                 load=True,
@@ -571,13 +597,16 @@ class Qwen35GGUFNextNExecutor:
                 require_cached=self.require_cached_build,
             ),
         }
-        block_nbytes = (self.vocab_size // 8) * DType.FP32.itemsize
+        block_nbytes = (score_vocab // 8) * DType.FP32.itemsize
         self._lm_head_top1_block_values = malloc(block_nbytes, runtime=self.runtime)
         self._lm_head_top1_block_indices = malloc(block_nbytes, runtime=self.runtime)
         self._lm_head_top1_result = malloc(DType.INT32.itemsize + DType.FP32.itemsize, runtime=self.runtime)
         self._lm_head_top1_kernel = kernel
         self._lm_head_top1_weight = weight
         self._lm_head_top1_libraries = libraries
+        self._lm_head_top1_token_map_ptr = token_map_ptr
+        self._lm_head_top1_vocab_size = score_vocab
+        self._lm_head_top1_mapped = variant == "proposal_top1_mapped_bf16"
 
     def _enqueue_exact_lm_head_top1(
         self,
@@ -597,7 +626,7 @@ class Qwen35GGUFNextNExecutor:
             or self._lm_head_top1_libraries is None
         ):
             return False
-        self._lm_head_top1_kernel(
+        common_args = (
             self._lm_head_top1_weight,
             int(hidden_ptr),
             self._logits_buf.ptr,
@@ -605,13 +634,32 @@ class Qwen35GGUFNextNExecutor:
             self._lm_head_top1_block_indices.ptr,
             int(token_out_ptr),
             int(value_out_ptr),
-            1,
-            self.hidden_size,
-            self.vocab_size,
-            stream=int(stream),
-            libraries=self._lm_head_top1_libraries,
-            runtime=self.runtime,
         )
+        if bool(getattr(self, "_lm_head_top1_mapped", False)):
+            token_map_ptr = getattr(self, "_lm_head_top1_token_map_ptr", None)
+            if token_map_ptr is None:
+                return False
+            self._lm_head_top1_kernel(
+                *common_args,
+                int(token_map_ptr),
+                1,
+                self.hidden_size,
+                int(self._lm_head_top1_vocab_size),
+                self.vocab_size,
+                stream=int(stream),
+                libraries=self._lm_head_top1_libraries,
+                runtime=self.runtime,
+            )
+        else:
+            self._lm_head_top1_kernel(
+                *common_args,
+                1,
+                self.hidden_size,
+                self.vocab_size,
+                stream=int(stream),
+                libraries=self._lm_head_top1_libraries,
+                runtime=self.runtime,
+            )
         return True
 
     def _run_exact_lm_head_top1(
@@ -652,7 +700,11 @@ class Qwen35GGUFNextNExecutor:
         if not return_logits:
             compact = self._run_exact_lm_head_top1(hidden_ptr, stream=stream)
             if compact is not None:
-                self.last_lm_head_path = "exact_q6_top1"
+                self.last_lm_head_path = (
+                    "selected_q6_top1"
+                    if bool(getattr(self, "_lm_head_top1_mapped", False))
+                    else "exact_q6_top1"
+                )
                 return compact[0], compact[1], None
 
         if self.weights is None:
@@ -1763,7 +1815,11 @@ class Qwen35GGUFNextNExecutor:
         slot_scratch.position_host[0] = int(position) + budget - 1
         slot_scratch.context_host[0] = int(position) + budget
         self._set_batch_session_position(slot, int(position) + budget)
-        self.last_lm_head_path = "exact_q6_top1"
+        self.last_lm_head_path = (
+            "selected_q6_top1"
+            if bool(getattr(self, "_lm_head_top1_mapped", False))
+            else "exact_q6_top1"
+        )
         self._proposal_graph_replays += 1
         self._proposal_graph_last_status = "device_handoff"
         self._proposal_graph_last_error = None
@@ -2014,6 +2070,12 @@ class Qwen35GGUFNextNExecutor:
             "unavailable": [list(key) for key in sorted(self._proposal_graph_unavailable)],
             "last_status": self._proposal_graph_last_status,
             "last_error": self._proposal_graph_last_error,
+            "lm_head_path": self.last_lm_head_path,
+            "lm_head_mapped": bool(getattr(self, "_lm_head_top1_mapped", False)),
+            "lm_head_score_vocab": int(
+                getattr(self, "_lm_head_top1_vocab_size", self.vocab_size)
+            ),
+            "lm_head_full_vocab": self.vocab_size,
         }
 
     def _prime_prompt_rows_bulk(self, request_id: int, *, stream: int) -> None:
