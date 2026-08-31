@@ -22,6 +22,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
+
 ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
     "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
@@ -99,6 +101,110 @@ class RoleMarkers:
         for name, original in self.originals.items():
             setattr(self.module, name, original)
         self.originals.clear()
+
+
+def _summarize_moe_selection(
+    selected: np.ndarray,
+    *,
+    experts: int,
+    layer: str,
+    quant_triplet: tuple[str, str, str],
+) -> dict[str, Any]:
+    values = np.asarray(selected, dtype=np.int64)
+    if values.ndim != 2 or values.size == 0:
+        raise ValueError("MoE telemetry needs a non-empty rows x top-k selection")
+    if np.any(values < 0) or np.any(values >= int(experts)):
+        raise ValueError("MoE telemetry selection contains an invalid expert")
+    counts = np.bincount(values.reshape(-1), minlength=int(experts))
+    histogram_values = np.bincount(counts, minlength=int(counts.max()) + 1)
+    active = np.flatnonzero(counts)
+    expert_rows = sorted(
+        (
+            {"expert": int(expert), "rows": int(counts[expert])}
+            for expert in active
+        ),
+        key=lambda row: (-row["rows"], row["expert"]),
+    )
+    return {
+        "layer": str(layer),
+        "quant_triplet": list(quant_triplet),
+        "rows": int(values.shape[0]),
+        "top_k": int(values.shape[1]),
+        "compact_rows": int(values.size),
+        "experts": int(experts),
+        "active_experts": int(active.size),
+        "min_rows_per_active_expert": int(counts[active].min()),
+        "median_rows_per_active_expert": float(statistics.median(counts[active])),
+        "max_rows_per_expert": int(counts.max()),
+        "row_count_histogram": {
+            str(count): int(expert_count)
+            for count, expert_count in enumerate(histogram_values)
+            if expert_count
+        },
+        "expert_rows": expert_rows,
+    }
+
+
+class MoeTelemetry:
+    """Profiler-only selected-expert census collected after each MoE role."""
+
+    def __init__(self, module: Any) -> None:
+        self.module = module
+        self.original: Any | None = None
+        self.rows: list[dict[str, Any]] = []
+        self.copy_seconds = 0.0
+        self.copy_bytes = 0
+
+    def install(self) -> None:
+        from hipengine.core.memory import copy_device_to_host, host_array_ptr
+
+        original = getattr(self.module, "run_qwen4_exp_moe")
+        self.original = original
+
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            result = original(*args, **kwargs)
+            weights = args[1]
+            row_count = int(kwargs["rows"])
+            top_k = int(kwargs["top_k"])
+            experts = int(kwargs["experts"])
+            selected = np.empty((row_count, top_k), dtype=np.int64)
+            started = time.perf_counter()
+            copy_device_to_host(
+                host_array_ptr(selected),
+                result.selected,
+                selected.nbytes,
+                runtime=kwargs.get("runtime") or kwargs["scratch"].runtime,
+            )
+            self.copy_seconds += time.perf_counter() - started
+            self.copy_bytes += int(selected.nbytes)
+            self.rows.append(
+                _summarize_moe_selection(
+                    selected,
+                    experts=experts,
+                    layer=RoleMarkers._layer(weights["expert_gate"]),
+                    quant_triplet=tuple(
+                        str(weights[name].spec.quant_key)
+                        for name in ("expert_gate", "expert_up", "expert_down")
+                    ),
+                )
+            )
+            return result
+
+        setattr(self.module, "run_qwen4_exp_moe", wrapper)
+
+    def close(self) -> None:
+        if self.original is not None:
+            setattr(self.module, "run_qwen4_exp_moe", self.original)
+            self.original = None
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "measurement_class": "diagnostic_instrumented_not_performance",
+            "rows": self.rows,
+            "calls": len(self.rows),
+            "copy_bytes": int(self.copy_bytes),
+            "copy_seconds": float(self.copy_seconds),
+        }
 
 
 class RuntimeCensus:
@@ -240,6 +346,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--expected-prompt-tokens", type=int, help="Optional token-count assertion for the prompt")
     parser.add_argument("--profile", action="store_true", help="Emit ROCTX measurement ranges")
     parser.add_argument("--role-markers", action="store_true", help="Emit profiler-only qwen4exp_role:* ranges")
+    parser.add_argument(
+        "--moe-telemetry",
+        action="store_true",
+        help="Collect diagnostic per-layer selected-expert row distributions",
+    )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--decode-steps", type=int, default=16)
     parser.add_argument("--warm-decode-steps", type=int, default=8)
@@ -271,6 +382,10 @@ def main() -> None:
         raise SystemExit(str(exc)) from exc
     if args.mode == "prefill" and args.prompt_file is None:
         raise SystemExit("--prompt-file is required in prefill mode")
+    if args.moe_telemetry and args.mode != "prefill":
+        raise SystemExit("--moe-telemetry is supported only in prefill mode")
+    if args.moe_telemetry and args.profile:
+        raise SystemExit("run --moe-telemetry separately from --profile")
     max_sequence_length = args.max_sequence_length or (768 if args.mode == "prefill" else 128)
     prefill_chunk_size = args.prefill_chunk_size or (512 if args.mode == "prefill" else 256)
 
@@ -355,6 +470,9 @@ def main() -> None:
             roles = RoleMarkers(runner_module, roctx) if args.role_markers and roctx else None
             if roles is not None:
                 roles.install()
+            telemetry = MoeTelemetry(runner_module) if args.moe_telemetry else None
+            if telemetry is not None:
+                telemetry.install()
             try:
                 for rep in range(args.repetitions):
                     if roctx:
@@ -368,7 +486,11 @@ def main() -> None:
                 report["token_id"] = int(result.token_id)
                 report["logits_sha256"] = hashlib.sha256(result.logits.tobytes()).hexdigest()
                 report["runtime_census"] = census.snapshot()
+                if telemetry is not None:
+                    report["moe_telemetry"] = telemetry.snapshot()
             finally:
+                if telemetry is not None:
+                    telemetry.close()
                 if roles is not None:
                     roles.close()
                 census.close()
