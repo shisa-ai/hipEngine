@@ -18,14 +18,6 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-08-31 Qwen4Exp P6 contiguous H256 sparse QSA
-
-- `HIPENGINE_QWEN4_EXP_QSA_WAVE8_CONTIGUOUS_H256=1` selects a default-off T1
-  H256 sparse-attention candidate. Eight waves process contiguous selected-token
-  chunks and merge partial online-softmax states in chronological chunk order;
-  strict `strict_spans` remains fallback. Remove the selector immediately after
-  the same p4096 category/task gate promotes or rejects it.
-
 ## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
 
 - `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped
