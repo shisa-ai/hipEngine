@@ -1028,14 +1028,14 @@ executes exact K0/default, but queues full waves 20/20 and measures stable
       try a finer row/column tile before a reduction, and retain split-K only if
       operation-complete timing repays accumulation.
 
-#### P13-D — Current K3 attribution (#23 complete; #12 bound, #30 remedy)
+#### P13-D — Current K3 attribution (#23/#12 complete; #30 remedy)
 
 - [x] From a post-grouping packet, report decode-only rate, request-local and
       conditional positional acceptance, physical group sizes, adapter
       `max_requests`, and accept-window costs at C1/C3/C5/C8.
 - [x] Decide whether C5-C8 is limited by grouping, accept/readback/commit,
       proposal, or verifier work before changing verify kernels.
-- [ ] Measure rowtile versus small-M only through the production sidecar payload;
+- [x] Measure rowtile versus small-M only through the production sidecar payload;
       never reconstruct the layout that previously wedged the GPU.
 
 A clean current D1/D24 pair excludes acceptance: aggregate draft acceptance is
@@ -1052,9 +1052,14 @@ commit plus **158.228 ms** blocking readback. That readback is a dependency wait
 including queued device retirement, not pure copy compute. The primary blocker
 is therefore the physical group-of-four ceiling plus one accept dependency
 window per serial subgroup; direct verifier submit is secondary in host timing.
-#12 can bound a leaf but cannot be treated as the primary remedy; #30 owns a
-RED-first wider-physical-group or shared-readback design. Evidence:
-[`current post-grouping K3 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-current-post-grouping-k3-attribution.json).
+#12 confirms the leaf is not the remedy: on normal materializer-owned tiles,
+small-M is strict-exact in all **35** standard-Q4 role/row cells but loses every
+one, **2.52-14.84x** by HIP events and **2.51-13.53x** operation-complete. The
+shipping rowtile/col4 owners remain default; no route changed, so #23's fresh
+40/40 incumbent packet is the applicable MTP gate rather than a fictitious new
+promotion. #30 owns a RED-first wider-physical-group or shared-readback design.
+Evidence: [`current post-grouping K3 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-current-post-grouping-k3-attribution.json) ·
+[`production-sidecar small-M rejection`](../benchmarks/results/2026-08-31-w7900-q4km-t16-production-sidecar-smallm-rejected.json).
 
 #### P13-E — Lifecycle and tooling cleanup (#26, #27)
 
