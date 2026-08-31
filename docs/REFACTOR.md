@@ -55,6 +55,15 @@ should be removed or collapsed.
   first. Do not leave the ambiguous broad flag as a latent production route.
   Retain the strict selected Q5_K gemv chain as fallback.
 
+## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
+
+- `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
+  K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ
+  policy. Both strict and named production bind it off; it is a post-binder
+  candidate only. Remove the flag after the complete 450-row admission or
+  rejection. If admitted, encode the shape in the production policy/manifest
+  and retain exact raw-Q8 coltile8/rowbatch4 as strict fallback.
+
 ## 2026-08-31 Qwen4Exp P2 exact grouped scheduling screens
 
 - Temporary expertgrid128, Q4 output8, Q5_1 output16, and Q4 team2 selectors
