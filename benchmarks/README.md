@@ -234,10 +234,13 @@ graph-expanded nodes. A strict, layer-local stateful graph diagnostic now
 captures one complete 34-kernel GDN+MoE physical layer: output and all request
 state owners remain exact through four replays, while synchronized layer wall
 falls **4.051→1.258 ms (3.22x)**. A chained layers-0..2 rung is likewise exact
-and contracts **9.801→3.896 ms (2.52x)**. Neither is yet bound to production;
-mixed-attention and full-token lifecycle gates remain open.
+and contracts **9.801→3.896 ms (2.52x)**. A fixed-position layers-0..3 mixed
+GDN/QSA diagnostic remains device-state/output exact at **12.160→4.955 ms
+(2.45x)**, but its host cursor does not advance. None is yet bound to
+production; dynamic control and full-token lifecycle gates remain open.
 [`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
-[`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json).
+[`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
+[`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json).
 
 A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
 the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up
