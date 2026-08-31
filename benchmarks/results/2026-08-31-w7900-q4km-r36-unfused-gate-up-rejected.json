@@ -1,0 +1,127 @@
+{
+  "schema": 2,
+  "kind": "gguf_q4_t16_r36_fused_owner_leaf_screen",
+  "date": "2026-08-31",
+  "status": "rejected",
+  "performance_claim": false,
+  "decision": "Keep the current fused Q4 gate/up+SiLU R36 owner. The exact unfused chain is 17.49% slower and loses all 20 counterbalanced samples; do not add a verifier-scoped selector.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "device": "AMD Radeon Pro W7900",
+    "host_name": "epyc",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "kv": "BF16",
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "requested": "production",
+    "resolved": "production",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "6dfb9bd2a0329c4a8c96de4a38a9ea49fca61064",
+    "tracked_clean": true,
+    "screen_script": "/tmp/he-r36-fused-screen.py",
+    "screen_script_retained": false,
+    "screen_script_sha256": "ff80a2f8541b5302e7d3b9b43c9fd0f74f300e3241b5b3d328cd9efad30bb22e"
+  },
+  "protocol": {
+    "scope": "actual Qwen3.8 layer-0 gate/up leaf at the profiled one-group C8 R36 shape",
+    "rows": 36,
+    "in_features": 5120,
+    "out_features": 17408,
+    "layer": 0,
+    "weights": [
+      "blk.0.ffn_gate.weight",
+      "blk.0.ffn_up.weight"
+    ],
+    "activation": "deterministic seeded BF16 normal",
+    "warmup_pairs": 5,
+    "samples_per_arm": 20,
+    "launches_per_event_sample": 3,
+    "order": "alternating unfused/fused and fused/unfused",
+    "timing": "HIP event operation-complete launch chain median",
+    "control": "two exact shared-B singleton Q4T16 WMMAs plus standalone BF16 SiLU",
+    "candidate": "current fused dense dual Q4T16 WMMA plus SiLU"
+  },
+  "correctness": {
+    "bf16_bit_exact": true,
+    "mismatches": 0
+  },
+  "measurements": {
+    "median_ms": {
+      "unfused": 1.5246567726135254,
+      "fused": 1.297708511352539
+    },
+    "unfused_speedup_vs_fused": 0.8511479663242778,
+    "unfused_wall_delta_pct": 17.488385047613587,
+    "fused_wins": 20,
+    "sample_pairs": 20,
+    "samples_ms": {
+      "unfused": [
+        1.4944462776184082,
+        1.5536100069681804,
+        1.5642499923706055,
+        1.5601836840311687,
+        1.5698237419128418,
+        1.5393036206563313,
+        1.5592503547668457,
+        1.5452769597371419,
+        1.5488905906677246,
+        1.5328365961710613,
+        1.5353833834330242,
+        1.5115699768066406,
+        1.5164769490559895,
+        1.492343266805013,
+        1.5042634010314941,
+        1.4803166389465332,
+        1.4928104082743328,
+        1.4606502850850422,
+        1.4757037162780762,
+        1.4575436909993489
+      ],
+      "fused": [
+        1.2935550212860107,
+        1.337449073791504,
+        1.3336620330810547,
+        1.3469689687093098,
+        1.3464487393697102,
+        1.3411757151285808,
+        1.3110219637552898,
+        1.3171286582946777,
+        1.3096752961476643,
+        1.30662202835083,
+        1.3018620014190674,
+        1.290741999944051,
+        1.2784886360168457,
+        1.2797420024871826,
+        1.2774883111317952,
+        1.2789016564687092,
+        1.2602216402689617,
+        1.251448631286621,
+        1.2430620193481445,
+        1.252262036005656
+      ]
+    }
+  },
+  "command": "env HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python -u /tmp/he-r36-fused-screen.py",
+  "links": {
+    "parent_attribution": "benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json",
+    "historical_floor": "benchmarks/results/2026-08-30-w7900-q4km-t16-dual-silu-prefill-rows33-promotion.json"
+  },
+  "limitations": [
+    "This is a leaf rejection, not a throughput claim or canonical metric row.",
+    "The ad-hoc screen source is identified by SHA-256 but is not retained in-tree; reopen only with a tracked harness.",
+    "A full category+heldout D24 gate was unnecessary because the candidate lost the leaf gate decisively."
+  ]
+}
