@@ -134,6 +134,44 @@ def _response_mtp(payload: Mapping[str, Any]) -> tuple[str, dict[str, Any]]:
     return str(shape.get("route") or "default"), dict(summary) if isinstance(summary, Mapping) else {}
 
 
+def _response_attribution(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep the backend timing and queue shape that the benchmark used to discard."""
+
+    choices = payload.get("choices")
+    choice = (
+        choices[0]
+        if isinstance(choices, Sequence)
+        and not isinstance(choices, (str, bytes, bytearray))
+        and choices
+        and isinstance(choices[0], Mapping)
+        else {}
+    )
+    telemetry = choice.get("hipengine")
+    telemetry = telemetry if isinstance(telemetry, Mapping) else {}
+    raw_timing = telemetry.get("timing")
+    raw_timing = raw_timing if isinstance(raw_timing, Mapping) else {}
+    timing = {
+        str(key): float(value)
+        for key, value in raw_timing.items()
+        if isinstance(value, (int, float)) and not isinstance(value, bool)
+    }
+    decode_state = telemetry.get("decode_state")
+    decode_state = decode_state if isinstance(decode_state, Mapping) else {}
+    root = payload.get("hipengine")
+    root = root if isinstance(root, Mapping) else {}
+    generation_shape = root.get("generation_shape")
+    generation_shape = generation_shape if isinstance(generation_shape, Mapping) else {}
+    return {
+        "timing": timing,
+        "timing_scope": telemetry.get("timing_scope"),
+        "batch_id": telemetry.get("batch_id"),
+        "group_rows": telemetry.get("group_rows"),
+        "timing_owner": telemetry.get("timing_owner"),
+        "execution_path": decode_state.get("execution_path"),
+        "generation_shape": copy.deepcopy(dict(generation_shape)),
+    }
+
+
 def _mtp_engaged(route: str, summary: Mapping[str, Any]) -> bool:
     """Use committed-cycle truth, not the frontend's pre-cycle route label."""
 
@@ -223,6 +261,85 @@ def _resident_observability(llm: LLM, *, recent: int) -> dict[str, Any]:
             for name in ("_driver", "_runner", "_inner")
         )
     return {}
+
+
+class _NativePrefillProbe:
+    """Opt-in observation of native groups consumed by the real resident runner."""
+
+    def __init__(self) -> None:
+        self._records: list[dict[str, Any]] = []
+
+    def cursor(self) -> int:
+        return len(self._records)
+
+    def since(self, cursor: int) -> list[dict[str, Any]]:
+        return copy.deepcopy(self._records[max(0, int(cursor)) :])
+
+
+def _install_native_prefill_probe(llm: LLM) -> _NativePrefillProbe:
+    """Wrap the actual resident grouping entry point without creating another runner."""
+
+    pending = [llm._get_text_generator()]
+    seen: set[int] = set()
+    while pending:
+        owner = pending.pop(0)
+        if owner is None or id(owner) in seen:
+            continue
+        seen.add(id(owner))
+        original = getattr(owner, "_try_prefill_native_work_batch", None)
+        if callable(original):
+            probe = _NativePrefillProbe()
+
+            def traced(_owner: Any, work: Any) -> frozenset[int]:
+                started = time.perf_counter()
+                handled = original(work)
+                elapsed_ms = (time.perf_counter() - started) * 1_000.0
+                handled_ids = frozenset(int(request_id) for request_id in handled)
+                if handled_ids:
+                    prompt_lengths = {
+                        int(request_id): len(token_row)
+                        for request_id, token_row in zip(
+                            work.request_ids,
+                            work.token_rows,
+                            strict=True,
+                        )
+                    }
+                    ordered_ids = [
+                        int(request_id)
+                        for request_id in work.request_ids
+                        if int(request_id) in handled_ids
+                    ]
+                    raw_kind = getattr(work, "kind", "prefill")
+                    work_kind = getattr(raw_kind, "value", raw_kind)
+                    probe._records.append(
+                        {
+                            "work_rows": len(work.request_ids),
+                            "handled_rows": len(ordered_ids),
+                            "handled_request_ids": ordered_ids,
+                            "prompt_lengths": [prompt_lengths[request_id] for request_id in ordered_ids],
+                            "work_kind": str(work_kind),
+                            "elapsed_ms": elapsed_ms,
+                        }
+                    )
+                return handled_ids
+
+            setattr(owner, "_try_prefill_native_work_batch", MethodType(traced, owner))
+            return probe
+        pending.extend(
+            getattr(owner, name, None)
+            for name in ("_driver", "_runner", "_inner")
+        )
+    raise RuntimeError(
+        "--capture-prefill-attribution requires the resident GGUF native-prefill runner"
+    )
+
+
+def _native_full_prefill_group_count(snapshot: Mapping[str, Any]) -> int:
+    routes = snapshot.get("routes")
+    routes = routes if isinstance(routes, Mapping) else {}
+    counts = routes.get("counts")
+    counts = counts if isinstance(counts, Mapping) else {}
+    return int(counts.get("native_full_prefill_groups", 0) or 0)
 
 
 def _memory_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, int]:
@@ -350,6 +467,7 @@ def _request(
     max_tokens: int,
     mtp: bool | None,
     barrier: threading.Barrier,
+    capture_prefill_attribution: bool = False,
 ) -> dict[str, Any]:
     barrier.wait(timeout=30.0)
     request_payload: dict[str, Any] = {
@@ -368,7 +486,7 @@ def _request(
     if response.status_code != 200:
         raise RuntimeError(f"HTTP {response.status_code}: {payload}")
     route, summary = _response_mtp(payload)
-    return {
+    result = {
         "started": started,
         "completed": completed,
         "wall_seconds": completed - started,
@@ -377,6 +495,9 @@ def _request(
         "mtp": summary,
         "usage": payload.get("usage"),
     }
+    if capture_prefill_attribution:
+        result["attribution"] = _response_attribution(payload)
+    return result
 
 
 def _run_arm(
@@ -389,8 +510,12 @@ def _run_arm(
     max_tokens: int,
     arm: str,
     mtp_request_mode: str,
+    prefill_probe: _NativePrefillProbe | None = None,
 ) -> dict[str, Any]:
     memory_before = memory_stats()
+    probe_cursor = prefill_probe.cursor() if prefill_probe is not None else 0
+    resident_before = _resident_observability(llm, recent=int(width))
+    groups_before = _native_full_prefill_group_count(resident_before)
     barrier = threading.Barrier(int(width) + 1)
     with concurrent.futures.ThreadPoolExecutor(max_workers=int(width)) as executor:
         futures = [
@@ -402,6 +527,7 @@ def _run_arm(
                 max_tokens=max_tokens,
                 mtp=_request_mtp_value(arm=arm, request_mode=mtp_request_mode),
                 barrier=barrier,
+                capture_prefill_attribution=prefill_probe is not None,
             )
             for _ in range(int(width))
         ]
@@ -411,6 +537,7 @@ def _run_arm(
     generated = sum(len(row["generated_ids"]) for row in rows)
     backend_telemetry = _backend_mtp_telemetry(llm)
     resident_observability = _resident_observability(llm, recent=int(width))
+    groups_after = _native_full_prefill_group_count(resident_observability)
     memory_after = memory_stats()
     return {
         "arm": arm,
@@ -421,6 +548,10 @@ def _run_arm(
         "rows": rows,
         "backend_telemetry": backend_telemetry,
         "resident_observability": resident_observability,
+        "native_full_prefill_groups_delta": groups_after - groups_before,
+        "native_prefill_groups": (
+            prefill_probe.since(probe_cursor) if prefill_probe is not None else []
+        ),
         "tracked_memory_before": memory_before,
         "tracked_memory_after": memory_after,
         "tracked_memory_delta": _memory_delta(memory_before, memory_after),
@@ -571,6 +702,194 @@ def summarize_acceptance(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _mean(values: Sequence[float]) -> float:
+    return sum(float(value) for value in values) / len(values)
+
+
+def summarize_prefill_attribution(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    arms: Sequence[str] = ARMS,
+) -> dict[str, Any]:
+    """Close each wave wall around the latest response's measured serving stages.
+
+    The latest-completing response owns the wave critical path. Its frontend and
+    backend timings are subtracted from the common-boundary wall; the residual is
+    explicitly retained rather than assigned to an inferred host or kernel owner.
+    """
+
+    rows: list[dict[str, Any]] = []
+    refused: list[dict[str, Any]] = []
+    required = (
+        "render_ms",
+        "tokenize_ms",
+        "admission_prepare_ms",
+        "prefill_ms",
+        "request_total_ms",
+    )
+    for cell in cells:
+        width = int(cell["width"])
+        for arm in arms:
+            arm_payload = cell.get(str(arm))
+            arm_payload = arm_payload if isinstance(arm_payload, Mapping) else {}
+            response_rows = arm_payload.get("rows")
+            if (
+                not isinstance(response_rows, Sequence)
+                or isinstance(response_rows, (str, bytes, bytearray))
+                or not response_rows
+            ):
+                refused.append(
+                    {"width": width, "prompt_id": cell.get("prompt_id"), "arm": arm, "reason": "no_response_rows"}
+                )
+                continue
+            critical_index, critical = max(
+                enumerate(response_rows),
+                key=lambda item: float(item[1].get("completed", float("-inf"))),
+            )
+            attribution = critical.get("attribution")
+            attribution = attribution if isinstance(attribution, Mapping) else {}
+            timing = attribution.get("timing")
+            timing = timing if isinstance(timing, Mapping) else {}
+            missing = [key for key in required if key not in timing]
+            if missing:
+                refused.append(
+                    {
+                        "width": width,
+                        "prompt_id": cell.get("prompt_id"),
+                        "arm": arm,
+                        "reason": "missing_timing",
+                        "keys": missing,
+                    }
+                )
+                continue
+            wave_wall_ms = float(arm_payload["wall_seconds"]) * 1_000.0
+            render_ms = float(timing["render_ms"])
+            tokenize_ms = float(timing["tokenize_ms"])
+            admission_ms = float(timing["admission_prepare_ms"])
+            prefill_ms = float(timing["prefill_ms"])
+            request_total_ms = float(timing["request_total_ms"])
+            engine_residual_ms = request_total_ms - prefill_ms
+            server_residual_ms = (
+                wave_wall_ms
+                - render_ms
+                - tokenize_ms
+                - admission_ms
+                - request_total_ms
+            )
+            remaining_ms = engine_residual_ms + server_residual_ms
+            shape = attribution.get("generation_shape")
+            shape = shape if isinstance(shape, Mapping) else {}
+            queue_group = shape.get("queue_group")
+            queue_group = queue_group if isinstance(queue_group, Mapping) else {}
+            native_groups = arm_payload.get("native_prefill_groups")
+            native_groups = (
+                list(native_groups)
+                if isinstance(native_groups, Sequence)
+                and not isinstance(native_groups, (str, bytes, bytearray))
+                else []
+            )
+            rows.append(
+                {
+                    "width": width,
+                    "prompt_id": cell.get("prompt_id"),
+                    "arm": str(arm),
+                    "critical_lane_index": int(critical_index),
+                    "wave_wall_ms": wave_wall_ms,
+                    "render_ms": render_ms,
+                    "tokenize_ms": tokenize_ms,
+                    "admission_prepare_ms": admission_ms,
+                    "native_prefill_ms": prefill_ms,
+                    "remaining_ms": remaining_ms,
+                    "engine_loop_residual_ms": engine_residual_ms,
+                    "server_queue_response_residual_ms": server_residual_ms,
+                    "request_total_ms": request_total_ms,
+                    "queue_request_count": queue_group.get("request_count"),
+                    "native_prefill_groups": copy.deepcopy(native_groups),
+                    "native_full_prefill_groups_delta": int(
+                        arm_payload.get("native_full_prefill_groups_delta", 0) or 0
+                    ),
+                }
+            )
+
+    by_width: dict[str, Any] = {}
+    component_keys = {
+        "wave_wall": "wave_wall_ms",
+        "render": "render_ms",
+        "tokenize": "tokenize_ms",
+        "admission_prepare": "admission_prepare_ms",
+        "native_prefill": "native_prefill_ms",
+        "remaining": "remaining_ms",
+        "engine_loop_residual": "engine_loop_residual_ms",
+        "server_queue_response_residual": "server_queue_response_residual_ms",
+        "request_total": "request_total_ms",
+    }
+    for width in sorted({int(row["width"]) for row in rows}):
+        width_payload: dict[str, Any] = {}
+        for arm in arms:
+            selected = [
+                row for row in rows
+                if int(row["width"]) == width and str(row["arm"]) == str(arm)
+            ]
+            if not selected:
+                continue
+            group_sizes: dict[str, int] = {}
+            probe_elapsed: list[float] = []
+            for row in selected:
+                for group in row["native_prefill_groups"]:
+                    if not isinstance(group, Mapping):
+                        continue
+                    size = str(int(group.get("handled_rows", 0) or 0))
+                    group_sizes[size] = group_sizes.get(size, 0) + 1
+                    probe_elapsed.append(float(group.get("elapsed_ms", 0.0) or 0.0))
+            queue_counts: dict[str, int] = {}
+            for row in selected:
+                value = row.get("queue_request_count")
+                if value is None:
+                    continue
+                key = str(int(value))
+                queue_counts[key] = queue_counts.get(key, 0) + 1
+            means = {
+                label: _mean([float(row[key]) for row in selected])
+                for label, key in component_keys.items()
+            }
+            width_payload[str(arm)] = {
+                "cells": len(selected),
+                "mean_ms": means,
+                "component_share_percent": {
+                    key: 100.0 * means[key] / means["wave_wall"]
+                    for key in ("render", "tokenize", "admission_prepare", "native_prefill", "remaining")
+                },
+                "range_ms": {
+                    label: {
+                        "min": min(float(row[key]) for row in selected),
+                        "max": max(float(row[key]) for row in selected),
+                    }
+                    for label, key in component_keys.items()
+                },
+                "native_group_size_histogram": group_sizes,
+                "native_group_probe_elapsed_mean_ms": (
+                    _mean(probe_elapsed) if probe_elapsed else None
+                ),
+                "native_full_prefill_groups_delta": sum(
+                    int(row["native_full_prefill_groups_delta"])
+                    for row in selected
+                ),
+                "queue_request_count_histogram": queue_counts,
+            }
+        by_width[str(width)] = width_payload
+    return {
+        "method": {
+            "critical_path": "latest-completing response in each barrier-synchronized wave",
+            "listed_components": "render + tokenize + admission_prepare + native prefill",
+            "remaining": "wave wall minus listed components; split diagnostically into request_total-prefill and outer queue/response residual",
+            "native_group_probe": "opt-in wrapper around the resident runner's real _try_prefill_native_work_batch; no independent session",
+        },
+        "by_width": by_width,
+        "cells": rows,
+        "refused_cells": refused,
+    }
+
+
 def summarize(
     cells: Sequence[Mapping[str, Any]],
     *,
@@ -699,8 +1018,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         speculative_candidate_budget=int(args.candidate_budget),
     )
     runtime_profile: dict[str, Any] = {}
+    prefill_probe: _NativePrefillProbe | None = None
     try:
         llm.prepare(max_sequence_length=int(args.max_sequence_length))
+        if args.capture_prefill_attribution:
+            prefill_probe = _install_native_prefill_probe(llm)
         runtime_profile = {
             "requested": str(args.execution_profile),
             "resolved": getattr(llm, "resolved_execution_profile", None),
@@ -743,6 +1065,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         max_tokens=int(args.max_tokens),
                         arm=arm,
                         mtp_request_mode=str(args.mtp_request_mode),
+                        prefill_probe=prefill_probe,
                     )
                 for prompt_index, prompt in enumerate(prompts):
                     order = ARMS if (prompt_index + width) % 2 else tuple(reversed(ARMS))
@@ -757,6 +1080,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             max_tokens=int(args.max_tokens),
                             arm=arm,
                             mtp_request_mode=str(args.mtp_request_mode),
+                            prefill_probe=prefill_probe,
                         )
                     ar_ids = [row["generated_ids"] for row in measured["ar"]["rows"]]
                     mtp_ids = [row["generated_ids"] for row in measured["mtp"]["rows"]]
@@ -861,10 +1185,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "opt_in" if args.mtp_request_mode == "explicit" else "auto"
             ),
             "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+            "capture_prefill_attribution": bool(args.capture_prefill_attribution),
         },
         "runtime_profile": runtime_profile,
         "summary": summary,
         "acceptance": summarize_acceptance(cells),
+        "prefill_attribution": (
+            summarize_prefill_attribution(cells)
+            if args.capture_prefill_attribution
+            else None
+        ),
         "cells": cells,
         "initial_memory": initial_memory,
         "final_memory": memory_stats(),
@@ -913,6 +1243,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-window-ms", type=float, default=20.0)
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     parser.add_argument("--generation2-diagnostic", action="store_true")
+    parser.add_argument(
+        "--capture-prefill-attribution",
+        action="store_true",
+        help=(
+            "capture response stage timings and wrap the actual resident native-prefill "
+            "entry point to record group sizes; intended for one-token AR attribution"
+        ),
+    )
     parser.add_argument(
         "--correctness-contract",
         choices=_CORRECTNESS_CONTRACTS,
