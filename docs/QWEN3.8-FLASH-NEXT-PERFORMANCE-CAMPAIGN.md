@@ -698,6 +698,15 @@ Evidence:
 - [ ] Re-profile after each retained cluster and stop widening when the next
       boundary fails. Layers that fail remain on strict owners.
 
+**Current P2 exact-scheduling outcome (2026-08-31):** three distinct T0
+schedules are exhausted without a retainable whole-model win: more expert
+workers, wider serial output ownership, and concurrent 128-thread Q4 teams. The
+remaining **1.849 s** layers 3–26 projection gap is a kernel data-reuse/quality
+problem, not a routing-tail or launch-grid problem. A future P2 attempt requires
+a new reuse mechanism (or independently justified T1 arithmetic), plus fresh
+actual-weight and complete-profile evidence. Continue P3 meanwhile; do not keep
+mutating the same schedule family.
+
 ### Phase P3 — shared expert, router, dense projections, and GR prefill
 
 Goal: account for the large non-routed prefill remainder that the earlier plan
