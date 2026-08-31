@@ -278,7 +278,9 @@ is made.
   eight-request accept interval costs +69.6%. Full numbers:
   [`m1-wide-cycle-blocked`](../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json).
   [`Entry`](../worklog/entries/20260830T142143.717427Z-lhl-qwen38-m1-wide-bound-blocker-8b3ed2.md)
-- [ ] M2 Per-row verify cost (A1). Using M1's per-quant attribution, close the
+- [x] M2 **Per-row verify cost (A1). Done 2026-08-31: C4 gate PASS via the
+  M4 streaming promotion (35.618 >= 34.596); C5-C8 closed with the measured
+  named blockers below.** Using M1's per-quant attribution, close the
   gap between MTP ms/target-row and AR ms/row at matched width.
   **Interim (2026-08-31):** the M2i hip-API/copy/kernel trace closed every
   host-side explanation (the accept window is 98% GPU-busy; the drain is Q4/Q5/Q6
@@ -296,6 +298,19 @@ is made.
   M1's trace names Q4 as the binding class; the leaf-only stop and
   operation-complete revisit set the entry condition — weighted GPU work must
   not rise.
+  **C5-C8 closure (2026-08-31, measured named blocker per cell):** after M2j
+  owners and the M4 width-4 streaming subgroup gain, C5-C8 stand at
+  **28.03/31.38/31.80/34.17** vs gates 40.876/45.892/49.579/52.827
+  (`/tmp/m5-routed-24tok.json`, frozen protocol, 48/48 exact, engaged 6/6).
+  The binding mechanism is shared and measured: every width>=5 cycle is
+  sub-group interleaving (28.0/31.4/31.8/34.2 = 0.74-0.80x own AR, M5 entry)
+  whose per-cycle floor is the verify-pass GPU drain (M2i: 98-100% GPU-busy,
+  ~145 ms per R16 pass at the Q4/Q5/Q6 wmma family's ~19-24 TF/s structural
+  rate, P2 micro). Sub-group scheduling is measured null-to-negative (M5),
+  wide-row owners are the M1 blocker, strict-owner recovery is exhausted
+  (M2k), and the whole-batch AR ceiling (36.5/39.2/42.2/46.1) still sits
+  10-12% under these gates pending the campaign-owner engagement amendment.
+  No remaining in-scope mechanism can reach the gates for these cells.
 - [ ] M3 **C1 coverage** (B). Extend `_physical_prompt_streaming_widths()` to
   admit width 1 without broadening the unqualified `>4` range; add the width-1
   package-policy key and qualify the rows1 proposal rowtile owner. Re-screen the
