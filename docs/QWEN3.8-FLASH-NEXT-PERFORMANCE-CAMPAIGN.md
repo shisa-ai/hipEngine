@@ -804,8 +804,14 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
 Goal: close the remaining **634.94 vs 92.34 ms** GDN and
 **110.49 vs 13.91 ms** QSA gaps after P1-P3 are stacked.
 
-- [ ] Re-profile prepare, recurrence, norm/gate tail, projection, KV/index
+- [x] Re-profile prepare, recurrence, norm/gate tail, projection, KV/index
       append, selection, attention, and output roles by admitted layer scope.
+      After QSA fixed256, dense attention falls **82.33→29.18 ms** and total
+      QSA role **103.32→50.61 ms**. Remaining GDN is 21 early strict recurrence
+      calls **522.58 ms**, admitted columnwarps **63.11 ms** plus **5.16 ms**
+      tail, and Conv **7.28 ms**. Early strict state layout is the P4 blocker;
+      P5 may proceed independently. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-stacked-profile.json`.
 - [ ] For GDN, test exact early-layer column ownership, prepare+recurrence
       fusion, state residency, and bounded chunking. Engram's chunked kernel is
       a design reference only; it was not active in the fork's published rows.
