@@ -17,7 +17,7 @@ def test_first_mismatch_localizes_owner_and_replay():
 def test_qsa_position_prepared_skips_legacy_stream_upload(monkeypatch,prepared,expected):
  import hipengine.runtime.qwen4_exp_runner as module
  owner=object();positions=[]
- state=SimpleNamespace(closed=False,runtime=owner,set_position=positions.append)
+ state=SimpleNamespace(closed=False,runtime=owner,max_positions=64,set_position=positions.append)
  scratch=SimpleNamespace(closed=False,runtime=owner,q_projected=SimpleNamespace(ptr=1),key_projected=SimpleNamespace(ptr=2),value_projected=SimpleNamespace(ptr=3))
  weights=SimpleNamespace(projections={name:object() for name in ('attn_q','attn_k','attn_v','attn_output')})
  def stop(*_args,**_kwargs):raise RuntimeError('stop after position ownership')
@@ -25,3 +25,12 @@ def test_qsa_position_prepared_skips_legacy_stream_upload(monkeypatch,prepared,e
  with pytest.raises(RuntimeError,match='stop after position ownership'):
   module.run_qwen4_exp_dense_qsa_token_mixer(1,weights,attention_state=state,scratch=scratch,position=7,rows=1,hidden=1,query_heads=1,kv_heads=1,head_dim=1,rotary_dim=1,theta=1.0,position_prepared=prepared,runtime=owner)
  assert positions==expected
+
+def test_qsa_device_position_requires_prepared_control():
+ import hipengine.runtime.qwen4_exp_runner as module
+ owner=object()
+ state=SimpleNamespace(closed=False,runtime=owner,set_position=lambda _value:None)
+ scratch=SimpleNamespace(closed=False,runtime=owner)
+ weights=SimpleNamespace(projections={name:object() for name in ('attn_q','attn_k','attn_v','attn_output')})
+ with pytest.raises(ValueError,match='must be prepared'):
+  module.run_qwen4_exp_dense_qsa_token_mixer(1,weights,attention_state=state,scratch=scratch,position=7,rows=1,hidden=1,query_heads=1,kv_heads=1,head_dim=1,rotary_dim=1,theta=1.0,device_position_owned=True,runtime=owner)

@@ -51,6 +51,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_norm_mrope_rows_f32,
     qwen4_exp_qsa_pool_norm_rope_f32,
     qwen4_exp_qsa_score_f32,
+    qwen4_exp_qsa_scatter_index_key_device_position_f32,
     qwen4_exp_qsa_scatter_index_keys_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
@@ -972,6 +973,36 @@ class Qwen4ExpQSAIndexDeviceState:
             int(stream),
         )
         self.count += 1
+
+    def append_device_position(
+        self,
+        raw_key_ptr: int,
+        *,
+        position_ptr: int,
+        block_table_ptr: int,
+        block_size: int,
+        block_table_len: int,
+        stream: int = 0,
+    ) -> None:
+        """Append one raw key at a request-owned device position.
+
+        This exact graph primitive intentionally leaves the host ``count``
+        mirror unchanged; the graph owner advances that mirror after replay.
+        """
+
+        if self.closed:
+            raise RuntimeError("QSA index state is closed")
+        qwen4_exp_qsa_scatter_index_key_device_position_f32(
+            int(raw_key_ptr),
+            self.raw_keys.ptr,
+            int(block_table_ptr),
+            int(position_ptr),
+            int(block_size),
+            int(block_table_len),
+            self.index_dim,
+            stream=int(stream),
+            runtime=self.runtime,
+        )
 
     def append_rows(
         self,
@@ -2028,6 +2059,8 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     index_rotary_dim: int = 0,
     rope_positions_ptr: int | None = None,
     position_prepared: bool = False,
+    device_position_owned: bool = False,
+    attention_context_limit: int | None = None,
     eps: float = 1e-6,
     stream: int = 0,
     runtime: HipRuntime | None = None,
@@ -2045,8 +2078,13 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     missing = sorted(required - set(weights.projections))
     if missing:
         raise ValueError("missing Qwen4Exp QSA weights: " + ", ".join(missing))
+    if device_position_owned and not position_prepared:
+        raise ValueError("device-owned QSA position must be prepared before launch")
     if not position_prepared:
         attention_state.set_position(position)
+    context_limit = position + 1 if attention_context_limit is None else int(attention_context_limit)
+    if context_limit < position + 1 or context_limit > attention_state.max_positions:
+        raise ValueError("QSA attention context limit must cover position within capacity")
     q_width = query_heads * head_dim
     kv_width = kv_heads * head_dim
     for slot, output, out_features in (
@@ -2079,8 +2117,22 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             output_dtype=GGUF_OUTPUT_F32,
             stream=stream, runtime=active_runtime,
         )
-        index_state.append(scratch.index_k_projected.ptr, position=position, stream=stream)
-        if index_state.count > index_state.dense_equivalent_limit:
+        if device_position_owned:
+            if position + 1 > index_state.dense_equivalent_limit:
+                raise ValueError("device-owned dense QSA capture cannot cross sparse selection")
+            index_state.append_device_position(
+                scratch.index_k_projected.ptr,
+                position_ptr=attention_state.position.ptr,
+                block_table_ptr=attention_state.block_table.ptr,
+                block_size=attention_state.block_size,
+                block_table_len=int(attention_state.block_host.size),
+                stream=stream,
+            )
+        else:
+            index_state.append(
+                scratch.index_k_projected.ptr, position=position, stream=stream
+            )
+        if not device_position_owned and index_state.count > index_state.dense_equivalent_limit:
             launch_gguf_linear(
                 weights.projections["index_q"], mixed_ptr, scratch.index_q_projected.ptr,
                 rows, hidden, index_heads * index_dim,
@@ -2161,7 +2213,7 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             attention_state.value_cache.ptr,
             scratch.context.ptr,
             attention_state.decode_spans,
-            position + 1,
+            context_limit,
             attention_state.block_size,
             query_heads,
             kv_heads,
@@ -3696,6 +3748,8 @@ def run_qwen4_exp_dense_qsa_layer(
     index_rotary_dim: int = 0,
     rope_positions_ptr: int | None = None,
     position_prepared: bool = False,
+    device_position_owned: bool = False,
+    attention_context_limit: int | None = None,
     stream: int = 0,
     runtime: HipRuntime | None = None,
     moe_graph_cache: MoeGraphCache | None = None,
@@ -3730,6 +3784,8 @@ def run_qwen4_exp_dense_qsa_layer(
         index_rotary_dim=index_rotary_dim,
         rope_positions_ptr=rope_positions_ptr,
         position_prepared=position_prepared,
+        device_position_owned=device_position_owned,
+        attention_context_limit=attention_context_limit,
         stream=stream, runtime=active_runtime,
     )
     qwen4_exp_gr_write_bf16_f32(
