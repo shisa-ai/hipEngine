@@ -55,15 +55,6 @@ should be removed or collapsed.
   first. Do not leave the ambiguous broad flag as a latent production route.
   Retain the strict selected Q5_K gemv chain as fallback.
 
-## 2026-08-31 Qwen4Exp P4 candidates
-
-- `HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256=1` selects the registered exact
-  fixed256/precomputed-offset/vector2 QSA dense attention owner for multirow
-  non-flash layers. Strict and production now bind it on after p508/p1024,
-  complete T0 exact/state/task/lifecycle, and trace admission; generic batch
-  attention remains fallback. Remove the flag after one clean promoted-default
-  versus `=0` confirmation.
-
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted

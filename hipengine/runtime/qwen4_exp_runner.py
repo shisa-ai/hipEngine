@@ -2703,9 +2703,7 @@ def run_qwen4_exp_gr_read(
 
 
 def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
-    return rows >= 2 and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256", "0"
-    ) not in {"", "0", "false", "False"}
+    return rows >= 2
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
