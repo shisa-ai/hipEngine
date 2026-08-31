@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 from hipengine import LLM
 from hipengine.benchmark.provenance import collect_model_identity
 from hipengine.core.memory import memory_stats
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.server.api import ServerConfig, create_app
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -380,8 +381,12 @@ def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
 def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     rows = int(kwargs["realized_group_rows"])
     budget = int(kwargs.get("candidate_budget", 2))
+    max_realized_group_rows = max(
+        1,
+        int(kwargs.get("max_realized_group_rows", 4)),
+    )
     admitted = bool(
-        1 <= rows <= 4
+        1 <= rows <= max_realized_group_rows
         and budget in {1, 2, 3}
         and kwargs["sampling_mode"] == "greedy_fast"
         and int(kwargs["context_tokens"]) <= 95
@@ -396,14 +401,16 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     }
     digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode("utf-8")).hexdigest()
     reason = "diagnostic_physical_gguf_mtp" if admitted else "diagnostic_scope_miss"
-    evidence_key = "gguf-c1-c4-generation2-diagnostic"
+    evidence_key = (
+        f"gguf-c1-c{max_realized_group_rows}-generation2-diagnostic"
+    )
     static_key = {
         "candidate_budget": budget,
         "sampling_mode": str(kwargs["sampling_mode"]),
         "context_tokens": int(kwargs["context_tokens"]),
         "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
         "memory_fit": bool(kwargs["memory_fit"]),
-        "max_realized_group_rows": 4,
+        "max_realized_group_rows": max_realized_group_rows,
     }
     static_digest = hashlib.sha256(
         json.dumps(static_key, sort_keys=True).encode("utf-8")
@@ -426,7 +433,9 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
             "eligible": admitted,
             "reason": reason,
             "max_candidate_count": budget if admitted else 0,
-            "max_realized_group_rows": 4 if admitted else 0,
+            "max_realized_group_rows": (
+                max_realized_group_rows if admitted else 0
+            ),
             "automatic_eligible": False,
             "strict_fallback_key": "gguf_target_ar",
             "evidence_key": evidence_key,
@@ -436,12 +445,19 @@ def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     }
 
 
-def _install_diagnostic_plan(llm: LLM) -> None:
+def _install_diagnostic_plan(
+    llm: LLM,
+    *,
+    max_realized_group_rows: int = 4,
+) -> None:
+    width = max(1, int(max_realized_group_rows))
+
     def resolve(self: LLM, **kwargs: Any) -> dict[str, Any]:
         kwargs.setdefault(
             "candidate_budget",
             int(getattr(self, "speculative_candidate_budget", 2)),
         )
+        kwargs.setdefault("max_realized_group_rows", width)
         return _diagnostic_plan(**kwargs)
 
     llm.resolve_speculative_mtp_serving_plan = MethodType(resolve, llm)
@@ -1032,7 +1048,21 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         }
         if args.generation2_diagnostic:
-            _install_diagnostic_plan(llm)
+            diagnostic_max_requests = (
+                int(
+                    backend_package_capability(
+                        str(args.backend),
+                        "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
+                        4,
+                    )
+                )
+                if str(args.execution_profile) == "production"
+                else 4
+            )
+            _install_diagnostic_plan(
+                llm,
+                max_realized_group_rows=diagnostic_max_requests,
+            )
         app = create_app(
             ServerConfig(
                 model=str(args.model),

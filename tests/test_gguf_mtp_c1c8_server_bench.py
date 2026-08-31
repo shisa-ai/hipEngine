@@ -403,6 +403,24 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     assert _diagnostic_plan(**{**base, "realized_group_rows": 5})["admitted"] is False
     assert _diagnostic_plan(**{**base, "context_tokens": 96})["admitted"] is False
 
+    wide = _diagnostic_plan(
+        **{
+            **base,
+            "realized_group_rows": 8,
+            "max_realized_group_rows": 8,
+        }
+    )
+    assert wide["admitted"] is True
+    assert wide["static_eligibility"]["max_realized_group_rows"] == 8
+    assert wide["evidence_key"] == "gguf-c1-c8-generation2-diagnostic"
+    assert _diagnostic_plan(
+        **{
+            **base,
+            "realized_group_rows": 9,
+            "max_realized_group_rows": 8,
+        }
+    )["admitted"] is False
+
 
 def test_mtp_c1c8_summary_uses_complete_wall() -> None:
     cells = [
