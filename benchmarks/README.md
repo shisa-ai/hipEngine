@@ -299,6 +299,13 @@ samples deterministic. Versus the same-host campaign start, pp improves
 [`P5 device argmax`](results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json).
 [`P5 current canonical AR`](results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json).
 
+P6 localizes the long-context cliff to indexed QSA activation. Identical
+transition medians at live counts 2,051/2,052/4,097 are **66.61/95.88/96.02
+ms**. The boundary adds **30.77 ms** of profiled kernel time; sparse attention
+alone adds **27.47 ms**, while score/top-k adds **0.92 ms**. The nearly flat
+2,052→4,097 result points to the fixed ~2K selected-attention budget rather than
+continued context growth. [`P6 context profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json).
+
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
 **296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local

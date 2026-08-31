@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P6 context transition — diagnostic] Exact repeated decode is **66.61/95.88/96.02 ms** at live counts 2,051/2,052/4,097. The boundary adds **30.77 ms** kernel time: sparse QSA attention contributes **+27.47 ms**, versus **+0.92 ms** score/top-k. The flat deep-context row identifies fixed selected-budget attention as the next owner. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next current P5 canonical AR — retained] The repeat-exact p512/p1024/p4096 matrix is now **83.70/83.16/69.10 pp/s** and **14.40/14.42/10.42 tg/s**. Against the same-host campaign start, pp changes **+1.44%/+2.38%/+1.72%** and tg changes **+4.17%/+4.60%/+0.20%**; all **36/36** measured samples are deterministic. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P5 device argmax — retained] Registered exact F32 top-1 changes normal greedy D2H from **993,280→8 bytes/token (124,160x less)** while preserving **450/450 KL=0**, **18/18 exact task sequences**, compact state, physical c2, and lifecycle. Five p508+128-step pairs are wall-neutral at **1.00343x (95% CI 0.98776–1.01909)**. The final HIP ledger cuts blocking bytes **1,024,200→10,440/token**, removes one device sync, and reduces calls **28→26 blocking** while retaining 12 async; this is a transfer-boundary retention, not a wall-speed claim. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json`.

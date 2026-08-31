@@ -880,13 +880,18 @@ direct-launch surface before graph capture hides it.
 
 - [ ] Stack GR down+inject, down+scaled-SiLU, up+sigmoid+gated-mean, and GR-write
       composites one at a time with exact/T1/T2 declarations.
-- [ ] Re-rank dense Q8, selected Q4 gate/up, selected Q5_1/Q8 down, shared
-      expert, router, QSA, and lm-head kernels after P5.
-- [ ] Profile decode immediately below/above the QSA transition (live counts
-      2,051/2,052) and at p4096. Split index-query projection,
-      normalization/RoPE, score/top-k, selected attention, graph/submission,
-      copies, and wall gaps. Explain or remove hipEngine's measured
-      +23.67 ms/token p1024→p4096 cost before claiming short-AR parity.
+- [x] Re-rank dense Q8, selected Q4 gate/up, selected Q5_1/Q8 down, shared
+      expert, router, QSA, and lm-head kernels after P5. At live 2,052, profiled
+      per-step owners are sparse QSA attention **35.88 ms**, dense Q8
+      **25.84 ms**, Q4 gate/up **9.30 ms**, Q5 down **8.45 ms**, and remaining
+      dense **4.18 ms**. QSA is the context-conditioned first target.
+- [x] Profile decode immediately below/above the QSA transition (live counts
+      2,051/2,052) and at p4096. Clean identical-transition medians are
+      **66.61/95.88/96.02 ms**. The 2,051→2,052 kernel delta is **30.77 ms**:
+      sparse attention adds **27.47 ms**, score/top-k adds **0.92 ms**, and the
+      rest is launch/secondary-owner variance. The flat 2,052→4,097 result shows
+      a fixed selected-budget activation cost, not O(context) growth. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
