@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 prefill profile — diagnostic] Fresh current-production p508 names **1.670 s** of primary P3 roles: GR projection/read **709.32 ms**, Q8 `attn_qkv+attn_gate` **532.36 ms**, router **181.91 ms**, `ssm_out` **137.84 ms**, and shared projections **121.61 ms**. The 36-layer qkv+gate boundary is the first operation-complete target. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P2 exact Q4 team2 — rejected] Two independent 128-thread teams preserve each output reduction while computing columns concurrently, but complete p508 is **0.9978x (95% CI 0.9927–1.0028)**. Candidate is bit-exact and removed. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-q4-team2-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P2 exact wider output tiles — rejected] Exact Q4 output4→8 / Q5_1 output8→16 variants are removed: both-wide **0.9944x (95% CI 0.9897–0.9992)**, Q4-only **0.9968x**, Q5_1-only **0.9980x**. All logits are bit-exact; serial per-CTA work outweighs the smaller output grid. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-wider-output-tiles-rejected.json`.

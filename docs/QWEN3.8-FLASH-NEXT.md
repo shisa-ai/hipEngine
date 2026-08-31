@@ -120,9 +120,12 @@ in-tree** — verified in source with retained evidence. The remaining campaigns
    is closed as a rejection: it cuts Q5_K gate/up **279.86→16.66 ms** and wins about 5% at
    p512, but its complete 450-row gate fails prefill-last mean KL
    (**0.001179 > 0.001**). Do not rescreen unchanged T2 arithmetic; revisit
-   layer 2 only with a materially new exact/T1 dataflow. (b) decode GR
-   operation-complete
-   down+inject and projection-epilog fusion, up to 387 direct launches/token;
+   layer 2 only with a materially new exact/T1 dataflow. (b) P3 prefill now
+   owns **1.670 s** of named roles: GR projection/read **709.32 ms**,
+   `attn_qkv+attn_gate` **532.36 ms**, router **181.91 ms**, and shared
+   projections **121.61 ms**; screen an operation-complete Q8 qkv+gate boundary
+   first; (c) decode GR down+inject and projection-epilog fusion, with up to
+   387 direct launches/token;
    (d) normalized-Q/K, transposed-state GDN decode (**2.659 vs 0.465 ms/token**);
    (e) a state-safe larger decode graph after the historical third-replay state
    bug is resolved. QSA/GDN prefill suffix widening follows only after these

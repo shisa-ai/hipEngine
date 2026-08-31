@@ -710,11 +710,16 @@ mutating the same schedule family.
 ### Phase P3 — shared expert, router, dense projections, and GR prefill
 
 Goal: account for the large non-routed prefill remainder that the earlier plan
-left without an implementation phase.
+left without an implementation phase. The fresh p508 split names **1.670 s**
+of primary P3 roles: GR projection/read **709.32 ms**, GDN
+`attn_qkv+attn_gate` **532.36 ms**, router **181.91 ms**, `ssm_out`
+**137.84 ms**, and shared gate/up/down **121.61 ms**. Evidence:
+[`2026-08-31 P3 profile`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json).
 
-- [ ] Re-profile and separately name router, shared gate/up/down, attention and
+- [x] Re-profile and separately name router, shared gate/up/down, attention and
       FFN GR reads/writes, `attn_qkv`, `attn_gate`, `ssm_out`, QSA projections,
-      casts, and elementwise tails.
+      casts, and elementwise tails. Exact per-layer roles and kernel symbols are
+      retained from the fresh current-production trace.
 - [ ] Evaluate an exact F32 router+stable-top-10 owner so 512 router logits are
       not written and reread when the public path only needs deterministic
       routing. Keep the full-logit primitive for diagnostics.
@@ -723,7 +728,11 @@ left without an implementation phase.
 - [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
       add down+scaled-SiLU and up+sigmoid+gated-mean epilogues.
 - [ ] Evaluate output-projection+GR-write composites for attention and MoE
-      boundaries, including the exact inject ordering.
+      boundaries, including the exact inject ordering. Start with the 36-layer
+      Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact
+      coltile gate arithmetic while sharing input/activation quantization, or
+      declare and fully gate a T1 pair. Registered singleton routes remain
+      fallbacks. GR down+inject is the secondary operation-complete target.
 - [ ] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic.
