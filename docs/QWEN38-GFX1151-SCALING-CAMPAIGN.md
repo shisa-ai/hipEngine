@@ -1,7 +1,8 @@
 # Qwen3.8-27B gfx1151 Scaling Campaign (MTP batch scaling + prefill)
 
 Status: **punchlist closed; post-closeout review corrections recorded
-2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01**.
+2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01; extension W
+(dataflow-wall successor punchlist) opened 2026-09-01, no W unit measured yet**.
 Successor to the closed
 [`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
 Owner: scaling loop.
@@ -548,3 +549,146 @@ was inaccurate. X1 and M0 were completed before the expensive M1 unit.
   and [`BENCHMARK.md`](BENCHMARK.md) own gates and evidence format.
 - [`ROOFLINE-gfx1151.md`](ROOFLINE-gfx1151.md) owns the hardware constraints
   used to size P3.
+
+## 8. Extension W (opened 2026-09-01): breaking the multi-family packed-verifier dataflow wall
+
+Successor to the closed C6/C8 K1 loop
+([closeout](../benchmarks/results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json)).
+Same frozen product key and rules as sections 1-4. Objective unchanged:
+`min(C6, C8) MTP >= 1.15x own AR` — C6 `>= 45.894`, C8 `>= 54.326` tok/s —
+which requires removing another **19.2% / 20.1%** of the full-suite MTP wall
+(7.46 s / 8.88 s). The closeout proved no single registered exact family can
+supply that; this extension changes the cycle's economics instead of its
+leaves.
+
+### 8.1 Why the wall exists (cycle-economics analysis)
+
+All numbers below are from the closeout artifact and the reviewed matrix
+([L9-equivalent](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json)),
+same host, model, and protocol.
+
+**K1 has a low arithmetic ceiling and we pay double for it.** At the clean
+endpoint, C8/K1 commits 1,540/1,610 = 95.65% of single candidates, i.e.
+**~1.956 committed tokens per request per cycle**. Even a free proposal +
+accept path therefore caps K1 at ~1.96x own AR. Measured 0.9192x means each
+speculative cycle costs **~2.13 matched-AR-step equivalents**
+(C6: 1.956/0.9290 = 2.11). Reaching 1.15x at K1 requires the cycle to cost
+<= 1.70 AR-steps — a 19-20% cycle-cost cut, exactly the closeout's wall gap.
+Leaf morphology is exhausted at that scale; the extra ~0.43 AR-steps are
+distributed across proposal, R12/R16 verify, and accept/commit stages.
+
+**The stronger lever is committed tokens per weight sweep, and rows-scaling
+verify cost blocks it.** In the bandwidth-bound regime, AR at C8 commits 8
+tokens per model sweep. K1 commits ~15.7 per cycle; K3 at the historical
+78.894% acceptance would commit ~3.37/request = **~27 per cycle** — enough to
+absorb even today's cycle overhead — but measured K3 C5-C8 runs at only
+0.75-0.81x own AR because the R20-R32 verify shapes lose every R<=16 owner
+(M1 trace: Q6-planar direct gemv ~36.8 ms/launch, Q4 falling back to
+`wmma_prefill`) and wide proposal sums ballooned +198..+264%. Our verifier is
+a ladder of row-tile-specialized exact owners: unbeatable leaf-for-leaf at
+R<=16, but its aggregate cost grows with rows instead of staying sweep-bound,
+so depth cannot amortize.
+
+**External engines prove the target rate is physically reachable on this
+host.** From the standardized `Q4_K_M` matrix
+([survey](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)): stock HIP llama.cpp K3
+reaches **56.222 tok/s at C8 = 1.854x its own AR** (and 46.084 = 1.736x at
+C7); Laurent reaches 50.837 (1.114x) at C8 and 37.154 (1.312x) at C6. Stock
+HIP's absolute C8 MTP exceeds our 54.326 target while streaming the same
+17.1 GB of weights on the same 256 GB/s part. Per
+[X1](EXTERNAL-MTP-BATCHING.md), every surveyed engine (a) verifies all
+in-flight requests in **one** target forward through a general M-row
+GEMM/MMQ path whose cost is nearly row-invariant at these widths, (b) batches
+the drafter across all slots per depth step, and (c) caps by token budget,
+not width. At C6 no external absolute MTP reaches our 45.894 target (our AR
+is far higher than theirs), so C6 rests on the ratio evidence plus
+tokens-per-sweep arithmetic, not on an external existence proof.
+
+**What we need to be able to scale (the requirement, stated once):**
+
+1. verify-pass cost must become approximately **row-invariant** across
+   R8-R32 (sweep-bound, not row-bound), per quant family;
+2. the proposal pass must stay a small fraction of a target sweep at wide
+   rows and deeper K;
+3. accept/selected-state/KV commit must not add an operation-complete stage
+   per cycle.
+
+Once (1)-(3) hold, depth (K2/K3) converts directly into committed tokens per
+sweep and the 1.15x gates follow arithmetically. Without (1), no further leaf
+or single-family work can close 19-20% — that is the named blocker restated
+as a requirement.
+
+### 8.2 W punchlist
+
+Rules unchanged (frozen protocol, full-suite + heldouts, no
+prompt-conditioned tuning, exact ownership + strict fallback, complete
+production gates before any promotion, automatic C6/C8 serving stays K0
+throughout). Additional extension rule from the closeout's reopen condition:
+**every W implementation unit needs a sized full-wall bound before code** —
+a measured projection of the wall seconds it can remove; unsized candidates
+are not started.
+
+- [ ] W0 **Sweep-economics instrumentation (entry gate for all of W).**
+  Extend `scripts/mtp_cycle_accounting.py` / the rocprof harness to report,
+  per cycle on the frozen C6/C8 protocol: weight-bytes swept per family per
+  stage, ms per stage, and verify-pass ms at R8/R12/R16/R20/R24/R32 for
+  Q4/Q5/Q6. Publish the extension metric **AR-step equivalents per committed
+  token** (current: C6 2.11, C8 2.13; target <= 1.70 at K1, or the K-adjusted
+  equivalent) and the row-scaling curve that sizes W1. No perf claim; this
+  re-establishes M2i-class attribution as durable committed evidence
+  (audit limitation 1).
+- [ ] W1 **Row-invariant wide verify owners (R20-R32).** Build GEMM-shaped
+  (M-tile-loop, MMQ-style) multi-row verify owners for Q4/Q5/Q6 at R20-R32 so
+  one weight-tile stream serves all rows — the external engines' verifier
+  shape, developed in-tree per `docs/KERNELS.md`. Gate: verify pass at R32
+  <= ~1.25x the R8 pass per family (flatness), exact or production-profile
+  numerical RED per `docs/EXECUTION-PROFILES.md`, strict fallback registered.
+  Entry: W0's curve confirms rows-scaling and sizes the bound. Note P3's
+  negative is about *prefill* integer bodies at rows256+; the R20-R32 decode
+  band is unmeasured territory.
+- [ ] W2 **Single-sweep multi-family layer dataflow.** Schedule each layer's
+  Q4/Q5/Q6 stage kernels so the layer's weights stream once per verify pass
+  (fused or co-scheduled sweep; persistent-kernel variants allowed). This is
+  the closeout's literal reopen condition. Constraint from history: the
+  gfx1100 B4 FFN megakernel was **2.66x slower on-GPU**
+  ([MEGAKERNEL.md](MEGAKERNEL.md)) — fuse the sweep schedule and stage
+  boundaries, not necessarily one giant kernel; every fused composite keeps
+  its strict unfused chain.
+- [ ] W3 **Depth reopen behind W1.** Re-screen K2/K3 with W1's owners plus a
+  prompt-independent width x depth admission table (the review's named
+  follow-up). The earlier K2 rejection (C6 0.606x / C8 0.537x) is
+  **conditional on rows-scaling kernels** and must not be cited as terminal
+  once W1's flatness gate passes. Expected sizing: K3 at ~79% acceptance
+  commits ~27 tokens/cycle at C8 vs K1's ~15.7.
+- [ ] W4 **Proposal economics at wide rows and depth.** Qualify wide-row
+  proposal/lm-head owners (M1's +198..+264% proposal regression is the
+  bound), and screen a fused top-1-in-sweep head that avoids materializing
+  full-vocab logits per draft step under the greedy protocol. Gate: proposal
+  <= ~15% of a target sweep at C8/K3-shape rows, exact IDs preserved.
+- [ ] W5 **Accept/commit stage fusion.** Fold acceptance + selected-state/KV
+  commit into the verify epilogue (N3/N4 device-state lineage,
+  [NATIVE_SPEC_CYCLE.md](NATIVE_SPEC_CYCLE.md)). M2i showed the accept window
+  is ~98% GPU-busy, so the win is stage/launch/sync-structure removal, not
+  host idle — size it with W0 before building; drop if the sized bound is
+  under ~2% of wall.
+- [ ] W6 **Width-6/8 prompt-streaming engagement.** Iteration 5's C6
+  streaming repeated ~+4.0% (38.616/38.599/38.602) and was reverted only
+  because C8 never engaged and failed the compound minimum. Extend engagement
+  to width 8 and re-screen as a compound candidate; cheap and independent of
+  W1-W5.
+- [ ] W7 **(Conditional) multi-candidate/tree drafts.** After W1 flatness,
+  extra candidates add rows, not sweeps (SGLang-style `bs x tree` verify).
+  Opens only with a prompt-independent policy and the full production gates;
+  stays closed while candidate budget 1 is the certified protocol.
+
+### 8.3 Order and success criteria
+
+`W0` -> `W1` -> (`W2` and `W4` in parallel, both sized by W0) -> `W3` ->
+`W5`/`W6` opportunistic -> `W7` conditional. W6 may run any time.
+
+The extension closes when `min(C6, C8) >= 1.15x own AR` on the frozen
+protocol with all exactness/route/budget cells passing, or when every W item
+carries a measured named blocker whose sized bounds sum below the remaining
+gap. Any promotion to automatic serving additionally requires the complete
+production numerical, determinism, isolation, task, lifecycle, and serving
+gates — the W punchlist alone never changes admission policy.
