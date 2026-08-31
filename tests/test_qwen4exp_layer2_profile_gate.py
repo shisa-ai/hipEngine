@@ -82,6 +82,34 @@ def test_state_repeat_gate_requires_candidate_repeatability_and_layout() -> None
     assert failed["mismatches"][0]["repeat_exact"] is False
 
 
+def test_compact_state_gate_binds_strict_candidate_equality() -> None:
+    module = _load_script()
+    metadata = {
+        "position": 7,
+        "attention_positions": [[6, 7]],
+        "index_counts": [[7, 1]],
+    }
+    strict = [{
+        "prompt_id": "p", "state_sha256": "s", "layout_sha256": "l",
+        "finite": True, **metadata,
+    }]
+    candidate = [[
+        {
+            "prompt_id": "p", "state_sha256": "c", "layout_sha256": "l",
+            "finite": True, **metadata,
+        }
+        for _ in range(3)
+    ]]
+
+    gate = module._state_repeat_gate(strict, candidate)
+    gate["all_strict_candidate_state_exact"] = all(
+        row["strict_candidate_state_exact"] for row in gate["prompts"]
+    )
+    gate["passed"] = gate["passed"] and gate["all_strict_candidate_state_exact"]
+
+    assert gate["passed"] is False
+
+
 def test_device_argmax_candidate_is_t0_and_fail_closed() -> None:
     module = _load_script()
     candidate = module.CANDIDATES["device_argmax"]
