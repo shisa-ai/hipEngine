@@ -77,6 +77,22 @@ CANDIDATES = {
             "selected_gemv_bf16_bf16_out",
         ),
     ),
+    "shared_down_combine": CandidateSpec(
+        name="shared_down_combine",
+        classification="T0",
+        mechanism="fuse exact shared Q8 down, BF16 boundary, and sigmoid combine",
+        environment={"HIPENGINE_QWEN4_EXP_SHARED_DOWN_COMBINE": "1"},
+        base_profile="strict",
+        scenario_id="qwen4exp-ud-q4-k-xl-shared-down-combine",
+        candidate_key=(
+            "hip_gfx1151", "linear+shared_gate_combine", "gguf_q8_0",
+            "coltile8_rowbatch4_f32_bf16_out_exact",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "coltile8_rowbatch4_f32_f32_out",
+        ),
+    ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
         classification="T2",
