@@ -18,6 +18,17 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-08-31 Qwen4Exp P6 H256 sparse QSA attention
+
+- `HIPENGINE_QWEN4_EXP_QSA_WAVE32_H256=1` selects the registered one-wave H256
+  sparse-attention candidate above the 2,051-token QSA boundary. It preserves
+  selected-token and online-softmax order but changes low-bit output association
+  (actual-shape max absolute delta <=2e-8), so it is T1 rather than strict.
+  Keep it default-off until the real primitive, context packet, complete
+  strict-teacher/task/state/c2/lifecycle gate, and canonical p4096 pass. Remove
+  the flag immediately after promotion or rejection; retain registered
+  `strict_spans` as the permanent strict fallback.
+
 ## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
 
 - `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped
