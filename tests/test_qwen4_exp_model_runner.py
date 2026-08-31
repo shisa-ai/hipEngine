@@ -67,9 +67,9 @@ def test_qwen4_exp_model_runner_generation_does_not_consume_after_last_output() 
     runner = object.__new__(Qwen4ExpGGUFResidentModelRunner)
     runner.closed = False
     calls: list[int] = []
-    runner.prefill = lambda tokens: SimpleNamespace(token_id=7, logits=None)
+    runner.prefill = lambda tokens, **_kwargs: SimpleNamespace(token_id=7, logits=None)
 
-    def step(token):
+    def step(token, **_kwargs):
         calls.append(int(token))
         return SimpleNamespace(token_id=int(token) + 1, logits=None)
 

@@ -168,26 +168,34 @@ def _run_route(
 ) -> dict[str, Any]:
     """Run one synchronized route sample and return its timing/identity."""
 
+    device_argmax = os.environ.get(
+        "HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0"
+    ) not in {"", "0", "false", "False"}
+    result_kwargs = {"capture_logits": False} if device_argmax else {}
     if mode == "prefill":
         started = time.perf_counter()
-        result = runner.prefill(token_ids)
+        result = runner.prefill(token_ids, **result_kwargs)
         runner.runtime.device_synchronize()
         return {
             "seconds": time.perf_counter() - started,
             "token_id": int(result.token_id),
-            "logits_sha256": hashlib.sha256(result.logits.tobytes()).hexdigest(),
+            "logits_sha256": (
+                hashlib.sha256(result.logits.tobytes()).hexdigest()
+                if result.logits is not None
+                else hashlib.sha256(str(int(result.token_id)).encode()).hexdigest()
+            ),
         }
     if mode != "decode":
         raise ValueError(f"unsupported route mode: {mode}")
     if decode_transitions <= 0:
         raise ValueError("decode_transitions must be positive")
-    result = runner.prefill(token_ids)
+    result = runner.prefill(token_ids, **result_kwargs)
     runner.runtime.device_synchronize()
     output_ids = [int(result.token_id)]
     current = int(result.token_id)
     started = time.perf_counter()
     for _ in range(decode_transitions):
-        result = runner.step(current)
+        result = runner.step(current, **result_kwargs)
         current = int(result.token_id)
         output_ids.append(current)
     runner.runtime.device_synchronize()

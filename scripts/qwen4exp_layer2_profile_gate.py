@@ -77,6 +77,16 @@ CANDIDATES = {
             "selected_gemv_bf16_bf16_out",
         ),
     ),
+    "device_argmax": CandidateSpec(
+        name="device_argmax",
+        classification="T0",
+        mechanism="select greedy token on device and copy one int64",
+        environment={"HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX": "1"},
+        base_profile="strict",
+        scenario_id="qwen4exp-ud-q4-k-xl-device-argmax",
+        candidate_key=("hip_gfx1151", "argmax", "f32", "top1_i64"),
+        fallback_key=("hip_gfx1151", "argmax", "f32", "top1_i64"),
+    ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
         classification="T2",

@@ -73,7 +73,9 @@ def test_parser_accepts_decode_mode(tmp_path: Path) -> None:
     assert args.decode_transitions == 64
 
 
-def test_decode_route_excludes_prefill_and_hashes_complete_sequence() -> None:
+def test_decode_route_excludes_prefill_and_hashes_complete_sequence(
+    monkeypatch,
+) -> None:
     module = _load_script()
 
     class Runtime:
@@ -86,13 +88,17 @@ def test_decode_route_excludes_prefill_and_hashes_complete_sequence() -> None:
     class Runner:
         def __init__(self) -> None:
             self.runtime = Runtime()
+            self.kwargs = []
 
-        def prefill(self, _ids):
+        def prefill(self, _ids, **kwargs):
+            self.kwargs.append(kwargs)
             return SimpleNamespace(token_id=10)
 
-        def step(self, token_id):
+        def step(self, token_id, **kwargs):
+            self.kwargs.append(kwargs)
             return SimpleNamespace(token_id=token_id + 1)
 
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "1")
     runner = Runner()
     sample = module._run_route(
         runner, [1, 2, 3], mode="decode", decode_transitions=3
@@ -103,6 +109,7 @@ def test_decode_route_excludes_prefill_and_hashes_complete_sequence() -> None:
     assert sample["seconds"] >= 0
     assert len(sample["logits_sha256"]) == 64
     assert runner.runtime.synchronizations == 2
+    assert runner.kwargs == [{"capture_logits": False}] * 4
 
 
 def test_paired_summary_reports_ratio_cv_and_output_identity() -> None:
