@@ -1020,7 +1020,8 @@ size-3 and 15/20 size-2 groups. The omitted-request automatic arm declines MTP,
 executes exact K0/default, but queues full waves 20/20 and measures stable
 **259.3/344.4 prompt tok/s**, **1.082x/1.329x** the strongest peer. Therefore
 #29 coalesces ready default-AR submissions before any C2/C3 kernel conclusion;
-#25 is now complete and #11 remains the C1 native-prefill path. Evidence:
+#25 is complete; #11 subsequently retained the exact row64 down-projection
+owner described below. Evidence:
 [`current server attribution`](../benchmarks/results/2026-08-31-w7900-q4km-c1c3-current-server-prefill-attribution.json).
 
 #### P13-C — T16 evidence and down-projection occupancy (#25, then #11)
@@ -1028,7 +1029,7 @@ executes exact K0/default, but queues full waves 20/20 and measures stable
 - [x] Counterbalance the T16 harness, test its arm schedule/output capture, and
       correct exact command records.
 - [x] Narrow the weak `(5120,12288)` edge or retain it only after repeats.
-- [ ] Measure ISA/runtime occupancy for `(17408,5120)` under the 96-CU model;
+- [x] Measure ISA/runtime occupancy for `(17408,5120)` under the 96-CU model;
       try a finer row/column tile before a reduction, and retain split-K only if
       operation-complete timing repays accumulation.
 
@@ -1039,6 +1040,20 @@ retained point positive in both arm orders. The four omitted shapes lose at
 all 40 sampled cells. The shape-specific `(5120,12288)` cap changes
 **128 -> 112**; no published throughput row changes. Evidence:
 [`counterbalanced T16 correction`](../benchmarks/results/2026-08-31-w7900-q4km-t16-single-wave-counterbalanced-band-correction.json).
+
+Task #11 measured the incumbent at **428 wave32s / 107 blocks**
+(**4.46 waves/CU**) with VGPR256/LDS24 KiB under rocprof. The retained row64
+sibling preserves the four-wave shared-weight arithmetic but reduces ownership
+from 256 to 64 rows, cuts runtime VGPR to 248, and supplies 856 waves above row
+64 without any reduction. Five forward/reverse pairs are ULP-0 and positive at
+every admitted point: **1.009x-1.855x** through row 192; row 193 crosses to
+**0.897x**, so the strict parent owns row193+. On the same build, full-suite C1
+prompt throughput improves **4.63%/4.51%** in both exact arms and every category;
+the stable full-group K0 control is **+0.62% at C2** and flat-positive at C3.
+Explicit C2/C3 AR remains excluded from the kernel verdict because group
+composition races, as assigned to #29. Split-K was not attempted because the
+reduction-free exact owner already wins. Evidence:
+[`row64 down-projection retention`](../benchmarks/results/2026-08-31-w7900-q4km-t16-downproj-row64-retained.json).
 
 #### P13-D — Current K3 attribution (#23/#12 complete; #30 remedy)
 

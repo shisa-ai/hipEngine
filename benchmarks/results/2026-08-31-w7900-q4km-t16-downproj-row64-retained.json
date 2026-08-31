@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_t16_down_projection_row64_retained",
+  "date": "2026-08-31",
+  "status": "retained_exact_default",
+  "claim": "For gfx1100 Q4-T16 down projection (K,N)=(17408,5120), the exact row64 shared-B sibling replaces the 256-row parent at rows 33-192. Counterbalanced clean sweeps are positive in both arm orders at every admitted point (1.009x-1.855x), while row 193 crosses sharply to 0.897x and remains a loss through row 257. A same-build full-category C1-C3 server pair is exact and improves C1 prompt throughput by 4.63%/4.51% in both K0 arms; the stable full-group control improves C2 by 0.62% and is flat-positive at C3 (+0.013%).",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "bytes": 17106773984,
+    "quant": "gguf_q4_k_m",
+    "execution_weight_tier": "q4_k_t16"
+  },
+  "hardware": {
+    "host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "cpu": "AMD Ryzen 9 5950X",
+    "visible_device": "0"
+  },
+  "revisions": {
+    "implementation": "3cee6a39e89122e6c460c97bb9ff809596181dac",
+    "same_build_server_pair_and_final_policy": "27b6c4827f0a443bc3d8651f8abe85ec7bd421be",
+    "extended_sweep": "22373ea66a2f32c55dade656f7fe9cd31d6e8911"
+  },
+  "change": {
+    "mechanism": "The parent and sibling share the same four-wave, 48-column shared-weight block and the same K16 WMMA/F32-accumulator/BF16-store sequence. The sibling changes ROW_TILES_PER_WAVE from four to one, reducing ownership from 256 to 64 rows without changing arithmetic.",
+    "scope": {
+      "backend": "hip_gfx1100",
+      "shape_k_n": [17408, 5120],
+      "rows_inclusive": [33, 192]
+    },
+    "boundary": "Row 193 requires a fourth 64-row group and is slower than the one-group 256-row parent; row 193 and later retain the parent.",
+    "fallback": "The 256-row shared-B parent remains separately registered. HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS=0 restores it on the same build for bisection; the knob cannot widen beyond the qualified range."
+  },
+  "commands": {
+    "suite_rows_clean": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 300 .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 17408 --out-features 5120 --rows 33,35,36,39,43,46,48,60,64,65,67 --arms shared_b,shared_b_row64 --order-pairs 5 --reps 50 --warmup 10 --output /tmp/he-downproj/3cee6a39e-row64-clean.json",
+    "extended_rows_clean": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 300 .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 17408 --out-features 5120 --rows 68,72,80,96,112,120,128,129,134,144,160,176,192 --arms shared_b,shared_b_row64 --order-pairs 5 --reps 50 --warmup 10 --output /tmp/he-downproj/22373ea66-row64-wider-clean.json",
+    "boundary_clean": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 300 .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 17408 --out-features 5120 --rows 192,193,200,224,240,255,256,257 --arms shared_b,shared_b_row64 --order-pairs 5 --reps 50 --warmup 10 --output /tmp/he-downproj/22373ea66-row64-boundary-clean.json",
+    "kernel_trace": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/he-downproj/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 180 rocprofv3 --kernel-trace -f csv -d /tmp/he-downproj/row64-trace -o trace -- .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 17408 --out-features 5120 --rows 35,67 --arms shared_b,shared_b_row64 --order-pairs 1 --reps 3 --warmup 1 --output /tmp/he-downproj/3cee6a39e-row64-trace-sweep.json",
+    "sq_waves": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/he-downproj/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 180 rocprofv3 -i /tmp/he-downproj/pmc-row64.txt -f csv -d /tmp/he-downproj/row64-pmc -o pmc -- .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 17408 --out-features 5120 --rows 35,67 --arms shared_b,shared_b_row64 --order-pairs 1 --reps 3 --warmup 1 --output /tmp/he-downproj/3cee6a39e-row64-pmc-sweep.json",
+    "server_parent": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS=0 timeout 1800 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-downproj/server-pair-192/27b6c4827-parent.json",
+    "server_row64": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 PYTHONUNBUFFERED=1 GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 1800 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --widths 1,2,3 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --mtp-request-mode automatic --execution-profile production --batch-window-ms 20 --max-sequence-length 1024 --capture-prefill-attribution --output /tmp/he-downproj/server-pair-192/27b6c4827-row64.json"
+  },
+  "leaf_protocol": {
+    "payload": "repack_gguf_q4_k_tile16 output over a valid Q4_K block image",
+    "timing": "wall around one launch plus device_synchronize; median over five forward/reverse order pairs and 50 reps/pass; no best-of selection",
+    "correctness": "worst BF16 ULP distance versus the strict 256-row shared-B parent; every successful output must be finite",
+    "ratio_definition": "shared_b_ms / shared_b_row64_ms, so greater than 1.0 favors row64"
+  },
+  "leaf_measurements": {
+    "admitted_rows": {
+      "33": 1.719673,
+      "35": 1.722483,
+      "36": 1.722915,
+      "39": 1.726315,
+      "43": 1.725970,
+      "46": 1.730621,
+      "48": 1.730128,
+      "60": 1.852896,
+      "64": 1.855058,
+      "65": 1.240704,
+      "67": 1.242613,
+      "68": 1.236147,
+      "72": 1.240638,
+      "80": 1.239530,
+      "96": 1.267289,
+      "112": 1.257334,
+      "120": 1.231015,
+      "128": 1.235712,
+      "129": 1.009090,
+      "134": 1.010288,
+      "144": 1.011229,
+      "160": 1.040890,
+      "176": 1.043465,
+      "192": 1.098642
+    },
+    "rejected_boundary_rows": {
+      "193": 0.896893,
+      "200": 0.894948,
+      "224": 0.909089,
+      "240": 0.901449,
+      "255": 0.897087,
+      "256": 0.893623,
+      "257": 0.871525
+    },
+    "admitted_min_max_ratio": [1.009090, 1.855058],
+    "admitted_non_regressive_in_both_orders": true,
+    "admitted_worst_ulp": 0,
+    "all_outputs_finite": true
+  },
+  "occupancy_and_trace": {
+    "parent": {
+      "code_object": {"vgpr": 254, "sgpr": 24, "lds_bytes": 24576, "scratch_bytes": 0, "spills": 0},
+      "rocprof": {"kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel", "workgroup_threads": 128, "wave_size": 32, "blocks": 107, "waves": 428, "waves_per_compute_unit": 4.458333, "runtime_vgpr": 256, "runtime_sgpr": 128, "lds_bytes": 24576, "scratch_bytes": 0, "row35_median_duration_ms": 1.169570}
+    },
+    "row64": {
+      "code_object": {"vgpr": 193, "sgpr": 22, "lds_bytes": 24576, "scratch_bytes": 0, "spills": 0},
+      "rocprof": {"kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel", "workgroup_threads": 128, "wave_size": 32, "runtime_vgpr": 248, "runtime_sgpr": 128, "lds_bytes": 24576, "scratch_bytes": 0, "row35": {"blocks": 107, "waves": 428, "median_duration_ms": 0.655727}, "row67": {"blocks": 214, "waves": 856, "median_duration_ms": 1.041285}}
+    },
+    "reading": "The parent grid supplies only about 1.1 blocks/CU on 96 CUs, while 24 KiB LDS permits at most two blocks/CU. Row64 removes padded WMMA work and, above 64 rows, doubles supplied blocks/waves without a reduction or accumulation kernel. Split-K was not attempted because the reduction-free candidate already won and preserves exact ownership."
+  },
+  "server_pair": {
+    "protocol": "Full mtp-bench code/general_en/general_ja/mixed_ja_en suite, 10 prompts at C1-C3, interleaved explicit-AR and automatic omitted-request K0 arms, one output token, production profile, resident capacity 8, complete blocking barrier-to-last-response wall, actual native-group capture.",
+    "source_clean": true,
+    "parent_status": "complete",
+    "row64_status": "complete",
+    "prompt_tok_s": {
+      "ar": {"parent": {"1": 150.298881, "2": 155.336560, "3": 222.411781}, "row64": {"1": 157.256867, "2": 175.843875, "3": 246.738796}, "delta_percent": {"1": 4.629433, "2": 13.201860, "3": 10.937827}},
+      "automatic_omitted_request_k0": {"parent": {"1": 149.986556, "2": 259.187379, "3": 343.313116}, "row64": {"1": 156.753556, "2": 260.788547, "3": 343.357442}, "delta_percent": {"1": 4.511738, "2": 0.617765, "3": 0.012911}}
+    },
+    "mean_native_prefill_ms": {
+      "ar": {"parent": {"1": 268.3990, "2": 264.2449, "3": 307.4368}, "row64": {"1": 255.3959, "2": 261.5372, "3": 311.2838}, "delta_percent": {"1": -4.844690, "2": -1.024693, "3": 1.251314}},
+      "automatic_omitted_request_k0": {"parent": {"1": 268.4576, "2": 307.4715, "3": 345.6773}, "row64": {"1": 255.5289, "2": 305.1026, "3": 346.0338}, "delta_percent": {"1": -4.815919, "2": -0.770445, "3": 0.103131}}
+    },
+    "mean_wave_wall_ms": {
+      "automatic_omitted_request_k0": {"parent": {"1": 299.360165, "2": 346.467488, "3": 392.353200}, "row64": {"1": 286.436883, "2": 344.340276, "3": 392.302550}, "delta_percent": {"1": -4.316968, "2": -0.613972, "3": -0.012909}}
+    },
+    "native_group_histograms": {
+      "automatic_omitted_request_k0": {"parent": {"1": {}, "2": {"2": 10}, "3": {"3": 10}}, "row64": {"1": {}, "2": {"2": 10}, "3": {"3": 10}}},
+      "explicit_ar": {"parent": {"1": {}, "2": {}, "3": {"2": 9, "3": 1}}, "row64": {"1": {}, "2": {"2": 2}, "3": {"2": 7, "3": 3}}}
+    },
+    "c1_category_delta_percent": {
+      "ar": {"code": 4.804261, "general_en": 5.112569, "general_ja": 4.842561, "mixed_ja_en": 3.684604},
+      "automatic_omitted_request_k0": {"code": 4.629039, "general_en": 4.646428, "general_ja": 4.844892, "mixed_ja_en": 3.874749}
+    },
+    "correctness": {"within_packet_exact_cells": 60, "cross_packet_generated_rows": 120, "cross_packet_mismatches": 0, "passed": true},
+    "execution_profile": {"requested": "production", "resolved": "production", "variant_manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff", "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"},
+    "memory": {"parent_final_allocated_bytes": 0, "row64_final_allocated_bytes": 0, "peak_allocated_bytes_each": 22526457124, "active_allocations_each": 0},
+    "reading": "C1 is the binding complete-server win: both exact arms and every category improve by at least 3.68%. The automatic omitted-request K0 arm is the stable C2/C3 full-group control and remains non-regressive. Explicit AR is reported but not used for the C2/C3 kernel verdict because its actual group mix changed from 0 to 2 full C2 groups and from 1 to 3 full C3 groups; task #29 owns that admission race."
+  },
+  "gates": {
+    "red_green": "Selector RED failed on the absent owner/range, then GREEN pins rows 33-192 to row64, row 193 and misses to the parent, and max=0 rollback to the parent.",
+    "parent_and_cpu_reference": "Rows 35/48/67/192 pass byte equality against the strict parent and the existing Q4_K CPU-reference tolerance.",
+    "focused_tests": "timeout 300 .venv/bin/python -m pytest -q tests/test_gguf_q4_k_t16_dense.py -k 'routes_physical_r6 or shared_b_row64' -> 5 passed",
+    "initial_full_kernel_bundle": "timeout 600 .venv/bin/python -m pytest -q tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_t16_prefill_row_sweep.py -> 97 passed",
+    "trace": "Expected row64 kernel name observed with plausible resources/durations and exact SQ_WAVES 428/856 at rows 35/67.",
+    "server": "Both same-build packets complete, all within-packet exactness gates pass, 120 cross-packet generated rows match, and both release all tracked allocations."
+  },
+  "limitations": [
+    "The server pair has one packet per arm because it is a route-binding check; leaf timing uses five counterbalanced pairs and is the speed-boundary source.",
+    "The server automatic omitted-request arm declines MTP and executes K0/default. It is a causal full-group control, not a replacement for the canonical published AR scoreboard row.",
+    "C3 complete wall is flat within noise even though admitted leaf points are exact counterbalanced winners; the route is retained as a measured leaf/sub-window win under the project policy.",
+    "One unrelated untracked pre-existing grouping probe was present. Tracked source was clean and the probe was neither imported nor executed."
+  ],
+  "consequence_for_objective": "Task #11 is complete. The exact default removes the diagnosed row-padding/low-wave-supply cost without introducing split-K, improves complete C1 prefill, and is non-regressive in the stable C2/C3 full-group control. Remaining broad server gaps belong to admission coalescing (#29) and the physical group-of-four/serial dependency path (#30), not this down-projection leaf."
+}
