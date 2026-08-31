@@ -55,13 +55,7 @@ should be removed or collapsed.
   first. Do not leave the ambiguous broad flag as a latent production route.
   Retain the strict selected Q5_K gemv chain as fallback.
 
-## 2026-08-31 Qwen4Exp P3 candidates
-
-- `HIPENGINE_QWEN4_EXP_SHARED_DOWN_COMBINE=1` fuses exact Q8 shared down,
-  the materialized F32/BF16 down boundaries, and sigmoid-gated expert combine
-  for multirow work. Strict and production bind it off during admission; the
-  projection/cast/combine chain remains fallback. Remove the flag after the
-  complete T0 performance/exact/state/trace verdict.
+## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 
 - `HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE=1` adds the omitted
   K2560/N6144 GDN attention-gate shape to the existing guarded F32 Q8 MMQ

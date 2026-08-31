@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 shared-down combine — rejected] The exact composite preserves F32 down, BF16 down, and final sigmoid-gated BF16 output while improving the rows508 GPU window **1.376→1.292 ms (1.0648x)**, but p508 is flat at **0.99974x (95% CI 0.99772–1.00176)**. It fails the complete-wall gate and is removed before p1024/full-profile work. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-down-combine-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 shared-Q8 activation pair — rejected] One F32 D4x3 pack reused across gate/up is bit-exact and improves the complete two-projection GPU window **1.134→1.077 ms (1.0525x)**, but combined p508 is **0.9988x (95% CI 0.9971–1.0005)** and code-p1024 is **0.9997x (95% CI 0.9980–1.0014)**. It fails the campaign's complete-wall requirement and is removed. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-q8-pair-rejected.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 router+top-10 — rejected] Counter-last fusion preserves full logits, selected IDs, routing weights, and replay counters exactly, but four parallel selector CTAs still regress the rows508 operation-complete primitive **1.877→2.128 ms (0.882x)**. Candidate code is removed; exact tile4 plus separate selector remains default. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-fused-select-rejected.json`.
