@@ -189,7 +189,7 @@
   "decision": {
     "retain_candidate": true,
     "promote": false,
-    "next": "Commit default-off candidate, then run tracked-clean full C6/R24 and C8/R32 strict-teacher packets. Promote only if complete gates and end-to-end performance pass."
+    "next": "Full C6/R24 and C8/R32 strict-teacher packets pass (240 rows each, 100% top-1, deterministic). Wire the default-off context into a run-owned full-suite performance candidate, then require flatness and rocprof identity before promotion."
   },
   "commands": {
     "leaf": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python .multiloop/active/qwen38-scaling-extensions/wy-dataflow-prefill-r1/w1_q6_shared4_screen.py",
@@ -205,6 +205,176 @@
       "path": "/tmp/wy-w1-q6-r32-numerics-smoke.json",
       "size_bytes": 10269,
       "sha256": "7e8e2ee9454004731dfc91b8a073cac37bae49a03b1ee9c43b6be7695c6e9609"
+    }
+  },
+  "full_numerical_gates": {
+    "C6_R24": {
+      "status": "passed",
+      "measurement_valid": true,
+      "hard_gates_passed": true,
+      "summary": {
+        "candidate_teacher_nll_mean": 0.17544779432299384,
+        "kl_max": 0.0014633570048211428,
+        "kl_mean": 7.823067829780227e-05,
+        "kl_p50": 4.267303011684815e-06,
+        "kl_p95": 0.0004085524066393631,
+        "kl_p99": 0.0007823251951146972,
+        "max_abs_logit_delta": 0.647362232208252,
+        "rows": 240,
+        "strict_margin_min": 0.04146385192871094,
+        "strict_teacher_nll_mean": 0.17407610719807345,
+        "teacher_delta_p_mean": -0.0004910274233250648,
+        "teacher_nll_delta": 0.00137168712492039,
+        "top1_agreement": 1.0,
+        "top1_matches": 240,
+        "topk_overlap_mean": 0.985
+      },
+      "repeat_determinism": {
+        "mismatches": [],
+        "passed": true,
+        "runs": 3,
+        "trajectory_sha256_by_capture": [
+          [
+            "f8cb95535ee5b74e4859d568ee81dcfa92e35cb6ea10bb92613be93eda6e7502",
+            "f8cb95535ee5b74e4859d568ee81dcfa92e35cb6ea10bb92613be93eda6e7502",
+            "f8cb95535ee5b74e4859d568ee81dcfa92e35cb6ea10bb92613be93eda6e7502"
+          ],
+          [
+            "36c28c3dd0df9a217d8f01ab410a38ebef1c97f677efe7fe50bf4e76ebf3e7a2",
+            "36c28c3dd0df9a217d8f01ab410a38ebef1c97f677efe7fe50bf4e76ebf3e7a2",
+            "36c28c3dd0df9a217d8f01ab410a38ebef1c97f677efe7fe50bf4e76ebf3e7a2"
+          ],
+          [
+            "6e68cf377066078e14333aeadc649afeaf91c3749c9e0a5d3e7147d03f44644d",
+            "6e68cf377066078e14333aeadc649afeaf91c3749c9e0a5d3e7147d03f44644d",
+            "6e68cf377066078e14333aeadc649afeaf91c3749c9e0a5d3e7147d03f44644d"
+          ],
+          [
+            "eb08ad4a77dd6f6742104c48a046a7c21e8c4e942fd273116d3360012627ac82",
+            "eb08ad4a77dd6f6742104c48a046a7c21e8c4e942fd273116d3360012627ac82",
+            "eb08ad4a77dd6f6742104c48a046a7c21e8c4e942fd273116d3360012627ac82"
+          ],
+          [
+            "527881c10440a5827dbd024f7ee2b578e1b0ad45d50fbf4a22bca4cf73d9beb9",
+            "527881c10440a5827dbd024f7ee2b578e1b0ad45d50fbf4a22bca4cf73d9beb9",
+            "527881c10440a5827dbd024f7ee2b578e1b0ad45d50fbf4a22bca4cf73d9beb9"
+          ],
+          [
+            "8bd067e04f474027744fc2bebcc07756169ba91de34b3a8d812499f39da39884",
+            "8bd067e04f474027744fc2bebcc07756169ba91de34b3a8d812499f39da39884",
+            "8bd067e04f474027744fc2bebcc07756169ba91de34b3a8d812499f39da39884"
+          ],
+          [
+            "8392085583d629ee251e63634126553706fe846f2621ec0b4a539e608eebf3d9",
+            "8392085583d629ee251e63634126553706fe846f2621ec0b4a539e608eebf3d9",
+            "8392085583d629ee251e63634126553706fe846f2621ec0b4a539e608eebf3d9"
+          ],
+          [
+            "e9fbcf58ee89d14d721d24dbcc7fed8d3902832cd3659ed7ab1e4e65e5c82b96",
+            "e9fbcf58ee89d14d721d24dbcc7fed8d3902832cd3659ed7ab1e4e65e5c82b96",
+            "e9fbcf58ee89d14d721d24dbcc7fed8d3902832cd3659ed7ab1e4e65e5c82b96"
+          ],
+          [
+            "b6496c284fe20ad19a214ed38fdc6f92e90a07eb9e4642a5ab15cec21a7e2fb8",
+            "b6496c284fe20ad19a214ed38fdc6f92e90a07eb9e4642a5ab15cec21a7e2fb8",
+            "b6496c284fe20ad19a214ed38fdc6f92e90a07eb9e4642a5ab15cec21a7e2fb8"
+          ],
+          [
+            "becef60905d62513708b5a434ad22294a623d3627f39e35af85defa07a8f4410",
+            "becef60905d62513708b5a434ad22294a623d3627f39e35af85defa07a8f4410",
+            "becef60905d62513708b5a434ad22294a623d3627f39e35af85defa07a8f4410"
+          ]
+        ]
+      },
+      "raw": {
+        "path": "/tmp/wy-w1-q6-c6-r24-numerics.json",
+        "size_bytes": 19997,
+        "sha256": "ea2b194185108e08fc878488c3f3e2df71d99749c7cc034421e2b5e9b825c3df"
+      }
+    },
+    "C8_R32": {
+      "status": "passed",
+      "measurement_valid": true,
+      "hard_gates_passed": true,
+      "summary": {
+        "candidate_teacher_nll_mean": 0.17475733611337543,
+        "kl_max": 0.0017202095253945934,
+        "kl_mean": 8.591328163740231e-05,
+        "kl_p50": 4.611591895512534e-06,
+        "kl_p95": 0.0004981702063113738,
+        "kl_p99": 0.0007606168948130547,
+        "max_abs_logit_delta": 0.8412189483642578,
+        "rows": 240,
+        "strict_margin_min": 0.04146385192871094,
+        "strict_teacher_nll_mean": 0.17407610719807345,
+        "teacher_delta_p_mean": -0.0001732419336222551,
+        "teacher_nll_delta": 0.000681228915301979,
+        "top1_agreement": 1.0,
+        "top1_matches": 240,
+        "topk_overlap_mean": 0.9908333333333333
+      },
+      "repeat_determinism": {
+        "mismatches": [],
+        "passed": true,
+        "runs": 3,
+        "trajectory_sha256_by_capture": [
+          [
+            "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b",
+            "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b",
+            "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b"
+          ],
+          [
+            "a3927068557a29277691603a2f86e4f39d2f95e1a69848d6dd1965029e0924b4",
+            "a3927068557a29277691603a2f86e4f39d2f95e1a69848d6dd1965029e0924b4",
+            "a3927068557a29277691603a2f86e4f39d2f95e1a69848d6dd1965029e0924b4"
+          ],
+          [
+            "fc67475233a6f394fa46a073249e5e3d7ae0f6ada2f2010e7abbb1d626fbe739",
+            "fc67475233a6f394fa46a073249e5e3d7ae0f6ada2f2010e7abbb1d626fbe739",
+            "fc67475233a6f394fa46a073249e5e3d7ae0f6ada2f2010e7abbb1d626fbe739"
+          ],
+          [
+            "16f8d14f5e54a61bb342ededc95eb4971c44b0a7dfd40a5abb879b1660e3ac5d",
+            "16f8d14f5e54a61bb342ededc95eb4971c44b0a7dfd40a5abb879b1660e3ac5d",
+            "16f8d14f5e54a61bb342ededc95eb4971c44b0a7dfd40a5abb879b1660e3ac5d"
+          ],
+          [
+            "b2b265c6c502b5e435d6719e27b61c81d756f493c7385c5f53270062b624345c",
+            "b2b265c6c502b5e435d6719e27b61c81d756f493c7385c5f53270062b624345c",
+            "b2b265c6c502b5e435d6719e27b61c81d756f493c7385c5f53270062b624345c"
+          ],
+          [
+            "0ab2d6aec99757de90211fd6c0c9c1728240e77756b7faa5c95d30ec776bc97d",
+            "0ab2d6aec99757de90211fd6c0c9c1728240e77756b7faa5c95d30ec776bc97d",
+            "0ab2d6aec99757de90211fd6c0c9c1728240e77756b7faa5c95d30ec776bc97d"
+          ],
+          [
+            "c5df5e2a8f9b9b276df380ff8abdf98d8bf92ff37c35eb70ad3891981d7f02c0",
+            "c5df5e2a8f9b9b276df380ff8abdf98d8bf92ff37c35eb70ad3891981d7f02c0",
+            "c5df5e2a8f9b9b276df380ff8abdf98d8bf92ff37c35eb70ad3891981d7f02c0"
+          ],
+          [
+            "5ba6c009b5167e9a2f42f370d45de953c6ba3313c8bce9ecb33365b95a281cb6",
+            "5ba6c009b5167e9a2f42f370d45de953c6ba3313c8bce9ecb33365b95a281cb6",
+            "5ba6c009b5167e9a2f42f370d45de953c6ba3313c8bce9ecb33365b95a281cb6"
+          ],
+          [
+            "f24ba0f12508fdbeaaf0a615956031efa2164ab2c3fbec91f2acad2f85d7b553",
+            "f24ba0f12508fdbeaaf0a615956031efa2164ab2c3fbec91f2acad2f85d7b553",
+            "f24ba0f12508fdbeaaf0a615956031efa2164ab2c3fbec91f2acad2f85d7b553"
+          ],
+          [
+            "9c824403c8263bfc9ddb33b9420ca29479ccedd48be173b39659ec984acf3c9e",
+            "9c824403c8263bfc9ddb33b9420ca29479ccedd48be173b39659ec984acf3c9e",
+            "9c824403c8263bfc9ddb33b9420ca29479ccedd48be173b39659ec984acf3c9e"
+          ]
+        ]
+      },
+      "raw": {
+        "path": "/tmp/wy-w1-q6-c8-r32-numerics.json",
+        "size_bytes": 20034,
+        "sha256": "b55f02140f2ac0c18e619303930b4045279b9a8a7331b6fef2ffc7affe83770b"
+      }
     }
   }
 }
