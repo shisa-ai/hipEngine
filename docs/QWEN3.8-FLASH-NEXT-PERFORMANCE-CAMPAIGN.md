@@ -681,6 +681,10 @@ Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-expertgrid128-rejected.json`
       and
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-wider-output-tiles-rejected.json`.
+      A two-team exact Q4 CTA that computes output columns concurrently is also
+      rejected/removed at 0.9978x (95% CI 0.9927–1.0028). With worker count,
+      serial width, and concurrent-team schedules exhausted, do not continue
+      this scheduling family without a new reuse mechanism.
 - [ ] Add operation-complete grouped dual gate/up+SiLU and
       down+route-weight+scatter/ordered-reduce candidates. Keep primitive
       chains registered.
