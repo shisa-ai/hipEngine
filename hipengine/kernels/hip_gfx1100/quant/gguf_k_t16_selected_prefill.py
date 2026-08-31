@@ -62,6 +62,9 @@ _Q4_DENSE_WMMA_SHARED_B_BF16 = (
 _Q4_DENSE_WMMA_SHARED_B2W2_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_SHARED_B2R1_BF16 = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out"
+)
 _Q4_DENSE_WMMA_SHARED_B2W4_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out"
 )
@@ -435,6 +438,37 @@ def gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     del tile_m, tile_n
     _launch_dense_t16(
         _Q4_DENSE_WMMA_SHARED_B_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch 32-column shared-B with one row tile per wave."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_SHARED_B2R1_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1182,6 +1216,10 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
             gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
         ),
+        (
+            "t16_wmma_prefill_shared_b2r1_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out,
+        ),
     ):
         register(
             KernelKey(
@@ -1328,6 +1366,7 @@ __all__ = [
     "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out",
     "gguf_q4_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
