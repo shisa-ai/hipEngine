@@ -60,9 +60,10 @@ should be removed or collapsed.
 - `HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX=1` runs registered F32 top-1 on device
   and returns only one int64 token for normal greedy generation. Direct runner,
   MTP, and debug calls keep full logits by default. Strict and production bind
-  it off during admission; full-logit host argmax remains fallback. Remove the
-  flag after exact token/state, copy-census, natural-AR, lifecycle, and trace
-  admission.
+  it on after the complete exact token/state, natural-AR, lifecycle, transfer,
+  and trace gates passed. Remove this now-redundant rollback flag after one clean
+  default confirmation; the explicit full-logit runner API is the durable debug
+  path.
 
 ## 2026-08-31 Qwen4Exp P3 Q8 MMQ attention-gate scope
 

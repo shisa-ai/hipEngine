@@ -33,16 +33,19 @@ class _FakeRunner:
         self.bias = bias
         self.position = 0
         self.closed = False
+        self.calls = []
 
     def reset(self):
         self.position = 0
 
-    def prefill(self, tokens):
+    def prefill(self, tokens, **kwargs):
         self.position = len(tokens)
+        self.calls.append(("prefill", dict(kwargs)))
         return SimpleNamespace(token_id=sum(tokens) % 50 + self.bias)
 
-    def step(self, token):
+    def step(self, token, **kwargs):
         self.position += 1
+        self.calls.append(("step", dict(kwargs)))
         return SimpleNamespace(token_id=int(token) + 1)
 
     def close(self):
@@ -90,6 +93,48 @@ def test_qwen4_exp_resident_c2_preserves_request_owned_state(monkeypatch) -> Non
         assert outputs[0].generated_token_ids != outputs[1].generated_token_ids
         assert len(native._all_runners) == 2
         assert len(created) == 1
+    finally:
+        driver.close()
+
+
+def test_qwen4_exp_resident_c2_uses_compact_output_when_bound(monkeypatch) -> None:
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "1")
+    generator = _generator()
+    created = []
+
+    def make_runner(*args, **kwargs):
+        del args, kwargs
+        runner = _FakeRunner(bias=10)
+        created.append(runner)
+        return runner
+
+    monkeypatch.setattr(
+        "hipengine.generation.qwen4_exp_gguf.Qwen4ExpGGUFResidentModelRunner",
+        make_runner,
+    )
+    driver = SubmitPollTextGenerator(
+        generator,
+        config=EngineLoopConfig(max_active_requests=2, max_prefill_chunk_tokens=8),
+    )
+    try:
+        outputs = driver.generate_detailed(
+            GenerationRequest(
+                prompts=("alpha", "beta"), max_tokens=3, temperature=0.0,
+                top_p=1.0, ignore_eos=True,
+            )
+        )
+        assert len(outputs) == 2
+        native = generator._resident_model_runner
+        assert native is not None
+        runners = native._all_runners
+        assert len(runners) == 2
+        assert len(created) == 1
+        assert all(runner.calls for runner in runners)
+        assert all(
+            kwargs == {"capture_logits": False}
+            for runner in runners
+            for _, kwargs in runner.calls
+        )
     finally:
         driver.close()
 

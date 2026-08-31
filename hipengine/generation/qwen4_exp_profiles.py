@@ -65,6 +65,10 @@ _QSA_DENSE_FIXED256_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json"
 )
+_DEVICE_ARGMAX_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json"
+)
 
 
 def _selection(
@@ -88,6 +92,14 @@ def _selection(
 
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "argmax",
+            "qwen4exp_normal_greedy_output",
+            "top1_i64",
+            "top1_i64",
+            "f32",
+            evidence=_DEVICE_ARGMAX_EVIDENCE,
+        ),
         _selection(
             "paged_attn_decode",
             "qwen4exp_multirow_dense_qsa",
@@ -160,6 +172,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "argmax",
+            "qwen4exp_normal_greedy_output",
+            "top1_i64",
+            "top1_i64",
+            "f32",
+            evidence=_DEVICE_ARGMAX_EVIDENCE,
+        ),
         _selection(
             "paged_attn_decode",
             "qwen4exp_multirow_dense_qsa",
@@ -250,7 +270,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
-        "HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX": "0",
+        "HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX": "1",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
