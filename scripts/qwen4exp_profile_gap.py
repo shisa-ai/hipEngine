@@ -496,14 +496,18 @@ def main() -> None:
                 census.close()
             prompt_tokens = len(ids)
         else:
+            device_argmax = os.environ.get(
+                "HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0"
+            ) not in {"", "0", "false", "False"}
+            result_kwargs = {"capture_logits": False} if device_argmax else {}
             for _ in range(args.warm_trajectory_repetitions):
-                result = runner.prefill([9707])
+                result = runner.prefill([9707], **result_kwargs)
                 for _ in range(args.warm_decode_steps + args.decode_steps):
-                    result = runner.step(int(result.token_id))
+                    result = runner.step(int(result.token_id), **result_kwargs)
                 runner.runtime.device_synchronize()
-            result = runner.prefill([9707])
+            result = runner.prefill([9707], **result_kwargs)
             for _ in range(args.warm_decode_steps):
-                result = runner.step(int(result.token_id))
+                result = runner.step(int(result.token_id), **result_kwargs)
             runner.runtime.device_synchronize()
             report["graph_before"] = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
             census = RuntimeCensus(runner.runtime)
@@ -518,7 +522,7 @@ def main() -> None:
                     if roctx:
                         roctx.push(f"qwen4exp_decode_step_{step}")
                     started = time.perf_counter()
-                    result = runner.step(int(result.token_id))
+                    result = runner.step(int(result.token_id), **result_kwargs)
                     report["wall_seconds"].append(time.perf_counter() - started)
                     if roctx:
                         roctx.pop()
@@ -526,7 +530,11 @@ def main() -> None:
                 if roctx:
                     roctx.pop()
                 report["token_id"] = int(result.token_id)
-                report["logits_sha256"] = hashlib.sha256(result.logits.tobytes()).hexdigest()
+                report["logits_sha256"] = (
+                    None
+                    if result.logits is None
+                    else hashlib.sha256(result.logits.tobytes()).hexdigest()
+                )
                 report["runtime_census"] = census.snapshot()
             finally:
                 if roles is not None:
