@@ -939,7 +939,13 @@ c1-shaped layout without reviving the rejected prefill-colwarps route.
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-t128-rejected.json`.
 - [ ] Keep recurrent state transposed in the decode-native layout across steps;
       define exact construction, snapshot, rollback, reset, and strict
-      conversion boundaries.
+      conversion boundaries. Exact strict↔transposed conversion and a
+      default-unselected wave-per-value primitive now pass actual-shape
+      output/state envelopes, but operation-complete prepare+recurrence+gate
+      regresses **0.07535→0.08535 ms (0.883x)**. Runner layout integration is
+      removed; a paying design must fuse stages or reduce 6,144 wave-block
+      overhead. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-transposed-integration-rejected.json`.
 - [ ] Port the relevant llama four-warp decode dataflow, not its prefill body or
       constants.
 - [ ] Prove CPU-reference state/output parity on reduced and actual fixtures,
