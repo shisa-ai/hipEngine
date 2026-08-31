@@ -4904,10 +4904,12 @@ other means and were not touched.
   failure, and test both paths. If the accept cycle redesign removes staging, delete it instead.
 - **Repaired 2026-08-31.** A failed `host_register` now selects the pageable path and latches the adapter
   off (`_accept_staging_backing` -> `_reset_accept_staging`), the registered pointer and `host_unregister`
-  callable are tracked, and `close()` releases the arena exactly once before the remaining teardown, so a
-  page-locked 4 MiB arena no longer leaks per adapter. CPU lifecycle coverage lives in
+  callable are tracked, and `close()` releases the arena exactly once as its final teardown action. A failed
+  unregister therefore still propagates after ngram, batch-accept workspace, and target scratch cleanup;
+  a runtime without `host_unregister` still drops every arena reference. The page-locked 4 MiB arena no
+  longer leaks per adapter. CPU lifecycle coverage lives in
   `tests/test_qwen35_gguf_mtp2_accept_staging.py` (registration failure, sticky-off, single registration,
-  unregister-on-close, unregister failure still releases, no re-registration after close). Both runner call
+  unregister-on-close, failure-safe remaining cleanup, missing-unregister release, no re-registration). Both runner call
   sites are teardown-only, so the latch cannot disable staging for a live session. Still neutral: this is
   lifecycle hygiene, not a rate win.
 - Remove the fallback only if pipelining work makes the page-locked path load-bearing, or delete the staging

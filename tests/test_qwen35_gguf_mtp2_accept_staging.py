@@ -128,6 +128,62 @@ def test_close_releases_the_arena_even_when_unregister_fails() -> None:
     assert adapter._accept_staging_state == "off"
 
 
+def test_unregister_failure_does_not_skip_remaining_adapter_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter = _adapter()
+    runtime = _RecordingRuntime(fail_unregister=True)
+    assert adapter._accept_staging_backing(runtime) is not None
+    cleanup_calls: list[str] = []
+    adapter._ngram = SimpleNamespace(
+        close=lambda: cleanup_calls.append("ngram")
+    )
+    adapter._batch_accept_workspace = SimpleNamespace(
+        free=lambda: cleanup_calls.append("batch_accept")
+    )
+    adapter._batch_accept_owner = object()
+    adapter._batch_accept_remaining = object()
+    adapter._batch_accept_payload = object()
+    adapter._batch_accept_library = object()
+    adapter._target_pad_token_scratch = object()
+    adapter._target_pad_token_capacity = 64
+    monkeypatch.setattr(
+        "hipengine.generation.qwen35_gguf_mtp2.free",
+        lambda _buffer: cleanup_calls.append("target_scratch"),
+    )
+
+    with pytest.raises(RuntimeError, match="hipHostUnregister failed"):
+        adapter.close()
+
+    assert runtime.unregistered == [runtime.registered[0][0]]
+    assert cleanup_calls == ["ngram", "batch_accept", "target_scratch"]
+    assert adapter._batch_accept_workspace is None
+    assert adapter._batch_accept_owner is None
+    assert adapter._batch_accept_remaining is None
+    assert adapter._batch_accept_payload is None
+    assert adapter._batch_accept_library is None
+    assert adapter._target_pad_token_scratch is None
+    assert adapter._target_pad_token_capacity == 0
+
+
+def test_close_releases_registered_arena_without_host_unregister() -> None:
+    registered: list[tuple[int, int]] = []
+    runtime = SimpleNamespace(
+        host_register=lambda ptr, nbytes: registered.append((int(ptr), int(nbytes)))
+    )
+    adapter = _adapter()
+    arena = adapter._accept_staging_backing(runtime)
+    assert arena is not None
+
+    adapter.close()
+
+    assert registered == [(int(arena.ctypes.data), int(arena.nbytes))]
+    assert getattr(adapter, "_accept_staging_arena", None) is None
+    assert getattr(adapter, "_accept_staging_registered_ptr", 0) == 0
+    assert getattr(adapter, "_accept_staging_unregister", None) is None
+    assert adapter._accept_staging_state == "off"
+
+
 def test_released_arena_is_not_reused_by_a_later_cycle() -> None:
     adapter = _adapter()
     runtime = _RecordingRuntime()

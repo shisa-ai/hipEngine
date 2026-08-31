@@ -3872,7 +3872,6 @@ class Qwen35GGUFMTP2Adapter:
         ):
             self._free_prompt_streaming_norm_buffer(request_id, target=None)
         self._close_cycle_workspace()
-        self._release_accept_staging()
         ngram = getattr(self, "_ngram", None)
         if ngram is not None:
             ngram.close()
@@ -3887,6 +3886,9 @@ class Qwen35GGUFMTP2Adapter:
             free(self._target_pad_token_scratch)
             self._target_pad_token_scratch = None
             self._target_pad_token_capacity = 0
+        # Keep host unregistration last: it may report a runtime failure after
+        # dropping the arena, but must not strand the adapter's other owners.
+        self._release_accept_staging()
 
     def _open_batch_requests(self, request_ids: tuple[int, ...]) -> None:
         rows = [self.owner._row(request_id) for request_id in request_ids]
