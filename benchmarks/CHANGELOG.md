@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 router+top-10 — rejected] Counter-last fusion preserves full logits, selected IDs, routing weights, and replay counters exactly, but four parallel selector CTAs still regress the rows508 operation-complete primitive **1.877→2.128 ms (0.882x)**. Candidate code is removed; exact tile4 plus separate selector remains default. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-fused-select-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 F32 router tile4 — retained] Reusing each 2560-wide F32 weight row across four prompt rows preserves dense arithmetic, cuts the rows508 primitive **3.767→1.911 ms (1.971x)**, and improves clean p508 **89.689→91.121 tok/s (1.0160x, 95% CI 1.0143–1.0177)** with all five pairs exact. The complete T0 gate passes **450/450 logits at KL=0**, **18/18 exact state/task prompts**, lifecycle, and a 1.916 ms gfx1151 trace; c1 retains dense. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 fused GR sigmoid+mean — retained] The exact rows<=256 owner removes one launch per GR read and improves clean counterbalanced p508+128-step decode **14.162→15.111 tok/s (1.0670x, 95% CI 1.0543–1.0797)** with all five pairs and output sequences exact. The complete T0 gate passes **450/450 logits at KL=0**, **18/18 exact state/task prompts**, three repeats, lifecycle, and a 1,924 ns gfx1151 trace; rows>256 retain the unfused fallback. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json`.

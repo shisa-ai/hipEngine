@@ -728,6 +728,12 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       89.689→91.121 tok/s (1.0160x); c1 stays dense. The complete 450-row and
       18-prompt state/task gate is exact. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json`.
+      A counter-last projection+stable-top-10 fusion preserves logits/IDs/weights
+      exactly but regresses the rows508 operation-complete primitive
+      1.877→2.128 ms (0.882x), even with four selector CTAs per tile. It is
+      removed; do not retry without eliminating global coordination or the
+      materialized logits. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-fused-select-rejected.json`.
 - [ ] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
       F32/BF16 boundaries and the strict shared-expert chain.
 - [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
