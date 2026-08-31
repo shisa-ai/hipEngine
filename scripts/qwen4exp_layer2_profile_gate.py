@@ -75,6 +75,19 @@ CANDIDATES = {
             "selected_gemv_bf16_bf16_out",
         ),
     ),
+    "gr_sigmoid_mean_fused": CandidateSpec(
+        name="gr_sigmoid_mean_fused",
+        classification="T0",
+        mechanism="fuse GR sigmoid materialization with gated mean through 256 rows",
+        environment={"HIPENGINE_QWEN4_EXP_GR_SIGMOID_MEAN_FUSED": "1"},
+        scenario_id="qwen4exp-ud-q4-k-xl-gr-sigmoid-mean-fused",
+        candidate_key=(
+            "hip_gfx1151", "gr_gated_mean_sigmoid", "f32", "strict",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "gr_gated_mean", "f32", "strict",
+        ),
+    ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
         classification="T2",

@@ -32,6 +32,7 @@ def _hip_available() -> bool:
 def test_qwen4_exp_gr_build_and_registry_contract() -> None:
     from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
         plan_qwen4_exp_gr_build,
+        qwen4_exp_gated_mean_sigmoid_f32,
         qwen4_exp_gr_write_bf16_f32,
         register_qwen4_exp_gr_kernels,
     )
@@ -41,6 +42,15 @@ def test_qwen4_exp_gr_build_and_registry_contract() -> None:
     assert artifact.output_path.name == "qwen4_exp_gr.so"
     assert artifact.sources[0].name == "qwen4_exp_gr.hip"
     register_qwen4_exp_gr_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="gr_gated_mean_sigmoid",
+            quant="f32",
+            variant="strict",
+        )
+        is qwen4_exp_gated_mean_sigmoid_f32
+    )
     assert (
         resolve(
             backend="hip_gfx1100",
@@ -58,8 +68,10 @@ def test_qwen4_exp_gr_native_primitives_match_cpu_reference() -> None:
     from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
         build_qwen4_exp_gr,
         qwen4_exp_gated_mean_f32,
+        qwen4_exp_gated_mean_sigmoid_f32,
         qwen4_exp_gr_write_bf16_f32,
         qwen4_exp_grouped_rmsnorm_bf16_f32,
+        qwen4_exp_sigmoid_f32,
         qwen4_exp_sigmoid_gated_rmsnorm_f32,
     )
 
@@ -115,6 +127,38 @@ def test_qwen4_exp_gr_native_primitives_match_cpu_reference() -> None:
             library=library,
             runtime=runtime,
         )
+        gate_logits = rng.normal(0.0, 0.5, size=residual.shape).astype(np.float32)
+        d_gate_logits = _upload(gate_logits, runtime, allocations)
+        d_gate_sigmoid = _alloc(gate_logits.shape, np.float32, runtime, allocations)
+        d_mean_chain = _alloc(expected_mean.shape, np.float32, runtime, allocations)
+        d_mean_fused = _alloc(expected_mean.shape, np.float32, runtime, allocations)
+        qwen4_exp_sigmoid_f32(
+            d_gate_logits.ptr,
+            d_gate_sigmoid.ptr,
+            gate_logits.size,
+            library=library,
+            runtime=runtime,
+        )
+        qwen4_exp_gated_mean_f32(
+            d_norm.ptr,
+            d_gate_sigmoid.ptr,
+            d_mean_chain.ptr,
+            rows,
+            branches,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
+        qwen4_exp_gated_mean_sigmoid_f32(
+            d_norm.ptr,
+            d_gate_logits.ptr,
+            d_mean_fused.ptr,
+            rows,
+            branches,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
         d_block = _upload(block, runtime, allocations)
         d_inject = _upload(inject, runtime, allocations)
         d_written = _alloc(residual_bits.shape, np.uint16, runtime, allocations)
@@ -151,6 +195,18 @@ def test_qwen4_exp_gr_native_primitives_match_cpu_reference() -> None:
         runtime.device_synchronize()
         actual_norm = _download(d_norm, expected_norm.shape, np.float32, runtime)
         actual_mean = _download(d_mean, expected_mean.shape, np.float32, runtime)
+        actual_mean_chain = _download(
+            d_mean_chain, expected_mean.shape, np.float32, runtime
+        )
+        actual_mean_fused = _download(
+            d_mean_fused, expected_mean.shape, np.float32, runtime
+        )
+        actual_gate_chain = _download(
+            d_gate_sigmoid, gate_logits.shape, np.float32, runtime
+        )
+        actual_gate_fused = _download(
+            d_gate_logits, gate_logits.shape, np.float32, runtime
+        )
         actual_written = _download(d_written, residual_bits.shape, np.uint16, runtime)
         actual_sigmoid_norm = _download(
             d_sigmoid_norm,
@@ -164,6 +220,8 @@ def test_qwen4_exp_gr_native_primitives_match_cpu_reference() -> None:
 
     np.testing.assert_allclose(actual_norm, expected_norm, rtol=2e-5, atol=2e-5)
     np.testing.assert_allclose(actual_mean, expected_mean, rtol=2e-6, atol=2e-6)
+    np.testing.assert_array_equal(actual_gate_fused, actual_gate_chain)
+    np.testing.assert_array_equal(actual_mean_fused, actual_mean_chain)
     np.testing.assert_array_equal(actual_written, expected_write_bits)
     np.testing.assert_allclose(
         actual_sigmoid_norm,

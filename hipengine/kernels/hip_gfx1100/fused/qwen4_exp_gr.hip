@@ -113,6 +113,28 @@ __global__ void gated_mean_f32_kernel(
   }
 }
 
+__global__ void gated_mean_sigmoid_f32_kernel(
+    const float* __restrict__ normalized,
+    float* __restrict__ gate_logits,
+    float* __restrict__ output,
+    int64_t branches,
+    int64_t hidden) {
+  const int64_t column_tiles = (hidden + blockDim.x - 1) / blockDim.x;
+  const int64_t row = blockIdx.x / column_tiles;
+  const int64_t column = (blockIdx.x % column_tiles) * blockDim.x + threadIdx.x;
+  if (column < hidden) {
+    const int64_t residual_width = branches * hidden;
+    float value = 0.0f;
+    for (int64_t branch = 0; branch < branches; ++branch) {
+      const int64_t index = row * residual_width + branch * hidden + column;
+      const float gate = 1.0f / (1.0f + expf(-gate_logits[index]));
+      gate_logits[index] = gate;
+      value += normalized[index] * gate;
+    }
+    output[row * hidden + column] = value / static_cast<float>(branches);
+  }
+}
+
 __global__ void gr_write_bf16_f32_kernel(
     const uint16_t* __restrict__ residual,
     const float* __restrict__ block_output,
@@ -278,6 +300,28 @@ extern "C" int hipengine_qwen4_exp_gated_mean_f32(
       gated_mean_f32_kernel,
       dim3(static_cast<uint32_t>(rows)), dim3(threads), 0, stream,
       static_cast<const float*>(normalized), static_cast<const float*>(gate),
+      static_cast<float*>(output), branches, hidden);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gated_mean_sigmoid_f32(
+    const void* normalized,
+    void* gate_logits,
+    void* output,
+    int64_t rows,
+    int64_t branches,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (!normalized || !gate_logits || !output ||
+      rows <= 0 || branches <= 0 || hidden <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  const uint32_t column_tiles = static_cast<uint32_t>((hidden + threads - 1) / threads);
+  hipLaunchKernelGGL(
+      gated_mean_sigmoid_f32_kernel,
+      dim3(static_cast<uint32_t>(rows) * column_tiles), dim3(threads), 0, stream,
+      static_cast<const float*>(normalized), static_cast<float*>(gate_logits),
       static_cast<float*>(output), branches, hidden);
   return static_cast<int>(hipGetLastError());
 }
