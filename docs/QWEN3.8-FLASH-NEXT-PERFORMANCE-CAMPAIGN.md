@@ -958,7 +958,7 @@ c1-shaped layout without reviving the rejected prefill-colwarps route.
 Goal: contract 48 small MoE graphs plus 1,195 direct launches/token toward one
 request-owned transition submission.
 
-- [ ] Reproduce and localize the historical third-replay state corruption
+- [x] Reproduce and localize the historical third-replay state corruption
       before changing capture scope. A faithful recurrent-subgraph probe now
       captures 36 independent production-shape Conv+GDN state pairs (72 kernels)
       and remains bit-exact through four replays, reset, capture non-execution,
@@ -1005,6 +1005,19 @@ request-owned transition submission.
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json`.
+      The root/head boundary now feeds generated device argmax tokens through
+      embedding, active PLE, all 48 layers, full logits, and argmax. Exact PLE
+      lookup cannot live inside the graph: its 320,001,446-row IQ4_NL table is a
+      28.8-GB sparse mmap. The honest transition is host hash + 16-row mmap
+      gather/dequant + 10-KiB H2D, then one graph launch and token readback.
+      Across positions 8–11 the trajectory `3147→278→18407→2129→69422`, full
+      logits, and 138 owners are exact; operation-complete wall including PLE
+      and readback is **199.086→60.887 ms (3.27x)** over 30 samples. Profiling
+      confirms 1,708 dispatches/launch and no post-launch device allocation.
+      Production binding stays off pending request graph keys/lifecycle,
+      multi-prompt generation, context buckets, fallback, cold PLE, and c2.
+      Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json`.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.
