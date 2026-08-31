@@ -2722,7 +2722,12 @@ def run_qwen4_exp_gr_read(
             runtime=active_runtime,
         )
     if inject_weight is None:
-        active_runtime.memset(scratch.inject_logits.ptr, 0, rows * branches * 4)
+        if stream:
+            active_runtime.memset_async(
+                scratch.inject_logits.ptr, 0, rows * branches * 4, stream
+            )
+        else:
+            active_runtime.memset(scratch.inject_logits.ptr, 0, rows * branches * 4)
     else:
         launch_gguf_linear(
             inject_weight,

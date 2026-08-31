@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata,_host_metadata
 
 def build_parser():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);p.add_argument('--prompt-file',type=Path,required=True);p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);p.add_argument('--prompt-file',type=Path,required=True);p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
 def _first_mismatch(rows):
  for row in rows:
   if not row['state_exact']:
@@ -36,9 +36,14 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
  from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
  from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
  from hipengine.kernels.hip_gfx1100.runtime.state import advance_decode_position_i64
+ from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import qwen4_exp_repeat_bf16_branches
+ from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32
+ from hipengine.kernels.registry import resolve
+ from hipengine.runtime.gguf_linear import GGUF_ACTIVATION_F32,GGUF_OUTPUT_F32,launch_gguf_linear
  from hipengine.runtime.qwen4_exp_runner import (
   run_qwen4_exp_dense_qsa_layer,
   run_qwen4_exp_gdn_layer,
+  run_qwen4_exp_gr_read,
   run_qwen4_exp_ple,
  )
  register_gfx1151_kernels(replace=True);register_qwen4_exp_gfx1151_profiles();reset_memory_stats();generator=None;graph=exec_=stream=0
@@ -51,6 +56,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
   if layer<0:layer=next(i for i,kind in enumerate(cfg.layer_types) if kind=='gdn')
   layers=tuple(range(layer,layer+int(args.segment_length)))
   if not layers or layers[-1]>=len(cfg.layer_types):raise ValueError('selected segment exceeds model layers')
+  if args.include_root_head and (layers[0]!=0 or len(layers)!=len(cfg.layer_types)):raise ValueError('root/head capture requires all physical layers')
   layer_kinds=tuple(cfg.layer_types[item] for item in layers)
   if any(kind not in {'gdn','qsa'} for kind in layer_kinds):raise ValueError('selected segment contains an unsupported layer kind')
   assert runner.state is not None and runner.gdn_scratch is not None and runner.qsa_scratch is not None and runner.ple_scratch is not None
@@ -64,6 +70,8 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
    if any(context_limit>runner.index_states[item].dense_equivalent_limit for item in qsa_indices):raise ValueError('advancing-position graph cannot cross sparse QSA selection')
   base_index_cursors={qsa_index:(runner.index_states[qsa_index].count,runner.index_states[qsa_index].pooled_count) for qsa_index in qsa_indices}
   mutable_buffers={f'decode.{name}':buffer for name,buffer in runner.state.owned_buffers.items()}
+  if args.include_root_head:
+   mutable_buffers['root.token_id']=runner.token_id_buffer
   for qsa_index in qsa_indices:
    attention=runner.attention_states[qsa_index];index=runner.index_states[qsa_index]
    for name in ('key_cache','value_cache','position','context'):mutable_buffers[f'qsa.{qsa_index}.attention.{name}']=getattr(attention,name)
@@ -84,8 +92,13 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
    for qsa_index in qsa_indices:
     runner.attention_states[qsa_index].set_position(position)
     runner.index_states[qsa_index].count=position
+  token_weight=runner.resident.weight('root.token_embedding')
+  embedding=resolve(backend=runner.backend,layer='embedding',quant=token_weight.spec.quant_key,variant='lookup_bf16_out')
   def launch(stream_id,current_position=position,graph_owned=False):
    residual_ptr=runner.state.residual.ptr
+   if args.include_root_head:
+    embedding(runner.token_id_buffer.ptr,token_weight.allocation('raw').tensor.ptr,runner.embedding_buffer.ptr,1,cfg.hidden_size,cfg.vocab_size,stream=stream_id,runtime=rt)
+    qwen4_exp_repeat_bf16_branches(runner.embedding_buffer.ptr,residual_ptr,cfg.residual_branch_count,cfg.hidden_size,stream=stream_id,runtime=rt)
    for item,kind in zip(layers,layer_kinds,strict=True):
     if item in cfg.ple_layers and not args.omit_ple:
      layer_prefix=f'layers.{item}.'
@@ -96,12 +109,16 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
     else:
      binding=runner.qsa_bindings[item]
      residual_ptr=run_qwen4_exp_dense_qsa_layer(residual_ptr,binding,attention_state=runner.attention_states[binding.qsa_state_index],index_state=runner.index_states[binding.qsa_state_index],scratch=runner.qsa_scratch,position=current_position,rows=1,branches=cfg.residual_branch_count,hidden=cfg.hidden_size,low_rank=cfg.residual_low_rank,query_heads=cfg.attention_head_count,kv_heads=cfg.attention_kv_head_count,head_dim=cfg.attention_key_length,rotary_dim=cfg.rope_dimension_count,theta=cfg.rope_freq_base,index_heads=cfg.indexer_head_count,index_dim=cfg.indexer_key_length,index_rotary_dim=cfg.rope_dimension_count,position_prepared=graph_owned or not args.advance_position,device_position_owned=graph_owned and args.advance_position,attention_context_limit=context_limit if graph_owned and args.advance_position else None,ffn=cfg.expert_feed_forward_length,experts=cfg.expert_count,top_k=cfg.expert_used_count,stream=stream_id,runtime=rt,moe_graph_cache=None,moe_graph_key=None).ptr
+   if args.include_root_head:
+    head_read=run_qwen4_exp_gr_read(residual_ptr,runner.resident.weight('root.head_hc_norm').allocation('raw').tensor.ptr,runner.resident.weight('root.head_hc_down'),runner.resident.weight('root.head_hc_up'),None,runner.head_scratch,rows=1,branches=cfg.residual_branch_count,hidden=cfg.hidden_size,low_rank=cfg.residual_low_rank,stream=stream_id,runtime=rt)
+    launch_gguf_linear(runner.resident.weight('root.lm_head'),head_read.mixed.ptr,runner.logits_buffer.ptr,1,cfg.hidden_size,cfg.vocab_size,activation_dtype=GGUF_ACTIVATION_F32,output_dtype=GGUF_OUTPUT_F32,stream=stream_id,runtime=rt)
+    argmax_f32(runner.logits_buffer.ptr,runner.argmax_block_values.ptr,runner.argmax_block_indices.ptr,runner.token_id_buffer.ptr,runner.argmax_value.ptr,cfg.vocab_size,stream=stream_id,runtime=rt)
    if args.advance_position:
     for qsa_index in qsa_indices:
      attention=runner.attention_states[qsa_index]
      advance_decode_position_i64(attention.position.ptr,attention.context.ptr,stream=stream_id,runtime=rt)
    return residual_ptr
-  final_buffer=runner.qsa_scratch.output if layer_kinds[-1]=='qsa' else runner.gdn_scratch.output
+  final_buffer=runner.logits_buffer if args.include_root_head else runner.qsa_scratch.output if layer_kinds[-1]=='qsa' else runner.gdn_scratch.output
   def output_bytes():
    out=np.empty(final_buffer.nbytes,np.uint8);rt.memcpy(int(out.ctypes.data),final_buffer.ptr,out.nbytes,HipMemcpyKind.DEVICE_TO_HOST);return out
   base=snapshot_state();prepare_fixed_qsa_control();launch(0,position);rt.device_synchronize() # warm all dispatch/JIT paths
@@ -131,7 +148,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
    if args.advance_position:
     for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position+sample+1
   eager_median=statistics.median(eager_ms);graph_median=statistics.median(graph_ms);mismatch=_first_mismatch(rows);correct=bool(capture_nonexecuting and mismatch is None)
-  payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':'strict','manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median,'eager_ms':eager_ms,'graph_ms':graph_ms}}
+  payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':'strict','manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'root_head_included':bool(args.include_root_head),'ple_input_dynamic':False,'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median,'eager_ms':eager_ms,'graph_ms':graph_ms}}
  finally:
   if exec_ and generator:generator.runner.runtime.graph_exec_destroy(exec_)
   if graph and generator:generator.runner.runtime.graph_destroy(graph)
