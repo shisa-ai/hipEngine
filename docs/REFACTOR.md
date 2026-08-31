@@ -332,13 +332,6 @@ fallback count is not a success metric.
 - Removal trigger: after one release checkpoint, remove the mixed-Q6 env flag
   and fold the retained partitions into the physical-target variant manifest;
   preserve repeated R6 as the registered strict fallback.
-  `HIPENGINE_GGUF_SPECDEC2_Q5_MIXED_TARGET_ROWTILES=1` is a separate
-  default-off Q5-only screen: R24/R30/R36 use the same mixed R8/R6 partitions
-  only at actual recurrent-output K6144/N5120. All four actual-weight totals are
-  exact; admitted rows improve 1.085-1.159x, while noise-flat R18 is excluded.
-- Removal trigger: reject and remove the mixed-Q5 flag/scope/maps if the full
-  C5-C8 gate is not exact and non-regressive. If retained, flip the default and
-  keep `0` through one release checkpoint before manifest folding.
 - Removal trigger: after one release window with the exact automatic C2 key and
   rows6-multiple explicit C3/C4 route, collapse prompt streaming, padding, and
   these boolean scopes into a general profile-resolved physical-target variant

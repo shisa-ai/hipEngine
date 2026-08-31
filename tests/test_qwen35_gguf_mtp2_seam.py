@@ -281,65 +281,15 @@ def test_physical_extra_rowtiles_are_production_and_backend_capability_scoped() 
     assert production.physical_prompt_streaming is True
     assert production.production_physical_extra_rowtiles is True
     assert production.production_physical_q5_rowtile is True
-    assert production.production_physical_q5_mixed_rowtiles is False
     assert production.production_physical_q6_rowtile is True
     assert production.production_physical_q6_mixed_rowtiles is True
     assert strict.physical_prompt_streaming is False
     assert strict.production_physical_extra_rowtiles is False
     assert strict.production_physical_q5_rowtile is False
-    assert strict.production_physical_q5_mixed_rowtiles is False
     assert strict.production_physical_q6_rowtile is False
     assert strict.production_physical_q6_mixed_rowtiles is False
     production.close()
     strict.close()
-
-
-def test_mixed_q5_target_rowtiles_are_default_off_and_profile_scoped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_SPECDEC2_Q5_MIXED_TARGET_ROWTILES", "1"
-    )
-    production = Qwen35GGUFMTP2Adapter(
-        SimpleNamespace(
-            generator=SimpleNamespace(
-                execution_profile="production",
-                backend="hip_gfx1100",
-            )
-        ),
-        enabled=True,
-        target_verify_mode="native",
-        candidate_budget=3,
-    )
-    strict = Qwen35GGUFMTP2Adapter(
-        SimpleNamespace(
-            generator=SimpleNamespace(
-                execution_profile="strict",
-                backend="hip_gfx1100",
-            )
-        ),
-        enabled=True,
-        target_verify_mode="native",
-        candidate_budget=3,
-    )
-    peer = Qwen35GGUFMTP2Adapter(
-        SimpleNamespace(
-            generator=SimpleNamespace(
-                execution_profile="production",
-                backend="hip_gfx1151",
-            )
-        ),
-        enabled=True,
-        target_verify_mode="native",
-        candidate_budget=3,
-    )
-
-    assert production.production_physical_q5_mixed_rowtiles is True
-    assert strict.production_physical_q5_mixed_rowtiles is False
-    assert peer.production_physical_q5_mixed_rowtiles is False
-    production.close()
-    strict.close()
-    peer.close()
 
 
 def test_mixed_q6_target_rowtiles_are_default_on_with_rollback_and_profile_scope(

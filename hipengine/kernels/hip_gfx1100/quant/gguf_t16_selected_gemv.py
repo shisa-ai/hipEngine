@@ -18,13 +18,10 @@ from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.core.dtype import DType
 from hipengine.core.specdec2_scope import (
     physical_exact_rowtiles_enabled,
-    q5_t16_physical_mixed_rowtiles_enabled,
     q5_t16_physical_rowtile_enabled,
 )
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
-    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_MIXED_ROWTILE_CHUNKS,
-    GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_MIXED_ROWTILE_SHAPES,
 )
 from hipengine.kernels.registry import KernelKey, register
 
@@ -1724,45 +1721,20 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch the one-expert dense Q5T16 producer."""
 
-    def launch_rowtile(x, tiles, out, row_count, in_f, out_f, **kw) -> None:
-        _check_dense_q5_t16_shape(row_count, in_f, out_f, rowtile=True)
-        _launch_dense_q5_t16(
-            _Q5_DENSE_ROWTILE_BF16,
-            x,
-            tiles,
-            out,
-            row_count,
-            in_f,
-            out_f,
-            **kw,
-        )
-
-    mixed_chunks = GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_MIXED_ROWTILE_CHUNKS.get(
-        int(rows)
-    )
-    if (
-        q5_t16_physical_rowtile_enabled()
-        and q5_t16_physical_mixed_rowtiles_enabled()
-        and mixed_chunks is not None
-        and (int(in_features), int(out_features))
-        in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_MIXED_ROWTILE_SHAPES
-        and launch_physical_row_chunks(
-            launch_rowtile,
-            x_ptr,
-            tiles_ptr,
-            out_ptr,
-            rows,
-            in_features,
-            out_features,
-            tuple(mixed_chunks),
-            stream=stream,
-            library=library,
-            runtime=runtime,
-        )
-    ):
-        return
     if q5_t16_physical_rowtile_enabled() and launch_physical_rows6_chunked(
-        launch_rowtile,
+        lambda x, tiles, out, row_count, in_f, out_f, **kw: (
+            _check_dense_q5_t16_shape(row_count, in_f, out_f, rowtile=True),
+            _launch_dense_q5_t16(
+                _Q5_DENSE_ROWTILE_BF16,
+                x,
+                tiles,
+                out,
+                row_count,
+                in_f,
+                out_f,
+                **kw,
+            ),
+        ),
         x_ptr,
         tiles_ptr,
         out_ptr,
