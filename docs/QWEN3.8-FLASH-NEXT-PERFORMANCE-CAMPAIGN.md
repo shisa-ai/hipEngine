@@ -976,9 +976,15 @@ request-owned transition submission.
       exact through four replays and **9.801→3.896 ms (2.52x)** over 30 samples;
       profiling confirms 105 dispatches per graph launch and zero post-launch
       allocation. These are GDN-only research rungs, not a production binding;
-      mixed GDN/QSA dynamic position/KV ownership remains next. Evidence:
+      A fixed-position mixed GDN/GDN/GDN/QSA segment also passes all captured
+      device owners and output through four replays and measures
+      **12.160→4.955 ms (2.45x)**, with 142 dispatches/launch and no post-launch
+      allocation. It is diagnostic only: scalar position/live-counts and the
+      host QSA index cursor do not advance (`host_cursor_replay_safe=false`).
+      Device-owned paired QSA control advance is the next binding gate. Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`,
-      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`.
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.

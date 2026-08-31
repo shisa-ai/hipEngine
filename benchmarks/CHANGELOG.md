@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 mixed graph diagnostic] Fixed-position GDN layers 0–2 plus QSA layer 3 remain captured-device-state/output exact through four replays and improve **12.160→4.955 ms (2.45x)** over 30 samples. Profiling confirms 142 dispatches/launch and no post-launch allocation, but host position/index cursors do not advance; production binding remains blocked. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 three-layer graph segment] Complete GDN layers 0–2 remain output/state exact through four graph replays and improve synchronized segment wall **9.801→3.896 ms (2.52x)** over 30 samples. Cached profiling confirms 105 dispatches/launch and zero post-launch device allocation; production remains unchanged pending mixed GDN/QSA ownership. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8-Flash-Next P8 stateful-layer graph] Strict layer 0's complete 34-kernel GR→Conv/GDN→MoE transition remains output/state exact through four replays and improves synchronized operation wall **4.051→1.258 ms (3.22x)** over 30 samples. Cached profiling records 34 dispatches per graph launch and zero device allocations after first launch; production binding remains off pending larger-rung gates. `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`.
