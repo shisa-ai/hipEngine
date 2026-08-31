@@ -590,9 +590,15 @@ matrix before implementation claims parity.
       eventual closure artifact.
 - [ ] Add explicit warm-page-cache and isolated cold-PLE modes. Never average
       or compare them as one workload.
-- [ ] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
+- [x] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
       permits) at p512/p1024/p4096 with memory and correctness controls; select
-      by model evidence rather than copying an external `ubatch` value.
+      by model evidence rather than copying an external `ubatch` value. All
+      routes are deterministic and tear down to zero. Chunk 1024 improves
+      weighted p1024/p4096 **2.55%/2.25%**, but is **-2.05%** at p512 versus
+      chunk 512 and adds **720 MiB** peak; the incumbent p512 arm is also noisy
+      (>2% CV). Chunk 2048 loses to 1024. Retain default 512; no promotion from
+      an ordered/noisy screen. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p0-canonical-chunk-sweep.json`.
 - [x] Extend the gap report to carry per-layer role time, direct/graph launch
       APIs, blocking/async copies and bytes, synchronizations, compiler resource
       data, and unresolved wall-minus-device time. The current context report
