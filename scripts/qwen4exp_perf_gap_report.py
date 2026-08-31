@@ -24,6 +24,80 @@ def _row(name: str, ours: float | int | None, llama: float | int | None, gap: fl
     return f"| {name} | {_ms(ours)} | {_ms(llama)} | {_gap(gap)} |"
 
 
+def render_context_report(artifact: dict[str, Any]) -> str:
+    lines = [
+        "# Qwen4Exp gfx1151 context-conditioned gap report",
+        "",
+        f"- Date: `{artifact['date']}`",
+        f"- Source commit: `{artifact['source']['head']}`",
+        f"- Production manifest: `{artifact['profile']['manifest_sha256']}`",
+        f"- Strict manifest: `{artifact['profile']['strict_manifest_sha256']}`",
+        "",
+        "## Context windows",
+        "",
+        "| Context | Path | Wall ms | Kernel ms | wall minus kernel ms | Kernel rows | Direct launches / API ms | Graph launches / API ms | Memcpy calls / API ms |",
+        "| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for raw_live, context in sorted(
+        artifact["contexts"].items(), key=lambda item: int(item[0])
+    ):
+        live = int(raw_live)
+        profiled = context["profiled"]
+        api = profiled["api"]
+        direct = api.get("direct_kernel_launch", {})
+        graph = api.get("graph_launch", {})
+        memcpy = api.get("memcpy_api", {})
+        wall = float(context["clean"]["wall_median_ms"])
+        kernel = float(profiled["kernel_ms_per_step"])
+        lines.append(
+            f"| live {live:,} | {context['qsa_path']} | {wall:.2f} | "
+            f"{kernel:.2f} | {wall - kernel:.2f} | "
+            f"{float(profiled['kernel_rows_per_step']):,.0f} | "
+            f"{float(direct.get('calls_per_step', 0)):,.0f} / {_ms(direct.get('ms_per_step'))} | "
+            f"{float(graph.get('calls_per_step', 0)):,.0f} / {_ms(graph.get('ms_per_step'))} | "
+            f"{float(memcpy.get('calls_per_step', 0)):,.0f} / {_ms(memcpy.get('ms_per_step'))} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Kernel-family ranking by context",
+            "",
+        ]
+    )
+    for raw_live, context in sorted(
+        artifact["contexts"].items(), key=lambda item: int(item[0])
+    ):
+        lines.extend(
+            [
+                f"### live {int(raw_live):,}",
+                "",
+                "| Family | ms/step | rows/step |",
+                "| --- | ---: | ---: |",
+            ]
+        )
+        families = context["profiled"]["families"]
+        for name, row in sorted(
+            families.items(), key=lambda item: -float(item[1]["ms_per_step"])
+        ):
+            lines.append(
+                f"| {name} | {_ms(row['ms_per_step'])} | "
+                f"{float(row['rows_per_step']):,.0f} |"
+            )
+        lines.append("")
+    decision = artifact["decision"]
+    lines.extend(
+        [
+            "## Decision",
+            "",
+            f"- Next owner: {decision['next_owner']}",
+            f"- Secondary owner: {decision['secondary']}",
+            f"- Do not chase first: {decision['do_not_chase']}",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def render_report(artifact: dict[str, Any]) -> str:
     end_to_end = artifact["end_to_end"]
     ours_e2e = end_to_end["hipengine_production"]
@@ -141,7 +215,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     artifact = json.loads(args.artifact.read_text())
-    report = render_report(artifact)
+    report = (
+        render_context_report(artifact)
+        if artifact.get("kind") == "qwen4exp_p6_context_transition_profile"
+        else render_report(artifact)
+    )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(report)

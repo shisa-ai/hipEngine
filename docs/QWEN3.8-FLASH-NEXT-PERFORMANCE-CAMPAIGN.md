@@ -593,9 +593,12 @@ matrix before implementation claims parity.
 - [ ] Sweep hipEngine prompt chunk 256/512/1024 (and 2048 where the prompt
       permits) at p512/p1024/p4096 with memory and correctness controls; select
       by model evidence rather than copying an external `ubatch` value.
-- [ ] Extend the gap report to carry per-layer role time, direct/graph launch
+- [x] Extend the gap report to carry per-layer role time, direct/graph launch
       APIs, blocking/async copies and bytes, synchronizations, compiler resource
-      data, and unresolved wall-minus-device time.
+      data, and unresolved wall-minus-device time. The current context report
+      renders marker-scoped wall/kernel/residual time, kernel rows/families,
+      direct/graph/memcpy call counts and API time; raw profile artifacts retain
+      copy direction/bytes, sync calls, and kernel VGPR/LDS/scratch resources.
 
 ### Phase P1 — layer 2 and the Q8 expert-down family
 
