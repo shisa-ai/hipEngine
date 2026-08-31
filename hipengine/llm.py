@@ -7,7 +7,7 @@ through a registry at call time so backend/quant choices do not become engine br
 from __future__ import annotations
 
 import os
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from numbers import Integral
 from pathlib import Path
@@ -334,6 +334,34 @@ class LLM:
         if len(outputs) != len(prompt_tuple):
             raise RuntimeError(f"generator returned {len(outputs)} outputs for {len(prompt_tuple)} prompts")
         return [output if isinstance(output, GenerationOutput) else GenerationOutput(text=str(output)) for output in outputs]
+
+    def submit_independent_batches_detailed(
+        self,
+        batches: Sequence[tuple[Sequence[Any], SamplingParams]],
+    ) -> tuple[tuple[Any, ...], ...]:
+        """Submit ready default-AR batches atomically and return per-child handles.
+
+        This internal serving seam preserves independent child completion while
+        ensuring every ready request reaches the resident driver before its next
+        model poll. Non-service generators deliberately do not emulate it.
+        """
+
+        requests = tuple(
+            _generation_request(
+                _normalize_prompts(prompts),
+                sampling,
+            )
+            for prompts, sampling in batches
+        )
+        if any(not request.prompts for request in requests):
+            raise ValueError("independent submission batches must contain prompts")
+        generator = self._get_text_generator()
+        submit = getattr(generator, "submit_request_batches", None)
+        if not callable(submit):
+            raise NotImplementedError(
+                "independent batch submission requires EngineService ownership"
+            )
+        return tuple(tuple(handles) for handles in submit(requests))
 
     def generate_speculative_mtp_detailed(
         self,

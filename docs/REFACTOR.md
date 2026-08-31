@@ -320,6 +320,22 @@ fallback count is not a success metric.
   fallbacks, synchronized caller fallback, unfused pair ownership, and focused
   offset/selector tests.
 
+## Server default-AR ready-cohort rollback
+
+- Added 2026-08-31 with task #29. Default-route HTTP items already inside the
+  configured generation batch window now enter one
+  `EngineService.submit_request_batches` command, so every child is admitted
+  before the next model poll while retaining its own collector, cancellation,
+  completion, backpressure, and reclaim lifecycle. Dynamically arriving items
+  use free capacity in a later cohort. `HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT=0`
+  restores the prior one-command-per-item race on the same build; non-independent
+  generators and streaming routes are unchanged.
+- Removal trigger: after one release window with clean repeated C1-C3 server
+  evidence showing full native-prefill groups, exact outputs, independent early
+  completion/failure/cancellation, and no C1 regression, remove only the env
+  lookup and old independent launch branch. Preserve the atomic EngineService
+  cohort seam and per-child handles.
+
 ## gfx1100 Q4-T16 row64 down-projection bisection
 
 - Added 2026-08-31 with task #11. The exact `(17408,5120)` rows33-192 owner is

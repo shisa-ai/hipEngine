@@ -24,7 +24,7 @@ from hipengine.generation import (
     SubmitPollTextGenerator,
     register_text_generator,
 )
-from hipengine.server.api import SamplingParams, _GenerationBatcher
+from hipengine.server.api import SamplingParams, _GenerationBatcher, _QueuedBatchResult
 
 
 def _request(
@@ -861,6 +861,267 @@ def test_independent_service_residency_is_not_clamped_by_physical_route_width() 
     )
 
     assert batcher._route_request_cap("default") == 13
+
+
+def test_engine_service_submit_request_batches_admits_every_ready_child_before_poll() -> None:
+    class CohortDriver(_FakeSoleDriver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.active_rows_at_poll: list[int] = []
+
+        def poll(self, *, max_ticks: int = 1):
+            self.active_rows_at_poll.append(len(self._active))
+            return super().poll(max_ticks=max_ticks)
+
+    driver = CohortDriver()
+    service = EngineService(driver, command_queue_size=8, idle_wait_seconds=0.001)
+    try:
+        batches = service.submit_request_batches(
+            (_request("slow:4"), _request("fast:1"))
+        )
+        assert [len(handles) for handles in batches] == [1, 1]
+        assert batches[1][0].result(timeout=2.0).generated_tokens == 1
+        assert batches[0][0].result(timeout=2.0).generated_tokens == 4
+    finally:
+        service.close()
+
+    assert driver.active_rows_at_poll[0] == 2
+    assert driver.submitted_prompt_groups == [("slow:4",), ("fast:1",)]
+
+
+def test_llm_independent_batch_seam_preserves_per_item_sampling() -> None:
+    class Submitter:
+        def __init__(self) -> None:
+            self.requests: tuple[GenerationRequest, ...] = ()
+
+        def submit_request_batches(self, requests):
+            self.requests = tuple(requests)
+            return tuple((f"handle-{index}",) for index, _request in enumerate(requests))
+
+    submitter = Submitter()
+    llm = LLM("/tmp/not-loaded")
+    llm._text_generator = submitter
+    first_token = GenerationCancellationToken()
+    second_token = GenerationCancellationToken()
+    first = SamplingParams(max_tokens=2, cancellation_token=first_token)
+    second = SamplingParams(max_tokens=3, cancellation_token=second_token)
+
+    handles = llm.submit_independent_batches_detailed(
+        (([11, 12], first), ([21, 22], second))
+    )
+
+    assert handles == (("handle-0",), ("handle-1",))
+    assert [request.prompts for request in submitter.requests] == [
+        ((11, 12),),
+        ((21, 22),),
+    ]
+    assert [request.max_tokens for request in submitter.requests] == [2, 3]
+    assert [request.cancellation_token for request in submitter.requests] == [
+        first_token,
+        second_token,
+    ]
+
+
+def test_generation_batcher_coalesces_ready_independent_admission_but_completes_items_independently() -> None:
+    class Handle:
+        def __init__(self, prompt: str, ready: threading.Event) -> None:
+            self.prompt = prompt
+            self.ready = ready
+
+        @property
+        def done(self) -> bool:
+            return self.ready.is_set()
+
+        def result(self, timeout: float | None = None) -> GenerationOutput:
+            if not self.ready.wait(timeout=timeout):
+                raise TimeoutError(self.prompt)
+            return GenerationOutput(text=f"generated:{self.prompt}")
+
+    class IndependentGroupedLLM:
+        supports_independent_generation = True
+
+        def __init__(self) -> None:
+            self.submitted = threading.Event()
+            self.release_slow = threading.Event()
+            self.fast_ready = threading.Event()
+            self.fast_ready.set()
+            self.batch_calls: list[tuple[tuple[str, ...], ...]] = []
+            self.last_batch_generation = {
+                "batch_id": "ready-default-ar",
+                "group_widths": [2],
+            }
+
+        def submit_independent_batches_detailed(self, batches):
+            prompt_groups = tuple(
+                tuple(str(prompt) for prompt in prompts)
+                for prompts, _sampling in batches
+            )
+            self.batch_calls.append(prompt_groups)
+            self.submitted.set()
+            return tuple(
+                (
+                    Handle(
+                        prompts[0],
+                        self.release_slow if prompts == ("slow",) else self.fast_ready,
+                    ),
+                )
+                for prompts in prompt_groups
+            )
+
+        def generate_detailed(self, prompts, sampling_params):
+            del prompts, sampling_params
+            raise AssertionError("ready compatible items must use one child cohort")
+
+    async def run() -> None:
+        fake = IndependentGroupedLLM()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=3,
+        )
+        sampling = SamplingParams(max_tokens=4)
+        slow = asyncio.create_task(
+            batcher.submit(
+                ("slow",),
+                sampling,
+                detailed=True,
+                include_batch_metadata=True,
+            )
+        )
+        fast = asyncio.create_task(
+            batcher.submit(
+                ("fast",),
+                sampling,
+                detailed=True,
+                include_batch_metadata=True,
+            )
+        )
+
+        assert await asyncio.to_thread(fake.submitted.wait, 2.0)
+        fast_result = await asyncio.wait_for(fast, timeout=1.0)
+        assert isinstance(fast_result, _QueuedBatchResult)
+        assert [output.text for output in fast_result.outputs] == ["generated:fast"]
+        assert fast_result.generation_shape["queue_group"]["request_count"] == 2
+        assert fast_result.generation_shape["backend_groups"][0]["actual_group_rows"] == [2]
+        assert not slow.done()
+        assert batcher.active_requests() == 1
+
+        # A dynamically arriving request uses the free resident capacity; it is
+        # neither held behind nor merged into the already-admitted slow child.
+        late_result = await asyncio.wait_for(
+            batcher.submit(
+                ("late",),
+                sampling,
+                detailed=True,
+                include_batch_metadata=True,
+            ),
+            timeout=1.0,
+        )
+        assert isinstance(late_result, _QueuedBatchResult)
+        assert [output.text for output in late_result.outputs] == ["generated:late"]
+        assert late_result.generation_shape["queue_group"]["request_count"] == 1
+        assert not slow.done()
+        assert batcher.active_requests() == 1
+
+        fake.release_slow.set()
+        slow_result = await asyncio.wait_for(slow, timeout=2.0)
+        assert isinstance(slow_result, _QueuedBatchResult)
+        assert [output.text for output in slow_result.outputs] == ["generated:slow"]
+        assert slow_result.generation_shape["queue_group"]["id"] == fast_result.generation_shape["queue_group"]["id"]
+        assert fake.batch_calls == [(('slow',), ('fast',)), (('late',),)]
+        await batcher.shutdown(grace_seconds=0.1)
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_ready_cohort_isolates_child_failure() -> None:
+    class Handle:
+        def __init__(self, prompt: str) -> None:
+            self.prompt = prompt
+
+        def result(self) -> GenerationOutput:
+            if self.prompt == "bad":
+                raise RuntimeError("bad child")
+            return GenerationOutput(text=f"generated:{self.prompt}")
+
+    class IndependentLLM:
+        supports_independent_generation = True
+        last_batch_generation = {
+            "batch_id": "isolated-failure",
+            "group_widths": [2],
+        }
+
+        def submit_independent_batches_detailed(self, batches):
+            return tuple(
+                tuple(Handle(str(prompt)) for prompt in prompts)
+                for prompts, _sampling in batches
+            )
+
+    async def run() -> None:
+        fake = IndependentLLM()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=2,
+        )
+        sampling = SamplingParams(max_tokens=1)
+        bad, good = await asyncio.gather(
+            batcher.submit(("bad",), sampling, detailed=True),
+            batcher.submit(("good",), sampling, detailed=True),
+            return_exceptions=True,
+        )
+        assert isinstance(bad, RuntimeError)
+        assert str(bad) == "bad child"
+        assert [output.text for output in good] == ["generated:good"]
+        assert batcher.active_requests() == 0
+        await batcher.shutdown(grace_seconds=0.1)
+
+    asyncio.run(run())
+
+
+def test_generation_batcher_ready_cohort_rollback_keeps_separate_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class IndependentLLM:
+        supports_independent_generation = True
+
+        def __init__(self) -> None:
+            self.batch_calls = 0
+            self.calls: list[tuple[str, ...]] = []
+
+        def submit_independent_batches_detailed(self, batches):
+            del batches
+            self.batch_calls += 1
+            raise AssertionError("rollback must bypass ready cohorts")
+
+        def generate_detailed(self, prompts, sampling_params):
+            del sampling_params
+            prompt_tuple = tuple(str(prompt) for prompt in prompts)
+            self.calls.append(prompt_tuple)
+            return [GenerationOutput(text=f"generated:{prompt_tuple[0]}")]
+
+    async def run() -> None:
+        monkeypatch.setenv("HIPENGINE_SERVER_DEFAULT_AR_READY_COHORT", "0")
+        fake = IndependentLLM()
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.01,
+            max_active_requests=2,
+        )
+        sampling = SamplingParams(max_tokens=1)
+        outputs = await asyncio.gather(
+            batcher.submit(("one",), sampling, detailed=True),
+            batcher.submit(("two",), sampling, detailed=True),
+        )
+        assert [[output.text for output in rows] for rows in outputs] == [
+            ["generated:one"],
+            ["generated:two"],
+        ]
+        assert fake.batch_calls == 0
+        assert set(fake.calls) == {("one",), ("two",)}
+        await batcher.shutdown(grace_seconds=0.1)
+
+    asyncio.run(run())
 
 
 def test_generation_batcher_publishes_fast_independent_result_before_slow_neighbor() -> None:
