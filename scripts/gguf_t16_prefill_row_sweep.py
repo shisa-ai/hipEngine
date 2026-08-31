@@ -157,6 +157,7 @@ def _resolve_arms() -> dict[str, object]:
 
     arms: dict[str, object] = {
         "shared_b": P.gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+        "shared_b_row64": P.gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out,
         "single_wave": P.gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
         "smallm": P.gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
         "c1_rowtile_dispatch": P.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
