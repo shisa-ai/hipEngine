@@ -238,10 +238,12 @@ the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up
 (+5.34%)**; all 20 category-balanced p512 pairs improve, with per-category
 means **+4.83% to +5.20%** and every five-pair 95% CI above 1.0. Each route is
 repeat-exact and keeps the same final top-1 token, but full logits differ. The
-T2 candidate therefore remains default-off until the 450-row/task/state/c2/
-lifecycle/manifest and p1024/p4096 gates pass; these prefill-only diagnostics
-do not replace the canonical pp/tg128 table.
-[`P1 layer-2 recheck`](results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-reopened.json).
+complete 450-row gate then **rejects** the T2 candidate: overall mean/p95/max KL
+`5.03e-4/2.65e-3/0.01238` and 446/450 top-1 pass, as do every category,
+repeat/state, and lifecycle checks, but the binding prefill-last/prefill-to-c1
+mean KL is **0.001179 > 0.001**. The route remains default-off; c2 and depth
+promotion gates were not run because they cannot compensate for this failure.
+[`P1 layer-2 rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-profile-rejected.json).
 
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are

@@ -48,12 +48,12 @@ should be removed or collapsed.
   Q5_K/Q5_K grouped-WMMA route under the stacked production composition; Q4_K
   layers resolve through their independently owned exact/production paths. A
   durable p508 trace and 20 category-balanced p512 pairs show a 4.21x layer-2
-  role contraction and about 5% complete-prefill win, but cross-route logits
-  differ. Keep the flag default-off until the complete numerical/task/state/c2/
-  lifecycle/manifest and p1024/p4096 gates pass. If admitted, move the scope to
-  explicit profile/registry ownership and remove this process-global transport;
-  if rejected, remove the candidate selector rather than leaving an ambiguous
-  broad flag. Retain the strict selected Q5_K gemv chain as fallback.
+  role contraction and about 5% complete-prefill win, but the complete profile
+  gate rejects it: prefill-last mean KL is 0.001179 > 0.001. Keep the flag
+  default-off and remove this candidate selector when a materially new exact/T1
+  Q5_K route gets its own selector or at campaign cleanup, whichever comes
+  first. Do not leave the ambiguous broad flag as a latent production route.
+  Retain the strict selected Q5_K gemv chain as fallback.
 
 ## 2026-08-29 Qwen4Exp late-layer production prefill
 
