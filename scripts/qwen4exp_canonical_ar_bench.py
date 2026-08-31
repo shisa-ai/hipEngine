@@ -661,6 +661,11 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
 
     fixture, fixture_sha256 = load_fixture(args.fixture)
     cases = fixture["cases"]
+    if args.case_id:
+        selected = set(str(case_id) for case_id in args.case_id)
+        cases = [row for row in cases if str(row["id"]) in selected]
+        if {str(row["id"]) for row in cases} != selected:
+            raise ValueError("unknown canonical case id in --case-id")
     transitions = int(fixture["decode_transitions"])
     model_root = args.model_root.resolve()
     max_sequence_length = max(int(row["prompt_tokens"]) for row in cases) + transitions + 8
@@ -704,6 +709,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
             "fell_back_to_strict": resolved.fell_back_to_strict,
         },
         "protocol": {
+            "case_ids": [str(row["id"]) for row in cases],
             "warmups_per_case": int(args.warmups),
             "measured_repetitions": int(args.repetitions),
             "decode_transitions": transitions,
@@ -856,6 +862,10 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     hip_parser.add_argument("--output", type=Path, required=True)
     hip_parser.add_argument("--prefill-chunk-size", type=int, default=512)
+    hip_parser.add_argument(
+        "--case-id", nargs="+",
+        help="Measure only these IDs after validating the complete canonical fixture",
+    )
     hip_parser.add_argument("--warmups", type=int, default=1)
     hip_parser.add_argument("--repetitions", type=int, default=3)
     hip_parser.add_argument("--compiler-version-file", type=Path)

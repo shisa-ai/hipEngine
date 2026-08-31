@@ -224,6 +224,18 @@ def test_rocm_platform_falls_back_to_rocm_sdk(monkeypatch: pytest.MonkeyPatch) -
     assert module._rocm_platform_version() == "10.0.0"
 
 
+def test_hipengine_parser_accepts_case_filter(tmp_path: Path) -> None:
+    module = _load_script()
+    args = module.build_parser().parse_args(
+        [
+            "hipengine", "--model-root", str(tmp_path / "model"),
+            "--output", str(tmp_path / "out.json"),
+            "--case-id", "code-p512", "code-p4096",
+        ]
+    )
+    assert args.case_id == ["code-p512", "code-p4096"]
+
+
 def test_compare_rejects_different_case_sets(tmp_path: Path) -> None:
     module = _load_script()
     paths = []
