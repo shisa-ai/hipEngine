@@ -354,6 +354,17 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
+# avoid one-wave underfill on W7900. Rows33-64 use four waves over one 16-row
+# tile each; rows65-511 use the existing four-wave 256-row owner. Rows<=32 keep
+# verifier ownership unchanged, and rows>=512 retain the independently gated
+# source-F16 route. The one-wave parent remains a registered strict fallback.
+GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS = {
+    (17_408, 5_120): (
+        (33, 64, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
+        (65, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+    ),
+}
 # Production-shape Q4 changed-arithmetic screen admits FFN-down plus
 # full-attention K/V/output. All win at M512/1K/4K; only FFN-down can consume its
 # dead BF16 activation in place. Gate/up remain exact at the projection boundary
@@ -962,6 +973,7 @@ __all__ = [
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q4_T16_UNEQUAL_PAIR_PREFILL_POLICIES",
     "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
     "GGUF_T16_F16_ROCBLAS_PAIR_ONLY_POLICIES",

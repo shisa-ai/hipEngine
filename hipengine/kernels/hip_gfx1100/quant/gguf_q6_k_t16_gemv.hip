@@ -857,24 +857,25 @@ void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
 }
 
 // Four-wave shared-weight companion to the retained planar-qmicro producer.
-// Each wave preserves the exact 48-column x 64-row K16 WMMA sequence; the
-// workgroup decodes each 48 x 256 Q6 weight slab once and shares it across four
-// independent row ranges instead of repeating the same decode in four blocks.
-__global__ __launch_bounds__(128, 1)
-void q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel(
+// ROW_TILES_PER_WAVE controls only row ownership and padding: four is the
+// existing 256-row bulk owner, while one is the 64-row small-prefill candidate.
+// Every wave preserves the parent's K16 WMMA/F32 accumulator/BF16 store order.
+template <int ROW_TILES_PER_WAVE>
+__device__ __forceinline__ void
+q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_body(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
-    int64_t out_features) {
+    int64_t out_features,
+    half_t* __restrict__ weight_tile) {
+  static_assert(ROW_TILES_PER_WAVE > 0, "row tiles per wave must be positive");
   constexpr int OUT_TILES_PER_BLOCK = 3;
-  constexpr int ROW_TILES_PER_WAVE = 4;
   constexpr int WAVES_PER_BLOCK = 4;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
-  __shared__ half_t weight_tile[OUT_COLS_PER_BLOCK * QK_K];
 
   const int tid = threadIdx.x;
   const int wave = tid >> 5;
@@ -999,6 +1000,32 @@ void q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel(
       }
     }
   }
+}
+
+__global__ __launch_bounds__(128, 1)
+void q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  __shared__ half_t weight_tile[3 * T16_COLS * QK_K];
+  q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_body<4>(
+      x, tiles, out, rows, in_features, out_features, weight_tile);
+}
+
+__global__ __launch_bounds__(128, 1)
+void q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  __shared__ half_t weight_tile[3 * T16_COLS * QK_K];
+  q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_body<1>(
+      x, tiles, out, rows, in_features, out_features, weight_tile);
 }
 
 // Exact c=1 LM-head producer plus top-1 stage 1. Each existing 16-logit
@@ -1421,7 +1448,8 @@ int launch_q6_t16_qmicro_planar_wmma_prefill(
   return hipGetLastError();
 }
 
-int launch_q6_t16_qmicro_planar_wmma_prefill_shared4(
+template <int ROW_TILES_PER_WAVE>
+int launch_q6_t16_qmicro_planar_wmma_prefill_shared4_impl(
     const void* x,
     const void* tiles,
     void* out,
@@ -1435,26 +1463,66 @@ int launch_q6_t16_qmicro_planar_wmma_prefill_shared4(
     return hipErrorInvalidValue;
   }
   constexpr int Q6_DENSE_TILE_COLS = 3 * T16_COLS;
-  constexpr int Q6_DENSE_TILE_ROWS = 4 * 4 * 16;
+  constexpr int Q6_DENSE_TILE_ROWS = 4 * ROW_TILES_PER_WAVE * 16;
   const dim3 block(128);
   const dim3 grid(
       static_cast<unsigned int>(
           (out_features + Q6_DENSE_TILE_COLS - 1) / Q6_DENSE_TILE_COLS),
       static_cast<unsigned int>(
           (rows + Q6_DENSE_TILE_ROWS - 1) / Q6_DENSE_TILE_ROWS));
-  hipLaunchKernelGGL(
-      q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel,
-      grid,
-      block,
-      0,
-      stream,
-      reinterpret_cast<const uint16_t*>(x),
-      reinterpret_cast<const uint8_t*>(tiles),
-      reinterpret_cast<uint16_t*>(out),
-      rows,
-      in_features,
-      out_features);
+  if constexpr (ROW_TILES_PER_WAVE == 1) {
+    hipLaunchKernelGGL(
+        q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_kernel,
+        grid,
+        block,
+        0,
+        stream,
+        reinterpret_cast<const uint16_t*>(x),
+        reinterpret_cast<const uint8_t*>(tiles),
+        reinterpret_cast<uint16_t*>(out),
+        rows,
+        in_features,
+        out_features);
+  } else {
+    static_assert(ROW_TILES_PER_WAVE == 4, "unsupported shared4 row tiling");
+    hipLaunchKernelGGL(
+        q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel,
+        grid,
+        block,
+        0,
+        stream,
+        reinterpret_cast<const uint16_t*>(x),
+        reinterpret_cast<const uint8_t*>(tiles),
+        reinterpret_cast<uint16_t*>(out),
+        rows,
+        in_features,
+        out_features);
+  }
   return hipGetLastError();
+}
+
+int launch_q6_t16_qmicro_planar_wmma_prefill_shared4(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_wmma_prefill_shared4_impl<4>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+int launch_q6_t16_qmicro_planar_wmma_prefill_shared4_row64(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_wmma_prefill_shared4_impl<1>(
+      x, tiles, out, rows, in_features, out_features, stream);
 }
 
 int launch_q6_t16_top1_stage1(
@@ -2477,6 +2545,14 @@ hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_q6_t16_qmicro_planar_wmma_prefill_shared4(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_wmma_prefill_shared4_row64(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

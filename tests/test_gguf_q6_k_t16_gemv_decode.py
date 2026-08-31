@@ -151,6 +151,58 @@ def test_q6_planar_decode_uses_request_scoped_physical_rowtile(monkeypatch) -> N
     ]
 
 
+def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> None:
+    calls: list[str] = []
+    for name, label in (
+        ("gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out", "parent"),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out",
+            "row64",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
+            "shared256",
+        ),
+    ):
+        monkeypatch.setattr(
+            t16_mod,
+            name,
+            lambda *args, _label=label, **kwargs: calls.append(_label),
+        )
+    monkeypatch.delenv("HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL", raising=False)
+    monkeypatch.setattr(t16_mod, "_Q6_PLANAR_EXACT_PREFILL_RESOLVED", None)
+
+    for rows, shape in (
+        (32, (17_408, 5_120)),
+        (33, (17_408, 5_120)),
+        (64, (17_408, 5_120)),
+        (65, (17_408, 5_120)),
+        (511, (17_408, 5_120)),
+        (512, (17_408, 5_120)),
+        (35, (5_120, 10_240)),
+    ):
+        t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
+            1, 2, 3, rows, *shape
+        )
+    assert calls == [
+        "parent",
+        "row64",
+        "row64",
+        "shared256",
+        "shared256",
+        "parent",
+        "parent",
+    ]
+
+    calls.clear()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL", "0")
+    monkeypatch.setattr(t16_mod, "_Q6_PLANAR_EXACT_PREFILL_RESOLVED", None)
+    t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
+        1, 2, 3, 35, 17_408, 5_120
+    )
+    assert calls == ["parent"]
+
+
 def test_p9_h3_q6_t16_registry_key_resolves() -> None:
     register_gguf_q6_k_t16_gemv_kernels()
     assert resolve(
@@ -212,7 +264,19 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         layer="linear",
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_wmma_prefill_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_wmma_prefill_single_wave_bf16_bf16_out",
     ) is t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_wmma_prefill_shared4_row64_bf16_bf16_out",
+    ) is t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",
@@ -822,6 +886,52 @@ def test_q6_t16_standard_shared4_wmma_is_bit_exact_to_retained_wmma(
         )
         assert max(kls) <= 0.05
         assert top1 >= 0.90
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [17, 35, 64, 65])
+def test_q6_t16_qmicro_planar_shared4_row64_wmma_is_bit_exact_to_retained_wmma(
+    q6_t16_library,
+    rows: int,
+) -> None:
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(0x64A0 + rows)
+    qweight = make_q6_k_weight(out_features, in_features)
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    candidate = getattr(
+        t16_mod,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_row64_bf16_bf16_out",
+        None,
+    )
+    assert candidate is not None
+
+    expected = _run_single(
+        gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        candidate,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(actual, expected)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
