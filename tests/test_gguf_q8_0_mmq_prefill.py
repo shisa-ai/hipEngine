@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -43,13 +42,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
     ud_q3_k_m_q8_mmq_prefill_policy,
 )
 from hipengine.kernels.registry import resolve
-from hipengine.runtime.gguf_linear import (
-    GGUF_ACTIVATION_F32,
-    GGUF_OUTPUT_F32,
-    launch_gguf_linear,
-    launch_gguf_q8_0_mmq_f32_pair,
-    q8_mmq_prefill_session,
-)
 from tests.test_gguf_k_gemv import make_q8_0_weight
 
 
@@ -262,94 +254,6 @@ def _run_gpu(
     )
     reference = gguf_q8_0_gemv(reconstructed, qweight)
     return _bf16_to_f32(out), reference, d4
-
-
-@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_qwen4exp_f32_pair_reuses_pack_and_matches_two_singletons() -> None:
-    from hipengine.core.hip import get_hip_runtime
-    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
-
-    rows, hidden, out_features = 64, 2560, 640
-    x = np.ascontiguousarray(_activation(rows, hidden, seed=83), dtype=np.float32)
-    raw_a = np.ascontiguousarray(make_q8_0_weight(out_features, hidden), dtype=np.uint8)
-    raw_b = np.ascontiguousarray(make_q8_0_weight(out_features, hidden)[::-1], dtype=np.uint8)
-    expected_a = np.empty((rows, out_features), dtype=np.float32)
-    expected_b = np.empty_like(expected_a)
-    actual_a = np.empty_like(expected_a)
-    actual_b = np.empty_like(expected_a)
-    policy = QWEN4EXP_Q8_MMQ_PREFILL_POLICY
-    runtime = get_hip_runtime()
-    library = build_gguf_q8_0_mmq_prefill(load=True)
-    register_gfx1151_kernels(replace=True)
-    buffers = []
-    try:
-        for host in (x, raw_a, raw_b, expected_a, expected_b, actual_a, actual_b):
-            device = malloc(host.nbytes, runtime=runtime)
-            buffers.append(device)
-        for host, device in zip((x, raw_a, raw_b), buffers[:3], strict=True):
-            copy_host_to_device(device, host_array_ptr(host), runtime=runtime)
-        workspace = malloc(q8_mmq_d4x3_nbytes(rows, hidden), runtime=runtime)
-        risk_count = malloc(4, runtime=runtime)
-        risk_indices = malloc(policy.risk_indices_nbytes(rows), runtime=runtime)
-        buffers.extend((workspace, risk_count, risk_indices))
-
-        def weight(ptr: int):
-            return SimpleNamespace(
-                backend="hip_gfx1151",
-                spec=SimpleNamespace(layout="raw_gguf", quant_key="gguf_q8_0"),
-                allocation=lambda name="raw": SimpleNamespace(
-                    tensor=SimpleNamespace(ptr=ptr)
-                ),
-            )
-
-        weight_a = weight(buffers[1].ptr)
-        weight_b = weight(buffers[2].ptr)
-        with q8_mmq_prefill_session(
-            workspace_ptr=workspace.ptr,
-            workspace_nbytes=workspace.nbytes,
-            risk_count_ptr=risk_count.ptr,
-            risk_count_nbytes=risk_count.nbytes,
-            risk_indices_ptr=risk_indices.ptr,
-            risk_indices_nbytes=risk_indices.nbytes,
-            policy=policy,
-            library=library,
-        ):
-            launch_gguf_linear(
-                weight_a, buffers[0].ptr, buffers[3].ptr,
-                rows, hidden, out_features,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                output_dtype=GGUF_OUTPUT_F32,
-                runtime=runtime,
-            )
-            launch_gguf_linear(
-                weight_b, buffers[0].ptr, buffers[4].ptr,
-                rows, hidden, out_features,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                output_dtype=GGUF_OUTPUT_F32,
-                runtime=runtime,
-            )
-            assert launch_gguf_q8_0_mmq_f32_pair(
-                weight_a,
-                weight_b,
-                buffers[0].ptr,
-                buffers[5].ptr,
-                buffers[6].ptr,
-                rows,
-                hidden,
-                out_features,
-                runtime=runtime,
-            )
-        runtime.device_synchronize()
-        for host, device in zip(
-            (expected_a, expected_b, actual_a, actual_b), buffers[3:7], strict=True
-        ):
-            copy_device_to_host(host_array_ptr(host), device, runtime=runtime)
-    finally:
-        for buffer in reversed(buffers):
-            free(buffer, runtime=runtime)
-
-    np.testing.assert_array_equal(actual_a.view(np.uint32), expected_a.view(np.uint32))
-    np.testing.assert_array_equal(actual_b.view(np.uint32), expected_b.view(np.uint32))
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")

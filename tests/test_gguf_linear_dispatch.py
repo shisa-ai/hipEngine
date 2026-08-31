@@ -44,7 +44,6 @@ from hipengine.runtime.gguf_linear import (
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
-    launch_gguf_q8_0_mmq_f32_pair,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
@@ -3523,75 +3522,6 @@ def test_q3_mmq_prefill_session_uses_bounded_workspace(monkeypatch) -> None:
             common_kwargs,
         )
     ]
-
-
-def test_qwen4exp_mmq_f32_pair_reuses_one_activation_quantization(monkeypatch) -> None:
-    quantize_calls = []
-    correction_calls = []
-    launch_calls = []
-    memset_calls = []
-
-    class FakeRuntime:
-        def memset_async(self, *args) -> None:
-            memset_calls.append(args)
-
-    monkeypatch.setattr(
-        gguf_linear_module,
-        "gguf_q8_0_mmq128_quantize_f32_d4x3",
-        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
-    )
-    monkeypatch.setattr(
-        gguf_linear_module,
-        "gguf_q8_0_mmq128_sparse_exact_correct_f32",
-        lambda *args, **kwargs: correction_calls.append((args, kwargs)),
-    )
-    policy = resolve_q8_mmq_prefill_policy("gguf_ud_q4_k_xl")
-    assert policy is not None
-    weight_a = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
-    weight_b = _fake_weight(layout=LAYOUT_RAW_GGUF, quant_key="gguf_q8_0")
-    original = resolve(
-        backend=_PREFILL_MMQ128_X3_GUARDED_F32.backend,
-        layer=_PREFILL_MMQ128_X3_GUARDED_F32.layer,
-        quant=_PREFILL_MMQ128_X3_GUARDED_F32.quant,
-        variant=_PREFILL_MMQ128_X3_GUARDED_F32.variant,
-    )
-    library = object()
-
-    def fake_launch(*args, **kwargs):
-        launch_calls.append((args, kwargs))
-
-    try:
-        register(_PREFILL_MMQ128_X3_GUARDED_F32, fake_launch, replace=True)
-        with q8_mmq_prefill_session(
-            workspace_ptr=10_000_000,
-            workspace_nbytes=q8_mmq_d4x3_nbytes(512, 2560),
-            risk_count_ptr=40_000_000,
-            risk_count_nbytes=4,
-            risk_indices_ptr=50_000_000,
-            risk_indices_nbytes=policy.risk_indices_nbytes(512),
-            policy=policy,
-            library=library,  # type: ignore[arg-type]
-        ):
-            assert launch_gguf_q8_0_mmq_f32_pair(
-                weight_a,
-                weight_b,
-                x_ptr=100_000_000,
-                out_a_ptr=200_000_000,
-                out_b_ptr=210_000_000,
-                rows=512,
-                in_features=2560,
-                out_features=640,
-                stream=7,
-                runtime=FakeRuntime(),
-            )
-        assert len(quantize_calls) == 1
-        assert quantize_calls[0][0] == (100_000_000, 10_000_000, 512, 2560)
-        assert len(launch_calls) == 2
-        assert [call[0][2] for call in launch_calls] == [200_000_000, 210_000_000]
-        assert len(correction_calls) == 2
-        assert len(memset_calls) == 2
-    finally:
-        register(_PREFILL_MMQ128_X3_GUARDED_F32, original, replace=True)
 
 
 def test_q3_mmq_prefill_session_keeps_exact_below_crossover() -> None:

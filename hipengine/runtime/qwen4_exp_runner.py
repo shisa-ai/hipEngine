@@ -149,7 +149,6 @@ from hipengine.runtime.gguf_linear import (
     wmma_prefill_weight_filter_session,
     GGUF_OUTPUT_F32,
     launch_gguf_linear,
-    launch_gguf_q8_0_mmq_f32_pair,
     q8_mmq_prefill_session,
     resolve_q8_mmq_prefill_policy,
 )
@@ -2683,12 +2682,6 @@ def _qwen4_exp_q8_mmq_policy(policy):
     return replace(policy, min_rows=minimums)
 
 
-def _qwen4_exp_shared_q8_pair_enabled() -> bool:
-    return os.environ.get(
-        "HIPENGINE_QWEN4_EXP_SHARED_Q8_PAIR", "0"
-    ) not in {"", "0", "false", "False"}
-
-
 def _qwen4_exp_router_f32_tile4_enabled(rows: int) -> bool:
     """Select the exact four-token F32 router producer for multirow work."""
 
@@ -3562,33 +3555,17 @@ def run_qwen4_exp_moe(
                     stream=stream,
                     runtime=active_runtime,
                 )
-    paired_shared = (
-        _qwen4_exp_shared_q8_pair_enabled()
-        and launch_gguf_q8_0_mmq_f32_pair(
-            weights["shared_gate"],
-            weights["shared_up"],
-            mixed_ptr,
-            scratch.shared_gate.ptr,
-            scratch.shared_up.ptr,
-            rows,
-            hidden,
-            ffn,
-            stream=stream,
-            runtime=active_runtime,
+    for slot, output in (
+        ("shared_gate", scratch.shared_gate),
+        ("shared_up", scratch.shared_up),
+    ):
+        launch_gguf_linear(
+            weights[slot], mixed_ptr, output.ptr,
+            rows, hidden, ffn,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            stream=stream, runtime=active_runtime,
         )
-    )
-    if not paired_shared:
-        for slot, output in (
-            ("shared_gate", scratch.shared_gate),
-            ("shared_up", scratch.shared_up),
-        ):
-            launch_gguf_linear(
-                weights[slot], mixed_ptr, output.ptr,
-                rows, hidden, ffn,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                output_dtype=GGUF_OUTPUT_F32,
-                stream=stream, runtime=active_runtime,
-            )
     qwen4_exp_silu_mul_f32(
         scratch.shared_gate.ptr,
         scratch.shared_up.ptr,

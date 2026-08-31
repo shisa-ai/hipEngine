@@ -735,7 +735,14 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       materialized logits. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-fused-select-rejected.json`.
 - [ ] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
-      F32/BF16 boundaries and the strict shared-expert chain.
+      F32/BF16 boundaries and the strict shared-expert chain. Reusing one F32
+      D4x3 activation pack across the two production-MMQ projections is exact
+      and improves their GPU window 1.134→1.077 ms, but is rejected/removed:
+      combined p508 is 0.9988x (95% CI 0.9971–1.0005) and code-p1024 is 0.9997x
+      (95% CI 0.9980–1.0014). Pack reuse alone is below complete-wall
+      resolution; require a larger gate/up+SiLU or down+gate+combine boundary.
+      Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-shared-q8-pair-rejected.json`.
 - [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;
       add down+scaled-SiLU and up+sigmoid+gated-mean epilogues. The exact
       sigmoid+gated-mean subunit is now retained for rows <=256: it removes one

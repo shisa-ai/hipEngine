@@ -1022,129 +1022,6 @@ def q8_mmq_prefill_session(
         _q8_mmq_prefill_session.reset(token)
 
 
-def launch_gguf_q8_0_mmq_f32_pair(
-    weight_a: GGUFDeviceWeight,
-    weight_b: GGUFDeviceWeight,
-    x_ptr: int,
-    out_a_ptr: int,
-    out_b_ptr: int,
-    rows: int,
-    in_features: int,
-    out_features: int,
-    *,
-    backend: str | None = None,
-    stream: int = 0,
-    runtime=None,
-) -> bool:
-    """Reuse one admitted F32 D4x3 activation pack for two Q8 projections."""
-
-    session = _q8_mmq_prefill_session.get()
-    if session is None or not session.policy(rows, in_features, out_features):
-        return False
-    if any(
-        weight.spec.layout != LAYOUT_RAW_GGUF
-        or weight.spec.quant_key != "gguf_q8_0"
-        for weight in (weight_a, weight_b)
-    ):
-        return False
-    if in_features % 256 != 0 or out_features % 16 != 0:
-        return False
-    required_workspace = q8_mmq_d4x3_nbytes(rows, in_features)
-    if required_workspace > session.workspace_nbytes:
-        raise ValueError(
-            "Q8 MMQ D4 workspace is too small: "
-            f"required={required_workspace}, available={session.workspace_nbytes}"
-        )
-    max_risks = int(rows) * int(out_features)
-    required_risk_bytes = max_risks * ctypes.sizeof(ctypes.c_int32)
-    if required_risk_bytes > session.risk_indices_nbytes:
-        raise ValueError(
-            "Q8 MMQ risk-index queue is too small: "
-            f"required={required_risk_bytes}, available={session.risk_indices_nbytes}"
-        )
-    regions = {
-        "workspace": (session.workspace_ptr, session.workspace_nbytes),
-        "risk counter": (session.risk_count_ptr, session.risk_count_nbytes),
-        "risk-index queue": (session.risk_indices_ptr, session.risk_indices_nbytes),
-        "F32 activation input": (int(x_ptr), int(rows) * int(in_features) * 4),
-        "F32 output A": (int(out_a_ptr), int(rows) * int(out_features) * 4),
-        "F32 output B": (int(out_b_ptr), int(rows) * int(out_features) * 4),
-    }
-    names = tuple(regions)
-    for index, left_name in enumerate(names):
-        left_ptr, left_nbytes = regions[left_name]
-        for right_name in names[index + 1 :]:
-            right_ptr, right_nbytes = regions[right_name]
-            if max(left_ptr, right_ptr) < min(
-                left_ptr + left_nbytes,
-                right_ptr + right_nbytes,
-            ):
-                raise ValueError(f"Q8 MMQ pair {left_name} overlaps {right_name}")
-
-    resolved_backend = _weight_backend(weight_a, weight_b, backend=backend)
-    candidate = KernelKey(
-        resolved_backend,
-        "linear",
-        "gguf_q8_0",
-        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
-    )
-    if not is_registered(candidate):
-        return False
-    fn = resolve(
-        backend=candidate.backend,
-        layer=candidate.layer,
-        quant=candidate.quant,
-        variant=candidate.variant,
-    )
-    active_runtime = runtime or get_hip_runtime()
-    mmq_kwargs = {
-        "stream": int(stream),
-        "runtime": active_runtime,
-        "library": session.library,
-    }
-    gguf_q8_0_mmq128_quantize_f32_d4x3(
-        x_ptr,
-        session.workspace_ptr,
-        rows,
-        in_features,
-        **mmq_kwargs,
-    )
-    for weight, out_ptr in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
-        active_runtime.memset_async(
-            session.risk_count_ptr,
-            0,
-            ctypes.sizeof(ctypes.c_int32),
-            int(stream),
-        )
-        qweight_ptr = weight.allocation("raw").tensor.ptr
-        fn(
-            session.workspace_ptr,
-            qweight_ptr,
-            out_ptr,
-            session.risk_count_ptr,
-            session.risk_indices_ptr,
-            max_risks,
-            session.policy.risk_threshold,
-            rows,
-            in_features,
-            out_features,
-            **mmq_kwargs,
-        )
-        gguf_q8_0_mmq128_sparse_exact_correct_f32(
-            x_ptr,
-            qweight_ptr,
-            out_ptr,
-            session.risk_count_ptr,
-            session.risk_indices_ptr,
-            max_risks,
-            rows,
-            in_features,
-            out_features,
-            **mmq_kwargs,
-        )
-    return True
-
-
 def resolve_q8_mmq_prefill_policy(
     quant: str,
     *,
@@ -6620,7 +6497,6 @@ __all__ = [
     "launch_gguf_linear_pair_concat",
     "launch_gguf_linear_raw_ptr",
     "launch_gguf_linear_triple",
-    "launch_gguf_q8_0_mmq_f32_pair",
     "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
     "q4_pack8_dual_wmma_silu_prefill_session",
