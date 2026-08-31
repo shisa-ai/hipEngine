@@ -232,6 +232,17 @@ is layer-2 Q5_K gate/up at **301.47 vs 15.38 ms**. Decode submits **1,195
 direct kernels plus 48 MoE graphs/token**; 625 additional rows/token are
 graph-expanded nodes.
 
+A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
+the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up
+**279.86→16.66 ms**. Same-process p508 improves **90.25→95.06 tok/s
+(+5.34%)**; all 20 category-balanced p512 pairs improve, with per-category
+means **+4.83% to +5.20%** and every five-pair 95% CI above 1.0. Each route is
+repeat-exact and keeps the same final top-1 token, but full logits differ. The
+T2 candidate therefore remains default-off until the 450-row/task/state/c2/
+lifecycle/manifest and p1024/p4096 gates pass; these prefill-only diagnostics
+do not replace the canonical pp/tg128 table.
+[`P1 layer-2 recheck`](results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-reopened.json).
+
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
 **296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local
