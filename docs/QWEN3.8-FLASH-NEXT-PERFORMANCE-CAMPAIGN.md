@@ -818,7 +818,13 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       packets; keep every rejected early layer strict.
 - [ ] For QSA, compare current key-parallel head-dim-256 flash geometry with the
       selected llama kernel family, including key tiles, online-softmax merge,
-      grid sufficiency, and register/LDS pressure.
+      grid sufficiency, and register/LDS pressure. The non-flash multirow dense
+      owner now selects the registered fixed256/precomputed-offset/vector2
+      kernel: real primitive **6.846→2.485 ms (2.755x)**, p508
+      **91.345→92.391 tok/s**, code-p1024 **89.150→90.634 tok/s**, and the
+      complete 450-row/state/task gate is exact. Generic batch attention remains
+      fallback. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json`.
 - [ ] Confirm selected-position attention already removes dense-mask work.
       Evaluate fully-masked-slice skipping only if a current trace proves such
       slices still execute.

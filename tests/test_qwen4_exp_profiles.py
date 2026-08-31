@@ -79,6 +79,11 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
 
     strict = _resolve(ExecutionProfile.STRICT)
     production = _resolve(ExecutionProfile.PRODUCTION)
+    strict_qsa = _selection_map(strict)[
+        ("paged_attn_decode", "qwen4exp_multirow_dense_qsa")
+    ]
+    assert strict_qsa["selected_variant"] == "bf16_context_batch_paged_c1_exact_spans"
+    assert strict_qsa["strict_fallback_variant"] == "bf16_context_batch_spans"
     strict_gr_up = _selection_map(strict)[
         ("linear+gr_gated_mean", "qwen4exp_rows_gt256_gr_up")
     ]
@@ -100,6 +105,10 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
+    qsa = selections[("paged_attn_decode", "qwen4exp_multirow_dense_qsa")]
+    assert qsa["selected_variant"] == "bf16_context_batch_paged_c1_exact_spans"
+    assert qsa["strict_fallback_variant"] == "bf16_context_batch_paged_c1_exact_spans"
+    assert qsa["evidence_artifact"].endswith("p4-qsa-dense-fixed256.json")
     gr_up = selections[("linear+gr_gated_mean", "qwen4exp_rows_gt256_gr_up")]
     assert gr_up["selected_variant"] == "coltile2_branch4_rowbatch4_f32_exact"
     assert gr_up["strict_fallback_variant"] == "coltile2_branch4_rowbatch4_f32_exact"
@@ -168,7 +177,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256"] == "1"
     # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
     # route; their envs stay off so they cannot preempt it.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
@@ -230,7 +239,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
