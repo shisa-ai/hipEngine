@@ -18510,6 +18510,17 @@ class Qwen35GGUFResidentSession:
             runtime=runtime,
         )
         layout = _rebind_packed_verify_layout_pages(layout, packed_state)
+        linear_state_owner: object = packed_state
+        copy_initial_linear_state = True
+        if capture_linear_state_rows and defer_linear_state_commit:
+            session_tuple = tuple(job["session"] for job in job_list)
+            layout, linear_state_owner, copy_initial_linear_state = (
+                self._packed_verify_initial_linear_state(
+                    session_tuple,
+                    layout,
+                    packed_state,
+                )
+            )
         self._ensure_verify_block_buffers(rows, runtime=runtime)
         if capture_linear_state_rows:
             self._ensure_verify_linear_state_row_buffers(rows, runtime=runtime)
@@ -18521,6 +18532,7 @@ class Qwen35GGUFResidentSession:
             packed_state,
             runtime=runtime,
             stream=stream,
+            copy_linear_state=copy_initial_linear_state,
         )
         add_stage("packed_verify_sync_initial_state", sync_state_start)
         token_upload_start = time.perf_counter()
@@ -18564,8 +18576,8 @@ class Qwen35GGUFResidentSession:
         dst = self._prefill_hidden_b
         linear_decode_scratch = replace(
             self.scratch,
-            layer_conv_states=packed_state.layer_conv_states,
-            layer_recurrent_states=packed_state.layer_recurrent_states,
+            layer_conv_states=linear_state_owner.layer_conv_states,
+            layer_recurrent_states=linear_state_owner.layer_recurrent_states,
         )
         block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
         with (
@@ -23529,6 +23541,36 @@ class Qwen35GGUFResidentSession:
                         stream=stream,
                     )
 
+    def _packed_verify_initial_linear_state(
+        self,
+        sessions: tuple["Qwen35GGUFResidentSession", ...],
+        layout: _GGUFPackedVerifyLayout,
+        packed_state: _GGUFPackedTargetState,
+    ) -> tuple[_GGUFPackedVerifyLayout, object, bool]:
+        """Bind read-only verifier roots to resident state when ownership matches.
+
+        Captured candidate state rows remain separate and the accepted row is
+        still committed explicitly. Only the initial Conv/GDN import is
+        removed; capability misses retain the strict packed-state copy chain.
+        """
+
+        direct = self._direct_resident_linear_state(sessions)
+        if direct is None:
+            return layout, packed_state, True
+        state_indices, state_owner = direct
+        if len(state_indices) != int(layout.slot_count):
+            raise RuntimeError(
+                "direct verifier state indices must align with packed slots"
+            )
+        return (
+            replace(
+                layout,
+                state_indices=np.asarray(state_indices, dtype=np.int64),
+            ),
+            state_owner,
+            False,
+        )
+
     def _sync_packed_verify_initial_state(
         self,
         jobs: list[dict[str, object]],
@@ -23537,6 +23579,7 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
         stream: int,
+        copy_linear_state: bool = True,
     ) -> None:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -23559,6 +23602,8 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed verifier job start does not match session position")
             for layer_id, layer_type in enumerate(cfg.layer_types):
                 if layer_type == LINEAR_ATTENTION:
+                    if not copy_linear_state:
+                        continue
                     src_conv = session.scratch.layer_conv_states[layer_id]
                     src_recurrent = session.scratch.layer_recurrent_states[layer_id]
                     if src_conv is None or src_recurrent is None:
