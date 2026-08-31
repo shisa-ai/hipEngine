@@ -5612,6 +5612,60 @@ def test_server_auto_quant_keeps_gguf_route_group_limits() -> None:
     }
 
 
+def test_server_production_gguf_uses_backend_physical_mtp_route_limit() -> None:
+    async def run() -> None:
+        class FakeProductionGGUF(FakeLLM):
+            supports_speculative_mtp = True
+            backend = "hip_gfx1100"
+            resolved_execution_profile = "production"
+
+            def generate_speculative_mtp_detailed(
+                self,
+                prompts,
+                sampling_params: SamplingParams,
+            ):
+                return self.generate_detailed(prompts, sampling_params)
+
+        llm = FakeProductionGGUF()
+        app = create_app(
+            ServerConfig(
+                model="/models/Qwen3.6-35B-A3B-Q4_K_M.gguf",
+                backend="hip_gfx1100",
+                execution_profile="production",
+                eager_load=False,
+                generation_batch_window_ms=10.0,
+                max_active_requests=8,
+            ),
+            llm=llm,
+        )
+        batcher = app.state.hipengine_generation_batcher
+
+        assert batcher._route_max_active_requests == {
+            _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
+            _SPECULATIVE_MTP_BATCH_ROUTE: 8,
+            _SPECULATIVE_MTP_AUTO_ROUTE: 4,
+        }
+        sampling = SamplingParams(max_tokens=2)
+        results = await asyncio.gather(
+            *(
+                batcher.submit(
+                    (f"prompt-{index}",),
+                    sampling,
+                    route=_SPECULATIVE_MTP_BATCH_ROUTE,
+                )
+                for index in range(8)
+            )
+        )
+        await batcher.shutdown(grace_seconds=0.1)
+
+        assert results == [[f"generated:prompt-{index}"] for index in range(8)]
+        assert llm.calls == [
+            (tuple(f"prompt-{index}" for index in range(8)), sampling),
+        ]
+
+    asyncio.run(run())
+
+
 def test_generation_batcher_applies_mtp_route_group_limit() -> None:
     async def run() -> None:
         class FakeMTPLLM(FakeLLM):
