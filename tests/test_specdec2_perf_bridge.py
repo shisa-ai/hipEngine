@@ -158,11 +158,11 @@ def test_bridge_resolves_independent_backend_arch_quant_and_queue_policy() -> No
 
 
 def test_bridge_parses_only_supported_physical_cells() -> None:
-    assert parse_concurrencies("4,1,3,2") == (4, 1, 3, 2)
+    assert parse_concurrencies("8,1,7,2,6,3,5,4") == (8, 1, 7, 2, 6, 3, 5, 4)
     assert parse_budgets("3,1,2") == (3, 1, 2)
 
     with pytest.raises(ValueError, match="concurrency"):
-        parse_concurrencies("1,8")
+        parse_concurrencies("1,9")
     with pytest.raises(ValueError, match="candidate budget"):
         parse_budgets("0,2")
     with pytest.raises(ValueError, match="duplicate"):
@@ -255,6 +255,11 @@ def test_bridge_requires_separate_c1_and_physical_service_capacities() -> None:
     assert bridge_service_capacity((2, 3, 4)) == 4
     assert bridge_service_capacity((3,)) == 3
     assert bridge_service_capacity((2,)) == 2
+    assert bridge_service_capacity((6,), requested_capacity=8) == 8
+    assert bridge_service_capacity((7,), requested_capacity=8) == 8
+    assert bridge_service_capacity((8,), requested_capacity=8) == 8
+    with pytest.raises(ValueError, match="smaller than realized concurrency"):
+        bridge_service_capacity((8,), requested_capacity=7)
     with pytest.raises(ValueError, match="separate bridge invocations"):
         bridge_service_capacity((1, 2, 3, 4))
 

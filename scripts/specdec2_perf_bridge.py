@@ -147,7 +147,7 @@ def _parse_unique_ints(value: str, *, allowed: frozenset[int], label: str) -> tu
 def parse_concurrencies(value: str) -> tuple[int, ...]:
     return _parse_unique_ints(
         value,
-        allowed=frozenset({1, 2, 3, 4}),
+        allowed=frozenset(range(1, 9)),
         label="concurrency",
     )
 
@@ -160,18 +160,33 @@ def parse_budgets(value: str) -> tuple[int, ...]:
     )
 
 
-def bridge_service_capacity(concurrencies: Sequence[int]) -> int:
-    """Return one honest service capacity or require a separate C1 packet."""
+def bridge_service_capacity(
+    concurrencies: Sequence[int],
+    *,
+    requested_capacity: int | None = None,
+) -> int:
+    """Return one honest service capacity or require a separate C1 packet.
+
+    A focused physical-width profile may keep the resident owner at a larger
+    qualified capacity (for example realized C6/C7 under the capacity-8 owner).
+    The requested capacity can never be smaller than the measured width.
+    """
 
     selected = tuple(int(value) for value in concurrencies)
-    if not selected or any(value not in {1, 2, 3, 4} for value in selected):
-        raise ValueError("bridge concurrency must be a non-empty subset of 1,2,3,4")
+    supported = frozenset(range(1, 9))
+    if not selected or any(value not in supported for value in selected):
+        raise ValueError("bridge concurrency must be a non-empty subset of 1..8")
     if 1 in selected and any(value > 1 for value in selected):
         raise ValueError(
-            "strict C1 and physical C2/C3/C4 require separate bridge invocations "
+            "strict C1 and physical C2-C8 require separate bridge invocations "
             "with independent service capacities"
         )
-    return max(selected)
+    capacity = max(selected) if requested_capacity is None else int(requested_capacity)
+    if capacity not in supported:
+        raise ValueError("service capacity must be in 1..8")
+    if capacity < max(selected):
+        raise ValueError("service capacity is smaller than realized concurrency")
+    return capacity
 
 
 def resolve_platform(
@@ -1035,6 +1050,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--scope", choices=("train", "full"), default="full")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--concurrency", type=parse_concurrencies, default=(1, 2, 4))
+    parser.add_argument(
+        "--service-capacity",
+        type=int,
+        help="Resident owner capacity; defaults to the largest measured concurrency.",
+    )
     parser.add_argument("--budgets", type=parse_budgets, default=(2,))
     parser.add_argument("--max-tokens", type=int, default=25)
     parser.add_argument("--runs", type=int, default=3)
@@ -1060,7 +1080,10 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--limit must be positive")
     if int(args.max_sequence_length) <= 0:
         raise ValueError("--max-sequence-length must be positive")
-    bridge_service_capacity(args.concurrency)
+    bridge_service_capacity(
+        args.concurrency,
+        requested_capacity=args.service_capacity,
+    )
     if args.require_cached_build and args.compiler_version_file is None:
         raise ValueError("--require-cached-build requires --compiler-version-file")
     if args.compiler_version_file is not None and not Path(args.compiler_version_file).is_file():
@@ -1157,7 +1180,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "categories": sorted({str(row["category"]) for row in prompts}),
         "heldout_ids": sorted(_HELDOUT_IDS),
         "concurrency": list(args.concurrency),
-        "service_capacity": bridge_service_capacity(args.concurrency),
+        "service_capacity": bridge_service_capacity(
+            args.concurrency,
+            requested_capacity=args.service_capacity,
+        ),
         "candidate_budgets": list(args.budgets),
         "max_tokens": int(args.max_tokens),
         "runs": int(args.runs),
@@ -1237,7 +1263,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     str(Path(args.model).resolve()),
                     backend=str(platform_config["backend"]),
                     execution_profile=str(args.execution_profile),
-                    max_active_requests=max(args.concurrency),
+                    max_active_requests=bridge_service_capacity(
+                        args.concurrency,
+                        requested_capacity=args.service_capacity,
+                    ),
                     max_sequence_length=int(args.max_sequence_length),
                     speculative_candidate_budget=int(budget),
                 )
