@@ -4515,15 +4515,19 @@ should be boring.
   bound to the server explicit-MTP batch route
   (`server_mtp_batch_max_active_requests`), and measured the bound-8 single
   cycle: 80/80 exact, acceptance parity, 1.00 passes/cycle — but C6-C8
-  regress (C7 -19.56%), so the production table is `{}` (certified width-4
-  bound) until M2 qualifies rows17-32 Q4/Q6 verify owners, a rows5-8
-  proposal head, and C8 accept-interval scaling
-  (`benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json`).
-  Removing this debt now means deleting the per-subgroup sequential loop in
-  `_maybe_run_partitioned_speculative_decode` by setting
-  `GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS = {"production": 8}` and
-  re-adding the R20-R32 Q6/planar chunk rows once those owners pass their
-  gates; no other width plumbing remains.
+  regress (C7 -19.56%). M2a later qualified the rows5-8 proposal head and
+  M2j qualified exact Q4 owners through R16; K3 still lacks efficient
+  R20-R32 target/accept ownership. The production table therefore remains
+  `{}` (certified width-4 bound). See
+  `benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-m1-wide-cycle-blocked.json`.
+  A 2026-08-31 review adds a narrower route: full-width K1 keeps C6/C8 at
+  R12/R16 and improves split K3 by 7.85%/10.83%, while C5/R10 and C7/R14
+  regress ([review artifact](../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json)).
+  Removing this debt therefore needs a prompt-independent width×depth policy
+  before mutation, not one global bound flip. Once that
+  policy and its production gates pass, admit C6/C8 K1 as one physical group;
+  K3 still needs R20-R32 Q6/planar and accept/commit work before deleting the
+  per-subgroup loop globally.
 - **Paths:** ~~eleven width-4 cap expressions in
   `hipengine/generation/qwen35_gguf_mtp2.py`~~ — replaced 2026-08-30 by the
   resolver above; ~~C4-only `_batch_accept_resources()` owner~~ — now sized
@@ -4538,30 +4542,28 @@ should be boring.
   shape produces the worst cell at 0.5249x own AR. M1 proved the single wide
   cycle is exact/ownership-clean but slower at C6-C8 until wide-row owners
   exist (M1 blocker artifact above).
-- **Removal trigger:** scaling-campaign M2. When rows17-32 Q4/Q6 verify
-  owners (or chunked R9/R12/R16 decomposition), a rows5-8 proposal head, and
-  C8 accept-interval scaling pass their correctness gates, set
-  `GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS = {"production": 8}`, re-add the
-  R20-R32 Q6/planar chunk rows, require C1-C8 non-regression plus the C5>=33
-  / C8>=45 partition-lift targets on the frozen protocol, then delete the
-  per-subgroup sequential loop as the default path while retaining the
-  registered strict fallback. (Original M1 mandate — scattered caps must not
-  survive either outcome — is satisfied: one named capability-bound default
-  with a pointer to the measured blocker.)
+- **Removal trigger:** a successor width×depth campaign. First admit and gate
+  one physical C6/C8 K1 group without broadening C5/C7; then, for global K3,
+  qualify R20-R32 Q4/Q5/Q6 proposal/target owners plus accept/selected-state
+  commit. Require C1-C8 non-regression and the applicable production-profile
+  gates before deleting the subgroup loop; retain the registered strict
+  fallback. The original M1 mandate against scattered caps is satisfied: one
+  named capability bound remains with a measured blocker pointer.
 
 ## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
 
 `GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus the
 `partition_max_requests` zero-return implement the measured M5 economics on
 the engine surface: a due batch wider than the certified bound decodes as one
-full-batch AR step instead of chained MTP sub-groups (sub-groups measured
-0.74-0.80x own AR at widths 5-8). Measured **inert on the server-bench
+full-batch AR step instead of chained MTP sub-groups (current K3 sub-groups
+measure 0.75-0.81x own AR at widths 5-8). Measured **inert on the server-bench
 surface** because admission already caps explicit-MTP groups at 4 upstream
 (`server_mtp_batch_max_active_requests`), so the partitioner never sees a
 wide item there. Removal/activation condition: when the campaign owner
 amends the frozen C5-C8 engagement semantics, move the demotion to the
 admission-route layer (`_route_request_cap` group formation / `llm.py`
-submission grouping), re-measure C5-C8 against the AR ceiling
-(36.5/39.2/42.2/46.1 tok/s), and delete the partitioner-level route check as
-redundant. Until then this path is defense-in-depth with a seam test and
+submission grouping), re-measure C5-C8 against the current AR ceiling
+(35.778/40.343/43.974/47.194 tok/s), account for the measured C6/C8 K1
+candidates, and delete the partitioner-level route check as redundant. Until
+then this path is defense-in-depth with adapter-seam and engine-loop tests and
 must not be reported as a C5-C8 performance mechanism.

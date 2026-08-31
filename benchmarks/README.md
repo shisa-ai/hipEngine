@@ -99,23 +99,22 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
 other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M` keeps strict C1/K3 automatic at **18.191 tok/s
-(1.6445x AR)**. Production C1 reaches **15.646 tok/s (1.408x AR)** with the
-M3 width-1 prompt-streaming policy;
-production
-C2/C3 diagnostics reach **28.121/30.499 tok/s** (1.540x/1.295x AR). The M2j owner promotion (bit-exact
-low-VGPR/shared-B2W2 siblings at physical Q4 rows2-16) and the M4 width-4
-streaming promotion lift C4 to
-**35.618 tok/s (1.178x AR, gate 34.596 PASS)** and C5-C8 to
-**28.012/32.743/33.143/35.495 tok/s**. C2-C8 remain automatic K0 pending
-width-specific serving gates. [`C3/C4`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md) ·
-[`M3 C1`](results/2026-08-31-gfx1151-qwen38-mtp-c1-streaming-width1-retained.json) ·
-[`M2j`](results/2026-08-31-gfx1151-qwen38-mtp-q4-verify-owner-retained.json) ·
-[`C4-C8 history`](results/2026-08-30-gfx1151-qwen38-mtp-q5-r16-retained.json)
+(1.6445x AR)**. The reviewed all-ten complete-wall explicit-K3 row at current
+head is **15.753/28.441/30.541/35.474/27.980/32.807/33.106/35.423 tok/s**
+for C1-C8, or 1.418x/1.572x/1.279x/1.177x/0.782x/0.813x/0.753x/0.751x own AR;
+80/80 generated-ID/route/budget cells pass. The earlier M3/M4 15.646/35.618
+headlines are six-non-heldout arithmetic means, not this survey metric. C2-C8
+remain automatic K0 pending width-specific production gates; width-4 streaming
+is an explicit T3 diagnostic because acceptance changed. A full-width K1 screen
+finds follow-ups at C6 **35.383 (+7.85% vs split K3)** and C8 **39.260
+(+10.83%)**, but both remain below own AR and are not promoted.
+[`Reviewed matrix`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
+[`Scaling review`](../docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md)
 
-The final same-host standard-`Q4_K_M` six-engine refresh has hipEngine leading
-AR C3-C8 and MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP
-C1-C2/C5-C8. [`Matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json) ·
-[`Closed campaign`](../docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md)
+The same-host standard-`Q4_K_M` comparison has hipEngine leading AR C3-C8 and
+explicit K3 MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP
+C1-C2/C5-C8. [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
+[`Preserved external matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
 
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md). Detailed historical and
