@@ -281,6 +281,18 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     monkeypatch.delenv(t16_prefill._ENV_SINGLE_WAVE_MAX_ROWS)
     monkeypatch.setattr(t16_prefill, "_SINGLE_WAVE_MAX_ROWS_RESOLVED", None)
 
+    # Same-build bisection: zero restores the 256-row parent without changing
+    # row-6 precedence or widening the qualified 33..67 policy.
+    calls.clear()
+    monkeypatch.setenv(t16_prefill._ENV_SHARED_B_ROW64_MAX_ROWS, "0")
+    monkeypatch.setattr(t16_prefill, "_SHARED_B_ROW64_MAX_ROWS_RESOLVED", None)
+    selector(1, 2, 3, 35, 17_408, 5_120)
+    selector(1, 2, 3, 67, 17_408, 5_120)
+    selector(1, 2, 3, 6, 17_408, 5_120)
+    assert calls == ["shared_b", "shared_b", "rowtile"]
+    monkeypatch.delenv(t16_prefill._ENV_SHARED_B_ROW64_MAX_ROWS)
+    monkeypatch.setattr(t16_prefill, "_SHARED_B_ROW64_MAX_ROWS_RESOLVED", None)
+
     selected = resolve(
         backend="hip_gfx1100",
         layer="linear",
