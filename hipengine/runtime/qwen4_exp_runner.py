@@ -35,6 +35,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa_flash import (
     qwen4_exp_qsa_flash_prefill,
 )
 from hipengine.kernels.hip_gfx1100.attention.paged_attn_decode import (
+    qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans,
     qwen35_paged_full_attn_decode_context_bf16_batch_spans,
     qwen35_paged_full_attn_decode_context_bf16_spans,
 )
@@ -2400,7 +2401,12 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             runtime=active_runtime,
         )
     elif dense_rows:
-        qwen35_paged_full_attn_decode_context_bf16_batch_spans(
+        dense_attention = (
+            qwen35_paged_full_attn_decode_context_bf16_batch_fixed256_spans
+            if _qwen4_exp_qsa_dense_fixed256_enabled(dense_rows)
+            else qwen35_paged_full_attn_decode_context_bf16_batch_spans
+        )
+        dense_attention(
             scratch.query.ptr,
             attention_state.key_cache.ptr,
             attention_state.value_cache.ptr,
@@ -2694,6 +2700,12 @@ def run_qwen4_exp_gr_read(
         mixed=scratch.mixed,
         inject_logits=scratch.inject_logits,
     )
+
+
+def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
+    return rows >= 2 and os.environ.get(
+        "HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256", "0"
+    ) not in {"", "0", "false", "False"}
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:

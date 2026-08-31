@@ -77,6 +77,22 @@ CANDIDATES = {
             "selected_gemv_bf16_bf16_out",
         ),
     ),
+    "qsa_dense_fixed256": CandidateSpec(
+        name="qsa_dense_fixed256",
+        classification="T0",
+        mechanism="precompute paged token offsets and vectorize exact QSA values",
+        environment={"HIPENGINE_QWEN4_EXP_QSA_DENSE_FIXED256": "1"},
+        base_profile="strict",
+        scenario_id="qwen4exp-ud-q4-k-xl-qsa-dense-fixed256",
+        candidate_key=(
+            "hip_gfx1151", "paged_attn_decode", "w4_paro",
+            "bf16_context_batch_paged_c1_exact_spans",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "paged_attn_decode", "w4_paro",
+            "bf16_context_batch_spans",
+        ),
+    ),
     "q8_mmq_attn_gate": CandidateSpec(
         name="q8_mmq_attn_gate",
         classification="T2",
