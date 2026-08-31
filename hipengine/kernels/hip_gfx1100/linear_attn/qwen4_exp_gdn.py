@@ -16,6 +16,7 @@ _ARGS = (ctypes.c_void_p,) * 9 + (ctypes.c_int64,) * 4 + (ctypes.c_void_p,)
 _PREFILL_ARGS = (ctypes.c_void_p,) * 9 + (ctypes.c_int64,) * 5 + (ctypes.c_void_p,)
 _PREPARE_ARGS = (ctypes.c_void_p,) * 10 + (ctypes.c_int64,) * 5 + (ctypes.c_void_p,)
 _GATE_ARGS = (ctypes.c_void_p,) * 3 + (ctypes.c_int64,) * 3 + (ctypes.c_void_p,)
+_STATE_LAYOUT_ARGS = (ctypes.c_void_p,) * 2 + (ctypes.c_int64,) * 3 + (ctypes.c_int32, ctypes.c_void_p)
 
 
 def plan_qwen4_exp_gdn_build(
@@ -107,6 +108,28 @@ def qwen4_exp_gdn_decode_f32(
     )
     if int(error) != HIP_SUCCESS:
         runtime.check(int(error))
+
+
+def _qwen4_exp_gdn_state_transpose_f32(
+    source_ptr: int, destination_ptr: int, heads: int, key_dim: int,
+    value_dim: int, *, strict_to_transposed: bool, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    library = library or build_qwen4_exp_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(library, "hipengine_qwen4_exp_gdn_state_transpose_f32", _STATE_LAYOUT_ARGS, ctypes.c_int)
+    error = fn(source_ptr, destination_ptr, heads, key_dim, value_dim, int(strict_to_transposed), stream)
+    if int(error) != HIP_SUCCESS: runtime.check(int(error))
+
+
+def qwen4_exp_gdn_state_strict_to_transposed_f32(*args, **kwargs) -> None:
+    kwargs["strict_to_transposed"] = True
+    _qwen4_exp_gdn_state_transpose_f32(*args, **kwargs)
+
+
+def qwen4_exp_gdn_state_transposed_to_strict_f32(*args, **kwargs) -> None:
+    kwargs["strict_to_transposed"] = False
+    _qwen4_exp_gdn_state_transpose_f32(*args, **kwargs)
 
 
 def qwen4_exp_gdn_prefill_prepare_f32(
@@ -392,6 +415,16 @@ def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
             function,
             replace=replace,
         )
+    register(
+        KernelKey("hip_gfx1100", "gdn_state_layout", "f32_state", "strict_to_transposed"),
+        qwen4_exp_gdn_state_strict_to_transposed_f32,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "gdn_state_layout", "f32_state", "transposed_to_strict"),
+        qwen4_exp_gdn_state_transposed_to_strict_f32,
+        replace=replace,
+    )
 
 
 register_qwen4_exp_gdn_kernels()
@@ -402,6 +435,8 @@ __all__ = [
     "build_qwen4_exp_gdn",
     "plan_qwen4_exp_gdn_build",
     "qwen4_exp_gdn_decode_f32",
+    "qwen4_exp_gdn_state_strict_to_transposed_f32",
+    "qwen4_exp_gdn_state_transposed_to_strict_f32",
     "qwen4_exp_gdn_peer_prefill_f32",
     "qwen4_exp_gdn_prefill_f32",
     "qwen4_exp_gdn_prefill_prepare_f32",
