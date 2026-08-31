@@ -4,7 +4,10 @@
 This is the durable version of the fresh-profile harness used for the
 2026-08-30 gfx1151 llama.cpp comparison. It deliberately keeps profiler-only
 instrumentation out of dispatch: ROCTX ranges wrap existing runner entry points
-and runtime calls are restored before the generator is closed.
+and runtime calls are restored before the generator is closed. Diagnostic
+``--override HIPENGINE_KEY=VALUE`` arguments are applied after the named
+production-profile binder and recorded alongside both bound and effective route
+environments.
 """
 from __future__ import annotations
 
@@ -203,6 +206,32 @@ def _wall_summary(mode: str, prompt_tokens: int, walls: list[float]) -> dict[str
     }
 
 
+def _parse_overrides(values: list[str]) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for raw in values:
+        key, separator, value = raw.partition("=")
+        if not separator:
+            raise ValueError(f"override must use KEY=VALUE, got {raw!r}")
+        if not key:
+            raise ValueError("override must have a non-empty key")
+        if not key.startswith("HIPENGINE_"):
+            raise ValueError(f"override key must start with HIPENGINE_, got {key!r}")
+        if key in overrides:
+            raise ValueError(f"duplicate override for {key}")
+        overrides[key] = value
+    return overrides
+
+
+def _apply_post_binder_overrides(
+    overrides: dict[str, str],
+) -> tuple[dict[str, str | None], dict[str, str | None]]:
+    effective_route_keys = tuple(dict.fromkeys((*ROUTE_ENV_KEYS, *overrides)))
+    bound = {key: os.environ.get(key) for key in effective_route_keys}
+    os.environ.update(overrides)
+    effective = {key: os.environ.get(key) for key in effective_route_keys}
+    return bound, effective
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True, help="Directory containing the split GGUF parts")
@@ -220,12 +249,26 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hip-arch", default="gfx1151")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        metavar="HIPENGINE_KEY=VALUE",
+        help=(
+            "Diagnostic runtime override applied after the named profile binder; "
+            "repeat for multiple keys"
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    try:
+        overrides = _parse_overrides(args.override)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     if args.mode == "prefill" and args.prompt_file is None:
         raise SystemExit("--prompt-file is required in prefill mode")
     max_sequence_length = args.max_sequence_length or (768 if args.mode == "prefill" else 128)
@@ -283,13 +326,22 @@ def main() -> None:
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
         "fell_back_to_strict": resolved.fell_back_to_strict,
+        "configuration_class": (
+            "diagnostic_post_binder_override" if overrides else "named_profile"
+        ),
+        "named_profile_intact": not bool(overrides),
+        "overrides": dict(overrides),
+        "override_stage": "post_profile_binder_pre_measurement",
+        "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
     }
     generator = resolved.construct_generator(factory)
     try:
         runner = generator.runner
-        report["route_env"] = {key: os.environ.get(key) for key in ROUTE_ENV_KEYS}
+        report["bound_route_env"], report["route_env"] = (
+            _apply_post_binder_overrides(overrides)
+        )
         if args.mode == "prefill":
             ids = generator.tokenizer.encode(args.prompt_file.read_text())
             if args.expected_prompt_tokens is not None and len(ids) != args.expected_prompt_tokens:

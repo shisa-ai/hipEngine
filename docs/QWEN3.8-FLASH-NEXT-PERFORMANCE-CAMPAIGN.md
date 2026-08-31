@@ -395,7 +395,17 @@ rocprofv3 --kernel-trace --hip-trace --marker-trace --output-format csv \
 hipEngine decode uses the same driver in decode mode, normally 8 warmup steps
 and 16 measured steps with `max_sequence_length=128` and `prefill_chunk_size=256`.
 Do not treat the profiled wall as a speed claim; use the unprofiled wall rows for
-that.
+that. To profile an isolated candidate that the named profile binder normally
+resets, add a repeatable post-binder override such as:
+
+```bash
+  --override HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1
+```
+
+The child artifact records `overrides`, `bound_route_env`, the effective
+`route_env`, and `named_profile_intact: false`. An override run is diagnostic
+and cannot claim the named profile or promotion without the complete profile
+gate.
 
 llama.cpp HIP traces use `rocprofv3 --kernel-trace --hip-trace
 --hip-graph-trace --memory-copy-trace --stats` around `llama-bench -r 1`, then
