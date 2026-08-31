@@ -2,7 +2,7 @@
 
 Status: **punchlist closed; post-closeout review corrections recorded
 2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01; extension W
-(dataflow-wall successor punchlist) opened 2026-09-01, no W unit measured yet;
+(dataflow-wall successor punchlist) opened 2026-09-01, W0 instrumentation done;
 extension Y (prefill sweep-multiplicity punchlist) opened 2026-09-01, no Y
 unit measured yet**.
 Successor to the closed
@@ -630,15 +630,22 @@ throughout). Additional extension rule from the closeout's reopen condition:
 a measured projection of the wall seconds it can remove; unsized candidates
 are not started.
 
-- [ ] W0 **Sweep-economics instrumentation (entry gate for all of W).**
-  Extend `scripts/mtp_cycle_accounting.py` / the rocprof harness to report,
-  per cycle on the frozen C6/C8 protocol: weight-bytes swept per family per
-  stage, ms per stage, and verify-pass ms at R8/R12/R16/R20/R24/R32 for
-  Q4/Q5/Q6. Publish the extension metric **AR-step equivalents per committed
-  token** (current: C6 2.11, C8 2.13; target <= 1.70 at K1, or the K-adjusted
-  equivalent) and the row-scaling curve that sizes W1. No perf claim; this
-  re-establishes M2i-class attribution as durable committed evidence
-  (audit limitation 1).
+- [x] W0 **Sweep-economics instrumentation. Done 2026-09-01.** Target-submit
+  and complete target/accept-drain timestamps now correlate resident telemetry
+  with `rocprofv3` kernel traces and the gfx1151 `FETCH_SIZE` counter. The
+  frozen all-ten C6/C8 K1 refresh passes 20/20 exact/engaged/budget cells and
+  measures **2.1069 / 2.1423 AR-step equivalents per speculative cycle**
+  versus **1.7013** required for 1.15x. (This corrects the opening item's unit:
+  2.11/2.13 is per cycle, not per committed token.) The diagnostic R8-R32
+  curve passes 6/6 cells but fails flatness: R32/R8 family time is
+  **2.27x Q4 / 12.59x Q5 / 15.69x Q6**. Actual video-memory fetch at R32 is
+  **1.07x / 34.62x / 26.69x** each family's resident target bytes; Q5/Q6
+  re-sweep while Q4's bytes are already flat but its time is not. Applying
+  W1's 1.25x ceiling sizes **33.9 s C6/R24 / 44.8 s C8/R32** of family time
+  across the historical 71-cycle full suite, well above the remaining K1
+  wall gaps. W1 entry is open. W2/W5's overlapping non-family upper bound is
+  2.47/3.39 s; W4's post-W1 proposal excess is only ~0.85/0.44 s. No perf
+  claim. [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w0-sweep-economics.json).
 - [ ] W1 **Row-invariant wide verify owners (R20-R32).** Build GEMM-shaped
   (M-tile-loop, MMQ-style) multi-row verify owners for Q4/Q5/Q6 at R20-R32 so
   one weight-tile stream serves all rows — the external engines' verifier
