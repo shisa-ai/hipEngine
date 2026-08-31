@@ -1276,11 +1276,15 @@ The fused Q4 gate/up owner is absent at C6/C7, then runs 64 times and costs
 **87.61 ms** in each R36 C8 cycle (two of three profiled cycles). Memory-copy
 trace records zero operations inside every cycle and telemetry reports no
 candidate D2H after target, so the prior accept/commit D2H theory is rejected.
-The next candidate is a direct exact-unfused-versus-fused R36 verifier screen;
-small-M stays closed. This one-prompt D12 profile is attribution only: retention
-still requires the complete category+heldout D24 exact/profile/lifecycle gate.
-Evidence:
-[`one-group K3 C6-C8 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json).
+The direct exact-unfused-versus-fused R36 screen is now complete and rejected:
+on actual layer-0 gate/up weights, the strict chain is bit-exact but measures
+**1.524657 vs 1.297709 ms**, or **17.49% slower**, and loses all 20
+counterbalanced samples. No selector or dispatch change is retained; small-M
+stays closed. This one-prompt D12 profile and actual-weight leaf are attribution
+only: any future candidate still requires the complete category+heldout D24
+exact/profile/lifecycle gate. Evidence:
+[`one-group K3 C6-C8 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json) ·
+[`R36 unfused rejection`](../benchmarks/results/2026-08-31-w7900-q4km-r36-unfused-gate-up-rejected.json).
 
 ### 12.5 P13 stop rules
 
