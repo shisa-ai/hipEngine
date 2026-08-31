@@ -975,13 +975,17 @@ P13 is complete only when:
   107 blocks × four wave32s are about **4.46 waves/CU** versus a maximum 32.
   Additional tiling may improve latency hiding, but split-K is a candidate to
   measure, not a proven 4.8x CU-underfill fix.
-- **T16 timing protocol.** The retained sweep executed one fixed arm order and
-  two back-to-back passes; it was not counterbalanced despite saying so. ULP-0
-  correctness stands. Speed claims are provisional until #25 repairs and reruns
-  the protocol.
-- **Band edge.** `(5120,12288)` row 128 measured 0.970x and 1.022x. The default
-  must stop at the supported row 112 unless counterbalanced repeats establish a
-  non-regressive wider band.
+- **T16 timing protocol (resolved by #25).** The retained sweep executed one
+  fixed arm order and two back-to-back passes; it was not counterbalanced
+  despite saying so. The repaired harness now runs forward/reverse order pairs,
+  reverses repeated pair order, takes no best-of selection, and returns owned
+  per-pass output captures. A tracked-clean all-shape repeat confirms ULP-0,
+  finite output, the two retained row-128 shapes, and every recorded loss.
+- **Band edge (resolved by #25).** Historical `(5120,12288)` row 128 measured
+  0.970x and 1.022x. A focused five-pair/50-rep repeat retains row 112 at
+  **1.1017x** in both orders but measures rows 120/124/128 at
+  **0.9943x/0.9949x/0.9992x**, each regressive in both orders. That shape now
+  stops at row 112; shared-B owns rows 113+.
 - **Command integrity.** Missing `--output` and prose such as “then the same
   tool” are not as-run commands. Unknown argv is recorded as null; executable
   reconstructions are labelled templates.
@@ -1016,17 +1020,25 @@ size-3 and 15/20 size-2 groups. The omitted-request automatic arm declines MTP,
 executes exact K0/default, but queues full waves 20/20 and measures stable
 **259.3/344.4 prompt tok/s**, **1.082x/1.329x** the strongest peer. Therefore
 #29 coalesces ready default-AR submissions before any C2/C3 kernel conclusion;
-#25 then #11 remain the C1 native-prefill path. Evidence:
+#25 is now complete and #11 remains the C1 native-prefill path. Evidence:
 [`current server attribution`](../benchmarks/results/2026-08-31-w7900-q4km-c1c3-current-server-prefill-attribution.json).
 
 #### P13-C — T16 evidence and down-projection occupancy (#25, then #11)
 
-- [ ] Counterbalance the T16 harness, test its arm schedule/output capture, and
+- [x] Counterbalance the T16 harness, test its arm schedule/output capture, and
       correct exact command records.
-- [ ] Narrow the weak `(5120,12288)` edge or retain it only after repeats.
+- [x] Narrow the weak `(5120,12288)` edge or retain it only after repeats.
 - [ ] Measure ISA/runtime occupancy for `(17408,5120)` under the 96-CU model;
       try a finer row/column tile before a reduction, and retain split-K only if
       operation-complete timing repays accumulation.
+
+The task-#25 correction is tracked-clean at harness revision `0c7dc9150`.
+Across the all-shape sweep, `(5120,17408)` is **1.4053x..1.0753x** and
+`(5120,10240)` is **1.2182x..1.1261x** over sampled rows 2..128, with every
+retained point positive in both arm orders. The four omitted shapes lose at
+all 40 sampled cells. The shape-specific `(5120,12288)` cap changes
+**128 -> 112**; no published throughput row changes. Evidence:
+[`counterbalanced T16 correction`](../benchmarks/results/2026-08-31-w7900-q4km-t16-single-wave-counterbalanced-band-correction.json).
 
 #### P13-D — Current K3 attribution (#23/#12 complete; #30 remedy)
 

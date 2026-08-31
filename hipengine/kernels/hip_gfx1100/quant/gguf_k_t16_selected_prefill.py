@@ -21,6 +21,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS,
+    GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
@@ -86,8 +87,8 @@ _ENV_SINGLE_WAVE_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS"
 _SINGLE_WAVE_MAX_ROWS_RESOLVED: int | None = None
 
 
-def _single_wave_max_rows() -> int:
-    """Row band in which single-wave owns a single-wave shape (0 forces shared-B).
+def _single_wave_max_rows(shape: tuple[int, int]) -> int:
+    """Row band in which single-wave owns ``shape`` (0 forces shared-B).
 
     Bisection switch for the 2026-08-30 promotion so a same-build A/B is possible
     without reverting code. Resolved once because this sits on the launch path.
@@ -112,7 +113,10 @@ def _single_wave_max_rows() -> int:
                     f"{_ENV_SINGLE_WAVE_MAX_ROWS} must be a non-negative integer"
                 )
         _SINGLE_WAVE_MAX_ROWS_RESOLVED = value
-    return _SINGLE_WAVE_MAX_ROWS_RESOLVED
+    shape_cap = GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE.get(shape)
+    if shape_cap is None:
+        return _SINGLE_WAVE_MAX_ROWS_RESOLVED
+    return min(_SINGLE_WAVE_MAX_ROWS_RESOLVED, int(shape_cap))
 
 
 def _extra_flags() -> tuple[str, ...]:
@@ -340,7 +344,7 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         fn = (
             gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
             if shape in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES
-            and 2 <= int(rows) <= _single_wave_max_rows()
+            and 2 <= int(rows) <= _single_wave_max_rows(shape)
             else gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
         )
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:

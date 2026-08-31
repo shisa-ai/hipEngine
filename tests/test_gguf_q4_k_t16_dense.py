@@ -161,6 +161,11 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
         None,
     )
+    single_wave_max_rows_by_shape = getattr(
+        gfx1100_backend,
+        "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
+        None,
+    )
     assert callable(selector)
     assert rows_policy == frozenset({6})
     assert shape_policy == frozenset(
@@ -180,6 +185,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     # 0.87x slower from 144 rows up. See
     # benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json.
     assert single_wave_max_rows == 128
+    assert single_wave_max_rows_by_shape == {(5_120, 12_288): 112}
 
     calls: list[str] = []
     monkeypatch.setattr(
@@ -214,6 +220,9 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     selector(1, 2, 3, 35, 5_120, 10_240)
     selector(1, 2, 3, 35, 5_120, 12_288)
     selector(1, 2, 3, 35, 5_120, 6_144)
+    selector(1, 2, 3, 112, 5_120, 12_288)
+    selector(1, 2, 3, 113, 5_120, 12_288)
+    selector(1, 2, 3, 128, 5_120, 10_240)
     assert calls == ["rowtile"] * len(shape_policy) + [
         "single_wave",
         "rowtile",
@@ -228,6 +237,9 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         "single_wave",
         "single_wave",
         "shared_b",
+        "single_wave",
+        "shared_b",
+        "single_wave",
     ]
 
     # Bisection switch: forcing the band to 0 must return every non-row-6 call to
