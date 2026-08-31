@@ -18,6 +18,14 @@ def test_q4_verifier_numerics_parser_freezes_product_horizon() -> None:
     assert args.candidate_budget == 3
 
 
+def test_q4_verifier_numerics_accepts_w1_wide_shapes() -> None:
+    args = gate.build_parser().parse_args(
+        ("--concurrency", "8", "--candidate-budget", "3", "--output", "/tmp/out.json")
+    )
+    assert args.concurrency == 8
+    assert args.candidate_budget == 3
+
+
 def test_q4_verifier_numerics_accepts_c3_tail_budget_and_pads_final_group() -> None:
     args = gate.build_parser().parse_args(
         (
