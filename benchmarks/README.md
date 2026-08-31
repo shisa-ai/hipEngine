@@ -259,8 +259,12 @@ GR projection/read **709.32 ms**, Q8 `attn_qkv+attn_gate` **532.36 ms**, router
 **181.91 ms**, `ssm_out` **137.84 ms**, and shared projections **121.61 ms**.
 The first operation-complete target is the 36-layer qkv+gate boundary; it must
 preserve current qkv-MMQ and exact-gate arithmetic or qualify a declared T1
-pair, with both singleton routes retained as fallbacks.
-[`P3 prefill profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json).
+pair, with both singleton routes retained as fallbacks. The first extension—Q8
+MMQ on the omitted K2560/N6144 gate—wins **1.0352x** p508 and passes all
+numerical scopes, but is rejected because candidate state repeat 1 differs from
+repeats 2–3 on the first prompt. Ignoring the first same-schedule run as warmup
+is not a valid production rule; exact coltile remains default.
+[`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
 
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are

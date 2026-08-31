@@ -737,8 +737,11 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic. The first default-off extension adds the
       omitted K2560/N6144 attention-gate shape: same-process p508 improves 3.52%
-      (ratio 95% CI 1.0332–1.0371), and its one-prompt profile smoke passes.
-      Run the complete 450-row gate before any admission.
+      and all numerical scopes pass, but candidate state repeat 1 differs from
+      repeats 2–3 on the first code prompt. Same-schedule state repeatability is
+      binding; the scope is rejected/default-off. Ignoring the first run as
+      warmup is diagnostic only, not a promotion rule. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json`.
 - [ ] Require each retained subunit to reduce its complete role and p512/p1024,
       not merely an isolated GEMM; re-run p4096 at the phase gate.
 

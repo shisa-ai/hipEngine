@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 Q8 MMQ attention-gate — rejected] Extending guarded F32 Q8 MMQ to K2560/N6144 wins p508 **1.0352x (95% CI 1.0332–1.0371)** and passes all 450-row numerical scopes at mean/p95/max KL **3.16e-4/0.00180/0.00668**, **447/450 top-1**, but candidate state repeat 1 differs from repeats 2–3 on the first code prompt. Binding same-schedule repeatability rejects promotion; default stays exact coltile. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P3 prefill profile — diagnostic] Fresh current-production p508 names **1.670 s** of primary P3 roles: GR projection/read **709.32 ms**, Q8 `attn_qkv+attn_gate` **532.36 ms**, router **181.91 ms**, `ssm_out` **137.84 ms**, and shared projections **121.61 ms**. The 36-layer qkv+gate boundary is the first operation-complete target. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-prefill-profile.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P2 exact Q4 team2 — rejected] Two independent 128-thread teams preserve each output reduction while computing columns concurrently, but complete p508 is **0.9978x (95% CI 0.9927–1.0028)**. Candidate is bit-exact and removed. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-q4-team2-rejected.json`.
