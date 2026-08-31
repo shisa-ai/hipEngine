@@ -245,6 +245,15 @@ mean KL is **0.001179 > 0.001**. The route remains default-off; c2 and depth
 promotion gates were not run because they cannot compensate for this failure.
 [`P1 layer-2 rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p1-layer2-grouped-profile-rejected.json).
 
+The fresh P2 split keeps current production default-off for that candidate and
+profiles layers 0–26 at **2.366 s**: exact Q4/Q5_K gate/up **1.200 s**, exact
+Q5_1/Q8 down **1.152 s**, and activation plus routing/shared tails only
+**13.25 ms**. Layers 3–26 alone retain **1.849 s**; active experts span 166–298
+with median 9 rows per active expert. The next exact/T1 work therefore targets
+multi-row weight reuse/output tiling in both projection halves, not the <0.6%
+tail. Telemetry was collected separately and its D2H wall is excluded.
+[`P2 early-MoE profile`](results/2026-08-31-gfx1151-qwen38-flash-next-p2-early-moe-profile.json).
+
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
 **296.12/362.72/17.62** and **413.04/396.25/23.85 tok/s**; Nathan's local
