@@ -252,9 +252,11 @@ GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset(
 # 256-row shared-B tile. The shared-B kernel launches on a
 # ``Q4_DENSE_TILE_ROWS = 4*4*16 = 256`` row tile, so small rows pay nearly the
 # full 256-row cost; a W7900 row sweep measured single-wave bit-identical and
-# faster for rows 2..128 on all three shapes (1.43x-1.09x at 5120x17408,
-# 1.26x-1.08x at 5120x10240, 1.28x-1.02x at 5120x12288) and slower from 144 rows
-# up at 5120x17408, which sets this band. The shapes it does **not** contain are
+# faster for rows 2..128 on (5120,17408) and (5120,10240). A repaired
+# forward/reverse sweep retained (5120,12288) only through row 112 (1.10x in
+# both orders); rows 120/124/128 were 0.994x/0.995x/0.999x in the higher-repeat
+# run, so that shape uses the narrower cap below. The shapes it does **not**
+# contain are
 # measured losses, not unmeasured gaps: single-wave is 0.77x-0.83x at
 # (17408, 5120), 0.75x-0.85x at (5120, 6144) and (6144, 5120), and 0.63x-0.92x at
 # (5120, 1024). Strict shared-B stays the registered sibling and the fallback.
@@ -262,6 +264,7 @@ GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES = frozenset(
 # benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-rows-accepted.json and
 # benchmarks/results/2026-08-30-w7900-q4km-t16-single-wave-shapes-accepted.json.
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS = 128
+GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE = {(5_120, 12_288): 112}
 # Production C2 reuses C1-equivalent rows6 rowtiles for the remaining Q4
 # gate/up and full-attention output shapes. Complete strict-teacher, repeat,
 # permutation-isolation, task, and lifecycle packets qualify this arithmetic
@@ -928,6 +931,7 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
+    "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS",

@@ -2,8 +2,8 @@
   "schema": 1,
   "kind": "gguf_t16_single_wave_prefill_band_promotion",
   "date": "2026-08-30",
-  "status": "retained_exact_route_speed_evidence_under_correction",
-  "claim": "The registered single-wave T16 leaf owns the (5120, 17408) dense projection for rows 2-128 and is bit-identical to shared-B on every measured row. The recorded 1.14x-1.43x kernel and 7.75% first-token improvements came from fixed-order, best-of-two measurements rather than the counterbalanced protocol originally claimed; speed evidence is provisional pending task #25, and no published row changed.",
+  "status": "retained_exact_route_counterbalanced_speed_confirmed",
+  "claim": "The registered single-wave T16 leaf owns the (5120, 17408) dense projection for rows 2-128 and is bit-identical to shared-B on every measured row. Task #25's tracked-clean counterbalanced sweep confirms 1.405x at row 2 through 1.075x at row 128 in both arm orders, then losses of 0.850x/0.836x at rows 144/192. The historical fixed-order ratios below are superseded for speed citation by the linked correction; no published row changed.",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf (17106773984 bytes)",
   "quant": "gguf_q4_k_m",
   "execution_weight_tier": "q4_k_t16",
@@ -20,7 +20,7 @@
     ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --mtp-request-mode explicit --generation2-diagnostic --execution-profile production --output /tmp/he-t16/c1c8-single-wave.json"
   ],
   "kernel_sweep": {
-    "geometry": "(rows, 5120, 17408) on canonical repack_gguf_q4_k_tile16 payloads; fixed arm order with two back-to-back passes per arm, not counterbalanced; all outputs finite",
+    "geometry": "HISTORICAL/SUPERSEDED SPEED PROTOCOL: (rows, 5120, 17408) on canonical repack_gguf_q4_k_tile16 payloads; fixed arm order with two back-to-back passes per arm, not counterbalanced; all outputs finite",
     "single_wave_speedup_vs_owner": {"2": 1.39, "4": 1.36, "6": 1.43, "8": 1.36, "16": 1.41, "32": 1.30, "35": 1.30, "48": 1.23, "64": 1.27, "67": 1.14, "96": 1.31, "128": 1.12, "144": 0.87, "160": 0.84, "176": 0.87, "192": 0.87, "256": 0.75, "257": 1.10, "384": 0.94},
     "ulp_vs_owner": "0 at every row measured from 2 to 128, i.e. bit-identical outputs",
     "rows6_rowtile_vs_owner": "neutral, 0.94x-1.06x across the whole sweep",
@@ -60,6 +60,14 @@
     "numerics": "no KL/top-1 gate required for the changed leaf because the promoted path is bit-identical to the strict sibling at every row in the band; packet exactness is 80/80",
     "fallback": "shared-B stays registered as the strict sibling and the fallback route; the env switch restores it"
   },
-  "consequence_for_objective": "The exact route change is retained, but its speed protocol was not counterbalanced and the host-versus-kernel interpretation conflicts with earlier attribution. Task #22 must remeasure current C1-C3 serving components before host or kernel work is prioritized; task #25 repairs the timing protocol.",
+  "consequence_for_objective": "The exact route and its rows 2-128 speed band are confirmed by task #25's tracked-clean forward/reverse repeat. Task #22 separately resolved current C1-C3 serving composition; task #11 may now proceed against the remaining down-projection owner.",
+  "task25_counterbalanced_correction": {
+    "artifact": "benchmarks/results/2026-08-31-w7900-q4km-t16-single-wave-counterbalanced-band-correction.json",
+    "measurement_revision": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+    "protocol": "three forward/reverse order pairs, 25 reps/pass, no best-of selection, owned per-pass output capture",
+    "rows_2_to_128": "ULP 0, finite, and non-regressive in both orders at every sampled row; aggregate shared-B/single-wave ratio 1.4053x at row 2 through 1.0753x at row 128",
+    "rows_144_192": "0.8504x/0.8357x; shared-B retained",
+    "old_measurements": "The kernel_sweep and first_token_ab blocks remain historical fixed-order evidence and are not the source of the corrected speed claim."
+  },
   "scratch_hygiene": "Packets stay in /tmp/he-t16; only this compact artifact and the harness are committed."
 }

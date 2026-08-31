@@ -2,8 +2,8 @@
   "schema": 1,
   "kind": "gguf_t16_single_wave_shape_extension_accepted",
   "date": "2026-08-30",
-  "status": "retained_exact_route_speed_evidence_under_correction",
-  "claim": "The single-wave leaf extension to (5120,10240) and (5120,12288) is bit-identical to shared-B on every measured row. Recorded 1.02x-1.28x speedups were measured in a fixed arm order, not a counterbalanced protocol, and (5120,12288) row 128 straddles parity; speed and that band edge are under task #25 correction. Measured losing shapes remain useful negative evidence.",
+  "status": "retained_exact_route_counterbalanced_speed_and_band_corrected",
+  "claim": "The single-wave leaf extension remains bit-identical to shared-B. Task #25's tracked-clean counterbalanced sweep confirms (5120,10240) through row 128 and all four omitted shapes as losses. A focused five-pair/50-rep repeat finds (5120,12288) row 112 at 1.1017x but rows 120/124/128 at 0.9943x/0.9949x/0.9992x, so that shape now narrows from row 128 to row 112. Historical fixed-order tables remain below but are superseded for speed and band citation by the linked correction.",
   "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "quant": "gguf_q4_k_m",
   "execution_weight_tier": "q4_k_t16",
@@ -446,12 +446,12 @@
         12288
       ]
     ],
-    "rows": "2..128, the existing GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS band",
+    "rows": "2..128 for (5120,17408) and (5120,10240); 2..112 for (5120,12288) via the shape-specific task #25 cap",
     "row6_routes_untouched": "both shapes are in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES and the row-6 branch is checked first, so their measured 7.28x and 7.32x rows6 rowtile wins are preserved",
     "band_confidence": {
-      "(5120,17408)": "wins in every measurement through rows 128 (1.09-1.41x)",
-      "(5120,10240)": "wins in every measurement through rows 128 (1.08-1.26x), and still wins at 144/160",
-      "(5120,12288)": "wins in every measurement through rows 112 (1.10-1.28x); rows 128 is noise-bounded 0.97-1.02"
+      "(5120,17408)": "counterbalanced 1.4053x..1.0753x through sampled rows 2..128, both orders; loses at 144/192",
+      "(5120,10240)": "counterbalanced 1.2182x..1.1261x through sampled rows 2..128, both orders",
+      "(5120,12288)": "counterbalanced 1.2321x..1.1084x through sampled rows 2..112, both orders; focused high-repeat rows 120/124/128 are 0.9943x/0.9949x/0.9992x and the default now stops at 112"
     }
   },
   "first_token_ab": {
@@ -509,6 +509,15 @@
     "material_one": "(5120,12288) at rows 128 straddles parity: 0.970 in the 15-rep all-shapes sweep and 1.022 in the 20-rep pin-down. The promotion band for that shape is therefore strongly supported only through rows 112; at rows 128 the effect is inside measurement noise and could be a small regression.",
     "material_two": "(5120,12288) at rows 67 measured 1.106 and 1.075, and (5120,10240) at rows 128 measured 1.083 and 1.110. Both runs win in every measurement, so only the quoted digit changes.",
     "correction_reason": "the first version of this artifact merged points from the 15-rep all-shapes sweep and the 20-rep pin-down runs into a single per-shape table without labelling which run each point came from, and cited the pin-down value for (5120,12288) rows 67/128 in a table that read like the sweep. Every individual number was a real measurement, but the table was not one consistent protocol, and the unlabelled merge happened to flatter the (5120,12288) band edge.",
-    "code_left_unchanged": "At this correction commit the global row cap is still 128, but task #25 is required to narrow (5120,12288) to the evidence-backed row 112 unless a repaired counterbalanced repeat proves row 128 non-regressive. Uncertainty cannot remain in a production default."
+    "code_left_unchanged": "At the earlier artifact-correction commit the global row cap was still 128. Task #25 has now resolved this: (5120,12288) uses a shape-specific cap of 112 after the focused higher-repeat row 128 result measured 0.9992x and regressed in both arm orders."
+  },
+  "task25_counterbalanced_correction": {
+    "artifact": "benchmarks/results/2026-08-31-w7900-q4km-t16-single-wave-counterbalanced-band-correction.json",
+    "measurement_revision": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+    "all_shape_protocol": "three forward/reverse order pairs, 25 reps/pass, no best-of selection, owned per-pass output capture",
+    "edge_protocol": "five forward/reverse order pairs, 50 reps/pass at rows 112/120/124/128",
+    "correctness": "ULP 0 and finite for every captured pass/cell",
+    "negative_shapes": "(17408,5120), (5120,6144), (6144,5120), and (5120,1024) lose at every sampled row and in both orders",
+    "old_measurements": "single_wave_ratio_vs_shared_b remains historical fixed-order evidence and is not the source of the corrected speed/band claim."
   }
 }

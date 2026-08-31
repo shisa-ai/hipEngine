@@ -1,0 +1,941 @@
+{
+  "schema": 1,
+  "kind": "gguf_t16_single_wave_counterbalanced_band_correction",
+  "date": "2026-08-31",
+  "status": "retained_exact_route_band_narrowed",
+  "claim": "A repaired counterbalanced sweep confirms the exact single-wave defaults for (5120,17408) and (5120,10240) through row 128 and confirms all four omitted shapes as losses. Focused higher-repeat evidence rejects a uniform (5120,12288) row-128 band, so only that shape narrows from rows 2-128 to rows 2-112; shared-B remains its exact fallback above 112.",
+  "model_context": {
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_accessed_by_microbenchmark": false,
+    "quant": "gguf_q4_k_m",
+    "execution_weight_tier": "q4_k_t16",
+    "payload": "canonical repack_gguf_q4_k_tile16 output over deterministic valid synthetic Q4_K blocks; direct registered leaves"
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "backend": "hip_gfx1100",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "architecture": "gfx1100",
+    "compute_units": 96
+  },
+  "measurement_revision": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+  "harness_commit": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+  "implementation": {
+    "old": "one global GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS=128 cap for all three shapes",
+    "new": "global cap 128 plus GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE={(5120,12288):112}",
+    "files": [
+      "hipengine/kernels/hip_gfx1100/__init__.py",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py",
+      "tests/test_gguf_q4_k_t16_dense.py"
+    ],
+    "fallback": "registered shared-B leaf; HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS=0 still restores shared-B for every non-row6 single-wave shape"
+  },
+  "commands": [
+    {
+      "label": "focused_edge_3pair_25rep",
+      "command_as_run": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 300 .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 5120 --out-features 12288 --rows 112,120,124,128 --arms shared_b,single_wave --order-pairs 3 --reps 25 --warmup 6 --output /tmp/he-t16/task25-0c7dc9150-12288.json",
+      "executable_template": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 5120 --out-features 12288 --rows 112,120,124,128 --arms shared_b,single_wave --order-pairs 3 --reps 25 --warmup 6 --output /tmp/he-t16/edge.json"
+    },
+    {
+      "label": "focused_edge_5pair_50rep",
+      "command_as_run": "GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 300 .venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 5120 --out-features 12288 --rows 112,120,124,128 --arms shared_b,single_wave --order-pairs 5 --reps 50 --warmup 10 --output /tmp/he-t16/task25-0c7dc9150-12288-repeat.json",
+      "executable_template": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --in-features 5120 --out-features 12288 --rows 112,120,124,128 --arms shared_b,single_wave --order-pairs 5 --reps 50 --warmup 10 --output /tmp/he-t16/edge-repeat.json"
+    },
+    {
+      "label": "all_shapes_detached_clean_3pair_25rep",
+      "command_as_run": "cd /tmp/hipengine-t25-clean && GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=status.showUntrackedFiles GIT_CONFIG_VALUE_0=no timeout 600 /home/lhl/hipEngine-main/.venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --all-shapes --rows 2,6,16,35,48,67,112,128,144,192 --arms shared_b,single_wave --order-pairs 3 --reps 25 --warmup 6 --output /tmp/he-t16/task25-0c7dc9150-all-shapes-detached-clean.json",
+      "setup_as_run": "git worktree add --detach /tmp/hipengine-t25-clean 0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+      "executable_template": ".venv/bin/python scripts/gguf_t16_prefill_row_sweep.py --all-shapes --rows 2,6,16,35,48,67,112,128,144,192 --arms shared_b,single_wave --order-pairs 3 --reps 25 --warmup 6 --output /tmp/he-t16/all-shapes.json"
+    }
+  ],
+  "measurements": {
+    "edge_3pair_25rep": {
+      "source": "/tmp/he-t16/task25-0c7dc9150-12288.json",
+      "git": {
+        "commit": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+        "branch": "campaign/gfx1100-mtp-cn-promotion",
+        "dirty": false
+      },
+      "protocol": {
+        "reps": 25,
+        "warmup": 6,
+        "order_pairs": 3,
+        "arm_names": [
+          "shared_b",
+          "single_wave"
+        ],
+        "timing": "wall around one launch plus device_synchronize; counterbalanced median over forward/reverse passes; ratios are shared_b/candidate so >1.0 means faster; no best-of selection",
+        "payload": "repack_gguf_q4_k_tile16 output over a valid Q4_K block image"
+      },
+      "shapes": {
+        "(5120,12288)": {
+          "112": {
+            "shared_b_ms": 0.732609,
+            "single_wave_ms": 0.674323,
+            "shared_b_over_single_wave": 1.086436,
+            "forward_ratio": 1.091646,
+            "reverse_ratio": 1.092472,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "120": {
+            "shared_b_ms": 0.744254,
+            "single_wave_ms": 0.745284,
+            "shared_b_over_single_wave": 0.998618,
+            "forward_ratio": 1.023003,
+            "reverse_ratio": 0.975545,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "124": {
+            "shared_b_ms": 0.756135,
+            "single_wave_ms": 0.753929,
+            "shared_b_over_single_wave": 1.002926,
+            "forward_ratio": 1.013051,
+            "reverse_ratio": 0.993181,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.75787,
+            "single_wave_ms": 0.750535,
+            "shared_b_over_single_wave": 1.009774,
+            "forward_ratio": 1.01763,
+            "reverse_ratio": 1.002187,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        }
+      }
+    },
+    "edge_5pair_50rep": {
+      "source": "/tmp/he-t16/task25-0c7dc9150-12288-repeat.json",
+      "git": {
+        "commit": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+        "branch": "campaign/gfx1100-mtp-cn-promotion",
+        "dirty": false
+      },
+      "protocol": {
+        "reps": 50,
+        "warmup": 10,
+        "order_pairs": 5,
+        "arm_names": [
+          "shared_b",
+          "single_wave"
+        ],
+        "timing": "wall around one launch plus device_synchronize; counterbalanced median over forward/reverse passes; ratios are shared_b/candidate so >1.0 means faster; no best-of selection",
+        "payload": "repack_gguf_q4_k_tile16 output over a valid Q4_K block image"
+      },
+      "shapes": {
+        "(5120,12288)": {
+          "112": {
+            "shared_b_ms": 0.721779,
+            "single_wave_ms": 0.655123,
+            "shared_b_over_single_wave": 1.101745,
+            "forward_ratio": 1.100301,
+            "reverse_ratio": 1.103245,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "120": {
+            "shared_b_ms": 0.721716,
+            "single_wave_ms": 0.725824,
+            "shared_b_over_single_wave": 0.99434,
+            "forward_ratio": 0.996196,
+            "reverse_ratio": 0.994398,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "124": {
+            "shared_b_ms": 0.722701,
+            "single_wave_ms": 0.726384,
+            "shared_b_over_single_wave": 0.99493,
+            "forward_ratio": 0.994214,
+            "reverse_ratio": 0.994613,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.725426,
+            "single_wave_ms": 0.725972,
+            "shared_b_over_single_wave": 0.999249,
+            "forward_ratio": 0.998451,
+            "reverse_ratio": 0.997987,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        }
+      }
+    },
+    "all_shapes_3pair_25rep": {
+      "source": "/tmp/he-t16/task25-0c7dc9150-all-shapes-detached-clean.json",
+      "git": {
+        "commit": "0c7dc9150a54a6d34265406542f6bbcfcfb02728",
+        "branch": "HEAD",
+        "dirty": false
+      },
+      "protocol": {
+        "reps": 25,
+        "warmup": 6,
+        "order_pairs": 3,
+        "arm_names": [
+          "shared_b",
+          "single_wave"
+        ],
+        "timing": "wall around one launch plus device_synchronize; counterbalanced median over forward/reverse passes; ratios are shared_b/candidate so >1.0 means faster; no best-of selection",
+        "payload": "repack_gguf_q4_k_tile16 output over a valid Q4_K block image"
+      },
+      "shapes": {
+        "(5120,17408)": {
+          "2": {
+            "shared_b_ms": 0.651248,
+            "single_wave_ms": 0.463421,
+            "shared_b_over_single_wave": 1.405305,
+            "forward_ratio": 1.390825,
+            "reverse_ratio": 1.423375,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 0.626618,
+            "single_wave_ms": 0.459176,
+            "shared_b_over_single_wave": 1.364658,
+            "forward_ratio": 1.360873,
+            "reverse_ratio": 1.373696,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 0.627093,
+            "single_wave_ms": 0.460301,
+            "shared_b_over_single_wave": 1.362354,
+            "forward_ratio": 1.357522,
+            "reverse_ratio": 1.368716,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 0.746754,
+            "single_wave_ms": 0.607508,
+            "shared_b_over_single_wave": 1.22921,
+            "forward_ratio": 1.225441,
+            "reverse_ratio": 1.232981,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 0.770635,
+            "single_wave_ms": 0.609453,
+            "shared_b_over_single_wave": 1.26447,
+            "forward_ratio": 1.266205,
+            "reverse_ratio": 1.25719,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 0.851996,
+            "single_wave_ms": 0.745954,
+            "shared_b_over_single_wave": 1.142156,
+            "forward_ratio": 1.149424,
+            "reverse_ratio": 1.135114,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 0.889782,
+            "single_wave_ms": 0.81844,
+            "shared_b_over_single_wave": 1.087168,
+            "forward_ratio": 1.101673,
+            "reverse_ratio": 1.073288,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.915342,
+            "single_wave_ms": 0.851266,
+            "shared_b_over_single_wave": 1.075271,
+            "forward_ratio": 1.061891,
+            "reverse_ratio": 1.088736,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 0.932092,
+            "single_wave_ms": 1.096074,
+            "shared_b_over_single_wave": 0.850392,
+            "forward_ratio": 0.858986,
+            "reverse_ratio": 0.8421,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 1.028158,
+            "single_wave_ms": 1.230285,
+            "shared_b_over_single_wave": 0.835708,
+            "forward_ratio": 0.845846,
+            "reverse_ratio": 0.825988,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        },
+        "(17408,5120)": {
+          "2": {
+            "shared_b_ms": 1.040704,
+            "single_wave_ms": 1.256785,
+            "shared_b_over_single_wave": 0.828068,
+            "forward_ratio": 0.8191,
+            "reverse_ratio": 0.831338,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 1.032308,
+            "single_wave_ms": 1.259446,
+            "shared_b_over_single_wave": 0.819653,
+            "forward_ratio": 0.818048,
+            "reverse_ratio": 0.818103,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 1.033738,
+            "single_wave_ms": 1.25485,
+            "shared_b_over_single_wave": 0.823794,
+            "forward_ratio": 0.816746,
+            "reverse_ratio": 0.825159,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 1.244391,
+            "single_wave_ms": 1.61582,
+            "shared_b_over_single_wave": 0.77013,
+            "forward_ratio": 0.764241,
+            "reverse_ratio": 0.770846,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 1.254091,
+            "single_wave_ms": 1.634505,
+            "shared_b_over_single_wave": 0.767261,
+            "forward_ratio": 0.768944,
+            "reverse_ratio": 0.767379,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 1.337237,
+            "single_wave_ms": 1.765617,
+            "shared_b_over_single_wave": 0.757377,
+            "forward_ratio": 0.757554,
+            "reverse_ratio": 0.757457,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 1.369196,
+            "single_wave_ms": 1.664541,
+            "shared_b_over_single_wave": 0.822567,
+            "forward_ratio": 0.830442,
+            "reverse_ratio": 0.817335,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 1.374777,
+            "single_wave_ms": 1.762052,
+            "shared_b_over_single_wave": 0.780214,
+            "forward_ratio": 0.777917,
+            "reverse_ratio": 0.782053,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 1.398602,
+            "single_wave_ms": 1.873108,
+            "shared_b_over_single_wave": 0.746674,
+            "forward_ratio": 0.743475,
+            "reverse_ratio": 0.756312,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 1.571039,
+            "single_wave_ms": 1.98308,
+            "shared_b_over_single_wave": 0.792222,
+            "forward_ratio": 0.792003,
+            "reverse_ratio": 0.792422,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        },
+        "(5120,6144)": {
+          "2": {
+            "shared_b_ms": 0.337765,
+            "single_wave_ms": 0.415001,
+            "shared_b_over_single_wave": 0.813889,
+            "forward_ratio": 0.815484,
+            "reverse_ratio": 0.812318,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 0.331724,
+            "single_wave_ms": 0.402831,
+            "shared_b_over_single_wave": 0.823483,
+            "forward_ratio": 0.828387,
+            "reverse_ratio": 0.819761,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 0.329755,
+            "single_wave_ms": 0.40444,
+            "shared_b_over_single_wave": 0.815337,
+            "forward_ratio": 0.814868,
+            "reverse_ratio": 0.81617,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 0.385484,
+            "single_wave_ms": 0.499296,
+            "shared_b_over_single_wave": 0.772055,
+            "forward_ratio": 0.775164,
+            "reverse_ratio": 0.770755,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 0.38952,
+            "single_wave_ms": 0.503312,
+            "shared_b_over_single_wave": 0.773914,
+            "forward_ratio": 0.778535,
+            "reverse_ratio": 0.772887,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 0.420921,
+            "single_wave_ms": 0.503561,
+            "shared_b_over_single_wave": 0.835888,
+            "forward_ratio": 0.843058,
+            "reverse_ratio": 0.832345,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 0.43344,
+            "single_wave_ms": 0.517292,
+            "shared_b_over_single_wave": 0.837903,
+            "forward_ratio": 0.844503,
+            "reverse_ratio": 0.831417,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.437176,
+            "single_wave_ms": 0.565252,
+            "shared_b_over_single_wave": 0.773418,
+            "forward_ratio": 0.776578,
+            "reverse_ratio": 0.766942,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 0.457126,
+            "single_wave_ms": 0.575437,
+            "shared_b_over_single_wave": 0.794398,
+            "forward_ratio": 0.795742,
+            "reverse_ratio": 0.804602,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 0.506416,
+            "single_wave_ms": 0.634603,
+            "shared_b_over_single_wave": 0.798004,
+            "forward_ratio": 0.805493,
+            "reverse_ratio": 0.790698,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        },
+        "(6144,5120)": {
+          "2": {
+            "shared_b_ms": 0.390415,
+            "single_wave_ms": 0.476656,
+            "shared_b_over_single_wave": 0.819071,
+            "forward_ratio": 0.817843,
+            "reverse_ratio": 0.817885,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 0.385355,
+            "single_wave_ms": 0.473231,
+            "shared_b_over_single_wave": 0.814306,
+            "forward_ratio": 0.822042,
+            "reverse_ratio": 0.813141,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 0.38785,
+            "single_wave_ms": 0.474021,
+            "shared_b_over_single_wave": 0.818212,
+            "forward_ratio": 0.824821,
+            "reverse_ratio": 0.817557,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 0.452275,
+            "single_wave_ms": 0.598093,
+            "shared_b_over_single_wave": 0.756196,
+            "forward_ratio": 0.755482,
+            "reverse_ratio": 0.757394,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 0.455815,
+            "single_wave_ms": 0.600718,
+            "shared_b_over_single_wave": 0.758784,
+            "forward_ratio": 0.75978,
+            "reverse_ratio": 0.755903,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 0.487361,
+            "single_wave_ms": 0.576912,
+            "shared_b_over_single_wave": 0.844776,
+            "forward_ratio": 0.841489,
+            "reverse_ratio": 0.847398,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 0.496056,
+            "single_wave_ms": 0.610298,
+            "shared_b_over_single_wave": 0.812809,
+            "forward_ratio": 0.81144,
+            "reverse_ratio": 0.814179,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.506881,
+            "single_wave_ms": 0.655849,
+            "shared_b_over_single_wave": 0.772862,
+            "forward_ratio": 0.772136,
+            "reverse_ratio": 0.773589,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 0.529387,
+            "single_wave_ms": 0.651498,
+            "shared_b_over_single_wave": 0.812568,
+            "forward_ratio": 0.822191,
+            "reverse_ratio": 0.803799,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 0.588388,
+            "single_wave_ms": 0.716359,
+            "shared_b_over_single_wave": 0.821359,
+            "forward_ratio": 0.815965,
+            "reverse_ratio": 0.826671,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        },
+        "(5120,10240)": {
+          "2": {
+            "shared_b_ms": 0.521186,
+            "single_wave_ms": 0.427816,
+            "shared_b_over_single_wave": 1.218249,
+            "forward_ratio": 1.209623,
+            "reverse_ratio": 1.226735,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 0.505526,
+            "single_wave_ms": 0.41287,
+            "shared_b_over_single_wave": 1.22442,
+            "forward_ratio": 1.218938,
+            "reverse_ratio": 1.230434,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 0.510812,
+            "single_wave_ms": 0.415105,
+            "shared_b_over_single_wave": 1.23056,
+            "forward_ratio": 1.230102,
+            "reverse_ratio": 1.229655,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 0.633443,
+            "single_wave_ms": 0.526142,
+            "shared_b_over_single_wave": 1.203939,
+            "forward_ratio": 1.203457,
+            "reverse_ratio": 1.204421,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 0.645928,
+            "single_wave_ms": 0.530357,
+            "shared_b_over_single_wave": 1.217912,
+            "forward_ratio": 1.216738,
+            "reverse_ratio": 1.220521,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 0.710229,
+            "single_wave_ms": 0.612278,
+            "shared_b_over_single_wave": 1.159978,
+            "forward_ratio": 1.158107,
+            "reverse_ratio": 1.161834,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 0.738555,
+            "single_wave_ms": 0.605088,
+            "shared_b_over_single_wave": 1.220574,
+            "forward_ratio": 1.225944,
+            "reverse_ratio": 1.219383,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.75838,
+            "single_wave_ms": 0.673468,
+            "shared_b_over_single_wave": 1.126082,
+            "forward_ratio": 1.137199,
+            "reverse_ratio": 1.118901,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 0.78154,
+            "single_wave_ms": 0.715919,
+            "shared_b_over_single_wave": 1.09166,
+            "forward_ratio": 1.103659,
+            "reverse_ratio": 1.092699,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 0.865271,
+            "single_wave_ms": 0.800505,
+            "shared_b_over_single_wave": 1.080906,
+            "forward_ratio": 1.092439,
+            "reverse_ratio": 1.069786,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        },
+        "(5120,12288)": {
+          "2": {
+            "shared_b_ms": 0.534192,
+            "single_wave_ms": 0.433575,
+            "shared_b_over_single_wave": 1.232062,
+            "forward_ratio": 1.22389,
+            "reverse_ratio": 1.240184,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 0.507966,
+            "single_wave_ms": 0.415505,
+            "shared_b_over_single_wave": 1.222527,
+            "forward_ratio": 1.225057,
+            "reverse_ratio": 1.221854,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 0.504737,
+            "single_wave_ms": 0.416555,
+            "shared_b_over_single_wave": 1.211692,
+            "forward_ratio": 1.211086,
+            "reverse_ratio": 1.224811,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 0.646583,
+            "single_wave_ms": 0.529061,
+            "shared_b_over_single_wave": 1.222133,
+            "forward_ratio": 1.2283,
+            "reverse_ratio": 1.212295,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 0.652043,
+            "single_wave_ms": 0.531872,
+            "shared_b_over_single_wave": 1.22594,
+            "forward_ratio": 1.230889,
+            "reverse_ratio": 1.222715,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 0.72588,
+            "single_wave_ms": 0.647149,
+            "shared_b_over_single_wave": 1.121659,
+            "forward_ratio": 1.123295,
+            "reverse_ratio": 1.120364,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 0.756165,
+            "single_wave_ms": 0.682229,
+            "shared_b_over_single_wave": 1.108374,
+            "forward_ratio": 1.12429,
+            "reverse_ratio": 1.093139,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.79063,
+            "single_wave_ms": 0.766325,
+            "shared_b_over_single_wave": 1.031716,
+            "forward_ratio": 1.046167,
+            "reverse_ratio": 1.017762,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 0.803079,
+            "single_wave_ms": 0.748884,
+            "shared_b_over_single_wave": 1.072368,
+            "forward_ratio": 1.065549,
+            "reverse_ratio": 1.079118,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 0.886596,
+            "single_wave_ms": 0.839291,
+            "shared_b_over_single_wave": 1.056363,
+            "forward_ratio": 1.062462,
+            "reverse_ratio": 1.050461,
+            "non_regressive_in_both_orders": true,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        },
+        "(5120,1024)": {
+          "2": {
+            "shared_b_ms": 0.232127,
+            "single_wave_ms": 0.369819,
+            "shared_b_over_single_wave": 0.627679,
+            "forward_ratio": 0.628866,
+            "reverse_ratio": 0.626493,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "6": {
+            "shared_b_ms": 0.232373,
+            "single_wave_ms": 0.369474,
+            "shared_b_over_single_wave": 0.62893,
+            "forward_ratio": 0.627944,
+            "reverse_ratio": 0.628857,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "16": {
+            "shared_b_ms": 0.234248,
+            "single_wave_ms": 0.37138,
+            "shared_b_over_single_wave": 0.63075,
+            "forward_ratio": 0.630059,
+            "reverse_ratio": 0.631188,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "35": {
+            "shared_b_ms": 0.301509,
+            "single_wave_ms": 0.41256,
+            "shared_b_over_single_wave": 0.730824,
+            "forward_ratio": 0.730918,
+            "reverse_ratio": 0.730939,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "48": {
+            "shared_b_ms": 0.304259,
+            "single_wave_ms": 0.41419,
+            "shared_b_over_single_wave": 0.734588,
+            "forward_ratio": 0.735559,
+            "reverse_ratio": 0.733563,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "67": {
+            "shared_b_ms": 0.33983,
+            "single_wave_ms": 0.369155,
+            "shared_b_over_single_wave": 0.920561,
+            "forward_ratio": 0.921448,
+            "reverse_ratio": 0.920202,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "112": {
+            "shared_b_ms": 0.341625,
+            "single_wave_ms": 0.411825,
+            "shared_b_over_single_wave": 0.82954,
+            "forward_ratio": 0.830251,
+            "reverse_ratio": 0.82865,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "128": {
+            "shared_b_ms": 0.339669,
+            "single_wave_ms": 0.434441,
+            "shared_b_over_single_wave": 0.781854,
+            "forward_ratio": 0.780436,
+            "reverse_ratio": 0.782502,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "144": {
+            "shared_b_ms": 0.354459,
+            "single_wave_ms": 0.370575,
+            "shared_b_over_single_wave": 0.956512,
+            "forward_ratio": 0.955406,
+            "reverse_ratio": 0.955647,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          },
+          "192": {
+            "shared_b_ms": 0.381044,
+            "single_wave_ms": 0.433465,
+            "shared_b_over_single_wave": 0.879065,
+            "forward_ratio": 0.879678,
+            "reverse_ratio": 0.87845,
+            "non_regressive_in_both_orders": false,
+            "ulp_vs_shared_b": 0,
+            "finite": true
+          }
+        }
+      }
+    }
+  },
+  "decision": {
+    "old_to_new": "(5120,12288) single-wave cap 128 -> 112 rows",
+    "high_repeat_edge": {
+      "112": "1.101745x aggregate; 1.100301x/1.103245x forward/reverse; retain",
+      "120": "0.994340x aggregate; 0.996196x/0.994398x; shared-B is 0.566% faster",
+      "124": "0.994930x aggregate; 0.994214x/0.994613x; shared-B is 0.507% faster",
+      "128": "0.999249x aggregate; 0.998451x/0.997987x; shared-B is 0.075% faster"
+    },
+    "correctness": "ULP 0 and finite for every captured pass/cell in all three retained runs",
+    "other_promoted_shapes": "(5120,17408) is 1.4053x..1.0753x through rows 2..128 and loses at 144/192; (5120,10240) is 1.2182x..1.1261x through rows 2..128. Every measured point in those retained bands wins in both orders.",
+    "negative_shapes": "(17408,5120), (5120,6144), (6144,5120), and (5120,1024) lose in both orders at every measured row; no route changes.",
+    "higher_rows": "(5120,10240) wins at sampled rows 144/192, but the contiguous 129..192 band is not measured and is outside this correction. (5120,12288) has non-monotone sampled wins at 144/192 after losses/noise at 120..128, so no disjoint production band is inferred.",
+    "scoreboard": "No published throughput row changes; this is a microbenchmark protocol repair and conservative exact owner correction."
+  },
+  "gates": {
+    "red": "Focused selector test failed because no shape-specific cap existed.",
+    "green": "timeout 600 .venv/bin/python -m pytest -q tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_q4_k_wmma_prefill.py tests/test_gguf_t16_prefill_row_sweep.py -> 153 passed",
+    "numerics": "Direct leaves are ULP-0 exact on every captured pass; no changed arithmetic or KL/top-1 gate is required."
+  },
+  "provenance_notes": [
+    "The two older artifacts had unknown raw argv; their command_as_run fields remain null and executable reconstructions remain explicitly labelled templates.",
+    "The all-shape source is a detached tracked-clean worktree at the harness commit. Two earlier dirty scratch attempts are excluded.",
+    "status.showUntrackedFiles=no makes the focused runs report tracked-source cleanliness rather than the unrelated foreign untracked grouping probe; tracked diff/staging was empty at measurement time.",
+    "Raw sweep JSON remains under /tmp/he-t16 and is not committed; this compact artifact preserves every aggregate/order/correctness verdict used."
+  ]
+}
