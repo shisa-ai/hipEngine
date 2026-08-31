@@ -735,7 +735,10 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       fallbacks. GR down+inject is the secondary operation-complete target.
 - [ ] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
-      that reject changed arithmetic.
+      that reject changed arithmetic. The first default-off extension adds the
+      omitted K2560/N6144 attention-gate shape: same-process p508 improves 3.52%
+      (ratio 95% CI 1.0332–1.0371), and its one-prompt profile smoke passes.
+      Run the complete 450-row gate before any admission.
 - [ ] Require each retained subunit to reduce its complete role and p512/p1024,
       not merely an isolated GEMM; re-run p4096 at the phase gate.
 

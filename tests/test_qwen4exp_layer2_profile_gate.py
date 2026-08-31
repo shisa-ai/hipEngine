@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
@@ -15,6 +16,7 @@ def _load_script():
     spec = importlib.util.spec_from_file_location("qwen4exp_layer2_profile_gate", SCRIPT)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -80,6 +82,18 @@ def test_state_repeat_gate_requires_candidate_repeatability_and_layout() -> None
     assert failed["mismatches"][0]["repeat_exact"] is False
 
 
+def test_q8_mmq_attn_gate_candidate_is_explicit_and_fail_closed() -> None:
+    module = _load_script()
+    candidate = module.CANDIDATES["q8_mmq_attn_gate"]
+
+    assert candidate.environment == {"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"}
+    assert candidate.classification == "T2"
+    assert candidate.candidate_key[-1] == (
+        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+    )
+    assert candidate.fallback_key[-1] == "coltile8_rowbatch4_f32_f32_out"
+
+
 def test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback() -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.registry import resolve
@@ -97,6 +111,12 @@ def test_gfx1151_registry_contains_layer2_candidate_and_strict_fallback() -> Non
         layer="linear",
         quant="gguf_q5_k",
         variant="selected_gemv_bf16_bf16_out",
+    ) is not None
+    assert resolve(
+        backend="hip_gfx1151",
+        layer="linear",
+        quant="gguf_q8_0",
+        variant="mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
     ) is not None
 
 

@@ -14,6 +14,7 @@ it is never silently accepted by this harness.
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -44,9 +45,52 @@ from scripts.qwen4exp_canonical_ar_bench import (
     token_ids_sha256,
 )
 
-KIND = "qwen4exp_layer2_grouped_q5k_execution_profile_gate"
-CANDIDATE = "layer2_grouped_q5k_wmma"
-ROUTE_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL"
+KIND = "qwen4exp_execution_profile_candidate_gate"
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateSpec:
+    name: str
+    classification: str
+    mechanism: str
+    environment: Mapping[str, str]
+    scenario_id: str
+    candidate_key: tuple[str, str, str, str]
+    fallback_key: tuple[str, str, str, str]
+
+
+CANDIDATES = {
+    "layer2_grouped_q5k": CandidateSpec(
+        name="layer2_grouped_q5k_wmma",
+        classification="T2",
+        mechanism="layer-2 Q5_K/Q5_K compact f16-WMMA grouped prefill",
+        environment={"HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "1"},
+        scenario_id="qwen4exp-ud-q4-k-xl-layer2-grouped-q5k",
+        candidate_key=(
+            "hip_gfx1151", "moe_linear", "gguf_q5_k",
+            "selected_wmma_prefill_compact_bf16_bf16_out",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "linear", "gguf_q5_k",
+            "selected_gemv_bf16_bf16_out",
+        ),
+    ),
+    "q8_mmq_attn_gate": CandidateSpec(
+        name="q8_mmq_attn_gate",
+        classification="T2",
+        mechanism="extend guarded Q8 MMQ F32 prefill to GDN attn_gate K2560/N6144",
+        environment={"HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "1"},
+        scenario_id="qwen4exp-ud-q4-k-xl-q8-mmq-attn-gate",
+        candidate_key=(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+        ),
+        fallback_key=(
+            "hip_gfx1151", "linear", "gguf_q8_0",
+            "coltile8_rowbatch4_f32_f32_out",
+        ),
+    ),
+}
 
 
 class GateError(RuntimeError):
@@ -340,6 +384,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     if not prompt_rows:
         raise GateError("selected prompt suite is empty")
     complete_suite = args.limit is None
+    candidate_spec = CANDIDATES[str(args.candidate)]
 
     from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
@@ -349,16 +394,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     register_gfx1151_kernels(replace=True)
     register_qwen4_exp_gfx1151_profiles()
     candidate_kernel = resolve(
-        backend="hip_gfx1151",
-        layer="moe_linear",
-        quant="gguf_q5_k",
-        variant="selected_wmma_prefill_compact_bf16_bf16_out",
+        backend=candidate_spec.candidate_key[0],
+        layer=candidate_spec.candidate_key[1],
+        quant=candidate_spec.candidate_key[2],
+        variant=candidate_spec.candidate_key[3],
     )
     strict_fallback = resolve(
-        backend="hip_gfx1151",
-        layer="linear",
-        quant="gguf_q5_k",
-        variant="selected_gemv_bf16_bf16_out",
+        backend=candidate_spec.fallback_key[0],
+        layer=candidate_spec.fallback_key[1],
+        quant=candidate_spec.fallback_key[2],
+        variant=candidate_spec.fallback_key[3],
     )
 
     prompt_tokens: dict[str, list[int]] = {}
@@ -409,8 +454,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     candidate_tasks: dict[str, list[dict[str, Any]]] = {}
     reset_memory_stats()
     candidate_generator, production_profile, _ = _make_generator(args, "production")
-    bound_route = os.environ.get(ROUTE_ENV)
-    os.environ[ROUTE_ENV] = "1"
+    bound_environment = {
+        key: os.environ.get(key) for key in candidate_spec.environment
+    }
+    os.environ.update(candidate_spec.environment)
     try:
         for number, row in enumerate(prompt_rows, 1):
             prompt_id = str(row["id"])
@@ -445,10 +492,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 flush=True,
             )
     finally:
-        if bound_route is None:
-            os.environ.pop(ROUTE_ENV, None)
-        else:
-            os.environ[ROUTE_ENV] = bound_route
+        for key, value in bound_environment.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
         candidate_generator.close()
     candidate_after_close = memory_stats()
 
@@ -457,15 +505,17 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             prompt_id=str(row["id"]),
             category=str(row["category"]),
             strict=strict_trajectories[str(row["id"])],
-            candidate_runs={CANDIDATE: tuple(candidate_runs[str(row["id"])])},
+            candidate_runs={
+                candidate_spec.name: tuple(candidate_runs[str(row["id"])])
+            },
         )
         for row in prompt_rows
     )
     thresholds = EvaluationThresholds()
     quality = build_candidate_quality(
         captures,
-        candidate_mode=CANDIDATE,
-        scenario_id="qwen4exp-ud-q4-k-xl-layer2-grouped-q5k",
+        candidate_mode=candidate_spec.name,
+        scenario_id=candidate_spec.scenario_id,
         thresholds=thresholds,
     )
     state_gate = _state_repeat_gate(strict_states, candidate_states)
@@ -508,11 +558,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "architecture": index.architecture,
         },
         "candidate": {
-            "name": CANDIDATE,
-            "classification": "T2",
-            "mechanism": "layer-2 Q5_K/Q5_K compact f16-WMMA grouped prefill",
-            "environment": {ROUTE_ENV: "1"},
-            "bound_environment": {ROUTE_ENV: bound_route},
+            "name": candidate_spec.name,
+            "candidate_id": str(args.candidate),
+            "classification": candidate_spec.classification,
+            "mechanism": candidate_spec.mechanism,
+            "environment": dict(candidate_spec.environment),
+            "bound_environment": bound_environment,
             "candidate_kernel": getattr(candidate_kernel, "__name__", str(candidate_kernel)),
             "strict_fallback": getattr(strict_fallback, "__name__", str(strict_fallback)),
             "candidate_kernel_registered": True,
@@ -572,6 +623,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
+    parser.add_argument(
+        "--candidate",
+        choices=tuple(CANDIDATES),
+        default="layer2_grouped_q5k",
+    )
     parser.add_argument("--prompts", action="append", type=Path, default=None)
     parser.add_argument("--limit", type=int)
     parser.add_argument("--decode-steps", type=int, default=24)

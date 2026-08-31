@@ -8,7 +8,7 @@ architecture branches to the engine or dispatch layer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import os
 from types import MappingProxyType
 from typing import Mapping, Sequence
@@ -2656,6 +2656,18 @@ def run_qwen4_exp_gr_read(
     )
 
 
+def _qwen4_exp_q8_mmq_policy(policy):
+    """Add the P3 attention-gate shape only for an explicit candidate run."""
+
+    if policy is None or os.environ.get(
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE", "0"
+    ) in {"", "0", "false", "False"}:
+        return policy
+    minimums = dict(policy.min_rows)
+    minimums[(2560, 6144)] = 64
+    return replace(policy, min_rows=minimums)
+
+
 def _qwen4_exp_production_moe_prefill_enabled(
     weight: GGUFDeviceWeight, *, rows: int
 ) -> bool:
@@ -4504,7 +4516,11 @@ class Qwen4ExpGGUFResidentModelRunner:
             risk_count_nbytes=0 if risk_count is None else risk_count.nbytes,
             risk_indices_ptr=0 if risk_indices is None else risk_indices.ptr,
             risk_indices_nbytes=0 if risk_indices is None else risk_indices.nbytes,
-            policy=self._q8_mmq_policy if enabled else None,
+            policy=(
+                _qwen4_exp_q8_mmq_policy(self._q8_mmq_policy)
+                if enabled
+                else None
+            ),
             library=self._q8_mmq_library if enabled else None,
         )
 
