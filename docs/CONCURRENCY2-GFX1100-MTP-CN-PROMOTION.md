@@ -1028,15 +1028,33 @@ executes exact K0/default, but queues full waves 20/20 and measures stable
       try a finer row/column tile before a reduction, and retain split-K only if
       operation-complete timing repays accumulation.
 
-#### P13-D — Current K3 attribution (#23, then #12)
+#### P13-D — Current K3 attribution (#23 complete; #12 bound, #30 remedy)
 
-- [ ] From a post-grouping packet, report decode-only rate, request-local and
+- [x] From a post-grouping packet, report decode-only rate, request-local and
       conditional positional acceptance, physical group sizes, adapter
       `max_requests`, and accept-window costs at C1/C3/C5/C8.
-- [ ] Decide whether C5-C8 is limited by grouping, accept/readback/commit,
+- [x] Decide whether C5-C8 is limited by grouping, accept/readback/commit,
       proposal, or verifier work before changing verify kernels.
 - [ ] Measure rowtile versus small-M only through the production sidecar payload;
       never reconstruct the layout that previously wedged the GPU.
+
+A clean current D1/D24 pair excludes acceptance: aggregate draft acceptance is
+**0.788944724** and conditional P1/P2/P3 is
+**0.929577/0.836066/0.833333** at every measured width; each prompt/request
+candidate-and-accept sequence is identical at C1/C3/C5/C8. Decode-only MTP/AR
+is **1.722x/1.146x/0.611x/0.603x**. The capacity-8 owner nevertheless resolves
+adapter `max_requests=4`, workspace `[4,5120]`, and actual groups exactly
+`[1]`, `[3]`, `[4,1]`, `[4,4]` in all ten waves per width. EngineLoop executes
+those subgroups serially. A size-4 group costs the same at C5 and C8
+(**146.097/146.340 ms** named stages), while C8 pays two: **207.488 ms** of its
+**292.681 ms** named-stage sum is accept, closed by **48.832 ms** selected
+commit plus **158.228 ms** blocking readback. That readback is a dependency wait
+including queued device retirement, not pure copy compute. The primary blocker
+is therefore the physical group-of-four ceiling plus one accept dependency
+window per serial subgroup; direct verifier submit is secondary in host timing.
+#12 can bound a leaf but cannot be treated as the primary remedy; #30 owns a
+RED-first wider-physical-group or shared-readback design. Evidence:
+[`current post-grouping K3 attribution`](../benchmarks/results/2026-08-31-w7900-q4km-current-post-grouping-k3-attribution.json).
 
 #### P13-E — Lifecycle and tooling cleanup (#26, #27)
 
