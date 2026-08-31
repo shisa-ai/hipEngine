@@ -522,7 +522,7 @@ This is how each mechanism maps to the current hipEngine implementation:
 | Dense wave32 retile and LDS padding | gfx1151 HIP kernels are wave32-native, but each quant/shape has independent register/LDS behavior. Vulkan constants do not transfer. | Sweep actual rotating-weight shapes with compiler VGPR/LDS/scratch evidence. Port the bank-conflict/resource hypothesis, not constants. |
 | Tiled transpose and SiLU/mul fusion | Exact bulk Conv and selected gate/up+SiLU cover analogous paths, but GDN state layout and shared-expert SiLU still expose traffic. | Use the transpose hypothesis in P7 and the activation hypothesis in P3/P6 only where a current trace names the traffic. |
 | Reusable decode topology | 48 stateless per-layer MoE graphs are reused; the other 1,195 direct launches/token remain outside them. | P8 grows from one stateful layer to one transition and then a full step, with pointer/state/rollback/replay gates at every rung. |
-| Device-owned decode boundary | Qwen4Exp still synchronizes, copies the full vocabulary logits to the host, and computes argmax on the CPU every token. | P5 adds device argmax/sampling and copies only the token plus requested compact telemetry; full logits remain an explicit API path. |
+| Device-owned decode boundary | Normal greedy text generation now runs exact registered F32 argmax on device and copies one int64 token; direct runner, MTP, numerical, and debug paths retain explicit full-logit output. | P5 still needs device-to-device token chaining and the complete blocking/async copy census before graph capture. |
 | Per-stream MTP combiner and graph | The combiner is correct, but draft hidden/logits and target full logits cross the host; target verification is serial. | Keep the combiner. P11 makes proposal, hidden chaining, verification, acceptance, commit, and rollback device-resident before budget tuning. |
 | q8_0 K/V, `-ub 2048`, and hipBLASLt | These are different llama.cpp representation/config knobs. Current hipEngine is BF16 K/V at chunk 512. | Chunk size is a P0 same-representation sweep. Q8 K/V remains a separately gated T3 profile after BF16 AR parity. |
 | Quantized-KV dequant-once/contiguization | There is no quantized-QSA-KV owner in the binding campaign. | Backend-disjoint evidence only until P10; it cannot close a BF16-KV milestone. |
@@ -849,17 +849,27 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
 Goal: remove full-vocabulary host readback and synchronization before enlarging
 graph scope.
 
-- [ ] Add a registered device argmax/greedy sampler after the lm head and copy
+- [x] Add a registered device argmax/greedy sampler after the lm head and copy
       only the token ID plus explicitly requested compact telemetry to the host.
-- [ ] Keep full logits/probabilities as an explicit API/debug path; do not
-      silently change public response semantics.
+      The exact two-stage `top1_i64` route is now the strict and production
+      normal-greedy default.
+- [x] Keep full logits/probabilities as an explicit API/debug path; do not
+      silently change public response semantics. Direct runner, MTP, numerical,
+      and debug calls retain full logits by default.
 - [ ] Feed the device-owned token into the next embedding path where possible;
-      PLE hashing may consume one compact host token without a 248K-logit copy.
+      PLE hashing currently consumes the compact host token without a
+      248K-logit copy, but the next step is not yet device-to-device.
 - [ ] Reduce the current 28 blocking and 12 async memcpy calls/token to a
       role-explained minimum and record bytes/directions, synchronization count,
-      first-token, steady-state, and exact-ID/logit controls.
-- [ ] Re-run natural multi-prompt decode, not only the repeated `9707` steady
-      diagnostic.
+      first-token, steady-state, and exact-ID/logit controls. The normal-output
+      Python-visible census confirms the full-vocabulary D2H was removed; the
+      complete HIP-API ledger remains open.
+- [x] Re-run natural multi-prompt decode, not only the repeated `9707` steady
+      diagnostic. The complete 18-prompt/category-heldout T0 packet has 450/450
+      logits at KL=0, 18/18 exact generated ID sequences/tasks, repeat-exact
+      compact state, lifecycle closure, and a focused strict-repeat confirmation
+      for the one initial strict-state warmup anomaly. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json`.
 
 ### Phase P6 — decode GR, MoE, and dense operation completion
 

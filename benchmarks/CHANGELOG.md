@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-08-31 gfx1151 Qwen3.8-Flash-Next P5 device argmax — retained] Registered exact F32 top-1 changes normal greedy D2H from **993,280→8 bytes/token (124,160x less)** while preserving **450/450 KL=0**, **18/18 exact task sequences**, compact state, physical c2, and lifecycle. Five p508+128-step pairs are wall-neutral at **1.00343x (95% CI 0.98776–1.01909)**; this is a transfer-boundary retention, not a wall-speed claim. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json`.
+
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next stacked P4 profile — diagnostic] QSA fixed256 cuts dense attention **82.33→29.18 ms** and total QSA role **103.32→50.61 ms**. Remaining GDN is early strict recurrence **522.58 ms**, admitted columnwarps **63.11 ms** + **5.16 ms** tail, and Conv **7.28 ms**. Early strict state layout remains the P4 blocker; P5 can proceed independently. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-stacked-profile.json`.
 
 - [2026-08-31 gfx1151 Qwen3.8-Flash-Next P4 early-GDN columnblocks4 — rejected] Four 32-column blocks improve rows508 device wall **12.628→12.227 ms (1.0328x)** and preserve recurrent-state bits, but production output parity fails across every column quarter; the reduced one-block fixture masked it. Candidate is removed before model timing. `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json`.

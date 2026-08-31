@@ -34,7 +34,7 @@ from hipengine.runtime.qwen4_exp_runner import (
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
-    for name in (
+    environment_names = (
         PRODUCTION_MOE_PREFILL_ENV,
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
@@ -50,9 +50,12 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
-    ):
+    )
+    for name in environment_names:
         monkeypatch.delenv(name, raising=False)
     yield
+    for name in environment_names:
+        os.environ.pop(name, None)
     clear_runtime_profile_registry_for_tests()
 
 
@@ -79,6 +82,11 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
 
     strict = _resolve(ExecutionProfile.STRICT)
     production = _resolve(ExecutionProfile.PRODUCTION)
+    strict_argmax = _selection_map(strict)[
+        ("argmax", "qwen4exp_normal_greedy_output")
+    ]
+    assert strict_argmax["selected_variant"] == "top1_i64"
+    assert strict_argmax["strict_fallback_variant"] == "top1_i64"
     strict_qsa = _selection_map(strict)[
         ("paged_attn_decode", "qwen4exp_multirow_dense_qsa")
     ]
@@ -105,6 +113,10 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
+    argmax = selections[("argmax", "qwen4exp_normal_greedy_output")]
+    assert argmax["selected_variant"] == "top1_i64"
+    assert argmax["strict_fallback_variant"] == "top1_i64"
+    assert argmax["evidence_artifact"].endswith("p5-device-argmax.json")
     qsa = selections[("paged_attn_decode", "qwen4exp_multirow_dense_qsa")]
     assert qsa["selected_variant"] == "bf16_context_batch_paged_c1_exact_spans"
     assert qsa["strict_fallback_variant"] == "bf16_context_batch_paged_c1_exact_spans"
@@ -177,7 +189,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX"] == "1"
     # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
     # route; their envs stay off so they cannot preempt it.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
@@ -239,7 +251,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"

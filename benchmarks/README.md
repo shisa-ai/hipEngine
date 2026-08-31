@@ -280,12 +280,18 @@ clean p508 improves **91.158→91.600 tok/s (1.00484x)** and code-p1024
 prompts exact. P4 also promotes the exact fixed256/precomputed-offset/vector2
 QSA dense owner: the real primitive improves **6.846→2.485 ms (2.755x)**,
 clean p508 **91.529→92.442 tok/s**, and code-p1024 **89.150→90.634 tok/s**, with
-the complete exact/state/task gate passing.
+the complete exact/state/task gate passing. P5 moves normal greedy top-1 to the
+device: Python-visible D2H falls from **993,280 to 8 bytes/token (124,160x)**
+with 450/450 logits, 18/18 generated task sequences, compact state, physical-c2
+outputs, and lifecycle exact. The p508+128-step wall ratio is neutral at
+**1.00343x (95% CI 0.98776–1.01909)**; this is a transfer-boundary retention,
+not a wall-speed claim.
 [`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
 [`P3 fused GR`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json).
 [`P3 F32 router tile4`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json).
 [`P3 GR up+sigmoid+mean`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-up-sigmoid-mean.json).
 [`P4 QSA dense fixed256`](results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json).
+[`P5 device argmax`](results/2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json).
 
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are
