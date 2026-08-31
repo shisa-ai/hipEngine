@@ -269,9 +269,14 @@ removes one launch per GR read and improves clean counterbalanced
 p508+128-step decode **14.162→15.111 tok/s (1.0670x, 95% CI
 1.0543–1.0797)**. The complete T0 gate
 is exact: **450/450 logits, 18/18 state/task prompts, three repeats, and clean
-teardown**. Rows >256 remain unfused after a rows508 primitive loss.
+teardown**. Rows >256 remain unfused after a rows508 primitive loss. The
+multirow F32 router projection also reuses each weight row across four prompt
+rows while preserving dense arithmetic: p508 improves **90.063→91.540 tok/s
+(1.0164x, 95% CI 1.0126–1.0202)**, with 450/450 logits and 18/18 state/task
+prompts exact. c1 remains on the dense owner.
 [`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
 [`P3 fused GR`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json).
+[`P3 F32 router tile4`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json).
 
 A same-weight external-fork refresh built EngramHalo HIP `1423f689` and
 Nathan Vulkan `ad914eb` locally. BF16-KV p508/p1012/tg32 shape rows are

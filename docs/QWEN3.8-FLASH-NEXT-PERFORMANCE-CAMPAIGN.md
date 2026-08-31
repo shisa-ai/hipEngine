@@ -722,7 +722,12 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       retained from the fresh current-production trace.
 - [ ] Evaluate an exact F32 router+stable-top-10 owner so 512 router logits are
       not written and reread when the public path only needs deterministic
-      routing. Keep the full-logit primitive for diagnostics.
+      routing. Keep the full-logit primitive for diagnostics. The retained
+      multirow producer now reuses each F32 weight row across four prompt rows,
+      preserves the dense FMA/reduction order, and improves p508
+      90.063→91.540 tok/s (1.0164x); c1 stays dense. The complete 450-row and
+      18-prompt state/task gate is exact. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json`.
 - [ ] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
       F32/BF16 boundaries and the strict shared-expert chain.
 - [ ] Fuse GR grouped RMSNorm + unequal down/inject where ownership permits;

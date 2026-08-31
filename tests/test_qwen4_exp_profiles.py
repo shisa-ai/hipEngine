@@ -79,6 +79,11 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
 
     strict = _resolve(ExecutionProfile.STRICT)
     production = _resolve(ExecutionProfile.PRODUCTION)
+    strict_router = _selection_map(strict)[
+        ("router_logits", "qwen4exp_multirow_f32_router")
+    ]
+    assert strict_router["selected_variant"] == "f32_hidden_token_tile4_dense_exact"
+    assert strict_router["strict_fallback_variant"] == "f32_hidden"
     strict_gr = _selection_map(strict)[
         ("gr_gated_mean_sigmoid", "all_gr_reads_rows_le256")
     ]
@@ -90,6 +95,10 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
+    router = selections[("router_logits", "qwen4exp_multirow_f32_router")]
+    assert router["selected_variant"] == "f32_hidden_token_tile4_dense_exact"
+    assert router["strict_fallback_variant"] == "f32_hidden_token_tile4_dense_exact"
+    assert router["evidence_artifact"].endswith("p3-router-f32-tile4.json")
     gr = selections[("gr_gated_mean_sigmoid", "all_gr_reads_rows_le256")]
     assert gr["selected_variant"] == "strict"
     assert gr["strict_fallback_variant"] == "strict"
@@ -150,7 +159,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4"] == "1"
     # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
     # route; their envs stay off so they cannot preempt it.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
@@ -212,7 +221,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_ROUTER_F32_TILE4"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
