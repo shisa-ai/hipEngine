@@ -6,6 +6,7 @@ and a tail-shrunk final cycle. No GPU required.
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from pathlib import Path
@@ -27,6 +28,8 @@ def _rec(candidates, target_rows, target_ms, accepted):
         "specdec2_mtp2_target_batch_calls": cycles,
         "specdec2_mtp2_target_physical_rows": list(target_rows),
         "specdec2_mtp2_target_pass_ms": list(target_ms),
+        "specdec2_mtp2_target_pass_start_ns": [],
+        "specdec2_mtp2_target_pass_end_ns": [],
         "specdec2_mtp2_target_ms": sum(target_ms),
         "specdec2_mtp2_accept_pass_ms": [10.0] * cycles,
         "specdec2_mtp2_accept_ms": 10.0 * cycles,
@@ -75,6 +78,82 @@ def test_partition_and_tail_shrink_reconstruction():
     assert abs(row["target_ms_total"] - (100.0 + 110.0 + 90.0 + 20.0 + 21.0 + 5.0)) < 1e-6
     assert row["accepted_draft_tokens"] == 12
     assert row["committed_identity_residual_tokens"] == 0
+
+    aggregate = mca._aggregate([row])
+    assert aggregate["mtp_to_ar_ratio"] == pytest.approx(0.5)
+    assert aggregate["observed_output_tokens_per_request_cycle"] == pytest.approx(32 / 15)
+    assert aggregate["steady_committed_tokens_per_request_cycle"] == pytest.approx(1.8)
+    assert aggregate["cycle_cost_ar_step_equivalents"] == pytest.approx(3.6)
+    assert aggregate["observed_cycle_wall_ar_step_equivalents"] == pytest.approx(64 / 15)
+    assert aggregate["stage_ms_per_cycle"]["proposal"] == pytest.approx(1.0)
+    assert aggregate["stage_ms_per_cycle"]["accept"] == pytest.approx(10.0)
+
+
+def test_target_window_reconstruction_and_kernel_family_curve(tmp_path: Path):
+    a = _rec([3], [8], [5.0], [1])
+    b = _rec([3], [8], [5.0], [1])
+    for rec in (a, b):
+        rec["specdec2_mtp2_target_pass_start_ns"] = [1_000]
+        rec["specdec2_mtp2_target_pass_end_ns"] = [11_000]
+        rec["specdec2_mtp2_cycle_profile_start_ns"] = [1_000]
+        rec["specdec2_mtp2_cycle_profile_end_ns"] = [12_000]
+    cell = _cell(2, [a, b], 6)
+    windows = mca._target_windows_for_cell(cell)
+    assert windows == [{"rows": 8, "start_ns": 1_000, "end_ns": 12_000}]
+
+    trace = tmp_path / "kernel_trace.csv"
+    with trace.open("w", newline="") as fh:
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=("Kernel_Name", "Start_Timestamp", "End_Timestamp"),
+        )
+        writer.writeheader()
+        writer.writerows(
+            (
+                {
+                    "Kernel_Name": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel",
+                    "Start_Timestamp": 2_000,
+                    "End_Timestamp": 4_000,
+                },
+                {
+                    "Kernel_Name": "q5_k_t16_dense_rowtile_gemv_kernel",
+                    "Start_Timestamp": 4_000,
+                    "End_Timestamp": 7_000,
+                },
+                {
+                    "Kernel_Name": "q6_k_t16_qmicro_planar_gemv_bf16_kernel",
+                    "Start_Timestamp": 7_000,
+                    "End_Timestamp": 10_000,
+                },
+                {
+                    "Kernel_Name": "__amd_rocclr_copyBuffer",
+                    "Start_Timestamp": 10_000,
+                    "End_Timestamp": 10_500,
+                },
+            )
+        )
+    curve = mca._kernel_family_row_curve([cell], trace)
+    assert curve["8"]["passes"] == 1
+    assert curve["8"]["family_ms_median"] == {
+        "q4": pytest.approx(0.002),
+        "q5": pytest.approx(0.003),
+        "q6": pytest.approx(0.003),
+    }
+    assert curve["8"]["classified_kernel_fraction"] == pytest.approx(8 / 8.5)
+
+
+def test_stage_and_kernel_family_classification():
+    assert mca._model_stage("blk.63.ffn_down.weight") == "target"
+    assert mca._model_stage("blk.64.ffn_down.weight") == "proposal"
+    assert mca._model_stage("output.weight") == "shared_head"
+    assert mca._model_stage("token_embd.weight") is None
+    assert mca._kernel_quant_family("q4_k_t16_dense_rowtile_gemv_kernel") == "q4"
+    assert mca._kernel_quant_family(
+        "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false>"
+    ) == "q5"
+    assert mca._kernel_quant_family(
+        "gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 8>"
+    ) == "q6"
 
 
 def test_inconsistent_bucket_raises():

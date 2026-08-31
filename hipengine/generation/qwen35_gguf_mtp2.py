@@ -1756,7 +1756,7 @@ class Qwen35GGUFMTP2Adapter:
         target_seconds = 0.0
         provider_update_seconds = 0.0
         try:
-            target_started = time.perf_counter()
+            target_started_ns = time.perf_counter_ns()
             prepared = state.verifier.prepare(
                 batch,
                 transaction_id=transaction_id,
@@ -1775,7 +1775,8 @@ class Qwen35GGUFMTP2Adapter:
                     int(batch.candidate_count) == int(self.candidate_budget)
                 ),
             )
-            target_seconds = time.perf_counter() - target_started
+            target_finished_ns = time.perf_counter_ns()
+            target_seconds = (target_finished_ns - target_started_ns) / 1e9
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
                 state.verifier.rollback(prepared)
@@ -1857,6 +1858,7 @@ class Qwen35GGUFMTP2Adapter:
             if prepared.native_device_accept_commit:
                 row.mtp2_device_accept_calls += 1
             state.verifier.finish(prepared)
+            cycle_profile_finished_ns = time.perf_counter_ns()
             prepared = None
             self._release_provider_checkpoint(state)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
@@ -1877,6 +1879,10 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
             row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
+            row.mtp2_target_pass_start_ns.append(int(target_started_ns))
+            row.mtp2_target_pass_end_ns.append(int(target_finished_ns))
+            row.mtp2_cycle_profile_start_ns.append(int(target_started_ns))
+            row.mtp2_cycle_profile_end_ns.append(int(cycle_profile_finished_ns))
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_provider_update_pass_ms.append(
                 float(provider_update_seconds) * 1000.0
@@ -2534,15 +2540,18 @@ class Qwen35GGUFMTP2Adapter:
         verify_batch = getattr(owner, "verify_target_blocks_batch", None)
         if not callable(verify_batch):
             raise RuntimeError("physical target owner has no packed verifier")
-        target_started = time.perf_counter()
+        target_started_ns = time.perf_counter_ns()
         device_result = batch is None or ngram_proposal is not None
         results = list(verify_batch(jobs, device_result=device_result))
-        target_seconds = time.perf_counter() - target_started
+        target_finished_ns = time.perf_counter_ns()
+        target_seconds = (target_finished_ns - target_started_ns) / 1e9
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
         for row in rows:
             row.mtp2_target_batch_calls += 1
             row.mtp2_target_physical_rows.append(physical_target_rows)
             row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
+            row.mtp2_target_pass_start_ns.append(int(target_started_ns))
+            row.mtp2_target_pass_end_ns.append(int(target_finished_ns))
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
         candidate_readback_seconds = 0.0
@@ -2783,6 +2792,7 @@ class Qwen35GGUFMTP2Adapter:
             commit_seconds = time.perf_counter() - commit_started
             if int(commit_contract.get("requests", 0)) != len(ids):
                 raise RuntimeError("physical selected-state commit omitted requests")
+        cycle_profile_finished_ns = time.perf_counter_ns()
         for row in rows:
             row.mtp2_device_accept_calls += 1
         for row in rows:
@@ -2824,6 +2834,8 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_accepted_counts.append(int(accepted))
             row.mtp2_proposal_ms += float(states[index].last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_cycle_profile_start_ns.append(int(target_started_ns))
+            row.mtp2_cycle_profile_end_ns.append(int(cycle_profile_finished_ns))
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
             row.mtp2_accept_pass_ms.append(float(accept_seconds) * 1000.0)
