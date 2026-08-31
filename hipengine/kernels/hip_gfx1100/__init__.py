@@ -355,14 +355,14 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
-# avoid one-wave underfill on W7900. Rows33-64 use four waves over one 16-row
-# tile each; rows65-511 use the existing four-wave 256-row owner. Rows<=32 keep
+# avoid one-wave underfill on W7900. Rows33-128 use four waves over one 16-row
+# tile each; rows129-511 use the existing four-wave 256-row owner. Rows<=32 keep
 # verifier ownership unchanged, and rows>=512 retain the independently gated
 # source-F16 route. The one-wave parent remains a registered strict fallback.
 GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS = {
     (17_408, 5_120): (
-        (33, 64, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
-        (65, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+        (33, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
+        (129, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
     ),
 }
 # Production-shape Q4 changed-arithmetic screen admits FFN-down plus

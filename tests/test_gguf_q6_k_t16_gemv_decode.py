@@ -177,6 +177,8 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
         (33, (17_408, 5_120)),
         (64, (17_408, 5_120)),
         (65, (17_408, 5_120)),
+        (128, (17_408, 5_120)),
+        (129, (17_408, 5_120)),
         (511, (17_408, 5_120)),
         (512, (17_408, 5_120)),
         (35, (5_120, 10_240)),
@@ -186,6 +188,8 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
         )
     assert calls == [
         "parent",
+        "row64",
+        "row64",
         "row64",
         "row64",
         "shared256",

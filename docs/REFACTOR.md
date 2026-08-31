@@ -368,7 +368,8 @@ fallback count is not a success metric.
 
 - Added 2026-08-31 during the P13 C1-prefill attribution follow-up. Backend
   shape/range policy selects exact cooperative siblings only for planar-Q6
-  `(17408,5120)` prompt-prefill rows33-511; the one-wave parent is separately
+  `(17408,5120)` prompt-prefill rows33-511 (row64 through 128, shared256 from
+  129); the one-wave parent is separately
   registered and `HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL=0` restores it on the
   same build. The resolved boolean is cached because this wrapper is reached by
   every qualifying projection launch. Decode, non-WMMA physical verification,
