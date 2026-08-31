@@ -267,9 +267,10 @@ GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS = 128
 GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE = {(5_120, 12_288): 112}
 # Exact four-wave shared-B sibling with one 16-row tile per wave. On the W7900
 # down projection it reduces 256-row padding to 64 rows while retaining the
-# parent's 48-column weight-sharing block: 1.24x-1.85x at every suite row 33-67.
+# parent's 48-column weight-sharing block: 1.10x-1.85x through rows 33-192;
+# row 193 adds a fourth row group and falls to 0.90x, setting the boundary.
 GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES = frozenset({(17_408, 5_120)})
-GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS = range(33, 68)
+GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS = range(33, 193)
 # Production C2 reuses C1-equivalent rows6 rowtiles for the remaining Q4
 # gate/up and full-attention output shapes. Complete strict-teacher, repeat,
 # permutation-isolation, task, and lifecycle packets qualify this arithmetic
