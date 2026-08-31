@@ -986,13 +986,18 @@ request-owned transition submission.
       **13.882→4.974 ms (2.79x)** over 30 advancing samples. Each graph launch
       contains one device-position append plus one paired advance among 143
       dispatches and allocates nothing post-launch. This admits the dynamic
-      four-layer research rung, not production: PLE, all 12 QSA owners, token/
-      head control, bucket transitions, fallback, c2, and full lifecycle remain.
+      four-layer research rung. The next eight-layer rung includes layer-1 PLE,
+      six GDN states, and two QSA owners; it remains exact at positions 8–11 and
+      measures **26.739→10.112 ms (2.64x)**, with 294 dispatches, two dynamic
+      appends, two advances, and no post-launch allocation per graph replay.
+      Neither is production: the remaining 40 layers/10 QSA owners, token/head
+      control, bucket transitions, fallback, c2, and full lifecycle remain.
       Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json`,
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json`,
-      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`.
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-mixed-segment4-graph.json`,
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json`.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.
