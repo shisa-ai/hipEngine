@@ -275,7 +275,7 @@ rows while preserving dense arithmetic: clean p508 improves **89.689→91.121
 tok/s (1.0160x, 95% CI 1.0143–1.0177)**, with 450/450 logits and 18/18 state/task
 prompts exact. c1 remains on the dense owner. The rows>256 GR-up composite also
 preserves the exact Q8 reduction while emitting sigmoid gates and branch mean:
-p508 improves **91.219→91.807 tok/s (1.00645x)** and code-p1024
+clean p508 improves **91.158→91.600 tok/s (1.00484x)** and code-p1024
 **88.754→89.239 tok/s (1.00547x)**, with 450/450 logits and 18/18 state/task
 prompts exact.
 [`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).

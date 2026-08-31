@@ -2697,9 +2697,7 @@ def run_qwen4_exp_gr_read(
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:
-    return rows > 256 and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_GR_UP_SIGMOID_MEAN", "0"
-    ) not in {"", "0", "false", "False"}
+    return rows > 256
 
 
 def _qwen4_exp_gr_sigmoid_mean_fused(rows: int) -> bool:
