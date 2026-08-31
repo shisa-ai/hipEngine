@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+import os
 import threading
 import time
 from typing import Any, Sequence
@@ -30,6 +31,16 @@ from hipengine.loading.qwen4_exp_materialize import (
 )
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
 from hipengine.tokenization.gguf import Qwen4ExpGGUFTokenizer
+
+
+def _qwen4_exp_device_argmax_enabled() -> bool:
+    return os.environ.get("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0") not in {
+        "", "0", "false", "False"
+    }
+
+
+def _qwen4_exp_device_argmax_kwargs() -> dict[str, bool]:
+    return {"capture_logits": False} if _qwen4_exp_device_argmax_enabled() else {}
 
 
 class Qwen4ExpGGUFTextGenerator:
@@ -216,7 +227,10 @@ class Qwen4ExpGGUFTextGenerator:
             )
             if len(token_ids) + request.max_tokens > self.runner.max_sequence_length:
                 raise ValueError("Qwen4Exp request exceeds dense runner capacity")
-            result = self.runner.prefill(token_ids)
+            result = self.runner.prefill(
+                token_ids,
+                **_qwen4_exp_device_argmax_kwargs(),
+            )
             raise_if_generation_deadline_expired(request)
             generated: list[int] = []
             reason = "length"
@@ -228,7 +242,10 @@ class Qwen4ExpGGUFTextGenerator:
                     reason = "eos"
                     break
                 if index + 1 < request.max_tokens:
-                    result = self.runner.step(token)
+                    result = self.runner.step(
+                        token,
+                        **_qwen4_exp_device_argmax_kwargs(),
+                    )
             outputs.append(
                 GenerationOutput(
                     text=self.tokenizer.decode(generated, skip_special=False),
@@ -359,6 +376,7 @@ class Qwen4ExpGGUFTextGenerator:
         result = self.runner.prefill(
             token_ids,
             embedding_overrides=overrides,
+            **_qwen4_exp_device_argmax_kwargs(),
             mrope_positions=mrope_positions,
         )
         generated: list[int] = []
@@ -373,7 +391,9 @@ class Qwen4ExpGGUFTextGenerator:
             if index + 1 < request.max_tokens:
                 position = next_rope_position + index
                 result = self.runner.step(
-                    token, rope_positions=(position, position, position)
+                    token,
+                    rope_positions=(position, position, position),
+                    **_qwen4_exp_device_argmax_kwargs(),
                 )
         return GenerationOutput(
             text=self.tokenizer.decode(generated, skip_special=False),
@@ -566,7 +586,10 @@ class Qwen4ExpResidentServingRunner:
             if row.runner is None:
                 raise RuntimeError("Qwen4Exp admitted row has no runner")
             if row.prefill_tokens_seen == len(row.prompt_ids):
-                row.next_result = row.runner.prefill(row.prompt_ids)
+                row.next_result = row.runner.prefill(
+                    row.prompt_ids,
+                    **_qwen4_exp_device_argmax_kwargs(),
+                )
                 raise_if_generation_deadline_expired(row.request)
 
     def decode_batch(
@@ -620,7 +643,10 @@ class Qwen4ExpResidentServingRunner:
                 )
             )
             if finish is None:
-                row.next_result = row.runner.step(token)
+                row.next_result = row.runner.step(
+                    token,
+                    **_qwen4_exp_device_argmax_kwargs(),
+                )
                 raise_if_generation_deadline_expired(row.request)
         return tuple(generated)
 

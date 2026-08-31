@@ -83,6 +83,10 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_wmma_tile_map,
 )
 from hipengine.kernels.hip_gfx1100.moe.router import qwen35_router_select
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    argmax_f32,
+    lm_head_argmax_stage1_blocks,
+)
 from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
     qwen35_linear_attn_conv_decode_f32,
 )
@@ -2702,6 +2706,12 @@ def run_qwen4_exp_gr_read(
     )
 
 
+def _qwen4_exp_device_argmax_enabled() -> bool:
+    return os.environ.get("HIPENGINE_QWEN4_EXP_DEVICE_ARGMAX", "0") not in {
+        "", "0", "false", "False"
+    }
+
+
 def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
 
@@ -4346,7 +4356,7 @@ class Qwen4ExpRunnerSnapshot:
 @dataclass(frozen=True)
 class Qwen4ExpTokenResult:
     token_id: int
-    logits: np.ndarray
+    logits: np.ndarray | None
     hidden_seeds: np.ndarray | None = None
 
     @property
@@ -4514,6 +4524,7 @@ class Qwen4ExpGGUFResidentModelRunner:
             )
             // cfg.qsa_compression_ratio,
         )
+        argmax_blocks = lm_head_argmax_stage1_blocks(cfg.vocab_size, 256)
         for nbytes in (
             np.dtype(np.int64).itemsize,
             cfg.hidden_size * 2,
@@ -4521,6 +4532,9 @@ class Qwen4ExpGGUFResidentModelRunner:
             cfg.vocab_size * 4,
             cfg.residual_width * DType.BF16.itemsize,
             3 * np.dtype(np.int64).itemsize,
+            argmax_blocks * DType.FP32.itemsize,
+            argmax_blocks * DType.INT64.itemsize,
+            DType.FP32.itemsize,
         ):
             self._buffers.append(malloc(nbytes, runtime=self.runtime))
         for nbytes in (
@@ -4626,6 +4640,18 @@ class Qwen4ExpGGUFResidentModelRunner:
         return self._buffers[3]
 
     @property
+    def argmax_block_values(self) -> DeviceBuffer:
+        return self._buffers[6]
+
+    @property
+    def argmax_block_indices(self) -> DeviceBuffer:
+        return self._buffers[7]
+
+    @property
+    def argmax_value(self) -> DeviceBuffer:
+        return self._buffers[8]
+
+    @property
     def last_target_hidden(self) -> DeviceBuffer:
         """Authoritative pre-final-mix widened BF16 target row for MTP."""
 
@@ -4696,11 +4722,45 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._ple_hash_states = {}
         self.position = 0
 
+    def _finish_lm_head(
+        self,
+        *,
+        capture_logits: bool,
+        hidden_seeds: np.ndarray | None,
+    ) -> Qwen4ExpTokenResult:
+        if capture_logits:
+            self.runtime.device_synchronize()
+            logits = np.empty(self.config.vocab_size, dtype=np.float32)
+            copy_device_to_host(
+                host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
+            )
+            return Qwen4ExpTokenResult(
+                int(np.argmax(logits)), logits, hidden_seeds=hidden_seeds
+            )
+        argmax_f32(
+            self.logits_buffer.ptr,
+            self.argmax_block_values.ptr,
+            self.argmax_block_indices.ptr,
+            self.token_id_buffer.ptr,
+            self.argmax_value.ptr,
+            self.config.vocab_size,
+            runtime=self.runtime,
+        )
+        token = np.empty(1, dtype=np.int64)
+        copy_device_to_host(
+            host_array_ptr(token),
+            self.token_id_buffer,
+            token.nbytes,
+            runtime=self.runtime,
+        )
+        return Qwen4ExpTokenResult(int(token[0]), None, hidden_seeds=hidden_seeds)
+
     def step(
         self,
         token_id: int,
         *,
         capture_hidden_seed: bool = False,
+        capture_logits: bool = True,
         rope_positions: tuple[int, int, int] | None = None,
     ) -> Qwen4ExpTokenResult:
         self._require_open()
@@ -4908,13 +4968,9 @@ class Qwen4ExpGGUFResidentModelRunner:
             output_dtype=GGUF_OUTPUT_F32,
             runtime=self.runtime,
         )
-        self.runtime.device_synchronize()
-        logits = np.empty(cfg.vocab_size, dtype=np.float32)
-        copy_device_to_host(
-            host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
-        )
-        result = Qwen4ExpTokenResult(
-            int(np.argmax(logits)), logits, hidden_seeds=hidden_seeds
+        result = self._finish_lm_head(
+            capture_logits=capture_logits,
+            hidden_seeds=hidden_seeds,
         )
         self.position += 1
         return result
@@ -5163,15 +5219,18 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_ids: list[int] | tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
+        capture_logits: bool = True,
     ) -> Qwen4ExpTokenResult:
         if not token_ids:
             raise ValueError("Qwen4Exp prefill requires at least one token")
         self.reset()
         result = None
         captured: list[np.ndarray] = []
-        for token in token_ids:
+        for index, token in enumerate(token_ids):
             result = self.step(
-                int(token), capture_hidden_seed=capture_hidden_seeds
+                int(token),
+                capture_hidden_seed=capture_hidden_seeds,
+                capture_logits=(capture_logits if index + 1 == len(token_ids) else False),
             )
             if result.hidden_seeds is not None:
                 captured.append(result.hidden_seeds)
@@ -5189,6 +5248,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_ids: list[int] | tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
+        capture_logits: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
@@ -5290,14 +5350,8 @@ class Qwen4ExpGGUFResidentModelRunner:
             output_dtype=GGUF_OUTPUT_F32,
             runtime=self.runtime,
         )
-        self.runtime.device_synchronize()
-        logits = np.empty(cfg.vocab_size, dtype=np.float32)
-        copy_device_to_host(
-            host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
-        )
-        return Qwen4ExpTokenResult(
-            int(np.argmax(logits)),
-            logits,
+        return self._finish_lm_head(
+            capture_logits=capture_logits,
             hidden_seeds=(
                 np.concatenate(captured, axis=0)
                 if capture_hidden_seeds
@@ -5310,12 +5364,14 @@ class Qwen4ExpGGUFResidentModelRunner:
         token_ids: list[int] | tuple[int, ...],
         *,
         capture_hidden_seeds: bool = False,
+        capture_logits: bool = True,
         embedding_overrides: Mapping[int, np.ndarray] | None = None,
         mrope_positions: np.ndarray | None = None,
     ) -> Qwen4ExpTokenResult:
         return self.prefill_chunked(
             token_ids,
             capture_hidden_seeds=capture_hidden_seeds,
+            capture_logits=capture_logits,
             embedding_overrides=embedding_overrides,
             mrope_positions=mrope_positions,
         )
@@ -5329,12 +5385,17 @@ class Qwen4ExpGGUFResidentModelRunner:
         count = int(max_new_tokens)
         if count <= 0:
             raise ValueError("max_new_tokens must be positive")
-        result = self.prefill(token_ids)
+        result = self.prefill(
+            token_ids, capture_logits=not _qwen4_exp_device_argmax_enabled()
+        )
         output: list[int] = []
         for index in range(count):
             output.append(result.token_id)
             if index + 1 < count:
-                result = self.step(result.token_id)
+                result = self.step(
+                    result.token_id,
+                    capture_logits=not _qwen4_exp_device_argmax_enabled(),
+                )
         return tuple(output)
 
     def close(self) -> None:
