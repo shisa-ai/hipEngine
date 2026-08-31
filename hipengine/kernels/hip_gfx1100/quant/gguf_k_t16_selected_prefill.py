@@ -90,6 +90,8 @@ _EXPERT_MAJOR_COMP_SYMBOLS = {
 
 _ENV_SINGLE_WAVE_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS"
 _SINGLE_WAVE_MAX_ROWS_RESOLVED: int | None = None
+_ENV_SHARED_B_ROW64_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
+_SHARED_B_ROW64_MAX_ROWS_RESOLVED: int | None = None
 
 
 def _single_wave_max_rows(shape: tuple[int, int]) -> int:
@@ -122,6 +124,29 @@ def _single_wave_max_rows(shape: tuple[int, int]) -> int:
     if shape_cap is None:
         return _SINGLE_WAVE_MAX_ROWS_RESOLVED
     return min(_SINGLE_WAVE_MAX_ROWS_RESOLVED, int(shape_cap))
+
+
+def _shared_b_row64_max_rows() -> int:
+    """Qualified row64 cap (0 restores the registered 256-row parent)."""
+
+    global _SHARED_B_ROW64_MAX_ROWS_RESOLVED
+    if _SHARED_B_ROW64_MAX_ROWS_RESOLVED is None:
+        raw = os.environ.get(_ENV_SHARED_B_ROW64_MAX_ROWS, "").strip()
+        if not raw:
+            value = int(GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS.stop - 1)
+        else:
+            try:
+                value = int(raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"{_ENV_SHARED_B_ROW64_MAX_ROWS} must be a non-negative integer"
+                ) from exc
+            if value < 0:
+                raise ValueError(
+                    f"{_ENV_SHARED_B_ROW64_MAX_ROWS} must be a non-negative integer"
+                )
+        _SHARED_B_ROW64_MAX_ROWS_RESOLVED = value
+    return _SHARED_B_ROW64_MAX_ROWS_RESOLVED
 
 
 def _extra_flags() -> tuple[str, ...]:
@@ -349,6 +374,7 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         if (
             shape in GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES
             and int(rows) in GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS
+            and int(rows) <= _shared_b_row64_max_rows()
         ):
             fn = gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out
         elif (
