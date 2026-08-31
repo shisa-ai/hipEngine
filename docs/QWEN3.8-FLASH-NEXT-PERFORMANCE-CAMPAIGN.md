@@ -896,10 +896,15 @@ direct-launch surface before graph capture hides it.
       rejected and removed: p4096 teacher top-1 is **98/100**, three category
       scopes fail, and only **2/4** free-generation tasks match strict. Future
       attention dataflow must preserve global selected-token softmax order or
-      pass this same gate. Evidence:
+      pass this same gate. A second contiguous-chunk merge lowers mean/p95/max
+      KL to **0.000565/0.002551/0.004372** but worsens top-1 to **97/100** and
+      free tasks to **1/4**; it is also removed. Partial-softmax merge schedules
+      are exhausted. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`
       and
-      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`.
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-contiguous-h256-rejected.json`.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
