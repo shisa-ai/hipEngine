@@ -1,0 +1,154 @@
+{
+  "schema": 1,
+  "status": "rejected_exact_virtual256_local128",
+  "performance_claim": false,
+  "correctness_claim": true,
+  "kind": "gfx1100_shape_aware_dense_f32_alpha_beta_g1a_rejection",
+  "date": "2026-08-31",
+  "campaign": "docs/GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md",
+  "external_lineage": {
+    "repository": "https://github.com/uulong950/qingming-gfx1100-gemv",
+    "commit": "6b2d87e62ba2b7cbe60dbae53bcf857ca67262ae",
+    "license": "MIT",
+    "mechanism": "SPLIT4-inspired four-wave-per-output scheduling; G1A isolated physical coordination while retaining one output per workgroup"
+  },
+  "hardware": {
+    "hostname": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "card": 1,
+    "hip_visible_devices": "1",
+    "pci_bus_id": "0000:10:00.0",
+    "pci_device": "1002:744c rev c8",
+    "unique_id": "0xcc4d02090dc9c3ff",
+    "architecture": "gfx1100",
+    "role": "independent GPU1 screening lane; no W7900 measurement"
+  },
+  "software": {
+    "hipengine_base_commit": "c71c988070109f27027a3a8789f26abdb392bcd3",
+    "candidate_state": "uncommitted isolated kernel atop base commit; removed after stop gate",
+    "hip": "7.2.53211-3d9ef42",
+    "compiler": "AMD clang 22.0.0git, rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "compiler_version_file_sha256": "22322d29dfdff198b0b4835891700ce8629fc1c33bfab73a7381870ed9de4394",
+    "kernel": "Linux 7.1.3-2-cachyos"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "bytes": 17106773984,
+    "full_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "full_sha256_source": "frozen same-path 17106773984-byte Qwen3.8 lane identity",
+    "alpha_beta_weight_sha256": "7f0033b158903ba7a840b92bab09b9b23c573cd40e30484413f4716ea6c66116",
+    "linear_attention_layers": 48,
+    "weight_shape_each": [48, 5120],
+    "weight_dtype": "f32",
+    "activation_dtype": "bf16",
+    "output_dtype": "bf16",
+    "alpha_beta_working_set_bytes": 94371840
+  },
+  "comparison": {
+    "rows": 1,
+    "control": "registered linear_pair/f32/bf16_hidden_bf16_out: one local256 workgroup per output, 96 workgroups per alpha/beta pair",
+    "candidate": "temporary linear_pair/f32/bf16_hidden_bf16_out_virtual256_local128: one local128 workgroup per output, 96 workgroups per pair",
+    "candidate_arithmetic": "128 physical threads emulate the exact 256 parent partitions; acc_lo+acc_hi reproduces s=128, then LDS/shuffle reproduces s=64..1",
+    "counterbalance": "15 AB/BA alternating pairs per cache regime after three warmup arms",
+    "timing": "HIP event elapsed time around each complete launch sequence",
+    "runtime_default_changed": false,
+    "candidate_code_retained": false,
+    "g1b_attempted": false,
+    "g1b_reason": "G1A lost all 45 paired comparisons, including the 90 MiB real-weight rotation; the campaign required a credible G1A premise before halving workgroups with two-output SPLIT4"
+  },
+  "correctness": {
+    "red": "3 focused tests failed before the G1A symbol, wrapper, and registry variant existed",
+    "transient_green": "11 passed in tests/test_dense_f32_pair.py on HIP_VISIBLE_DEVICES=1, including rows1-4 scalar/pair/G1A BF16-bit exactness and CPU KL/top-1 floors",
+    "real_weight_alpha_bf16_bit_mismatches": 0,
+    "real_weight_beta_bf16_bit_mismatches": 0,
+    "post_removal_green": "9 passed in tests/test_dense_f32_pair.py on HIP_VISIBLE_DEVICES=1",
+    "passed": true
+  },
+  "relative_screen": {
+    "hot": {
+      "cache_class": "one 1.875 MiB alpha/beta pair repeated 256 times",
+      "algorithmic_weight_bytes_per_arm": 503316480,
+      "control_ms": [1.311290979385376, 1.2252099514007568, 1.2113460302352905, 1.14506995677948, 1.1254299879074097, 1.0893110036849976, 1.0778310298919678, 1.081076979637146, 1.0709969997406006, 1.0711179971694946, 1.0696369409561157, 1.0690380334854126, 1.068796992301941, 1.0678379535675049, 1.0767979621887207],
+      "candidate_ms": [1.4129949808120728, 1.3476730585098267, 1.2917829751968384, 1.2453089952468872, 1.2099909782409668, 1.1823110580444336, 1.1873960494995117, 1.1589570045471191, 1.155316948890686, 1.137477993965149, 1.1648770570755005, 1.1374369859695435, 1.2039179801940918, 1.1392780542373657, 1.1949280500411987],
+      "control_median_ms": 1.0778310298919678,
+      "candidate_median_ms": 1.1873960494995117,
+      "candidate_over_control_time": 1.1016532430120571,
+      "control_over_candidate_speedup": 0.9077266429733148,
+      "paired_wins": "0/15",
+      "control_algorithmic_weight_gb_s": 466.9715994820153,
+      "candidate_algorithmic_weight_gb_s": 423.88256236168905,
+      "interpretation": "algorithmic cache-hot bandwidth, not physical DRAM traffic"
+    },
+    "rotating": {
+      "cache_class": "all 48 immutable alpha/beta pairs (90 MiB) in model order, repeated four times",
+      "algorithmic_weight_bytes_per_arm": 377487360,
+      "control_ms": [1.2161979675292969, 1.2125179767608643, 1.218358039855957, 1.2117600440979004, 1.2331199645996094, 1.210279941558838, 1.210800051689148, 1.212918996810913, 1.211398959159851, 1.211238980293274, 1.214838981628418, 1.2153589725494385, 1.2186789512634277, 1.2099989652633667, 1.215919017791748],
+      "candidate_ms": [1.4109179973602295, 1.4182380437850952, 1.4090780019760132, 1.4101990461349487, 1.4081599712371826, 1.411558985710144, 1.4196399450302124, 1.4082000255584717, 1.4087589979171753, 1.41667902469635, 1.4128390550613403, 1.4082789421081543, 1.4102389812469482, 1.409559965133667, 1.412559986114502],
+      "control_median_ms": 1.212918996810913,
+      "candidate_median_ms": 1.4102389812469482,
+      "candidate_over_control_time": 1.1626819144187222,
+      "control_over_candidate_speedup": 0.8600804636235748,
+      "paired_wins": "0/15",
+      "control_algorithmic_weight_gb_s": 311.22223412487955,
+      "candidate_algorithmic_weight_gb_s": 267.67616341609113
+    },
+    "cache_thrashed": {
+      "cache_class": "synchronous 128 MiB hipMemset before one 90 MiB rotation; thrash excluded from event timing",
+      "algorithmic_weight_bytes_per_arm": 94371840,
+      "control_ms": [0.4007599949836731, 0.40251898765563965, 0.40136000514030457, 0.4012799859046936, 0.40463998913764954, 0.4002400040626526, 0.40215998888015747, 0.4004800021648407, 0.39980000257492065, 0.40296000242233276, 0.4026400148868561, 0.400519996881485, 0.4000000059604645, 0.3989199995994568, 0.4043999910354614],
+      "candidate_ms": [0.43351998925209045, 0.43511998653411865, 0.4357999861240387, 0.4339599907398224, 0.4353199899196625, 0.4341590106487274, 0.4349200129508972, 0.43487900495529175, 0.43595999479293823, 0.4365600049495697, 0.43584001064300537, 0.4353199899196625, 0.4346800148487091, 0.43276000022888184, 0.4352400004863739],
+      "control_median_ms": 0.4012799859046936,
+      "candidate_median_ms": 0.43511998653411865,
+      "candidate_over_control_time": 1.0843301480713823,
+      "control_over_candidate_speedup": 0.9222283469463851,
+      "paired_wins": "0/15",
+      "control_algorithmic_weight_gb_s": 235.17704175361956,
+      "candidate_algorithmic_weight_gb_s": 216.88693445618156
+    }
+  },
+  "kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file g1a --output-directory /tmp/gfx1100-gemv-g1a-rocprof -- python3 <temporary-probe> --require-cached-build --pairs 1 --warmups 0 --modes cold",
+    "candidate": {
+      "kernel": "dense_pair_gemv_bf16_f32w_virtual256_local128_bf16_out_kernel",
+      "dispatches": 96,
+      "workgroup": [128, 1, 1],
+      "grid_threads": [12288, 1, 1],
+      "workgroups": 96,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 512,
+      "scratch_bytes": 0,
+      "duration_ns_median": 12539.0,
+      "duration_ns_range": [7387, 19160]
+    },
+    "control": {
+      "kernel": "dense_pair_gemv_bf16_f32w_bf16_out_kernel",
+      "dispatches": 96,
+      "workgroup": [256, 1, 1],
+      "grid_threads": [24576, 1, 1],
+      "workgroups": 96,
+      "vgpr": 24,
+      "sgpr": 128,
+      "lds_bytes": 1024,
+      "scratch_bytes": 0,
+      "duration_ns_median": 10586.5,
+      "duration_ns_range": [5957, 17240]
+    },
+    "raw_csv_sha256": "1cdb87d7886e71f789085062062c6b0f52d13dd11d6348e5f4108a5e77af65db"
+  },
+  "commands": {
+    "prebuild": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 <temporary-probe> --prebuild-only --require-cached-build",
+    "focused_gate": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 -m pytest -q tests/test_dense_f32_pair.py --tb=short",
+    "relative_screen": "HIP_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. python3 <temporary-probe> --require-cached-build --pairs 15 --warmups 3 --output /tmp/gfx1100-gemv-g1a-gpu1.json",
+    "raw_screen_sha256": "135176aa266837b8f9a6c7f2d35959dde698a994dc1bb42441bba07c23adb798"
+  },
+  "decision": {
+    "advance_g1b": false,
+    "run_w7900_g2": false,
+    "retain_candidate": false,
+    "reason": "The exact local128/virtual256 schedule loses every paired comparison in all three cache regimes. It lowers LDS and physical threads without lowering VGPR allocation, but serializes two parent partitions per thread; the real 90 MiB rotation is 16.27% slower by median elapsed time. The G1 stop gate fires before two-output packing or W7900 work.",
+    "fallback": "unchanged registered local256 pair and two singleton dense-F32 projections",
+    "reopen_condition": "A future candidate needs a different premise that preserves enough grid/memory-level parallelism; do not repeat local128 virtual-partition serialization or infer a win from Qingming's FP32/FP32 SPLIT4 threshold."
+  }
+}
