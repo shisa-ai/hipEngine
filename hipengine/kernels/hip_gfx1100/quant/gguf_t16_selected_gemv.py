@@ -1627,6 +1627,48 @@ def _check_dense_q4_t16_rowtile_geometry(
         raise ValueError("out_features must be a positive multiple of 16")
 
 
+def launch_physical_row_chunks(
+    launch_one,
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    chunks: tuple[int, ...],
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> bool:
+    """Run one physical projection as an exact contiguous row partition."""
+
+    total = int(rows)
+    counts = tuple(int(value) for value in chunks)
+    if (
+        not counts
+        or sum(counts) != total
+        or any(not 2 <= value <= 8 for value in counts)
+    ):
+        return False
+    element = DType.BF16.itemsize
+    row_base = 0
+    for count in counts:
+        launch_one(
+            x_ptr + row_base * int(in_features) * element,
+            tiles_ptr,
+            out_ptr + row_base * int(out_features) * element,
+            count,
+            int(in_features),
+            int(out_features),
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        row_base += count
+    return True
+
+
 def launch_physical_rows6_chunked(
     launch_one,
     x_ptr: int,
@@ -1642,8 +1684,7 @@ def launch_physical_rows6_chunked(
 ) -> bool:
     """Run one physical-scope projection as admitted rows6 launches.
 
-    The gfx1100 physical rowtile is qualified at exactly rows6. A verify group
-    padded to a rows6 multiple (12/18/24) splits into consecutive rows6
+    A verify group padded to a rows6 multiple splits into consecutive rows6
     launches over the same tiles so every launch matches the qualified shape
     bit-for-bit. Returns False when ``rows`` is not a chunkable multiple.
     """
@@ -1651,20 +1692,19 @@ def launch_physical_rows6_chunked(
     total = int(rows)
     if total < 12 or total % 6:
         return False
-    element = DType.BF16.itemsize
-    for row_base in range(0, total, 6):
-        launch_one(
-            x_ptr + row_base * int(in_features) * element,
-            tiles_ptr,
-            out_ptr + row_base * int(out_features) * element,
-            6,
-            int(in_features),
-            int(out_features),
-            stream=stream,
-            library=library,
-            runtime=runtime,
-        )
-    return True
+    return launch_physical_row_chunks(
+        launch_one,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        total,
+        in_features,
+        out_features,
+        (6,) * (total // 6),
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
 
 
 def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
