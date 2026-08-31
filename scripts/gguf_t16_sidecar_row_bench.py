@@ -7,10 +7,12 @@ prior guessed payload wedged the GPU.  It inventories the requested FFN/QKV
 roles too, and times only roles whose shipping resident layout is the exact
 ``gguf_q4_k_t16_v1`` ABI shared by rowtile, small-M, and strict shared-B.
 
-Each cell first requires bit-exact BF16 output across incumbent, small-M, and
-strict shared-B.  Timings use counterbalanced arm order, HIP events, and
-operation-complete event synchronization.  Ratios are incumbent/small-M, so a
-value above one means small-M is faster.
+Each cell requires small-M to be bit-exact to strict shared-B and every arm to
+be finite.  The production rowtile's declared production-arithmetic difference
+is reported as BF16 ULP/error diagnostics rather than relabeled as a strict
+failure.  Timings use counterbalanced arm order, HIP events, and operation-
+complete event synchronization.  Ratios are incumbent/small-M, so a value above
+one means small-M is faster.
 
 Example:
   timeout 300 .venv/bin/python scripts/gguf_t16_sidecar_row_bench.py \
@@ -136,6 +138,37 @@ def _read_bf16(runtime: Any, buffer: Any, shape: tuple[int, int]) -> np.ndarray:
     host = np.empty(shape, dtype=np.uint16)
     copy_device_to_host(host_array_ptr(host), buffer, host.nbytes, runtime=runtime)
     return host
+
+
+def _bf16_comparison(actual: np.ndarray, expected: np.ndarray) -> dict[str, Any]:
+    """Report exactness plus a monotonic BF16-ULP and float error diagnostic."""
+
+    if actual.shape != expected.shape:
+        raise ValueError("BF16 comparison shapes differ")
+    actual_u16 = np.asarray(actual, dtype=np.uint16)
+    expected_u16 = np.asarray(expected, dtype=np.uint16)
+    mismatch = actual_u16 != expected_u16
+
+    def ordered(values: np.ndarray) -> np.ndarray:
+        raw = values.astype(np.int32)
+        negative = (raw & 0x8000) != 0
+        return np.where(
+            negative,
+            0x8000 - (raw & 0x7FFF),
+            0x8000 + raw,
+        ).astype(np.int32)
+
+    ulp = np.abs(ordered(actual_u16) - ordered(expected_u16))
+    actual_f32 = (actual_u16.astype(np.uint32) << 16).view(np.float32)
+    expected_f32 = (expected_u16.astype(np.uint32) << 16).view(np.float32)
+    abs_error = np.abs(actual_f32 - expected_f32)
+    return {
+        "exact": not bool(mismatch.any()),
+        "mismatched_values": int(np.count_nonzero(mismatch)),
+        "total_values": int(actual_u16.size),
+        "max_bf16_ulp": int(ulp.max(initial=0)),
+        "max_abs_error": float(abs_error.max(initial=np.float32(0.0))),
+    }
 
 
 def _event_sample_ms(
@@ -331,9 +364,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         output_buffers[name],
                         (rows, out_features),
                     )
-                exact = {
-                    name: bool(np.array_equal(outputs[name], outputs["strict_shared_b"]))
-                    for name in ARMS
+                comparisons = {
+                    name: _bf16_comparison(outputs[name], outputs["strict_shared_b"])
+                    for name in ("incumbent", "smallm")
                 }
                 finite = {
                     name: bool(
@@ -388,9 +421,16 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         "candidate_variant": "t16_wmma_prefill_smallm_bf16_bf16_out",
                         "strict_variant": "t16_wmma_prefill_shared_b_bf16_bf16_out",
                         "correctness": {
-                            "exact_vs_strict": exact,
+                            "vs_strict": comparisons,
                             "finite": finite,
-                            "passed": all(exact.values()) and all(finite.values()),
+                            "contract": (
+                                "small-M bit-exact to strict shared-B; all arms finite; "
+                                "incumbent production arithmetic reported diagnostically"
+                            ),
+                            "passed": (
+                                bool(comparisons["smallm"]["exact"])
+                                and all(finite.values())
+                            ),
                         },
                         "timings": timings,
                         "incumbent_over_smallm": incumbent_ms / smallm_ms,
@@ -401,7 +441,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     f"{role:>11} rows={rows} shape=({in_features},{out_features}) "
                     f"{incumbent_variant.removesuffix('_bf16_bf16_out')}={incumbent_ms:.4f}ms "
                     f"smallm={smallm_ms:.4f}ms ratio={incumbent_ms / smallm_ms:.3f}x "
-                    f"exact={all(exact.values())}",
+                    f"smallm_exact={comparisons['smallm']['exact']} "
+                    f"owner_ulp={comparisons['incumbent']['max_bf16_ulp']}",
                     flush=True,
                 )
                 cell_index += 1
@@ -440,6 +481,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "timing": "counterbalanced HIP-event burst plus operation-complete event-synchronize wall",
             "payload": "normal Qwen GGUF materializer allocation; no reconstructed tiles",
             "ratio": "incumbent event median / small-M event median; >1 means small-M faster",
+            "correctness": (
+                "candidate small-M exact to strict shared-B and all arms finite; "
+                "incumbent production-arithmetic distance is diagnostic"
+            ),
         },
         "inventory": inventory,
         "cells": cells,
