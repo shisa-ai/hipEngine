@@ -620,8 +620,9 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       strict/T2 contract passes. (Not attempted.)
 - [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
       lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
-      certified scopes. (Next: the reopened layer-2 Q5_K candidate survived
-      role and category-balanced p512 timing.)
+      certified scopes. The durable strict-teacher/state/task adapter is
+      `scripts/qwen4exp_layer2_profile_gate.py`; its one-prompt real-model smoke
+      passes every exercised check. Next run the complete 18-prompt packet.
 
 Expected evidence: layer 2 falls from about 397.95 ms toward the comparator
 role range; its maximum standalone p508 contribution is about 6.6%.
