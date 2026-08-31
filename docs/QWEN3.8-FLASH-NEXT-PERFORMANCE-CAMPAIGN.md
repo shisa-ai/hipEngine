@@ -674,8 +674,13 @@ Evidence:
       exact 64→128 expert-worker-grid mechanism is rejected and removed:
       both-family/Q4-only/Q5_1-only paired ratios are 1.0016/1.0026/0.9981,
       all confidence intervals include 1.0. More workers alone do not improve
-      data reuse. Evidence:
-      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-expertgrid128-rejected.json`.
+      data reuse. Exact wider output tiling is also rejected and removed:
+      Q4 output8/Q5_1 output16/both ratios are 0.9968/0.9980/0.9944; the
+      both-wide 95% CI is wholly below 1.0. Serial per-CTA work outweighs the
+      smaller grid. Evidence:
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-expertgrid128-rejected.json`
+      and
+      `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p2-wider-output-tiles-rejected.json`.
 - [ ] Add operation-complete grouped dual gate/up+SiLU and
       down+route-weight+scatter/ordered-reduce candidates. Keep primitive
       chains registered.
