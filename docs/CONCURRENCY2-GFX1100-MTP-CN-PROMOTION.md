@@ -1,7 +1,7 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
 - Status: **Qwen3.6 lanes complete; 27B Dense and 35B MoE physical C2 promoted
-  automatically. Extended 2026-08-28: Qwen3.8-27B effective C=N lane open (§11, P7-P12)**
+  automatically. Qwen3.8 P7-P12 complete; P13 audit recovery and cross-engine parity continuation open**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -909,3 +909,142 @@ packet. Automatic remains K0 until P12. Evidence:
 P12 exit achieved: exact Qwen3.8 physical C2/K2 is automatic on W7900 within
 its bounded key; C3/C4 and every scope miss remain K0. Evidence:
 [`P12 promotion`](../benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json).
+
+## 12. P13 extension: audit recovery and cross-engine parity continuation
+
+Opened **2026-08-31** after reviewing all 28 commits after the fresh-coder
+handoff (`01dba507d..dbf5d263c`). P7-P12 remain complete: the bounded
+capacity-2/C2/K2 automatic product key is retained. P13 is a separate recovery
+and parity lane for the standardized capacity-8 C1-C8 matrix. It does not reopen
+or weaken P12's product gate.
+
+### 12.1 Operator and evidence provenance
+
+Qwen 3.8 Flash Next NVFP4 was used as the coding assistant for the reviewed
+segment. This is operator provenance only. It is not the Qwen3.8-27B GGUF model
+under test, a benchmark arm, or evidence about NVFP4 inference. The review found
+repeated source/provenance/arithmetic mistakes, so outputs from that assistant
+are not trusted campaign evidence without independent source, artifact, and
+device verification. It is removed from the trusted campaign-author role.
+
+Immutable historical worklogs are not edited. The correction entry
+`worklog/entries/20260831T074458.097679Z-lhl-qwen38-parity-audit-recovery-e72fe5.md`
+supersedes the affected conclusions and names every mutable artifact/doc update.
+
+### 12.2 Corrected current matrix and success criteria
+
+Compare hipEngine consistently with the **strongest** current/Laurent peer in
+each cell of the standardized W7900 matrix:
+
+| Axis | Current result | Remaining strongest-peer deficits |
+| --- | --- | --- |
+| True AR / decode | wins 7/8 | C2 **-9.9%**; C1 is only +1.3%, while C3-C8 lead +32.6% to +95.1% |
+| Explicit K3 diagnostic | wins C3/C4 | C1 -3.9%, C2 -3.0%, C5 -21.4%, C6 -34.3%, C7 -29.5%, C8 -44.7% |
+| Prefill | wins C4/C7 | C1 -25.8%, C2 -26.6%, C3 -18.1%, C5 -3.2%, C6 -5.1%, C8 -6.3% |
+
+Material prefill work is C1-C3. The C5/C6/C8 differences are near parity and
+must be judged against a same-protocol repeat band rather than used as a kernel
+tuning target from one packet.
+
+P13 is complete only when:
+
+1. every current claim and retained command is provenance-valid and every
+   cited artifact is covered by the checkers;
+2. true AR/decode and prefill beat the strongest peer in every binding C1-C8
+   cell, or a measured structural blocker is recorded without weakening the
+   gate;
+3. the explicit K3 engine-ranking diagnostic beats the strongest peer at every
+   width under the same full-suite protocol, while remaining visibly distinct
+   from automatic product routing;
+4. the exact capacity-2/C2/K2 automatic product key stays qualified and every
+   capacity-8/scope miss remains truthful K0 unless independently promoted;
+5. all retained changes pass the applicable exact/profile, lifecycle, task,
+   repeat, and same-host evidence contracts.
+
+### 12.3 Audit corrections that bind P13
+
+- **Stale K3 packet.** `...hipengine-refresh-post-promotions.json` was produced
+  before grouped prefill. Its 31 tok/s plateau and width-dependent acceptance
+  are historical pre-grouping evidence. They cannot drive current tasks.
+  Current grouped evidence reports draft acceptance **0.7889 at C1-C8**.
+- **Serving path.** The serial loop in `_generate_greedy_batch` is a direct
+  compatibility/control path. Current resident serving groups mixed-length
+  full prompts in `_try_prefill_native_work_batch`, with grouped counters
+  observed at C2-C8. Do not optimize the direct loop as a server-matrix fix.
+- **W7900 geometry.** The device has **96 CUs**, not 512. The down projection's
+  107 blocks × four wave32s are about **4.46 waves/CU** versus a maximum 32.
+  Additional tiling may improve latency hiding, but split-K is a candidate to
+  measure, not a proven 4.8x CU-underfill fix.
+- **T16 timing protocol.** The retained sweep executed one fixed arm order and
+  two back-to-back passes; it was not counterbalanced despite saying so. ULP-0
+  correctness stands. Speed claims are provisional until #25 repairs and reruns
+  the protocol.
+- **Band edge.** `(5120,12288)` row 128 measured 0.970x and 1.022x. The default
+  must stop at the supported row 112 unless counterbalanced repeats establish a
+  non-regressive wider band.
+- **Command integrity.** Missing `--output` and prose such as “then the same
+  tool” are not as-run commands. Unknown argv is recorded as null; executable
+  reconstructions are labelled templates.
+- **Teardown.** `host_unregister` failure must not prevent the adapter's
+  remaining ngram/workspace/scratch cleanup.
+
+### 12.4 P13 task order
+
+#### P13-A — Evidence recovery (#24)
+
+- [x] Publish the immutable correction entry and extend this document.
+- [x] Correct mutable artifacts, benchmark caveats, commands, strongest-peer
+      ratios, stale citations, and 96-CU geometry.
+- [x] Pass JSON/worklog/README/provenance/command checks and commit atomically.
+
+#### P13-B — Current prefill attribution (#22, blocks #11)
+
+- [ ] On current HEAD, collect a C1-C3 same-protocol repeat pair with grouped
+      prefill and current single-wave ownership.
+- [ ] Attribute actual EngineLoop serving wall across render/tokenize,
+      admission preparation, native grouped prefill, and residual wall; record
+      group sizes, not only cumulative counters.
+- [ ] Reconcile the conflicting “~97% WMMA kernel” and “~0.4 s non-kernel”
+      readings before choosing host versus kernel work.
+
+#### P13-C — T16 evidence and down-projection occupancy (#25, then #11)
+
+- [ ] Counterbalance the T16 harness, test its arm schedule/output capture, and
+      correct exact command records.
+- [ ] Narrow the weak `(5120,12288)` edge or retain it only after repeats.
+- [ ] Measure ISA/runtime occupancy for `(17408,5120)` under the 96-CU model;
+      try a finer row/column tile before a reduction, and retain split-K only if
+      operation-complete timing repays accumulation.
+
+#### P13-D — Current K3 attribution (#23, then #12)
+
+- [ ] From a post-grouping packet, report decode-only rate, request-local and
+      conditional positional acceptance, physical group sizes, adapter
+      `max_requests`, and accept-window costs at C1/C3/C5/C8.
+- [ ] Decide whether C5-C8 is limited by grouping, accept/readback/commit,
+      proposal, or verifier work before changing verify kernels.
+- [ ] Measure rowtile versus small-M only through the production sidecar payload;
+      never reconstruct the layout that previously wedged the GPU.
+
+#### P13-E — Lifecycle and tooling cleanup (#26, #27)
+
+- [ ] Make accept-staging release failure-safe through all subsequent cleanup.
+- [ ] Repair the packed-prefill runner probe to share the owner's runtime/runner
+      and label it runner-level only; serving attribution comes from server
+      route counters.
+
+#### P13-F — Recovery audit (#28)
+
+- [ ] Run all changed focused bundles plus worklog/README/provenance/command
+      gates, refresh this punchlist, and publish a durable handoff.
+
+### 12.5 P13 stop rules
+
+- Do not use pre-grouping rates or acceptance to prioritize current work.
+- Do not promote a fixed-order microbenchmark result as counterbalanced.
+- Do not tune to one prompt or one width; full category and heldout coverage
+  remains binding.
+- Do not claim product MTP from the explicit K3 diagnostic or from a capacity
+  that misses the exact promoted automatic key.
+- Stop on any ownership, state, KV, lifecycle, numerical, task, or repeat gate
+  failure and localize it before further optimization.
