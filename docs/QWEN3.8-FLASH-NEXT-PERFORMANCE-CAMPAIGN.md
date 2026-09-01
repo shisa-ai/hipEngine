@@ -1058,7 +1058,7 @@ Evidence:
       rejected/removed at 0.9978x (95% CI 0.9927–1.0028). With worker count,
       serial width, and concurrent-team schedules exhausted, do not continue
       this scheduling family without a new reuse mechanism.
-- [ ] Add operation-complete grouped dual gate/up+SiLU and
+- [x] Add operation-complete grouped dual gate/up+SiLU and
       down+route-weight+scatter/ordered-reduce candidates. Keep primitive
       chains registered. The first T0 grouped-Q4+SiLU epilogue passed a small
       byte-exact RED but faulted the GPU before the first bound p512 warmup was
