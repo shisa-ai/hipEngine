@@ -258,8 +258,15 @@ further work unjustified.
   7.2, which combined K3 cycle economics with the old K1 accept stage. C2
   needs 330.4-632.4 ms grouped ticks by prompt to reach 211.888 prompt tok/s;
   the current grouped suite is 178.660 tok/s and needs 15.68% wall reduction.
-- [ ] Publish one compact Z0 artifact and update the benchmark rollup only if
+- [x] Publish one compact Z0 artifact and update the benchmark rollup only if
   a retained public number changes.
+
+  Z0 closure index: [`2026-09-01-gfx1151-qwen38-z0-closure.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z0-closure.json).
+  It binds the five committed evidence packets and their hashes, correctness
+  scopes, measured findings, route decisions, and checklist verdicts. No
+  retained performance candidate or public number changed, so
+  `benchmarks/README.md` and `benchmarks/CHANGELOG.md` are intentionally
+  unchanged. Z0 is complete; automatic serving remains width-4 fail-closed.
 
 Exit: one same-host, current-head matrix and attribution set that can serve
 as the denominator for every later candidate, plus the published per-cell

@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z0_closure_index",
+  "date": "2026-09-01",
+  "status": "z0_complete",
+  "performance_claim": false,
+  "retained_public_number_changed": false,
+  "benchmark_rollup_updated": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586",
+    "backend": "hip_gfx1151",
+    "gpu_max_hw_queues": "2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ]
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "evidence": {
+    "baseline": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-current-head-baseline.json",
+      "sha256": "8696a3edf61692dfb8037ae98ffdb5dcda1309a6b5116f11e8be168adb154536",
+      "kind": "gfx1151_qwen38_z0_current_head_baseline",
+      "source": {
+        "commit": "d61c5817ff2059332082bf2e00036d0bcfce0818",
+        "dirty": false
+      },
+      "status": "partial_correctness_failure"
+    },
+    "operation_attribution": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-operation-attribution.json",
+      "sha256": "6b3883ec3f2624135d5b841f1377dcad9818a42f34cefb36832606f720a043d6",
+      "kind": "gfx1151_qwen38_z0_operation_complete_attribution",
+      "source": {
+        "commit": "ce63b3f26dc76adca5b272390bab4ee6610e6e0f",
+        "dirty": false
+      },
+      "status": "diagnostic_complete"
+    },
+    "launch_ledger": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-r16-r24-r32-launch-ledger.json",
+      "sha256": "a8a9e42415ee6a7eb1b390f2c3ab251a635b4d904419f0668f21b4afcd2182f1",
+      "kind": "gfx1151_qwen38_z0_target_launch_ledger",
+      "source": {
+        "commit": "1b3d9e752c4edc27ab18b4c80c0a0f8d37a78282",
+        "dirty": false
+      },
+      "status": "diagnostic_complete"
+    },
+    "k1_cycle_reconciliation": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-c6c8-k1-cycle-reconciliation.json",
+      "sha256": "1deb1d77720b37723eaa8ad784517c85cb46b32fdb8bb2e94468d9de2a58e7f1",
+      "kind": "gfx1151_qwen38_z0_c6c8_k1_cycle_reconciliation",
+      "source": {
+        "commit": "841dc9afe498d6cf11cdf230f0bfdfd53e529e64",
+        "dirty": false
+      },
+      "status": "diagnostic_complete"
+    },
+    "pass_budgets": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-pass-budgets.json",
+      "sha256": "c2b345b65e3378ee525d5a32d8151904a2aecc6d4e8ddbfbc271cf779f57cf0e",
+      "kind": "gfx1151_qwen38_z0_pass_budgets",
+      "source": {
+        "commit": "07b4839e6682f00e4d5fa876985e419b52cff89c",
+        "dirty": false
+      },
+      "status": "diagnostic_complete_named_bound"
+    }
+  },
+  "correctness_scopes": {
+    "production_baseline": "Prefill 80/80 exact with MTP disengaged; true AR 80/80 self-exact; explicit MTP C1-C4/C6-C8 70/70 passes. Production C5 subgroup route fails 10/10 mtp_self_exact and remains correctness-ineligible.",
+    "operation_attribution": "C7/C8 profiler cells pass. C5 reproduces the production subgroup correctness failure and is attribution-only.",
+    "launch_ledger": "Run-owned cap-eight R16/R24/R32 warm/profile cells all pass exactness, equality, engagement, and budget checks.",
+    "k1_reconciliation": "Current production C6/C8 K1 full suite passes 20/20 exactness, equality, engagement, and budget checks.",
+    "pass_budget_route": "Run-owned one-group C5-C8 K3 full suite passes 40/40 exactness, equality, engagement, and budget checks; this route override is diagnostic and production remains width-4 fail-closed."
+  },
+  "measured_results": {
+    "baseline_open_fact": "Production C5 splits 4+1 and fails self-exactness; no C5 throughput result is claim-eligible.",
+    "grouped_c2": "Every C2 prompt shares one grouped tick. Current grouped server throughput is 178.660 prompt tok/s; 211.888 requires 15.68% aggregate wall reduction and per-prompt 330.4-632.4 ms ticks.",
+    "launch_granularity": "R16/R24/R32 Q4/Q5/Q6 launches are bound by exact owner, kernel, grid, workgroup, count, and per-launch timing in the ledger.",
+    "cycle_residual": "After matched prefill and named stages, C6/C8 K1 residual is 50.7/58.4 ms/cycle. Physical-group entry excess explains it within 1.8/2.8 ms/cycle; proposal gaps, DMA, and an untraced GPU family do not.",
+    "pass_budget": "External-parity target-only pass budget is zero at C5/R20-C8/R32. Even with residual removed and target time set to zero, non-target deficits are 135/198/339/412 ms/cycle."
+  },
+  "decisions": [
+    "Z0 provides the same-host current-head denominator and all requested attribution/budget evidence.",
+    "No retained performance candidate or public number changed, so benchmarks/README.md and benchmarks/CHANGELOG.md are intentionally unchanged.",
+    "Automatic serving remains the production width-4 fail-closed route.",
+    "Wide-MTP Z2 must start from accept/non-target external differential; target-only A/B/E work cannot enter until a measured non-target mechanism creates positive pass slack.",
+    "C2 Z1 starts from grouped rows70-134 and the published 211.888 prompt-token/s tick budgets."
+  ],
+  "z0_checklist": {
+    "current_head_matrix": true,
+    "exact_commands_and_raw_hashes": true,
+    "operation_complete_attribution": true,
+    "launch_granularity": true,
+    "cycle_wall_reconciliation": true,
+    "grouped_c2_composition": true,
+    "per_cell_pass_budgets": true,
+    "compact_closure_artifact": true,
+    "public_rollup_required": false
+  },
+  "next": "Begin Z1/Z2 external differential. Preserve production C5 correctness failure as a blocker and compare wide accept/non-target dataflow before target kernels."
+}
