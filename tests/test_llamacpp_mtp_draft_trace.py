@@ -69,13 +69,30 @@ slot update_slots: id 2 | task 8 | accepted 0/1 draft tokens, new n_tokens = 24
     trace = parse_llamacpp_mtp_draft_trace(text, source_log="two-requests")
 
     assert trace["requests"] == [
-        {"request_index": 0, "line": 2, "prompt_tokens": 11, "draft_call_count": 1},
-        {"request_index": 1, "line": 6, "prompt_tokens": 23, "draft_call_count": 1},
+        {"request_index": 0, "line": 2, "slot_id": 1, "task_id": 7, "prompt_tokens": 11, "draft_call_count": 1},
+        {"request_index": 1, "line": 6, "slot_id": 2, "task_id": 8, "prompt_tokens": 23, "draft_call_count": 1},
     ]
     assert [call["request_index"] for call in trace["calls"]] == [0, 1]
     assert [call["request_prompt_tokens"] for call in trace["calls"]] == [11, 23]
     assert trace["calls"][0]["accepted"] == 1
     assert trace["calls"][1]["accepted"] == 0
+
+
+def test_parse_llamacpp_mtp_draft_trace_resolves_interleaved_calls_by_slot() -> None:
+    text = """
+slot update_slots: id 1 | task 70 | new prompt, task.n_tokens = 31
+slot update_slots: id 2 | task 71 | new prompt, task.n_tokens = 31
+ - seq_id 1, draft candidate   0, pos   0:    101 (   0.900) 'a'
+common_speculative_draft: called impl draft-mtp, hist size = 31, call_count = 1, gen = 1
+ - seq_id 2, draft candidate   0, pos   0:    202 (   0.800) 'b'
+common_speculative_draft: called impl draft-mtp, hist size = 31, call_count = 1, gen = 1
+"""
+
+    trace = parse_llamacpp_mtp_draft_trace(text)
+
+    assert [call["request_index"] for call in trace["calls"]] == [0, 1]
+    assert [call["request_task_id"] for call in trace["calls"]] == [70, 71]
+    assert [request["draft_call_count"] for request in trace["requests"]] == [1, 1]
 
 
 def test_committed_llamacpp_mtp_draft_trace_fixture_pins_short_prompt_topk() -> None:
