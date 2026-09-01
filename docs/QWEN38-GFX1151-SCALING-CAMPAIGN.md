@@ -948,8 +948,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   C8 MTP wall improves **7.24%**. Post-retention rows288 reaches **1.00 Q6
   sweep**; rows536/1024 remain **1.77/3.78 sweeps** because `<4,6,2>` has
   384-row capacity. The narrow rows1024 fallback is only **8.81 ms**, but wide
-  gridY2/gridY3 remains material, so larger four-wave row-tile bodies remain
-  open before Y2 closure.
+  gridY2/gridY3 remains material. Exact wide-only rows536 `<4,9,2>` reaches
+  gridY1 and lowers complete wall **1651.846 -> 1643.521 ms (-0.50%)**, token
+  unchanged; narrow rows536 and rows1024 lose at 0.70-0.93x and retain
+  fallback. Trace: 64 hits, 128 threads, VGPR256, LDS16 KiB, scratch0.
+  Collateral remains pending.
   [`Post-shared4r6 ledger`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json).
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M

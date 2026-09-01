@@ -363,6 +363,11 @@ Complete rows288/536/1024 walls fall 7.63%/10.53%/9.40%, tokens unchanged.
 Trace: 152 hits, gridY1/2/3, 128 threads, VGPR200, LDS16 KiB, scratch0.
 Evidence:
 [`Qwen3.8 Y2 planar-Q6 high rows`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json).
+Wide planar rows536 further uses exact `<4,9,2>` to reach gridY1. Narrow
+rows536 and both rows1024 cells retain fallback after 0.70-0.93x rejections.
+Complete rows536 wall falls 1651.846->1643.521 ms (-0.50%), token unchanged.
+Trace: 64 hits, 128 threads, VGPR256, LDS16 KiB, scratch0. Evidence:
+[`Qwen3.8 Y2 planar-Q6 rows536 r9`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-planar-q6-shared4r9-rows536-retained.json).
 
 Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
 K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact
