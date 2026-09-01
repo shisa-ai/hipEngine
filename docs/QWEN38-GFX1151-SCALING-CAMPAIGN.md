@@ -667,12 +667,13 @@ are not started.
   wall, versus 19.2%/20.1% required. The gfx1100 B4 FFN megakernel was 2.66x
   slower on GPU, so a giant fused retry is not justified by this bound.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w2-multifamily-bound.json).
-- [ ] W3 **Depth reopen behind W1.** Re-screen K2/K3 with W1's owners plus a
-  prompt-independent width x depth admission table (the review's named
-  follow-up). The earlier K2 rejection (C6 0.606x / C8 0.537x) is
-  **conditional on rows-scaling kernels** and must not be cited as terminal
-  once W1's flatness gate passes. Expected sizing: K3 at ~79% acceptance
-  commits ~27 tokens/cycle at C8 vs K1's ~15.7.
+- [x] W3 **Depth reopen behind W1 — dependency blocked.** W1's written
+  flatness prerequisite failed: the best Q6 owner is 3.432x R32/R8 versus
+  1.25x required. Current valid K3 remains below retained K1 at both widths
+  (C6 0.839x vs 0.929x; C8 0.771x vs 0.919x own AR). A width-depth admission
+  table cannot change target arithmetic, so deeper K cannot reopen until a
+  successor meets W1 flatness or invalidates that dependency.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w3-depth-dependency-bound.json).
 - [x] W4 **Proposal economics at wide rows and depth — measured blocked.**
   W0 measures 34.46/30.14 ms proposal per C6/C8 cycle. Completely free
   proposal over 71 cycles saves only 2.45/2.14 s, versus 7.46/8.88 s wall

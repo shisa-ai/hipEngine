@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w3_depth_dependency_bound",
+  "status": "blocked_prerequisite",
+  "performance_claim": false,
+  "prerequisite": {
+    "W1_required_flatness": 1.25,
+    "W1_best_q6_flatness": 3.431579501883523,
+    "W1_status": "measured_blocked"
+  },
+  "current_valid_k3": {
+    "C6": {
+      "ar_tok_s": 40.0778757043,
+      "mtp_tok_s": 33.6342520744,
+      "ratio": 0.8392224259
+    },
+    "C8": {
+      "ar_tok_s": 47.5660885272,
+      "mtp_tok_s": 36.6625089162,
+      "ratio": 0.770769892
+    }
+  },
+  "retained_k1_endpoint": {
+    "C6_ratio": 0.929,
+    "C8_ratio": 0.9192
+  },
+  "decision": "Close W3 dependency-blocked. Its written entry requires W1 flatness; best W1 owner remains 3.432x. Current K3 is worse than retained K1 at both widths. A width-depth table cannot change target arithmetic and cannot bypass the failed prerequisite."
+}
