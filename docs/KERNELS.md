@@ -345,11 +345,11 @@ owners as fallback. The actual-weight leaves improve 1.94x/2.48x and complete
 wall falls 827.488->735.999 ms (-11.06%) with the same token. Cache-only trace:
 80 hits, 128 threads, gridY2, VGPR176, LDS16 KiB, scratch0. Evidence:
 [`Qwen3.8 Y2 planar-Q6 rows256`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
-At rows65-96, both physical planar shapes use exact `<4,2,2>` at gridY1.
-Leaves improve 1.53-3.98x and complete rows72/96 wall falls 5.78%/5.60%,
-tokens unchanged. Trace: 120 hits, 128 threads, VGPR176, LDS16 KiB,
-scratch0. Evidence:
-[`Qwen3.8 Y2 planar-Q6 rows65-96`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r2-rows65-96-retained.json).
+A rows65-96 planar `<4,2,2>` candidate is exact, reaches gridY1, and lowers
+rows72/96 walls 5.78%/5.60%, but tracked-clean collateral regresses aggregate
+AR wall **1.05%** (MTP improves 0.32%). Its route/export are removed and prior
+exact owners remain. Evidence:
+[`Qwen3.8 Y2 planar-Q6 rows65-96 rejection`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r2-rows65-96-retained.json).
 The wide 17408x5120 shape further uses exact `<4,4,2>` at rows256, reaching
 256-row capacity and gridY1. The narrow shape remains `<4,3,2>` because
 `<4,4,2>` regresses it 5.78%. Wide leaf improves 1.45x; complete wall falls

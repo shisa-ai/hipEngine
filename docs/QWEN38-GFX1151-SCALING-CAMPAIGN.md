@@ -873,7 +873,9 @@ prompt-conditioned tuning, sized full-wall bound before code).
   succeeds across both physical planar shapes at rows65-96: leaves are exact
   and improve **1.53-3.98x**; complete rows72/96 walls fall **5.78%/5.60%**,
   tokens unchanged. Trace: 120 gridY1 hits, 128 threads, VGPR176, LDS16 KiB,
-  scratch0. Tracked-clean collateral remains pending.
+  scratch0. Tracked-clean collateral is 160/160 exact and improves MTP wall
+  **0.32%**, but regresses aggregate AR wall **1.05%**; route/export removed.
+  Planar Q6 rows65-96 is blocked by complete-suite wall regression.
   [`Q6 rows49-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json),
   [`planar Q6 six-wave blocker`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared6r1-launch-blocker.json),
   [`Q6 high-grid artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-high-retained.json),

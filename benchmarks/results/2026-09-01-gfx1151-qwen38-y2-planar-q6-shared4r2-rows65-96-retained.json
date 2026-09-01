@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "gfx1151-qwen38-y2-planar-q6-shared4r2-rows65-96-retained",
-  "status": "validated_retained_pending_collateral",
+  "status": "rejected_after_c1_c8_collateral",
   "physical_host": {
     "hostname": "gfx1151",
     "gpu": "AMD Radeon 8060S",
@@ -101,10 +101,103 @@
       "path": "/tmp/y2-q6-planar-shared4r2-rows72-96-rocprof/gfx1151/2605565_kernel_trace.csv",
       "sha256": "9a9ae8a3af11ac88d9acbc59315cde932e6bd0b39723e585e6ce54ae444d5f61",
       "bytes": 1309256
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r2-rows65-96-c1c8-control.json",
+      "sha256": "32e7da6877ad8d943434a33c1c15a064b43a8b26daa1c51af2122068c3a8da6e",
+      "bytes": 3735515
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r2-rows65-96-c1c8-candidate.json",
+      "sha256": "82bd67e21ebd8fca4b4285bcc46a1fd1a148455434f2697301b2c8fe0af6c689",
+      "bytes": 3735568
     }
   ],
   "limitations": [
-    "Tracked-clean collateral follows atomic kernel commit.",
-    "Y2 remains open."
-  ]
+    "Route/export removed after +1.05% aggregate AR wall regression despite -0.32% MTP."
+  ],
+  "c1_c8_collateral": {
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 76.4295312478207,
+        "candidate_wall_seconds": 77.23367593041621,
+        "wall_delta_pct": 1.052138707992456
+      },
+      "mtp": {
+        "control_wall_seconds": 67.83992660418153,
+        "candidate_wall_seconds": 67.6205733125098,
+        "wall_delta_pct": -0.32333951796787996
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "wall_delta_pct": -0.7719402893172855
+        },
+        "mtp": {
+          "wall_delta_pct": -0.7092487084303323
+        }
+      },
+      "2": {
+        "ar": {
+          "wall_delta_pct": 3.3358815758326665
+        },
+        "mtp": {
+          "wall_delta_pct": -3.2807152918992832
+        }
+      },
+      "3": {
+        "ar": {
+          "wall_delta_pct": 0.46547930685252314
+        },
+        "mtp": {
+          "wall_delta_pct": 0.1720433288914247
+        }
+      },
+      "4": {
+        "ar": {
+          "wall_delta_pct": 0.6978193160852797
+        },
+        "mtp": {
+          "wall_delta_pct": 0.03790184859526757
+        }
+      },
+      "5": {
+        "ar": {
+          "wall_delta_pct": 0.17223985556589216
+        },
+        "mtp": {
+          "wall_delta_pct": 0.01843866440218722
+        }
+      },
+      "6": {
+        "ar": {
+          "wall_delta_pct": 1.3982375880883025
+        },
+        "mtp": {
+          "wall_delta_pct": -0.4920203829222092
+        }
+      },
+      "7": {
+        "ar": {
+          "wall_delta_pct": -0.16547893254046375
+        },
+        "mtp": {
+          "wall_delta_pct": 0.009648487047653198
+        }
+      },
+      "8": {
+        "ar": {
+          "wall_delta_pct": 2.4959815651265815
+        },
+        "mtp": {
+          "wall_delta_pct": 0.007816562780638137
+        }
+      }
+    }
+  }
 }
