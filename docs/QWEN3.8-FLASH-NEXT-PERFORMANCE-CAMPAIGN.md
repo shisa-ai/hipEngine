@@ -1,23 +1,22 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
-Status: **active plan, impact-reviewed 2026-09-01.** The category-balanced
-exact-token screening baseline covers p512/p1024/p4096 plus 128 autoregressive
-transitions after each prefix. Named hipEngine production measures
-**83.70/83.16/69.10 tok/s** prefill and **14.40/14.42/10.42 tok/s** decode.
-Repeatability-valid screening comparators remain **2.86–4.26x** ahead on HIP
-prefill and **2.87–3.86x** ahead on Vulkan prefill; decode gaps are
-**1.18–1.42x** and **1.39–1.74x**. The first depth-specific blocker is the
-2,051-token QSA path transition: p1024→p4096 adds **26.64 ms/token** in
-hipEngine versus **5.61–8.47 ms/token** on the repeatability-valid upstream
-lanes. The next execution queue is impact-ordered: canonical-screen the exact
-P8 whole-transition graph, replace the serialized p4096 QSA attention dataflow,
-then attack the current prefill MoE/GR/GDN portfolio from one fresh canonical
-role ledger. Cold PLE and MTP remain separate lanes and cannot displace larger
-short-AR owners. This is not section 6 closure: the run used three repetitions
-rather than five pairs, and cold-PLE plus heldout modes remain open. Shape CV is
-at most 1.155% prefill and 0.625% decode. The frozen p508/tg32 role baseline
-remains the attribution anchor, not permission to rank new work from stale
-shares.
+Status: **active plan, fully impact-profiled 2026-09-01.** The retained
+category-balanced screening baseline remains **83.70/83.16/69.10 tok/s**
+prefill and **14.40/14.42/10.42 tok/s** decode at p512/p1024/p4096. A clean
+current diagnostic packet measures **86.21/85.71/70.95** and
+**14.70/14.65/10.59**, but strong repetition-order drift prevents silently
+promoting those rates as the closure baseline. Exact matched profiling now
+attributes **100%** of hipEngine device time at all three prefills and at live
+513/1025/4097 decode; both hipEngine and pinned patched llama.cpp have zero
+generic family remainder. The old **41.6% unattributed** row was incomplete
+comparison coverage, not unidentified execution. The impact queue is now:
+exact p4096 QSA decode, operation-complete prefill MoE, dense/GR boundaries,
+p4096 QSA prefill, short-decode selected projections/Q8, then GDN. P8 returns
+to admission-pending because its replacement 1.112x ratio mixes a strict
+runner denominator with a graph result imported from another run; production
+`O` and `s` remain unknown. Cold PLE and MTP remain separate lanes. This is not
+section 6 closure: five thermal pairs, cold-PLE isolation, and category
+heldouts remain open.
 
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
@@ -70,9 +69,13 @@ Canonical screening evidence:
 [`2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json).
 It pins hipEngine commit `6fbcc721a`, current upstream `f1793c1c4`, every
 external binary and patch hash, the exact 12-case fixture, all 180 measured
-samples, host state, and output-repeatability verdicts. The role-resolved p508
-and tg32 attribution anchor remains
-[`2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json).
+samples, host state, and output-repeatability verdicts. The current canonical
+impact authority is
+[`2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
+It adds exact-token p512/p1024/p4096 prefill, live-513/1025/4097 decode,
+allocation/lifecycle, broad-active-expert telemetry, and matched patched
+llama.cpp role-family evidence. The older p508/tg32 artifact remains historical
+continuity evidence only.
 
 ### Historical p508/tg32 attribution rows
 
@@ -198,19 +201,21 @@ repeatability and hipEngine's execution-profile gates are separate checks.
 ### 2.2 Wall-time gap budget and Amdahl ledger
 
 Throughput ratios hide how much time an optimization must actually remove. The
-following budget derives synchronized wall from the canonical rates in section
-2.1. The HIP target is the fastest repeatability-valid HIP lane for that row.
+following budget derives synchronized wall from the clean current diagnostic
+packet at `3ddb748d4`; it is used for candidate admission despite thermal drift,
+not promoted as the closure baseline. The HIP target is the fastest
+repeatability-valid HIP lane for that row.
 The final target is the fastest repeatability-valid HIP or Vulkan lane; invalid
 Nathan/apepojken rows and EngramHalo p4096 are excluded.
 
 | Workload | hipEngine wall | HIP target wall; reduction required | Final valid wall; reduction required |
 | --- | ---: | ---: | ---: |
-| p512 prefill | 6.117 s | 2.140 s; **3.977 s (65.0%)** | 2.129 s; **3.988 s (65.2%)** |
-| p1024 prefill | 12.314 s | 3.251 s; **9.063 s (73.6%)** | 3.251 s; **9.063 s (73.6%)** |
-| p4096 prefill | 59.276 s | 13.910 s; **45.367 s (76.5%)** | 13.910 s; **45.367 s (76.5%)** |
-| p512 decode | 69.449 ms/token | 56.367 ms; **13.083 ms (18.8%)** | 43.527 ms; **25.922 ms (37.3%)** |
-| p1024 decode | 69.343 ms/token | 58.672 ms; **10.672 ms (15.4%)** | 49.719 ms; **19.624 ms (28.3%)** |
-| p4096 decode | 96.006 ms/token | 67.714 ms; **28.292 ms (29.5%)** | 55.325 ms; **40.681 ms (42.4%)** |
+| p512 prefill | 5.939 s | 2.140 s; **3.799 s (64.0%)** | 2.129 s; **3.810 s (64.2%)** |
+| p1024 prefill | 11.947 s | 3.251 s; **8.696 s (72.8%)** | 3.251 s; **8.696 s (72.8%)** |
+| p4096 prefill | 57.730 s | 13.910 s; **43.821 s (75.9%)** | 13.910 s; **43.821 s (75.9%)** |
+| p512 decode | 68.012 ms/token | 56.367 ms; **11.645 ms (17.1%)** | 43.527 ms; **24.485 ms (36.0%)** |
+| p1024 decode | 68.250 ms/token | 58.672 ms; **9.578 ms (14.0%)** | 49.719 ms; **18.532 ms (27.2%)** |
+| p4096 decode | 94.461 ms/token | 67.714 ms; **26.747 ms (28.3%)** | 55.325 ms; **39.136 ms (41.4%)** |
 
 Every profile artifact and candidate decision now uses one Amdahl row with:
 
@@ -234,61 +239,49 @@ API time is attribution evidence only.
 
 | Rank | Lane and measured owner | Amdahl interpretation | Next decision |
 | ---: | --- | --- | --- |
-| 1 | p4096 QSA transition: clean wall increases **29.27 ms/token** at live 2,051→2,052; 27.47 ms of the profiled increase is sparse attention. | The clean cliff is **30.5%** of current p4096 wall and **103.4%** of the HIP gap. Removing only this cliff projects about **14.98 tok/s**, enough to screen above patched HIP's 14.77 tok/s before confidence intervals. | Replace barrier-per-selected-token attention with an exact ordered three-pass dataflow; do not revisit partial-softmax merge schedules. |
-| 2 | Decode topology: production still loops over 48 layers in Python and replays 48 MoE-only graphs. Measured against the **named** step at the probe's own context, the P8 whole-transition graph is **68.855→61.910 ms/step (1.112x)**, a **6.945 ms/step** exclusive saving. | `O` = 6.945 ms/step, **10.0%** of the p512 decode wall, covering **53.1%** of the 13.083-ms HIP decode gap and **26.8%** of the 25.922-ms final-valid gap. This clears section 5.1 and stays worth doing, but it is **not** the retired 3.15x. | Extend the probe to canonical p512/p1024/p4096 tg128 contexts, where the absolute saving is roughly launch-count-bound while kernel time grows. Integrate a request-owned runtime cache only if that row passes section 5.1; then rebaseline every decode owner. |
-| 3 | p508 prefill early MoE: layers 0–26 own **2.366 s**; gate/up and down are 1.200/1.152 s. | Its zero-cost bound is about **59% of the p512 HIP gap**, but the shape/profile predates later retained work. It is the largest known prefill family, yet cannot close the 3.977-s gap alone. | Collect one current p512/p1024/p4096 hipEngine+llama role ledger, then pursue operation-complete expert compaction + gate/up/activation/down/weighting reuse rather than another tile constant. |
-| 4 | p508 prefill GR projection/read + `attn_qkv+attn_gate` + `ssm_out`: **1.325 s** in the stacked P3 trace. | Zero-cost is about **33% of the p512 HIP gap**. These are uniform 36/48-layer boundaries and must be part of the prefill portfolio after MoE. | Compare operation-complete boundaries with llama's backend graph/fusion selection and require one shared activation/layout mechanism. |
-| 5 | Early strict GDN prefill: **522.58 ms** across 21 calls; decode GDN is about 2.70 ms/token versus llama's historical 0.47 ms/token. | At most about **13% of the p512 HIP gap** and **17% of the p512 decode HIP gap** before interaction with graph capture. Material, but below the graph/QSA/MoE owners. | Port the four-warp, multi-column, transposed-state-in-register dataflow as a fused operation-complete boundary; do not revive the one-wave-per-value candidate. |
-| Defer | MTP full draft head: 3.153 ms per proposal. | Even a free head saves only **0.97%** of the retained suite wall and remains 0.964x AR. | Keep below device-output and target-verifier work until its complete-wall ceiling rises. |
+| 1 | Exact p4096 QSA decode: live-4097 QSA owns **36.304 ms/token** operation-complete; the attention family alone is **35.587 ms** versus llama's **0.591 ms**. | Zero cost covers **92.8%** of the final-valid gap and exceeds the 26.747-ms HIP gap. The rejected reassociated candidates prove local speed potential but provide no valid `s`. | Replace barrier-per-selected-token attention with exact ordered QK-score, one global selected-order online-softmax state, and output-column weighted-V recurrence. Do not revisit partial-softmax merges. |
+| 2 | Operation-complete prefill MoE owns **3.408/6.307/25.398 s** at p512/p1024/p4096. Exact 512-row chunks activate a median **333/327/325 of 512 experts** with seven median rows per active expert. | Zero cost covers **89.4%/72.5%/58.0%** of the final-valid prefill gaps. The workload is broad-active-expert, not a tiny sparse set. | Transfer llama's device compact maps, projection/activation reuse, and graph fusion as one boundary. Stop isolated tile-constant work. |
+| 3 | Dense linear + GR-read roles own **1.839/3.442/13.864 s**; aligned dense-projection delta reaches **1.131/2.079/8.429 s**. | No single projection closes prefill, but these uniform boundaries cover **48.3%/39.6%/31.6%** of the current final-valid gaps at zero cost. | Fuse shared layouts across `attn_qkv`, `attn_gate`, `ssm_out`, HC projection/read, and inject/publication boundaries. |
+| 4 | p4096 QSA prefill attention is **10.229 s** versus llama's **0.526 s**; its share grows from **0.85%** at p512 to **18.68%** at p4096. | Its p4096 zero-cost role ceiling covers **23.8%** of the final-valid gap, but the short rows are only 1–2% owners. | Differential-profile the exact flash/index materialization and build a prefill-specific path; do not assume the decode design transfers. |
+| 5 | Short decode selected Q4+Q5_1 projection deltas total **6.617 ms** at live 513; dense-Q8 adds **2.866 ms**. | Together they cover about **38.7%** of the p512 final-valid gap and most of its HIP gap after interactions; measure one exclusive operation-complete owner at a time. | Rank selected projection/data reuse before another submission-only campaign; preserve strict ordered weighting. |
+| 6 | GDN owns **0.655/1.233/4.983 s** prefill versus llama **0.083/0.222/1.845 s**; live-513 is **2.670 vs 0.531 ms**. | Zero-cost GDN covers **17.2%/14.2%/11.4%** of final-valid prefill gaps and **8.7%** of the p512 final-valid decode gap. | Port the multi-column transposed-state-in-register mechanism as an operation-complete owner, not another transpose sidecar. |
+| Admit | P8 whole-transition production graph. | Production `O` and `s` are **unknown**. The strict 68.855-ms runner denominator and 61.910-ms graph row came from different runs, so 1.112x/6.945 ms cannot rank this rung. | Admit only from a same-session named-production graph arm. Do not integrate from the current denominator. |
+| Defer | MTP full draft head: 3.153 ms per proposal. | Even a free head saves only **0.97%** of retained suite wall and remains 0.964x AR. | Keep below device-output and target-verifier work until its complete-wall ceiling rises. |
 
-The prefill rows come from different retained profile snapshots and are **not
-additive evidence**. The first new campaign artifact must put all current owners
-and the matched llama roles in one canonical ledger before implementation work
-is ranked within prefill.
+These owners come from one current exact-token ledger and are mutually
+exclusive within each hipEngine trace. Comparator deltas use a shared complete
+symbol-family taxonomy; source ratios remain hypotheses, never local `s`.
 
-#### Retired P8 ratio: how a strawman denominator inflated a rung
+#### P8 denominator audit: both published ratios are unrankable for production
 
-The P8 full-transition artifact reported **194.758 → 61.910 ms/step (3.15x)**.
-Its eager arm was probe-local: it forced `HIPENGINE_QWEN4_EXP_MOE_GRAPH=0` and
-drove all 48 layers from a script-level launch loop. Neither property belongs to
-the named decode path. Measured through production `runner.step()` at the same
-strict profile, prompt, and context window, with counterbalanced arms and a
-discarded warm arm:
+The original P8 artifact's **194.758→61.910 ms/step (3.15x)** compared a graph
+against a probe-local eager arm that disabled the shipped per-layer MoE graph
+cache and drove 48 layers from a script loop. The follow-up denominator correctly
+measures those effects, but its claim that **68.855→61.910 ms (1.112x)** is the
+"honest" named-production graph speedup also overreaches:
 
-| Decode arm at the probe's own context | Median of repetition medians | P8 graph versus this arm |
-| --- | ---: | ---: |
-| **Named default: per-layer MoE graphs on, device argmax** | **68.855 ms/step** | **1.112x** |
-| Named default with host full-logit D2H + NumPy argmax | 69.187 ms/step | 1.118x |
-| MoE graphs off, device argmax | 143.989 ms/step | 2.326x |
-| MoE graphs off, host full-logit D2H | 144.155 ms/step | 2.328x |
-| Retired probe-local eager arm | 194.758 ms/step | 3.146x |
+| Row at the shallow probe context | Profile / process | Median | Valid conclusion |
+| --- | --- | ---: | --- |
+| Runner, MoE graphs on, device argmax | strict; denominator process | 68.855 ms | Valid strict runner diagnostic |
+| Runner, MoE graphs off, device argmax | strict; denominator process | 143.989 ms | Shipped MoE cache is 2.091x versus this disabled route |
+| Probe-local eager loop | strict; graph-probe process | 194.758 ms | Invalid named baseline |
+| Whole-transition graph | strict; graph-probe process | 61.910 ms | Exact mechanism row; not counterbalanced against 68.855 ms |
 
-Three results follow, and all three change the queue:
+The follow-up imports 61.910 ms from a different run, and its generator helper
+hardcodes `ExecutionProfile.STRICT`. Therefore **1.112x and 6.945 ms are a
+cross-run strict diagnostic, not a same-session named-production A/B**. They do
+not define `O`, do not clear section 5.1, and cannot place P8 at rank 2. The
+current decision is admission-pending.
 
-1. **The honest P8 speedup is 1.112x, not 3.15x.** The probe's eager arm
-   overstates the named path by **2.83x**. Of the retired ratio, **2.09x** was
-   the per-layer MoE graph cache that production **already ships**, and a
-   further **1.35x** was the probe's own script-level launch loop. Only the
-   residual **1.112x**, worth **6.945 ms/step**, is attributable to
-   whole-transition capture.
-2. **The output boundary is not a decode lever.** Full-logit D2H plus host
-   argmax differs from device argmax by at most **0.35 ms/step** and the sign
-   flips between runs, so the difference is not measurable here. The
-   P11 "remove full-logit D2H" rung must be justified on the MTP draft step
-   (3.153 ms of a 7.639-ms draft), never on AR decode.
-3. **The rung survives anyway.** 6.945 ms/step is **10.0%** of the p512 decode
-   wall and clears both section 5.1 thresholds. It is now ranked 2, below the
-   QSA cliff, instead of admitted ahead of the queue.
-
-Each arm is 30 synchronized samples, three counterbalanced repetitions, one
-discarded warm arm (**93.08 ms**, first-touch weight paging), a shared model
-residency, and strict manifest `e93c8fa4…`. The MoE cache records 48 captures
-and zero rejects; steady allocation growth is **0** and teardown returns
-**82,741,321,248 bytes / 1,638 allocations** to zero. An independent earlier
-repeat of the same protocol measured 69.102 / 143.038 / 68.756 / 141.601 ms,
-within **0.7%** of every retained arm. Evidence:
-[`2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json),
-harness `scripts/qwen4exp_p8_production_denominator.py`.
+The audit still retains two useful findings. First, the old 3.15x denominator
+was inflated by work production already removed. Second, device argmax versus
+host full-logit D2H differs by at most **0.35 ms/step** with a sign flip, so AR
+output publication is not a measured decode lever; P11 must justify that work on
+the MTP draft step. The denominator run also has zero steady allocation growth
+and clean teardown. Evidence:
+[`2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json)
+and the superseding
+[`canonical impact profile`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
 
 **This is now a binding rule, not an anecdote.** A candidate's baseline arm must
 be the named path with its shipped optimizations enabled. Disabling an existing
@@ -337,96 +330,84 @@ row is a correctness-failing diagnostic, not a speed target. hipEngine must
 beat a true same-protocol AR denominator while retaining its own exact/full
 profile gate; it must not copy a competitor's invalid speed row.
 
-### Device-kernel windows
+### Current exact-token device windows
 
-| Window | hipEngine kernel sum | llama HIP kernel sum | HIP advantage | hipEngine rows | llama rows |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| p508 | **5.959 s** | 1.625 s | **3.67x** | 3,328 | 5,119 |
-| tg decode per token | **48.63 ms** | 38.90 ms | **1.25x** | 1,860 | 4,203 |
+| Window | hipEngine kernel sum | patched llama HIP kernel sum | llama advantage | hipEngine / llama rows |
+| --- | ---: | ---: | ---: | ---: |
+| p512 prefill | **5.972 s** | 1.926 s | **3.10x** | 3,135 / 9,944 |
+| p1024 prefill | **11.196 s** | 2.990 s | **3.74x** | 6,210 / 9,984 |
+| p4096 prefill | **54.762 s** | 10.838 s | **5.05x** | 24,900 / 14,904 |
+| live-513 decode | **51.062 ms** | 41.009 ms | **1.25x** | 1,764 / 4,349 |
+| live-1025 decode | **53.262 ms** | 41.110 ms | **1.30x** | 1,764 / 4,349 |
+| live-4097 decode | **87.732 ms** | 44.005 ms | **1.99x** | 1,812 / 4,334 |
 
-Kernel rows are not host launches. llama's p508 run expands one selected
-measured graph to 5,119 kernels; hipEngine submits 2,796 direct launches and
-adds 532 copy/fill rows. During decode, hipEngine submits 1,195 direct launches
-plus 48 per-layer MoE graph launches per token, while llama submits nearly the
-whole transition through 31 large graphs for 32 outputs.
+Every hipEngine row is inside an exact ROCTX operation boundary; role coverage
+is **100%**. The comparator consumes the same code token arrays, and cached
+decode evaluates exactly one appended root token. Both symbol-family ledgers
+sum exactly to their device totals. Kernel rows are dispatch records, not host
+launches.
 
-### Prefill module gaps and delta ledger
+### Prefill operation and aligned-delta ledger
 
-Ranking uses the **absolute delta**, not the ratio. A 19.61x module that owns
-286 ms cannot outrank a 2.72x module that owns 820 ms. `Share of delta` is that
-module's contribution to the total **4.334 s** p508 device-window gap.
+hipEngine's exclusive operation roles are:
 
-| Module (p508 device window) | hipEngine | llama HIP | HIP advantage | Absolute delta | Share of delta |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Selected Q4 gate/up | 1.297 s | 0.477 s | 2.72x | **820.0 ms** | **18.9%** |
-| Selected Q5_1 down | 1.131 s | 0.345 s | 3.28x | **786.0 ms** | **18.1%** |
-| GDN prefill | 634.9 ms | 92.3 ms | 6.88x | **542.6 ms** | **12.5%** |
-| Layer-2 Q5_K gate/up | 301.5 ms | 15.4 ms | 19.61x | **286.1 ms** | **6.6%** |
-| QSA prefill | 110.5 ms | 13.9 ms | 7.94x | **96.6 ms** | **2.2%** |
-| Itemized subtotal | 3.475 s | 0.944 s | 3.68x | 2.531 s | 58.4% |
-| **Unattributed remainder** | **2.484 s** | **0.681 s** | **3.65x** | **1.803 s** | **41.6%** |
-| Total | 5.959 s | 1.625 s | 3.67x | 4.334 s | 100% |
+| Role | p512 | p1024 | p4096 |
+| --- | ---: | ---: | ---: |
+| Routed MoE | **3.408 s** | **6.307 s** | **25.398 s** |
+| Dense linear projections | 1.401 s | 2.630 s | **10.589 s** |
+| GDN mixer | 655 ms | 1.233 s | 4.983 s |
+| GR read/tail | 437 ms | 812 ms | 3.275 s |
+| QSA mixer/index/attention | 56 ms | 190 ms | **10.423 s** |
+| Root/PLE boundary | 13 ms | 24 ms | 94 ms |
 
-Two consequences bind the execution order:
+The matched aligned-family deltas explain the old remainder rather than leaving
+it unknown:
 
-1. **No itemized prefill module owns more than 18.9% of the device gap.** No
-   single kernel family closes prefill; a portfolio is required.
-2. **41.6% of the prefill gap is currently unattributed** — GR projection/read,
-   `attn_qkv`/`attn_gate`, `ssm_out`, router, shared expert, norms, elementwise,
-   and copy/fill rows are not separated in this frozen snapshot, and their
-   remainder ratio (3.65x) is indistinguishable from the itemized one (3.68x).
-   The fresh canonical ledger required by P0/P4 must attribute **100%** of both
-   windows before any prefill candidate is ranked. Until then, treat this table
-   as a starting map, not a closed accounting.
+| Family delta, hipEngine minus llama | p512 | p1024 | p4096 |
+| --- | ---: | ---: | ---: |
+| Dense projection compute | **1.131 s** | **2.079 s** | **8.429 s** |
+| Selected Q4 gate/up | 668 ms | **1.677 s** | **8.327 s** |
+| Selected Q5_1 down | 673 ms | **1.568 s** | **7.328 s** |
+| Dense Q8 | 688 ms | **1.351 s** | **5.650 s** |
+| GDN | 572 ms | **1.011 s** | **3.137 s** |
+| QSA attention | 38 ms | 131 ms | **9.703 s** |
+| Elementwise/materialization | 185 ms | 216 ms | 549 ms |
+| MoE routing | 99 ms | 180 ms | 634 ms |
 
-MoE owns **3.161 s** of the hipEngine p508 kernel sum; layers 0-26 alone own
-**2.526 s**. Layer 2 owns about **397.95 ms**, or roughly **6.6%** of the whole
-p508 device window.
+The earlier **41.6% unattributed remainder was a reporting artifact**: it
+subtracted five selected families from the total and called every omitted
+family unknown. It must not be used for prioritization. The current ledger also
+shows why one prefill kernel cannot close parity: MoE leads overall, dense/GR
+is a second portfolio, and QSA becomes a co-leading p4096 owner.
 
-### Decode module gaps and delta ledger per token
+Exact telemetry further constrains MoE design. Each 512-row chunk selects ten
+experts per token and activates a median **333/327/325 of 512 experts** at
+p512/p1024/p4096, with a median seven rows per active expert. Compact-map work
+must handle hundreds of active experts; tiny-active-set specialization would be
+benchmark-shape mismatch.
 
-| Module (tg diagnostic, per token) | hipEngine | llama HIP | HIP advantage | Absolute delta | Share of delta |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Dense Q8 | 25.28 ms | 21.84 ms | 1.16x | **3.44 ms** | **35.4%** |
-| Selected Q5_1 down | 6.26 ms | 2.84 ms | 2.21x | **3.42 ms** | **35.1%** |
-| Selected Q4 gate/up | 7.64 ms | 4.60 ms | 1.66x | **3.04 ms** | **31.2%** |
-| GDN recurrence | 2.66 ms | 0.46 ms | 5.72x | **2.20 ms** | **22.6%** |
-| QSA attention (short context) | 0.11 ms | 0.08 ms | 1.31x | 0.03 ms | 0.3% |
-| Itemized subtotal | 41.95 ms | 29.82 ms | 1.41x | 12.13 ms | 124.7% |
-| **Unattributed remainder** | **6.68 ms** | **9.08 ms** | **0.74x** | **-2.40 ms** | **-24.7%** |
-| Total device | 48.63 ms | 38.90 ms | 1.25x | 9.73 ms | 100% |
+### Decode aligned deltas per token
 
-The itemized decode deltas **sum to more than the total gap**: llama spends
-2.40 ms/token more than hipEngine outside the itemized modules. Any decode
-candidate must therefore quote the residual alongside its own module, or it
-will claim gap coverage that does not exist. This row is also why decode
-ranking cannot be read off the ratio column: QSA is 1.31x here only because the
-diagnostic runs at short context, and it becomes the dominant owner at p4096
-(see the impact queue).
+| Family delta, hipEngine minus llama | live 513 | live 1025 | live 4097 |
+| --- | ---: | ---: | ---: |
+| QSA attention | 1.963 ms | 3.985 ms | **34.996 ms** |
+| Selected Q5_1 down | **3.379 ms** | **3.640 ms** | **4.919 ms** |
+| Selected Q4 gate/up | **3.238 ms** | **3.231 ms** | **4.112 ms** |
+| Dense Q8 | 2.866 ms | 3.058 ms | 3.035 ms |
+| GDN | 2.139 ms | 2.166 ms | 1.932 ms |
+| Other dense projection compute | 0.953 ms | 0.878 ms | 1.012 ms |
 
-### Decode wall versus device bucket
+At live 4097, QSA alone explains more than the complete device gap because
+llama is slower in some smaller routing/layout families. Candidate arithmetic
+must therefore use hipEngine's exclusive operation owner and complete wall,
+not sum positive family deltas as independent savings. At live 513 the selected
+Q4+Q5_1 delta is 6.617 ms and dense Q8 adds 2.866 ms; these are the measured
+short-decode kernel portfolio below QSA.
 
-| p512 decode bucket | value | Share of 69.449 ms/token |
-| --- | ---: | ---: |
-| Device kernel sum | 48.63 ms | 70.0% |
-| Non-kernel residual: host stage, submission, synchronization, copies | **20.82 ms** | **30.0%** |
-
-The kernel sum comes from the tg diagnostic starting at token `9707` while the
-wall is the canonical p512 row, so this residual is an order-of-magnitude
-bound, not an exact bucket; the fresh canonical ledger must produce both from
-one run. It nevertheless bounds every submission-contraction candidate:
-**a whole-transition graph that removed the entire residual and changed no
-kernel would reach 48.63 ms/token (20.56 tok/s) at p512.** That beats the
-patched-HIP decode target (56.367 ms, 17.74 tok/s) but does **not** reach
-upstream Vulkan (43.527 ms, 22.97 tok/s). Submission contraction alone cannot
-close milestone 3; the dense Q8 and selected-expert kernels must also move.
-
-Decode GR projection/read/elementwise roles own **7.775 ms/token** and expose
-up to **387** removable direct launches per token if the operations become
-operation-complete. The profiled span-minus-kernel gap is **37.1 ms/token**,
-but profiler inflation is not host overhead: use the 20.82 ms unprofiled
-residual above for Amdahl arithmetic and the profiled span only for
-attribution.
+The unprofiled and profiled runs use the same exact fixture but are separate
+processes, so wall-minus-kernel remains an order-of-magnitude residual, not
+host-overhead proof. P8 receives no residual by subtraction; only a same-session
+production graph arm can measure its exclusive saving.
 
 ### Invalid path removed
 
@@ -545,63 +526,65 @@ uv run python scripts/qwen4exp_route_pair.py \
 
 ### 3.4 Collect role-resolved device traces
 
-The frozen role ledger remains on the historical p508 fixture until P4 emits
-its required fresh p512 ledger. hipEngine p508:
+The current ledger consumes exact fixture token IDs. Example p512 prefill:
 
 ```bash
-TRACE=/tmp/qwen4exp-role-p508
+TRACE=/tmp/qwen4exp-role-p512
 rm -rf "$TRACE" && mkdir -p "$TRACE"
 HIPENGINE_HIP_ARCH=gfx1151 \
 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-qwen4exp-hipcc-version.txt \
 HIPENGINE_REQUIRE_CACHED_BUILD=1 \
-rocprofv3 --kernel-trace --hip-trace --marker-trace --output-format csv \
-  -d "$TRACE" -o role-p508 -- \
+rocprofv3 --kernel-trace --hip-trace --marker-trace \
+  --memory-copy-trace --memory-allocation-trace --output-format csv \
+  -d "$TRACE" -o role-p512 -- \
   uv run python scripts/qwen4exp_profile_gap.py \
-    --model-root "$MODEL_ROOT" \
-    --mode prefill \
-    --prompt-file benchmarks/prompts/qwen4exp-p508.txt \
-    --expected-prompt-tokens 508 \
-    --profile --role-markers --repetitions 1 \
-    --output "$TRACE/child.json"
+    --model-root "$MODEL_ROOT" --mode prefill \
+    --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json \
+    --case-id code-p512 --profile --role-markers --repetitions 1 \
+    --compiler-version-file /tmp/hipengine-qwen4exp-hipcc-version.txt \
+    --require-cached-build --output "$TRACE/child.json"
 ```
 
-hipEngine decode uses the same driver in decode mode, normally 8 warmup steps
-and 16 measured steps with `max_sequence_length=128` and `prefill_chunk_size=256`.
-Do not treat the profiled wall as a speed claim; use the unprofiled wall rows for
-that. To profile an isolated candidate that the named profile binder normally
-resets, add a repeatable post-binder override such as:
+Use `scripts/qwen4exp_context_decode_profile.py --live-count 513 1025 4097
+--repetitions 3 --profile --role-markers` for exact context-conditioned decode.
+It restores one snapshot before every transition, hashes every mutable owner,
+and scopes allocation growth separately to each warmed context bucket. A
+cross-bucket resize is reported but is not relabeled as per-step growth.
 
-```bash
-  --override HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1
-```
+To profile an isolated candidate that the named profile binder normally resets,
+use a repeatable post-binder `--override`. The child records bound/effective
+environments and `named_profile_intact: false`; that row remains diagnostic
+until the complete profile gate passes.
 
-The child artifact records `overrides`, `bound_route_env`, the effective
-`route_env`, and `named_profile_intact: false`. An override run is diagnostic
-and cannot claim the named profile or promotion without the complete profile
-gate.
-
-llama.cpp HIP traces use `rocprofv3 --kernel-trace --hip-trace
---hip-graph-trace --memory-copy-trace --stats` around `llama-bench -r 1`, then
-select the measured graph/window. Record raw CSV hashes in the artifact.
+For exact llama.cpp attribution, use
+`scripts/qwen4exp_llamacpp_exact_profile.py`. It launches the pinned server
+directly under `rocprofv3`, sends the same fixture arrays, and records monotonic
+bounds for p512/p1024/p4096 prefill plus cached live-513/1025/4097 one-token
+decode. Select rows with `qwen4exp_trace_analyze.py --start-ns ... --end-ns
+...`. Dynamic attach is not supported by this packaged ROCm SDK; do not change
+host ptrace policy. The retained comparator CSVs flushed completely, although
+the rocprof wrapper required forced exit after flush; they remain diagnostic
+attribution, not a promotion gate.
 
 ### 3.5 Analyze without conflating rows and launches
 
 ```bash
 uv run python scripts/qwen4exp_trace_analyze.py \
   --trace-dir "$TRACE" --engine hipengine \
-  --marker-prefix qwen4exp_prefill_p508_ \
+  --marker-prefix qwen4exp_prefill_p512_ \
   --output "$TRACE/summary.json"
 
 uv run python scripts/qwen4exp_role_analyze.py \
   --trace-dir "$TRACE" \
-  --measure-prefix qwen4exp_prefill_p508_ \
+  --measure-prefix qwen4exp_prefill_p512_ \
   --output "$TRACE/roles.json"
 ```
 
-The analyzer reports the selected marker window, kernel sum/span, row counts,
-family totals, HIP API launch correlations, unmatched graph/copy rows, and
-memory-copy rows. The role analyzer correlates ROCTX ranges to HIP launch
-correlation IDs and kernel rows, then reports normalized/exact role totals plus
+The analyzer reports the selected marker or explicit clock window, kernel
+sum/span, row counts, complete family totals, HIP API launch correlations,
+unmatched graph/copy rows, allocation events, and memory-copy rows. The role
+analyzer correlates ROCTX ranges to HIP launch correlation IDs and kernel rows,
+then reports attributed/unattributed time coverage, normalized/exact roles, and
 a flat exact-role kernel/API breakdown. Collect actual per-layer expert-row
 distributions in a **separate**, non-profiled instrumentation run so its D2H
 telemetry cannot contaminate the role trace:
@@ -609,9 +592,9 @@ telemetry cannot contaminate the role trace:
 ```bash
 uv run python scripts/qwen4exp_profile_gap.py \
   --model-root "$MODEL_ROOT" --mode prefill \
-  --prompt-file benchmarks/prompts/qwen4exp-p508.txt \
-  --expected-prompt-tokens 508 --repetitions 1 --moe-telemetry \
-  --require-cached-build --output /tmp/qwen4exp-p508-moe-telemetry.json
+  --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json \
+  --case-id code-p512 --repetitions 1 --moe-telemetry \
+  --require-cached-build --output /tmp/qwen4exp-p512-moe-telemetry.json
 ```
 
 `scripts/qwen4exp_perf_gap_report.py` renders the compact artifact as markdown
@@ -635,9 +618,11 @@ without one is not eligible for promotion**, regardless of its speed row.
    `total_allocated_bytes`, `total_freed_bytes`, `peak_allocated_bytes`,
    `active_allocations`, and `peak_allocations`. Require
    `active_allocations == 0` and `current_allocated_bytes == 0` after close.
-2. **Steady-state allocation growth.** Sample `active_allocations` after warmup
-   and again after the measured window; require **zero** growth. A candidate
-   that allocates per step is a leak, not a fast path.
+2. **Steady-state allocation growth.** Sample allocation count and current
+   bytes after warmup and after the measured window; require **zero** growth.
+   For multiple context buckets, gate each warmed bucket independently and
+   report first-use cross-bucket resizing separately. A per-step allocation is
+   a leak, not a fast path.
 3. **Allocation timing under the profiler.** Add
    `rocprofv3 --memory-allocation-trace` beside the kernel/HIP traces. For any
    capture/replay unit require **zero device allocations at or after the first
@@ -666,10 +651,11 @@ without one is not eligible for promotion**, regardless of its speed row.
    Prebuild kernels and pass `--compiler-version-file` plus
    `--require-cached-build` so no profiled process spawns `hipcc`.
 
-`scripts/qwen4exp_p8_production_denominator.py` is the reference shape for a
-timing candidate: shared model residency, one discarded warm arm,
-counterbalanced arms, per-arm route state, per-arm graph-cache census, and a
-`lifecycle` block.
+Use shared model residency, a discarded first arm, counterbalanced named-path
+arms, per-arm route state, graph-cache census, and a lifecycle block. The P8
+denominator harness demonstrates those mechanics for its runner arms, but its
+imported graph value is not a counterbalanced arm and must not be copied as an
+A/B pattern.
 
 Interpretation rules:
 
@@ -749,12 +735,12 @@ not these compute conclusions.
 
 | Boundary | hipEngine implementation | Pinned llama.cpp implementation | Gap-closing action |
 | --- | --- | --- | --- |
-| Decode execution topology | `Qwen4ExpGGUFResidentModelRunner.step()` executes embedding, optional host PLE staging, and 48 physical layers from Python. Production `MoeGraphCache` captures only each stateless MoE subgraph, leaving about 1,195 direct launches plus 48 graph launches/token in the frozen profile. The exact full-transition graph exists only in `scripts/qwen4exp_stateful_layer_graph_probe.py`. | `src/models/qwen4exp.cpp` constructs one declarative root→48-layer→head graph. `llama_context::process_ubatch()` reuses topology when `can_reuse()` passes and submits it through the backend scheduler; the frozen decode trace expands 31 large graph launches over 32 outputs. | Canonical-screen P8 before more decode leaf tuning. Integrate only if the screen gives it a valid `W/C/O/s` row; the exact research result establishes mechanism, and its measured named-path effect is **1.112x / 6.945 ms per step** at short context. |
+| Decode execution topology | `Qwen4ExpGGUFResidentModelRunner.step()` executes embedding, optional host PLE staging, and 48 physical layers from Python. Production `MoeGraphCache` captures only each stateless MoE subgraph. The exact full-transition graph exists only in `scripts/qwen4exp_stateful_layer_graph_probe.py`. | `src/models/qwen4exp.cpp` constructs one declarative root→48-layer→head graph and reuses topology through the backend scheduler. | Keep P8 admission-pending until the same-residency harness has a named-production graph arm. The strict cross-run 1.112x ratio is not an effect measurement. Work the larger measured QSA/MoE/dense owners first. |
 | QSA selected attention | `qsa_sparse_attention_paged_bf16_f32_kernel` gives one CTA to each query head and iterates about 2,048 selected tokens serially. Every token performs QK reduction, online-softmax update, weighted-V update, and several CTA barriers. Twelve calls own 35.88 ms/token above the QSA boundary. | `build_qsa_top_k()` builds selected visibility, then `build_attn_qsa()` turns it into an attention mask and delegates the QKV work to the backend MHA/flash-attention path. It does not run a barrier-per-selected-token Qwen-specific kernel. | Build strict ordered QK-score, online-softmax-coefficient, and weighted-V-recurrence passes in P6. Preserve the current stable selector and selected-position ABI; replace only the serialized attention owner. |
 | GDN recurrence/state | The strict decode kernel assigns one CTA per value head, repeatedly reads/writes strict-layout state, and combines prepare/recurrence/norm-gate through separate ownership. The rejected transposed candidate assigned one wave to each output value, creating 6,144 blocks. | `ggml-cuda/gated_delta_net.cu` assigns four output columns to a CTA, stores transposed state shards in registers across the token loop, and writes each shard once. Qwen4Exp then applies its sigmoid-gated norm in the graph. | Implement a four-or-more-column operation-complete owner with persistent transposed state. Do not retry transpose as a sidecar around the current stages. |
-| Routed MoE | `run_qwen4_exp_moe()` explicitly materializes router logits, top-10, BF16 activation, count/prefix/scatter maps, quant-specific gate/up, activation, down, weighting, and reduction. Some WMMA prefill routes read `group_wmma_total` back to the host to size launches. Three exact early-MoE tile/grid schedules have already lost. | `build_moe_ffn()` expresses routing, `MUL_MAT_ID` gate/up, GLU, down, weighting, and ordered adds in one graph. HIP `mm_ids_helper` builds expert bounds plus compact forward/inverse maps on device; `f1793c1c4` specializes top-10. The backend has dedicated multi-token MoE kernels and recognizes matmul/GLU subgraphs for fusion. | Stop changing isolated tile constants. Differential-profile one operation-complete early-MoE boundary, then transfer device compact-map, activation-reuse, and graph-fusion mechanisms that reduce the measured 2.366-s owner while preserving hipEngine's strict order. |
+| Routed MoE | `run_qwen4_exp_moe()` explicitly materializes router logits, top-10, BF16 activation, count/prefix/scatter maps, quant-specific gate/up, activation, down, weighting, and reduction. Some WMMA prefill routes read `group_wmma_total` back to the host to size launches. Three exact early-MoE tile/grid schedules have already lost. | `build_moe_ffn()` expresses routing, `MUL_MAT_ID` gate/up, GLU, down, weighting, and ordered adds in one graph. HIP `mm_ids_helper` builds expert bounds plus compact forward/inverse maps on device; `f1793c1c4` specializes top-10. | Stop changing isolated tile constants. Transfer device compact-map, activation reuse, and graph-fusion mechanisms against the current **3.408/6.307/25.398-s** operation owner and the measured broad-active-expert shape. |
 | PLE publication | hipEngine keeps the 28.8-GB IQ4_NL table as a sparse mmap, hashes on host, gathers/dequantizes 16 rows into pinned staging, and publishes 10 KiB before the graph. This is memory-efficient but remains a host boundary. | llama computes PLE row IDs in `llm_graph_input_ple::set_input()` and presents them as reusable graph inputs; `ggml_get_rows` and downstream PLE operations remain in the graph. Its loader needs host-specific patches for this artifact. | Keep hipEngine's sparse ownership. Make the host stage request-owned/direct-to-ring and overlap or enclose everything after publication; do not copy llama's full table residency. |
-| Prefill orchestration | hipEngine runs fixed chunks (512 default) through explicit Python-owned kernels. Chunk 1024 improved only 2.3–2.6% at longer shapes, proving chunk size is not the 3–4x explanation. | llama's reusable graph and backend operator selection use larger ubatches and generic MMQ/`MUL_MAT_ID` paths. Its p508 device sum is 3.67x faster despite more kernel rows. | Treat prefill as a kernel/data-reuse portfolio: current early MoE first, then uniform GR/qkv/GDN boundaries. Graphing alone cannot erase a 3.67x device-sum gap. |
+| Prefill orchestration | hipEngine runs fixed chunks (512 default) through explicit Python-owned kernels. Chunk 1024 improved only 2.3–2.6% at longer shapes. | llama's reusable graph and backend selection use larger ubatches and generic MMQ/`MUL_MAT_ID` paths. Exact matched device sums are **3.10x/3.74x/5.05x** faster at p512/p1024/p4096. | Treat prefill as a MoE+dense/GR+long-QSA data-reuse portfolio. Graphing alone cannot erase the device-sum gap. |
 
 This source comparison narrows the campaign to mechanisms visible in both code
 and profiles. It does not prove the size of any unimplemented hipEngine win;
@@ -786,8 +772,9 @@ Before implementation, a campaign-critical candidate must:
 By default, do not spend a dedicated campaign iteration when either the
 zero-cost ceiling is below **1% of complete wall** or the candidate can close
 below **5% of the current comparator gap**. An exception must unblock a
-higher-impact owner, repair correctness, or have negligible implementation cost. Exact small
-sub-window wins remain retainable under repository policy, but they do not
+higher-impact owner, repair correctness, or have negligible implementation
+cost. Exact small sub-window wins remain retainable under repository policy,
+but they do not
 outrank a larger measured owner and they accumulate in a separate ledger until
 the complete-wall effect resolves.
 
@@ -873,13 +860,13 @@ matrix before implementation claims parity.
       renders marker-scoped wall/kernel/residual time, kernel rows/families,
       direct/graph/memcpy call counts and API time; raw profile artifacts retain
       copy direction/bytes, sync calls, and kernel VGPR/LDS/scratch resources.
-- [ ] Emit the first current canonical Amdahl ledger after the P8 admission
-      decision: one clean unprofiled wall packet plus matched hipEngine/llama
-      role traces for p512/p1024/p4096 prefill and context-conditioned decode.
-      Every candidate
-      row records `W/C/O/s`, overlap exclusions, zero-cost ceiling, projected
-      saving, target-gap coverage, confidence, and the exact implementation
-      difference. Old p508 rows remain historical attribution only.
+- [x] Emit the first current canonical Amdahl ledger: clean four-category wall,
+      100%-attributed exact-token hipEngine p512/p1024/p4096 prefill,
+      live-513/1025/4097 decode with complete state/lifecycle checks, broad-
+      active-expert telemetry, and matched pinned llama.cpp HIP family traces.
+      `s` remains unknown until a local candidate runs. The old 41.6% remainder
+      is retired, and P8 returns to admission-pending. Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`.
 
 ### Phase P1 — layer 2 and the Q8 expert-down family
 
@@ -1299,33 +1286,29 @@ request-owned transition submission.
       logits, and 138 owners are exact; reset→replay and graph→forced-eager→
       graph resumption are also exact. Operation-complete wall including PLE
       and readback is **194.758→61.910 ms** over 30 samples, but that eager arm
-      is probe-local; against the named step the graph is **1.112x** (see the
-      retired-ratio subsection in section 2.2). Profiling
+      is probe-local. The later strict runner row of 68.855 ms came from another
+      process, so the derived **1.112x is not a named-production A/B** (see the
+      denominator audit in section 2.2). Profiling
       confirms 10 launches with 1,708 dispatches each and no post-launch device
       allocation.
       Production binding stays off pending request graph keys/lifecycle,
       multi-prompt generation, context buckets, fallback, cold PLE, and c2.
       Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json`.
-- [x] Establish the named denominator before extrapolating the probe ratio.
-      Measured through production `runner.step()` at the probe's own strict
-      profile, prompt, and context, the named default is **68.855 ms/step**, so
-      the whole-transition graph is **1.112x** (**6.945 ms/step**), not 3.15x.
-      The retired eager arm overstated the named path by **2.83x**: **2.09x**
-      was the per-layer MoE graph cache production already ships and **1.35x**
-      was the probe's script-level launch loop. Device argmax versus host
-      full-logit D2H is not measurable at this boundary. Steady allocation
-      growth is zero and teardown returns 82,741,321,248 bytes to zero.
-      Evidence:
-      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`.
-- [ ] Extend the proven probe to the named production configuration and run a
-      canonical p512/p1024/p4096 tg128 feasibility A/B before production
-      integration. The absolute saving is expected to be roughly launch-count
-      bound while kernel time grows with context, so the **ratio must shrink at
-      p4096**; measure it rather than assuming the short-context row. If its
-      `W/C/O/s` row passes section 5.1, add a request-owned transition graph
-      cache and run the complete lifecycle packet. If canonical wall does not
-      improve, localize the mismatch and stop graph integration.
+- [x] Audit the probe denominator. The strict runner measures **68.855 ms**
+      with shipped MoE graphs and **143.989 ms** without them, proving that the
+      194.758-ms probe eager arm is invalid. However, 61.910 ms is imported from
+      the separate graph-probe process, and both rows are strict rather than a
+      named-production same-session A/B. Therefore **1.112x/6.945 ms is also
+      unrankable**; production `O` and `s` remain unknown. Device argmax versus
+      host full-logit D2H is not measurable. Evidence:
+      `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`
+      and the canonical impact profile.
+- [ ] Add a named-production graph arm to the same-residency harness and run a
+      counterbalanced p512/p1024/p4096 tg128 feasibility A/B. Do not import a
+      graph time from the strict probe. Only if the resulting `W/C/O/s` row
+      passes section 5.1 should a request-owned transition cache enter the
+      production runner and complete lifecycle packet.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.
@@ -1525,16 +1508,21 @@ long-context rung and the device-resident MTP milestone; MTP must beat true AR
 on the full category+heldout suite and reach the section 6 target without
 benchmark gaming.
 
+Start with the exact ordered live-4097 QSA decode dataflow. Then execute
+operation-complete prefill MoE, dense/GR, p4096 QSA prefill, short-decode
+selected projections/Q8, and GDN in measured order. P8 is not rank 2: do not
+integrate it until a same-session named-production arm supplies `O` and `s`.
+
 For every implementation unit: declare the measured owner, complete-wall and
 gap-coverage ceilings, arithmetic class, affected scope, mechanism, and strict
 fallback; cite the concrete hipEngine-versus-comparator implementation delta;
 add the RED oracle; inspect kernel lineage before a port; benchmark actual
 rotating weights; prove the expected kernel ran; run the full applicable gate
 and same-session whole-model A/B; retain or reject from evidence; update compact
-artifacts,
-benchmark rollups, kernel/refactor docs, and the immutable worklog; then commit
-the validated unit immediately. Never hardcode prompt/token/candidate behavior,
-weaken a gate, relabel a different representation, add torch to the hot path,
+artifacts, benchmark rollups, kernel/refactor docs, and the immutable worklog;
+then commit the validated unit immediately. Never hardcode prompt/token/
+candidate behavior, weaken a gate, relabel a different representation, add
+torch to the hot path,
 or add backend/quant branches outside the registry.
 
 Do not stop because one hypothesis loses. Record the rejection and move to the
@@ -1562,13 +1550,17 @@ cleanup, and commits are complete.
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
 - Cross-engine Strix Halo speed/accuracy survey:
   [`QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md`](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md)
-- Fresh profile artifact:
+- Current canonical impact profile:
+  [`benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json)
+- Historical p508/tg32 profile:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-fresh-full-profile.json)
 - External fork refresh:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-external-fork-refresh.json)
 - Corrected invalid decode route:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps-decode-all.json)
 - Durable profiling tools: `scripts/qwen4exp_profile_gap.py`,
+  `scripts/qwen4exp_context_decode_profile.py`,
+  `scripts/qwen4exp_llamacpp_exact_profile.py`,
   `scripts/qwen4exp_trace_analyze.py`, `scripts/qwen4exp_role_analyze.py`,
   `scripts/qwen4exp_decode_sync_ab.py`, and
   `scripts/qwen4exp_perf_gap_report.py`.

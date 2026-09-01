@@ -47,26 +47,33 @@ although its short-context decode gap narrowed.
 
 ### hipEngine P8 graph research—not a matched survey row
 
-| Boundary | Eager median | Graph-transition median | Speedup | Correctness and status |
-| --- | ---: | ---: | ---: | --- |
-| Host PLE publication + embedding + all 48 layers + full logits + device argmax/readback, positions 8–37 | **68.855 ms/step** named production `runner.step()` | **61.910 ms/step (16.15 step/s)** | **1.112x** | Positions 8–11: exact changing-token trajectory, full logits, 138 mutable owners, reset→replay, and graph→forced-eager→graph resumption; research only |
+| Boundary | Strict runner diagnostic | Strict graph diagnostic | Status |
+| --- | ---: | ---: | --- |
+| Host PLE publication + embedding + all 48 layers + full logits + device argmax/readback, shallow context | 68.855 ms/step | 61.910 ms/step | **Different processes; 1.112x is not an A/B** |
 
-This P8 row includes exact host hashing, 16-row IQ4_NL mmap gather/dequant, one
-10-KiB H2D PLE row, one full graph launch, synchronization, and token readback.
-It does **not** use the canonical p512/p1024/p4096 prefixes, production profile,
-or 128-transition protocol, so **16.15 step/s must not replace 14.40 tok/s in
-the matched table**. The comparison column is the **named** production
-`runner.step()` at the same profile, prompt, and context; the probe's own eager
-arm measured 194.758 ms/step, but it disables the per-layer MoE graph cache that
-production ships and drives layers from a script loop, so its 3.15x ratio is
-retired. It demonstrates that submission contraction can pay while
-preserving state through the historical third/fourth replay; production binding
-still requires request-local graph caching, multi-prompt trajectories, cold-PLE
-economics, context-bucket and retained-prefix transitions, c2 isolation, and
-serving cancellation. Evidence:
+The graph row preserves the exact changing-token trajectory, full logits, 138
+mutable owners, reset→replay, and graph→forced-eager→graph resumption. The
+original 194.758-ms eager arm is invalid because it disables the shipped
+per-layer MoE cache and uses a script loop. The follow-up 68.855-ms runner row
+correctly measures that strict route, but imports 61.910 ms from the separate
+graph-probe run. It also hardcodes `ExecutionProfile.STRICT`. Therefore neither
+3.15x nor 1.112x is a named-production speedup, and P8 remains admission-
+pending until one same-session production graph arm runs. Evidence:
 [full transition artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json)
 and
 [named denominator](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json).
+
+### Current exact-token profile implications
+
+The matched code-case device sums are hipEngine versus patched llama HIP
+**5.972 vs 1.926 s**, **11.196 vs 2.990 s**, and **54.762 vs 10.838 s** at
+p512/p1024/p4096. At live 4097, hipEngine QSA attention is **35.587 ms** versus
+llama **0.591 ms**; p4096 prefill QSA is **10.229 s** versus **0.526 s**.
+Every hipEngine window has 100% role-time coverage, and both family ledgers have
+zero generic remainder. The old 41.6% "unattributed" row was incomplete table
+coverage, not unknown runtime. Closing the survey gap therefore requires exact
+QSA decode plus a prefill MoE+dense/GR+long-QSA portfolio. Evidence:
+[current canonical impact profile](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
 
 ### MTP speed versus true AR
 
@@ -305,8 +312,8 @@ correctness packet. Its current canonical row is **83.70/83.16/69.10 pp/s** and
 - 10/10 AR↔MTP exact, although MTP is 0.955x AR;
 - P8 full host-staged graph transition: exact changing-token trajectory, full
   logits, 138 owners, reset/replay, forced-eager/resumption, and clean teardown;
-  **68.855→61.910 ms/step (1.112x)** against the named step at the separate
-  shallow transition protocol.
+  the 68.855-ms strict runner and 61.910-ms strict graph rows come from separate
+  processes, so the derived 1.112x is not a named-production A/B.
 
 The evidence establishes implementation fidelity and profile non-inferiority,
 not official benchmark retention. Relevant artifacts are the
@@ -447,6 +454,8 @@ larger than a speed screenshot:
   [`2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
 - Current hipEngine canonical AR row:
   [`2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p5-current-canonical-ar.json)
+- Current canonical impact profile:
+  [`2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json)
 - P8 full host-staged graph transition:
   [`2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json)
 - Existing external-fork refresh:
