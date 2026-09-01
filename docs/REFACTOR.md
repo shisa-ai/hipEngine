@@ -37,10 +37,10 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   registered WG32 strict parent. A separate physical-registry-key extension was
   removed after marker-scoped C8 evidence showed no ownership change.
-- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48=1` is the default-off same-build arm
-  for the physical-R36 three-active-wave fused gate/up+SiLU owner. Promote it
-  only after symbol/marker evidence and the complete C5-C8 category+heldout
-  gate; otherwise remove the row48 kernel, policy, wrapper, and tests.
+- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48=0` remains same-build rollback for
+  the retained physical-R36 three-active-wave fused gate/up+SiLU owner. Remove
+  the environment/cache policy after the next stable milestone audit; keep the
+  row64 registered strict parent.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 

@@ -1012,7 +1012,7 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     ]
 
 
-def test_q4_t16_physical_r36_pair_silu_routes_row48_candidate(monkeypatch) -> None:
+def test_q4_t16_physical_r36_pair_silu_defaults_row48_with_rollback(monkeypatch) -> None:
     from hipengine.runtime import gguf_linear as gguf_linear_module
 
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48", raising=False)
@@ -1063,7 +1063,7 @@ def test_q4_t16_physical_r36_pair_silu_routes_row48_candidate(monkeypatch) -> No
             )
         with q4_t16_physical_extra_rowtiles_session(True):
             launch()
-            monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48", "1")
+            monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48", "0")
             gguf_linear_module._rowtile_variant_policy_env_cache.clear()
             launch()
         launch()
@@ -1074,8 +1074,8 @@ def test_q4_t16_physical_r36_pair_silu_routes_row48_candidate(monkeypatch) -> No
         clear_gguf_linear_dispatch_cache()
 
     assert calls == [
-        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
         "dense_dual_wmma_prefill_row48_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
         "dense_dual_wmma_prefill_row64_bf16_bf16_out",
     ]
 
