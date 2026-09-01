@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Profile exact-token llama.cpp prefill and one cached decode transition.
 
-The server runs normally. ``rocprofv3`` attaches directly to the already-loaded
-server for each request, so model load, warmup, and the Python controller are
-outside the trace. Prefill requests evaluate the exact committed token array and
-sample one output. Decode requests first cache that prompt, append its sampled
-root token, and then profile evaluation of only the appended token. The latter
-matches hipEngine's live ``prompt_tokens + 1`` transition without profiling a
-nested launcher process or relying on repeated-token ``llama-bench`` input.
+A wrapper starts llama-server as its child, waits while the controller warms the
+exact cases, and then ``exec``s ``rocprofv3``. Preserving that parent-child
+relationship satisfies normal Linux ptrace policy without changing host
+security settings. One direct-attach session records only measured requests.
+Client monotonic bounds identify each request in the shared trace.
+
+Prefill requests evaluate the committed token array and sample one output.
+Decode requests append that sampled root token and profile cached evaluation of
+only the appended token, matching hipEngine live ``prompt_tokens + 1``.
 """
 from __future__ import annotations
 
@@ -15,6 +17,8 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
+import signal
 import subprocess
 import sys
 import time
@@ -30,7 +34,6 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
     _git_metadata,
     _host_metadata,
     _post_json,
-    _terminate,
     _wait_for_health,
     load_fixture,
     sha256_path,
@@ -63,8 +66,8 @@ def _completion_payload(
     }
 
 
-def _decode_prompt(case: Mapping[str, Any], warm_response: Mapping[str, Any]) -> list[int]:
-    output = warm_response.get("tokens")
+def _decode_prompt(case: Mapping[str, Any], prefill_response: Mapping[str, Any]) -> list[int]:
+    output = prefill_response.get("tokens")
     if not isinstance(output, list) or len(output) != 1:
         raise ValueError("decode warmup must return exactly one output token")
     return [
@@ -107,105 +110,92 @@ def _git_diff_sha256(path: Path) -> str | None:
 
 
 def _trace_hashes(trace_dir: Path) -> list[dict[str, Any]]:
-    rows = []
-    for path in sorted(trace_dir.rglob("*.csv")):
-        rows.append(
-            {
-                "path": str(path),
-                "bytes": path.stat().st_size,
-                "sha256": sha256_path(path),
-            }
-        )
+    rows = [
+        {
+            "path": str(path),
+            "bytes": path.stat().st_size,
+            "sha256": sha256_path(path),
+        }
+        for path in sorted(trace_dir.rglob("*.csv"))
+    ]
     if not any("kernel_trace" in Path(row["path"]).name for row in rows):
         raise RuntimeError(f"profiler did not emit a kernel trace under {trace_dir}")
     return rows
 
 
-def _profile_request(
-    *,
-    args: argparse.Namespace,
-    server_pid: int,
-    label: str,
-    payload: Mapping[str, Any],
-) -> dict[str, Any]:
-    trace_dir = args.trace_root / label
-    if trace_dir.exists():
-        raise FileExistsError(f"refusing to overwrite trace directory {trace_dir}")
-    trace_dir.mkdir(parents=True)
-    profiler_log_path = trace_dir / "rocprof-attach.log"
-    profiler_command = [
-        str(args.rocprof_bin),
-        "--pid",
-        str(server_pid),
-        "--attach-children=false",
-        "--attach-sync-output",
-        "--kernel-trace",
-        "--hip-trace",
-        "--memory-copy-trace",
-        "--memory-allocation-trace",
-        "--output-format",
-        "csv",
-        "--output-directory",
-        str(trace_dir),
-        "--output-file",
-        label,
-    ]
-    with profiler_log_path.open("wb") as profiler_log:
-        profiler = subprocess.Popen(
-            profiler_command,
-            stdin=subprocess.PIPE,
-            stdout=profiler_log,
-            stderr=subprocess.STDOUT,
-            env=os.environ.copy(),
-        )
-        try:
-            time.sleep(float(args.attach_settle_seconds))
-            if profiler.poll() is not None:
-                raise RuntimeError(
-                    f"rocprofv3 attach exited before request with code {profiler.returncode}"
-                )
-            started_ns = time.monotonic_ns()
-            started = time.perf_counter()
-            response = _post_json(
-                args.host,
-                args.port,
-                "/completion",
-                payload,
-                args.request_timeout,
+def _wait_for_pid(path: Path, process: subprocess.Popen[Any], timeout: float) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.is_file() and path.read_text().strip():
+            return int(path.read_text().strip())
+        if process.poll() is not None:
+            raise RuntimeError(
+                f"server/profiler wrapper exited early with code {process.returncode}"
             )
-            client_wall_s = time.perf_counter() - started
-            finished_ns = time.monotonic_ns()
-            assert profiler.stdin is not None
-            profiler.stdin.write(b"\n")
-            profiler.stdin.flush()
-            profiler.stdin.close()
-            profiler.wait(timeout=args.attach_exit_timeout)
-        except Exception:
-            if profiler.poll() is None:
-                profiler.terminate()
-                try:
-                    profiler.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    profiler.kill()
-                    profiler.wait(timeout=10)
-            raise
-    if profiler.returncode != 0:
-        raise RuntimeError(f"rocprofv3 attach failed with code {profiler.returncode}")
+        time.sleep(0.05)
+    raise TimeoutError(f"server PID file did not appear within {timeout}s")
+
+
+def _stop_pid(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + 30.0
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+
+def _request(
+    args: argparse.Namespace, payload: Mapping[str, Any]
+) -> dict[str, Any]:
+    started_ns = time.monotonic_ns()
+    started = time.perf_counter()
+    response = _post_json(
+        args.host,
+        args.port,
+        "/completion",
+        payload,
+        args.request_timeout,
+    )
     return {
-        "label": label,
         "payload": dict(payload),
-        "request_monotonic_ns": {"start": started_ns, "end": finished_ns},
-        "client_wall_s": client_wall_s,
-        "response": _response_summary(response),
-        "profiler": {
-            "command": profiler_command,
-            "returncode": profiler.returncode,
-            "log": str(profiler_log_path),
-            "log_sha256": sha256_path(profiler_log_path),
-            "trace_dir": str(trace_dir),
-            "files": _trace_hashes(trace_dir),
+        "request_monotonic_ns": {
+            "start": started_ns,
+            "end": time.monotonic_ns(),
         },
+        "client_wall_s": time.perf_counter() - started,
+        "response": _response_summary(response),
+        "raw_response": response,
     }
+
+
+def _wrapper_script(
+    *,
+    server_command: Sequence[str],
+    server_log: Path,
+    pid_file: Path,
+    profiler_command: Sequence[str],
+) -> str:
+    return "\n".join(
+        (
+            "set -euo pipefail",
+            f"{shlex.join(server_command)} >{shlex.quote(str(server_log))} 2>&1 &",
+            'server_pid="$!"',
+            f"printf '%s\\n' \"$server_pid\" >{shlex.quote(str(pid_file))}",
+            "IFS= read -r _",
+            f"exec {shlex.join(profiler_command[:2])} \"$server_pid\" "
+            + shlex.join(profiler_command[3:]),
+        )
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -240,9 +230,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     ):
         if not path.exists():
             raise ValueError(f"{description} does not exist: {path}")
-    args.trace_root.mkdir(parents=True, exist_ok=True)
+    if args.trace_root.exists():
+        raise FileExistsError(f"refusing to overwrite trace root {args.trace_root}")
+    args.trace_root.mkdir(parents=True)
     server_log_path = args.server_log or args.trace_root / "llama-server.log"
     server_log_path.parent.mkdir(parents=True, exist_ok=True)
+    pid_file = args.trace_root / "server.pid"
+    profiler_log_path = args.trace_root / "rocprof-attach.log"
     server_command = [
         str(args.server_bin.resolve()),
         "-m",
@@ -256,6 +250,29 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         "--no-webui",
         *args.server_arg,
     ]
+    profiler_command = [
+        str(args.rocprof_bin),
+        "--pid",
+        "SERVER_PID",
+        "--attach-children=false",
+        "--attach-sync-output",
+        "--kernel-trace",
+        "--hip-trace",
+        "--memory-copy-trace",
+        "--memory-allocation-trace",
+        "--output-format",
+        "csv",
+        "--output-directory",
+        str(args.trace_root),
+        "--output-file",
+        "llama-exact",
+    ]
+    wrapper_script = _wrapper_script(
+        server_command=server_command,
+        server_log=server_log_path,
+        pid_file=pid_file,
+        profiler_command=profiler_command,
+    )
     artifact: dict[str, Any] = {
         "schema": 1,
         "kind": "qwen4exp_llamacpp_exact_profile",
@@ -275,66 +292,82 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "source_diff_sha256": _git_diff_sha256(args.source_root),
             "command": server_command,
             "attach_registration": "ROCP_TOOL_ATTACH=1",
+            "ptrace_ownership": "wrapper starts server child then execs rocprofv3",
+        },
+        "profiler": {
+            "command_template": profiler_command,
+            "wrapper_script": wrapper_script,
+            "log": str(profiler_log_path),
         },
         "protocol": {
             "prefill": "exact prompt, cache_prompt=false, n_predict=1",
             "decode": (
-                "warm exact prompt with cache_prompt=true, append its sampled root token, "
-                "then profile cached evaluation of that one appended token"
+                "append the measured prefill root token, cache_prompt=true, "
+                "profile evaluation of that one appended token"
             ),
             "temperature": 0.0,
             "top_k": 1,
             "seed": 12345,
             "attach_settle_seconds": float(args.attach_settle_seconds),
+            "request_selection": "client CLOCK_MONOTONIC bounds into shared trace",
         },
+        "warmups": [],
         "cases": [],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(artifact, indent=2) + "\n")
-    with server_log_path.open("wb") as server_log:
-        server = subprocess.Popen(
-            server_command,
-            stdout=server_log,
-            stderr=subprocess.STDOUT,
-            env=_server_environment(),
-        )
+
+    wrapper: subprocess.Popen[Any] | None = None
+    server_pid: int | None = None
+    profiler_started = False
+    with profiler_log_path.open("wb") as profiler_log:
         try:
+            wrapper = subprocess.Popen(
+                ["bash", "-c", wrapper_script],
+                stdin=subprocess.PIPE,
+                stdout=profiler_log,
+                stderr=subprocess.STDOUT,
+                env=_server_environment(),
+            )
+            server_pid = _wait_for_pid(pid_file, wrapper, args.startup_timeout)
+            artifact["server"]["pid"] = server_pid
             _wait_for_health(args.host, args.port, args.startup_timeout)
             for case in cases:
                 prompt = [int(token_id) for token_id in case["prompt_token_ids"]]
-                warm_prefill = _post_json(
-                    args.host,
-                    args.port,
-                    "/completion",
+                warmup = _request(
+                    args,
                     _completion_payload(prompt, n_predict=1, cache_prompt=False),
-                    args.request_timeout,
                 )
-                prefill = _profile_request(
-                    args=args,
-                    server_pid=server.pid,
-                    label=f"{case['id']}-prefill",
-                    payload=_completion_payload(
-                        prompt, n_predict=1, cache_prompt=False
-                    ),
+                artifact["warmups"].append(
+                    {
+                        "case_id": str(case["id"]),
+                        "response": warmup["response"],
+                    }
+                )
+            assert wrapper.stdin is not None
+            wrapper.stdin.write(b"start\n")
+            wrapper.stdin.flush()
+            profiler_started = True
+            time.sleep(float(args.attach_settle_seconds))
+            if wrapper.poll() is not None:
+                raise RuntimeError(
+                    f"rocprofv3 attach exited before requests with code {wrapper.returncode}"
+                )
+            for case in cases:
+                prompt = [int(token_id) for token_id in case["prompt_token_ids"]]
+                prefill = _request(
+                    args,
+                    _completion_payload(prompt, n_predict=1, cache_prompt=False),
                 )
                 if int(prefill["response"]["prompt_n"]) != int(case["prompt_tokens"]):
                     raise RuntimeError(
                         f"{case['id']} prefill evaluated {prefill['response']['prompt_n']} "
                         f"tokens, expected {case['prompt_tokens']}"
                     )
-                warm_decode = _post_json(
-                    args.host,
-                    args.port,
-                    "/completion",
-                    _completion_payload(prompt, n_predict=1, cache_prompt=True),
-                    args.request_timeout,
-                )
-                decode_prompt = _decode_prompt(case, warm_decode)
-                decode = _profile_request(
-                    args=args,
-                    server_pid=server.pid,
-                    label=f"{case['id']}-decode-live{len(decode_prompt)}",
-                    payload=_completion_payload(
+                decode_prompt = _decode_prompt(case, prefill["raw_response"])
+                decode = _request(
+                    args,
+                    _completion_payload(
                         decode_prompt, n_predict=1, cache_prompt=True
                     ),
                 )
@@ -343,6 +376,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                         f"{case['id']} cached decode evaluated "
                         f"{decode['response']['prompt_n']} prompt tokens"
                     )
+                prefill.pop("raw_response")
+                decode.pop("raw_response")
                 artifact["cases"].append(
                     {
                         "id": str(case["id"]),
@@ -351,9 +386,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                         "prompt_token_ids_sha256": str(
                             case["prompt_token_ids_sha256"]
                         ),
-                        "warm_prefill": _response_summary(warm_prefill),
                         "prefill": prefill,
-                        "warm_decode": _response_summary(warm_decode),
                         "decode_live_count": len(decode_prompt),
                         "decode_prompt_token_ids_sha256": token_ids_sha256(
                             decode_prompt
@@ -368,17 +401,49 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     f"{decode['response']['prompt_n']}",
                     flush=True,
                 )
+            wrapper.stdin.write(b"stop\n")
+            wrapper.stdin.flush()
+            wrapper.stdin.close()
+            wrapper.wait(timeout=args.attach_exit_timeout)
+            if wrapper.returncode != 0:
+                raise RuntimeError(
+                    f"rocprofv3 attach failed with code {wrapper.returncode}"
+                )
+            artifact["profiler"]["returncode"] = wrapper.returncode
+            artifact["profiler"]["log_sha256"] = sha256_path(profiler_log_path)
+            artifact["profiler"]["files"] = _trace_hashes(args.trace_root)
             artifact["status"] = "completed"
         except Exception as exc:
             artifact["status"] = "failed"
             artifact["error"] = f"{type(exc).__name__}: {exc}"
             raise
         finally:
-            _terminate(server)
-            server_log.flush()
-            artifact["server"]["returncode"] = server.returncode
+            if wrapper is not None and wrapper.poll() is None:
+                if profiler_started and wrapper.stdin is not None and not wrapper.stdin.closed:
+                    try:
+                        wrapper.stdin.write(b"stop\n")
+                        wrapper.stdin.flush()
+                        wrapper.stdin.close()
+                    except (BrokenPipeError, OSError):
+                        pass
+                try:
+                    wrapper.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    wrapper.terminate()
+                    try:
+                        wrapper.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        wrapper.kill()
+                        wrapper.wait(timeout=10)
+            if server_pid is not None:
+                _stop_pid(server_pid)
+            profiler_log.flush()
+            artifact["server"]["termination"] = "SIGTERM_then_SIGKILL_if_needed"
             artifact["server"]["log"] = str(server_log_path)
-            artifact["server"]["log_sha256"] = sha256_path(server_log_path)
+            if server_log_path.is_file():
+                artifact["server"]["log_sha256"] = sha256_path(server_log_path)
+            if profiler_log_path.is_file():
+                artifact["profiler"]["log_sha256"] = sha256_path(profiler_log_path)
             args.output.write_text(json.dumps(artifact, indent=2) + "\n")
     return artifact
 

@@ -75,6 +75,25 @@ def test_server_environment_enables_direct_profiler_attach(
     assert environment["ROCP_TOOL_ATTACH"] == "1"
 
 
+def test_wrapper_exec_preserves_server_parentage_without_placeholder() -> None:
+    module = _load_script()
+
+    script = module._wrapper_script(
+        server_command=["llama-server", "--port", "18115"],
+        server_log=Path("/tmp/server.log"),
+        pid_file=Path("/tmp/server.pid"),
+        profiler_command=[
+            "rocprofv3",
+            "--pid",
+            "SERVER_PID",
+            "--kernel-trace",
+        ],
+    )
+
+    assert 'exec rocprofv3 --pid "$server_pid" --kernel-trace' in script
+    assert "SERVER_PID" not in script
+
+
 def test_parser_accepts_repeated_cases_and_server_args(tmp_path: Path) -> None:
     module = _load_script()
 
