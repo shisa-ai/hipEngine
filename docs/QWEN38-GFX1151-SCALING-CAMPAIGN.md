@@ -830,7 +830,7 @@ prompt-conditioned tuning, sized full-wall bound before code).
   whose measured prototype regresses 55.1%. The retained band moves frozen C8
   only +0.83%, so the blocked remainder cannot cover the 19.1% target gap.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-rows1024-workgroup-limit.json).
-- [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
+- [x] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured
   multiplicities; opens per family only where Y0 sizes it above ~2% of the
@@ -959,6 +959,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   ladder is therefore blocked by register/occupancy cost, and exports are
   removed.
   [`Rows1024 blocker`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-planar-q6-shared4r16-rows1024-blocker.json).
+  **Closure:** every Q5/Q6/GDN row band is retained at its best exact practical
+  owner, below Y2's 2% opening threshold, or blocked by measured launch,
+  local-performance, tracked-clean collateral, or row-capacity cost. No
+  above-threshold unblocked multiplicity unit remains; issue-wall work belongs
+  to Y3.
+  [`Y2 closure`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-closure.json).
   [`Post-shared4r6 ledger`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json).
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
