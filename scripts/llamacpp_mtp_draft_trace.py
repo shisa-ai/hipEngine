@@ -17,12 +17,12 @@ from typing import Any
 
 
 _CANDIDATE_PREFIX_RE = re.compile(
-    r"^\s*- seq_id\s+(?P<seq_id>\d+),\s+draft candidate\s+"
+    r"^.*?-\s+seq_id\s+(?P<seq_id>\d+),\s+draft candidate\s+"
     r"(?P<rank>\d+),\s+pos\s+(?P<pos>\d+):\s+"
     r"(?P<token_id>-?\d+)\s+\(\s*(?P<prob>[+-]?(?:\d+(?:\.\d*)?|\.\d+))\)\s+'(?P<piece>.*)$"
 )
 _CALL_RE = re.compile(
-    r"common_speculative_draft: called impl draft-mtp, hist size = (?P<hist_size>\d+), "
+    r"(?:common_speculative_draft|common_specu): called impl draft-mtp, hist size = (?P<hist_size>\d+), "
     r"call_count = (?P<call_count>\d+), gen = (?P<generated>\d+)"
 )
 _ACCEPT_RE = re.compile(r"accepted (?P<accepted>\d+)/(?P<generated>\d+) draft tokens")
