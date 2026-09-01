@@ -438,12 +438,21 @@ def _host_metadata() -> dict[str, Any]:
             governors[path.read_text().strip()] += 1
         except OSError:
             continue
+    gpu_clock_policies: dict[str, str] = {}
+    for path in Path("/sys/class/drm").glob(
+        "card*/device/power_dpm_force_performance_level"
+    ):
+        try:
+            gpu_clock_policies[str(path)] = path.read_text().strip()
+        except OSError:
+            continue
     return {
         "hostname": socket.gethostname(),
         "machine_id": Path("/etc/machine-id").read_text().strip(),
         "kernel": platform.release(),
         "tuned_active": tuned.stdout.strip() or tuned.stderr.strip(),
         "cpu_governors": dict(governors),
+        "gpu_clock_policies": gpu_clock_policies,
         "rocm_platform": _rocm_platform_version(),
         "hipcc_version": hipcc.stdout.strip() or hipcc.stderr.strip(),
     }

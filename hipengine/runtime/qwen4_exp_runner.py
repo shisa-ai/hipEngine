@@ -54,6 +54,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_scatter_index_key_device_position_f32,
     qwen4_exp_qsa_scatter_index_keys_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
@@ -1384,6 +1385,26 @@ class Qwen4ExpQSAScratch:
             raise
         return cls(*buffers, runtime=active_runtime)
 
+    def ordered_attention_scratch(
+        self, *, query_heads: int, selected_count: int
+    ) -> tuple[DeviceBuffer, DeviceBuffer]:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp QSA scratch is closed")
+        required = int(query_heads) * int(selected_count) * DType.FP32.itemsize
+        if required <= 0:
+            raise ValueError("ordered attention scratch dimensions must be positive")
+        scores = getattr(self, "ordered_scores", None)
+        coefficients = getattr(self, "ordered_coefficients", None)
+        if scores is None or scores.nbytes < required:
+            if scores is not None:
+                free(scores, runtime=self.runtime)
+                free(coefficients, runtime=self.runtime)
+            scores = malloc(required, runtime=self.runtime)
+            coefficients = malloc(2 * required, runtime=self.runtime)
+            self.ordered_scores = scores
+            self.ordered_coefficients = coefficients
+        return scores, coefficients
+
     def close(self) -> None:
         if self.closed:
             return
@@ -1395,7 +1416,10 @@ class Qwen4ExpQSAScratch:
             )
         ):
             free(buffer, runtime=self.runtime)
-        for lazy_key in ("flash_k_scratch", "flash_v_scratch"):
+        for lazy_key in (
+            "flash_k_scratch", "flash_v_scratch", "ordered_scores",
+            "ordered_coefficients",
+        ):
             lazy = getattr(self, lazy_key, None)
             if lazy is not None:
                 free(lazy, runtime=self.runtime)
@@ -2223,29 +2247,57 @@ def run_qwen4_exp_dense_qsa_token_mixer(
             runtime=active_runtime,
         )
     else:
-        sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_f32
-        if (
-            head_dim == 128
-            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
+        ordered_decode = (
+            head_dim == 256
+            and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE", "0")
             not in {"", "0", "false", "False"}
-        ):
-            sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32
-        sparse_attention(
-            scratch.query.ptr,
-            attention_state.key_cache.ptr,
-            attention_state.value_cache.ptr,
-            selected_positions.ptr,
-            scratch.context.ptr,
-            attention_state.decode_spans,
-            selected_count=selected_count,
-            block_size=attention_state.block_size,
-            query_heads=query_heads,
-            kv_heads=kv_heads,
-            head_dim=head_dim,
-            scale=head_dim ** -0.5,
-            stream=stream,
-            runtime=active_runtime,
         )
+        if ordered_decode:
+            scores, coefficients = scratch.ordered_attention_scratch(
+                query_heads=query_heads, selected_count=selected_count
+            )
+            qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32(
+                scratch.query.ptr,
+                attention_state.key_cache.ptr,
+                attention_state.value_cache.ptr,
+                selected_positions.ptr,
+                scores.ptr,
+                coefficients.ptr,
+                scratch.context.ptr,
+                attention_state.decode_spans,
+                selected_count=selected_count,
+                block_size=attention_state.block_size,
+                query_heads=query_heads,
+                kv_heads=kv_heads,
+                head_dim=head_dim,
+                scale=head_dim ** -0.5,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        else:
+            sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_f32
+            if (
+                head_dim == 128
+                and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
+                not in {"", "0", "false", "False"}
+            ):
+                sparse_attention = qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32
+            sparse_attention(
+                scratch.query.ptr,
+                attention_state.key_cache.ptr,
+                attention_state.value_cache.ptr,
+                selected_positions.ptr,
+                scratch.context.ptr,
+                attention_state.decode_spans,
+                selected_count=selected_count,
+                block_size=attention_state.block_size,
+                query_heads=query_heads,
+                kv_heads=kv_heads,
+                head_dim=head_dim,
+                scale=head_dim ** -0.5,
+                stream=stream,
+                runtime=active_runtime,
+            )
     qwen4_exp_qsa_gate_context_f32(
         scratch.context.ptr,
         scratch.gate.ptr,
@@ -4524,6 +4576,10 @@ class Qwen4ExpGGUFResidentModelRunner:
             ffn=cfg.expert_feed_forward_length, experts=cfg.expert_count,
             top_k=cfg.expert_used_count, index_heads=cfg.indexer_head_count,
             index_dim=cfg.indexer_key_length, runtime=self.runtime,
+        )
+        self.qsa_scratch.qsa.ordered_attention_scratch(
+            query_heads=cfg.attention_head_count,
+            selected_count=cfg.qsa_dense_equivalent_max_tokens,
         )
         self.ple_scratch = Qwen4ExpPLEScratch.allocate(
             rows=1, branches=cfg.residual_branch_count, hidden=cfg.hidden_size,
