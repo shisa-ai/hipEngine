@@ -25569,13 +25569,29 @@ class Qwen35GGUFResidentSession:
             )
 
     def _fused_linear_state_transfer_enabled(self) -> bool:
-        return bool(
+        if bool(
             backend_package_capability(
                 self.backend,
                 "GGUF_FUSED_LINEAR_STATE_TRANSFER",
                 False,
             )
+        ):
+            return True
+        policy = backend_package_capability(
+            self.backend,
+            "GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY",
+            {},
         )
+        if not isinstance(policy, Mapping):
+            return False
+        enabled_env = policy.get("enabled_env")
+        if not isinstance(enabled_env, str) or not enabled_env:
+            return False
+        default = bool(policy.get("enabled_default", False))
+        value = os.environ.get(enabled_env)
+        if value is None:
+            return default
+        return value.strip().lower() not in {"0", "false", "no", "off"}
 
     def _fused_linear_state_commit_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")

@@ -225,6 +225,13 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
+# Exact resident-to-packed Conv/GDN state gather is already implemented by the
+# registered chunked pointer-table copy leaf. Screen it independently on
+# multi-request gfx1100 workloads; the per-layer D2D chain stays the default.
+GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER",
+    "enabled_default": False,
+}
 # W7900 physical SPECDEC2 R6 reuses retained C1 rowtile arithmetic for five
 # standard-Q4 target shapes. One rows6 launch is BF16-bit exact to two
 # independent rows3 owners while avoiding the shared-B kernel's padded 256-row
