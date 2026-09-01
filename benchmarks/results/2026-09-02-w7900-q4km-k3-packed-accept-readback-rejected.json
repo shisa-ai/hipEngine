@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_packed_accept_readback_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Remove the packed committed-token readback candidate. It reduces ready-data D2H API overhead but does not improve operation-complete C8 wall; retain bounded payload plus per-request accepted-token reads.",
+  "source": {"base_commit": "20f312bb8", "dirty_candidate": true, "candidate_removed": true},
+  "hardware": {"physical_host": "epyc", "gpu": "AMD Radeon Pro W7900", "target_arch": "gfx1100", "compute_units": 96, "rocm": "7.2.4"},
+  "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "quant": "Q4_K_M", "kv": "BF16", "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"},
+  "ownership_audit": {
+    "required_host_payload": "Per-request accepted count, commit row/token/position, next token, full-accept flag, and accepted token IDs are required to update public generated IDs and host scheduling state.",
+    "control_d2h": "One 8x7 int32 packed status payload (224 B) plus eight per-request accepted-token slices of at most four int32 values at C8/K3.",
+    "candidate_d2h": "One status payload plus one contiguous 8x32 int32 committed-output matrix (1024 B).",
+    "telemetry_correction": "mtp2_target_readback_ms is added to every request row, so the route-level sum is request-count multiplied. Most first-copy latency is the required producer dependency on target compute, not D2H transfer cost."
+  },
+  "ready_data_micro": {
+    "protocol": "Pre-populated device buffers, 200 alternating host perf-counter pairs; control uses 1+8 D2H calls, candidate uses 1+1 D2H calls.",
+    "control_median_us": 214.16274830698967,
+    "candidate_median_us": 47.21619188785553,
+    "candidate_speedup": 4.535790366483885,
+    "pair_wins": 200,
+    "sample_pairs": 200
+  },
+  "c8_marker": {
+    "protocol": "Dirty current-source cached-only rocprofv3 kernel+ROCTx, one train prompt, C8/K3/D12, sequential control then candidate.",
+    "correctness": {"generated_ids_equal_ar": true, "acceptance_equal": true, "accepted_counts": [3, 3, 2]},
+    "control": {"complete_wall_seconds": 1.2644110303372145, "target_wall_ms": 518.707819, "device_union_ms": 442.483537},
+    "candidate": {"complete_wall_seconds": 1.2733884882181883, "target_wall_ms": 518.221531, "device_union_ms": 440.137866},
+    "delta_pct": {"complete_wall": 0.7100127668269557, "target_wall": -0.09375088462016334, "device_union": -0.530115990811196},
+    "verdict": "Target wall is effectively flat and complete wall regresses; stop before full-suite spend."
+  },
+  "validation": {"focused_contract": "Default bounded-copy dependency test passed with no global synchronize.", "final_tree": "No candidate branch, environment flag, or test remains."},
+  "limitations": ["Dirty marker rejection only; no retained performance claim."]
+}
