@@ -1045,9 +1045,17 @@ prompt-conditioned tuning, sized full-wall bound before code).
   that same structure, so raising the format roof cannot cover the remaining
   prefill gap.
   [`Y3/Y4 resolution`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-closure-y4-not-opened.json).
-- [ ] Y5 **(Conditional) non-GEMM prefill tail.** P1.3 traced 1380 launches /
-  534.2 ms at M=45 with ~174 ms outside the wmma family. Size with Y0; drop
-  if under ~2% of the remaining wall.
+- [x] Y5 **(Conditional) non-GEMM prefill tail.** Post-pair rows288 sizing
+  attributes **64.52 ms GDN + 79.36 ms other = 143.87 ms / 14.52% wall**.
+  The largest named families are full-attention prefill (4.58%), retained
+  compact peer-wave GDN recurrence (4.29%), dense F32-weight GEMV (1.65%), GDN
+  RMSNorm/gate (1.38%), and SiLU multiply (0.58%). **Closure blocker:** even
+  physically impossible perfect deletion of all GDN/other work plus perfect
+  realization of Y3's 4.63% rows288 residual ceiling removes only **19.16%**
+  wall, below the **21.64%** reduction needed for retained C8
+  239.658->305.847 tok/s, a 2.49-point shortfall. No Y5 implementation can
+  close the frozen target.
+  [`Y5 closure`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json).
 
 ### 9.3 Order, priority, and success criteria
 
