@@ -933,6 +933,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Rows256 final ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-final-ledger.json).
   [`Planar rows256 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
   [`Rows256 residual`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-post-retention-ledger.json).
+  A current high-row audit prevents premature Y2 closure: rows288/536/1024
+  Q6 remains **4.40/8.18/14.48 sweeps** and **248.25/468.03/870.54 ms**, with
+  family-wide removable ceilings **191.83/410.82/810.42 ms**. The retained
+  standard owner is active, but planar gridY9/17/32 dominates; exact planar
+  high-row ownership remains an open implementation unit.
+  [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
