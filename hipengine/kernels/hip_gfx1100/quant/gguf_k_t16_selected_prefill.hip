@@ -1171,7 +1171,8 @@ __global__ void gguf_q4_qmicro_expand_dual_metadata_kernel(
 template <
     bool qmicro = false,
     bool external_meta = false,
-    int row_tiles_per_wave = 4>
+    int row_tiles_per_wave = 4,
+    int active_waves_per_block = 4>
 __launch_bounds__(128, 1)
 __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -1186,10 +1187,13 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
   constexpr int MATRICES = 2;
   constexpr int OUT_TILES_PER_BLOCK = 2;
   constexpr int ROW_TILES_PER_WAVE = row_tiles_per_wave;
-  constexpr int WAVES_PER_BLOCK = 4;
+  constexpr int WAVES_PER_BLOCK = active_waves_per_block;
   static_assert(
       ROW_TILES_PER_WAVE >= 1 && ROW_TILES_PER_WAVE <= 4,
       "dense dual WMMA row tiles per wave must be in [1, 4]");
+  static_assert(
+      WAVES_PER_BLOCK >= 1 && WAVES_PER_BLOCK <= 4,
+      "dense dual WMMA active waves per block must be in [1, 4]");
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
@@ -1294,38 +1298,40 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     }
     __syncthreads();
 
-    const int64_t block_k_base = blk * QK_K;
+    if (wave < WAVES_PER_BLOCK) {
+      const int64_t block_k_base = blk * QK_K;
 #pragma unroll 1
-    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+      for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
 #pragma unroll
-      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
-        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
-        half16_t a_reg[ROW_TILES_PER_WAVE];
-#pragma unroll
-        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
-          const int64_t input_row = row_base + tn * 16 + lane16;
-          const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
-              x, valid_row ? input_row : 0, in_features,
-              block_k_base + k_off, valid_row);
-        }
-#pragma unroll
-        for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-          half16_t b_a;
-          half16_t b_b;
-#pragma unroll
-          for (int kk = 0; kk < 16; ++kk) {
-            const int index =
-                (tm * T16_COLS + lane16) * QK_K + k_off + kk;
-            b_a[kk] = shared.weights[0][index];
-            b_b[kk] = shared.weights[1][index];
-          }
+        for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+          const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+          half16_t a_reg[ROW_TILES_PER_WAVE];
 #pragma unroll
           for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
-            acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
-                a_reg[tn], b_a, acc_a[tm][tn]);
-            acc_b[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
-                a_reg[tn], b_b, acc_b[tm][tn]);
+            const int64_t input_row = row_base + tn * 16 + lane16;
+            const bool valid_row = input_row < rows;
+            a_reg[tn] = load_compact_row_half16<uint16_t>(
+                x, valid_row ? input_row : 0, in_features,
+                block_k_base + k_off, valid_row);
+          }
+#pragma unroll
+          for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+            half16_t b_a;
+            half16_t b_b;
+#pragma unroll
+            for (int kk = 0; kk < 16; ++kk) {
+              const int index =
+                  (tm * T16_COLS + lane16) * QK_K + k_off + kk;
+              b_a[kk] = shared.weights[0][index];
+              b_b[kk] = shared.weights[1][index];
+            }
+#pragma unroll
+            for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+              acc_a[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                  a_reg[tn], b_a, acc_a[tm][tn]);
+              acc_b[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                  a_reg[tn], b_b, acc_b[tm][tn]);
+            }
           }
         }
       }
@@ -1333,22 +1339,24 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
     __syncthreads();
   }
 
+  if (wave < WAVES_PER_BLOCK) {
 #pragma unroll
-  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-    const int local_col = tm * T16_COLS + lane16;
-    const int64_t out_col = col_tile_base * T16_COLS + local_col;
-    if (out_col < out_features) {
+    for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+      const int local_col = tm * T16_COLS + lane16;
+      const int64_t out_col = col_tile_base * T16_COLS + local_col;
+      if (out_col < out_features) {
 #pragma unroll
-      for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
 #pragma unroll
-        for (int j = 0; j < 8; ++j) {
-          const int local_row =
-              wave * ROWS_PER_WAVE + tn * 16 + half_id + j * 2;
-          const int64_t out_row = block_row_base + local_row;
-          if (out_row < rows) {
-            const int index = local_row * OUT_COLS_PER_BLOCK + local_col;
-            shared.rounded[0][index] = float_to_bf16_bits(acc_a[tm][tn][j]);
-            shared.rounded[1][index] = float_to_bf16_bits(acc_b[tm][tn][j]);
+          for (int j = 0; j < 8; ++j) {
+            const int local_row =
+                wave * ROWS_PER_WAVE + tn * 16 + half_id + j * 2;
+            const int64_t out_row = block_row_base + local_row;
+            if (out_row < rows) {
+              const int index = local_row * OUT_COLS_PER_BLOCK + local_col;
+              shared.rounded[0][index] = float_to_bf16_bits(acc_a[tm][tn][j]);
+              shared.rounded[1][index] = float_to_bf16_bits(acc_b[tm][tn][j]);
+            }
           }
         }
       }
@@ -1843,7 +1851,8 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
 template <
     bool qmicro = false,
     bool external_meta = false,
-    int row_tiles_per_wave = 4>
+    int row_tiles_per_wave = 4,
+    int active_waves_per_block = 4>
 int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     const uint16_t* x,
     const uint8_t* tiles_a,
@@ -1884,7 +1893,8 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
     }
   }
   constexpr int Q4_DENSE_TILE_COLS = 2 * T16_COLS;
-  constexpr int Q4_DENSE_TILE_ROWS = 4 * row_tiles_per_wave * 16;
+  constexpr int Q4_DENSE_TILE_ROWS =
+      active_waves_per_block * row_tiles_per_wave * 16;
   const dim3 block(128);
   const dim3 grid(
       static_cast<unsigned int>(
@@ -1893,7 +1903,7 @@ int launch_q4_t16_dense_dual_wmma_prefill_silu_bf16(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
       (gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<
-          qmicro, external_meta, row_tiles_per_wave>),
+          qmicro, external_meta, row_tiles_per_wave, active_waves_per_block>),
       grid,
       block,
       0,
@@ -2124,6 +2134,20 @@ extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_ou
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false>(
+      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
+      out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false, 1, 3>(
       x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
       out_features, stream);
 }

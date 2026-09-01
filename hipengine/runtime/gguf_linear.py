@@ -1845,6 +1845,48 @@ def _q4_t16_dual_silu_retile_enabled() -> bool:
     return _Q4_T16_DUAL_SILU_RETILE_RESOLVED
 
 
+def _q4_t16_physical_dual_silu_variant(
+    backend: str,
+    rows: int,
+) -> str | None:
+    """Return a backend-qualified physical fused-FFN retile, if enabled."""
+
+    if not q4_t16_physical_extra_rowtiles_enabled():
+        return None
+    policy = backend_package_capability(
+        backend,
+        "GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return None
+    enabled_env = policy.get("enabled_env")
+    if not isinstance(enabled_env, str) or not enabled_env:
+        return None
+    enabled_default = bool(policy.get("enabled_default", False))
+    cache_key = (enabled_env, enabled_default)
+    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
+    if enabled is None:
+        raw = os.environ.get(
+            enabled_env,
+            "1" if enabled_default else "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            enabled = True
+        elif raw in {"0", "false", "no", "off"}:
+            enabled = False
+        else:
+            raise ValueError(f"{enabled_env} must be a boolean value")
+        _rowtile_variant_policy_env_cache[cache_key] = enabled
+    if not enabled:
+        return None
+    rows_to_variant = policy.get("rows_to_variant", {})
+    if not isinstance(rows_to_variant, Mapping):
+        return None
+    variant = rows_to_variant.get(int(rows))
+    return variant if isinstance(variant, str) and variant else None
+
+
 def _q4_t16_dual_wmma_silu_dispatch(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -1878,6 +1920,12 @@ def _q4_t16_dual_wmma_silu_dispatch(
         and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
         and _q4_t16_dual_silu_retile_enabled()
     ):
+        physical_variant = _q4_t16_physical_dual_silu_variant(
+            dispatch_a.key.backend,
+            rows,
+        )
+        if physical_variant is not None:
+            variants.append(physical_variant)
         if rows <= 64:
             variants.append("dense_dual_wmma_prefill_row64_bf16_bf16_out")
         elif rows <= 128:
