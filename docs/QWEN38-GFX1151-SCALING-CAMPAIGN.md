@@ -915,7 +915,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   unchanged. Trace: 64 gridY1 hits, 128 threads, VGPR176, LDS16 KiB, scratch0.
   Tracked-clean C1-C8 collateral is **160/160 exact** with aggregate wall
   **+0.18% AR / -0.05% MTP** (per-width MTP -0.41% to +0.18%), passing the
-  collateral guard. Y2 remains open pending final refreshed multiplicity.
+  collateral guard. Final rows256 multiplicity is **1.00 Q5 / 1.08 Q6**.
+  The sole residual is 16 narrow-planar gridY2 hits totaling **3.87 ms / 0.54%
+  wall**, below Y2's 2% opening threshold; exact gridY1 `<4,4,2>` loses locally
+  at 0.94x. Rows256 is therefore closed at the practical exact sweep floor;
+  Y2 remains open on other row bands.
+  [`Rows256 final ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-final-ledger.json).
   [`Planar rows256 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
   [`Rows256 residual`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-post-retention-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
