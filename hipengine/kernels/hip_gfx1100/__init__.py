@@ -262,10 +262,6 @@ _Q4_T16_ROWTILE16_W2_R6_SHAPES = {
     (6_144, 5_120),
     (17_408, 5_120),
 }
-GGUF_NEXTN_ROOT_STATE_PAIR_COPY_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_NEXTN_ROOT_STATE_PAIR_COPY",
-    "enabled_default": False,
-}
 GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48",
     "enabled_default": True,
