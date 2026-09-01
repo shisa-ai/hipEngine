@@ -186,6 +186,73 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
     assert owner._direct_resident_linear_state((SimpleNamespace(),)) is None
 
 
+def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.runner = SimpleNamespace(
+        weights=SimpleNamespace(config=SimpleNamespace(layer_types=(LINEAR_ATTENTION,)))
+    )
+    owner._packed_verify_session_ids = ()
+    owner._packed_verify_max_written_positions = ()
+    fused_calls = []
+    owner._fused_packed_verify_initial_state_transfer_enabled = MethodType(
+        lambda self: True, owner
+    )
+    owner._fused_linear_state_pair_copy = MethodType(
+        lambda self, copies, **kwargs: fused_calls.append((tuple(copies), kwargs)) or True,
+        owner,
+    )
+    sessions = tuple(
+        object.__new__(gguf_runner.Qwen35GGUFResidentSession) for _ in range(2)
+    )
+    for session, position, conv_ptr, recurrent_ptr in zip(
+        sessions,
+        (5, 7),
+        (0x1000, 0x1100),
+        (0x2000, 0x2100),
+        strict=True,
+    ):
+        session.runner = owner.runner
+        session._position = position
+        session.scratch = SimpleNamespace(
+            layer_conv_states=(DeviceBuffer(conv_ptr, 64),),
+            layer_recurrent_states=(DeviceBuffer(recurrent_ptr, 128),),
+        )
+    jobs = [{"session": session} for session in sessions]
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11,), start_position=5),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(12,), start_position=7),
+        ),
+        block_size=4,
+        slot_capacity=16,
+    )
+    packed_state = SimpleNamespace(
+        linear_state_pair=lambda layer_id: (
+            DeviceBuffer(0x3000, 128),
+            DeviceBuffer(0x4000, 256),
+        )
+    )
+    runtime = SimpleNamespace(memcpy_async=lambda *args: pytest.fail("unfused copy"))
+
+    owner._sync_packed_verify_initial_state(
+        jobs,
+        layout,
+        packed_state,
+        runtime=runtime,
+        stream=7,
+    )
+
+    assert fused_calls == [
+        (
+            (
+                (0x1000, 0x3000, 0x2000, 0x4000, 64, 128),
+                (0x1100, 0x3040, 0x2100, 0x4080, 64, 128),
+            ),
+            {"runtime": runtime, "stream": 7},
+        )
+    ]
+
+
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner._buffers = ()
@@ -251,13 +318,6 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
     assert len(allocations) == 5
     assert len(uploads) == 7
 
-    owner._fused_linear_state_single_slot_transfer_enabled = MethodType(
-        lambda self: True, owner
-    )
-    assert owner._fused_linear_state_pair_copy(copies[:1], runtime=object(), stream=7)
-    assert launches[-1] == (64, 128, 1)
-
-
 def test_gfx1100_fused_linear_state_transfer_policy_is_default_off(
     monkeypatch,
 ) -> None:
@@ -268,10 +328,10 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_off(
     assert owner._fused_linear_state_transfer_enabled() is False
     monkeypatch.setenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", "1")
     assert owner._fused_linear_state_transfer_enabled() is True
-    assert owner._fused_linear_state_single_slot_transfer_enabled() is True
+    assert owner._fused_packed_verify_initial_state_transfer_enabled() is True
     monkeypatch.setenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", "0")
     assert owner._fused_linear_state_transfer_enabled() is False
-    assert owner._fused_linear_state_single_slot_transfer_enabled() is False
+    assert owner._fused_packed_verify_initial_state_transfer_enabled() is False
 
 
 def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
