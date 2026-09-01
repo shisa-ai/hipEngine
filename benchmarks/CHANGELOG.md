@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 dense-other audit — diagnostic] Resolved **8.767 s** into strict selected Q8_0 down **3.086 s**, dense F32 projections **2.775 s**, and layer-2 strict selected Q5_K **2.337 s**. The measured-negative grouped Q8 owner is not extended unchanged; a new mechanism is required. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next exact Q5 down+route — blocked] Expert-major BF16 Q5 publication cannot absorb the token-major ordered `fmaf(value, weight, accumulator)` reducer: preweighting rounds early and atomics lose top-k order. A future path needs cooperative token ownership or explicit T1/T2 gates. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next grouped Q4+SiLU — rejected] The T0 epilogue passed a synthetic byte-exact RED but GPU-faulted before the first bound p512 warmup. Removing it restored named production to **5.517 s / 92.802 tok/s** with lifecycle closure; require a production-width K2560/FFN oracle before retry. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q4-grouped-silu-rejected.json`.
