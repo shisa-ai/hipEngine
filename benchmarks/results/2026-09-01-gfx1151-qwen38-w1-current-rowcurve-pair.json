@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_current_head_rowcurve_pair",
+  "status": "candidate_rejected",
+  "performance_claim": false,
+  "protocol": "one canonical diagnostic prompt, widths2/3/4/5/6/8 K3 D24, target-pass timestamp windows, rocprofv3 kernel trace",
+  "baseline": {
+    "2": {
+      "q4": {
+        "launches_median": 55.0,
+        "ms_median": 14.438794
+      },
+      "q5": {
+        "launches_median": 13.0,
+        "ms_median": 2.1754595
+      },
+      "q6": {
+        "launches_median": 21.5,
+        "ms_median": 7.329340999999999
+      }
+    },
+    "3": {
+      "q4": {
+        "launches_median": 62.0,
+        "ms_median": 16.351456
+      },
+      "q5": {
+        "launches_median": 10.0,
+        "ms_median": 2.326022
+      },
+      "q6": {
+        "launches_median": 29.0,
+        "ms_median": 10.0199485
+      }
+    },
+    "4": {
+      "q4": {
+        "launches_median": 68.5,
+        "ms_median": 21.643500500000002
+      },
+      "q5": {
+        "launches_median": 12.0,
+        "ms_median": 4.5191125
+      },
+      "q6": {
+        "launches_median": 40.0,
+        "ms_median": 14.253446499999999
+      }
+    },
+    "5": {
+      "q4": {
+        "launches_median": 15.0,
+        "ms_median": 5.764889999999999
+      },
+      "q5": {
+        "launches_median": 0.0,
+        "ms_median": 0.0
+      },
+      "q6": {
+        "launches_median": 8.0,
+        "ms_median": 35.866191
+      }
+    },
+    "6": {
+      "q4": {
+        "launches_median": 14.0,
+        "ms_median": 5.307831
+      },
+      "q5": {
+        "launches_median": 0.0,
+        "ms_median": 0.0
+      },
+      "q6": {
+        "launches_median": 7.0,
+        "ms_median": 33.02284
+      }
+    },
+    "8": {
+      "q4": {
+        "launches_median": 9.5,
+        "ms_median": 3.649162
+      },
+      "q5": {
+        "launches_median": 0.0,
+        "ms_median": 0.0
+      },
+      "q6": {
+        "launches_median": 5.0,
+        "ms_median": 38.54734
+      }
+    }
+  },
+  "candidate": {
+    "2": {
+      "q4": {
+        "launches_median": 53.0,
+        "ms_median": 13.8735345
+      },
+      "q5": {
+        "launches_median": 12.5,
+        "ms_median": 2.1044425
+      },
+      "q6": {
+        "launches_median": 20.5,
+        "ms_median": 7.208287
+      }
+    },
+    "3": {
+      "q4": {
+        "launches_median": 66.5,
+        "ms_median": 17.2035025
+      },
+      "q5": {
+        "launches_median": 10.5,
+        "ms_median": 2.3336725
+      },
+      "q6": {
+        "launches_median": 29.5,
+        "ms_median": 10.205305
+      }
+    },
+    "4": {
+      "q4": {
+        "launches_median": 69.0,
+        "ms_median": 21.948847
+      },
+      "q5": {
+        "launches_median": 12.0,
+        "ms_median": 4.5214715000000005
+      },
+      "q6": {
+        "launches_median": 40.5,
+        "ms_median": 14.4078205
+      }
+    },
+    "5": {
+      "q4": {
+        "launches_median": 15.0,
+        "ms_median": 5.771614
+      },
+      "q5": {
+        "launches_median": 0.0,
+        "ms_median": 0.0
+      },
+      "q6": {
+        "launches_median": 7.0,
+        "ms_median": 30.923147
+      }
+    },
+    "6": {
+      "q4": {
+        "launches_median": 13.5,
+        "ms_median": 5.119153
+      },
+      "q5": {
+        "launches_median": 0.0,
+        "ms_median": 0.0
+      },
+      "q6": {
+        "launches_median": 7.0,
+        "ms_median": 33.0646595
+      }
+    },
+    "8": {
+      "q4": {
+        "launches_median": 201.5,
+        "ms_median": 96.05344
+      },
+      "q5": {
+        "launches_median": 0.0,
+        "ms_median": 0.0
+      },
+      "q6": {
+        "launches_median": 39.5,
+        "ms_median": 55.3326475
+      }
+    }
+  },
+  "r32_candidate_vs_baseline_ms_percent": {
+    "q4": 2532.2054214090795,
+    "q5": null,
+    "q6": 43.54465833440129
+  },
+  "candidate_r32_over_r8_flatness": {
+    "q4": 6.92350172192962,
+    "q5": 0.0,
+    "q6": 7.67625477453936
+  },
+  "decision": "reject combined existing-owner W1 candidate: direct R32 target window increases Q4 25.3x and Q6 43.5%; candidate flatness Q4 6.92x/Q6 7.68x, failing <=1.25x. Isolated leaf speedups do not transfer because the operation-complete route multiplies candidate launches/occupancy cost. A credible next owner must fuse/loop across operation shapes, not only replace leaves.",
+  "raw": {
+    "baseline_trace": {
+      "path": "/tmp/wy-w1-rowcurve-current-baseline/w1-baseline_kernel_trace.csv",
+      "size_bytes": 125471355,
+      "sha256": "35b2e1fae42ed48bdec81aa59ee88151d6623b7e2fb648ed3f0835422eba7fb5"
+    },
+    "candidate_trace": {
+      "path": "/tmp/wy-w1-rowcurve-candidate-trace/w1-candidate_kernel_trace.csv",
+      "size_bytes": 125527272,
+      "sha256": "375d06d7817589736a2fef9609dd4f6f8b80f42ab27d7b6c597b849b7525a29d"
+    },
+    "baseline_raw": {
+      "path": "/tmp/wy-w1-rowcurve-current-baseline/raw.json",
+      "size_bytes": 1030569,
+      "sha256": "af2756759a1b18d5dacb5160353d04164c8f8422c18ea0b3fe61c1650dbf6c8a"
+    },
+    "candidate_raw": {
+      "path": "/tmp/wy-w1-rowcurve-candidate-trace/raw.json",
+      "size_bytes": 1030865,
+      "sha256": "50f976155c86516f0ef53f5452333739253079ee745a03f690e14c92d11fa284"
+    }
+  }
+}
