@@ -64,34 +64,25 @@ def test_completion_payload_pins_sampler_and_cache_policy() -> None:
     }
 
 
-def test_server_environment_enables_direct_profiler_attach(
-    monkeypatch: pytest.MonkeyPatch,
+def test_profile_command_runs_server_directly_without_nested_launcher(
+    tmp_path: Path,
 ) -> None:
     module = _load_script()
-    monkeypatch.delenv("ROCP_TOOL_ATTACH", raising=False)
 
-    environment = module._server_environment()
-
-    assert environment["ROCP_TOOL_ATTACH"] == "1"
-
-
-def test_wrapper_exec_preserves_server_parentage_without_placeholder() -> None:
-    module = _load_script()
-
-    script = module._wrapper_script(
+    command = module._profile_command(
+        rocprof_bin=Path("rocprofv3"),
+        trace_root=tmp_path / "trace",
         server_command=["llama-server", "--port", "18115"],
-        server_log=Path("/tmp/server.log"),
-        pid_file=Path("/tmp/server.pid"),
-        profiler_command=[
-            "rocprofv3",
-            "--pid",
-            "SERVER_PID",
-            "--kernel-trace",
-        ],
     )
 
-    assert 'exec rocprofv3 --pid "$server_pid" --kernel-trace' in script
-    assert "SERVER_PID" not in script
+    assert command[:4] == [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--memory-copy-trace",
+    ]
+    assert command[-4:] == ["--", "llama-server", "--port", "18115"]
+    assert "--pid" not in command
 
 
 def test_parser_accepts_repeated_cases_and_server_args(tmp_path: Path) -> None:
