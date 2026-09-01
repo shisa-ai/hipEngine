@@ -366,6 +366,14 @@ control.
 - [ ] For C1/C2, run teacher-forced proposal parity against the matched
   Laurent route before changing target kernels. Report agreement by category,
   position, and heldout split.
+
+  Capture protocol: [`2026-09-01-gfx1151-qwen38-z2-teacher-forced-proposal-plan.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-teacher-forced-proposal-plan.json).
+  Existing external HTTP artifacts are free-running aggregates and cannot close
+  this item. The pinned fork exposes raw response tokens and verbose per-rank
+  MTP proposals, but not `LLAMA_MTP_TOKEN_TRACE`; the next unit must segment
+  verbose records by request and compare first-cycle K3 proposals on a
+  Laurent-owned D24 teacher trajectory. No target-kernel change is admitted
+  before this capture.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
