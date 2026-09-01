@@ -42,12 +42,12 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-01 gfx1100 grouped Q4 rows6 pair-seam screen — open
+## 2026-09-01 gfx1100 grouped Q4 rows6 pair-seam rollback — closed
 
-- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=1` opts the physical
-  equal-width Q4 pair fallback into two full grouped-grid projections instead
-  of interleaved repeated-R6 chunks. Promote only after marker ownership and a
-  complete C5-C8 gate; otherwise remove the policy and pair-seam branch.
+- Promoted after exact marker ownership and complete C5-C8 qualification.
+  `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=0` retains the
+  interleaved repeated-R6 rollback for bisecting; remove the flag after the
+  grouped pair owner is stable across the next production campaign.
 
 ## 2026-09-01 gfx1100 grouped Q4 rows6 rollback — closed
 
