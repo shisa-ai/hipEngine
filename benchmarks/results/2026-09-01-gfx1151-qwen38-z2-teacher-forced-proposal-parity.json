@@ -1,0 +1,1657 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z2_teacher_forced_proposal_parity",
+  "date": "2026-09-01",
+  "status": "measured_parity_complete",
+  "performance_claim": false,
+  "source": {
+    "hipengine_commit": "37e10dbf9",
+    "laurent_commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2"
+  },
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "fingerprint": "sha256-sampled-v1:e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "positions_per_prompt": 24,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldouts": 4
+  },
+  "runtime_profile": {
+    "resolved": "production",
+    "manifest": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "commands": {
+    "laurent_server": "/home/lhl/.local/state/hipengine-external-survey/repos/laurent/build-vulkan/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 8192 -np 2 --host 127.0.0.1 --port 48221 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0 --log-verbose",
+    "hipengine_capture": "GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-z2-teacher/capture_hip.py",
+    "summarize": "python3 /tmp/q38-z2-teacher/summarize_parity.py"
+  },
+  "protocol": {
+    "teacher": "Pinned Laurent slot-0 iterative n_predict=4 root trajectory. Every later context is exact raw prompt IDs plus the fixed teacher prefix.",
+    "laurent": "C1/C2 n_predict=4, K3, retain first proposal only; pinned slot IDs; verbose top-3 capture.",
+    "hipengine": "Production physical C1/C2 route, actual D5 with diagnostic admission horizon 24, K3; synchronize and D2H materialize first device proposal.",
+    "comparison": "Score only contexts where both target roots equal the fixed teacher root. Report all root failures separately.",
+    "timing": "No timing claim; both captures add diagnostic logging/readback/synchronization."
+  },
+  "summary": {
+    "1": {
+      "logical_contexts_total": 240,
+      "logical_contexts_comparable": 222,
+      "physical_rows_comparable": 222,
+      "exact_k3": 147,
+      "exact_k3_rate": 0.6621621621621622,
+      "depth_agreement": [
+        0.8918918918918919,
+        0.7702702702702703,
+        0.6936936936936937
+      ]
+    },
+    "2": {
+      "logical_contexts_total": 240,
+      "logical_contexts_comparable": 223,
+      "physical_rows_comparable": 446,
+      "exact_k3": 304,
+      "exact_k3_rate": 0.6816143497757847,
+      "depth_agreement": [
+        0.9013452914798207,
+        0.7847533632286996,
+        0.7174887892376681
+      ]
+    }
+  },
+  "c2_batch_internal": {
+    "exact_pair_contexts": 240,
+    "total_contexts": 240,
+    "rate": 1.0
+  },
+  "agreement_by_category_split_depth": {
+    "width=1|category=code|split=heldout|depth=1": {
+      "matches": 22,
+      "total": 23,
+      "agreement": 0.9565217391304348
+    },
+    "width=1|category=code|split=heldout|depth=2": {
+      "matches": 21,
+      "total": 23,
+      "agreement": 0.9130434782608695
+    },
+    "width=1|category=code|split=heldout|depth=3": {
+      "matches": 19,
+      "total": 23,
+      "agreement": 0.8260869565217391
+    },
+    "width=1|category=code|split=main|depth=1": {
+      "matches": 71,
+      "total": 72,
+      "agreement": 0.9861111111111112
+    },
+    "width=1|category=code|split=main|depth=2": {
+      "matches": 67,
+      "total": 72,
+      "agreement": 0.9305555555555556
+    },
+    "width=1|category=code|split=main|depth=3": {
+      "matches": 62,
+      "total": 72,
+      "agreement": 0.8611111111111112
+    },
+    "width=1|category=general_en|split=heldout|depth=1": {
+      "matches": 18,
+      "total": 22,
+      "agreement": 0.8181818181818182
+    },
+    "width=1|category=general_en|split=heldout|depth=2": {
+      "matches": 15,
+      "total": 22,
+      "agreement": 0.6818181818181818
+    },
+    "width=1|category=general_en|split=heldout|depth=3": {
+      "matches": 13,
+      "total": 22,
+      "agreement": 0.5909090909090909
+    },
+    "width=1|category=general_en|split=main|depth=1": {
+      "matches": 19,
+      "total": 22,
+      "agreement": 0.8636363636363636
+    },
+    "width=1|category=general_en|split=main|depth=2": {
+      "matches": 16,
+      "total": 22,
+      "agreement": 0.7272727272727273
+    },
+    "width=1|category=general_en|split=main|depth=3": {
+      "matches": 14,
+      "total": 22,
+      "agreement": 0.6363636363636364
+    },
+    "width=1|category=general_ja|split=heldout|depth=1": {
+      "matches": 13,
+      "total": 19,
+      "agreement": 0.6842105263157895
+    },
+    "width=1|category=general_ja|split=heldout|depth=2": {
+      "matches": 7,
+      "total": 19,
+      "agreement": 0.3684210526315789
+    },
+    "width=1|category=general_ja|split=heldout|depth=3": {
+      "matches": 7,
+      "total": 19,
+      "agreement": 0.3684210526315789
+    },
+    "width=1|category=general_ja|split=main|depth=1": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=1|category=general_ja|split=main|depth=2": {
+      "matches": 14,
+      "total": 20,
+      "agreement": 0.7
+    },
+    "width=1|category=general_ja|split=main|depth=3": {
+      "matches": 12,
+      "total": 20,
+      "agreement": 0.6
+    },
+    "width=1|category=mixed_ja_en|split=heldout|depth=1": {
+      "matches": 19,
+      "total": 22,
+      "agreement": 0.8636363636363636
+    },
+    "width=1|category=mixed_ja_en|split=heldout|depth=2": {
+      "matches": 16,
+      "total": 22,
+      "agreement": 0.7272727272727273
+    },
+    "width=1|category=mixed_ja_en|split=heldout|depth=3": {
+      "matches": 15,
+      "total": 22,
+      "agreement": 0.6818181818181818
+    },
+    "width=1|category=mixed_ja_en|split=main|depth=1": {
+      "matches": 20,
+      "total": 22,
+      "agreement": 0.9090909090909091
+    },
+    "width=1|category=mixed_ja_en|split=main|depth=2": {
+      "matches": 15,
+      "total": 22,
+      "agreement": 0.6818181818181818
+    },
+    "width=1|category=mixed_ja_en|split=main|depth=3": {
+      "matches": 12,
+      "total": 22,
+      "agreement": 0.5454545454545454
+    },
+    "width=2|category=code|split=heldout|depth=1": {
+      "matches": 46,
+      "total": 48,
+      "agreement": 0.9583333333333334
+    },
+    "width=2|category=code|split=heldout|depth=2": {
+      "matches": 44,
+      "total": 48,
+      "agreement": 0.9166666666666666
+    },
+    "width=2|category=code|split=heldout|depth=3": {
+      "matches": 42,
+      "total": 48,
+      "agreement": 0.875
+    },
+    "width=2|category=code|split=main|depth=1": {
+      "matches": 142,
+      "total": 144,
+      "agreement": 0.9861111111111112
+    },
+    "width=2|category=code|split=main|depth=2": {
+      "matches": 134,
+      "total": 144,
+      "agreement": 0.9305555555555556
+    },
+    "width=2|category=code|split=main|depth=3": {
+      "matches": 126,
+      "total": 144,
+      "agreement": 0.875
+    },
+    "width=2|category=general_en|split=heldout|depth=1": {
+      "matches": 40,
+      "total": 44,
+      "agreement": 0.9090909090909091
+    },
+    "width=2|category=general_en|split=heldout|depth=2": {
+      "matches": 34,
+      "total": 44,
+      "agreement": 0.7727272727272727
+    },
+    "width=2|category=general_en|split=heldout|depth=3": {
+      "matches": 30,
+      "total": 44,
+      "agreement": 0.6818181818181818
+    },
+    "width=2|category=general_en|split=main|depth=1": {
+      "matches": 38,
+      "total": 44,
+      "agreement": 0.8636363636363636
+    },
+    "width=2|category=general_en|split=main|depth=2": {
+      "matches": 34,
+      "total": 44,
+      "agreement": 0.7727272727272727
+    },
+    "width=2|category=general_en|split=main|depth=3": {
+      "matches": 30,
+      "total": 44,
+      "agreement": 0.6818181818181818
+    },
+    "width=2|category=general_ja|split=heldout|depth=1": {
+      "matches": 26,
+      "total": 38,
+      "agreement": 0.6842105263157895
+    },
+    "width=2|category=general_ja|split=heldout|depth=2": {
+      "matches": 14,
+      "total": 38,
+      "agreement": 0.3684210526315789
+    },
+    "width=2|category=general_ja|split=heldout|depth=3": {
+      "matches": 14,
+      "total": 38,
+      "agreement": 0.3684210526315789
+    },
+    "width=2|category=general_ja|split=main|depth=1": {
+      "matches": 32,
+      "total": 40,
+      "agreement": 0.8
+    },
+    "width=2|category=general_ja|split=main|depth=2": {
+      "matches": 30,
+      "total": 40,
+      "agreement": 0.75
+    },
+    "width=2|category=general_ja|split=main|depth=3": {
+      "matches": 24,
+      "total": 40,
+      "agreement": 0.6
+    },
+    "width=2|category=mixed_ja_en|split=heldout|depth=1": {
+      "matches": 38,
+      "total": 44,
+      "agreement": 0.8636363636363636
+    },
+    "width=2|category=mixed_ja_en|split=heldout|depth=2": {
+      "matches": 32,
+      "total": 44,
+      "agreement": 0.7272727272727273
+    },
+    "width=2|category=mixed_ja_en|split=heldout|depth=3": {
+      "matches": 30,
+      "total": 44,
+      "agreement": 0.6818181818181818
+    },
+    "width=2|category=mixed_ja_en|split=main|depth=1": {
+      "matches": 40,
+      "total": 44,
+      "agreement": 0.9090909090909091
+    },
+    "width=2|category=mixed_ja_en|split=main|depth=2": {
+      "matches": 28,
+      "total": 44,
+      "agreement": 0.6363636363636364
+    },
+    "width=2|category=mixed_ja_en|split=main|depth=3": {
+      "matches": 24,
+      "total": 44,
+      "agreement": 0.5454545454545454
+    }
+  },
+  "agreement_by_teacher_position_depth": {
+    "width=1|position=0|depth=1": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=0|depth=2": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=0|depth=3": {
+      "matches": 5,
+      "total": 9,
+      "agreement": 0.5555555555555556
+    },
+    "width=1|position=10|depth=1": {
+      "matches": 10,
+      "total": 10,
+      "agreement": 1.0
+    },
+    "width=1|position=10|depth=2": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=10|depth=3": {
+      "matches": 6,
+      "total": 10,
+      "agreement": 0.6
+    },
+    "width=1|position=11|depth=1": {
+      "matches": 9,
+      "total": 9,
+      "agreement": 1.0
+    },
+    "width=1|position=11|depth=2": {
+      "matches": 7,
+      "total": 9,
+      "agreement": 0.7777777777777778
+    },
+    "width=1|position=11|depth=3": {
+      "matches": 7,
+      "total": 9,
+      "agreement": 0.7777777777777778
+    },
+    "width=1|position=12|depth=1": {
+      "matches": 7,
+      "total": 9,
+      "agreement": 0.7777777777777778
+    },
+    "width=1|position=12|depth=2": {
+      "matches": 6,
+      "total": 9,
+      "agreement": 0.6666666666666666
+    },
+    "width=1|position=12|depth=3": {
+      "matches": 5,
+      "total": 9,
+      "agreement": 0.5555555555555556
+    },
+    "width=1|position=13|depth=1": {
+      "matches": 6,
+      "total": 7,
+      "agreement": 0.8571428571428571
+    },
+    "width=1|position=13|depth=2": {
+      "matches": 6,
+      "total": 7,
+      "agreement": 0.8571428571428571
+    },
+    "width=1|position=13|depth=3": {
+      "matches": 6,
+      "total": 7,
+      "agreement": 0.8571428571428571
+    },
+    "width=1|position=14|depth=1": {
+      "matches": 9,
+      "total": 10,
+      "agreement": 0.9
+    },
+    "width=1|position=14|depth=2": {
+      "matches": 6,
+      "total": 10,
+      "agreement": 0.6
+    },
+    "width=1|position=14|depth=3": {
+      "matches": 4,
+      "total": 10,
+      "agreement": 0.4
+    },
+    "width=1|position=15|depth=1": {
+      "matches": 7,
+      "total": 8,
+      "agreement": 0.875
+    },
+    "width=1|position=15|depth=2": {
+      "matches": 7,
+      "total": 8,
+      "agreement": 0.875
+    },
+    "width=1|position=15|depth=3": {
+      "matches": 7,
+      "total": 8,
+      "agreement": 0.875
+    },
+    "width=1|position=16|depth=1": {
+      "matches": 7,
+      "total": 10,
+      "agreement": 0.7
+    },
+    "width=1|position=16|depth=2": {
+      "matches": 4,
+      "total": 10,
+      "agreement": 0.4
+    },
+    "width=1|position=16|depth=3": {
+      "matches": 3,
+      "total": 10,
+      "agreement": 0.3
+    },
+    "width=1|position=17|depth=1": {
+      "matches": 6,
+      "total": 9,
+      "agreement": 0.6666666666666666
+    },
+    "width=1|position=17|depth=2": {
+      "matches": 5,
+      "total": 9,
+      "agreement": 0.5555555555555556
+    },
+    "width=1|position=17|depth=3": {
+      "matches": 4,
+      "total": 9,
+      "agreement": 0.4444444444444444
+    },
+    "width=1|position=18|depth=1": {
+      "matches": 9,
+      "total": 9,
+      "agreement": 1.0
+    },
+    "width=1|position=18|depth=2": {
+      "matches": 7,
+      "total": 9,
+      "agreement": 0.7777777777777778
+    },
+    "width=1|position=18|depth=3": {
+      "matches": 6,
+      "total": 9,
+      "agreement": 0.6666666666666666
+    },
+    "width=1|position=19|depth=1": {
+      "matches": 7,
+      "total": 8,
+      "agreement": 0.875
+    },
+    "width=1|position=19|depth=2": {
+      "matches": 6,
+      "total": 8,
+      "agreement": 0.75
+    },
+    "width=1|position=19|depth=3": {
+      "matches": 6,
+      "total": 8,
+      "agreement": 0.75
+    },
+    "width=1|position=1|depth=1": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=1|depth=2": {
+      "matches": 5,
+      "total": 10,
+      "agreement": 0.5
+    },
+    "width=1|position=1|depth=3": {
+      "matches": 4,
+      "total": 10,
+      "agreement": 0.4
+    },
+    "width=1|position=20|depth=1": {
+      "matches": 9,
+      "total": 9,
+      "agreement": 1.0
+    },
+    "width=1|position=20|depth=2": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=20|depth=3": {
+      "matches": 6,
+      "total": 9,
+      "agreement": 0.6666666666666666
+    },
+    "width=1|position=21|depth=1": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=21|depth=2": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=21|depth=3": {
+      "matches": 7,
+      "total": 10,
+      "agreement": 0.7
+    },
+    "width=1|position=22|depth=1": {
+      "matches": 10,
+      "total": 10,
+      "agreement": 1.0
+    },
+    "width=1|position=22|depth=2": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=22|depth=3": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=23|depth=1": {
+      "matches": 9,
+      "total": 10,
+      "agreement": 0.9
+    },
+    "width=1|position=23|depth=2": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=23|depth=3": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=2|depth=1": {
+      "matches": 7,
+      "total": 8,
+      "agreement": 0.875
+    },
+    "width=1|position=2|depth=2": {
+      "matches": 6,
+      "total": 8,
+      "agreement": 0.75
+    },
+    "width=1|position=2|depth=3": {
+      "matches": 6,
+      "total": 8,
+      "agreement": 0.75
+    },
+    "width=1|position=3|depth=1": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=3|depth=2": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=3|depth=3": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=4|depth=1": {
+      "matches": 7,
+      "total": 9,
+      "agreement": 0.7777777777777778
+    },
+    "width=1|position=4|depth=2": {
+      "matches": 6,
+      "total": 9,
+      "agreement": 0.6666666666666666
+    },
+    "width=1|position=4|depth=3": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=1|position=5|depth=1": {
+      "matches": 9,
+      "total": 10,
+      "agreement": 0.9
+    },
+    "width=1|position=5|depth=2": {
+      "matches": 10,
+      "total": 10,
+      "agreement": 1.0
+    },
+    "width=1|position=5|depth=3": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=6|depth=1": {
+      "matches": 10,
+      "total": 10,
+      "agreement": 1.0
+    },
+    "width=1|position=6|depth=2": {
+      "matches": 7,
+      "total": 10,
+      "agreement": 0.7
+    },
+    "width=1|position=6|depth=3": {
+      "matches": 7,
+      "total": 10,
+      "agreement": 0.7
+    },
+    "width=1|position=7|depth=1": {
+      "matches": 10,
+      "total": 10,
+      "agreement": 1.0
+    },
+    "width=1|position=7|depth=2": {
+      "matches": 10,
+      "total": 10,
+      "agreement": 1.0
+    },
+    "width=1|position=7|depth=3": {
+      "matches": 9,
+      "total": 10,
+      "agreement": 0.9
+    },
+    "width=1|position=8|depth=1": {
+      "matches": 9,
+      "total": 10,
+      "agreement": 0.9
+    },
+    "width=1|position=8|depth=2": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=8|depth=3": {
+      "matches": 8,
+      "total": 10,
+      "agreement": 0.8
+    },
+    "width=1|position=9|depth=1": {
+      "matches": 9,
+      "total": 9,
+      "agreement": 1.0
+    },
+    "width=1|position=9|depth=2": {
+      "matches": 9,
+      "total": 9,
+      "agreement": 1.0
+    },
+    "width=1|position=9|depth=3": {
+      "matches": 8,
+      "total": 9,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=0|depth=1": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=0|depth=2": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=0|depth=3": {
+      "matches": 10,
+      "total": 18,
+      "agreement": 0.5555555555555556
+    },
+    "width=2|position=10|depth=1": {
+      "matches": 20,
+      "total": 20,
+      "agreement": 1.0
+    },
+    "width=2|position=10|depth=2": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=10|depth=3": {
+      "matches": 14,
+      "total": 20,
+      "agreement": 0.7
+    },
+    "width=2|position=11|depth=1": {
+      "matches": 18,
+      "total": 18,
+      "agreement": 1.0
+    },
+    "width=2|position=11|depth=2": {
+      "matches": 14,
+      "total": 18,
+      "agreement": 0.7777777777777778
+    },
+    "width=2|position=11|depth=3": {
+      "matches": 14,
+      "total": 18,
+      "agreement": 0.7777777777777778
+    },
+    "width=2|position=12|depth=1": {
+      "matches": 14,
+      "total": 18,
+      "agreement": 0.7777777777777778
+    },
+    "width=2|position=12|depth=2": {
+      "matches": 12,
+      "total": 18,
+      "agreement": 0.6666666666666666
+    },
+    "width=2|position=12|depth=3": {
+      "matches": 10,
+      "total": 18,
+      "agreement": 0.5555555555555556
+    },
+    "width=2|position=13|depth=1": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=13|depth=2": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=13|depth=3": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=14|depth=1": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=14|depth=2": {
+      "matches": 14,
+      "total": 20,
+      "agreement": 0.7
+    },
+    "width=2|position=14|depth=3": {
+      "matches": 12,
+      "total": 20,
+      "agreement": 0.6
+    },
+    "width=2|position=15|depth=1": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=15|depth=2": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=15|depth=3": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=16|depth=1": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=16|depth=2": {
+      "matches": 10,
+      "total": 20,
+      "agreement": 0.5
+    },
+    "width=2|position=16|depth=3": {
+      "matches": 8,
+      "total": 20,
+      "agreement": 0.4
+    },
+    "width=2|position=17|depth=1": {
+      "matches": 12,
+      "total": 18,
+      "agreement": 0.6666666666666666
+    },
+    "width=2|position=17|depth=2": {
+      "matches": 10,
+      "total": 18,
+      "agreement": 0.5555555555555556
+    },
+    "width=2|position=17|depth=3": {
+      "matches": 8,
+      "total": 18,
+      "agreement": 0.4444444444444444
+    },
+    "width=2|position=18|depth=1": {
+      "matches": 18,
+      "total": 18,
+      "agreement": 1.0
+    },
+    "width=2|position=18|depth=2": {
+      "matches": 14,
+      "total": 18,
+      "agreement": 0.7777777777777778
+    },
+    "width=2|position=18|depth=3": {
+      "matches": 12,
+      "total": 18,
+      "agreement": 0.6666666666666666
+    },
+    "width=2|position=19|depth=1": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=19|depth=2": {
+      "matches": 12,
+      "total": 16,
+      "agreement": 0.75
+    },
+    "width=2|position=19|depth=3": {
+      "matches": 12,
+      "total": 16,
+      "agreement": 0.75
+    },
+    "width=2|position=1|depth=1": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=1|depth=2": {
+      "matches": 10,
+      "total": 20,
+      "agreement": 0.5
+    },
+    "width=2|position=1|depth=3": {
+      "matches": 8,
+      "total": 20,
+      "agreement": 0.4
+    },
+    "width=2|position=20|depth=1": {
+      "matches": 18,
+      "total": 18,
+      "agreement": 1.0
+    },
+    "width=2|position=20|depth=2": {
+      "matches": 14,
+      "total": 18,
+      "agreement": 0.7777777777777778
+    },
+    "width=2|position=20|depth=3": {
+      "matches": 12,
+      "total": 18,
+      "agreement": 0.6666666666666666
+    },
+    "width=2|position=21|depth=1": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=21|depth=2": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=21|depth=3": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=22|depth=1": {
+      "matches": 20,
+      "total": 20,
+      "agreement": 1.0
+    },
+    "width=2|position=22|depth=2": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=22|depth=3": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=23|depth=1": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=23|depth=2": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=23|depth=3": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=2|depth=1": {
+      "matches": 14,
+      "total": 16,
+      "agreement": 0.875
+    },
+    "width=2|position=2|depth=2": {
+      "matches": 12,
+      "total": 16,
+      "agreement": 0.75
+    },
+    "width=2|position=2|depth=3": {
+      "matches": 12,
+      "total": 16,
+      "agreement": 0.75
+    },
+    "width=2|position=3|depth=1": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=3|depth=2": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=3|depth=3": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=4|depth=1": {
+      "matches": 14,
+      "total": 18,
+      "agreement": 0.7777777777777778
+    },
+    "width=2|position=4|depth=2": {
+      "matches": 12,
+      "total": 18,
+      "agreement": 0.6666666666666666
+    },
+    "width=2|position=4|depth=3": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    },
+    "width=2|position=5|depth=1": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=5|depth=2": {
+      "matches": 20,
+      "total": 20,
+      "agreement": 1.0
+    },
+    "width=2|position=5|depth=3": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=6|depth=1": {
+      "matches": 20,
+      "total": 20,
+      "agreement": 1.0
+    },
+    "width=2|position=6|depth=2": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=6|depth=3": {
+      "matches": 14,
+      "total": 20,
+      "agreement": 0.7
+    },
+    "width=2|position=7|depth=1": {
+      "matches": 20,
+      "total": 20,
+      "agreement": 1.0
+    },
+    "width=2|position=7|depth=2": {
+      "matches": 20,
+      "total": 20,
+      "agreement": 1.0
+    },
+    "width=2|position=7|depth=3": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=8|depth=1": {
+      "matches": 18,
+      "total": 20,
+      "agreement": 0.9
+    },
+    "width=2|position=8|depth=2": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=8|depth=3": {
+      "matches": 16,
+      "total": 20,
+      "agreement": 0.8
+    },
+    "width=2|position=9|depth=1": {
+      "matches": 18,
+      "total": 18,
+      "agreement": 1.0
+    },
+    "width=2|position=9|depth=2": {
+      "matches": 18,
+      "total": 18,
+      "agreement": 1.0
+    },
+    "width=2|position=9|depth=3": {
+      "matches": 16,
+      "total": 18,
+      "agreement": 0.8888888888888888
+    }
+  },
+  "root_noncomparable": [
+    {
+      "width": 1,
+      "id": "code_markdown_table",
+      "category": "code",
+      "heldout": true,
+      "position": 13,
+      "teacher_root": 6943,
+      "hip_roots": [
+        6943
+      ],
+      "laurent_roots": [
+        83889
+      ],
+      "hip_match": true,
+      "laurent_match": false
+    },
+    {
+      "width": 1,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "heldout": false,
+      "position": 2,
+      "teacher_root": 25,
+      "hip_roots": [
+        27413
+      ],
+      "laurent_roots": [
+        25
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "heldout": false,
+      "position": 19,
+      "teacher_root": 5561,
+      "hip_roots": [
+        11687
+      ],
+      "laurent_roots": [
+        5561
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "heldout": true,
+      "position": 13,
+      "teacher_root": 2261,
+      "hip_roots": [
+        318
+      ],
+      "laurent_roots": [
+        2261
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "heldout": true,
+      "position": 20,
+      "teacher_root": 7255,
+      "hip_roots": [
+        191280
+      ],
+      "laurent_roots": [
+        7255
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 0,
+      "teacher_root": 2,
+      "hip_roots": [
+        95872
+      ],
+      "laurent_roots": [
+        2
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 4,
+      "teacher_root": 24950,
+      "hip_roots": [
+        247818
+      ],
+      "laurent_roots": [
+        24950
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 15,
+      "teacher_root": 170508,
+      "hip_roots": [
+        95726
+      ],
+      "laurent_roots": [
+        170508
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 18,
+      "teacher_root": 550,
+      "hip_roots": [
+        247818
+      ],
+      "laurent_roots": [
+        550
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 9,
+      "teacher_root": 67813,
+      "hip_roots": [
+        48213
+      ],
+      "laurent_roots": [
+        67813
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 13,
+      "teacher_root": 48213,
+      "hip_roots": [
+        176373
+      ],
+      "laurent_roots": [
+        48213
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 15,
+      "teacher_root": 156019,
+      "hip_roots": [
+        15685
+      ],
+      "laurent_roots": [
+        156019
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 17,
+      "teacher_root": 3950,
+      "hip_roots": [
+        95779
+      ],
+      "laurent_roots": [
+        3950
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 19,
+      "teacher_root": 15303,
+      "hip_roots": [
+        9616
+      ],
+      "laurent_roots": [
+        15303
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "heldout": false,
+      "position": 11,
+      "teacher_root": 567,
+      "hip_roots": [
+        279
+      ],
+      "laurent_roots": [
+        567
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "heldout": false,
+      "position": 12,
+      "teacher_root": 1318,
+      "hip_roots": [
+        1144
+      ],
+      "laurent_roots": [
+        1318
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "heldout": true,
+      "position": 2,
+      "teacher_root": 561,
+      "hip_roots": [
+        2831
+      ],
+      "laurent_roots": [
+        561
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 1,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "heldout": true,
+      "position": 3,
+      "teacher_root": 4952,
+      "hip_roots": [
+        491
+      ],
+      "laurent_roots": [
+        4952
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "heldout": false,
+      "position": 2,
+      "teacher_root": 25,
+      "hip_roots": [
+        27413,
+        27413
+      ],
+      "laurent_roots": [
+        25,
+        25
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_en_plan",
+      "category": "general_en",
+      "heldout": false,
+      "position": 19,
+      "teacher_root": 5561,
+      "hip_roots": [
+        11687,
+        11687
+      ],
+      "laurent_roots": [
+        5561,
+        5561
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "heldout": true,
+      "position": 13,
+      "teacher_root": 2261,
+      "hip_roots": [
+        318,
+        318
+      ],
+      "laurent_roots": [
+        2261,
+        2261
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_en_explain",
+      "category": "general_en",
+      "heldout": true,
+      "position": 20,
+      "teacher_root": 7255,
+      "hip_roots": [
+        191280,
+        191280
+      ],
+      "laurent_roots": [
+        191280,
+        191280
+      ],
+      "hip_match": false,
+      "laurent_match": false
+    },
+    {
+      "width": 2,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 0,
+      "teacher_root": 2,
+      "hip_roots": [
+        95872,
+        95872
+      ],
+      "laurent_roots": [
+        2,
+        2
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 4,
+      "teacher_root": 24950,
+      "hip_roots": [
+        247818,
+        247818
+      ],
+      "laurent_roots": [
+        24950,
+        24950
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 15,
+      "teacher_root": 170508,
+      "hip_roots": [
+        95726,
+        95726
+      ],
+      "laurent_roots": [
+        170508,
+        170508
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_plan",
+      "category": "general_ja",
+      "heldout": false,
+      "position": 18,
+      "teacher_root": 550,
+      "hip_roots": [
+        247818,
+        247818
+      ],
+      "laurent_roots": [
+        550,
+        550
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 9,
+      "teacher_root": 67813,
+      "hip_roots": [
+        48213,
+        48213
+      ],
+      "laurent_roots": [
+        67813,
+        67813
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 13,
+      "teacher_root": 48213,
+      "hip_roots": [
+        176373,
+        176373
+      ],
+      "laurent_roots": [
+        48213,
+        48213
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 15,
+      "teacher_root": 156019,
+      "hip_roots": [
+        15685,
+        15685
+      ],
+      "laurent_roots": [
+        156019,
+        156019
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 17,
+      "teacher_root": 3950,
+      "hip_roots": [
+        95779,
+        95779
+      ],
+      "laurent_roots": [
+        3950,
+        3950
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "general_ja_explain",
+      "category": "general_ja",
+      "heldout": true,
+      "position": 19,
+      "teacher_root": 15303,
+      "hip_roots": [
+        9616,
+        9616
+      ],
+      "laurent_roots": [
+        15303,
+        15303
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "heldout": false,
+      "position": 11,
+      "teacher_root": 567,
+      "hip_roots": [
+        279,
+        279
+      ],
+      "laurent_roots": [
+        567,
+        567
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "mixed_ja_en_translate",
+      "category": "mixed_ja_en",
+      "heldout": false,
+      "position": 12,
+      "teacher_root": 1318,
+      "hip_roots": [
+        1144,
+        1144
+      ],
+      "laurent_roots": [
+        1318,
+        1318
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "heldout": true,
+      "position": 2,
+      "teacher_root": 561,
+      "hip_roots": [
+        2831,
+        2831
+      ],
+      "laurent_roots": [
+        561,
+        561
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    },
+    {
+      "width": 2,
+      "id": "mixed_ja_en_review",
+      "category": "mixed_ja_en",
+      "heldout": true,
+      "position": 3,
+      "teacher_root": 4952,
+      "hip_roots": [
+        491,
+        491
+      ],
+      "laurent_roots": [
+        4952,
+        4952
+      ],
+      "hip_match": false,
+      "laurent_match": true
+    }
+  ],
+  "findings": [
+    "First-K3 proposal equality is 66.22% at C1 and 68.16% across C2 physical rows. Depth agreement decays from 89.19/90.13% at depth1 to 69.37/71.75% at depth3.",
+    "C2 hipEngine physical rows are internally identical at every one of 240 contexts; batching does not alter the proposal IDs.",
+    "18 C1 and 17 C2 logical contexts are non-comparable because at least one target root differs from the fixed Laurent teacher. These are reported separately and never scored as proposal disagreement.",
+    "Proposal mismatch is therefore a real low-width acceptance mechanism; target-kernel changes cannot explain it. Keep acceptance/draft-depth and target-cost mechanisms separate."
+  ],
+  "raw_sources": {
+    "hipengine": {
+      "path": "/tmp/q38-z2-teacher/hip-proposal-full.json",
+      "sha256": "32aa5ae7196440761247bfec4458db19ac6ebff768f06e4c33ca67aa99d51ef2"
+    },
+    "laurent": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z2-laurent-teacher-proposal-capture.json",
+      "sha256": "7afa467e7de78a6ca4b1c0433e79116a15bb4ff183ccd5d22ba082e3fd03ba04"
+    },
+    "teachers": {
+      "path": "/tmp/q38-z2-teacher/teachers-slot0.json",
+      "sha256": "2067f1ffa424ddd2c82191f3480f11eaef4d21f7261eb88a9fab89bb6a507301"
+    }
+  }
+}
