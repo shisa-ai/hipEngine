@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 high-row residual] Current rows288/536/1024 Q6 remains **4.40/8.18/14.48 sweeps** and **248.25/468.03/870.54 ms**, with family-wide ceilings **191.83/410.82/810.42 ms**; planar gridY9/17/32 dominates. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y2 planar Q6 rows65-96 rejected] Exact `<4,2,2>` improves leaves **1.53-3.98x** and rows72/96 walls **5.78%/5.60%**, but tracked-clean collateral regresses aggregate AR wall **1.05%** despite -0.32% MTP; route/export removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r2-rows65-96-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows65-80 rejected] Narrowed exact `<6,1,2>` reduces rows72 wall **1.55%**, but tracked-clean collateral regresses aggregate wall **0.53% AR / 0.04% MTP** despite 160/160 exact cells; route/export removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained.json`.
