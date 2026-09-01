@@ -72,6 +72,9 @@ _Q4_DENSE_WMMA_SHARED_B_ROW64_BF16 = (
 _Q4_DENSE_DUAL_WMMA_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out"
 )
+_Q4_DENSE_DUAL_WMMA_ROW48_SILU_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out"
+)
 _Q4_DENSE_DUAL_WMMA_ROW64_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out"
 )
@@ -626,6 +629,36 @@ def gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
 
     _launch_q4_t16_dense_dual_wmma_silu(
         _Q4_DENSE_DUAL_WMMA_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact three-active-wave 48-row Q4T16 gate/up retile."""
+
+    _launch_q4_t16_dense_dual_wmma_silu(
+        _Q4_DENSE_DUAL_WMMA_ROW48_SILU_BF16,
         x_ptr,
         tiles_a_ptr,
         tiles_b_ptr,
@@ -1227,6 +1260,10 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
         ),
         (
+            "dense_dual_wmma_prefill_row48_bf16_bf16_out",
+            gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out,
+        ),
+        (
             "dense_dual_wmma_prefill_row64_bf16_bf16_out",
             gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out,
         ),
@@ -1348,6 +1385,7 @@ __all__ = [
     "build_gguf_k_t16_selected_prefill",
     "gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out",
     "gguf_q4_k_qmicro_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
