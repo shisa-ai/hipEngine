@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q6-shared8r3-exact-rejected",
+  "created_at": "2026-09-01T08:55:00Z",
+  "status": "strict_rejected_t2_candidate_unqualified",
+  "source_commit": "e4c1aef10",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "rows": 288,
+  "candidate": "standard-Q6 shared-weight <8 waves,3 row tiles,2 output tiles>, 384-row one-sweep capacity",
+  "results": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "288": {
+        "exact": false,
+        "mismatch_count": 150490,
+        "max_abs": 0.015625,
+        "parent_ms": 93.30819702148438,
+        "shared4_ms": 6.194461441040039,
+        "speedup": 15.063165363059891
+      }
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "288": {
+        "exact": false,
+        "mismatch_count": 300641,
+        "max_abs": 0.0078125,
+        "parent_ms": 48.25517883300781,
+        "shared4_ms": 1.662350845336914,
+        "speedup": 29.028275810951193
+      }
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "288": {
+        "exact": false,
+        "mismatch_count": 30480,
+        "max_abs": 0.00390625,
+        "parent_ms": 2.5795373916625977,
+        "shared4_ms": 0.3164495944976807,
+        "speedup": 8.151495329792573
+      }
+    }
+  },
+  "decision": "scope-revert; strict parity fails. Reopen only as declared T2 with complete numerical/determinism/isolation/task/fallback gates.",
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-shared8r3-r288.json",
+      "sha256": "0c109bb01ee6d8a34a82338d0311c78080520200a1ce8f8a244556b8a606bec1",
+      "bytes": 896
+    },
+    {
+      "path": "/tmp/y2-q6-shared8r3-candidate.patch",
+      "sha256": "ce6c07b005c074e3636c1774821ec2eb7db795b0ca4ce13d6db1bbe5a90e5a78",
+      "bytes": 3966
+    }
+  ]
+}

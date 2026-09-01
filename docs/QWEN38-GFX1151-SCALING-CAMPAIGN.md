@@ -834,7 +834,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured
   multiplicities; opens per family only where Y0 sizes it above ~2% of the
-  remaining wall.
+  remaining wall. First Q6 rows288 one-sweep body screens 29.0x faster on
+  standard K5120/N10240 but fails strict parity (300,641 BF16 differences,
+  max 0.0078125); scope-reverted. It may reopen only as declared T2 with the
+  complete production gate.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-exact-rejected.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
