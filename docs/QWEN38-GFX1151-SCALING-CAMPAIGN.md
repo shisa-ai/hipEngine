@@ -814,7 +814,9 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Register-resident `<3 output tiles, 8 waves, 3 row tiles/wave>` succeeds
   narrowly: rows288-384 on three measured shapes is one-sweep and bit-exact,
   improves nine leaf cells **6.25-16.24%**, and cuts complete rows288 tick wall
-  **2.65%**. Retained as a partial Y1 win; rows385-1024 remain open.
+  **2.65%**. Tracked-clean C1-C8 collateral preserves 160/160 control/candidate
+  ID rows; C8 combined prompt throughput improves **0.83%** to 239.658 tok/s.
+  Retained as a partial Y1 win; rows385-1024 remain open.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json).
 - [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
