@@ -1625,6 +1625,12 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
 # subshapes, so all three must share the candidate transaction. This table is
 # inert unless the explicit outer logical-width context is active.
 GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS = {
+    ("gguf_q4_k_t16_v1", rows, in_features, out_features): (
+        "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"
+    )
+    for rows in (20, 24, 32)
+    for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
+} | {
     ("gguf_q5_k_t16_v1", rows, 6_144, 5_120): (
         "t16_wmma_prefill_bf16_bf16_out"
     )
