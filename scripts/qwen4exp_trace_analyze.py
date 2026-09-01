@@ -74,7 +74,17 @@ def hipengine_family(name: str) -> str:
         return "moe_gate_up_q4"
     if "q5_1" in lowered and any(part in lowered for part in ("selected", "wmma", "mmq")):
         return "moe_down_q5"
-    if any(part in lowered for part in ("q8_0_raw_mmq", "q8_0_mmq", "gguf_k_pack8", "q8_1_mmq", "dense_q8")):
+    if any(
+        part in lowered
+        for part in (
+            "q8_0_raw_mmq",
+            "q8_0_mmq",
+            "q8_0_sparse_exact_correct",
+            "gguf_k_pack8",
+            "q8_1_mmq",
+            "dense_q8",
+        )
+    ):
         return "dense_quant_q8"
     if any(part in lowered for part in ("rocblas", "cijk_", "gemm")):
         return "dense_gemm_library"
@@ -82,15 +92,42 @@ def hipengine_family(name: str) -> str:
         return "dense_other"
     if any(part in lowered for part in ("qwen4_exp_gdn", "gdn_prefill", "gdn_decode", "linear_attn_conv")):
         return "gdn"
-    if any(part in lowered for part in ("qwen4_exp_qsa_flash", "paged_full_attn", "sparse_attention")):
+    if any(
+        part in lowered
+        for part in (
+            "qwen4_exp_qsa_flash",
+            "paged_full_attn",
+            "sparse_attention",
+            "write_paged_kv",
+        )
+    ):
         return "qsa_attention"
     if any(part in lowered for part in ("qsa_", "pool_norm", "index_", "topk")):
         return "qsa_index_selection"
     if "ple" in lowered or "conv1d" in lowered:
         return "ple"
-    if any(part in lowered for part in ("grouped_rmsnorm", "gr_write", "gated_mean", "scaled_silu", "sigmoid_f32")):
+    if any(
+        part in lowered
+        for part in (
+            "grouped_rmsnorm",
+            "gr_write",
+            "gr_up_sigmoid_mean",
+            "gated_mean",
+            "scaled_silu",
+            "sigmoid_f32",
+        )
+    ):
         return "gr_norm_inject"
-    if any(part in lowered for part in ("router", "moe_group", "scatter_gather", "weighted_lanes")):
+    if any(
+        part in lowered
+        for part in (
+            "router",
+            "moe_group",
+            "moe_wmma_tile_map",
+            "scatter_gather",
+            "weighted_lanes",
+        )
+    ):
         return "moe_routing"
     if any(part in lowered for part in ("shared_gate_combine", "silu_mul", "weighted_sum", "f32_to_bf16", "bf16_to_f32")):
         return "cast_combine"

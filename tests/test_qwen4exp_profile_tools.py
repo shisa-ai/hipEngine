@@ -108,6 +108,23 @@ def _synthetic_trace(tmp_path: Path) -> None:
     )
 
 
+def test_qwen4exp_trace_family_classifies_complete_qwen4exp_owners() -> None:
+    module = _load_script("qwen4exp_trace_analyze.py")
+
+    assert module.hipengine_family(
+        "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel"
+    ) == "gr_norm_inject"
+    assert module.hipengine_family(
+        "q8_0_sparse_exact_correct_f32_kernel"
+    ) == "dense_quant_q8"
+    assert module.hipengine_family(
+        "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel"
+    ) == "qsa_attention"
+    assert module.hipengine_family(
+        "qwen35_moe_wmma_tile_map_kernel"
+    ) == "moe_routing"
+
+
 def test_qwen4exp_trace_analyze_synthetic_window(tmp_path: Path) -> None:
     module = _load_script("qwen4exp_trace_analyze.py")
     _synthetic_trace(tmp_path)
