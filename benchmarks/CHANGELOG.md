@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows65-96 shared6r1 retained] Exact Q5 `<6,1,2>` improves rows65/80/81/96 leaves **1.31-1.35x**; complete rows72/96 walls fall **396.135->387.975 ms (-2.06%)** and **424.846->421.180 ms (-0.86%)** with unchanged tokens. Trace confirms gridY1, 192 threads, VGPR72, LDS16 KiB, scratch0. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json`.
+- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows65-96 shared6r1 rejected] Exact Q5 `<6,1,2>` improves four leaves **1.31-1.35x** and complete rows72/96 walls **2.06%/0.86%**, but tracked-clean collateral is **160/160 exact**, **-0.37% MTP wall**, and **+0.19% AR wall**. Route and export removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 high-row shared8r3 rejected] Exact Q5 `<8,3,2>` leaves improve **1.24x/1.23x** at rows536/1024. Complete rows536 regresses **0.07%**; rows1024 improves **0.17%**, but tracked-clean collateral is **160/160 exact**, **-0.11% MTP wall**, and **+0.62% AR wall**. Both high-row routes are removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json`.
 
