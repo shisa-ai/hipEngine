@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_qsa_prefill_subowner_audit",
+  "status": "diagnostic_next_mechanism_selected",
+  "source_artifact": "benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json",
+  "scope": "code-p4096 named-production prefill on zbook/gfx1151",
+  "amdahl": {
+    "complete_wall_seconds": 57.730,
+    "comparator_wall_seconds": 13.910,
+    "qsa_operation_seconds": 10.423,
+    "qsa_attention_seconds": 10.229,
+    "zero_cost_gap_coverage": 0.238
+  },
+  "finding": {
+    "sparse_rows_attention_ms": 9418.013,
+    "dense_attention_ms": 637.675,
+    "index_score_ms": 128.788,
+    "topk_expand_ms": 22.984,
+    "interpretation": "The variable-selection sparse-row kernel, not score/top-k, owns the p4096 QSA gap. Twelve layers each spend about 774-787 ms across four sparse chunk launches."
+  },
+  "next_candidate": {
+    "classification": "T0",
+    "mechanism": "bounded row-chunk ordered QK scores, per-row global selected-order online-softmax coefficients, and output-column weighted-V recurrence",
+    "strict_fallback": "strict_rows_spans",
+    "constraints": [
+      "bound score/coefficient scratch by the existing 512-row chunk",
+      "preserve each row's selected-token order and incumbent QK reduction tree",
+      "do not transfer the c1 scratch layout without a capacity/lifecycle gate"
+    ]
+  },
+  "raw_role_summary": "/tmp/qwen4exp-canonical-profile-3ddb748d4/p4096/roles.json"
+}
