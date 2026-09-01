@@ -56,6 +56,7 @@ from hipengine.quant.gguf_q4_k import (
 from hipengine.core.specdec2_scope import (
     physical_exact_rowtiles_session,
     q4_t16_physical_extra_rowtiles_session,
+    target_verifier_active_slots_session,
 )
 from hipengine.runtime.gguf_linear import (
     clear_gguf_linear_dispatch_cache,
@@ -445,6 +446,63 @@ def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
     with q4_t16_physical_extra_rowtiles_session(True):
         selector(1, 2, 3, 24, 5_120, 17_408)
     assert calls == [("two_wave", 6)] * 4
+
+
+def test_gfx1100_grouped_rows8_candidate_is_live_c5c6_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = (
+        t16_prefill.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
+    )
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q4_k_t16_v1",
+        variant="dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+    ) is t16_prefill.gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("rows6", int(args[3]))),
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("rows8", int(args[3]))),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", "1")
+    monkeypatch.setattr(
+        t16_prefill,
+        "_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED",
+        None,
+    )
+
+    with q4_t16_physical_extra_rowtiles_session(True):
+        for active_slots in (5, 6, 7, 8, 0):
+            with target_verifier_active_slots_session(active_slots):
+                selector(1, 2, 3, 24, 5_120, 17_408)
+    assert calls == [
+        ("rows8", 24),
+        ("rows8", 24),
+        ("rows6", 24),
+        ("rows6", 24),
+        ("rows6", 24),
+    ]
+
+    calls.clear()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", "0")
+    monkeypatch.setattr(
+        t16_prefill,
+        "_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED",
+        None,
+    )
+    with (
+        q4_t16_physical_extra_rowtiles_session(True),
+        target_verifier_active_slots_session(5),
+    ):
+        selector(1, 2, 3, 24, 5_120, 17_408)
+    assert calls == [("rows6", 24)]
 
 
 def test_gfx1100_physical_r6_two_wave_qkv_shape_defaults_on(
