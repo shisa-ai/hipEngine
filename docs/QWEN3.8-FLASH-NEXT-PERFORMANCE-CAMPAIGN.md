@@ -939,7 +939,7 @@ matrix before implementation claims parity.
       metadata now records every visible
       `power_dpm_force_performance_level` value, and paired campaign commands
       verify `auto` before launch.
-- [ ] Audit every comparator lane for configuration it is entitled to before the
+- [x] Audit every comparator lane for configuration it is entitled to before the
       closure freeze. `GGML_VK_ALLOW_GRAPHICS_QUEUE=1` measures +4.0% decode on
       RADV APUs externally and appears nowhere in this tree, so both Vulkan
       lanes may be under-configured on the exact axis milestone 3 binds to.
@@ -957,6 +957,16 @@ matrix before implementation claims parity.
       upstream/Nathan Vulkan lanes; their old temporary binaries are absent and
       must be rebuilt for separate A/B. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-vulkan-config-screen.json`.
+      **Historical lanes complete:** exact-source rebuilds at upstream
+      `f1793c1c4` and Nathan `ad914eb` show graphics queue improves decode by
+      **2.23%** and **2.31%** respectively while changing prefill by -0.18% and
+      +0.40% when disabled. Upstream no-repack is neutral; Nathan no-repack
+      loses 1.02% prefill. Fit-on loses 8.86% upstream and 1.79% Nathan prefill.
+      Therefore both refreshed canonical lanes use graphics queue, repack, and
+      explicit fit-off. Upstream IDs are exact across all arms; Nathan repeats
+      its same four position-dependent hashes in every arm but remains
+      nondeterministic and diagnostic. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-historical-vulkan-config-audit.json`.
 - [x] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
       shards with BF16 K/V and run it through the canonical 12-case screen. It
       is a patch series over a pinned base, so it is the cheapest new comparator

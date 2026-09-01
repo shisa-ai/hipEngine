@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next historical Vulkan configuration audit] Exact code-p512 graphics queue improves upstream/Nathan decode by **2.23%/2.31%**; fit-on loses **8.86%/1.79%** prefill, and Nathan no-repack loses 1.02%. Both canonical lanes are entitled to queue-on/repack/fit-off before refresh. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-historical-vulkan-config-audit.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next hybrid-04 Vulkan configuration subaudit — diagnostic] Exact code-p512 graphics-queue off→on changes **212.08/25.59→209.60/25.96 pp/tok/s** (-1.19% prefill, +1.43% decode); no-repack and fit-on are neutral within 0.40%, with exact IDs throughout. This does not close the separate historical Vulkan-lane audit. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-vulkan-config-screen.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next hybrid-04 comparator — correctness-invalid] The pinned 33-patch Vulkan graphics/BF16-KV screen reaches **270.31/25.83**, **327.03/25.67**, and **364.04/21.26 pp/tok/s** at p512/p1024/p4096, but matches current hipEngine generated-ID hashes on only **2/12** cases. Diagnostic only; one repetition/no warmups is not thermal evidence. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-canonical-screen.json`.
