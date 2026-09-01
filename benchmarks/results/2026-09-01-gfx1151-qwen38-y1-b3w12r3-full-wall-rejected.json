@@ -1,0 +1,108 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y1-b3w12r3-full-wall-rejected",
+  "created_at": "2026-09-01T08:35:00Z",
+  "status": "measured_rejected_kernel_candidate",
+  "source_commit": "198702838",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "cpu_apu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "geometry": "shared-B <3 output tiles, 12 waves, 3 row tiles/wave>; one-sweep capacity 576",
+    "intended_band": "rows513-576 K17408/N5120",
+    "retained": false
+  },
+  "leaf_boundary_screen": [
+    {
+      "rows": 513,
+      "shape": [
+        17408,
+        5120
+      ],
+      "control_ms": 5.369471851736307,
+      "candidate_ms": 4.945297027006745,
+      "leaf_improvement_pct": 8.577337668760876,
+      "bit_exact": true
+    },
+    {
+      "rows": 536,
+      "shape": [
+        17408,
+        5120
+      ],
+      "control_ms": 5.612216889858246,
+      "candidate_ms": 4.8264930956065655,
+      "leaf_improvement_pct": 16.279393312857017,
+      "bit_exact": true
+    },
+    {
+      "rows": 576,
+      "shape": [
+        17408,
+        5120
+      ],
+      "control_ms": 6.321839056909084,
+      "candidate_ms": 5.553365917876363,
+      "leaf_improvement_pct": 13.837970528089926,
+      "bit_exact": true
+    }
+  ],
+  "rocprof": {
+    "kernel": "shared_b<3,12,3>",
+    "grid_y": 1,
+    "threads": 384,
+    "vgpr": 152,
+    "lds_bytes": 24576,
+    "scratch_bytes": 0
+  },
+  "complete_rows536_tick": {
+    "control_wall_ms": 1870.192863,
+    "candidate_wall_ms": 1883.89594,
+    "candidate_delta_pct": 0.7327092981211925,
+    "control_gpu_ms": 1870.187744140625,
+    "candidate_gpu_ms": 1883.8900146484375,
+    "control_next_token_id": 10562,
+    "candidate_next_token_id": 10562
+  },
+  "decision": "reject and scope-revert",
+  "interpretation": "A strong exact leaf win does not survive the operation-complete wall. The 384-thread one-sweep owner perturbs cross-family scheduling/occupancy enough to regress the full tick, so Y1 cannot retain this rows536 band.",
+  "raw_sources": [
+    {
+      "path": "/tmp/y1-b3w12r3-r513-k17408-n5120.json",
+      "sha256": "795b01199668d6f527e9d5995d61d58ffcaed2706090af2cfc4ff247cc261264",
+      "bytes": 2459
+    },
+    {
+      "path": "/tmp/y1-b3w12r3-r536-k17408-n5120.json",
+      "sha256": "f666472f0476ad0c5810f46998a492178d4b02556a0fc28bbdb60195a2996eb6",
+      "bytes": 2460
+    },
+    {
+      "path": "/tmp/y1-b3w12r3-r576-k17408-n5120.json",
+      "sha256": "71ca8c26e10e8eb7f766d8b26634f6795a959790181badb1dcda63af029e6ed3",
+      "bytes": 2456
+    },
+    {
+      "path": "/tmp/y1-b3w12r3-rows536-full-pair.json",
+      "sha256": "4517c0c7a564361a4b6a924011b4c3a4fcca3fb8c1df0f07543fb9c07f468ac2",
+      "bytes": 175030
+    },
+    {
+      "path": "/tmp/y1-b3w12r3-final-rocprof/gfx1151/2331054_kernel_trace.csv",
+      "sha256": "7ee68e6001f0304abf5aa9828542cb8dafd4ab6924884f1cd62aced7377f0bee",
+      "bytes": 2593
+    },
+    {
+      "path": "/tmp/y1-b3w12r3-candidate.patch",
+      "sha256": "0305d773985d26a8b44a49dccbc9f83e85c91e3a41b2d1754a0dfdfef2ebdb6e",
+      "bytes": 17029
+    }
+  ]
+}

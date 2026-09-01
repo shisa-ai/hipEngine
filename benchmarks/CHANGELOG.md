@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y1 rows536 one-sweep full-wall rejected] Exact shared-B `<3,12,3>` improves K17408/N5120 rows513/536/576 leaves **8.58/16.28/13.84%** and traces gridY1/VGPR152/LDS24 KiB/scratch0, but complete rows536 tick regresses **1870.193->1883.896 ms (+0.73%)** with the same token. The 384-thread candidate is scope-reverted; rows288-384 retention is unchanged. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-b3w12r3-full-wall-rejected.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y1 rows288-384 Q4 single-sweep retained] Add exact shared-B `<3,8,3>` for three measured Q4 shapes: nine rows288/320/384 actual-weight cells improve **6.25-16.24%** with bit-exact output, and complete rows288 tick wall falls **1169.002->1138.043 ms (-2.65%)**. Cache-only trace confirms gridY1/VGPR224/LDS24 KiB/scratch0. Tracked-clean C1-C8 collateral is 160/160 control/candidate IDs exact; C8 combined prompt throughput moves **237.685->239.658 tok/s (+0.83%)**, while all width deltas are recorded. Y1 remains open above rows384. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y1 LDS-accumulator one-sweep rejected] A strict rows<=384 Q4T16 prototype keeps all FP32 outputs in LDS across K256 slabs and reaches one M-grid sweep, but rows288 K5120/N6144 is **1.103->1.712 ms (+55.1%)** versus retained shared-B2W2 despite bit-exact output. FP32 LDS partial traffic/output under-parallelism dominates; candidate source is scope-reverted. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-lds-accum384-rejected.json`.

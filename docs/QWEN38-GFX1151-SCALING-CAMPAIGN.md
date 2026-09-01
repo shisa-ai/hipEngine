@@ -818,6 +818,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   ID rows; C8 combined prompt throughput improves **0.83%** to 239.658 tok/s.
   Retained as a partial Y1 win; rows385-1024 remain open.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json).
+  A 384-thread `<3,12,3>` extension improves the rows513/536/576 down-projection
+  leaves **8.58-16.28%** but regresses complete rows536 tick wall **0.73%**;
+  scope-reverted. Y1 above rows384 therefore remains a cross-family persistent-
+  scheduling problem, not a leaf-only geometry problem.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-b3w12r3-full-wall-rejected.json).
 - [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured
