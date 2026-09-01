@@ -30,6 +30,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_hoist_d_r6_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     plan_gguf_q6_k_t16_gemv_build,
@@ -162,6 +163,36 @@ def test_q6_planar_decode_uses_request_scoped_physical_rowtile(monkeypatch) -> N
         t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
         t16_mod._Q6_T16_QMICRO_PLANAR_BF16_BF16,
     ]
+
+
+def test_q6_planar_r6_hoist_d_is_default_off_and_shape_scoped(monkeypatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        t16_mod,
+        "_launch",
+        lambda symbol, *_args, **_kwargs: calls.append(symbol),
+    )
+    launch = gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out
+
+    for enabled, shape, expected in (
+        (False, (5_120, 10_240), False),
+        (True, (5_120, 10_240), True),
+        (True, (5_120, 1_024), True),
+        (True, (17_408, 5_120), True),
+        (True, (512, 256), False),
+    ):
+        monkeypatch.setenv(
+            "HIPENGINE_GGUF_Q6_R6_HOIST_D",
+            "1" if enabled else "0",
+        )
+        monkeypatch.setattr(t16_mod, "_Q6_R6_HOIST_D_RESOLVED", None)
+        with q6_t16_physical_rowtile_session(True):
+            launch(1, 2, 3, 6, shape[0], shape[1])
+        assert calls.pop() == (
+            t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_HOIST_D_R6_BF16_BF16
+            if expected
+            else t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
+        )
 
 
 def test_q6_planar_mixed_r8_chunks_are_candidate_and_shape_bounded(
@@ -694,6 +725,40 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
         q6_t16_library,
     )
 
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_q6_t16_qmicro_planar_rowtile_hoist_d_r6_is_parent_bit_exact(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 6, 512, 256
+    rng = np.random.default_rng(0x6A1D)
+    qweight = make_q6_k_weight(out_features, in_features)
+    tiles = repack_gguf_q6_k_tile16_qmicro_planar(qweight[None, ...]).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    expected = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+    actual = _run_single(
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_hoist_d_r6_bf16_bf16_out,
+        x,
+        tiles,
+        rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
     np.testing.assert_array_equal(actual, expected)
 
 

@@ -66,6 +66,10 @@ _Q6_T16_QMICRO_PLANAR_BF16_F32_TOP1_STAGE1 = (
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_HOIST_D_R6_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
+    "hoist_d_r6_bf16_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "bf16_residual_bf16_out"
@@ -102,7 +106,12 @@ _Q6_T16_WMMA_PREFILL_SHARED4_BF16_BF16 = (
 _QK_K = 256
 _T16_COLS = 16
 _ENV_Q6_PLANAR_EXACT_PREFILL = "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
+_ENV_Q6_R6_HOIST_D = "HIPENGINE_GGUF_Q6_R6_HOIST_D"
 _Q6_PLANAR_EXACT_PREFILL_RESOLVED: bool | None = None
+_Q6_R6_HOIST_D_RESOLVED: bool | None = None
+_Q6_R6_HOIST_D_SHAPES = frozenset(
+    {(5_120, 10_240), (5_120, 1_024), (17_408, 5_120)}
+)
 
 
 def _q6_planar_exact_prefill_enabled() -> bool:
@@ -121,6 +130,22 @@ def _q6_planar_exact_prefill_enabled() -> bool:
             )
         _Q6_PLANAR_EXACT_PREFILL_RESOLVED = value
     return _Q6_PLANAR_EXACT_PREFILL_RESOLVED
+
+
+def _q6_r6_hoist_d_enabled() -> bool:
+    """Whether the exact physical-R6 scale-hoisting candidate is active."""
+
+    global _Q6_R6_HOIST_D_RESOLVED
+    if _Q6_R6_HOIST_D_RESOLVED is None:
+        raw = os.environ.get(_ENV_Q6_R6_HOIST_D, "0").strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            value = True
+        elif raw in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(f"{_ENV_Q6_R6_HOIST_D} must be a boolean value")
+        _Q6_R6_HOIST_D_RESOLVED = value
+    return _Q6_R6_HOIST_D_RESOLVED
 
 
 def plan_gguf_q6_k_t16_gemv_build(
@@ -252,8 +277,15 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     """Launch planar-qmicro Q6T16 GEMV with BF16 input/output."""
 
     def launch_rowtile(x, tiles, out, row_count, in_f, out_f, **kw) -> None:
+        symbol = (
+            _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_HOIST_D_R6_BF16_BF16
+            if int(row_count) == 6
+            and (int(in_f), int(out_f)) in _Q6_R6_HOIST_D_SHAPES
+            and _q6_r6_hoist_d_enabled()
+            else _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
+        )
         _launch(
-            _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
+            symbol,
             x,
             tiles,
             out,
@@ -311,11 +343,17 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
             )
         )
     )
-    symbol = (
-        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
-        if physical_rowtile
-        else _Q6_T16_QMICRO_PLANAR_BF16_BF16
-    )
+    if (
+        physical_rowtile
+        and int(rows) == 6
+        and (int(in_features), int(out_features)) in _Q6_R6_HOIST_D_SHAPES
+        and _q6_r6_hoist_d_enabled()
+    ):
+        symbol = _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_HOIST_D_R6_BF16_BF16
+    elif physical_rowtile:
+        symbol = _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
+    else:
+        symbol = _Q6_T16_QMICRO_PLANAR_BF16_BF16
     _launch(
         symbol,
         x_ptr,
@@ -954,6 +992,36 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
         raise ValueError("qmicro planar rowtile requires rows in [2, 8]")
     _launch(
         _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_hoist_d_r6_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact planar-qmicro R6 candidate with block-scale hoisting."""
+
+    if rows != 6:
+        raise ValueError("qmicro planar hoist-d rowtile requires rows == 6")
+    _launch(
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_HOIST_D_R6_BF16_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
