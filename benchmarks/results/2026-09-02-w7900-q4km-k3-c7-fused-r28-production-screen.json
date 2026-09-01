@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_c7_fused_r28_production_screen",
+  "date": "2026-09-02",
+  "status": "candidate_pending_production_numerics",
+  "performance_claim": false,
+  "decision": "Keep a default-off T2 production-profile C7/R28 candidate because marker economics are decisive. Do not promote unless the complete strict-teacher numerical, determinism/isolation, BF16-relative, task, ownership, and full performance gates pass. Explicit zero retains the exact grouped-rowtile chain.",
+  "source": {"base_commit": "b90bcaad2", "dirty_candidate": true},
+  "hardware": {"physical_host": "epyc", "gpu": "AMD Radeon Pro W7900", "target_arch": "gfx1100", "compute_units": 96, "rocm": "7.2.4"},
+  "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "quant": "Q4_K_M", "kv": "BF16", "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"},
+  "candidate": {
+    "arithmetic_class": "T2 fused production reassociation",
+    "scope": "production profile, gfx1100, Q4_K_M gate/up K5120/N17408, physical target rows exactly 28",
+    "variant": "dense_dual_wmma_prefill_row32_bf16_bf16_out",
+    "enabled_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28",
+    "enabled_default": false,
+    "strict_fallback": "registered exact grouped Q4 R8 prefix + strict R4 tail for separate gate/up, followed by separate SiLU",
+    "leaf": {
+      "layers": [0, 32, 64],
+      "rows": 28,
+      "sample_pairs_per_layer": 40,
+      "launches_per_sample": 3,
+      "speedup_range": [1.485778334382055, 1.490361940554255],
+      "minimum_pair_wins": 40,
+      "bf16_bit_exact_to_production_fallback": false,
+      "mismatch_range": [86222, 86555],
+      "strict_parent_parity": "The fused row32 template is bit-exact to its registered strict shared-B WMMA+SiLU parent; the production grouped-rowtile fallback uses a different allowed association."
+    }
+  },
+  "marker": {
+    "protocol": "Dirty current-source cached-only rocprofv3 kernel+ROCTx, one train prompt, C7/K3/D12, sequential control then candidate.",
+    "correctness": {"generated_ids_equal_ar": true, "candidate_control_ids_equal": true, "acceptance_equal": true, "accepted_counts": [3, 3, 2], "physical_rows": [28, 28, 24]},
+    "control": {"complete_wall_seconds": 1.1431860132142901, "target_wall_ms": 544.506423, "device_union_ms": 463.407109, "q4_launches": 1462, "q4_family_ms": 255.707},
+    "candidate": {"complete_wall_seconds": 1.0881764683872461, "target_wall_ms": 498.651755, "device_union_ms": 422.821617, "q4_nonfused_launches": 952, "q4_nonfused_ms": 149.768, "fused_r28_launches": 128, "fused_r28_ms": 70.34},
+    "delta_pct": {"complete_throughput": 5.055203510818939, "target_wall": -8.421328924155165, "device_union": -8.757011438959743, "combined_q4_wall": -13.919878609255828},
+    "verdict": "Pass marker admission; production numerical quality is now binding before any full performance claim."
+  },
+  "limitations": ["Dirty screen and arithmetic-changing candidate; not a retained performance claim.", "Generated-ID equality is necessary but insufficient for production admission."]
+}
