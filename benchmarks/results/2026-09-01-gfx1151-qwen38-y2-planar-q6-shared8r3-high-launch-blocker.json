@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared8r3-high-launch-blocker",
+  "status": "blocked",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "pre_code_bound": {
+    "rows288_ms": 191.83,
+    "rows536_ms": 410.82,
+    "rows1024_ms": 810.42
+  },
+  "candidate": {
+    "geometry": "<8,3,2>",
+    "capacity_rows": 384,
+    "threads": 256
+  },
+  "failure": {
+    "first_shape": "17408x5120",
+    "first_rows": 288,
+    "hip_error": 719,
+    "message": "unspecified launch failure",
+    "phase": "first actual-weight candidate launch before output comparison"
+  },
+  "decision": "Remove export. Eight-wave planar resource footprint cannot launch on gfx1151; screen a four-wave higher-row-tile geometry next.",
+  "strict_fallback": "unchanged prior exact planar owners"
+}

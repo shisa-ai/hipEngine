@@ -937,7 +937,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Q6 remains **4.40/8.18/14.48 sweeps** and **248.25/468.03/870.54 ms**, with
   family-wide removable ceilings **191.83/410.82/810.42 ms**. The retained
   standard owner is active, but planar gridY9/17/32 dominates; exact planar
-  high-row ownership remains an open implementation unit.
+  high-row ownership remains an open implementation unit. Planar `<8,3,2>`
+  cannot provide it: the first rows288 wide actual-weight launch fails with
+  **HIP 719** before output comparison. Its export is removed; four-wave
+  higher-row-tile geometry remains feasible.
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
