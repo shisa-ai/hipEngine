@@ -184,5 +184,26 @@
     "path": "/tmp/wy-w1-q4-existing-screen.json",
     "sha256": "f5f38ca8729481e205a7efc1eda71ca550e581ce5e1b095c67b89684dc216ab4",
     "size_bytes": 40015
+  },
+  "valid_route_full_suite": {
+    "baseline": {
+      "C6_mtp_tok_s": 33.6342520744,
+      "C8_mtp_tok_s": 36.6625089162,
+      "C6_target_ms": 2193.36182,
+      "C8_target_ms": 2295.778182
+    },
+    "q4q6_candidate": {
+      "C6_mtp_tok_s": 33.5713848164,
+      "C8_mtp_tok_s": 36.5720035426,
+      "C6_target_ms": 2229.271239,
+      "C8_target_ms": 2255.904518
+    },
+    "delta_percent": {
+      "C6_mtp": -0.1869,
+      "C8_mtp": -0.2463,
+      "C6_target_ms": 1.6372,
+      "C8_target_ms": -1.7368
+    },
+    "decision": "do not promote: exact Q4 plus qualified Q6 saves 1.74% C8 target stage but complete wall regresses 0.25%; W1 remains open for new dataflow/flatness attribution"
   }
 }
