@@ -1,0 +1,477 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_q4_grouped_rows6_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote exact grouped-grid ownership for consecutive physical Q4 R6 chunks. Every C5-C8 aggregate/category/heldout slice and both process orders improve, with exact IDs, acceptance, block arithmetic, and lifecycle.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "43f37d48039c2c56712ec0df2bb38802c70fc16d",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-q4-grouped-rows6-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "71fb9b90a1cfe8d01e0ba5835a39bc636e0f77cfd40488adf9e24b8374ccd8ba"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-q4-grouped-rows6-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "6022ef629b06712b178bd8474c9a4efd997c828962cf69b846281a02f21fe193"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-q4-grouped-rows6-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "3a1325b112079cc93aa5b6c477196cad87d59cdd81b8ef382763da5c427704fb"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-q4-grouped-rows6-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "cfbe3181b210dbcac2f793b79026fb3466ab994ff15d68bc0bb8548974fe9b0a"
+      }
+    }
+  },
+  "candidate": {
+    "variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+    "scope": "gfx1100 production physical Q4 rows divisible by six above R6 on admitted retained-two-wave shapes",
+    "mechanism": "Map independent contiguous R6 chunks to grid.y while preserving each retained WG64/two-wave block body and every row FMA/reduction/store order.",
+    "candidate_flag_during_gate": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=1",
+    "rollback": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=0",
+    "strict_fallback": "repeated dense_rowtile16_w2_bf16_bf16_out R6 launches",
+    "default_after_decision": true
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=0",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "cross_arm_generated_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "cross_arm_rows_compared": 520,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_row": true,
+    "recoverable_failure_count": 0,
+    "all_processes_drained": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 40,
+        "cells": 40,
+        "median_delta_pct": 2.630811981312675,
+        "minimum_delta_pct": 0.7937994754780631,
+        "maximum_delta_pct": 4.4830675529978325,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 40,
+        "cells": 40,
+        "median_delta_pct": 1.4170170840557494,
+        "minimum_delta_pct": 0.3849414620129332,
+        "maximum_delta_pct": 2.6478560189823863,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    ]
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 62.03519360151564,
+        "candidate_tok_s": 63.388397730223325,
+        "candidate_delta_pct": 2.1813490861332996,
+        "rollback_wall_seconds": 38.68771677277982,
+        "candidate_wall_seconds": 37.86181834433228,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 62.15503923846946,
+          "candidate_tok_s": 64.03232678061424,
+          "candidate_delta_pct": 3.02033039500178
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 61.915809241261904,
+          "candidate_tok_s": 62.75729083895742,
+          "candidate_delta_pct": 1.3590738908322741
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 64.16632898458731,
+          "candidate_tok_s": 65.51011953268635,
+          "candidate_delta_pct": 2.0942300570472305
+        },
+        "general_en": {
+          "rollback_tok_s": 66.50753346032938,
+          "candidate_tok_s": 68.0062842692258,
+          "candidate_delta_pct": 2.2535053262656257
+        },
+        "general_ja": {
+          "rollback_tok_s": 58.70112528989212,
+          "candidate_tok_s": 60.10673948029673,
+          "candidate_delta_pct": 2.3945268228897865
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 57.60675430240662,
+          "candidate_tok_s": 58.79737871869882,
+          "candidate_delta_pct": 2.0668139191491575
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 62.06129053872901,
+          "candidate_tok_s": 63.3646614982003,
+          "candidate_delta_pct": 2.1001351215181874
+        },
+        "heldout": {
+          "rollback_tok_s": 61.99608932162257,
+          "candidate_tok_s": 63.42403544023671,
+          "candidate_delta_pct": 2.3032841816945204
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 69.97887436314446,
+        "candidate_tok_s": 71.2071482431659,
+        "candidate_delta_pct": 1.7552066837307478,
+        "rollback_wall_seconds": 41.155277592130005,
+        "candidate_wall_seconds": 40.445377620868385,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 70.09976670547914,
+          "candidate_tok_s": 71.75311288941239,
+          "candidate_delta_pct": 2.3585616067450133
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 69.85839827889204,
+          "candidate_tok_s": 70.66942927321602,
+          "candidate_delta_pct": 1.1609641994454911
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 69.6623424656087,
+          "candidate_tok_s": 70.9526228425267,
+          "candidate_delta_pct": 1.8521920613780551
+        },
+        "general_en": {
+          "rollback_tok_s": 76.27208310130781,
+          "candidate_tok_s": 77.68424376643878,
+          "candidate_delta_pct": 1.8514777723525278
+        },
+        "general_ja": {
+          "rollback_tok_s": 68.46226803426906,
+          "candidate_tok_s": 69.61261095887048,
+          "candidate_delta_pct": 1.680258276026736
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 66.56603734443597,
+          "candidate_tok_s": 67.60406615394761,
+          "candidate_delta_pct": 1.5593970302611115
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 69.58709483278116,
+          "candidate_tok_s": 70.83615598413724,
+          "candidate_delta_pct": 1.7949609110102793
+        },
+        "heldout": {
+          "rollback_tok_s": 70.57488564120683,
+          "candidate_tok_s": 71.77098060797731,
+          "candidate_delta_pct": 1.6947883881119674
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 67.5552347511868,
+        "candidate_tok_s": 68.77677322342525,
+        "candidate_delta_pct": 1.8082069831264924,
+        "rollback_wall_seconds": 49.73707829415798,
+        "candidate_wall_seconds": 48.85370223876089,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 67.7194063259306,
+          "candidate_tok_s": 69.22275267144316,
+          "candidate_delta_pct": 2.2199638583318526
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 67.39185725085059,
+          "candidate_tok_s": 68.33650358702593,
+          "candidate_delta_pct": 1.4017217727938736
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.85634120011814,
+          "candidate_tok_s": 69.15354457497355,
+          "candidate_delta_pct": 1.9116907158754248
+        },
+        "general_en": {
+          "rollback_tok_s": 74.88840812109993,
+          "candidate_tok_s": 75.74919072709731,
+          "candidate_delta_pct": 1.1494203543563675
+        },
+        "general_ja": {
+          "rollback_tok_s": 63.04756656759598,
+          "candidate_tok_s": 64.34710745349967,
+          "candidate_delta_pct": 2.061207048348801
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 65.25185375031714,
+          "candidate_tok_s": 66.5086557883966,
+          "candidate_delta_pct": 1.9260786718620304
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 67.30118003466133,
+          "candidate_tok_s": 68.47394960577375,
+          "candidate_delta_pct": 1.7425691057845194
+        },
+        "heldout": {
+          "rollback_tok_s": 67.93993366536388,
+          "candidate_tok_s": 69.23606428769702,
+          "candidate_delta_pct": 1.907759622959282
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 72.48017151149864,
+        "candidate_tok_s": 74.32219248348203,
+        "candidate_delta_pct": 2.541413649512636,
+        "rollback_wall_seconds": 52.98000708222389,
+        "candidate_wall_seconds": 51.66693650558591,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 72.5440056385977,
+          "candidate_tok_s": 74.66334807451464,
+          "candidate_delta_pct": 2.9214576962777183
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 72.41644962560646,
+          "candidate_tok_s": 73.98414036308397,
+          "candidate_delta_pct": 2.164826839181533
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 73.82127179345211,
+          "candidate_tok_s": 75.68337989055415,
+          "candidate_delta_pct": 2.522454641952132
+        },
+        "general_en": {
+          "rollback_tok_s": 76.89197860947668,
+          "candidate_tok_s": 78.78010237351063,
+          "candidate_delta_pct": 2.455553619739015
+        },
+        "general_ja": {
+          "rollback_tok_s": 68.61181181276274,
+          "candidate_tok_s": 70.59353163869098,
+          "candidate_delta_pct": 2.888307091111697
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 69.87185370748236,
+          "candidate_tok_s": 71.48161369325034,
+          "candidate_delta_pct": 2.3038747368965273
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 72.14678574804022,
+          "candidate_tok_s": 74.14339930521821,
+          "candidate_delta_pct": 2.767432445501883
+        },
+        "heldout": {
+          "rollback_tok_s": 72.98606755945522,
+          "candidate_tok_s": 74.59200493666066,
+          "candidate_delta_pct": 2.2003341608961557
+        }
+      }
+    }
+  },
+  "leaf_screen": {
+    "raw": "/tmp/he-k3-q4-grouped-rows6-screen.json",
+    "raw_sha256": "26c8b5f014d0cc0276c323e3158a5c1a0e2b0b5a89313decce929463ce1764c9",
+    "script": "/tmp/he-k3-q4-grouped-rows6-screen.py",
+    "script_sha256": "8c406dff8632ce77d7992e490f700b49da55aa0a22ddea74fbedba241e7088e8",
+    "protocol": {
+      "warmups": 5,
+      "sample_pairs": 30,
+      "launches_per_sample": 3,
+      "order": "alternating control/candidate and candidate/control",
+      "timing": "HIP event and synchronized operation-complete wall"
+    },
+    "rows": [
+      24,
+      30,
+      36
+    ],
+    "roles": [
+      "ffn_down",
+      "ffn_gate",
+      "full_k",
+      "full_output",
+      "full_q",
+      "recurrent_gate",
+      "recurrent_qkv"
+    ],
+    "cells": 21,
+    "all_bf16_bit_exact": true,
+    "event_speedup_range": [
+      1.0663931669428892,
+      2.5490361867345817
+    ],
+    "wall_speedup_range": [
+      1.0659824248764835,
+      2.344773555191448
+    ],
+    "minimum_event_pair_wins": 29,
+    "minimum_wall_pair_wins": 29
+  },
+  "profiling": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=<1-or-0> PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "source_commit": "43f37d48039c2c56712ec0df2bb38802c70fc16d",
+    "same_build": true,
+    "cached_build_required": true,
+    "generated_ids_and_acceptance_equal": true,
+    "rollback": {
+      "raw_child": "/tmp/he-q4-grouped-rows6-c8-control-profile/child.json",
+      "raw_child_sha256": "e54cc7f93bccd4fb6da1ebb481e5c347cd6cba38b60cd15f65b7a10c89396b22",
+      "raw_kernel_trace": "/tmp/he-q4-grouped-rows6-c8-control-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "9605d853ad9f607587c77e4458700ccfd62ee1105b697dc50dafb7a37c4c1656",
+      "raw_marker_trace": "/tmp/he-q4-grouped-rows6-c8-control-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "6b79d4a26ea3c2a84988586d6e6f3ab34449ba459ad0b4fd08c4b35660fe6197",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 194.094489,
+      "complete_wall_seconds": 1.4231724068522453,
+      "kernel_launches": 2699,
+      "q4_two_wave_launches": 1152,
+      "grouped_q4_launches": 0,
+      "repeated_r6_q4_launches": 1152,
+      "q4_device_sum_ms": 83.554508
+    },
+    "candidate": {
+      "raw_child": "/tmp/he-q4-grouped-rows6-c8-profile/child.json",
+      "raw_child_sha256": "3ce6a375719a8b6e8919e47ed302d44f05579086060eb8eca9954e6b39e30739",
+      "raw_kernel_trace": "/tmp/he-q4-grouped-rows6-c8-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "1e661aa19a4915c25f3e1f677574df5b1d531d564ad0ada01f12d8e20d3e9b69",
+      "raw_marker_trace": "/tmp/he-q4-grouped-rows6-c8-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "eb703f1b1eaa286a8824656fcae62403bde8b0cca8d46533928f3e88664e50d9",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 188.280846,
+      "complete_wall_seconds": 1.3893954725936055,
+      "kernel_launches": 2266,
+      "q4_two_wave_launches": 720,
+      "grouped_q4_launches": 144,
+      "repeated_r6_q4_launches": 576,
+      "q4_device_sum_ms": 79.60824
+    },
+    "deltas": {
+      "complete_throughput_pct": 2.43105256385987,
+      "target_host_marker_pct": -2.9952643323118866,
+      "target_host_marker_ms": -5.813643000000013,
+      "q4_device_sum_pct": -4.722986340844715,
+      "q4_two_wave_launches": -432,
+      "total_kernel_launches": -433
+    }
+  },
+  "validation": {
+    "routing_and_raw_tests": "uv run pytest -q tests/test_gguf_q4_k_t16_dense.py::<affected grouped/physical nodes> tests/test_gguf_t16_selected_gemv_decode.py::<two-wave/grouped exact nodes>",
+    "full_gate_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "The retained partial route consolidates 144 grouped calls in the final C8 target while 576 repeated calls remain under a separate generic row-chunk owner; extending that owner requires an independent gate."
+  ]
+}
