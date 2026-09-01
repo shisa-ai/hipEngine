@@ -377,6 +377,37 @@ def test_gfx1100_physical_r6_two_wave_policy_routes_target_wrapper(
     assert calls == ["two_wave"] * 11 + ["parent", "parent"]
 
 
+def test_gfx1100_physical_r6_two_wave_qkv_shape_is_independently_gated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selector = (
+        t16_prefill.gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("parent"),
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("two_wave"),
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV", raising=False)
+    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
+    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_QKV_RESOLVED", None)
+
+    with q4_t16_physical_extra_rowtiles_session(True):
+        selector(1, 2, 3, 6, 5_120, 10_240)
+        monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV", "1")
+        monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_QKV_RESOLVED", None)
+        selector(1, 2, 3, 6, 5_120, 10_240)
+
+    assert calls == ["parent", "two_wave"]
+
+
 def test_gfx1100_unpadded_r8_q4_rowtile_is_candidate_scoped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
