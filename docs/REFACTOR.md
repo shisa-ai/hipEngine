@@ -42,6 +42,13 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
+## 2026-09-02 gfx1100 planar-Q6 root R8 rollback — closed
+
+- Promoted after BF16-bit exact actual-weight, same-build C8 marker, and complete
+  counterbalanced C5-C8 qualification. `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4`
+  retains the prior R4 composition for bisection; remove the override after the
+  R8 root owner is stable across the next production campaign.
+
 ## 2026-09-01 gfx1100 grouped Q6 mixed-rowtile rollback — closed
 
 - Promoted after exact tracked-clean marker ownership and complete C5-C8

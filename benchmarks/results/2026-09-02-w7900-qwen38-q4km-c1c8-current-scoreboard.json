@@ -53,11 +53,11 @@
       "llama_cpp_laurent_hip": [21.298, 34.151, 30.635, 27.850, 36.695, 46.091, 52.681, 58.840]
     },
     "explicit_k3": {
-      "hipengine": [34.623, 51.769, 54.590, 55.780, 66.309, 74.349, 71.914, 76.351],
+      "hipengine": [34.623, 51.769, 54.590, 55.780, 67.200, 75.388, 73.007, 77.252],
       "llama_cpp_current_hip": [32.553, 41.042, 45.324, 49.977, 59.644, 72.195, 75.354, 94.735],
       "llama_cpp_laurent_hip": [32.733, 40.808, 45.947, 51.054, 61.013, 74.628, 78.281, 101.072]
     },
-    "explicit_k3_divided_by_published_true_ar": [1.5150, 1.3658, 1.0439, 0.8769, 0.9340, 0.9650, 0.8850, 0.9096]
+    "explicit_k3_divided_by_published_true_ar": [1.5150, 1.3658, 1.0439, 0.8769, 0.9466, 0.9785, 0.8985, 0.9203]
   },
   "automatic_product_scope": {
     "capacity_8_c1_c8": "K0 at every width; requests use the ordinary AR path",
@@ -92,8 +92,8 @@
       "scope": "current hipEngine explicit-K3 C3-C4 and capacity-8 route audit"
     },
     {
-      "path": "benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-q6-grouped-rowtiles-retained.json",
-      "scope": "current hipEngine explicit-K3 C5-C8"
+      "path": "benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json",
+      "scope": "current hipEngine explicit-K3 C5-C8; includes prior grouped-Q6 retention"
     },
     {
       "path": "benchmarks/results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json",
