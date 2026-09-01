@@ -30,6 +30,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     plan_gguf_q6_k_t16_gemv_build,
@@ -129,6 +131,69 @@ def _run_residual(fn, x, tiles, residual, rows, in_features, out_features, libra
             free(buffer)
 
 
+@pytest.mark.parametrize(
+    "chunk_rows,total_rows,grouped",
+    [
+        (
+            6,
+            12,
+            gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out,
+        ),
+        (
+            8,
+            16,
+            gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out,
+        ),
+        (
+            8,
+            24,
+            gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out,
+        ),
+    ],
+)
+def test_q6_planar_grouped_rowtiles_match_repeated_chunk_bits(
+    chunk_rows: int,
+    total_rows: int,
+    grouped,
+    q6_t16_library,
+) -> None:
+    in_features, out_features = 512, 256
+    rng = np.random.default_rng(0x6A20 + total_rows)
+    raw = make_q6_k_weight(out_features, in_features)
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(total_rows, in_features)).astype(np.float32)
+    )
+    tiles = repack_gguf_q6_k_tile16_qmicro_planar(raw[None, ...]).tiles
+    repeated = np.concatenate(
+        [
+            _run_single(
+                gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
+                x[row_base : row_base + chunk_rows],
+                tiles,
+                chunk_rows,
+                in_features,
+                out_features,
+                np.uint16,
+                q6_t16_library,
+            )
+            for row_base in range(0, total_rows, chunk_rows)
+        ],
+        axis=0,
+    )
+    candidate = _run_single(
+        grouped,
+        x,
+        tiles,
+        total_rows,
+        in_features,
+        out_features,
+        np.uint16,
+        q6_t16_library,
+    )
+
+    np.testing.assert_array_equal(candidate, repeated)
+
+
 def test_q6_planar_decode_uses_request_scoped_physical_rowtile(monkeypatch) -> None:
     symbols: list[str] = []
     monkeypatch.setattr(
@@ -213,6 +278,65 @@ def test_q6_planar_mixed_r8_chunks_are_candidate_and_shape_bounded(
 
             launch(x_ptr, 2, out_ptr, 24, 512, 256)
             assert [call[0] for call in calls] == [6, 6, 6, 6]
+
+
+def test_q6_planar_grouped_mixed_chunks_consolidate_identical_prefix_and_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int, int, int]] = []
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES",
+        "1",
+    )
+    monkeypatch.setattr(
+        t16_mod,
+        "_launch",
+        lambda symbol, x, _tiles, out, rows, *_args, **_kwargs: calls.append(
+            (str(symbol), int(rows), int(x), int(out))
+        ),
+    )
+    launch = gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out
+    x_ptr = 0x100_000
+    out_ptr = 0x200_000
+    grouped8 = (
+        "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
+        "grouped_rows8_bf16_bf16_out"
+    )
+    grouped6 = (
+        "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
+        "grouped_rows6_bf16_bf16_out"
+    )
+
+    with (
+        q6_t16_physical_rowtile_session(True),
+        q6_t16_physical_mixed_rowtiles_session(True),
+    ):
+        launch(x_ptr, 2, out_ptr, 24, 5_120, 10_240)
+        assert calls == [(grouped8, 24, x_ptr, out_ptr)]
+        calls.clear()
+
+        launch(x_ptr, 2, out_ptr, 30, 5_120, 1_024)
+        assert calls == [
+            (grouped8, 24, x_ptr, out_ptr),
+            (
+                t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
+                6,
+                x_ptr + 24 * 5_120 * 2,
+                out_ptr + 24 * 1_024 * 2,
+            ),
+        ]
+        calls.clear()
+
+        launch(x_ptr, 2, out_ptr, 36, 17_408, 5_120)
+        assert calls == [
+            (grouped8, 24, x_ptr, out_ptr),
+            (
+                grouped6,
+                12,
+                x_ptr + 24 * 17_408 * 2,
+                out_ptr + 24 * 5_120 * 2,
+            ),
+        ]
 
 
 def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> None:
@@ -321,6 +445,18 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_gemv_rowtile_col8_bf16_bf16_out",
     ) is t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+    ) is gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q6_k_t16_qmicro_planar_v1",
+        variant="t16_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out",
+    ) is gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear+residual",

@@ -66,6 +66,14 @@ _Q6_T16_QMICRO_PLANAR_BF16_F32_TOP1_STAGE1 = (
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
+    "grouped_rows8_bf16_bf16_out"
+)
+_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS6_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
+    "grouped_rows6_bf16_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "bf16_residual_bf16_out"
@@ -102,6 +110,9 @@ _Q6_T16_WMMA_PREFILL_SHARED4_BF16_BF16 = (
 _QK_K = 256
 _T16_COLS = 16
 _ENV_Q6_PLANAR_EXACT_PREFILL = "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
+_ENV_Q6_GROUPED_TARGET_ROWTILES = (
+    "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES"
+)
 _Q6_PLANAR_EXACT_PREFILL_RESOLVED: bool | None = None
 
 
@@ -237,6 +248,17 @@ def gguf_q6_k_t16_gemv_decode_bf16_bf16_out(
     )
 
 
+def _q6_grouped_target_rowtiles_enabled() -> bool:
+    raw = os.environ.get(_ENV_Q6_GROUPED_TARGET_ROWTILES, "0").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(
+        f"{_ENV_Q6_GROUPED_TARGET_ROWTILES} must be a boolean value"
+    )
+
+
 def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -266,25 +288,66 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     mixed_chunks = GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS.get(
         int(rows)
     )
-    if (
+    mixed_eligible = bool(
         q6_t16_physical_rowtile_enabled()
         and q6_t16_physical_mixed_rowtiles_enabled()
         and mixed_chunks is not None
         and (int(in_features), int(out_features))
         in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES
-        and launch_physical_row_chunks(
-            launch_rowtile,
+    )
+    if mixed_eligible and _q6_grouped_target_rowtiles_enabled():
+        chunks = tuple(int(value) for value in mixed_chunks)
+        if chunks[:3] != (8, 8, 8):
+            raise RuntimeError("grouped Q6 target requires the retained R8 prefix")
+        _launch(
+            _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_BF16,
             x_ptr,
             tiles_ptr,
             out_ptr,
-            rows,
+            24,
             in_features,
             out_features,
-            tuple(mixed_chunks),
             stream=stream,
             library=library,
             runtime=runtime,
         )
+        tail = chunks[3:]
+        if tail:
+            row_base = 24
+            if tail == (6, 6):
+                tail_symbol = (
+                    _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS6_BF16_BF16
+                )
+            elif tail == (6,):
+                tail_symbol = _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
+            else:
+                raise RuntimeError(f"unsupported grouped Q6 tail: {tail}")
+            tail_rows = sum(tail)
+            _launch(
+                tail_symbol,
+                int(x_ptr) + row_base * int(in_features) * 2,
+                tiles_ptr,
+                int(out_ptr) + row_base * int(out_features) * 2,
+                tail_rows,
+                in_features,
+                out_features,
+                stream=stream,
+                library=library,
+                runtime=runtime,
+            )
+        return
+    if mixed_eligible and launch_physical_row_chunks(
+        launch_rowtile,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        tuple(mixed_chunks),
+        stream=stream,
+        library=library,
+        runtime=runtime,
     ):
         return
     if q6_t16_physical_rowtile_enabled() and launch_physical_rows6_chunked(
@@ -966,6 +1029,97 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
     )
 
 
+def _launch_q6_planar_grouped_rowtiles(
+    symbol: str,
+    chunk_rows: int,
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int,
+    library: ctypes.CDLL | None,
+    runtime: HipRuntime | None,
+) -> None:
+    if rows < 2 * chunk_rows or rows % chunk_rows:
+        raise ValueError(
+            f"grouped planar Q6 rows must be >= {2 * chunk_rows} and "
+            f"divisible by {chunk_rows}"
+        )
+    _launch(
+        symbol,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact DPP R8 chunks through one two-dimensional grid."""
+
+    _launch_q6_planar_grouped_rowtiles(
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_BF16,
+        8,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact shuffle-reduced R6 chunks through one 2D grid."""
+
+    _launch_q6_planar_grouped_rowtiles(
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS6_BF16_BF16,
+        6,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
 def gguf_q6_k_t16_qmicro_planar_q8_1_threads(
     rows: int,
     in_features: int,
@@ -1464,6 +1618,26 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear_q8_1",
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_q8_1_dp4a_gemv_bf16_bf16_out",
@@ -1608,6 +1782,8 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out",

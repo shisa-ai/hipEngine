@@ -42,6 +42,13 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
+## 2026-09-01 gfx1100 grouped Q6 mixed rowtiles — open
+
+- `HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=1` consolidates the retained
+  mixed route's three independent DPP-R8 chunks and two-R6 tail via `grid.y`.
+  Promote only after exact marker ownership and complete C5-C8 qualification;
+  otherwise remove both grouped siblings, wrapper branch, and environment flag.
+
 ## 2026-09-01 gfx1100 grouped Q5 rows6 rollback — closed
 
 - Promoted after exact tracked-clean marker ownership and complete C5-C8
