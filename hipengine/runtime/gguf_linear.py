@@ -146,8 +146,12 @@ _target_verifier_rowtile_chunk_child_enabled: ContextVar[bool] = ContextVar(
     "gguf_target_verifier_rowtile_chunk_child_enabled",
     default=False,
 )
-_target_verifier_wide_q6_shared4_session_enabled: ContextVar[bool] = ContextVar(
-    "gguf_target_verifier_wide_q6_shared4_session_enabled",
+_target_verifier_wide_q6_shared4_policy_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_wide_q6_shared4_policy_enabled",
+    default=False,
+)
+_target_verifier_wide_q6_shared4_leaf_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_wide_q6_shared4_leaf_enabled",
     default=False,
 )
 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
@@ -1266,11 +1270,30 @@ def target_verifier_wide_q6_shared4_session(
 ) -> Iterator[None]:
     """Enable the W1 B-stationary Q6 verifier candidate in one context."""
 
-    token = _target_verifier_wide_q6_shared4_session_enabled.set(bool(enabled))
+    token = _target_verifier_wide_q6_shared4_policy_enabled.set(bool(enabled))
     try:
         yield
     finally:
-        _target_verifier_wide_q6_shared4_session_enabled.reset(token)
+        _target_verifier_wide_q6_shared4_policy_enabled.reset(token)
+
+
+def target_verifier_wide_q6_shared4_policy_enabled() -> bool:
+    """Return whether the outer W1 logical-width policy is enabled."""
+
+    return _target_verifier_wide_q6_shared4_policy_enabled.get()
+
+
+@contextlib.contextmanager
+def target_verifier_wide_q6_shared4_leaf_session(
+    enabled: bool = True,
+) -> Iterator[None]:
+    """Activate W1 Q6 leaves only inside one packed verifier transaction."""
+
+    token = _target_verifier_wide_q6_shared4_leaf_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _target_verifier_wide_q6_shared4_leaf_enabled.reset(token)
 
 
 def _env_gemv_decode_enabled() -> bool:
@@ -2297,7 +2320,7 @@ def _target_verifier_wide_q6_shared4_variant(
     if not (
         _target_verifier_rowtile_session_enabled.get()
         and _target_verifier_production_q4_rowtile_session_enabled.get()
-        and _target_verifier_wide_q6_shared4_session_enabled.get()
+        and _target_verifier_wide_q6_shared4_leaf_enabled.get()
     ):
         return None
     policies = backend_package_capability(
@@ -6783,6 +6806,8 @@ __all__ = [
     "target_verifier_rowtile_session",
     "target_verifier_production_q4_rowtile_session",
     "target_verifier_wide_q6_shared4_session",
+    "target_verifier_wide_q6_shared4_policy_enabled",
+    "target_verifier_wide_q6_shared4_leaf_session",
     "TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",

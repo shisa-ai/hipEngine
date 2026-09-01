@@ -49,6 +49,7 @@ from hipengine.runtime.gguf_linear import (
     set_wmma_prefill_enabled,
     target_verifier_production_q4_rowtile_session,
     target_verifier_rowtile_session,
+    target_verifier_wide_q6_shared4_leaf_session,
     target_verifier_wide_q6_shared4_session,
     wmma_prefill_session,
 )
@@ -5041,6 +5042,7 @@ def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
             target_verifier_rowtile_session(True),
             target_verifier_production_q4_rowtile_session(True),
             target_verifier_wide_q6_shared4_session(True),
+            target_verifier_wide_q6_shared4_leaf_session(True),
         ):
             launch_gguf_linear(
                 weight,
