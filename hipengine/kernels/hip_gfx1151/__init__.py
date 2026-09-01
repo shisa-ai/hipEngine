@@ -60,8 +60,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
 )
@@ -389,7 +391,11 @@ def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     fn = (
-        gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
+        gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out
+        if GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
+        <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
         if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS <= row_count
         <= GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS
         and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
@@ -428,6 +434,12 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
+        GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
+        <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out
+    elif (
         17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
         and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
     ):
@@ -1776,6 +1788,12 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
 # Qwen3.8-27B P4: four waves preserve the exact standard-Q6 48x64 sequence
 # while sharing one decoded 48x256 slab. The rows96-536 screen is bit-exact
 # and positive at every point; shape misses and rows<96 retain 16x16.
+GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS = 33
+GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS = 48
+GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES = frozenset({(5_120, 10_240)})
+GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES = frozenset(
+    {(5_120, 1_024), (17_408, 5_120)}
+)
 GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS = 96
 GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES = frozenset({(5_120, 10_240)})
 GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS = 257
@@ -3069,6 +3087,10 @@ __all__ = [
     "GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS",
     "GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS",
     "GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES",
+    "GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS",
+    "GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS",

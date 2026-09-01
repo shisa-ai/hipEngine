@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q6-shared3r1-retained",
+  "created_at": "2026-09-01T10:12:00Z",
+  "status": "validated_retention_pending_c1c8",
+  "source_commit_before_unit": "c37e424b57507ff8a51c38cd633d5ad06090fbc5",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "pre_code_full_wall_bounds": {
+    "35": {
+      "q6_single_sweep_savings_ms": 37.20437382112551,
+      "share": 0.129881
+    },
+    "48": {
+      "q6_single_sweep_savings_ms": 37.933548035558466,
+      "share": 0.13182
+    }
+  },
+  "candidate": {
+    "geometry": "2 output tiles, 3 waves, 1 row tile/wave; 48-row single sweep",
+    "scope": "rows33-48; standard K5120/N10240 and planar K17408/N5120,K5120/N1024",
+    "strict_fallback": "existing gfx1151 standard/planar selectors"
+  },
+  "direct_current_owner_comparison": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "35": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 1.1667969703674317,
+        "candidate_ms": 0.9607624053955078,
+        "speedup": 1.2144490290365886
+      },
+      "48": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 1.1851515769958496,
+        "candidate_ms": 0.9669261932373047,
+        "speedup": 1.225689804749128
+      }
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "35": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.8361927986145019,
+        "candidate_ms": 0.7486845970153808,
+        "speedup": 1.1168825990917552
+      },
+      "48": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.8351107597351074,
+        "candidate_ms": 0.6814866065979004,
+        "speedup": 1.2254250511306826
+      }
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "35": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.5377528190612793,
+        "candidate_ms": 0.0966211974620819,
+        "speedup": 5.565578084170561
+      },
+      "48": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.5387306213378906,
+        "candidate_ms": 0.09704599976539612,
+        "speedup": 5.551291373577944
+      }
+    }
+  },
+  "complete_ticks": {
+    "35": {
+      "control_wall_ms": 281.275813,
+      "candidate_wall_ms": 265.882693,
+      "wall_reduction_pct": 5.472607059889645,
+      "throughput_improvement_pct": 5.789440383018851,
+      "control_gpu_ms": 281.2707214355469,
+      "candidate_gpu_ms": 265.8770751953125,
+      "control_next_token_id": 248068,
+      "candidate_next_token_id": 248068
+    },
+    "48": {
+      "control_wall_ms": 286.328141,
+      "candidate_wall_ms": 269.312778,
+      "wall_reduction_pct": 5.94260939234752,
+      "throughput_improvement_pct": 6.318067462807142,
+      "control_gpu_ms": 286.32073974609375,
+      "candidate_gpu_ms": 269.3051452636719,
+      "control_next_token_id": 17885,
+      "candidate_next_token_id": 17885
+    }
+  },
+  "rocprof": {
+    "standard": {
+      "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel<3,1,2>",
+      "grid_y": 1,
+      "threads": 128,
+      "vgpr": 176,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "sample_duration_ms": 0.711855
+    },
+    "planar": {
+      "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<3,1,2>",
+      "grid_y": 1,
+      "threads": 128,
+      "vgpr": 176,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "sample_duration_ms": 0.997391
+    }
+  },
+  "limitations": [
+    "Tracked-clean C1-C8 collateral follows after commit.",
+    "Y2 remains open for high-row Q5/Q6 multiplicity."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-shared3r1-r35-r48.log",
+      "sha256": "201138dad360ab83b3762c3ec7d29a5a8ee2ae8d9cfe9a76aff4649a3bdaa4c3",
+      "bytes": 1415
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-r35-r48-full-pair.json",
+      "sha256": "cfec6000f59c6ada2f930e16e6e096dc559e0f2a553d7e0722e15e31dcfd713f",
+      "bytes": 392478
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-rocprof/gfx1151/2405723_kernel_trace.csv",
+      "sha256": "3e5c868d9f5a7a49071f6c3d2c8de4eeb5fa0177418bc390e3fa7681d16000ff",
+      "bytes": 142348
+    }
+  ]
+}

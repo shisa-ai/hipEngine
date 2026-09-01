@@ -652,6 +652,59 @@ def test_gfx1151_q5_standard_prefill_shared8r3_is_scoped(
     ]
 
 
+def test_gfx1151_q6_shared3r1_is_scoped_to_rows33_48(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def retained(*args, **kwargs):
+        calls.append(("retained", args, kwargs))
+
+    def shared3r1(*args, **kwargs):
+        calls.append(("shared3r1", args, kwargs))
+
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out",
+        shared3r1,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out",
+        shared3r1,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out",
+        retained,
+    )
+    standard = gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    planar = gfx1151_backend.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    standard(1, 2, 3, 35, 5_120, 10_240, stream=7)
+    standard(1, 2, 3, 32, 5_120, 10_240, stream=8)
+    planar(1, 2, 3, 48, 17_408, 5_120, stream=9)
+    planar(1, 2, 3, 49, 17_408, 5_120, stream=10)
+    planar(1, 2, 3, 35, 5_120, 1_024, stream=11)
+
+    assert calls == [
+        ("shared3r1", (1, 2, 3, 35, 5_120, 10_240), {"stream": 7}),
+        ("retained", (1, 2, 3, 32, 5_120, 10_240), {"stream": 8}),
+        ("shared3r1", (1, 2, 3, 48, 17_408, 5_120), {"stream": 9}),
+        ("retained", (1, 2, 3, 49, 17_408, 5_120), {"stream": 10}),
+        ("shared3r1", (1, 2, 3, 35, 5_120, 1_024), {"stream": 11}),
+    ]
+
+
 def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
