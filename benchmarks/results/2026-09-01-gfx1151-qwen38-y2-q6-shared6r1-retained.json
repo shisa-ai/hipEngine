@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "gfx1151-qwen38-y2-q6-shared6r1-retained",
-  "status": "validated_retention_pending_c1c8",
+  "status": "validated_retained",
   "source_commit_before_unit": "a283d6423ce71f5ca79a485c8d70bd0b505237ca",
   "physical_host": {
     "hostname": "gfx1151",
@@ -102,7 +102,6 @@
     "hits": 232
   },
   "limitations": [
-    "Tracked-clean C1-C8 collateral follows after commit.",
     "Y2 remains open for remaining row bands."
   ],
   "raw_sources": [
@@ -120,6 +119,135 @@
       "path": "/tmp/y2-q6-shared6r1-rocprof-csv/gfx1151/2430612_kernel_trace.csv",
       "sha256": "074fcd549f8f9c1f54ac7e0b24b4b45165de0691e20fe4c614548fd302d92f26",
       "bytes": 106099
+    },
+    {
+      "path": "/tmp/y2-q6-shared6r1-c1c8-control.json",
+      "sha256": "b1374a46012ce71e44bdfd73c8e2b7e0f7319022200b9b73801baf8020a8a862",
+      "bytes": 3735552
+    },
+    {
+      "path": "/tmp/y2-q6-shared6r1-c1c8-candidate.json",
+      "sha256": "c8d854f08ca4262828ab2b00d74b5dfd9f8fb74f538fdc350b63daa402e99649",
+      "bytes": 3735624
     }
-  ]
+  ],
+  "c1_c8_collateral": {
+    "protocol": "frozen standard Q4_K_M ten-prompt, D1 AR-exact collateral, widths C1-C8; control disables only shared6r1",
+    "control_passed": true,
+    "candidate_passed": true,
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "control_wall_seconds": 2.925907425582409,
+          "candidate_wall_seconds": 2.9060679776594043,
+          "wall_delta_pct": -0.6780613682285441
+        },
+        "mtp": {
+          "control_wall_seconds": 2.9272027283441275,
+          "candidate_wall_seconds": 2.908348197117448,
+          "wall_delta_pct": -0.644114295334286
+        }
+      },
+      "2": {
+        "ar": {
+          "control_wall_seconds": 6.311373541131616,
+          "candidate_wall_seconds": 6.281890457496047,
+          "wall_delta_pct": -0.4671421116722918
+        },
+        "mtp": {
+          "control_wall_seconds": 5.119668945204467,
+          "candidate_wall_seconds": 5.046010600635782,
+          "wall_delta_pct": -1.4387325695674025
+        }
+      },
+      "3": {
+        "ar": {
+          "control_wall_seconds": 8.020933252992108,
+          "candidate_wall_seconds": 7.8077272868249565,
+          "wall_delta_pct": -2.6581191918985003
+        },
+        "mtp": {
+          "control_wall_seconds": 6.6313652757089585,
+          "candidate_wall_seconds": 6.6379217389039695,
+          "wall_delta_pct": 0.09887048778669527
+        }
+      },
+      "4": {
+        "ar": {
+          "control_wall_seconds": 9.520814636023715,
+          "candidate_wall_seconds": 9.139158162521198,
+          "wall_delta_pct": -4.008653545868346
+        },
+        "mtp": {
+          "control_wall_seconds": 7.79147353139706,
+          "candidate_wall_seconds": 7.794651524629444,
+          "wall_delta_pct": 0.04078808994958383
+        }
+      },
+      "5": {
+        "ar": {
+          "control_wall_seconds": 10.639870966784656,
+          "candidate_wall_seconds": 10.669754397356883,
+          "wall_delta_pct": 0.28086271596259316
+        },
+        "mtp": {
+          "control_wall_seconds": 9.068190175108612,
+          "candidate_wall_seconds": 9.054309454280883,
+          "wall_delta_pct": -0.15307046455454998
+        }
+      },
+      "6": {
+        "ar": {
+          "control_wall_seconds": 11.765830427175388,
+          "candidate_wall_seconds": 11.750489057274535,
+          "wall_delta_pct": -0.130389180736612
+        },
+        "mtp": {
+          "control_wall_seconds": 10.695084694540128,
+          "candidate_wall_seconds": 10.653697991976514,
+          "wall_delta_pct": -0.3869693765467974
+        }
+      },
+      "7": {
+        "ar": {
+          "control_wall_seconds": 13.32669142074883,
+          "candidate_wall_seconds": 13.527278451714665,
+          "wall_delta_pct": 1.5051525141006383
+        },
+        "mtp": {
+          "control_wall_seconds": 12.17932785116136,
+          "candidate_wall_seconds": 12.180513395462185,
+          "wall_delta_pct": 0.009734070018585506
+        }
+      },
+      "8": {
+        "ar": {
+          "control_wall_seconds": 15.056335039203987,
+          "candidate_wall_seconds": 15.046324192313477,
+          "wall_delta_pct": -0.06648926757037987
+        },
+        "mtp": {
+          "control_wall_seconds": 13.722352821845561,
+          "candidate_wall_seconds": 13.743297649780288,
+          "wall_delta_pct": 0.15263292094767067
+        }
+      }
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 77.56775670964271,
+        "candidate_wall_seconds": 77.12868998316117,
+        "wall_delta_pct": -0.5660428315918509
+      },
+      "mtp": {
+        "control_wall_seconds": 68.13466602331027,
+        "candidate_wall_seconds": 68.01875055278651,
+        "wall_delta_pct": -0.17012701065284297
+      }
+    }
+  }
 }

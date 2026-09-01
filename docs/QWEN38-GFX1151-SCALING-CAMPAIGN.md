@@ -859,7 +859,8 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Standard Q6 rows49-96 now uses exact `<6,1,2>`: four rows49/64/72/96
   leaves improve **1.31-1.68x**, and complete rows72/96 walls fall
   **408.827->396.426 ms (-3.03%)** and **432.039->423.395 ms (-2.00%)**
-  with unchanged tokens.
+  with unchanged tokens. Its tracked-clean C1-C8 collateral is **160/160
+  exact** and improves aggregate wall **0.57% AR / 0.17% MTP**.
   [`Q6 high-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json),
   [`Q6 mid-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json),
   [`Q6 rows49-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json),
