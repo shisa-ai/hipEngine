@@ -92,6 +92,12 @@ def _response_summary(response: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _server_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["ROCP_TOOL_ATTACH"] = "1"
+    return environment
+
+
 def _git_diff_sha256(path: Path) -> str | None:
     try:
         payload = subprocess.check_output(["git", "diff", "--binary"], cwd=path)
@@ -268,6 +274,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "source": _git_metadata(args.source_root),
             "source_diff_sha256": _git_diff_sha256(args.source_root),
             "command": server_command,
+            "attach_registration": "ROCP_TOOL_ATTACH=1",
         },
         "protocol": {
             "prefill": "exact prompt, cache_prompt=false, n_predict=1",
@@ -289,7 +296,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             server_command,
             stdout=server_log,
             stderr=subprocess.STDOUT,
-            env=os.environ.copy(),
+            env=_server_environment(),
         )
         try:
             _wait_for_health(args.host, args.port, args.startup_timeout)
@@ -362,6 +369,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                     flush=True,
                 )
             artifact["status"] = "completed"
+        except Exception as exc:
+            artifact["status"] = "failed"
+            artifact["error"] = f"{type(exc).__name__}: {exc}"
+            raise
         finally:
             _terminate(server)
             server_log.flush()

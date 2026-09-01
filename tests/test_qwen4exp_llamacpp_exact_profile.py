@@ -64,6 +64,17 @@ def test_completion_payload_pins_sampler_and_cache_policy() -> None:
     }
 
 
+def test_server_environment_enables_direct_profiler_attach(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = _load_script()
+    monkeypatch.delenv("ROCP_TOOL_ATTACH", raising=False)
+
+    environment = module._server_environment()
+
+    assert environment["ROCP_TOOL_ATTACH"] == "1"
+
+
 def test_parser_accepts_repeated_cases_and_server_args(tmp_path: Path) -> None:
     module = _load_script()
 
