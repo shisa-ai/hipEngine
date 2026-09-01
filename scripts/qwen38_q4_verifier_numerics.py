@@ -35,6 +35,7 @@ from hipengine.core.memory import (
 )
 from hipengine.runtime.gguf_linear import (
     TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
+    target_verifier_wide_q6_shared4_leaf_session,
     target_verifier_wide_q6_shared4_session,
 )
 from scripts.execution_profile_gguf_batch_route_gate import (
@@ -219,7 +220,10 @@ def _capture_verifier_group(
             for index in range(len(sessions))
         ]
         positions_before = [int(session.position) for session in sessions]
-        with target_verifier_wide_q6_shared4_session(wide_q6_shared4):
+        with (
+            target_verifier_wide_q6_shared4_session(wide_q6_shared4),
+            target_verifier_wide_q6_shared4_leaf_session(wide_q6_shared4),
+        ):
             results = sessions[0].verify_target_blocks_batch(jobs)
         physical_rows = len(sessions) * int(rows_per_job)
         logits = _read_packed_logits(sessions[0], physical_rows)

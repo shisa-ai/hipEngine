@@ -4994,11 +4994,12 @@ def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
 
 
 @pytest.mark.parametrize(
-    ("quant_key", "in_features", "out_features"),
+    ("quant_key", "in_features", "out_features", "variant"),
     (
-        ("gguf_q6_k_t16_v1", 5_120, 10_240),
-        ("gguf_q6_k_t16_qmicro_planar_v1", 17_408, 5_120),
-        ("gguf_q6_k_t16_qmicro_planar_v1", 5_120, 1_024),
+        ("gguf_q5_k_t16_v1", 6_144, 5_120, "t16_wmma_prefill_bf16_bf16_out"),
+        ("gguf_q6_k_t16_v1", 5_120, 10_240, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+        ("gguf_q6_k_t16_qmicro_planar_v1", 17_408, 5_120, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+        ("gguf_q6_k_t16_qmicro_planar_v1", 5_120, 1_024, "t16_wmma_prefill_shared4_bf16_bf16_out"),
     ),
 )
 @pytest.mark.parametrize("rows", (20, 24, 32))
@@ -5006,6 +5007,7 @@ def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
     quant_key: str,
     in_features: int,
     out_features: int,
+    variant: str,
     rows: int,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5019,7 +5021,9 @@ def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
     )
     weight = _fake_weight(
         layout=(
-            LAYOUT_GGUF_Q6_K_T16
+            LAYOUT_GGUF_Q5_K_T16
+            if quant_key == "gguf_q5_k_t16_v1"
+            else LAYOUT_GGUF_Q6_K_T16
             if quant_key == "gguf_q6_k_t16_v1"
             else LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
         ),
@@ -5029,7 +5033,7 @@ def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
         "hip_gfx1151",
         "linear",
         quant_key,
-        "t16_wmma_prefill_shared4_bf16_bf16_out",
+        variant,
     )
     original = resolve(
         backend=candidate_key.backend,

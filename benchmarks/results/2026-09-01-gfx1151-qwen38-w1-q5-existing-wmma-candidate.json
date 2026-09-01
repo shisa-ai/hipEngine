@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q5_existing_wmma_screen",
+  "status": "candidate_default_off",
+  "performance_claim": false,
+  "hardware": "strixhalo AMD Radeon 8060S gfx1151",
+  "model": "Qwen3.8-27B Q4_K_M",
+  "shape": "gguf_q5_k_t16_v1 K6144 N5120",
+  "rows": [
+    8,
+    20,
+    24,
+    32
+  ],
+  "result": {
+    "8": {
+      "exact": false,
+      "mismatch_count": 4161,
+      "max_abs": 0.00390625,
+      "parent_ms": 0.14766499996185303,
+      "wmma_ms": 0.5271049976348877,
+      "speedup": 0.28014342611893966
+    },
+    "20": {
+      "exact": false,
+      "mismatch_count": 10630,
+      "max_abs": 0.0078125,
+      "parent_ms": 1.2706037521362306,
+      "wmma_ms": 0.5387105941772461,
+      "speedup": 2.358601753649897
+    },
+    "24": {
+      "exact": false,
+      "mismatch_count": 12691,
+      "max_abs": 0.03125,
+      "parent_ms": 1.6422510147094727,
+      "wmma_ms": 0.5396264076232911,
+      "speedup": 3.0433110602250495
+    },
+    "32": {
+      "exact": false,
+      "mismatch_count": 17010,
+      "max_abs": 0.0078125,
+      "parent_ms": 2.037814903259277,
+      "wmma_ms": 0.5406703948974609,
+      "speedup": 3.769052129524777
+    }
+  },
+  "finding": "Existing Q5 WMMA owner is flat at 0.527-0.541 ms and improves R20/R24/R32 strict parent by 2.36x/3.04x/3.77x. It changes BF16 association (max absolute leaf delta 0.03125), so classify T2 and require full strict-teacher gates.",
+  "raw": {
+    "path": "/tmp/wy-w1-q5-existing-wmma-screen.json",
+    "sha256": "763cdd4f83604d65be82de6f3a4b67e2d66b154b4383da717dc16f9259e15ae9",
+    "size_bytes": 1019
+  }
+}
