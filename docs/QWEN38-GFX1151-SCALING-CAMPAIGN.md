@@ -895,7 +895,8 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Existing exact Q5 and standard-Q6 `<8,3,2>` owners now include rows256:
   leaves improve **1.55x/1.83x** and their combined complete wall falls
   **887.889->827.647 ms (-6.78%)** with unchanged token; trace confirms both
-  at gridY1.
+  at gridY1. Tracked-clean C1-C8 collateral is **160/160 exact** and improves
+  aggregate wall **0.79% AR / 0.05% MTP**.
   [`Rows256 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5q6-rows256-retained.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at

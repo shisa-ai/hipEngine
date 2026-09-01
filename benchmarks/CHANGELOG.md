@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5/Q6 rows256 retained] Existing exact `<8,3,2>` owners improve physical Q5/standard-Q6 leaves **1.55x/1.83x**; combined complete wall falls **887.889->827.647 ms (-6.78%)** with unchanged token. Trace confirms Q5/Q6 gridY1, 256 threads, VGPR96, LDS16 KiB, scratch0. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5q6-rows256-retained.json`.
+- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5/Q6 rows256 retained] Existing exact `<8,3,2>` owners improve physical Q5/standard-Q6 leaves **1.55x/1.83x**; combined complete wall falls **887.889->827.647 ms (-6.78%)** with unchanged token. Trace confirms Q5/Q6 gridY1, 256 threads, VGPR96, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate wall **0.79% AR / 0.05% MTP**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5q6-rows256-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 current-head ledger] Cache-only nine-point re-trace after retained Y2 routes still measures above-threshold multiplicity: rows72/96 Q5 **2.00** and Q6 **2.07/2.26** sweeps; rows256 Q5/Q6 **4.00/7.39**; rows536 **4.00/11.66**; rows1024 **4.00/22.67**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-current-head-sweep-ledger.json`.
 
