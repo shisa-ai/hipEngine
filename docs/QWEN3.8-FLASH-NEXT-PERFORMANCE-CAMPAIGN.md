@@ -1212,7 +1212,7 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json`.
 - [ ] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
       packets; keep every rejected early layer strict.
-- [ ] For QSA, compare current key-parallel head-dim-256 flash geometry with the
+- [x] For QSA, compare current key-parallel head-dim-256 flash geometry with the
       selected llama kernel family, including key tiles, online-softmax merge,
       grid sufficiency, and register/LDS pressure. The non-flash multirow dense
       owner now selects the registered fixed256/precomputed-offset/vector2
@@ -1221,6 +1221,12 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       complete 450-row/state/task gate is exact. Generic batch attention remains
       fallback. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-qsa-dense-fixed256.json`.
+      The p4096 differential audit now isolates variable-selection sparse rows
+      at **9.418 s** of the **10.229-s** attention role; dense attention is
+      **0.638 s**, index score **0.129 s**, and top-k expand **0.023 s**.
+      The next mechanism is therefore a bounded multirow ordered-attention path,
+      not score/top-k tuning or a direct copy of the c1 scratch layout. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
 - [ ] Confirm selected-position attention already removes dense-mask work.
       Evaluate fully-masked-slice skipping only if a current trace proves such
       slices still execute.
