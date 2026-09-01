@@ -33,11 +33,10 @@ should be removed or collapsed.
 - The first unrouted claim remains retracted as invalid history. The corrected
   physical-wrapper route is independently retained after marker-scoped
   candidate ownership plus a complete positive C5-C8 category/heldout gate.
-- The wrapper-only partial route is retained, but the remaining
-  `t16_physical_c1_rowtile` registry seam is under a fresh default-off extension
-  gate. Promote the combined route only after candidate-symbol and complete
-  category/heldout evidence; otherwise restore the retained wrapper-only
-  default. Keep the registered WG32 strict parent.
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0` remains same-build rollback. Remove
+  the environment/cache policy after the next stable milestone audit; keep the
+  registered WG32 strict parent. A separate physical-registry-key extension was
+  removed after marker-scoped C8 evidence showed no ownership change.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
