@@ -448,7 +448,7 @@ def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
     assert calls == [("two_wave", 6)] * 4
 
 
-def test_gfx1100_grouped_rows8_candidate_is_live_c5c6_scoped(
+def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     selector = (
@@ -471,7 +471,11 @@ def test_gfx1100_grouped_rows8_candidate_is_live_c5c6_scoped(
         "gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
         lambda *args, **kwargs: calls.append(("rows8", int(args[3]))),
     )
-    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", "1")
+    policy = gfx1100_backend.GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY
+    assert policy["enabled_default"] is True
+    assert policy["active_slots"] == frozenset({5, 6})
+    assert policy["rows"] == frozenset({24})
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", raising=False)
     monkeypatch.setattr(
         t16_prefill,
         "_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED",
