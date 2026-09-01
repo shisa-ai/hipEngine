@@ -1856,38 +1856,40 @@ def _q4_t16_physical_dual_silu_variant(
 
     if not q4_t16_physical_extra_rowtiles_enabled():
         return None
-    policy = backend_package_capability(
-        backend,
+    for capability in (
         "GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY",
-        {},
-    )
-    if not isinstance(policy, Mapping):
-        return None
-    rows_to_variant = policy.get("rows_to_variant", {})
-    if not isinstance(rows_to_variant, Mapping):
-        return None
-    variant = rows_to_variant.get(int(rows))
-    if not isinstance(variant, str) or not variant:
-        return None
-    enabled_env = policy.get("enabled_env")
-    if not isinstance(enabled_env, str) or not enabled_env:
-        return None
-    enabled_default = bool(policy.get("enabled_default", False))
-    cache_key = (enabled_env, enabled_default)
-    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
-    if enabled is None:
-        raw = os.environ.get(
-            enabled_env,
-            "1" if enabled_default else "0",
-        ).strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            enabled = True
-        elif raw in {"0", "false", "no", "off"}:
-            enabled = False
-        else:
-            raise ValueError(f"{enabled_env} must be a boolean value")
-        _rowtile_variant_policy_env_cache[cache_key] = enabled
-    return variant if enabled else None
+        "GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY",
+    ):
+        policy = backend_package_capability(backend, capability, {})
+        if not isinstance(policy, Mapping):
+            continue
+        rows_to_variant = policy.get("rows_to_variant", {})
+        if not isinstance(rows_to_variant, Mapping):
+            continue
+        variant = rows_to_variant.get(int(rows))
+        if not isinstance(variant, str) or not variant:
+            continue
+        enabled_env = policy.get("enabled_env")
+        if not isinstance(enabled_env, str) or not enabled_env:
+            continue
+        enabled_default = bool(policy.get("enabled_default", False))
+        cache_key = (enabled_env, enabled_default)
+        enabled = _rowtile_variant_policy_env_cache.get(cache_key)
+        if enabled is None:
+            raw = os.environ.get(
+                enabled_env,
+                "1" if enabled_default else "0",
+            ).strip().lower()
+            if raw in {"1", "true", "yes", "on"}:
+                enabled = True
+            elif raw in {"0", "false", "no", "off"}:
+                enabled = False
+            else:
+                raise ValueError(f"{enabled_env} must be a boolean value")
+            _rowtile_variant_policy_env_cache[cache_key] = enabled
+        if enabled:
+            return variant
+    return None
 
 
 def _q4_t16_grouped_pair_rows6_variant(
