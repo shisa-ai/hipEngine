@@ -1,0 +1,446 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_fused_packed_state_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote exact chunked pointer-table Conv/GDN state gather for gfx1100 resident-to-packed verifier imports. Counterbalanced complete wall and every C5-C8 category/heldout slice improve, with exact IDs, acceptance, lifecycle, and state-transfer ownership.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "309ba67b91dde7f4a5db8b2e14ab73c6090746da",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-fused-packed-verify-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "e697b18c265450851a0a79afa4779992956ff0f38c10542c78a9282163e81bac"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-fused-packed-verify-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "be0aecb74631db4672ed2efb5bf0cfb5a8848555f683f1708f27f4111dfa9821"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-fused-packed-verify-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "89ba2eefe96bd24d7da22d36306d040d9ff35466c9e40b88e33536e24913e7f7"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-fused-packed-verify-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "fea1e181dd8474a98ac96cf605cd29a32d6af70f5abdc2ee146b90dcd0d8704a"
+      }
+    }
+  },
+  "candidate": {
+    "variant": "linear_state_pair_commit_chunked_i32",
+    "scope": "gfx1100 resident-to-packed Conv/GDN imports, including physical C5-C8 packed-verifier initial-state gather",
+    "mechanism": "Upload strict source/destination pointer tables and copy 384 independent Conv/recurrent state pairs in one chunked raw-pointer kernel instead of 768 per-layer HIP D2D launches.",
+    "candidate_flag_during_gate": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=1",
+    "rollback": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=0",
+    "strict_fallback": "interleaved per-layer HipMemcpyKind.DEVICE_TO_DEVICE Conv then recurrent copies",
+    "default_after_decision": true
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=1",
+    "rollback_flag": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=0",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "cross_arm_generated_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "cross_arm_rows_compared": 520,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_row": true,
+    "recoverable_failure_count": 0,
+    "all_processes_drained": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 1.4668475965643801,
+        "minimum_delta_pct": -0.6086677619021819,
+        "maximum_delta_pct": 2.714295620700624,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 0.618154498120449,
+        "minimum_delta_pct": -0.2514296788219461,
+        "maximum_delta_pct": 1.2881965324173406,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    ]
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 61.81883333166801,
+        "candidate_tok_s": 62.641370886454574,
+        "candidate_delta_pct": 1.3305614332342897,
+        "rollback_wall_seconds": 38.82312024757266,
+        "candidate_wall_seconds": 38.31333775166422,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 61.90995462392778,
+          "candidate_tok_s": 63.15879938237198,
+          "candidate_delta_pct": 2.017195402630012
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 61.727979876370114,
+          "candidate_tok_s": 62.13235156480229,
+          "candidate_delta_pct": 0.6550865413740503
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 63.896145321539514,
+          "candidate_tok_s": 64.69672066170205,
+          "candidate_delta_pct": 1.2529321387602543
+        },
+        "general_en": {
+          "rollback_tok_s": 66.15111005430535,
+          "candidate_tok_s": 67.05267971277935,
+          "candidate_delta_pct": 1.362894224653033
+        },
+        "general_ja": {
+          "rollback_tok_s": 58.646580083556344,
+          "candidate_tok_s": 59.431912240304854,
+          "candidate_delta_pct": 1.3390928433160365
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 57.42997139349335,
+          "candidate_tok_s": 58.25346291030887,
+          "candidate_delta_pct": 1.4339054971370224
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 61.79186847477291,
+          "candidate_tok_s": 62.599562823194965,
+          "candidate_delta_pct": 1.3071207722935352
+        },
+        "heldout": {
+          "rollback_tok_s": 61.85932477207786,
+          "candidate_tok_s": 62.7041877943942,
+          "candidate_delta_pct": 1.3657811905145367
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 69.61779532786572,
+        "candidate_tok_s": 70.35906671029247,
+        "candidate_delta_pct": 1.0647728485737362,
+        "rollback_wall_seconds": 41.36873318720609,
+        "candidate_wall_seconds": 40.93289087899029,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 69.58000139775956,
+          "candidate_tok_s": 70.72337859409711,
+          "candidate_delta_pct": 1.6432554949249667
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 69.65563033751782,
+          "candidate_tok_s": 69.99848889486981,
+          "candidate_delta_pct": 0.4922194454212159
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 69.24865085422753,
+          "candidate_tok_s": 70.15446358986424,
+          "candidate_delta_pct": 1.3080583151626968
+        },
+        "general_en": {
+          "rollback_tok_s": 75.92381972583452,
+          "candidate_tok_s": 76.64993781726446,
+          "candidate_delta_pct": 0.9563771870962245
+        },
+        "general_ja": {
+          "rollback_tok_s": 68.08517833705281,
+          "candidate_tok_s": 68.74335956925785,
+          "candidate_delta_pct": 0.9667026631651643
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 66.30988991269467,
+          "candidate_tok_s": 66.8344610657126,
+          "candidate_delta_pct": 0.7910903693379545
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 69.17931068661875,
+          "candidate_tok_s": 70.0002007432438,
+          "candidate_delta_pct": 1.1866120787812795
+        },
+        "heldout": {
+          "rollback_tok_s": 70.28604463741254,
+          "candidate_tok_s": 70.90431829131732,
+          "candidate_delta_pct": 0.8796535031872832
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 67.36457880838917,
+        "candidate_tok_s": 67.97215245719384,
+        "candidate_delta_pct": 0.901918574348759,
+        "rollback_wall_seconds": 49.87784469872713,
+        "candidate_wall_seconds": 49.43200823478401,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 67.37700482507078,
+          "candidate_tok_s": 68.18499158000301,
+          "candidate_delta_pct": 1.1992025425142883
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 67.35215737420332,
+          "candidate_tok_s": 67.76063795219001,
+          "candidate_delta_pct": 0.6064847718495692
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.63050439877237,
+          "candidate_tok_s": 68.14286423061651,
+          "candidate_delta_pct": 0.7575868853839873
+        },
+        "general_en": {
+          "rollback_tok_s": 74.59299797215712,
+          "candidate_tok_s": 75.34453192628283,
+          "candidate_delta_pct": 1.0075127351849122
+        },
+        "general_ja": {
+          "rollback_tok_s": 62.85117222427486,
+          "candidate_tok_s": 63.56945210985572,
+          "candidate_delta_pct": 1.1428265538433902
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 65.2152251735738,
+          "candidate_tok_s": 65.76245551052297,
+          "candidate_delta_pct": 0.8391143870050133
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 67.11003541507223,
+          "candidate_tok_s": 67.65905552959278,
+          "candidate_delta_pct": 0.8180894423984064
+        },
+        "heldout": {
+          "rollback_tok_s": 67.75003510549361,
+          "candidate_tok_s": 68.44726911738644,
+          "candidate_delta_pct": 1.0291271595758822
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 72.33087642637479,
+        "candidate_tok_s": 73.02592256234547,
+        "candidate_delta_pct": 0.9609259147829841,
+        "rollback_wall_seconds": 53.08936086110771,
+        "candidate_wall_seconds": 52.584066934883595,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 72.26313462136171,
+          "candidate_tok_s": 73.06673888981776,
+          "candidate_delta_pct": 1.1120528782299521
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 72.39874535728795,
+          "candidate_tok_s": 72.98515181080806,
+          "candidate_delta_pct": 0.8099677012718853
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 73.64759901473685,
+          "candidate_tok_s": 74.23576637120169,
+          "candidate_delta_pct": 0.7986239393183103
+        },
+        "general_en": {
+          "rollback_tok_s": 76.66511905700025,
+          "candidate_tok_s": 77.58031005122328,
+          "candidate_delta_pct": 1.1937514810908878
+        },
+        "general_ja": {
+          "rollback_tok_s": 68.82530394573658,
+          "candidate_tok_s": 69.30197378422899,
+          "candidate_delta_pct": 0.692579343882338
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 69.45823887689363,
+          "candidate_tok_s": 70.38202287426846,
+          "candidate_delta_pct": 1.3299847682751054
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 72.15870947238665,
+          "candidate_tok_s": 72.76329501729158,
+          "candidate_delta_pct": 0.837855262830467
+        },
+        "heldout": {
+          "rollback_tok_s": 72.59067282071598,
+          "candidate_tok_s": 73.42343790110523,
+          "candidate_delta_pct": 1.1472067250926532
+        }
+      }
+    }
+  },
+  "profiling": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=<1-or-0> PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "source_commit": "309ba67b91dde7f4a5db8b2e14ab73c6090746da",
+    "same_build": true,
+    "cached_build_required": true,
+    "generated_ids_equal": true,
+    "rollback": {
+      "raw_child": "/tmp/he-fused-packed-verify-c8-control-profile/child.json",
+      "raw_child_sha256": "779d4b3280d14a38aa84c0864f3bb22275a67e9ebe00596842285f18032a7d44",
+      "raw_kernel_trace": "/tmp/he-fused-packed-verify-c8-control-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "9520501e60280b2be46515e8cc8a12bdc566ada8e3f1624323430a32b3fb190a",
+      "raw_marker_trace": "/tmp/he-fused-packed-verify-c8-control-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "8ddbb086af26c225a89e0bab80396c6a59a81c85459d18c531859e52220b5516",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 197.633837,
+      "complete_wall_seconds": 1.4423932237550616,
+      "kernel_launches": 3457,
+      "copybuffer_launches": 1184,
+      "conv_state_copy_launches": 384,
+      "conv_state_copy_device_ms": 0.851851,
+      "recurrent_state_copy_launches": 384,
+      "recurrent_state_copy_device_ms": 4.473228,
+      "pair_copy_launches": 8,
+      "packed_verify_gather_launches": 0,
+      "packed_verify_gather_device_ms": 0.0
+    },
+    "candidate": {
+      "raw_child": "/tmp/he-fused-packed-verify-c8-profile/child.json",
+      "raw_child_sha256": "19ce9a9d40306658c0439c1b4c953d97bb279ac135eff5b0062e7cc904be6af2",
+      "raw_kernel_trace": "/tmp/he-fused-packed-verify-c8-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "497a3f238504cce19b22425fce3846ee569ba013322e53aaa0e761522b2460fc",
+      "raw_marker_trace": "/tmp/he-fused-packed-verify-c8-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "42fd56e2825b8124a1f3338cc7ff524db69befd2f20f9afd24297f86c648e2d7",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 193.409968,
+      "complete_wall_seconds": 1.4109932547435164,
+      "kernel_launches": 2699,
+      "copybuffer_launches": 425,
+      "conv_state_copy_launches": 0,
+      "conv_state_copy_device_ms": 0.0,
+      "recurrent_state_copy_launches": 0,
+      "recurrent_state_copy_device_ms": 0.0,
+      "pair_copy_launches": 9,
+      "packed_verify_gather_launches": 1,
+      "packed_verify_gather_device_ms": 4.248992
+    },
+    "deltas": {
+      "complete_throughput_pct": 2.2253805187220976,
+      "target_host_marker_pct": -2.137219549099789,
+      "target_host_marker_ms": -4.223869000000008,
+      "large_state_copy_launches": -768,
+      "total_kernel_launches": -758
+    }
+  },
+  "validation": {
+    "focused_tests": "uv run pytest -q tests/test_gguf_packed_verify_layout.py::test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled tests/test_gguf_packed_verify_layout.py::test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables tests/test_gguf_packed_verify_layout.py::test_gfx1100_fused_linear_state_transfer_policy_is_default_on tests/test_gguf_packed_verify_layout.py::test_gguf_single_slot_state_import_uses_strict_unfused_copy",
+    "full_gate_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "One prompt cell regresses within each process-order pair, but every binding counterbalanced width/category/heldout aggregate is positive and the same-build marker establishes the launch mechanism.",
+    "The candidate preserves state bytes; its benefit comes from one chunked pointer-table launch and lower copy device time instead of 768 per-layer runtime copy launches."
+  ]
+}
