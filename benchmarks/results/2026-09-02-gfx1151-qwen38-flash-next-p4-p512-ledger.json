@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_post_p4_p512_device_role_ledger",
+  "status": "accepted_diagnostic",
+  "scope": "named-production code-p512 prefill on zbook/gfx1151",
+  "clock_policy": "auto",
+  "wall_ms_profiled": 5552.886412,
+  "kernel_sum_ms": 5483.083432,
+  "kernel_span_ms": 5552.148703,
+  "role_attribution_pct": 100.0,
+  "unattributed_ms": 0.0,
+  "kernel_rows": 3135,
+  "direct_launches": 2603,
+  "families_ms": {
+    "moe_gate_up_q4": 1265.082912,
+    "moe_down_q5": 1086.518672,
+    "dense_other": 1071.122782,
+    "dense_quant_q8": 883.627533,
+    "gdn": 599.361848,
+    "gr_norm_inject": 403.941905,
+    "moe_routing": 112.578904,
+    "qsa_attention": 45.676847,
+    "cast_combine": 7.627849,
+    "qsa_index_selection": 4.691976,
+    "copy_fill_kernel": 1.453188,
+    "ple": 1.277789,
+    "elementwise_norm_rope": 0.121227
+  },
+  "lifecycle": {
+    "steady_allocation_growth": 0,
+    "steady_allocated_byte_growth": 0,
+    "after_close_allocations": 0,
+    "passed": true,
+    "profile_window_allocation_events": 2,
+    "profile_window_allocated_bytes": 1048576
+  },
+  "output": {
+    "token_id": 248068,
+    "logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99"
+  },
+  "source": {
+    "trace_dir": "/tmp/qwen4exp-p4-closure-p512",
+    "child_sha256": "ca6ae9d44be806d0de00ccfe937dd2e370894fda2673589a6d059c2d76da5b0a",
+    "kernel_trace_sha256": "9043d89264968f7a514fb5d68f6d3171138be845d367893dfba0cc345673612e",
+    "hip_trace_sha256": "01fa5d70584ec9a88655f5e59ea290b7113f18e15bed684a74a3deea04a642f7",
+    "marker_trace_sha256": "b91a670106ad5c17cffb917cbfcd6db424fc95b1f70c177cfccd0e9b8f785e53",
+    "copy_trace_sha256": "673eee2e782f9512f494bb9060b66dcc6ac49e7d2e1bfd946616fb45aa777904",
+    "allocation_trace_sha256": "90043019157341199a1d52f97961991d699e9c9ce4e46d20dd8166991f05b004",
+    "summary_sha256": "742ed0f5c6fbd9e6390b12e013188d0276f9f0d72b9abd84d85a85277eb5d7cf",
+    "roles_sha256": "cc74842a9d1f73648fac6216025fa7bc5721e6bab04ba119660bf5a74e397204"
+  },
+  "decision": "P4 p512 device work is fully explained. The next p512 device owners are routed Q4 gate/up, routed Q5 down, dense-other, dense Q8, GDN, and GR in that order; no unexplained multi-x bucket remains."
+}
