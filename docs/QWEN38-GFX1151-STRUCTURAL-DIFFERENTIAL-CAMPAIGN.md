@@ -340,8 +340,17 @@ Primary wide cells: C7/C8 against stock HIP and C5 against mainline Vulkan.
 Primary low-width cells: C1/C2 against Laurent. C6 is the near-parity
 control.
 
-- [ ] For wide MTP, decompose one full cycle into proposal, packed target,
+- [x] For wide MTP, decompose one full cycle into proposal, packed target,
   accept/commit, KV/state, host synchronization, scheduler, and API time.
+
+  Current-head decomposition: [`2026-09-01-gfx1151-qwen38-z2-wide-cycle-decomposition.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-wide-cycle-decomposition.json).
+  C5-C8 K3 complete wall reconciles exactly from grouped prefill/admission,
+  proposal, packed target, accept/synchronization/commit, provider update,
+  selected-state commit, and the measured scheduler/API residual. The dominant
+  owner is accept/synchronization/commit at 490.8-667.1 ms/cycle, versus
+  34.7-76.4 ms target and 28.0-36.7 ms proposal. `accept_ms` is an aggregate
+  synchronization boundary, not standalone accept-kernel time. K1 traces
+  constrain host/API attribution but are not substituted into K3.
 - [ ] Compare physical batch shape, token-budget use, target-row geometry,
   quant-family ownership, launch count, and accepted-token accounting against
   the external leader.

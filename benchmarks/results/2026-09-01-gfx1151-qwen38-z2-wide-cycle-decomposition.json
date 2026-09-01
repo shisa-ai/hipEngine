@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z2_wide_cycle_decomposition",
+  "date": "2026-09-01",
+  "status": "measured_decomposition",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "source": {
+    "commit": "07b4839e6682f00e4d5fa876985e419b52cff89c",
+    "dirty": false
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "commands": {
+    "one_group_full_suite": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-z0-run-20260901-201730/z0_budget_full_driver.py",
+    "accounting": ".venv/bin/python scripts/mtp_cycle_accounting.py --ar-mtp-raw /tmp/q38-z0-run-20260901-201730/budget-c5c8-full.json --output /tmp/q38-z0-run-20260901-201730/budget-c5c8-full-accounting.json"
+  },
+  "source_artifacts": [
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-pass-budgets.json",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-c6c8-k1-cycle-reconciliation.json"
+  ],
+  "semantics": {
+    "accept": "Telemetry includes synchronization of queued target kernels, device acceptance, selected-state handling, and bounded readback; it is not standalone accept-kernel time.",
+    "kv_state": "provider_update and selected_commit are measured separately; K1 state_commit kernels provide a device-side proxy.",
+    "scheduler_api": "K3 non-stage residual is a measured aggregate bound. K1 traced host windows/API calls localize synchronization and launch overhead but are not substituted into K3."
+  },
+  "wide_k3": {
+    "5": {
+      "cycles": 71.0,
+      "complete_wall_ms_per_cycle": 754.1591475986627,
+      "prefill_admission_ms_per_cycle": 124.93292690241631,
+      "decode_ms_per_cycle": 629.2262206962464,
+      "proposal_ms_per_cycle": 28.049010642423806,
+      "packed_target_ms_per_cycle": 34.72363632394366,
+      "accept_sync_commit_ms_per_cycle": 490.7760859506441,
+      "kv_provider_update_ms_per_cycle": 5.212658773583006,
+      "selected_state_commit_ms_per_cycle": 2.6221294579109258,
+      "scheduler_api_residual_bound_ms_per_cycle": 67.84269954774084,
+      "reconciled_sum_ms_per_cycle": 754.1591475986626,
+      "target_only_pass_budget_ms": 0,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant"
+    },
+    "6": {
+      "cycles": 71.0,
+      "complete_wall_ms_per_cycle": 862.7633019842365,
+      "prefill_admission_ms_per_cycle": 145.55405550898695,
+      "decode_ms_per_cycle": 717.2092464752495,
+      "proposal_ms_per_cycle": 34.57605054037987,
+      "packed_target_ms_per_cycle": 38.549138338028165,
+      "accept_sync_commit_ms_per_cycle": 552.4497270079094,
+      "kv_provider_update_ms_per_cycle": 6.2885097339486995,
+      "selected_state_commit_ms_per_cycle": 4.706891748765615,
+      "scheduler_api_residual_bound_ms_per_cycle": 80.6389291062178,
+      "reconciled_sum_ms_per_cycle": 862.7633019842365,
+      "target_only_pass_budget_ms": 0,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant"
+    },
+    "7": {
+      "cycles": 71.0,
+      "complete_wall_ms_per_cycle": 981.4162379832493,
+      "prefill_admission_ms_per_cycle": 162.73455761215635,
+      "decode_ms_per_cycle": 818.681680371093,
+      "proposal_ms_per_cycle": 36.6782974255022,
+      "packed_target_ms_per_cycle": 44.34025057746479,
+      "accept_sync_commit_ms_per_cycle": 639.6925162563336,
+      "kv_provider_update_ms_per_cycle": 7.196325851394467,
+      "selected_state_commit_ms_per_cycle": 5.853433949007115,
+      "scheduler_api_residual_bound_ms_per_cycle": 84.9208563113906,
+      "reconciled_sum_ms_per_cycle": 981.4162379832492,
+      "target_only_pass_budget_ms": 0,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant"
+    },
+    "8": {
+      "cycles": 71.0,
+      "complete_wall_ms_per_cycle": 1043.513975430831,
+      "prefill_admission_ms_per_cycle": 178.42809868727247,
+      "decode_ms_per_cycle": 865.0858767435584,
+      "proposal_ms_per_cycle": 33.39557556278059,
+      "packed_target_ms_per_cycle": 76.35920253521127,
+      "accept_sync_commit_ms_per_cycle": 667.1108204025355,
+      "kv_provider_update_ms_per_cycle": 6.954466317399916,
+      "selected_state_commit_ms_per_cycle": 6.912125238466641,
+      "scheduler_api_residual_bound_ms_per_cycle": 74.35368668716444,
+      "reconciled_sum_ms_per_cycle": 1043.513975430831,
+      "target_only_pass_budget_ms": 0,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant"
+    }
+  },
+  "k1_trace_localization": {
+    "6": {
+      "cycle_profile_host_ms": 263.27863974999997,
+      "traced_kernel_ms": 252.08818525000012,
+      "host_minus_kernel_ms": 11.190454499999845,
+      "intercycle_gap_ms": 18.401305166666667,
+      "proposal_ms": 17.883094202261418,
+      "state_commit_kernel_ms": 4.868379833333332,
+      "api_overlap_ms": {
+        "copy_or_memset_api": 190.44099258333287,
+        "launch": 22.845266749999983,
+        "other": 0.060713999999972755,
+        "synchronization": 7.402852916666664
+      },
+      "api_calls": {
+        "copy_or_memset_api": 308.5,
+        "launch": 1969.8333333333333,
+        "other": 1969.8333333333333,
+        "synchronization": 3.8333333333333335
+      },
+      "dma_copy_calls": {}
+    },
+    "8": {
+      "cycle_profile_host_ms": 239.17979291666666,
+      "traced_kernel_ms": 227.04567575000007,
+      "host_minus_kernel_ms": 12.134117166666584,
+      "intercycle_gap_ms": 20.116446333333332,
+      "proposal_ms": 19.005897571332753,
+      "state_commit_kernel_ms": 6.5732717499999955,
+      "api_overlap_ms": {
+        "copy_or_memset_api": 167.86378574999972,
+        "launch": 22.550723666666684,
+        "other": 0.06336008333331937,
+        "synchronization": 7.592227583333336
+      },
+      "api_calls": {
+        "copy_or_memset_api": 399.3333333333333,
+        "launch": 1862.3333333333333,
+        "other": 1862.3333333333333,
+        "synchronization": 3.8333333333333335
+      },
+      "dma_copy_calls": {}
+    }
+  },
+  "findings": [
+    "Across C5-C8 K3, accept/synchronization/commit is 490.8-667.1 ms/cycle, versus target 34.7-76.4 ms and proposal 28.0-36.7 ms; accept/non-target dataflow is the primary owner.",
+    "The per-cycle decomposition exactly reconciles complete wall using grouped prefill/admission, measured stages, and the named non-stage scheduler/API residual.",
+    "K1 traces cover 95% or more of profiled host windows with kernels and record no DMA copy event; intercycle gap nearly equals proposal. This constrains but does not split K3 residual.",
+    "No target-only pass budget exists for C5-C8; external accept/non-target comparison is required before target-kernel work."
+  ]
+}
