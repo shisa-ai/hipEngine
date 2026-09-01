@@ -2787,6 +2787,14 @@ hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_
 }
 
 extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_rowtile_col8_grouped<float, 8, true>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
 hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out(
     const void* x, const void* tiles, void* out, int64_t rows,
     int64_t in_features, int64_t out_features, hipStream_t stream) {
