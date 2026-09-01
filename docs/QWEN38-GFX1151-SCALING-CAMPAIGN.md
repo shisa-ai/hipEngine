@@ -2,8 +2,8 @@
 
 Status: **punchlist closed; post-closeout review corrections recorded
 2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01; extension W
-(dataflow-wall successor punchlist) opened 2026-09-01, W0 instrumentation done;
-extension Y (prefill sweep-multiplicity punchlist) opened 2026-09-01, no Y
+(dataflow-wall successor punchlist) opened 2026-09-01, W0 instrumentation done
+and W1 closed measured-blocked; extension Y (prefill sweep-multiplicity punchlist) opened 2026-09-01, no Y
 unit measured yet**.
 Successor to the closed
 [`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
@@ -643,18 +643,21 @@ are not started.
   re-sweep while Q4's bytes are already flat but its time is not. Applying
   W1's 1.25x ceiling sizes **33.9 s C6/R24 / 44.8 s C8/R32** of family time
   across the historical 71-cycle full suite, well above the remaining K1
-  wall gaps. W1 entry is open. W2/W5's overlapping non-family upper bound is
+  wall gaps. W1 entered from this bound and is now closed measured-blocked below.
+  W2/W5's overlapping non-family upper bound is
   2.47/3.39 s; W4's post-W1 proposal excess is only ~0.85/0.44 s. No perf
   claim. [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w0-sweep-economics.json).
-- [ ] W1 **Row-invariant wide verify owners (R20-R32).** Build GEMM-shaped
-  (M-tile-loop, MMQ-style) multi-row verify owners for Q4/Q5/Q6 at R20-R32 so
-  one weight-tile stream serves all rows — the external engines' verifier
-  shape, developed in-tree per `docs/KERNELS.md`. Gate: verify pass at R32
-  <= ~1.25x the R8 pass per family (flatness), exact or production-profile
-  numerical RED per `docs/EXECUTION-PROFILES.md`, strict fallback registered.
-  Entry: W0's curve confirms rows-scaling and sizes the bound. Note P3's
-  negative is about *prefill* integer bodies at rows256+; the R20-R32 decode
-  band is unmeasured territory.
+- [x] W1 **Row-invariant wide verify owners (R20-R32) — measured blocked.**
+  Screened all existing Q4/Q5/Q6 bodies, retained a default-off two-wave Q6
+  owner, and exhausted bounded wave/slab geometries. The owner passes full T2
+  C6/C8 gates and cuts R32 Q6 device time 33.5%, but measures 3.432x R32/R8
+  versus the <=1.25x gate. Passing requires 63.6% more R32 reduction. Even
+  perfect overlap of serial decode/LDS and WMMA stages bottoms at 1.716x, so
+  double buffering cannot close W1. Full-suite owner combinations were neutral
+  or negative. W1 reopens only if W2 changes the stage/multi-family lower bound;
+  strict fallback and automatic K0 remain unchanged.
+  [`Row-curve evidence`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-two-wave-rowcurve.json)
+  [`Pipeline bound`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w1-pipeline-bound.json).
 - [ ] W2 **Single-sweep multi-family layer dataflow.** Schedule each layer's
   Q4/Q5/Q6 stage kernels so the layer's weights stream once per verify pass
   (fused or co-scheduled sweep; persistent-kernel variants allowed). This is
