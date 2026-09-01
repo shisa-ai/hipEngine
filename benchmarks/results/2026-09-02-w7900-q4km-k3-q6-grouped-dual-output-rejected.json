@@ -1,0 +1,242 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_q6_grouped_dual_output_leaf_screen",
+  "date": "2026-09-02",
+  "status": "rejected_exact_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove the exact WG256 dual-output extension of the retained grouped planar-Q6 rowtiles. All nine actual admitted role/row cells lose, so halving output workgroups does not offset the larger scheduling unit.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "source": {
+    "base_commit": "2864d97207b0c37323f542039d177f79fbdf49ae",
+    "product_candidate_removed": true,
+    "raw_result": "/tmp/he-k3-q6-grouped-dual-screen.json",
+    "raw_result_sha256": "7d12d50e0031064c351d53c5f55ad18b5084baee850e73cb1676f14f6ca7b667",
+    "screen_script": "/tmp/he-k3-q6-grouped-dual-screen.py",
+    "screen_script_sha256": "8c2751fa63e0fb2612ae37f9097e9885889ec5df173bcc9343c0d29d1c2ea5eb"
+  },
+  "candidate": {
+    "mechanism": "One WG256 contains two independent retained WG128 groups for adjacent col8 halves of one T16 tile. Each output preserves its exact K/FMA order, wave32 reduction, ordered wave0..3 LDS sum, BF16 store, and row-chunk ownership.",
+    "control": "retained grouped WG128 R8-DPP/R6-shuffle owner",
+    "candidate": "unrouted grouped dual-output WG256 sibling",
+    "tradeoff": "half as many output workgroups with twice as many waves and twice the LDS per workgroup"
+  },
+  "protocol": {
+    "warmups": 5,
+    "sample_pairs": 30,
+    "launches_per_sample": 3,
+    "order": "alternating control/candidate and candidate/control",
+    "timing": "HIP event and synchronized operation-complete wall",
+    "rows": [
+      24,
+      30,
+      36
+    ],
+    "roles": [
+      "recurrent_qkv",
+      "full_v",
+      "ffn_down"
+    ],
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. PYTHONUNBUFFERED=1 .venv/bin/python /tmp/he-k3-q6-grouped-dual-screen.py"
+  },
+  "measurements": [
+    {
+      "role": "recurrent_qkv",
+      "tensor": "blk.0.attn_qkv.weight",
+      "rows": 24,
+      "shape_k_n": [
+        5120,
+        10240
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.34817550579706824,
+      "candidate_event_median_ms": 0.3930554986000061,
+      "event_speedup": 0.8858176696095273,
+      "event_pair_wins": 2,
+      "control_wall_median_ms": 0.35370467230677605,
+      "candidate_wall_median_ms": 0.39934879168868065,
+      "wall_speedup": 0.8857036246713192,
+      "wall_pair_wins": 2
+    },
+    {
+      "role": "recurrent_qkv",
+      "tensor": "blk.0.attn_qkv.weight",
+      "rows": 30,
+      "shape_k_n": [
+        5120,
+        10240
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.4614295164744059,
+      "candidate_event_median_ms": 0.503969669342041,
+      "event_speedup": 0.9155898549943025,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.4679396127661069,
+      "candidate_wall_median_ms": 0.5092485807836056,
+      "wall_speedup": 0.918882507332795,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "recurrent_qkv",
+      "tensor": "blk.0.attn_qkv.weight",
+      "rows": 36,
+      "shape_k_n": [
+        5120,
+        10240
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.5343370040257772,
+      "candidate_event_median_ms": 0.584430495897929,
+      "event_speedup": 0.9142866564565779,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.539415671179692,
+      "candidate_wall_median_ms": 0.5905263436337311,
+      "wall_speedup": 0.9134489544707931,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "full_v",
+      "tensor": "blk.3.attn_v.weight",
+      "rows": 24,
+      "shape_k_n": [
+        5120,
+        1024
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.03805350015560786,
+      "candidate_event_median_ms": 0.040487000097831086,
+      "event_speedup": 0.939894288627386,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.04269213726123174,
+      "candidate_wall_median_ms": 0.04514399915933609,
+      "wall_speedup": 0.9456879774995015,
+      "wall_pair_wins": 1
+    },
+    {
+      "role": "full_v",
+      "tensor": "blk.3.attn_v.weight",
+      "rows": 30,
+      "shape_k_n": [
+        5120,
+        1024
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.054613667229811355,
+      "candidate_event_median_ms": 0.0632070004940033,
+      "event_speedup": 0.8640445963733523,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.059950941552718476,
+      "candidate_wall_median_ms": 0.06872431064645448,
+      "wall_speedup": 0.8723396566482893,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "full_v",
+      "tensor": "blk.3.attn_v.weight",
+      "rows": 36,
+      "shape_k_n": [
+        5120,
+        1024
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.06138699998458226,
+      "candidate_event_median_ms": 0.06456716607014339,
+      "event_speedup": 0.9507463889292228,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.0665762151281039,
+      "candidate_wall_median_ms": 0.06991097082694371,
+      "wall_speedup": 0.9522999658080188,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "ffn_down",
+      "tensor": "blk.0.ffn_down.weight",
+      "rows": 24,
+      "shape_k_n": [
+        17408,
+        5120
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.5374436577161154,
+      "candidate_event_median_ms": 0.6101706624031067,
+      "event_speedup": 0.8808087488169916,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.5439408123493195,
+      "candidate_wall_median_ms": 0.6163984847565491,
+      "wall_speedup": 0.882449950479928,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "ffn_down",
+      "tensor": "blk.0.ffn_down.weight",
+      "rows": 30,
+      "shape_k_n": [
+        17408,
+        5120
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.765298326810201,
+      "candidate_event_median_ms": 0.8244656324386597,
+      "event_speedup": 0.9282355706526546,
+      "event_pair_wins": 2,
+      "control_wall_median_ms": 0.7697388840218384,
+      "candidate_wall_median_ms": 0.8301328246792158,
+      "wall_speedup": 0.9272478585812878,
+      "wall_pair_wins": 2
+    },
+    {
+      "role": "ffn_down",
+      "tensor": "blk.0.ffn_down.weight",
+      "rows": 36,
+      "shape_k_n": [
+        17408,
+        5120
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 1.0033270120620728,
+      "candidate_event_median_ms": 1.076993981997172,
+      "event_speedup": 0.9315994600095244,
+      "event_pair_wins": 1,
+      "control_wall_median_ms": 1.0081371292471886,
+      "candidate_wall_median_ms": 1.0822947757939496,
+      "wall_speedup": 0.9314811008929056,
+      "wall_pair_wins": 1
+    }
+  ],
+  "summary": {
+    "all_exact": true,
+    "cells": 9,
+    "all_event_medians_positive": false,
+    "all_wall_medians_positive": false,
+    "minimum_event_speedup": 0.8640445963733523,
+    "maximum_event_speedup": 0.9507463889292228,
+    "minimum_wall_speedup": 0.8723396566482893,
+    "maximum_wall_speedup": 0.9522999658080188,
+    "minimum_event_pair_wins": 0,
+    "minimum_wall_pair_wins": 0
+  },
+  "validation": {
+    "strict_fixture": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python -m pytest -q 'tests/test_gguf_q6_k_t16_gemv_decode.py::test_q6_planar_grouped_dual_output_matches_retained_bits' 'tests/test_gguf_q6_k_t16_gemv_decode.py::test_p9_h3_q6_t16_registry_key_resolves' \u2014 3 passed",
+    "runtime_marker": "not run because all nine actual-weight cells failed the leaf gate",
+    "full_c5_c8": "not run because the marker admission gate was not earned"
+  },
+  "limitations": [
+    "This is a bounded actual-weight leaf rejection, not a complete workload benchmark.",
+    "The attempted rocprof resource probe omitted require-cached build controls and was terminated; no resource claim is made.",
+    "The retained grouped WG128 R8/R6 owners remain unchanged."
+  ]
+}
