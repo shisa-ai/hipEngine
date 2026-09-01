@@ -63,6 +63,15 @@ should be removed or collapsed.
   same-build rollback. Remove the environment override after the next stable
   milestone audit; keep the exact padded composition available.
 
+## 2026-09-02 gfx1100 fused Q4 row32 / exact C8 target rows — open
+
+- `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS=1` removes four inactive C8/K3
+  rows only together with the exact two-active-wave fused gate/up+SiLU row32
+  owner. Explicit zero retains padded R36 and the fused row48 owner.
+- Remove the flag/policy, R32 maps, fused sibling, and tests if the tracked-clean
+  C8 category+heldout gate fails. If retained, promote the exact-C8 capability
+  while keeping padded R36/row48 as rollback.
+
 ## 2026-09-02 gfx1100 packed verifier model graph — closed (rejected)
 
 - Removed `HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH` and all cache/runtime/test

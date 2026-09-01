@@ -405,18 +405,23 @@ class Qwen35GGUFMTP2Adapter:
                     (),
                 )
             )
-            wide_exact_policy = backend_package_capability(
-                str(self.generator.backend),
+            for capability in (
                 "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
-                {},
-            )
-            if wide_exact_policy and _env_enabled(
-                str(wide_exact_policy["enabled_env"]),
-                default=bool(wide_exact_policy.get("enabled_default", False)),
+                "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
             ):
-                exact_target_rows.update(
-                    int(value) for value in wide_exact_policy.get("rows", ())
+                wide_exact_policy = backend_package_capability(
+                    str(self.generator.backend), capability, {}
                 )
+                if wide_exact_policy and _env_enabled(
+                    str(wide_exact_policy["enabled_env"]),
+                    default=bool(
+                        wide_exact_policy.get("enabled_default", False)
+                    ),
+                ):
+                    exact_target_rows.update(
+                        int(value)
+                        for value in wide_exact_policy.get("rows", ())
+                    )
         self.production_exact_target_row_counts = tuple(sorted(exact_target_rows))
         self._target_pad_token_scratch: DeviceBuffer | None = None
         self._target_pad_token_capacity = 0

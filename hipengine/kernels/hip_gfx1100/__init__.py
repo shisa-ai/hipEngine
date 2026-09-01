@@ -284,6 +284,7 @@ GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48",
     "enabled_default": True,
     "rows_to_variant": {
+        32: "dense_dual_wmma_prefill_row32_bf16_bf16_out",
         36: "dense_dual_wmma_prefill_row48_bf16_bf16_out",
     },
 }
@@ -366,6 +367,7 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS = {
     24: (8, 8, 8),
     28: (8, 8, 8, 4),
     30: (8, 8, 8, 6),
+    32: (8, 8, 8, 8),
     36: (8, 8, 8, 6, 6),
 }
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES = frozenset(
@@ -385,6 +387,13 @@ GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS",
     "enabled_default": True,
     "rows": frozenset({28}),
+}
+# Default-off C8 screen. R32 is admitted only together with the exact
+# two-active-wave fused gate/up owner; zero retains padded R36 + row48.
+GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS",
+    "enabled_default": False,
+    "rows": frozenset({32}),
 }
 # The production dense adapter owns one physical request group through C8. The
 # adapter derives frontier/accept workspaces from this package capability and
@@ -1074,6 +1083,7 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
     "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
+    "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
     "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",

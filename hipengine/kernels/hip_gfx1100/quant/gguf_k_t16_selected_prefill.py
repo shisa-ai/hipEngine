@@ -20,6 +20,7 @@ from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY,
     GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY,
+    GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS,
@@ -77,6 +78,9 @@ _Q4_DENSE_WMMA_SHARED_B_ROW64_BF16 = (
 )
 _Q4_DENSE_DUAL_WMMA_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out"
+)
+_Q4_DENSE_DUAL_WMMA_ROW32_SILU_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out"
 )
 _Q4_DENSE_DUAL_WMMA_ROW48_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out"
@@ -466,14 +470,17 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         and int(rows) % 6 == 0
         and shape in rowtile_shapes
     )
-    wide_exact_rows = GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY["rows"]
+    wide_exact_rows = (
+        GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY["rows"]
+        | GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY["rows"]
+    )
     if (
         physical_exact_rowtiles_enabled()
         and int(rows) in wide_exact_rows
         and shape in rowtile_shapes
         and row6_chunk_fn is gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
     ):
-        prefix_rows = 24
+        prefix_rows = 32 if int(rows) == 32 else 24
         gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out(
             x_ptr,
             tiles_ptr,
@@ -751,6 +758,36 @@ def gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
 
     _launch_q4_t16_dense_dual_wmma_silu(
         _Q4_DENSE_DUAL_WMMA_SILU_BF16,
+        x_ptr,
+        tiles_a_ptr,
+        tiles_b_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out(
+    x_ptr: int,
+    tiles_a_ptr: int,
+    tiles_b_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact two-active-wave 32-row Q4T16 gate/up retile."""
+
+    _launch_q4_t16_dense_dual_wmma_silu(
+        _Q4_DENSE_DUAL_WMMA_ROW32_SILU_BF16,
         x_ptr,
         tiles_a_ptr,
         tiles_b_ptr,
@@ -1382,6 +1419,10 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out,
         ),
         (
+            "dense_dual_wmma_prefill_row32_bf16_bf16_out",
+            gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out,
+        ),
+        (
             "dense_dual_wmma_prefill_row48_bf16_bf16_out",
             gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out,
         ),
@@ -1507,6 +1548,7 @@ __all__ = [
     "build_gguf_k_t16_selected_prefill",
     "gguf_q4_k_t16_selected_expert_major_wmma_comp_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out",

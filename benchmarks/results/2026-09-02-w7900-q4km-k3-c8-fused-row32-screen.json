@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_fused_q4_row32_exact_c8_screen",
+  "date": "2026-09-02",
+  "status": "candidate_pending_full_gate",
+  "performance_claim": false,
+  "decision": "Keep a default-off combined exact-C8 R32 candidate after the two-active-wave fused Q4 gate/up owner restores the transition lost by the prior unpadded screen. Run a tracked-clean counterbalanced C8 category+heldout gate before retention; zero retains padded R36 plus fused row48.",
+  "source": {
+    "base_commit": "1a270b049",
+    "dirty_candidate": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "leaf": {
+    "protocol": {
+      "warmups": 5,
+      "sample_pairs": 40,
+      "launches_per_event_sample": 3,
+      "order": "alternating control/candidate and candidate/control",
+      "timing": "HIP event operation-complete kernel launch"
+    },
+    "layers": {
+      "0": {
+        "tensors": [
+          "blk.0.ffn_gate.weight",
+          "blk.0.ffn_up.weight"
+        ],
+        "shape_k_n": [
+          5120,
+          17408
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_median_ms": 0.6624720096588135,
+        "candidate_median_ms": 0.48564400275548303,
+        "candidate_speedup": 1.364110348115143,
+        "candidate_pair_wins": 40,
+        "sample_pairs": 40
+      },
+      "32": {
+        "tensors": [
+          "blk.32.ffn_gate.weight",
+          "blk.32.ffn_up.weight"
+        ],
+        "shape_k_n": [
+          5120,
+          17408
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_median_ms": 0.6518386602401733,
+        "candidate_median_ms": 0.4784706632296244,
+        "candidate_speedup": 1.3623377781206774,
+        "candidate_pair_wins": 40,
+        "sample_pairs": 40
+      },
+      "64": {
+        "tensors": [
+          "blk.64.ffn_gate.weight",
+          "blk.64.ffn_up.weight"
+        ],
+        "shape_k_n": [
+          5120,
+          17408
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_median_ms": 0.6586119929949442,
+        "candidate_median_ms": 0.4841639995574951,
+        "candidate_speedup": 1.3603076511200483,
+        "candidate_pair_wins": 40,
+        "sample_pairs": 40
+      }
+    },
+    "summary": {
+      "all_exact": true,
+      "cells": 3,
+      "all_candidate_medians_positive": true,
+      "minimum_speedup": 1.3603076511200483,
+      "maximum_speedup": 1.364110348115143,
+      "minimum_pair_wins": 40
+    }
+  },
+  "marker": {
+    "protocol": "cached-only rocprofv3 kernel+ROCTx, one train prompt, C8, K3/D12, sequential control then candidate",
+    "control": {
+      "physical_rows": [
+        36,
+        36,
+        24
+      ],
+      "acceptance": [
+        3,
+        3,
+        2
+      ],
+      "complete_wall_seconds": 1.409807838499546,
+      "generated_ids_sha256": "244ee39aaaaea50f690944dd79ba3adc1e469ea549149f3af98e44ec4ea73d82",
+      "generated_ids_equal_ar": true,
+      "sums": {
+        "target_wall_ms": 590.042102,
+        "device_union_ms": 491.26173099999994,
+        "kernel_sum_ms": 529.1422400000002,
+        "kernel_launches": 4743,
+        "q4_sum_ms": 258.24704099999997,
+        "q5_sum_ms": 53.41112399999999,
+        "q6_sum_ms": 149.62124299999996,
+        "fused_gate_up_sum_ms": 95.90525299999996,
+        "fused_gate_up_launches": 128
+      }
+    },
+    "candidate": {
+      "physical_rows": [
+        32,
+        32,
+        24
+      ],
+      "acceptance": [
+        3,
+        3,
+        2
+      ],
+      "complete_wall_seconds": 1.2670269152149558,
+      "generated_ids_sha256": "244ee39aaaaea50f690944dd79ba3adc1e469ea549149f3af98e44ec4ea73d82",
+      "generated_ids_equal_ar": true,
+      "sums": {
+        "target_wall_ms": 519.013679,
+        "device_union_ms": 441.459714,
+        "kernel_sum_ms": 480.42316600000015,
+        "kernel_launches": 4714,
+        "q4_sum_ms": 223.88038200000017,
+        "q5_sum_ms": 52.583858000000006,
+        "q6_sum_ms": 139.727361,
+        "fused_gate_up_sum_ms": 70.99126400000002,
+        "fused_gate_up_launches": 128
+      }
+    },
+    "deltas_pct": {
+      "complete_throughput": 11.26897318202329,
+      "target_wall_ms": -12.037856749415477,
+      "device_union_ms": -10.137573081181017,
+      "kernel_sum_ms": -9.207179150921696,
+      "q4_sum_ms": -13.307668063464783,
+      "q5_sum_ms": -1.548864614794443,
+      "q6_sum_ms": -6.6126185036438745,
+      "fused_gate_up_sum_ms": -25.977710522279686
+    },
+    "checks": {
+      "candidate_ar_exact": true,
+      "control_ar_exact": true,
+      "candidate_control_ids_equal": true,
+      "acceptance_equal": true
+    }
+  },
+  "limitations": [
+    "Dirty candidate screen: not a retained performance claim.",
+    "Full tracked-clean both-order C8 category+heldout qualification remains binding."
+  ]
+}

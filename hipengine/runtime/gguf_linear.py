@@ -1956,8 +1956,19 @@ def _q4_t16_dual_wmma_silu_dispatch(
 ) -> KernelKey | None:
     """Resolve the operation-complete dense Q4T16 bulk FFN owner."""
 
+    physical_variant = None
     if (
-        rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS
+        not expanded_metadata
+        and dispatch_a.key.quant == dispatch_b.key.quant
+        == "gguf_q4_k_t16_v1"
+        and physical_exact_rowtiles_enabled()
+    ):
+        physical_variant = _q4_t16_physical_dual_silu_variant(
+            dispatch_a.key.backend,
+            rows,
+        )
+    if (
+        (rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS and physical_variant is None)
         or in_features != _PACK8_DUAL_ROWTILE_SILU_IN_FEATURES
         or out_features != _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES
         or dispatch_a.abi != "t16"
@@ -1978,10 +1989,11 @@ def _q4_t16_dual_wmma_silu_dispatch(
         and dispatch_a.key.quant == "gguf_q4_k_t16_v1"
         and _q4_t16_dual_silu_retile_enabled()
     ):
-        physical_variant = _q4_t16_physical_dual_silu_variant(
-            dispatch_a.key.backend,
-            rows,
-        )
+        if physical_variant is None:
+            physical_variant = _q4_t16_physical_dual_silu_variant(
+                dispatch_a.key.backend,
+                rows,
+            )
         if physical_variant is not None:
             variants.append(physical_variant)
         if rows <= 64:
@@ -3874,15 +3886,18 @@ def launch_gguf_linear_pair(
         and int(rows) >= 12
         and q4_t16_physical_extra_rowtiles_enabled()
     ):
-        wide_exact_policy = backend_package_capability(
-            resolved_backend,
+        wide_exact_rows: set[int] = set()
+        for capability in (
             "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
-            {},
-        )
-        if (
-            physical_exact_rowtiles_enabled()
-            and int(rows) in wide_exact_policy.get("rows", ())
+            "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
         ):
+            wide_exact_policy = backend_package_capability(
+                resolved_backend, capability, {}
+            )
+            wide_exact_rows.update(
+                int(value) for value in wide_exact_policy.get("rows", ())
+            )
+        if physical_exact_rowtiles_enabled() and int(rows) in wide_exact_rows:
             for weight, output in (
                 (weight_a, out_a_ptr),
                 (weight_b, out_b_ptr),
