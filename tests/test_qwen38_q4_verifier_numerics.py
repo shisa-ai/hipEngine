@@ -40,13 +40,13 @@ def test_q4_verifier_numerics_accepts_c3_tail_budget_and_pads_final_group() -> N
     )
 
 
-def test_q4_verifier_numerics_accepts_gfx1100_r36_isolated_q4_route() -> None:
+def test_q4_verifier_numerics_accepts_gfx1100_c8_isolated_q4_route() -> None:
     args = gate.build_parser().parse_args(
         (
             "--backend",
             "hip_gfx1100",
             "--concurrency",
-            "9",
+            "8",
             "--candidate-budget",
             "3",
             "--candidate-state",
@@ -57,7 +57,7 @@ def test_q4_verifier_numerics_accepts_gfx1100_r36_isolated_q4_route() -> None:
     )
 
     assert args.backend == "hip_gfx1100"
-    assert args.concurrency * (args.candidate_budget + 1) == 36
+    assert args.concurrency * (args.candidate_budget + 1) == 32
     assert args.candidate_state == "fp32"
 
 

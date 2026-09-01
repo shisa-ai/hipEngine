@@ -528,7 +528,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--concurrency", type=int, choices=(2, 3, 9), default=2)
+    parser.add_argument("--concurrency", type=int, choices=(2, 3, 8), default=2)
     parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=3)
     parser.add_argument(
         "--candidate-state",
