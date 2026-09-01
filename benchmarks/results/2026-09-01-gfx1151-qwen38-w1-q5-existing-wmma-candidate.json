@@ -100,5 +100,26 @@
       "repeat_passed": true,
       "raw_sha256": "50363162df5b8c18e726890dfe8937ffaf736f4c4a62fa91319c30c2e473aa3c"
     }
+  },
+  "valid_route_full_suite": {
+    "baseline": {
+      "C6_mtp_tok_s": 33.6342520744,
+      "C8_mtp_tok_s": 36.6625089162,
+      "C6_target_ms": 2193.36182,
+      "C8_target_ms": 2295.778182
+    },
+    "q5q6_candidate": {
+      "C6_mtp_tok_s": 33.5775405983,
+      "C8_mtp_tok_s": 36.6252215991,
+      "C6_target_ms": 2223.425162,
+      "C8_target_ms": 2301.45232
+    },
+    "delta_percent": {
+      "C6_mtp": -0.1686,
+      "C8_mtp": -0.1017,
+      "C6_target_ms": 1.3707,
+      "C8_target_ms": 0.2472
+    },
+    "decision": "reject Q5 addition; actual transaction target stage regresses despite isolated leaf gain; keep default off"
   }
 }
