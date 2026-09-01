@@ -42,14 +42,15 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-02 gfx1100 packed verifier model graph — open
+## 2026-09-02 gfx1100 packed verifier model graph — closed (rejected)
 
-- `HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH=1` captures the complete stable
-  packed target-verifier model body once per physical-row/context bucket and
-  replays it on the provider stream. The candidate is default-off pending a
-  same-build C8 marker and complete C5-C8 qualification.
-- If retained, promote through gfx1100 capability metadata. If rejected, remove
-  the flag, cache field, helpers, and tests.
+- Removed `HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH` and all cache/runtime/test
+  paths. Exact same-build C8 tracing showed only 0.19–0.62% target-wall gains on
+  cache hits, while a naturally changing physical geometry forced a new
+  1,500-node capture and regressed that cycle by 19.53% and complete wall by
+  2.47%. Per-layer graph granularity had already regressed target wall by 0.52%.
+- Rejection evidence:
+  `benchmarks/results/2026-09-02-w7900-q4km-k3-packed-verifier-graphs-rejected.json`.
 
 ## 2026-09-02 gfx1100 direct resident verifier linear state — closed
 
