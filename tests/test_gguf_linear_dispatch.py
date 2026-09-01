@@ -5007,10 +5007,16 @@ def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
     in_features: int,
     out_features: int,
     rows: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
 
     register_gfx1151_kernels(replace=True)
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_native_split_row_chunk",
+        lambda *args, **kwargs: 8,
+    )
     weight = _fake_weight(
         layout=(
             LAYOUT_GGUF_Q6_K_T16
