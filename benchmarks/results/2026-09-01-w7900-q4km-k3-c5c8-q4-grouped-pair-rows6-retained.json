@@ -1,0 +1,443 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_q4_grouped_pair_rows6_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote exact grouped-grid ownership through the physical equal-width Q4 pair seam. Every C5-C8 aggregate, category, and heldout slice improves, with exact IDs, acceptance, ownership, and lifecycle.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "26be5b87f2a6f114af4cf9f02cd61c59c62faad4",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-q4-grouped-pair-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "3920954f547c853b66e4d56e6154a2272e5ca9879fe25e6bb139a4124a1aefdf"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-q4-grouped-pair-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "138cd64952fc29dfa2963ed83a6ddc91201669c6852921a56412a1174eea8c26"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-q4-grouped-pair-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "b05bcf19b8e28f2b927d96d12fda9e480bb074d743231415681b8b5e61202f5d"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-q4-grouped-pair-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "eeff98354dcd75c4fff4441dac634e02258584ada7448bf8b7ab30f1fcc965b7"
+      }
+    }
+  },
+  "candidate": {
+    "variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+    "scope": "gfx1100 production physical equal-width Q4 pair fallback, rows divisible by six above R6, admitted retained-two-wave shapes",
+    "mechanism": "Launch both pair outputs over the full physical row count through the grouped-grid sibling instead of interleaving repeated R6 chunks. Each grid-y owner preserves the retained WG64 block arithmetic.",
+    "candidate_flag_during_gate": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=1",
+    "rollback": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=0",
+    "strict_fallback": "interleaved repeated dense_rowtile16_w2_bf16_bf16_out R6 launches for both outputs",
+    "default_after_decision": true
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=0",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "cross_arm_generated_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "cross_arm_rows_compared": 520,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_row": true,
+    "recoverable_failure_count": 0,
+    "all_processes_drained": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 40,
+        "cells": 40,
+        "median_delta_pct": 3.956773531883806,
+        "minimum_delta_pct": 0.6237921673013735,
+        "maximum_delta_pct": 5.029080489112614,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 2.552677278162152,
+        "minimum_delta_pct": -0.3994079671819528,
+        "maximum_delta_pct": 4.731532006335337,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    ]
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 62.98530122602892,
+        "candidate_tok_s": 65.20826338365366,
+        "candidate_delta_pct": 3.529334804079798,
+        "rollback_wall_seconds": 38.10412831697613,
+        "candidate_wall_seconds": 36.80515130236745,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 63.00522303618773,
+          "candidate_tok_s": 65.9002317992199,
+          "candidate_delta_pct": 4.594871065481954
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 62.965392010161516,
+          "candidate_tok_s": 64.53067563989573,
+          "candidate_delta_pct": 2.485942800898644
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 65.1972204174134,
+          "candidate_tok_s": 67.46910241544212,
+          "candidate_delta_pct": 3.4846301475483177
+        },
+        "general_en": {
+          "rollback_tok_s": 67.47174681268658,
+          "candidate_tok_s": 69.91831959652069,
+          "candidate_delta_pct": 3.6260700210211327
+        },
+        "general_ja": {
+          "rollback_tok_s": 59.73207440606587,
+          "candidate_tok_s": 61.91482533613328,
+          "candidate_delta_pct": 3.654235939017969
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 58.326030306100684,
+          "candidate_tok_s": 60.311534928739235,
+          "candidate_delta_pct": 3.4041483917530924
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 62.99351752718494,
+          "candidate_tok_s": 65.18968383873126,
+          "candidate_delta_pct": 3.486337003801321
+        },
+        "heldout": {
+          "rollback_tok_s": 62.972980792232114,
+          "candidate_tok_s": 65.23615256693716,
+          "candidate_delta_pct": 3.593877479250951
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 70.84288103543986,
+        "candidate_tok_s": 73.24051602209273,
+        "candidate_delta_pct": 3.38444025935849,
+        "rollback_wall_seconds": 40.65334382094443,
+        "candidate_wall_seconds": 39.32249738834798,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 70.8855706385934,
+          "candidate_tok_s": 73.77222751894446,
+          "candidate_delta_pct": 4.072277128258639
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 70.80024281948265,
+          "candidate_tok_s": 72.7164142729779,
+          "candidate_delta_pct": 2.706447573041326
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 70.40981565987417,
+          "candidate_tok_s": 72.98771139291118,
+          "candidate_delta_pct": 3.661273231405615
+        },
+        "general_en": {
+          "rollback_tok_s": 77.36978496347896,
+          "candidate_tok_s": 79.98816409092993,
+          "candidate_delta_pct": 3.384239892468255
+        },
+        "general_ja": {
+          "rollback_tok_s": 69.41808296847398,
+          "candidate_tok_s": 71.79248054152659,
+          "candidate_delta_pct": 3.4204309187433557
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 67.37100430728142,
+          "candidate_tok_s": 69.2738258334843,
+          "candidate_delta_pct": 2.824392401104836
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 70.42295769635267,
+          "candidate_tok_s": 72.91213010753653,
+          "candidate_delta_pct": 3.534603618775267
+        },
+        "heldout": {
+          "rollback_tok_s": 71.48224060242862,
+          "candidate_tok_s": 73.73867888197164,
+          "candidate_delta_pct": 3.156641790361503
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 68.57077960940975,
+        "candidate_tok_s": 70.94319015858169,
+        "candidate_delta_pct": 3.4597981278404077,
+        "rollback_wall_seconds": 49.00046374183148,
+        "candidate_wall_seconds": 47.36183969862759,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 68.72853038327172,
+          "candidate_tok_s": 71.26453058428353,
+          "candidate_delta_pct": 3.6898798604735994
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 68.41375133954237,
+          "candidate_tok_s": 70.62473465046855,
+          "candidate_delta_pct": 3.2317820140470133
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 68.91001571867706,
+          "candidate_tok_s": 71.29922802199194,
+          "candidate_delta_pct": 3.4671481037948926
+        },
+        "general_en": {
+          "rollback_tok_s": 76.14996587219514,
+          "candidate_tok_s": 78.8692361823904,
+          "candidate_delta_pct": 3.57094094403021
+        },
+        "general_ja": {
+          "rollback_tok_s": 64.05078804646412,
+          "candidate_tok_s": 66.04871570183731,
+          "candidate_delta_pct": 3.1192866103752603
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 66.00918474795803,
+          "candidate_tok_s": 68.45292875032885,
+          "candidate_delta_pct": 3.702127229266261
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 68.38751759460058,
+          "candidate_tok_s": 70.64674348301521,
+          "candidate_delta_pct": 3.3035646970069443
+        },
+        "heldout": {
+          "rollback_tok_s": 68.84752168124625,
+          "candidate_tok_s": 71.39255451145252,
+          "candidate_delta_pct": 3.6966222865499665
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 74.1334373085387,
+        "candidate_tok_s": 74.67064024245262,
+        "candidate_delta_pct": 0.7246432290440197,
+        "rollback_wall_seconds": 51.79848850145936,
+        "candidate_wall_seconds": 51.425834672525525,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 74.18420099618392,
+          "candidate_tok_s": 74.97630660407117,
+          "candidate_delta_pct": 1.067755124744152
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 74.08274304780016,
+          "candidate_tok_s": 74.36745606669996,
+          "candidate_delta_pct": 0.3843175983860192
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 75.45952412196347,
+          "candidate_tok_s": 75.92262031172277,
+          "candidate_delta_pct": 0.6137014447782807
+        },
+        "general_en": {
+          "rollback_tok_s": 78.61445606469323,
+          "candidate_tok_s": 79.26935979913992,
+          "candidate_delta_pct": 0.833057642614432
+        },
+        "general_ja": {
+          "rollback_tok_s": 70.49257789900132,
+          "candidate_tok_s": 71.03395958365057,
+          "candidate_delta_pct": 0.7679981365200206
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 71.24802962213715,
+          "candidate_tok_s": 71.81264828583555,
+          "candidate_delta_pct": 0.792469162575915
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 73.90442316975263,
+          "candidate_tok_s": 74.44455478434891,
+          "candidate_delta_pct": 0.7308515396373894
+        },
+        "heldout": {
+          "rollback_tok_s": 74.47963219293531,
+          "candidate_tok_s": 75.01235501317804,
+          "candidate_delta_pct": 0.7152597355243762
+        }
+      }
+    }
+  },
+  "inherited_kernel_evidence": {
+    "artifact": "benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-q4-grouped-rows6-retained.json",
+    "contract": "Same grouped-grid kernel body, previously exact for all 21 actual Q4 role x R24/R30/R36 leaf cells; this gate qualifies the distinct pair dispatch seam."
+  },
+  "profiling": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=<1-or-0> PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "source_commit": "26be5b87f2a6f114af4cf9f02cd61c59c62faad4",
+    "same_build": true,
+    "cached_build_required": true,
+    "generated_ids_and_acceptance_equal": true,
+    "rollback": {
+      "raw_child": "/tmp/he-q4-grouped-pair-c8-profile-rollback/child.json",
+      "raw_child_sha256": "29d5fbfd91f0b271051ca7fe368002b4fef1c6e67daf7fdbd36c3c6fc7926894",
+      "raw_kernel_trace": "/tmp/he-q4-grouped-pair-c8-profile-rollback/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "33703add946be9925aade5c4acc7c5f3e580f53bfef2b39f855a3c0a6c88f336",
+      "raw_marker_trace": "/tmp/he-q4-grouped-pair-c8-profile-rollback/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "d9d2ce5c23b952b7db025385cc66c48cf5456498c22cace22646f03108196c63",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 188.58807,
+      "complete_wall_seconds": 1.396714748814702,
+      "kernel_launches": 2266,
+      "q4_two_wave_launches": 720,
+      "grouped_q4_launches": 144,
+      "repeated_r6_q4_launches": 576,
+      "q4_device_sum_ms": 79.794437
+    },
+    "candidate": {
+      "raw_child": "/tmp/he-q4-grouped-pair-c8-profile/child.json",
+      "raw_child_sha256": "4e66a8a55f54ab54ed408743faa7c723ce70b5b3cbaba646aaaa10851085834e",
+      "raw_kernel_trace": "/tmp/he-q4-grouped-pair-c8-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "cba15591e63dbc8c81368c9ec93bf862b1fed8ae6539a13bc046668277c73e91",
+      "raw_marker_trace": "/tmp/he-q4-grouped-pair-c8-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "6a22acfe5e2d52a65d30b1385d9fcee50de6a07db60f6fe462d783eaa05b4df4",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 178.703671,
+      "complete_wall_seconds": 1.383318044245243,
+      "kernel_launches": 1832,
+      "q4_two_wave_launches": 288,
+      "grouped_q4_launches": 288,
+      "repeated_r6_q4_launches": 0,
+      "q4_device_sum_ms": 74.394221
+    },
+    "deltas": {
+      "complete_throughput_pct": 0.9684471785205595,
+      "target_host_marker_pct": -5.241264200858497,
+      "target_host_marker_ms": -9.884398999999974,
+      "q4_device_sum_pct": -6.767659755529076,
+      "q4_two_wave_launches": -432,
+      "repeated_r6_q4_launches": -576,
+      "total_kernel_launches": -434
+    }
+  },
+  "validation": {
+    "routing_tests": "uv run pytest -q tests/test_gguf_linear_dispatch.py::<physical pair grouped/default/rollback nodes>",
+    "full_gate_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "One rollback-first prompt cell measured -0.40% while its aggregate width/category/heldout slices and 39/40 other cells were positive; the exact device/marker launch reduction is deterministic."
+  ]
+}

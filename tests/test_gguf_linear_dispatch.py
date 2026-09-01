@@ -6524,11 +6524,11 @@ def test_physical_q4_pair_grouped_rows6_policy_consolidates_both_outputs(
     ]
 
 
-def test_gfx1100_grouped_q4_pair_rows6_policy_is_shape_scoped(
+def test_gfx1100_grouped_q4_pair_rows6_policy_defaults_on_and_is_shape_scoped(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     env = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6"
-    monkeypatch.setenv(env, "1")
+    monkeypatch.delenv(env, raising=False)
     gguf_linear_module._rowtile_variant_policy_env_cache.clear()
     try:
         assert gguf_linear_module._q4_t16_grouped_pair_rows6_variant(
