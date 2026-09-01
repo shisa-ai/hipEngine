@@ -690,11 +690,12 @@ are not started.
   owned by W1; crediting it here would double-count target math. No fusion is
   justified.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w5-accept-commit-bound.json).
-- [ ] W6 **Width-6/8 prompt-streaming engagement.** Iteration 5's C6
-  streaming repeated ~+4.0% (38.616/38.599/38.602) and was reverted only
-  because C8 never engaged and failed the compound minimum. Extend engagement
-  to width 8 and re-screen as a compound candidate; cheap and independent of
-  W1-W5.
+- [x] W6 **Width-6/8 prompt-streaming engagement — compound blocked.** C6
+  streaming repeatedly measured 38.616/38.599/38.602 tok/s (~+4.0%), while C8
+  never engaged. Even granting C8 the same 4% gain lifts retained K1 ratios
+  only to 0.966x/0.956x at C6/C8, still below 1.15x. Implementing C8 engagement
+  cannot close the compound objective; reverted C6 evidence remains preserved.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w6-prompt-streaming-bound.json).
 - [ ] W7 **(Conditional) multi-candidate/tree drafts.** After W1 flatness,
   extra candidates add rows, not sweeps (SGLang-style `bs x tree` verify).
   Opens only with a prompt-independent policy and the full production gates;
