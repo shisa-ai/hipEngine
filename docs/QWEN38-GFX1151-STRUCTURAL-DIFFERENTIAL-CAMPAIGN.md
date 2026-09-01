@@ -372,8 +372,10 @@ control.
   this item. The pinned fork exposes raw response tokens and verbose per-rank
   MTP proposals, but not `LLAMA_MTP_TOKEN_TRACE`; the next unit must segment
   verbose records by request and compare first-cycle K3 proposals on a
-  Laurent-owned D24 teacher trajectory. No target-kernel change is admitted
-  before this capture.
+  Laurent-owned D24 teacher trajectory. `llamacpp_mtp_draft_trace.py` now
+  records request indices, prompt-token counts, and per-request draft-call
+  counts with host-only RED/GREEN coverage. No target-kernel change is admitted
+  before the full capture.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.

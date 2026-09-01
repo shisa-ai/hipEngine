@@ -54,6 +54,30 @@ slot print_timing: id  3 | task 0 | draft acceptance = 0.00000 (    0 accepted /
     assert trace["calls"][1]["accepted"] == 0
 
 
+def test_parse_llamacpp_mtp_draft_trace_segments_calls_by_request() -> None:
+    text = """
+slot update_slots: id 1 | task 7 | new prompt, task.n_tokens = 11
+ - seq_id 1, draft candidate   0, pos   0:    101 (   0.900) 'a'
+common_speculative_draft: called impl draft-mtp, hist size = 11, call_count = 1, gen = 1
+slot update_slots: id 1 | task 7 | accepted 1/1 draft tokens, new n_tokens = 12
+slot update_slots: id 2 | task 8 | new prompt, task.n_tokens = 23
+ - seq_id 2, draft candidate   0, pos   0:    202 (   0.800) 'b'
+common_speculative_draft: called impl draft-mtp, hist size = 23, call_count = 1, gen = 1
+slot update_slots: id 2 | task 8 | accepted 0/1 draft tokens, new n_tokens = 24
+"""
+
+    trace = parse_llamacpp_mtp_draft_trace(text, source_log="two-requests")
+
+    assert trace["requests"] == [
+        {"request_index": 0, "line": 2, "prompt_tokens": 11, "draft_call_count": 1},
+        {"request_index": 1, "line": 6, "prompt_tokens": 23, "draft_call_count": 1},
+    ]
+    assert [call["request_index"] for call in trace["calls"]] == [0, 1]
+    assert [call["request_prompt_tokens"] for call in trace["calls"]] == [11, 23]
+    assert trace["calls"][0]["accepted"] == 1
+    assert trace["calls"][1]["accepted"] == 0
+
+
 def test_committed_llamacpp_mtp_draft_trace_fixture_pins_short_prompt_topk() -> None:
     fixture = json.loads(TRACE_FIXTURE.read_text())
 
