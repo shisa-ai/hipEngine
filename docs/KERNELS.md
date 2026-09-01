@@ -310,7 +310,7 @@ No decode concurrency below 512 silently falls to WMMA prefill:
 | rows | Q4 single proj | Q4 gate/up | Q5 single | Q6 lm_head |
 | --- | --- | --- | --- | --- |
 | 1 | `dense_single_local32` | `dense_dual_local32` | `t16_gemv_decode` (direct) | `t16_gemv_decode` (direct) |
-| 2-8 | `dense_rowtile`/`_col4` (gfx1151 qualified H5120-package row8 shapes use `dense_rowtile16_w2`) | `dense_dual_q8_1x2_rowtile8` | `t16_gemv_rowtile` (per-shape cap; qualified gfx1151 Qwen3.8 shapes use col8 ownership) | `t16_gemv_rowtile` |
+| 2-8 | `dense_rowtile`/`_col4` (gfx1100 qualified Qwen3.8 R6 shapes and gfx1151 qualified small-M shapes use exact `dense_rowtile16_w2`) | `dense_dual_q8_1x2_rowtile8` | `t16_gemv_rowtile` (per-shape cap; qualified gfx1151 Qwen3.8 shapes use col8 ownership) | `t16_gemv_rowtile` |
 | 9-511 | rowtile8 chunked (8+2, 8+8, ...) | dual rowtile8 chunked | `t16_gemv_decode` (direct grid.y=rows) | chunked (max 8) |
 | >=512 | WMMA prefill (bulk) | WMMA prefill | WMMA prefill | WMMA prefill |
 

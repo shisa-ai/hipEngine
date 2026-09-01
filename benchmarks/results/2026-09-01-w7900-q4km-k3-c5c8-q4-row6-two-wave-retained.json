@@ -1,0 +1,392 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_q4_row6_two_wave_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote the exact source-grounded WG64/16-column two-wave standard-Q4 R6 owner. Counterbalanced complete wall improves every C5-C8 width and every width/category cell while preserving exact IDs, acceptance, physical ownership, and strict fallback.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "device": "AMD Radeon Pro W7900",
+    "host_name": "epyc",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint_algorithm": "sha256-sampled-v1",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "5a067dce8197b78d62b33ecc55c9a9f8f2db7bb8",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-q4w2-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "e3ad35020cc12e1563eb660d2f9d5cb8239aded6389445e1640dea5fb31e66e1"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-q4w2-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "699c275ffaf596620e11c3db55e4131c45d5011481947bda0208773c261c19d6"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-q4w2-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "c0bcfa6ac0fc802c055c64c884f9a8a2cad0f87b9ca35454df3a134637bb92c2"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-q4w2-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "50d2180b49e0a70bc46d3344387f81a62bdc478305fc59ac2ce12336be4bf8fd"
+      }
+    }
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0",
+    "candidate_scope": {
+      "rows": [
+        6
+      ],
+      "shape_k_n": [
+        [
+          5120,
+          1024
+        ],
+        [
+          5120,
+          6144
+        ],
+        [
+          5120,
+          12288
+        ],
+        [
+          5120,
+          17408
+        ],
+        [
+          6144,
+          5120
+        ]
+      ],
+      "kernel": "q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 6>",
+      "strict_parent": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>"
+    }
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "all_packet_ar_mtp_rows_exact": true,
+    "cross_candidate_rollback_mtp_rows_exact": true,
+    "cross_candidate_rollback_rows_compared": 520,
+    "cross_candidate_rollback_acceptance_equal": true,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_cell": true,
+    "all_processes_drained": true
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 60.417858998523215,
+        "candidate_tok_s": 60.96202838519252,
+        "candidate_delta_pct": 0.900676382264054,
+        "rollback_wall_seconds": 39.72335398476571,
+        "candidate_wall_seconds": 39.36876878235489,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 60.57058050195256,
+          "candidate_tok_s": 61.57120085063401,
+          "candidate_delta_pct": 1.6519906865498646
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 60.26590569632271,
+          "candidate_tok_s": 60.36479187551526,
+          "candidate_delta_pct": 0.16408312137683456
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 62.48466841788133,
+          "candidate_tok_s": 62.90678390522622,
+          "candidate_delta_pct": 0.6755504958782632
+        },
+        "general_en": {
+          "rollback_tok_s": 64.69351073448958,
+          "candidate_tok_s": 65.29820759541579,
+          "candidate_delta_pct": 0.9347102268231655
+        },
+        "general_ja": {
+          "rollback_tok_s": 57.16078580689783,
+          "candidate_tok_s": 57.77071809494457,
+          "candidate_delta_pct": 1.0670467164451303
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 56.18885448567981,
+          "candidate_tok_s": 56.81485206103541,
+          "candidate_delta_pct": 1.1140956353099085
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 67.77509661792531,
+        "candidate_tok_s": 68.34889785919258,
+        "candidate_delta_pct": 0.8466254862047551,
+        "rollback_wall_seconds": 42.49348424002528,
+        "candidate_wall_seconds": 42.13674382772297,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 67.74686565851056,
+          "candidate_tok_s": 68.8903934162796,
+          "candidate_delta_pct": 1.6879419389425054
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 67.80335111553079,
+          "candidate_tok_s": 67.81584849139064,
+          "candidate_delta_pct": 0.018431796739015738
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.32782744205736,
+          "candidate_tok_s": 68.16311422008225,
+          "candidate_delta_pct": 1.2406263646985272
+        },
+        "general_en": {
+          "rollback_tok_s": 73.78245796529212,
+          "candidate_tok_s": 74.28949925051398,
+          "candidate_delta_pct": 0.6872111599485864
+        },
+        "general_ja": {
+          "rollback_tok_s": 66.295642118097,
+          "candidate_tok_s": 66.67653079868879,
+          "candidate_delta_pct": 0.5745304946489282
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 64.80584882520233,
+          "candidate_tok_s": 65.12938211011752,
+          "candidate_delta_pct": 0.49923469992321223
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 65.66116917889434,
+        "candidate_tok_s": 65.97289997858174,
+        "candidate_delta_pct": 0.4747566995617847,
+        "rollback_wall_seconds": 51.17179669532925,
+        "candidate_wall_seconds": 50.93000309355557,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 65.60381751066316,
+          "candidate_tok_s": 66.39476175227907,
+          "candidate_delta_pct": 1.2056375248092
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 65.71862120993856,
+          "candidate_tok_s": 65.55636524317865,
+          "candidate_delta_pct": -0.24689496488611296
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 65.81898013625522,
+          "candidate_tok_s": 66.1612755459054,
+          "candidate_delta_pct": 0.5200557786546822
+        },
+        "general_en": {
+          "rollback_tok_s": 72.75606341540583,
+          "candidate_tok_s": 73.06109705288002,
+          "candidate_delta_pct": 0.4192552801167482
+        },
+        "general_ja": {
+          "rollback_tok_s": 61.34044917319142,
+          "candidate_tok_s": 61.626824919597745,
+          "candidate_delta_pct": 0.4668628128198904
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 63.63298581991874,
+          "candidate_tok_s": 63.91550020666754,
+          "candidate_delta_pct": 0.4439747453440557
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 69.27381521155239,
+        "candidate_tok_s": 69.60127623370862,
+        "candidate_delta_pct": 0.4727053377328927,
+        "rollback_wall_seconds": 55.43220029491931,
+        "candidate_wall_seconds": 55.17140213213861,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 69.2722097350189,
+          "candidate_tok_s": 69.86936615741365,
+          "candidate_delta_pct": 0.86204327056838
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 69.27542076250573,
+          "candidate_tok_s": 69.3352357771844,
+          "candidate_delta_pct": 0.08634377679743732
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 70.46498953411829,
+          "candidate_tok_s": 70.78743930021476,
+          "candidate_delta_pct": 0.4576028013746347
+        },
+        "general_en": {
+          "rollback_tok_s": 73.25685505019385,
+          "candidate_tok_s": 73.66747979181073,
+          "candidate_delta_pct": 0.5605273954710999
+        },
+        "general_ja": {
+          "rollback_tok_s": 65.74697778485286,
+          "candidate_tok_s": 66.05058540574832,
+          "candidate_delta_pct": 0.4617818660638262
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 66.96115939839032,
+          "candidate_tok_s": 67.25066657295388,
+          "candidate_delta_pct": 0.43235089888618017
+        }
+      }
+    }
+  },
+  "prompt_cell_pairs": [
+    {
+      "order": "candidate->rollback",
+      "candidate_prompt_cell_wins": 40,
+      "cells": 40,
+      "median_prompt_cell_delta_pct": 1.1431209030281497,
+      "minimum_prompt_cell_delta_pct": 0.1294693295376792,
+      "maximum_prompt_cell_delta_pct": 3.628049180798709,
+      "generated_ids_equal": true,
+      "acceptance_equal": true
+    },
+    {
+      "order": "rollback->candidate",
+      "candidate_prompt_cell_wins": 29,
+      "cells": 40,
+      "median_prompt_cell_delta_pct": 0.06950715261712093,
+      "minimum_prompt_cell_delta_pct": -1.5315189066359536,
+      "maximum_prompt_cell_delta_pct": 0.5292935375067476,
+      "generated_ids_equal": true,
+      "acceptance_equal": true
+    }
+  ],
+  "kernel_trace": {
+    "comparison_note": "Diagnostic traces are same host/protocol and prove ownership; binding retention uses the tracked-clean same-commit full-suite gate.",
+    "candidate_symbol_observed": true,
+    "candidate": {
+      "path": "/tmp/he-q4w2-profile/candidate-routed/trace/epyc/2579637_kernel_trace.csv",
+      "retained": false,
+      "sha256": "b38b1013796d2ebd41e4d706f974a0b1790ddd2d2358992de22ac0d0aa97c568",
+      "calls": {
+        "rowtile16_w2_r6": 1560,
+        "rowtile_parent_r6": 5190
+      },
+      "duration_ms": {
+        "rowtile16_w2_r6": 59.95439599999994,
+        "rowtile_parent_r6": 403.69868499999905
+      }
+    },
+    "rollback": {
+      "path": "/tmp/he-q4w2-profile/control/trace/epyc/2563807_kernel_trace.csv",
+      "retained": false,
+      "sha256": "81aaed70bd760ff3ae8cd2ba2881850ac49eb8ce0c227f68286342ea23ac9f2f",
+      "calls": {
+        "rowtile_parent_r6": 6750
+      },
+      "duration_ms": {
+        "rowtile_parent_r6": 473.4727459999995
+      }
+    },
+    "combined_q4_rowtile_duration_ms": {
+      "candidate": 463.65308099999896,
+      "rollback": 473.4727459999995,
+      "candidate_delta_pct": -2.073966259506854
+    }
+  },
+  "limitations": [
+    "The exact leaf/device improvement is small enough that individual prompt cells remain sensitive to thermal/order drift; retention binds counterbalanced aggregate width/category results plus measured device work, not every individual pair.",
+    "The environment opt-out is retained temporarily for same-build rollback; strict parent registration is permanent."
+  ]
+}
