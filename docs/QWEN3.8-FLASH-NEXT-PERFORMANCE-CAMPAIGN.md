@@ -995,7 +995,7 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
 - [ ] Fuse route scaling/ordered accumulation into Q8 down only if the declared
       strict/T2 contract passes. (Not attempted.)
-- [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
+- [x] Run the complete 450-row/three-repeat packet, tasks, physical c2,
       lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
       certified scopes. The 450-row/three-repeat numerical, state, task-screen,
       and lifecycle rung ran and rejected the candidate. Physical c2 and depth
