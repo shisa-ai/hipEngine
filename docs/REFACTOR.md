@@ -18,15 +18,15 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-01 gfx1100 segmented GDN wave reduction — open
+## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
-- `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE` temporarily gates the exact
-  request-local physical C5-C8 K128/V128 row-state candidate while complete
-  MTP qualification is pending. Strict, FP16-state, peer, non-physical, and
-  shape-miss routes retain their prior owners.
-- Remove the candidate and flag on any binding category/heldout regression. If
-  retained, promote it to default and remove the opt-out after the next stable
-  milestone audit.
+- The complete counterbalanced C5-C8 category+heldout gate retained the exact
+  request-local physical K128/V128 wave-reduced row-state owner as the gfx1100
+  production default. Strict, FP16-state, peer, non-physical, and shape-miss
+  routes retain their prior owners.
+- `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0` remains a same-build rollback.
+  Remove the environment opt-out after the next stable milestone audit; keep
+  the registered strict parent.
 
 ## 2026-09-01 gfx1100 Q4 row6 two-wave screen — closed
 

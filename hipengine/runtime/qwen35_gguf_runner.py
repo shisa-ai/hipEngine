@@ -12352,7 +12352,7 @@ def _gdn_decode_order_segments_state_rows_kernel(
         return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
     if (
         physical_exact_rowtiles_enabled()
-        and _env_flag(_GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV, False)
+        and _env_flag(_GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV, True)
     ):
         return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce
     return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
