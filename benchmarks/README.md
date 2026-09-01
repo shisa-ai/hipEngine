@@ -132,7 +132,8 @@ The first retained prefill extension cuts a representative 288-row tick by
 C8 combined prompt throughput improves **237.685->239.658 tok/s (+0.83%)**,
 still below the frozen 305.847 target. The exact Y3 planar-Q6 pair decode
 further lowers rows288/536/1024 tick wall **0.50%/1.87%/0.18%** with unchanged
-tokens; tracked-clean C1-C8 collateral is pending publication.
+tokens. Tracked-clean C1-C8 collateral preserves 160/160 generated-ID rows;
+aggregate wall changes +0.16% AR / -0.15% MTP.
 [`Y1 evidence`](results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json) ·
 [`Y3 pair decode`](results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
 

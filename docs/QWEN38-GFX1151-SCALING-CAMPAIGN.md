@@ -1004,8 +1004,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   rows288/536/1024 walls **0.50%/1.87%/0.18%** with unchanged tokens. It is
   retained as shared4r6's default while the pre-pair body remains an explicit
   strict fallback. Trace confirms 120 pair-kernel hits, 128 threads, VGPR200,
-  LDS16 KiB, and scratch0. Tracked-clean C1-C8 collateral follows as a separate
-  publication unit; Y3 remains open.
+  LDS16 KiB, and scratch0. Tracked-clean C1-C8 collateral preserves **160/160
+  control/candidate generated-ID rows**; aggregate wall changes **+0.16% AR /
+  -0.15% MTP**, and C8 MTP improves 0.24%, passing the collateral guard. Y3
+  remains open.
   [`Pair result`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
   [`ISA analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json).
   [`Pipeline rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json).

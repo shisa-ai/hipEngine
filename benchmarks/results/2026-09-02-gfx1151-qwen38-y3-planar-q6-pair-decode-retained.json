@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "kind": "gfx1151-qwen38-y3-planar-q6-pair-decode",
-  "status": "retained_pending_collateral_publication",
-  "source_commit": "8945377b1",
+  "status": "retained",
+  "source_commit": "ab2d88e70",
   "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
   "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
   "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
@@ -16,6 +16,7 @@
     "rows1024": {"control_ms": 2752.863438, "candidate_ms": 2747.827182, "delta_pct": -0.18294608916956667, "token": 709}
   },
   "rocprof": {"command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/y3-q6-shared4r6-pair-rocprof -- .venv/bin/python /tmp/y2_q6_planar_shared4r6_high_trace.py", "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 6, 2, true>", "hits": 120, "threads": 128, "vgpr": 200, "lds_bytes": 16384, "scratch_bytes": 0, "median_duration_ns": 3666157.5},
-  "raw": {"leaf": "/tmp/y3-q6-shared4r6-pair-final-screen.json", "full_wall": "/tmp/y3-q6-shared4r6-pair-high-full-pair.json", "rocprof": "/tmp/y3-q6-shared4r6-pair-rocprof"},
-  "decision": "Retain as the default shared4r6 body. All measured full walls improve with unchanged tokens, exact output is preserved, and the pre-pair body remains an explicit strict fallback. Publish tracked-clean C1-C8 collateral in the follow-up benchmark unit."
+  "tracked_clean_c1c8": {"control_commit": "ab2d88e70", "candidate_commit": "ab2d88e70", "generated_id_matches": 160, "generated_id_rows": 160, "aggregate_ar_wall_seconds": {"control": 75.79319721017964, "candidate": 75.91366656939499, "delta_pct": 0.15894481780638348}, "aggregate_mtp_wall_seconds": {"control": 65.79661227669567, "candidate": 65.69463090319186, "delta_pct": -0.15499486975855126}, "width8_mtp_wall_delta_pct": -0.24281504408398824, "guard": "pass"},
+  "raw": {"leaf": "/tmp/y3-q6-shared4r6-pair-final-screen.json", "full_wall": "/tmp/y3-q6-shared4r6-pair-high-full-pair.json", "rocprof": "/tmp/y3-q6-shared4r6-pair-rocprof", "c1c8_control": "/tmp/y3-q6-shared4r6-pair-c1c8-control.json", "c1c8_candidate": "/tmp/y3-q6-shared4r6-pair-c1c8-candidate.json"},
+  "decision": "Retain as the default shared4r6 body. All measured full walls improve with unchanged tokens, exact output is preserved, tracked-clean collateral passes, and the pre-pair body remains an explicit strict fallback."
 }
