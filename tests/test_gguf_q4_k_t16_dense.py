@@ -330,7 +330,7 @@ def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
         quant="gguf_q4_k_t16_v1",
         variant="t16_wmma_prefill_bf16_bf16_out",
     )
-    assert selected is gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+    assert selected is selector
     assert single_wave is gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     assert fallback is gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     assert row64 is shared_b_row64_fn
