@@ -104,6 +104,8 @@ _ENV_SHARED_B_ROW64_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
 _SHARED_B_ROW64_MAX_ROWS_RESOLVED: int | None = None
 _ENV_Q4_ROWTILE16_W2 = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2"
 _Q4_ROWTILE16_W2_RESOLVED: bool | None = None
+_ENV_Q4_ROWTILE16_W2_QKV = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV"
+_Q4_ROWTILE16_W2_QKV_RESOLVED: bool | None = None
 
 
 def _q4_rowtile16_w2_enabled() -> bool:
@@ -127,6 +129,28 @@ def _q4_rowtile16_w2_enabled() -> bool:
     return _Q4_ROWTILE16_W2_RESOLVED
 
 
+def _q4_rowtile16_w2_qkv_enabled(policy: dict[str, object]) -> bool:
+    """Resolve the independently gated recurrent-QKV shape once per process."""
+
+    global _Q4_ROWTILE16_W2_QKV_RESOLVED
+    if _Q4_ROWTILE16_W2_QKV_RESOLVED is None:
+        default = bool(policy.get("enabled_default", False))
+        raw = os.environ.get(
+            _ENV_Q4_ROWTILE16_W2_QKV,
+            "1" if default else "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            value = True
+        elif raw in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(
+                f"{_ENV_Q4_ROWTILE16_W2_QKV} must be a boolean value"
+            )
+        _Q4_ROWTILE16_W2_QKV_RESOLVED = value
+    return _Q4_ROWTILE16_W2_QKV_RESOLVED
+
+
 def _q4_physical_rowtile(
     rows: int,
     shape: tuple[int, int],
@@ -134,10 +158,24 @@ def _q4_physical_rowtile(
     policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"]
     preferred = policy.get("shapes", {}).get(shape)
     admitted_rows = policy.get("rows_by_shape", {}).get(shape, ())
+    if not _q4_rowtile16_w2_enabled():
+        return gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
     if (
-        _q4_rowtile16_w2_enabled()
-        and preferred == "dense_rowtile16_w2_bf16_bf16_out"
+        preferred == "dense_rowtile16_w2_bf16_bf16_out"
         and int(rows) in admitted_rows
+    ):
+        return gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
+    experimental_shapes = policy.get("experimental_shapes", {})
+    experimental = (
+        experimental_shapes.get(shape)
+        if isinstance(experimental_shapes, dict)
+        else None
+    )
+    if (
+        isinstance(experimental, dict)
+        and experimental.get("variant") == "dense_rowtile16_w2_bf16_bf16_out"
+        and int(rows) in experimental.get("rows", ())
+        and _q4_rowtile16_w2_qkv_enabled(experimental)
     ):
         return gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
     return gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
