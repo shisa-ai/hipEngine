@@ -45,6 +45,8 @@ def parse_llamacpp_mtp_draft_trace(
     calls: list[dict[str, Any]] = []
     pending_accepts: list[dict[str, int]] = []
     prompt_tokens: int | None = None
+    requests: list[dict[str, Any]] = []
+    current_request_index: int | None = None
     timing_summary: dict[str, Any] | None = None
 
     lines = text.splitlines()
@@ -55,6 +57,15 @@ def parse_llamacpp_mtp_draft_trace(
         request_match = _REQUEST_RE.search(line)
         if request_match:
             prompt_tokens = int(request_match.group("prompt_tokens"))
+            current_request_index = len(requests)
+            requests.append(
+                {
+                    "request_index": current_request_index,
+                    "line": line_no,
+                    "prompt_tokens": prompt_tokens,
+                    "draft_call_count": 0,
+                }
+            )
 
         candidate_match = _CANDIDATE_PREFIX_RE.match(line)
         if candidate_match:
@@ -89,6 +100,8 @@ def parse_llamacpp_mtp_draft_trace(
                     "hist_size": int(call_match.group("hist_size")),
                     "call_count": int(call_match.group("call_count")),
                     "generated": int(call_match.group("generated")),
+                    "request_index": current_request_index,
+                    "request_prompt_tokens": prompt_tokens,
                     "candidates": candidates,
                 }
             )
@@ -119,6 +132,10 @@ def parse_llamacpp_mtp_draft_trace(
     for call, accept in zip(calls, pending_accepts, strict=False):
         call["accepted"] = accept["accepted"]
         call["accept_generated"] = accept["generated"]
+    for call in calls:
+        request_index = call.get("request_index")
+        if request_index is not None:
+            requests[int(request_index)]["draft_call_count"] += 1
 
     all_candidates = [candidate for call in calls for candidate in call["candidates"]]
     observed_top_k = max((candidate["rank"] for candidate in all_candidates), default=-1) + 1
@@ -143,6 +160,7 @@ def parse_llamacpp_mtp_draft_trace(
         "source_log": source_log,
         "metadata": metadata or {},
         "prompt_tokens": prompt_tokens,
+        "requests": requests,
         "summary": summary,
         "calls": calls,
     }
