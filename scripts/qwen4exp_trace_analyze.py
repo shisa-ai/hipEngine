@@ -218,7 +218,19 @@ def summarize(args: argparse.Namespace) -> dict[str, Any]:
     markers = read_csv(marker_path)
     copies = read_csv(copy_path)
     allocations = read_csv(allocation_path)
-    windows = marker_windows(markers, args.marker_prefix) if args.marker_prefix else []
+    start_ns = getattr(args, "start_ns", None)
+    end_ns = getattr(args, "end_ns", None)
+    if (start_ns is None) != (end_ns is None):
+        raise ValueError("--start-ns and --end-ns must be provided together")
+    if start_ns is not None and int(end_ns) <= int(start_ns):
+        raise ValueError("explicit trace end must be greater than start")
+    windows = (
+        [(int(start_ns), int(end_ns), "explicit_clock_bounds")]
+        if start_ns is not None
+        else marker_windows(markers, args.marker_prefix)
+        if args.marker_prefix
+        else []
+    )
     family_fn: Callable[[str], str] = hipengine_family if args.engine == "hipengine" else llama_family
 
     if not windows:
@@ -406,6 +418,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--trace-dir", type=Path, required=True)
     parser.add_argument("--engine", choices=("hipengine", "llama"), required=True)
     parser.add_argument("--marker-prefix", default="")
+    parser.add_argument("--start-ns", type=int)
+    parser.add_argument("--end-ns", type=int)
     parser.add_argument("--output", type=Path, required=True)
     return parser
 

@@ -152,6 +152,32 @@ def test_qwen4exp_trace_analyze_synthetic_window(tmp_path: Path) -> None:
     assert families["copy_fill_kernel"]["rows"] == 1
 
 
+def test_qwen4exp_trace_analyze_explicit_clock_window(tmp_path: Path) -> None:
+    module = _load_script("qwen4exp_trace_analyze.py")
+    _synthetic_trace(tmp_path)
+
+    result = module.summarize(
+        argparse.Namespace(
+            trace_dir=tmp_path,
+            engine="hipengine",
+            marker_prefix="",
+            start_ns=100,
+            end_ns=500,
+            output=tmp_path / "summary.json",
+        )
+    )
+
+    assert result["windows"] == [
+        {
+            "name": "explicit_clock_bounds",
+            "start_ns": 100,
+            "end_ns": 500,
+            "wall_ms": 0.0004,
+        }
+    ]
+    assert result["kernel"]["rows"] == 2
+
+
 def test_qwen4exp_role_analyze_synthetic_window(tmp_path: Path) -> None:
     module = _load_script("qwen4exp_role_analyze.py")
     _synthetic_trace(tmp_path)
