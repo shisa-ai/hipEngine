@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_k3_packed_verifier_hip_graphs_rejected",
+  "date": "2026-09-02",
+  "status": "rejected_exact",
+  "performance_claim": false,
+  "decision": "Reject and remove both per-layer and complete-model HIP graph capture for packed target verification. Cache-hit savings are too small to amortize naturally occurring physical-geometry capture misses.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "protocol": {
+    "prompt": "code_merge_intervals",
+    "scope": "train",
+    "concurrency": 8,
+    "service_capacity": 8,
+    "candidate_budget": 3,
+    "max_tokens": 12,
+    "runs": 1,
+    "max_sequence_length": 1024,
+    "sampling": "raw greedy",
+    "correctness_contract": "ar_exact",
+    "profiling": "rocprofv3 kernel + marker traces; complete-model pair additionally includes HIP runtime API trace",
+    "per_layer_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_PACKED_VERIFY_LAYER_GRAPHS=<0-or-1> PYTHONPATH=. PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "model_graph_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH=<0-or-1> PYTHONPATH=. PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>"
+  },
+  "correctness": {
+    "generated_ids_equal": true,
+    "acceptance_equal": true,
+    "acceptance_counts": [3, 3, 2],
+    "all_processes_drained": true,
+    "state_ownership_unchanged": true
+  },
+  "per_layer_graph": {
+    "source_commit": "abd16f9bddd0bd6061606a34de72dab52489fae9",
+    "tracked_clean": true,
+    "mechanism": "Capture and replay one graph per each of 64 target model layers.",
+    "control": {
+      "complete_wall_seconds": 1.3371369326487184,
+      "target_wall_ms": 167.654923,
+      "target_kernel_sum_ms": 154.990234,
+      "target_device_union_ms": 142.714686,
+      "target_idle_gap_ms": 24.940237,
+      "target_kernel_launches": 1550
+    },
+    "candidate": {
+      "complete_wall_seconds": 1.3331309109926224,
+      "target_wall_ms": 168.532647,
+      "target_kernel_sum_ms": 154.717498,
+      "target_device_union_ms": 68.238647,
+      "target_idle_gap_ms": 100.294,
+      "target_kernel_launches": 1550
+    },
+    "deltas_pct": {
+      "complete_wall": -0.2995969641015339,
+      "target_wall": 0.5235301083285293,
+      "target_kernel_sum": -0.17596979690990278,
+      "target_device_union": -52.185266343226935,
+      "target_idle_gap": 302.1373172997514
+    },
+    "decision": "Rejected: the target operation itself regressed because graph-scheduler gaps erased the apparent union reduction."
+  },
+  "complete_model_graph": {
+    "source_commit": "31ec0003f",
+    "tracked_clean": true,
+    "mechanism": "Capture the complete 64-layer target model body as one graph, keyed by physical rows, slot count, stable state/workspace ownership, route controls, and bounded attention context.",
+    "control_complete_wall_seconds": 1.325928688980639,
+    "candidate_complete_wall_seconds": 1.3586611663922668,
+    "complete_wall_delta_pct": 2.4686453867132307,
+    "measured_cycles": [
+      {
+        "cycle": 0,
+        "cache": "hit",
+        "control_target_wall_ms": 206.761,
+        "candidate_target_wall_ms": 206.374,
+        "candidate_delta_pct": -0.1871717590966553,
+        "control_hip_kernel_launch_calls": 1040,
+        "candidate_hip_kernel_launch_calls": 112,
+        "candidate_hip_graph_launches": 1
+      },
+      {
+        "cycle": 1,
+        "cache": "hit",
+        "control_target_wall_ms": 206.772,
+        "candidate_target_wall_ms": 205.485,
+        "candidate_delta_pct": -0.6224217923132715,
+        "control_hip_kernel_launch_calls": 1040,
+        "candidate_hip_kernel_launch_calls": 112,
+        "candidate_hip_graph_launches": 1
+      },
+      {
+        "cycle": 2,
+        "cache": "physical-geometry miss and capture",
+        "control_target_wall_ms": 165.7243,
+        "candidate_target_wall_ms": 198.087225,
+        "candidate_delta_pct": 19.528171185517152,
+        "control_hip_kernel_launch_calls": 1102,
+        "candidate_hip_kernel_launch_calls": 1102,
+        "candidate_hip_graph_launches": 1,
+        "candidate_graph_captures": 1,
+        "control_target_kernel_sum_ms": 152.79278,
+        "candidate_target_kernel_sum_ms": 149.331047
+      }
+    ],
+    "decision": "Rejected: 0.19-0.62% cache-hit savings cannot amortize a 19.53% natural geometry-miss capture penalty in a three-cycle D12 request."
+  },
+  "raw_sources": {
+    "per_layer_control_child": {"path": "/tmp/he-packed-layer-graphs-c8-control/child.json", "sha256": "4507c8c344fd12292e9864cb94a82472d58ff2931e3edd34408249daadb99206"},
+    "per_layer_candidate_child": {"path": "/tmp/he-packed-layer-graphs-c8-candidate/child.json", "sha256": "03b473e6a5b6e956de2c219c0e2b2b7c5768649c2c77a427d058fd440286b38c"},
+    "per_layer_control_kernel": {"path": "/tmp/he-packed-layer-graphs-c8-control/trace/trace_kernel_trace.csv", "sha256": "9b23862f17438929ce612398682436a78399a1f36afc9af63d2da1714df4ca5a"},
+    "per_layer_control_marker": {"path": "/tmp/he-packed-layer-graphs-c8-control/trace/trace_marker_api_trace.csv", "sha256": "4874cb95ed0da45c866a0fd9de8ad5d0d0d4e354adf0037a24cf7152354a7e12"},
+    "per_layer_candidate_kernel": {"path": "/tmp/he-packed-layer-graphs-c8-candidate/trace/trace_kernel_trace.csv", "sha256": "9061f535075e21e10754410aed482ab0ca75573de7c54fb8af69f481183ac152"},
+    "per_layer_candidate_marker": {"path": "/tmp/he-packed-layer-graphs-c8-candidate/trace/trace_marker_api_trace.csv", "sha256": "ac130e951cf619dbbea2107f577e5a75b260926384805d89c0c52437a11984eb"},
+    "model_control_child": {"path": "/tmp/he-packed-model-graph-c8-control/child.json", "sha256": "6aa4421e396747a3d799a7a0c2e5d2f37396701729c9aa21eeb41cfd949b4820"},
+    "model_candidate_child": {"path": "/tmp/he-packed-model-graph-c8-candidate/child.json", "sha256": "bb85305ce0acb6746b0b9748748f6d2d3772605c844623562bb10236b15bd1d6"},
+    "model_control_kernel": {"path": "/tmp/he-packed-model-graph-c8-control/trace/trace_kernel_trace.csv", "sha256": "55344c7bad3435f299f17a3be0c667708a784ee999ee007ec8db6a9018892745"},
+    "model_control_hip_api": {"path": "/tmp/he-packed-model-graph-c8-control/trace/trace_hip_api_trace.csv", "sha256": "9c60290b962066e102336b67b671e9617e27dbd1f7fe33d3fe8f8250142ae7b3"},
+    "model_control_marker": {"path": "/tmp/he-packed-model-graph-c8-control/trace/trace_marker_api_trace.csv", "sha256": "7fe1a1e67fbef33341cabbb3e640bfc370e3ffccb7e519523b165af8c1c96c15"},
+    "model_candidate_kernel": {"path": "/tmp/he-packed-model-graph-c8-candidate/trace/trace_kernel_trace.csv", "sha256": "d915b9916b0e2d1d37dc1e07e76bd24865cd1f4578b3899cea19b49eeaae3eff"},
+    "model_candidate_hip_api": {"path": "/tmp/he-packed-model-graph-c8-candidate/trace/trace_hip_api_trace.csv", "sha256": "b6cb0df94f0565483da747a4271a87e59505a1ea5e0075779d8ca1da7aabf06e"},
+    "model_candidate_marker": {"path": "/tmp/he-packed-model-graph-c8-candidate/trace/trace_marker_api_trace.csv", "sha256": "efdeb9b24d6a1cd83f48c4a41aaa951a3ea772847daac7f44842d238e5b738ad"}
+  },
+  "validation": {
+    "focused_contract_bundle": ".venv/bin/python -m pytest -q tests/test_gguf_packed_verify_layout.py tests/test_specdec2_bridge_contract_isolation.py tests/test_gguf_mtp_c1c8_server_bench.py tests/test_gguf_packed_prefill_grouping_probe.py — 102 passed before removal",
+    "full_c5_c8_gate": "not run because both marker candidates failed their target/complete-wall admission gate"
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "This rejection applies to host-captured HIP graphs over the current dynamic physical-row target-verifier geometry; it does not reject future device-driven persistent execution.",
+    "Explicit K3 remains diagnostic at capacity 8; automatic policy remains K0 outside separately qualified cells."
+  ]
+}
