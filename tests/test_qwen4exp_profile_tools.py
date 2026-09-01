@@ -123,6 +123,11 @@ def test_qwen4exp_trace_family_classifies_complete_qwen4exp_owners() -> None:
     assert module.hipengine_family(
         "qwen35_moe_wmma_tile_map_kernel"
     ) == "moe_routing"
+    assert module.hipengine_family(
+        "gguf_quantize_q8_1_kernel<unsigned short>"
+    ) == "dense_quant_q8"
+    assert module.hipengine_family("argmax_stage1_kernel") == "output_selection"
+    assert module.llama_family("argmax_f32") == "output_selection"
 
 
 def test_qwen4exp_trace_analyze_synthetic_window(tmp_path: Path) -> None:
