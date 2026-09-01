@@ -31,6 +31,87 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
+def test_packed_verify_layer_graphs_are_default_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_VERIFY_LAYER_GRAPHS", raising=False)
+
+    assert not gguf_runner._gguf_packed_verify_layer_graphs_enabled()
+
+
+@pytest.mark.parametrize(
+    ("live", "bound"),
+    ((1, 128), (128, 128), (129, 256), (513, 768), (769, 1023)),
+)
+def test_packed_verify_graph_context_bound(live: int, bound: int) -> None:
+    assert gguf_runner._packed_verify_graph_context_bound(live) == bound
+
+
+class _FakeGraphRuntime:
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, ...]] = []
+
+    def stream_create(self) -> int:
+        self.calls.append(("stream_create",))
+        return 31
+
+    def stream_begin_capture(self, stream: int) -> None:
+        self.calls.append(("begin", stream))
+
+    def stream_end_capture(self, stream: int) -> int:
+        self.calls.append(("end", stream))
+        return 41
+
+    def graph_instantiate(self, graph: int) -> int:
+        self.calls.append(("instantiate", graph))
+        return 51
+
+    def stream_destroy(self, stream: int) -> None:
+        self.calls.append(("stream_destroy", stream))
+
+    def graph_launch(self, graph_exec: int, stream: int) -> None:
+        self.calls.append(("launch", graph_exec, stream))
+
+    def graph_exec_destroy(self, graph_exec: int) -> None:
+        self.calls.append(("exec_destroy", graph_exec))
+
+    def graph_destroy(self, graph: int) -> None:
+        self.calls.append(("graph_destroy", graph))
+
+
+def test_packed_verify_layer_graph_capture_replay_and_destroy() -> None:
+    runtime = _FakeGraphRuntime()
+    cache: dict[tuple[object, ...], tuple[int, int]] = {}
+    enqueued: list[int] = []
+
+    reused = gguf_runner._launch_or_capture_cached_graph(
+        cache,
+        ("linear", 0, 24),
+        enqueued.append,
+        runtime=runtime,
+        stream=7,
+    )
+    assert not reused
+    assert enqueued == [31]
+    assert cache == {("linear", 0, 24): (41, 51)}
+    assert runtime.calls[-1] == ("launch", 51, 7)
+
+    reused = gguf_runner._launch_or_capture_cached_graph(
+        cache,
+        ("linear", 0, 24),
+        enqueued.append,
+        runtime=runtime,
+        stream=9,
+    )
+    assert reused
+    assert enqueued == [31]
+    assert runtime.calls[-1] == ("launch", 51, 9)
+
+    gguf_runner._destroy_cached_graphs(cache, runtime=runtime)
+    assert cache == {}
+    assert runtime.calls[-2:] == [("exec_destroy", 51), ("graph_destroy", 41)]
+
+
 def test_private_resident_slot_kv_copy_segments_include_slot_base() -> None:
     owner = SimpleNamespace(
         _target_scratch_owner=SimpleNamespace(max_positions=1024)
