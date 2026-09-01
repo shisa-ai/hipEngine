@@ -390,5 +390,39 @@
     },
     "acceptance_identical": true,
     "decision": "exclude R24; retain default-off R32-only candidate"
+  },
+  "valid_route_full_suite": {
+    "candidate": {
+      "C6": {
+        "ar_tok_s": 40.3070850676,
+        "mtp_tok_s": 33.6042053543,
+        "ratio": 0.8337046774,
+        "target_ms": 2175.630367
+      },
+      "C8": {
+        "ar_tok_s": 47.5247246395,
+        "mtp_tok_s": 36.5959940367,
+        "ratio": 0.7700411589,
+        "target_ms": 2271.596906
+      }
+    },
+    "matched_baseline": {
+      "C6": {
+        "mtp_tok_s": 33.6342520744,
+        "target_ms": 2193.36182
+      },
+      "C8": {
+        "mtp_tok_s": 36.6625089162,
+        "target_ms": 2295.778182
+      }
+    },
+    "delta": {
+      "C6_mtp_percent": -0.0893,
+      "C8_mtp_percent": -0.1814,
+      "C6_target_ms_percent": -0.8084,
+      "C8_target_ms_percent": -1.0533
+    },
+    "route_identity": "C6 zero candidate leaves; C8 candidate leaves present; 20/20 exact/engaged/budget",
+    "decision": "do not promote Q6-only candidate; target-stage saving is real but complete-wall neutral and W1 remains open for Q4/Q5 plus complete-family flatness"
   }
 }
