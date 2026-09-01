@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w4_proposal_bound",
+  "status": "blocked_gate",
+  "performance_claim": false,
+  "measured": {
+    "proposal_ms_per_cycle": {
+      "C6": 34.458021487807855,
+      "C8": 30.136728048091754
+    },
+    "71_cycle_free_proposal_upper_s": {
+      "C6": 2.4465195256343577,
+      "C8": 2.1397076914145146
+    },
+    "remaining_wall_gap_s": {
+      "C6": 7.46,
+      "C8": 8.88
+    },
+    "free_proposal_fraction_of_gap": {
+      "C6": 0.32795167903945815,
+      "C8": 0.24095807335749037
+    },
+    "post_W1_gate_excess_s": {
+      "C6": 0.8497376989768572,
+      "C8": 0.4413875081457661
+    }
+  },
+  "dependency": "The <=15% proposal gate is defined against W1 projected flat target; W1 is measured blocked and that denominator is unattainable in this campaign state.",
+  "policy_risk": "Hot-vocabulary/truncated-head proposal changes are T3 and can reduce acceptance; full suite plus heldouts would be required. The mechanism cannot cover the wall even at zero proposal cost.",
+  "decision": "Close W4 measured-blocked. Do not implement hot-vocabulary or fused top-1 policy: completely free proposal saves only 32.8%/24.1% of the C6/C8 wall gap, and the optimizable excess is 0.85/0.44 s."
+}
