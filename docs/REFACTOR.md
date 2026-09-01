@@ -42,14 +42,15 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-02 gfx1100 grouped Q4 R8 at active C5-C6 — open
+## 2026-09-02 gfx1100 grouped Q4 R8 at active C5-C6 — closed
 
-- `HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=1` reopens the exact grouped-R8
-  primitive only for physical R24 packets with five or six live target slots.
-  C7/C8, scope/shape/row misses, and explicit zero retain grouped R6.
-- Remove the flag/cache and primitive if current-source C5-C6 marker or complete
-  category+heldout qualification fails. If retained, promote through gfx1100
-  capability metadata and keep grouped R6 as strict rollback.
+- Promoted the exact grouped-R8 primitive through gfx1100 capability metadata
+  only for physical R24 packets with five or six live target slots after the
+  current-source marker and complete category+heldout gates passed. C7/C8 and
+  all scope/shape/row misses retain grouped R6.
+- `HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=0` remains same-build grouped-R6
+  rollback. Remove the environment/cache override after the next stable
+  milestone audit; keep the registered grouped-R6 fallback.
 
 ## 2026-09-02 gfx1100 packed verifier model graph — closed (rejected)
 

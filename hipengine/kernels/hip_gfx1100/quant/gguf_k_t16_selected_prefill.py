@@ -17,6 +17,7 @@ from pathlib import Path
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.hip_gfx1100 import (
+    GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS,
@@ -114,8 +115,8 @@ _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6 = (
     "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6"
 )
 _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED: bool | None = None
-_ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6 = (
-    "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6"
+_ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6 = str(
+    GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY["enabled_env"]
 )
 _Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED: bool | None = None
 
@@ -163,13 +164,14 @@ def _q4_rowtile16_w2_grouped_rows6_enabled() -> bool:
 
 
 def _q4_rowtile16_w2_grouped_rows8_c5c6_enabled() -> bool:
-    """Resolve the default-off live-C5/C6 grouped-R8 screen."""
+    """Resolve the qualified live-C5/C6 grouped-R8 policy once."""
 
     global _Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED
     if _Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6_RESOLVED is None:
+        default = bool(GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY["enabled_default"])
         raw = os.environ.get(
             _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8_C5C6,
-            "0",
+            "1" if default else "0",
         ).strip().lower()
         if raw in {"1", "true", "yes", "on"}:
             value = True
@@ -463,9 +465,10 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         and shape in rowtile_shapes
     )
     if (
-        int(rows) == 24
+        int(rows) in GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY["rows"]
         and grouped_rows6
-        and target_verifier_active_slots() in {5, 6}
+        and target_verifier_active_slots()
+        in GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY["active_slots"]
         and _q4_rowtile16_w2_grouped_rows8_c5c6_enabled()
         and row6_chunk_fn is gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
     ):

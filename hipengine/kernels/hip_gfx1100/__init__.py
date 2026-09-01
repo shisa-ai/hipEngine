@@ -310,6 +310,18 @@ GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY = {
     "variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
     "shapes": frozenset(_Q4_T16_ROWTILE16_W2_R6_SHAPES),
 }
+# Physical C5-C6 verifier R24 packets need three exact grouped-R8 weight
+# traversals instead of four grouped-R6 traversals.  C7-C8 remain on R6:
+# the same sibling regresses their complete-route gate.  The explicit switch
+# keeps the exact grouped-R6 chain available for rollback and bisection.
+GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6",
+    "enabled_default": True,
+    "active_slots": frozenset({5, 6}),
+    "rows": frozenset({24}),
+    "variant": "dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+    "fallback_variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+}
 # Rows for which the single-wave leaf owns a single-wave shape instead of the
 # 256-row shared-B tile. The shared-B kernel launches on a
 # ``Q4_DENSE_TILE_ROWS = 4*4*16 = 256`` row tile, so small rows pay nearly the
@@ -1038,6 +1050,7 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY",
+    "GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
     "GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES",

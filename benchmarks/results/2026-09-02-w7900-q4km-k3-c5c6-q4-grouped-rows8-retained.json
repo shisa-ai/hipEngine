@@ -1,0 +1,352 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_grouped_q4_r8_c5c6_retention",
+  "date": "2026-09-02",
+  "status": "retained",
+  "performance_claim": true,
+  "decision": "Promote the exact grouped-Q4 R8 primitive only for physical R24 target packets with five or six live verifier slots. It replaces four grouped-R6 weight traversals with three grouped-R8 traversals. C7-C8, row/shape/scope misses, strict, and HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=0 retain grouped R6.",
+  "source": {
+    "commit": "97739c23f3aa8618dda18fa570cbe3da4306b37b",
+    "dirty": false,
+    "branch": "campaign/gfx1100-mtp-cn-promotion"
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "size_bytes": 17106773984,
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "heldouts": 4,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "widths": [
+      5,
+      6
+    ],
+    "resident_capacity": 8,
+    "candidate_budget": 3,
+    "max_tokens": 24,
+    "batch_window_ms": 20.0,
+    "max_sequence_length": 1024,
+    "sampling": "raw greedy",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "arms": [
+      "candidate->control",
+      "control->candidate"
+    ],
+    "candidate_env": "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=1",
+    "control_env": "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=0",
+    "command": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6 --resident-capacity 8 --expected-mtp-widths 5,6 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet>.json"
+  },
+  "measurements": {
+    "5": {
+      "candidate_tok_s": 68.5134997054042,
+      "control_tok_s": 67.75442141888564,
+      "delta_pct": 1.1203376408834176,
+      "candidate_wall_seconds": 35.02959285862744,
+      "control_wall_seconds": 35.42204257287085,
+      "generated_tokens_per_arm": 2400
+    },
+    "6": {
+      "candidate_tok_s": 76.554146237757,
+      "control_tok_s": 75.8143522467291,
+      "delta_pct": 0.9757967576117021,
+      "candidate_wall_seconds": 37.6204313095659,
+      "control_wall_seconds": 37.987530258484185,
+      "generated_tokens_per_arm": 2880
+    }
+  },
+  "pair_order_summary": [
+    {
+      "order": "candidate->control",
+      "wins": 20,
+      "cells": 20,
+      "median_delta_pct": 1.7629956759673937,
+      "minimum_delta_pct": 1.0184934130457401,
+      "maximum_delta_pct": 2.236237252349471
+    },
+    {
+      "order": "control->candidate",
+      "wins": 20,
+      "cells": 20,
+      "median_delta_pct": 0.39574311481135327,
+      "minimum_delta_pct": 0.12928654417077023,
+      "maximum_delta_pct": 0.7976590831967112
+    }
+  ],
+  "category_and_heldout_pairs": {
+    "code|5": [
+      {
+        "candidate_tok_s": 69.33944343636121,
+        "control_tok_s": 68.09473059577626,
+        "delta_pct": 1.8279135987390838
+      },
+      {
+        "candidate_tok_s": 68.2171504649551,
+        "control_tok_s": 67.91868156328856,
+        "delta_pct": 0.43945037623913663
+      }
+    ],
+    "heldout|5": [
+      {
+        "candidate_tok_s": 69.20247955731104,
+        "control_tok_s": 67.84394681217374,
+        "delta_pct": 2.002437666102197
+      },
+      {
+        "candidate_tok_s": 67.88546244686239,
+        "control_tok_s": 67.61336891714814,
+        "delta_pct": 0.4024256357461953
+      }
+    ],
+    "general_en|5": [
+      {
+        "candidate_tok_s": 76.4463999683319,
+        "control_tok_s": 75.0532129759157,
+        "delta_pct": 1.8562656243154674
+      },
+      {
+        "candidate_tok_s": 75.10417318417213,
+        "control_tok_s": 74.73980359105941,
+        "delta_pct": 0.48751746138691043
+      }
+    ],
+    "general_ja|5": [
+      {
+        "candidate_tok_s": 66.96174966375513,
+        "control_tok_s": 65.87555813229594,
+        "delta_pct": 1.648853629866509
+      },
+      {
+        "candidate_tok_s": 65.7435164161188,
+        "control_tok_s": 65.59108619707563,
+        "delta_pct": 0.23239471684488588
+      }
+    ],
+    "mixed_ja_en|5": [
+      {
+        "candidate_tok_s": 64.44896434172361,
+        "control_tok_s": 63.29900788432507,
+        "delta_pct": 1.8167053415750312
+      },
+      {
+        "candidate_tok_s": 62.93308549683649,
+        "control_tok_s": 62.85182654235168,
+        "delta_pct": 0.12928654417077023
+      }
+    ],
+    "code|6": [
+      {
+        "candidate_tok_s": 74.98174950396954,
+        "control_tok_s": 73.62313628252164,
+        "delta_pct": 1.8453617844183645
+      },
+      {
+        "candidate_tok_s": 74.09506755323075,
+        "control_tok_s": 73.69979889657328,
+        "delta_pct": 0.5363225715339537
+      }
+    ],
+    "heldout|6": [
+      {
+        "candidate_tok_s": 77.55843845375215,
+        "control_tok_s": 76.5874722155338,
+        "delta_pct": 1.2677872896573072
+      },
+      {
+        "candidate_tok_s": 76.749124367483,
+        "control_tok_s": 76.44305709813943,
+        "delta_pct": 0.40038596173703755
+      }
+    ],
+    "general_en|6": [
+      {
+        "candidate_tok_s": 86.67051983794587,
+        "control_tok_s": 85.03116955365653,
+        "delta_pct": 1.9279404163139224
+      },
+      {
+        "candidate_tok_s": 85.41328765575793,
+        "control_tok_s": 85.1421080461347,
+        "delta_pct": 0.31850234372432507
+      }
+    ],
+    "general_ja|6": [
+      {
+        "candidate_tok_s": 75.65361885289776,
+        "control_tok_s": 74.6614055242159,
+        "delta_pct": 1.328950776797333
+      },
+      {
+        "candidate_tok_s": 76.48571497968359,
+        "control_tok_s": 75.88044769626401,
+        "delta_pct": 0.7976590831967112
+      }
+    ],
+    "mixed_ja_en|6": [
+      {
+        "candidate_tok_s": 72.91626987006474,
+        "control_tok_s": 72.18111001905734,
+        "delta_pct": 1.0184934130457401
+      },
+      {
+        "candidate_tok_s": 72.40973733606114,
+        "control_tok_s": 72.13843775623947,
+        "delta_pct": 0.37608186184792114
+      }
+    ]
+  },
+  "published_roll_forward": {
+    "5": {
+      "previous_tok_s": 67.882,
+      "new_tok_s": 68.5134997054042,
+      "delta_pct": 0.9302903647567806
+    },
+    "6": {
+      "previous_tok_s": 76.025,
+      "new_tok_s": 76.554146237757,
+      "delta_pct": 0.6960160970167495
+    }
+  },
+  "correctness": {
+    "all_packets_passed": true,
+    "cross_arm_rows_compared": 220,
+    "generated_ids_equal": true,
+    "acceptance_equal": true,
+    "all_40_prompt_cells_positive": true,
+    "all_category_and_heldout_slices_positive": true,
+    "packet_status": {
+      "r1-candidate": {
+        "status": "complete",
+        "passed": true,
+        "failure_reasons": [],
+        "initial_active_allocations": 0,
+        "final_active_allocations": 0
+      },
+      "r1-control": {
+        "status": "complete",
+        "passed": true,
+        "failure_reasons": [],
+        "initial_active_allocations": 0,
+        "final_active_allocations": 0
+      },
+      "r2-control": {
+        "status": "complete",
+        "passed": true,
+        "failure_reasons": [],
+        "initial_active_allocations": 0,
+        "final_active_allocations": 0
+      },
+      "r2-candidate": {
+        "status": "complete",
+        "passed": true,
+        "failure_reasons": [],
+        "initial_active_allocations": 0,
+        "final_active_allocations": 0
+      }
+    }
+  },
+  "marker_attribution": {
+    "protocol": "rocprofv3 cached-only kernel+ROCTx trace; one train prompt, C5/C6, K3/D12, candidate/control counter-order",
+    "command_template": "HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=<0|1> rocprofv3 --kernel-trace --marker-trace --output-format csv --output-directory <trace> -- <python> scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency <5|6> --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child>.json",
+    "source_commit": "97739c23f",
+    "checks": {
+      "c5_ids_equal": true,
+      "c5_acceptance_equal": true,
+      "c5_candidate_r8_owned": true,
+      "c6_ids_equal": true,
+      "c6_acceptance_equal": true,
+      "c6_candidate_r8_owned": true
+    },
+    "widths": {
+      "5": {
+        "control_measured_sums": {
+          "target_wall_ms": 452.05059600000004,
+          "kernel_sum_ms": 414.170273,
+          "device_union_ms": 380.849914,
+          "kernel_launches": 4374,
+          "q4_sum_ms": 203.445487,
+          "q4_launches": 864,
+          "q4_rows8_launches": 0,
+          "q4_rows6_launches": 864
+        },
+        "candidate_measured_sums": {
+          "target_wall_ms": 448.45914400000004,
+          "kernel_sum_ms": 410.920322,
+          "device_union_ms": 377.835196,
+          "kernel_launches": 4373,
+          "q4_sum_ms": 199.863294,
+          "q4_launches": 864,
+          "q4_rows8_launches": 288,
+          "q4_rows6_launches": 576
+        },
+        "deltas_pct": {
+          "complete_throughput": -0.07732419671088175,
+          "target_wall": -0.7944800939937324,
+          "kernel_sum": -0.7846895858699132,
+          "device_union": -0.7915763898531436,
+          "q4_sum": -1.7607630686838571
+        },
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      "6": {
+        "control_measured_sums": {
+          "target_wall_ms": 457.14465399999995,
+          "kernel_sum_ms": 418.312356,
+          "device_union_ms": 385.712152,
+          "kernel_launches": 4560,
+          "q4_sum_ms": 207.59173600000003,
+          "q4_launches": 864,
+          "q4_rows8_launches": 0,
+          "q4_rows6_launches": 864
+        },
+        "candidate_measured_sums": {
+          "target_wall_ms": 451.20904799999994,
+          "kernel_sum_ms": 412.091143,
+          "device_union_ms": 380.914257,
+          "kernel_launches": 4557,
+          "q4_sum_ms": 202.406867,
+          "q4_launches": 864,
+          "q4_rows8_launches": 288,
+          "q4_rows6_launches": 576
+        },
+        "deltas_pct": {
+          "complete_throughput": 0.9524409066942185,
+          "target_wall": -1.298408708942267,
+          "kernel_sum": -1.487217126333229,
+          "device_union": -1.2439055848051161,
+          "q4_sum": -2.4976278439137967
+        },
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    },
+    "interpretation": "Candidate owns grouped R8 only in the measured R24 cycles. Final R18 cycles remain on grouped R6. Across all three measured cycles, target/device/Q4 sub-windows improve at both widths; complete-wall qualification is supplied by the full counterbalanced ten-prompt gate."
+  },
+  "acceptance_policy": "Retain only if the current-source marker proves candidate ownership and positive target/device attribution at C5/C6; both full-suite process orders, every prompt/category/heldout slice, exact generated IDs/acceptance, ownership/budget, provenance, and clean drain pass.",
+  "result": "retained"
+}
