@@ -1014,6 +1014,14 @@ prompt-conditioned tuning, sized full-wall bound before code).
   but regresses the wide/narrow planar leaves **4.75%/6.09%** versus retained
   pair decode; route/export scope-reverted. Pair decode is therefore the local
   exact decode-granularity optimum among 1/2/4-column units.
+  Generated direct/pair ISA comparison shows the retained pair body preserves
+  VGPR198/LDS16 KiB/scratch0 but does **not** yet reuse qmicro record bytes: its
+  inner `pair_col` loop repeats complete address/load/unpack/convert/store work
+  and expands static code 50,376->51,440 bytes. The pair win comes from halving
+  cooperative scheduling units, not operation count. One exact unit therefore
+  remains: specialize pair decode to load each shared low byte once and extract
+  both nibbles while retaining independent scales/stores.
+  [`Direct/pair ISA`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-direct-pair-isa-comparison.json).
   [`Quartet rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-quartet-decode-rejected.json).
   [`Post-pair bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-post-pair-residual-bound.json).
   [`Pair result`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
