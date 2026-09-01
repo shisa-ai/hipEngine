@@ -20,8 +20,10 @@ should be removed or collapsed.
 
 ## 2026-09-01 W1 wide-Q6 shared4 candidate context — open
 
-- `target_verifier_wide_q6_shared4_session()` exposes the existing B-stationary
-  standard/planar Q6 shared4 owners at physical R20/R24/R32 for the W1
+- `target_verifier_wide_q6_shared4_session()` and the temporary
+  `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` cross-thread experiment flag expose
+  the existing B-stationary standard/planar Q6 shared4 owners at physical
+  R20/R24/R32 for the W1
   production-numerics campaign. The context defaults off; current chunk/direct
   owners remain the strict fallback, and automatic C6/C8 serving remains K0.
 - Remove the candidate context after the complete C6/C8 strict-teacher,
