@@ -1190,7 +1190,7 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
     for variant, fn in (
         (
             "t16_physical_c1_rowtile_bf16_bf16_out",
-            gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+            gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
         ),
         (
             "t16_wmma_prefill_single_wave_bf16_bf16_out",
