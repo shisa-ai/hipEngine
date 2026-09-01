@@ -12,8 +12,6 @@
     "backend": "hip_gfx1151",
     "model": "Qwen3.8-27B standard Q4_K_M",
     "rows": [
-      20,
-      24,
       32
     ],
     "quants": [
@@ -376,5 +374,21 @@
         "sha256": "b55f02140f2ac0c18e619303930b4045279b9a8a7331b6fef2ffc7affe83770b"
       }
     }
+  },
+  "matched_k3_performance": {
+    "baseline": {
+      "C6": 33.6970880043,
+      "C8": 36.6831983496
+    },
+    "candidate": {
+      "C6": 32.428317193,
+      "C8": 39.2983986894
+    },
+    "delta_percent": {
+      "C6": -3.765,
+      "C8": 7.129
+    },
+    "acceptance_identical": true,
+    "decision": "exclude R24; retain default-off R32-only candidate"
   }
 }
