@@ -85,8 +85,30 @@ def test_partition_and_tail_shrink_reconstruction():
     assert aggregate["steady_committed_tokens_per_request_cycle"] == pytest.approx(1.8)
     assert aggregate["cycle_cost_ar_step_equivalents"] == pytest.approx(3.6)
     assert aggregate["observed_cycle_wall_ar_step_equivalents"] == pytest.approx(64 / 15)
-    assert aggregate["stage_ms_per_cycle"]["proposal"] == pytest.approx(1.0)
-    assert aggregate["stage_ms_per_cycle"]["accept"] == pytest.approx(10.0)
+    assert aggregate["stage_ms_per_cycle"]["proposal"] == pytest.approx(2.0)
+    assert aggregate["stage_ms_per_cycle"]["accept"] == pytest.approx(20.0)
+
+
+def test_ragged_partition_reconstructs_independent_subgroup_cycles():
+    # The width-4 subgroup finishes after two cycles while the singleton needs
+    # three. Each subgroup owns an independent target-pass schedule.
+    group = [
+        _rec([3, 3], [16, 16], [100.0, 110.0], [1, 1])
+        for _ in range(4)
+    ]
+    singleton = _rec([3, 3, 3], [4, 4, 4], [20.0, 21.0, 22.0], [1, 1, 1])
+    cell = _cell(5, [*group, singleton], 27)
+
+    row = mca._analyze_cell(cell)
+
+    assert row["cycles"] == pytest.approx(11 / 5)
+    assert row["physical_target_passes"] == 5
+    assert row["target_pass_shapes"] == {"4": 3, "16": 2}
+    assert row["target_rows_total"] == 44
+    assert row["target_ms_total"] == pytest.approx(273.0)
+    assert row["proposal_ms_shared"] == pytest.approx(5.0)
+    assert row["proposal_batch_calls_shared"] == pytest.approx(5.0)
+    assert row["committed_identity_residual_tokens"] == 0
 
 
 def test_target_window_reconstruction_and_kernel_family_curve(tmp_path: Path):

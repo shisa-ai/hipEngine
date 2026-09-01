@@ -73,46 +73,63 @@ def _passes_for_tick(records: list[dict[str, Any]], t: int) -> list[tuple[int, f
     return passes
 
 
+def _pass_groups(records: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Group requests that duplicate one physical target-pass schedule."""
+
+    groups: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    for record in records:
+        signature = (
+            int(record["specdec2_mtp2_cycles"]),
+            tuple(record["specdec2_mtp2_target_physical_rows"]),
+            tuple(record.get("specdec2_mtp2_target_pass_ms", [])),
+            tuple(record.get("specdec2_mtp2_target_pass_start_ns", [])),
+            tuple(record.get("specdec2_mtp2_target_pass_end_ns", [])),
+            tuple(record.get("specdec2_mtp2_cycle_profile_start_ns", [])),
+            tuple(record.get("specdec2_mtp2_cycle_profile_end_ns", [])),
+        )
+        groups[signature].append(record)
+    return list(groups.values())
+
+
 def _target_windows_for_cell(cell: dict[str, Any]) -> list[dict[str, int]]:
     """Reconstruct unique target windows from request-duplicated telemetry."""
 
     records = _request_records(cell)
     if not records:
         return []
-    cycle_starts = [
-        list(r.get("specdec2_mtp2_cycle_profile_start_ns", [])) for r in records
-    ]
-    cycle_ends = [
-        list(r.get("specdec2_mtp2_cycle_profile_end_ns", [])) for r in records
-    ]
-    if any(cycle_starts) or any(cycle_ends):
-        starts, ends = cycle_starts, cycle_ends
-    else:
-        starts = [
-            list(r.get("specdec2_mtp2_target_pass_start_ns", [])) for r in records
-        ]
-        ends = [list(r.get("specdec2_mtp2_target_pass_end_ns", [])) for r in records]
-    if not any(starts) and not any(ends):
-        return []
-    cycles = int(records[0]["specdec2_mtp2_cycles"])
-    if any(len(values) != cycles for values in (*starts, *ends)):
-        raise AssertionError("target pass timestamp telemetry is partial")
     windows: list[dict[str, int]] = []
-    for tick in range(cycles):
-        buckets: dict[tuple[int, int, int], list[int]] = defaultdict(list)
-        for index, rec in enumerate(records):
-            key = (
-                int(rec["specdec2_mtp2_target_physical_rows"][tick]),
-                int(starts[index][tick]),
-                int(ends[index][tick]),
-            )
-            buckets[key].append(index)
-        for (rows, start_ns, end_ns), members in buckets.items():
+    for group in _pass_groups(records):
+        cycle_starts = [
+            list(r.get("specdec2_mtp2_cycle_profile_start_ns", [])) for r in group
+        ]
+        cycle_ends = [
+            list(r.get("specdec2_mtp2_cycle_profile_end_ns", [])) for r in group
+        ]
+        if any(cycle_starts) or any(cycle_ends):
+            starts, ends = cycle_starts, cycle_ends
+        else:
+            starts = [
+                list(r.get("specdec2_mtp2_target_pass_start_ns", [])) for r in group
+            ]
+            ends = [
+                list(r.get("specdec2_mtp2_target_pass_end_ns", [])) for r in group
+            ]
+        if not any(starts) and not any(ends):
+            continue
+        cycles = int(group[0]["specdec2_mtp2_cycles"])
+        if any(len(values) != cycles for values in (*starts, *ends)):
+            raise AssertionError("target pass timestamp telemetry is partial")
+        for tick in range(cycles):
+            rows = int(group[0]["specdec2_mtp2_target_physical_rows"][tick])
+            start_ns = int(starts[0][tick])
+            end_ns = int(ends[0][tick])
             if start_ns < 0 or end_ns <= start_ns:
-                raise AssertionError(f"invalid target pass window [{start_ns}, {end_ns})")
+                raise AssertionError(
+                    f"invalid target pass window [{start_ns}, {end_ns})"
+                )
             member_rows = sum(
-                int(records[index]["specdec2_mtp2_candidate_counts"][tick]) + 1
-                for index in members
+                int(record["specdec2_mtp2_candidate_counts"][tick]) + 1
+                for record in group
             )
             if member_rows != rows:
                 raise AssertionError(
@@ -131,13 +148,19 @@ def _shared_record_value(records: list[dict[str, Any]], key: str) -> float | Non
     return first if all(abs(value - first) <= 1e-6 for value in values[1:]) else None
 
 
+def _grouped_record_value(records: list[dict[str, Any]], key: str) -> float | None:
+    values = [_shared_record_value(group, key) for group in _pass_groups(records)]
+    if any(value is None for value in values):
+        return None
+    return sum(float(value) for value in values)
+
+
 def _analyze_cell(cell: dict[str, Any]) -> dict[str, Any]:
     records = _request_records(cell)
     width = int(cell["width"])
     assert len(records) == width, f"{cell['prompt_id']} w{width}: {len(records)} records"
-    cycles_set = {int(r["specdec2_mtp2_cycles"]) for r in records}
-    assert len(cycles_set) == 1, f"ragged cycles {cycles_set}"
-    cycles = cycles_set.pop()
+    request_cycles = [int(r["specdec2_mtp2_cycles"]) for r in records]
+    cycles = sum(request_cycles) / width
     generated = int(cell["mtp"]["generated_tokens"])
     expected_committed = 0
     for rec in records:
@@ -168,10 +191,11 @@ def _analyze_cell(cell: dict[str, Any]) -> dict[str, Any]:
             assert len(a_ms) == int(rec["specdec2_mtp2_cycles"])
             assert abs(sum(a_ms) - float(rec["specdec2_mtp2_accept_ms"])) < 1e-6
         acc = sum(int(x) for x in rec["specdec2_mtp2_accepted_counts"])
-        assert len(rec["specdec2_mtp2_candidate_counts"]) == cycles
+        rec_cycles = int(rec["specdec2_mtp2_cycles"])
+        assert len(rec["specdec2_mtp2_candidate_counts"]) == rec_cycles
         # per-request committed = 1 bootstrap token + accepted + one visible
         # token per cycle; final-cycle overshoot is truncated at max_tokens
-        expected_committed += 1 + acc + cycles
+        expected_committed += 1 + acc + rec_cycles
     residual = generated - expected_committed
     if abs(residual) > width:
         raise AssertionError(
@@ -179,8 +203,10 @@ def _analyze_cell(cell: dict[str, Any]) -> dict[str, Any]:
             f"{residual} exceeds width"
         )
     passes: list[tuple[int, float]] = []
-    for t in range(cycles):
-        passes.extend(_passes_for_tick(records, t))
+    for group in _pass_groups(records):
+        group_cycles = int(group[0]["specdec2_mtp2_cycles"])
+        for tick in range(group_cycles):
+            passes.extend(_passes_for_tick(group, tick))
     rows_total = sum(r for r, _ in passes)
     ms_total = sum(m for _, m in passes)
     accepted = sum(
@@ -214,15 +240,17 @@ def _analyze_cell(cell: dict[str, Any]) -> dict[str, Any]:
         "provider_update_ms_member_sum": provider_ms,
         "selected_commit_ms_member_sum": commit_ms,
         "proposal_batch_calls_member_sum": proposal_calls,
-        "proposal_ms_shared": _shared_record_value(records, "specdec2_mtp2_proposal_ms"),
-        "accept_ms_shared": _shared_record_value(records, "specdec2_mtp2_accept_ms"),
-        "provider_update_ms_shared": _shared_record_value(
+        "proposal_ms_shared": _grouped_record_value(
+            records, "specdec2_mtp2_proposal_ms"
+        ),
+        "accept_ms_shared": _grouped_record_value(records, "specdec2_mtp2_accept_ms"),
+        "provider_update_ms_shared": _grouped_record_value(
             records, "specdec2_mtp2_provider_update_ms"
         ),
-        "selected_commit_ms_shared": _shared_record_value(
+        "selected_commit_ms_shared": _grouped_record_value(
             records, "specdec2_mtp2_selected_commit_ms"
         ),
-        "proposal_batch_calls_shared": _shared_record_value(
+        "proposal_batch_calls_shared": _grouped_record_value(
             records, "specdec2_mtp2_proposal_batch_calls"
         ),
         "target_windows": _target_windows_for_cell(cell),

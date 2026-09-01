@@ -1,0 +1,367 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z0_current_head_baseline",
+  "date": "2026-09-01T20:29:38.339069+00:00",
+  "status": "partial_correctness_failure",
+  "source": {
+    "commit": "d61c5817ff2059332082bf2e00036d0bcfce0818",
+    "dirty": false
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586",
+    "backend": "hip_gfx1151",
+    "gpu_max_hw_queues": "2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ]
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "environment": {
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+    "GPU_MAX_HW_QUEUES": "2",
+    "compiler_version_file": "/tmp/q38-z0-run-20260901-201730/hipcc-version.txt"
+  },
+  "commands": {
+    "ar_mtp": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/q38-z0-run-20260901-201730/ar-mtp-c1c8.json",
+    "prefill": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --expected-mtp-widths none --output /tmp/q38-z0-run-20260901-201730/prefill-c1c8.json",
+    "accounting": ".venv/bin/python scripts/mtp_cycle_accounting.py --ar-mtp-raw /tmp/q38-z0-run-20260901-201730/ar-mtp-c1c8.json --output /tmp/q38-z0-run-20260901-201730/cycle-accounting.json"
+  },
+  "raw_sources": {
+    "ar_mtp": {
+      "path": "/tmp/q38-z0-run-20260901-201730/ar-mtp-c1c8.json",
+      "sha256": "c9fccc6b90461c0960072b97175da3684cb558b0d6832953290b6d1229268d27"
+    },
+    "prefill": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-c1c8.json",
+      "sha256": "88bff2ef12f33e585bc4ea271867558cf8e173a65e250321a7cdaaf8ae4b0f11"
+    },
+    "cycle_accounting": {
+      "path": "/tmp/q38-z0-run-20260901-201730/cycle-accounting.json",
+      "sha256": "a7d249b5edfbdcf80b9685c0c63ce42955c920f3b1634ed92a1ed7c209df7234"
+    }
+  },
+  "result": {
+    "prefill": {
+      "1": {
+        "ar_tok_s": 3.4376381770237154,
+        "second_arm_tok_s": 3.43414261651429,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "2": {
+        "ar_tok_s": 3.3122888667231436,
+        "second_arm_tok_s": 3.9790569354758714,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "3": {
+        "ar_tok_s": 3.7974840248889907,
+        "second_arm_tok_s": 4.520368023384295,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "4": {
+        "ar_tok_s": 4.2075201550666,
+        "second_arm_tok_s": 5.125802754412078,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "5": {
+        "ar_tok_s": 4.68574699169868,
+        "second_arm_tok_s": 5.6368274527238,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "6": {
+        "ar_tok_s": 5.200739629199654,
+        "second_arm_tok_s": 5.805887163913712,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "7": {
+        "ar_tok_s": 5.301072192185552,
+        "second_arm_tok_s": 6.058427339738551,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      },
+      "8": {
+        "ar_tok_s": 5.5501564278756605,
+        "second_arm_tok_s": 6.314927815013786,
+        "exact_cells": 10,
+        "engaged_cells": 0
+      }
+    },
+    "ar_mtp": {
+      "1": {
+        "ar_tok_s": 11.199600229359664,
+        "mtp_tok_s": 8.41036653804933,
+        "mtp_vs_ar_ratio": 0.7509523881041414,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "2": {
+        "ar_tok_s": 18.38089725538724,
+        "mtp_tok_s": 28.881625432354692,
+        "mtp_vs_ar_ratio": 1.5712848524785592,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "3": {
+        "ar_tok_s": 24.07680491364118,
+        "mtp_tok_s": 31.56399806915993,
+        "mtp_vs_ar_ratio": 1.3109712099414295,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "4": {
+        "ar_tok_s": 30.497797794347328,
+        "mtp_tok_s": 36.35383937703185,
+        "mtp_vs_ar_ratio": 1.1920152275312785,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "5": {
+        "ar_tok_s": 35.866537721233954,
+        "mtp_tok_s": 21.601754030517622,
+        "mtp_vs_ar_ratio": 0.6022815527501781,
+        "exact_cells": 0,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "6": {
+        "ar_tok_s": 40.166180172906564,
+        "mtp_tok_s": 33.5133056344364,
+        "mtp_vs_ar_ratio": 0.834366262616186,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "7": {
+        "ar_tok_s": 43.91094522307148,
+        "mtp_tok_s": 34.14364058661412,
+        "mtp_vs_ar_ratio": 0.7775656026797285,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      },
+      "8": {
+        "ar_tok_s": 47.278230930933944,
+        "mtp_tok_s": 36.075893127726516,
+        "mtp_vs_ar_ratio": 0.7630550555165171,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10
+      }
+    },
+    "cycle_accounting": {
+      "1": {
+        "cycles": 155.0,
+        "target_passes_per_cycle": 1.0,
+        "target_pass_shapes": {
+          "2": 5,
+          "3": 5,
+          "4": 145
+        },
+        "ms_per_target_row": 8.078199297520662,
+        "complete_ms_per_committed_token": 118.90088208116747,
+        "ar_ms_per_output_row": 89.28890134654164,
+        "stage_ms_per_cycle": {
+          "accept": 111.90044742918784,
+          "proposal": 12.79379451016505,
+          "provider_update": 0.6016736414523856,
+          "selected_commit": 0.3570684547265691,
+          "target": 31.53103596774194
+        }
+      },
+      "2": {
+        "cycles": 71.0,
+        "target_passes_per_cycle": 1.0,
+        "target_pass_shapes": {
+          "4": 5,
+          "6": 4,
+          "8": 62
+        },
+        "ms_per_target_row": 2.4696655499999998,
+        "complete_ms_per_committed_token": 34.624090058302194,
+        "ar_ms_per_output_row": 54.40430823946372,
+        "stage_ms_per_cycle": {
+          "accept": 94.51336003708798,
+          "proposal": 22.85948540018478,
+          "provider_update": 3.509794037238183,
+          "selected_commit": 0.7551615585533666,
+          "target": 18.783371788732392
+        }
+      },
+      "3": {
+        "cycles": 71.0,
+        "target_passes_per_cycle": 1.0,
+        "target_pass_shapes": {
+          "12": 62,
+          "6": 5,
+          "9": 4
+        },
+        "ms_per_target_row": 2.148849550617284,
+        "complete_ms_per_committed_token": 31.68166459169394,
+        "ar_ms_per_output_row": 41.53375016273154,
+        "stage_ms_per_cycle": {
+          "accept": 141.63455940966665,
+          "proposal": 24.260615234748578,
+          "provider_update": 3.8899216459880415,
+          "selected_commit": 1.265234602484065,
+          "target": 24.515044169014086
+        }
+      },
+      "4": {
+        "cycles": 72.0,
+        "target_passes_per_cycle": 1.0,
+        "target_pass_shapes": {
+          "12": 4,
+          "16": 62,
+          "8": 6
+        },
+        "ms_per_target_row": 1.967940806985294,
+        "complete_ms_per_committed_token": 27.50741096776134,
+        "ar_ms_per_output_row": 32.789252743532415,
+        "stage_ms_per_cycle": {
+          "accept": 156.48908903434253,
+          "proposal": 25.16130772872,
+          "provider_update": 4.193265003980034,
+          "selected_commit": 1.7512779159005731,
+          "target": 29.737772194444442
+        }
+      },
+      "5": {
+        "cycles": 88.6,
+        "target_passes_per_cycle": 2.562076749435666,
+        "target_pass_shapes": {
+          "12": 4,
+          "16": 62,
+          "2": 5,
+          "3": 5,
+          "4": 145,
+          "8": 6
+        },
+        "ms_per_target_row": 4.225879180744241,
+        "complete_ms_per_committed_token": 46.29253710542495,
+        "ar_ms_per_output_row": 27.881141128600575,
+        "stage_ms_per_cycle": {
+          "accept": 323.0289567701317,
+          "proposal": 42.91800553721227,
+          "provider_update": 4.445727397929499,
+          "selected_commit": 2.0995406453911865,
+          "target": 80.74958750564335
+        }
+      },
+      "6": {
+        "cycles": 71.66666666666667,
+        "target_passes_per_cycle": 1.9953488372093022,
+        "target_pass_shapes": {
+          "12": 4,
+          "16": 62,
+          "4": 5,
+          "6": 4,
+          "8": 68
+        },
+        "ms_per_target_row": 2.259812015970516,
+        "complete_ms_per_committed_token": 29.838894763411695,
+        "ar_ms_per_output_row": 24.896567104345497,
+        "stage_ms_per_cycle": {
+          "accept": 247.35089825617885,
+          "proposal": 48.05199898736075,
+          "provider_update": 7.764169233742841,
+          "selected_commit": 2.756576362434168,
+          "target": 51.334520399999995
+        }
+      },
+      "7": {
+        "cycles": 71.57142857142857,
+        "target_passes_per_cycle": 1.998003992015968,
+        "target_pass_shapes": {
+          "12": 66,
+          "16": 62,
+          "6": 5,
+          "8": 6,
+          "9": 4
+        },
+        "ms_per_target_row": 2.1280180885142252,
+        "complete_ms_per_committed_token": 29.28803088420647,
+        "ar_ms_per_output_row": 22.77336538578051,
+        "stage_ms_per_cycle": {
+          "accept": 295.78544628507126,
+          "proposal": 49.36184328348709,
+          "provider_update": 8.115223886355937,
+          "selected_commit": 3.18029962485645,
+          "target": 56.432830986027945
+        }
+      },
+      "8": {
+        "cycles": 72.0,
+        "target_passes_per_cycle": 2.0,
+        "target_pass_shapes": {
+          "12": 8,
+          "16": 124,
+          "8": 12
+        },
+        "ms_per_target_row": 3.079941452665441,
+        "complete_ms_per_committed_token": 27.719341457729268,
+        "ar_ms_per_output_row": 21.1513836349089,
+        "stage_ms_per_cycle": {
+          "accept": 280.26627350805535,
+          "proposal": 52.16974825210249,
+          "provider_update": 8.97540818550624,
+          "selected_commit": 4.663430076713364,
+          "target": 93.08267501388889
+        }
+      }
+    }
+  },
+  "correctness": {
+    "prefill": "80/80 exact; MTP disengaged in every cell as required",
+    "ar": "80/80 self-exact",
+    "explicit_mtp": "70/80 self-exact; all ten C5 cells failed mtp_self_exact and ar_mtp_equal",
+    "route_and_budget": "80/80 explicit-MTP cells engaged and conformed to the configured budget"
+  },
+  "interpretation": {
+    "measured": "The standardized current-head refresh completed. Prefill passed all 80 cells. Explicit MTP passed C1-C4 and C6-C8 but failed every C5 correctness cell.",
+    "inference": "The C5-only failure coincides with a 4+1 resident subgroup split; the singleton request has an independent cycle schedule. This is a localization clue, not a proven root cause.",
+    "claim_status": "No performance candidate was retained and no public benchmark number changes from this partial baseline."
+  }
+}

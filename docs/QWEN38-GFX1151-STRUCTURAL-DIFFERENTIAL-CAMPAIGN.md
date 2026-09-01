@@ -1,7 +1,8 @@
 # Qwen3.8-27B gfx1151 Structural Differential Campaign
 
 Status: **opened 2026-09-02; review of the W/Y closures folded in the same
-day (section 7) with pre-sized mechanism candidates; Z0 pending**
+day (section 7) with pre-sized mechanism candidates; Z0 baseline refresh
+recorded with a C5 correctness failure, attribution pending**
 Successor to the closed
 [`scaling campaign`](QWEN38-GFX1151-SCALING-CAMPAIGN.md) and the
 [`external implementation survey`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md).
@@ -166,11 +167,22 @@ further work unjustified.
 
 ### Z0 — current-head baseline and instrumentation refresh
 
-- [ ] Re-run the standardized C1-C8 prefill, true-AR, and explicit MTP
+- [x] Re-run the standardized C1-C8 prefill, true-AR, and explicit MTP
   diagnostics at current head on the physical gfx1151 host.
-- [ ] Record exact commands and raw-source hashes for every run. The Y1
+- [x] Record exact commands and raw-source hashes for every run. The Y1
   matrix is the latest full-width prefill collateral but predates Y2/Y3; do
   not use it as the campaign's final current-head baseline.
+
+  Current-head checkpoint: [`2026-09-01-gfx1151-qwen38-z0-current-head-baseline.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z0-current-head-baseline.json).
+  On physical host `gfx1151` at source `d61c5817f`, prefill was exact in
+  80/80 cells with MTP disengaged. True AR was self-exact in 80/80 cells.
+  Explicit MTP engaged and conformed to the configured budget in 80/80
+  cells, but all ten C5 cells failed `mtp_self_exact` and `ar_mtp_equal`;
+  C1-C4 and C6-C8 passed 70/70. The raw hashes, exact commands, model and
+  prompt provenance, production manifest hashes, and corrected subgroup
+  cycle accounting are in the checkpoint artifact. The observed C5 4+1
+  subgroup split localizes the next investigation but does not establish a
+  root cause. No performance candidate or public number was retained.
 - [ ] Collect current-head C2/C8 prefill and C5/C7/C8 MTP operation-complete
   attribution: kernel family, launch count, host/API/copy time, proposal,
   target, accept/commit, KV, scheduler, and server overhead.
