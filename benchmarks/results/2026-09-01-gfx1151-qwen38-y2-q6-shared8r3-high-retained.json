@@ -1,0 +1,105 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q6-shared8r3-high-retained",
+  "status": "validated_retention_pending_c1c8",
+  "source_commit_before_unit": "1ef018b2734be8260945f4c465bc9efb959ced50",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "pre_code_full_wall_bound": {
+    "rows536_ms": 490,
+    "rows1024_ms": 934,
+    "basis": "Y0 Q6 duration times removable multiplicity fraction"
+  },
+  "candidate": {
+    "geometry": "<8,3,2>; 384-row capacity, gridY2/3",
+    "scope": "standard Q6 K5120/N10240 rows385-1024",
+    "strict_fallback": "shared4 on all misses"
+  },
+  "direct_current_owner_comparison": {
+    "rows": [
+      536,
+      1024
+    ],
+    "results": {
+      "gguf_q6_k_t16_v1:5120x10240": {
+        "536": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 3.6703254699707033,
+          "candidate_ms": 3.4888256072998045,
+          "speedup": 1.052023197230363
+        },
+        "1024": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 6.533722686767578,
+          "candidate_ms": 6.5804901123046875,
+          "speedup": 0.9928930178848441
+        }
+      }
+    }
+  },
+  "complete_ticks": {
+    "536": {
+      "control_wall_ms": 1867.136337,
+      "candidate_wall_ms": 1810.768099,
+      "wall_reduction_pct": 3.01896743601322,
+      "control_gpu_ms": 1867.130859375,
+      "candidate_gpu_ms": 1810.762451171875,
+      "control_next_token_id": 10562,
+      "candidate_next_token_id": 10562
+    },
+    "1024": {
+      "control_wall_ms": 3150.993215,
+      "candidate_wall_ms": 3046.378838,
+      "wall_reduction_pct": 3.3200445022221303,
+      "control_gpu_ms": 3150.9853515625,
+      "candidate_gpu_ms": 3046.370849609375,
+      "control_next_token_id": 709,
+      "candidate_next_token_id": 709
+    }
+  },
+  "rocprof": {
+    "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel<8,3,2>",
+    "hits": 116,
+    "grid_y_counts": {
+      "2": 58,
+      "3": 58
+    },
+    "threads": 256,
+    "vgpr": 96,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "sample_grid_y2_duration_ms": 3.72551
+  },
+  "limitations": [
+    "Tracked-clean C1-C8 collateral follows after commit.",
+    "Y2 remains open for other families/bands."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-shared8r3-r536-r1024.json",
+      "sha256": "2130a2ab2b59d89ffb810547f77bbe7d4524f3b4861817e7f99178aa7b5d9efc",
+      "bytes": 545
+    },
+    {
+      "path": "/tmp/y2-q6-shared8r3-r536-r1024-full-pair.json",
+      "sha256": "669dd5439baa5233bf5e50515e7e54fa4de982926d4855a923f2428451de6f6a",
+      "bytes": 346974
+    },
+    {
+      "path": "/tmp/y2-q6-shared8r3-high-rocprof/gfx1151/2450364_kernel_trace.csv",
+      "sha256": "0c1c7658c30925db1c7d88766ddd93058e047f41b79f1bbdc2f773f096532771",
+      "bytes": 73619
+    }
+  ]
+}
