@@ -127,6 +127,30 @@ The measured correctness status is:
   not an accuracy verdict; the logits/KL/task gates remain binding. No external
   lane becomes an accuracy oracle merely by being deterministic or faster.
 
+#### Classifying a non-exact continuation
+
+A divergence is not self-explaining. Split it into one of two classes before
+assigning blame; an unclassified divergence is neither noise nor a bug.
+
+- **Tie class.** A last-ulp flip at a stable output position, with a logit
+  margin at or below roughly 0.04 nats, reproducing at the same position across
+  repeats. hipEngine tolerates this only where a declared production profile
+  already permits the reassociation that produced it.
+- **State class.** A divergence whose position moves between repeats, or one
+  carrying a whole-nat logit shift. Recurrent-state corruption lives here, and
+  it surfaces wherever the triggering event occurs: a rejected draft at 64K
+  produces a state-class divergence thousands of positions past any fixed
+  cutoff. Never classify by output index alone. The Pat1entZ3r0 program's
+  "only a divergence before position 50 is a real bug" rule would not have
+  caught the rollback-ring corruption that same program discovered.
+
+A single capture from build A against a single capture from build B cannot
+perform this split at all: it cannot separate "B is wrong" from "B is
+nondeterministic". Every equivalence claim here therefore needs a repeat arm on
+each build before any cross-build arm. That is what the 12-case canonical screen
+supplies and what external token-parity gates generally omit; it is why Nathan
+reads as 0/12 here and as an unremarkable pass elsewhere.
+
 #### Required upstream HIP loader patch on this host
 
 Pristine upstream HIP `f1793c1c4` produced zero samples after separate
@@ -678,6 +702,7 @@ None of these numbers are hipEngine results.
 | [Sleeping Robots, 2026-08-29](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/) | Independently tested EngramHalo on Strix Halo with a different quant. MTP reaches 28-38 tok/s at working depths; 26K MTP regresses to 15.0; kernel-only prefill improves up to about 35% at 26K. | Useful cross-check of the direction, not a same-quant baseline. Confidence: medium-high for the external fork, low for transfer magnitude. |
 | [apepojken/llama.cpp `843d575`](https://github.com/apepojken/llama.cpp/commit/843d5750579a15ed4a42d73eb862855c271021ac) and local survey, 2026-08-31 | Vulkan rollback/MTP fixes, pooled QSA keys, gathered attention, radix top-k, GDN/inject dataflow, and epilog fusion. Matched Q4/BF16 reaches 291.73/23.21, 375.23/22.42, and 397.43/22.25 pp/tg128 at p512/p1024/p4096. Static logits remain 160/160 top-1 vs upstream Vulkan, but only 8/12 AR cases repeat and Q8-KV MTP is 9/10 AR-message exact. | Fast experimental lane only. Its published Q3 50.4 tok/s headline remains author-reported; the matched AR and MTP rows fail this campaign's exact-output contract. See the Strix Halo survey. |
 | Local source/build refresh, 2026-08-30 | Existing `UD-Q4_K_XL` runs in both forks. EngramHalo BF16 reaches 296.12/362.72/17.62 and Nathan v0.7.2 reaches 413.04/396.25/23.85 at p508/p1012/tg32. Nathan lazy-on is 1.255x over the cache-cold-to-warm off average at p508 and neutral by p1012. Engram MTP is 1.128x complete-wall but only 9/10 AR-message exact. | Historical same-host shape evidence, superseded for AR targets by the exact-token screening in section 2.1. The MTP speed row fails correctness and remains diagnostic only. |
+| [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`, source-reviewed 2026-09-02 | Single-commit program consolidating the three forks this campaign already tracks: `SOURCE_LOCK.json` pins base `c589f0ed1` + #27879 and reference forks apepojken `843d575`, Nathan `ad914eb`, EngramHalo `1423f689`. 40 patches in two lines (`hybrid-04` correctness/perf, `hybrid-03-mtp` draft head + rollback fixes), 58 claimed experiments, and a published nulls catalog. Headline 2.5-3x decode and 2.5x prefill on Vulkan with a custom IQ4_XS + dense-Q6K quant, Q8 K/V, `-ub 2048`, and an EasiiX Q8_0 MTP sidecar. | Author-reported; nothing locally reproduced. No rate binds: different quant, K/V, backend, and host instance. The headline moves four axes at once, and its `pr-27742-035e227` baseline predates #27879, so the denominator still carries the QSA block-selection bug that the program's own patch `0001` fixes. Its correctness gate has no repeat arm. The value is the rollback-ring mechanism, the nulls catalog, and the fact that its `MODEL_LOCK.json` pins this campaign's exact UD-Q4_K_XL shards (revision `c8b5954a`, all four shards LFS-verified) while publishing no row for them. Full review: survey section 6.7. |
 | [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp), refreshed at `1423f689986f670417128fd545a0aa1241166103` | Wide radix top-k (`33766da`), masked-slice FA skip (`bf8412d`), QSA top-k row gather (`2606d49`), MTP sidecar (`afb80ed` + `2ba3009`), PLE lazy row prefetch (`c911e6b`), and load-page drop-behind (`5486559`). Chunked GDN prefill exists (`62160a7`) but was explicitly not active in the published numbers. The published container additionally applies the tracked #25992 host-buffer and per-buffer-mmap patches. | Code and build mechanisms verified by source inspection and a local gfx1151 HIP build. hipEngine already covers the QSA selector/gather direction; PLE advice/prefetch, loader drop-behind, full-step graphing, and MTP economics remain open. |
 | [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2), toolbox HEAD `a8631dfbf0aeb6a4004866fce1fd7e5c10370049`, source `ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5` | `TENSOR_READ_LAZY` + `MADV_RANDOM` alone loses; merged `WILLNEED` row prefetch is the paying half (`77362a8`). Qwen4Exp also adds host PLE gather and reusable decode topology (`631b9ff`), per-block QSA bias (`024b7ad`), and MTP graph/context (`3543908` + `39817c4`). Vulkan lineage includes MoE row lists (`212cca8`), route-scale epilogue, SiLU/mul fusion, transposed concat (`30d8bb0`), dense wave32 (`25c45fe`), and LDS padding (`baf6360`). | Source mechanisms verified; release and local source builds agree within 1% on this host. Vulkan shader topology is not portable to HIP, but the removed data movement, host synchronization, graph rebuild, and LDS-bank mechanisms are actionable. |
 | [quimmedes/cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp), observed HEAD `2da84198eccb0aee59abba59e967dcc61f84ce07` | The fresh fork exposes pinned-host/CPU routed-expert placement, PLE n-gram SSD mmap or disable modes, and Qwen4Exp MTP trunk/combiner fixes. Commits `ba7bd23` and `7ee981d` add the PLE controls; `19aefd2` and `d98dc18` address MTP hidden export and mixer mapping. | Track as a source lead, not a measured comparator. SSD PLE and host-placement ownership may inform P9; `--no-ngram` changes the model and cannot close parity. No same-weight local rate or correctness packet has been verified. Confidence: high for repository/commit identity, medium for transfer applicability. |
@@ -694,6 +719,29 @@ None of these numbers are hipEngine results.
 | Upstream [#26419](https://github.com/ggml-org/llama.cpp/pull/26419) | MMA FlashAttention at head-dim 256 on RDNA; open. | Relevant to QSA prefill geometry, but measured on RDNA4, not gfx1151. |
 | Upstream [#27880](https://github.com/ggml-org/llama.cpp/pull/27880) | qwen4exp graph-split reduction; merged at `6fe74980`. | Already in the remote-HEAD comparator. |
 | Upstream [#27925](https://github.com/ggml-org/llama.cpp/pull/27925) and [#26686](https://github.com/ggml-org/llama.cpp/pull/26686) | Vulkan MoE padding/row-ID changes that improve the Vulkan comparator. | Already in the remote-HEAD Vulkan comparator; no HIP action implied. |
+
+#### Externally published claims this host does not reproduce
+
+Three widely repeated external statements fail or do not transfer here. Record
+them so no unit is planned or rejected on their authority.
+
+- **"ROCm/HIP is 25-30% slower than Vulkan on gfx1151."** Pat1entZ3r0's
+  `REJECTED.md`, from one containerized ROCm-10 experiment reported as four
+  percentages with no rates. The matched exact-token screen in section 2.1 does
+  not reproduce the prefill half: patched upstream HIP is level at p512 and
+  ahead at p1024/p4096 (**301.68 vs 259.73** and **294.47 vs 266.98**). Only the
+  decode half is directionally consistent (**17.74/16.88/14.77 vs
+  22.97/20.11/18.07**, -23%/-16%/-18%). It is a decode-only, build-specific
+  result, not a backend-level fact, and it does not bear on the HIP-first
+  ordering in section 1.
+- **"`RADV_PERFTEST=cswave32` is -4%."** A Vulkan shader-compilation knob that
+  does not transfer to wave32-native HIP kernels. It is not evidence against the
+  P3 dense retile and LDS-padding sweep.
+- **"`-ub 2048` is +26-36% prefill."** Their ubatch selects backend GEMM/MMQ
+  paths; hipEngine's chunk is host-loop granularity over its own kernels, where
+  the P0 sweep measured chunk 1024 at +2.25/2.55% and chunk 2048 losing. Not
+  transferable. Every comparator lane here already runs `-b 8192 -ub 2048`, so
+  no lane is under-configured on this axis.
 
 ### 4.1 Mechanism transfer audit
 
@@ -722,6 +770,12 @@ This is how each mechanism maps to the current hipEngine implementation:
 | Quantized-KV dequant-once/contiguization | There is no quantized-QSA-KV owner in the binding campaign. | Backend-disjoint evidence only until P10; it cannot close a BF16-KV milestone. |
 | Fully masked FA slice skip | Current sparse attention no longer scans a dense selected-token mask, while short prefill has separate dense flash geometry. | Test only against a trace-proven masked slice in P4/P10; reject if it optimizes work hipEngine does not execute. |
 | Chunked GDN prefill | hipEngine has strict serial/prepare+peer/column-warp owners; Engram's chunked kernel was not active in its published rows. | Treat it as a design hypothesis in P4. Require local arithmetic classification, state parity, and whole-role evidence. |
+| Recurrent rollback ring depth and bank coverage | hipEngine owns its own checkpoint/replay for GDN conv and SSM state; no equivalent audit against the two Pat1entZ3r0 EXP-016 failure cells has been run. | Untested hypothesis, highest MTP-correctness value. Their patch `hybrid-03-mtp/0006` (after apepojken `32af70900`) claims banks `[n_written, K)` are never written and keep stale content a rollback then restores, and that the spec ring must be `n_max + 1` deep because the verify batch holds the previously sampled token plus `n_max` drafts. Symptom: a ~4.8-nat post-rejection logit shift, invisible to any single-shot logit gate. P11 owns the rejection-depth RED sweep; their own SSM clamp is self-described as "best-effort deeper" than exact, so a correct diagnosis may still be an incomplete fix. |
+| Depth-conditional draft budget | P11 currently sweeps budgets 1-6 at short context only, so a budget chosen there would be frozen for every depth. | Transfer the finding, not the constants. They report n-max 2 shallow and n-max 6 at >=32K (+37% at 64K, +41% at 128K versus plain) with code acceptance decaying 0.94-0.97 shallow to 0.75-0.88 at 128K. Fit a policy over measured acceptance rather than adopting two hand-chosen constants tuned on their prompts; a constant selected that way is not retainable under the anti-gaming rule. |
+| Lazy PLE from local storage | P9 already owns sparse mmap ownership, cold/warm separation, and the advice+prefetch pair. | External corroboration for the premise and a correction to the expected payoff. They report a Q8_0 PLE splice served from NVMe at identical decode speed with page cache down to ~7 GiB and ~30 GiB RAM freed, validated on 128-token reps only. Complementary negative: the IQ4_NL-PLE "91 GB" quant loses at 128K per its own publisher (18.6 vs 26.9 tok/s). Direction is stream a large PLE, not shrink it. Raises P9's memory payoff and lowers its expected speed payoff. |
+| Dense-versus-expert decode dominance | The impact queue already ranks short-decode selected projections and Q8; there is no in-tree quant-axis evidence separating dense from routed-expert decode cost. | Two independent external rows agree that dense tensors, not routed experts, bind decode bandwidth at this MoE shape: a dense-Q6K re-quant gives +5-13% decode at flat PPL, while Q3_K_XL, which shrinks only the experts, gives no meaningful speed. Supporting evidence for the dense/projection ranking. As a quant change it stays a separately gated T3 product configuration with its own denominator; it cannot move the pinned UD-Q4_K_XL AR baseline. |
+| Per-dispatch versus per-submit cost | P8 contracts 48 MoE graphs plus 1,195 direct launches toward one submission. | Cheap external prior on where a P8 win can come from: their `GGML_VK_MAX_NODES_PER_SUBMIT` 200-800 sweep measured -1.3 to -2.4%, concluding cost is per-dispatch, not per-submit. Supports the launch-count premise and pre-rejects any variant that only bundles submissions without removing dispatches. |
+| Indexer head-sum and pooling reassociation | The QSA selector and pooling path are exact and stable; no candidate currently reassociates the indexer head sum. | Two external exactness negatives worth banking before one does. Their bit-exact r=4 indexer-key pooling uses a tree of strided adds rather than transpose/mean/transpose (EXP-005), and the head-sum slice tree from #28023 flips bits at depth and had to be made opt-in (patch `0032`). Their pooled-key cache, the largest depth win they report (+38-40% at 32-64K), is explicitly non-bit-exact in QSA selection with no published KL or top-1. Any hipEngine analogue is a production-profile candidate that must clear the numerical gates, not a free win. |
 
 ### 4.2 Direct hipEngine versus pinned llama.cpp implementation audit
 
@@ -867,6 +921,34 @@ matrix before implementation claims parity.
       `s` remains unknown until a local candidate runs. The old 41.6% remainder
       is retired, and P8 returns to admission-pending. Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`.
+
+- [ ] Declare and hold one GPU clock policy across every arm of every paired
+      row, and record it in host state next to the existing power/clock samples.
+      Pat1entZ3r0 measures +3-7% interactive decode from pinning
+      `power_dpm_force_performance_level=high`, which is the same magnitude as
+      the entire section 6.1 match band. Either pin it for the serving window or
+      explicitly declare `auto` and prove both arms ran under it;
+      `scripts/pn3_clock_probe.py` already samples the control. An unpinned,
+      undeclared clock policy invalidates the five thermal closure pairs before
+      they are collected.
+- [ ] Audit every comparator lane for configuration it is entitled to before the
+      closure freeze. `GGML_VK_ALLOW_GRAPHICS_QUEUE=1` measures +4.0% decode on
+      RADV APUs externally and appears nowhere in this tree, so both Vulkan
+      lanes may be under-configured on the exact axis milestone 3 binds to.
+      A/B it, and A/B `--no-repack` and `-fit off` (expected neutral at
+      `-ngl 999`, but they change loader behavior). Milestone 3 requires the
+      *best* same-host Vulkan engine: a target frozen against an
+      under-configured lane is invalid and would have to be re-frozen.
+      Chunk/ubatch needs no action; every lane already runs `-b 8192 -ub 2048`.
+- [ ] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
+      shards with BF16 K/V and run it through the canonical 12-case screen. It
+      is a patch series over a pinned base, so it is the cheapest new comparator
+      lane available, and its `MODEL_LOCK.json` shows the program already held
+      these exact shards while publishing no row for them. Use `hybrid-04`, the
+      token-parity-clean default line, not the headline stack: patches `0032`
+      and `0033` make the head-sum slice tree and the non-bit-exact pooled-key
+      cache opt-in. Expect nothing; the point is to convert an author-reported
+      program into a matched row or to close it.
 
 ### Phase P1 — layer 2 and the Q8 expert-down family
 
@@ -1320,6 +1402,11 @@ request-owned transition submission.
       that merely hides a slower kernel chain is not a retained win.
 - [ ] Target no per-layer graph launches and no unexplained direct launch in the
       steady transition; document any irreducible boundary.
+- [ ] Do not spend a rung on submission batching alone. The nearest external
+      evidence (`GGML_VK_MAX_NODES_PER_SUBMIT` 200-800, -1.3 to -2.4%) concludes
+      cost is per-dispatch, not per-submit. A P8 win must remove dispatches; a
+      variant that only bundles more nodes into one submission is pre-rejected
+      unless a local trace contradicts that prior.
 
 ### Phase P9 — PLE mmap, cold-cache, and load-memory lane
 
@@ -1391,15 +1478,43 @@ external MTP rows.
 - [ ] Build the rows<=8 batch-invariant target verifier before raising budget.
       Its per-row decode arithmetic, GDN/QSA/PLE state, and outputs must equal
       serial target verification under the declared contract.
+- [ ] Add a rejection-depth RED sweep before any budget work. Force a rejection
+      at every draft depth `d` in `[1, n_max]`, at the first, middle, and last
+      position of a verify batch, and with a batch shorter than the ring depth;
+      require post-rollback GDN conv state, SSM state, and the next-token logits
+      to be bit-equal to the no-MTP AR path at the same position. This is the
+      grid that localizes the Pat1entZ3r0 EXP-016 class: unwritten ring banks
+      beyond the written group, and a spec ring one entry too shallow for a
+      verify batch that carries the previously sampled token plus `n_max`
+      drafts. Passing at `n_max` only is not passing.
+- [ ] Falsify EXP-016 as the explanation for the measured external MTP failures
+      with one build. The failure identities are already known per lane
+      (EngramHalo 9/10 failing `general_ja_plan`; Nathan 8/10 with AR and MTP
+      each self-repeating 9/10; apepojken 9/10). Rebuild one lane on
+      `c589f0ed` + #27879 + EXP-016 and re-run the section 5.3 equivalence
+      probe: if those specific prompts move, the mechanism is confirmed and the
+      hipEngine audit above is urgent; if the same prompts fail, the hypothesis
+      is closed for the cost of one build. Either result is worth recording.
 - [ ] Move acceptance, first-mismatch selection, commit, rollback, and cursor
       repair to device-owned transactional kernels/graphs with exact recovery
       and cancellation tests.
-- [ ] Sweep budgets 1-6 on the full category+heldout suite against a true
-      no-MTP AR denominator from the same command. Record acceptance, visible
-      tokens/cycle, target rows, phase wall, and speed by category and context.
-- [ ] Evaluate confidence thresholds and `ngram-mod` combination only as
-      explicit provider policies over the full suite. No fixed prompt, token,
-      or candidate-specific policy is retainable.
+- [ ] Sweep budget against context depth, not budget alone, on the full
+      category+heldout suite against a true no-MTP AR denominator from the same
+      command. Record acceptance, visible tokens/cycle, target rows, phase wall,
+      and speed by category and context. Externally the optimum is
+      depth-dependent (n-max 2 shallow, 6 at >=32K, acceptance decaying
+      0.94-0.97 to 0.75-0.88 by 128K), so a single budget fitted at short
+      context under-serves depth. Fit a policy over measured acceptance -
+      raise the budget while marginal accepted tokens per cycle still increase -
+      rather than freezing a constant; a constant tuned on a fixed prompt set is
+      not retainable.
+- [ ] Evaluate confidence thresholds as explicit provider policies over the
+      full suite. No fixed prompt, token, or candidate-specific policy is
+      retainable. Deprioritize the `ngram-mod` combination: externally it is
+      -12% on code when combined with an MTP draft head (low-quality drafts
+      dilute the head), plain n-gram speculation is 0 to -33%, and two of its
+      four types hang the server on this hybrid-recurrent architecture. Run it
+      only if a local trace gives a reason to expect a different result.
 - [ ] Require exact greedy outputs where that is the provider contract. The
       refreshed Engram row is 1.128x but only 9/10 exact and is therefore not a
       valid target or promotion precedent.
@@ -1513,6 +1628,20 @@ operation-complete prefill MoE, dense/GR, p4096 QSA prefill, short-decode
 selected projections/Q8, and GDN in measured order. P8 is not rank 2: do not
 integrate it until a same-session named-production arm supplies `O` and `s`.
 
+Settle the P0 measurement gaps before the closure freeze: GPU clock policy must
+be declared and identical across both arms of every paired row, and the Vulkan
+lanes must be audited for configuration they are entitled to
+(`GGML_VK_ALLOW_GRAPHICS_QUEUE` first). A milestone-3 target frozen against an
+under-configured Vulkan lane is invalid and has to be re-frozen.
+
+Treat every external mechanism in section 4 as an untested hypothesis with a
+named falsification, never as a result. Nothing from an external program is
+adopted because it was published; it is adopted after it reproduces here under
+this campaign's gates, or closed with the evidence that killed it. The MTP
+rejection-depth RED sweep in P11 runs before any budget tuning, and a
+non-exact continuation is classified as tie or state class by the section 2.1
+rule before it is reported as either noise or a bug.
+
 For every implementation unit: declare the measured owner, complete-wall and
 gap-coverage ceilings, arithmetic class, affected scope, mechanism, and strict
 fallback; cite the concrete hipEngine-versus-comparator implementation delta;
@@ -1546,6 +1675,9 @@ cleanup, and commits are complete.
 - Tracked implementation leads:
   [cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp) and
   [omlx PR #3260](https://github.com/jundot/omlx/pull/3260).
+- Source-reviewed external program (no local reproduction):
+  [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization)
+  at `413c33c`; full review in survey section 6.7.
 - Canonical exact-token screening:
   [`benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json`](../benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json)
 - Cross-engine Strix Halo speed/accuracy survey:
