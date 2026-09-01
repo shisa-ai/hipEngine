@@ -31,6 +31,10 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.runtime.gguf_linear import (
+    target_verifier_wide_q6_shared4_leaf_session,
+    target_verifier_wide_q6_shared4_policy_enabled,
+)
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFTransactionalVerifier,
     _StreamingNextNPromptSink,
@@ -2542,7 +2546,10 @@ class Qwen35GGUFMTP2Adapter:
             raise RuntimeError("physical target owner has no packed verifier")
         target_started_ns = time.perf_counter_ns()
         device_result = batch is None or ngram_proposal is not None
-        results = list(verify_batch(jobs, device_result=device_result))
+        with target_verifier_wide_q6_shared4_leaf_session(
+            target_verifier_wide_q6_shared4_policy_enabled() and len(ids) >= 8
+        ):
+            results = list(verify_batch(jobs, device_result=device_result))
         target_finished_ns = time.perf_counter_ns()
         target_seconds = (target_finished_ns - target_started_ns) / 1e9
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
