@@ -1767,7 +1767,10 @@ def launch_physical_rows6_chunked(
 
 
 def _q5_dense_rowtile_grouped_rows6_enabled() -> bool:
-    raw = os.environ.get(_Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV, "0").strip().lower()
+    raw = os.environ.get(
+        _Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV,
+        "1",
+    ).strip().lower()
     if raw in {"1", "true", "yes", "on"}:
         return True
     if raw in {"0", "false", "no", "off"}:
