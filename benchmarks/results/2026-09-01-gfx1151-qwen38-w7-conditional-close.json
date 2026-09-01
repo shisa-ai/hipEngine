@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w7_tree_draft_dependency",
+  "status": "conditional_not_opened",
+  "performance_claim": false,
+  "prerequisites": {
+    "W1_flatness_required": true,
+    "W1_best_flatness": 3.4315795019,
+    "W1_gate": 1.25,
+    "certified_candidate_budget": 1,
+    "prompt_independent_tree_policy_available": false
+  },
+  "effect": "Additional candidates add target rows to the verifier whose flatness prerequisite failed; without W1, tree width increases blocked work rather than amortizing one sweep.",
+  "decision": "Close W7 as conditional not opened. Reopen only after verifier flatness and a prompt-independent multi-candidate policy pass full production gates."
+}

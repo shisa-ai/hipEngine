@@ -696,10 +696,12 @@ are not started.
   only to 0.966x/0.956x at C6/C8, still below 1.15x. Implementing C8 engagement
   cannot close the compound objective; reverted C6 evidence remains preserved.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w6-prompt-streaming-bound.json).
-- [ ] W7 **(Conditional) multi-candidate/tree drafts.** After W1 flatness,
-  extra candidates add rows, not sweeps (SGLang-style `bs x tree` verify).
-  Opens only with a prompt-independent policy and the full production gates;
-  stays closed while candidate budget 1 is the certified protocol.
+- [x] W7 **(Conditional) multi-candidate/tree drafts — not opened.** W1's
+  flatness prerequisite failed at 3.432x versus 1.25x, candidate budget 1
+  remains the certified protocol, and no production-qualified prompt-independent
+  tree policy exists. Extra candidates would add rows to the blocked verifier,
+  so W7 stays closed until a successor satisfies both prerequisites.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w7-conditional-close.json).
 
 ### 8.3 Order and success criteria
 
