@@ -2,6 +2,9 @@
 
 Status: **external lanes surveyed 2026-08-31; hipEngine evidence refreshed
 2026-09-01 on `zbook` / Ryzen AI Max+ Pro 395 / Radeon 8060S (`gfx1151`)**.
+A source-only review of the Pat1entZ3r0 optimization program was added
+2026-09-01 (section 6.7); it is not a surveyed lane and none of its claims
+are locally reproduced.
 The central result is that static-logit agreement and multi-step reliability
 are different questions: several fast forks compute plausible logits for a
 fixed batch but fail deterministic autoregressive or MTP output checks.
@@ -104,6 +107,7 @@ ten AR-equivalence rows, but its serial verification loses economically.
 | [EngramHalo](https://github.com/Aristo94/EngramHalo.cpp), IQ3/IQ4/Q8/MTP | up to 39.3 tok/s shallow; 24.7 at 78K; p4096 up to about 502 | Author-reported and independently directionally reproduced with another quant; not the matched Q4/BF16 protocol |
 | [Sleeping Robots Engram test](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/), AtomicChat 4.27 bpw | 28–38.5 tok/s MTP at working depths; 15.0 at 26K; p26K 395.1 without MTP | Independent same-machine-class cross-check, different host instance and quant |
 | Agention ROCmFP4 fork, FP4/Q8 | 27.77 tok/s AR at 512, 24.67 at 32K, 19.70 at 131K; up to 40 with MTP | Different quant, PLE layout, and fork; quant-specific evidence only |
+| [Pat1entZ3r0 optimization program](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`, dense-Q6K / Q8 KV / EasiiX Q8 MTP sidecar, Vulkan | 21–26 tok/s decode at 16K, 14–20 at 128K, up to 469 tok/s shallow prefill, 2.25 s TTFT at 38K | Author-reported; lock files and patch series verified, but the experiment harness and raw data are not committed and nothing is locally reproduced. Headline 2.5–3x compares a tuned stack against an `-ub 512` f16-KV no-MTP baseline. See section 6.7 |
 
 ## 2. Accuracy and reliability topline
 
@@ -428,6 +432,63 @@ rank the engines above:
 - `cafe-llama.cpp` and other fresh forks remain source leads. No matched local
   rate or correctness packet was available for this survey.
 
+### 6.7 Pat1entZ3r0 optimization program (source review only, 2026-09-01)
+
+[Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization)
+is a single-commit (`413c33c`) documentation-plus-patches repository: two
+llama.cpp patch lines (`patches/hybrid-04`, a correctness/perf line on master
+`c589f0ed` plus #27879; `patches/hybrid-03-mtp`, adding a Qwen4Exp MTP draft
+head and recurrent-rollback fixes), model/source lock files with shard
+SHA-256s, and prose results/rejected-experiment catalogs claiming 58
+controlled experiments on a 128 GB Strix Halo host. Its published rates are
+listed in the not-matched-claims table in section 1.
+
+Evidence status: **author-reported; nothing locally reproduced.** The
+committed `reproduce_final.sh` invokes `scripts/` and `reports/` paths that
+do not exist in the repository, so no raw logs, gate captures, or per-rep
+data are auditable. Its correctness gate is token parity against
+self-captured references at depths 0/4K/16K with a near-tie tolerance
+(≤~0.04 nats at fixed positions) — the same gate class that misses the
+transition nondeterminism measured in section 2, and its wholesale
+Nathan-fork evaluation was rejected on depth-decode speed alone with no
+correctness finding, even though Nathan fails all 12 canonical AR repeat
+cases here. Its "ROCm/HIP is 25–30% slower than Vulkan" claim rests on one
+containerized ROCm experiment and conflicts with the matched screen above,
+where patched upstream HIP prefill beats Vulkan at p1024/p4096. Treat the
+repository as a well-pinned set of leads, not as qualified evidence.
+
+Three items are actionable. **None has been tested in this repository, and we
+do not know whether any of them will reproduce, whether EXP-016 actually
+fixes the MTP failures measured elsewhere, or whether any of them will help
+hipEngine:**
+
+1. **EXP-016 recurrent rollback-ring fix**
+   (`patches/hybrid-03-mtp/0006`, derived from apepojken `32af70900` — a later
+   commit than the surveyed `843d575`). It claims two ring-buffer bugs in the
+   hybrid-memory rollback path — conv-state banks never written beyond group
+   0, and stale SSM banks on short batches — producing a ~4.8-nat logit shift
+   after draft rejection, and enlarges the spec ring depth to `n_max + 1`.
+   This is a plausible explanation for the MTP exactness failures measured in
+   the EngramHalo (9/10) and Nathan (8/10) lanes, which use the same EasiiX
+   Q8_0 sidecar (4,137,429,088 bytes). Worth doing: (a) audit hipEngine's own
+   checkpoint+replay and recurrent-rollback ownership for the same failure
+   mode; (b) re-run the section-5.3 MTP equivalence probe on an external lane
+   built from `c589f0ed` + #27879 + EXP-016. Caveat: the patch's own SSM
+   clamp is self-described as "best-effort deeper" than exact, so even a
+   correct diagnosis may not fully restore MTP output identity.
+2. **Depth-conditional draft length** (n-max 2 shallow, n-max 6 at ≥32–64K;
+   reported code acceptance decaying from 0.94–0.97 shallow to 0.75–0.88 at
+   128K). A candidate input for hipEngine MTP economics. Any adoption
+   requires the full mtp-bench category suite plus heldouts under the
+   exact-provider contract; the published acceptance figures are code-only
+   and author-reported.
+3. **Opt-in pooled-key QSA cache** (`LLAMA_QSA_POOL_CACHE=1`; reported
+   +38–40% decode at 32–64K with a flat depth slope). The QSA selection it
+   produces is explicitly non-bit-exact with no published KL/top-1
+   quantification. It is a port candidate for the QSA decode gap identified
+   in section 1, but only behind the production-profile numerical gates,
+   which it may fail.
+
 ## 7. Required evidence for a qualified fast fork
 
 A practical minimum is smaller than hipEngine's full production campaign but
@@ -469,3 +530,4 @@ larger than a speed screenshot:
 - apepojken sidecar: [jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF](https://huggingface.co/jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF)
 - EngramHalo source and methodology: [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp)
 - Nathan release: [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2)
+- Pat1entZ3r0 source review (section 6.7): [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`
