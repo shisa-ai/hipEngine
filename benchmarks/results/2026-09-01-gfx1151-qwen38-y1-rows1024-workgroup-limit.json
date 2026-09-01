@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y1-rows1024-workgroup-limit",
+  "created_at": "2026-09-01T08:46:00Z",
+  "status": "measured_named_blocker_y1_closed",
+  "source_commit": "0dc314ba1",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "cpu_apu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151",
+    "wavefront_size": 32,
+    "max_waves_per_cu": 32,
+    "max_workgroup_threads": 1024,
+    "lds_bytes": 65536
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "required_contract": "Q4 sweep multiplicity <=1.25 through rows1024 with exact per-output K16 association and strict fallback",
+  "rows1024_single_workgroup_geometry": {
+    "constraint": "waves * row_tiles_per_wave >= 64 row tiles; preserving 48-column ownership needs three output tiles",
+    "screened": [
+      {
+        "geometry": "shared_b3w16r4",
+        "control_ms": 8.706343127414584,
+        "candidate_ms": 12.490042950958014,
+        "delta_pct": 43.4591167401764,
+        "bit_exact": true,
+        "max_abs": 0.0
+      },
+      {
+        "geometry": "shared_b3w32r2",
+        "control_ms": 8.804959012195468,
+        "candidate_ms": 13.879859820008278,
+        "delta_pct": 57.636847608077744,
+        "bit_exact": true,
+        "max_abs": 0.0
+      }
+    ]
+  },
+  "rocprof": {
+    "hardware_limit_geometry": "<3,32,2>",
+    "grid_y": 1,
+    "threads": 1024,
+    "vgpr": 96,
+    "lds_bytes": 24576,
+    "scratch_bytes": 0,
+    "sample_duration_ms": 13.459049
+  },
+  "measured_ladder": [
+    {
+      "mechanism": "existing strict 256-row parent rollback at rows288",
+      "result": "full wall +2.69%"
+    },
+    {
+      "mechanism": "FP32 LDS accumulator one-sweep rows288",
+      "result": "leaf +55.1%"
+    },
+    {
+      "mechanism": "register one-sweep rows288-384 <3,8,3>",
+      "result": "retained partial; rows288 full wall -2.65%"
+    },
+    {
+      "mechanism": "register one-sweep rows513-576 <3,12,3>",
+      "result": "leaf up to -16.28%, full rows536 wall +0.73%; rejected"
+    },
+    {
+      "mechanism": "register one-sweep rows1024 <3,16,4>/<3,32,2>",
+      "result": "leaf +43.5%/+57.6%; rejected"
+    }
+  ],
+  "named_blocker": "At rows1024, exact single-sweep workgroup ownership is exhausted at the hardware maximum 1024 threads/32 waves and is 57.6% slower. Splitting ownership across workgroups requires inter-workgroup synchronization or FP32 partial spill/reduction; the measured LDS-spill prototype is already 55.1% slower, and no grid-wide synchronization exists inside the registered strict primitive. Therefore the <=1.25 full-range Y1 flatness contract cannot be met by this kernel family on gfx1151.",
+  "sized_remaining": "The retained rows288-384 band moves frozen C8 only +0.83% to 239.658 tok/s. Y0 requires 19.1% wall reduction to reach 305.847; the remaining exact one-sweep family is blocked at rows536/1024 and cannot cover that gap.",
+  "decision": "Close Y1 with retained rows288-384 partial win and measured blocker above rows384. Proceed to Y2/Y3 family and issue-wall tracks.",
+  "raw_sources": [
+    {
+      "path": "/tmp/y1-b3w16r4-r1024-k17408-n5120.json",
+      "sha256": "76b0d7e3eafff5f0d549ee7fcc29bac329e5a86d221d77b818486fbbf523156c",
+      "bytes": 2459
+    },
+    {
+      "path": "/tmp/y1-b3w32r2-r1024-k17408-n5120.json",
+      "sha256": "072b6c599bd43e665a9d088b7776ccbae2c60f9df938a5bb4476eb304dadb29c",
+      "bytes": 2727
+    },
+    {
+      "path": "/tmp/y1-b3w32r2-rocprof/gfx1151/2341171_kernel_trace.csv",
+      "sha256": "998d470f4d6ed1b9866fafc3d418633854b01ac1d44e4ac266b5635a9f8bbb61",
+      "bytes": 2884
+    },
+    {
+      "path": "/tmp/y1-rows1024-register-candidates.patch",
+      "sha256": "3ad3a17c03cae3e5ac43d8f0083b4258726e04f55190c2c2217266cf25e424cf",
+      "bytes": 6203
+    }
+  ]
+}

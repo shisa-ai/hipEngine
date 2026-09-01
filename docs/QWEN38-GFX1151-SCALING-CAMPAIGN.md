@@ -792,7 +792,7 @@ prompt-conditioned tuning, sized full-wall bound before code).
   while rows288 still leaves a 36.6% Q4 wall bound. Raw profiler sources stay
   under `/tmp` with hashes in the durable artifact; no performance claim.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-prefill-y0-sweep-multiplicity.json).
-- [ ] Y1 **Single-sweep (B-stationary) Q4 prefill dataflow.** Restructure the
+- [x] Y1 **Single-sweep (B-stationary) Q4 prefill dataflow.** Restructure the
   Q4 prefill owner family so each weight tile is fetched and dequantized once
   per tick and looped across all M-tiles (workgroup-owns-weight-tile with an
   in-kernel M-loop; persistent variants allowed). Gates: measured
@@ -823,6 +823,13 @@ prompt-conditioned tuning, sized full-wall bound before code).
   scope-reverted. Y1 above rows384 therefore remains a cross-family persistent-
   scheduling problem, not a leaf-only geometry problem.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-b3w12r3-full-wall-rejected.json).
+  **Closure blocker:** rows1024 exhausts exact one-workgroup ownership at
+  gfx1151's 1024-thread/32-wave limit: `<3,16,4>` and hardware-limit
+  `<3,32,2>` regress **43.5%/57.6%** despite bit-exact gridY1 execution;
+  cross-workgroup ownership requires synchronization or FP32 partial spill,
+  whose measured prototype regresses 55.1%. The retained band moves frozen C8
+  only +0.83%, so the blocked remainder cannot cover the 19.1% target gap.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-rows1024-workgroup-limit.json).
 - [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured
