@@ -65,6 +65,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared6r1_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
@@ -394,6 +395,10 @@ def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
         gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out
         if GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
         <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared6r1_bf16_bf16_out
+        if GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS <= row_count
+        <= GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS
         and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
         else gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
         if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS <= row_count
@@ -1791,6 +1796,8 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
 GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS = 33
 GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS = 48
 GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES = frozenset({(5_120, 10_240)})
+GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS = 49
+GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS = 96
 GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES = frozenset(
     {(5_120, 1_024), (17_408, 5_120)}
 )
@@ -3090,6 +3097,8 @@ __all__ = [
     "GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS",
     "GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
