@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next post-P4 p512 ledger — diagnostic] Fresh named-production trace is **100% attributed**, with **5,483.08 ms** kernel sum in a **5,552.89-ms** window. Top owners: Q4 gate/up **1,265.08 ms**, Q5 down **1,086.52 ms**, dense-other **1,071.12 ms**, dense Q8 **883.63 ms**, GDN **599.36 ms**, GR **403.94 ms**. Output and lifecycle pass. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-p512-ledger.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 dense-other audit — diagnostic] Resolved **8.767 s** into strict selected Q8_0 down **3.086 s**, dense F32 projections **2.775 s**, and layer-2 strict selected Q5_K **2.337 s**. The measured-negative grouped Q8 owner is not extended unchanged; a new mechanism is required. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next exact Q5 down+route — blocked] Expert-major BF16 Q5 publication cannot absorb the token-major ordered `fmaf(value, weight, accumulator)` reducer: preweighting rounds early and atomics lose top-k order. A future path needs cooperative token ownership or explicit T1/T2 gates. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`.

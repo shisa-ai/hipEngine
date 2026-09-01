@@ -1276,8 +1276,15 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       dense-mask or fully-masked-slice kernel. The conditional skip mechanism
       is therefore inapplicable and is not ported. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
-- [ ] Publish a fresh p512 device-role ledger after P4; no prefill phase may be
-      called closed with an unexplained multi-x owner.
+- [x] Publish a fresh p512 device-role ledger after P4; no prefill phase may be
+      called closed with an unexplained multi-x owner. The new named-production
+      code-p512 trace is **100% role-attributed**: **5,483.08 ms** kernel sum in
+      a **5,552.89-ms** window. Owners are Q4 gate/up **1,265.08 ms**, Q5 down
+      **1,086.52 ms**, dense-other **1,071.12 ms**, dense Q8 **883.63 ms**, GDN
+      **599.36 ms**, and GR **403.94 ms**; no unexplained multi-x bucket remains.
+      Output/lifecycle pass, with zero steady growth and zero allocations after
+      close. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-p512-ledger.json`.
 
 ### Phase P5 — device-owned AR output boundary
 
