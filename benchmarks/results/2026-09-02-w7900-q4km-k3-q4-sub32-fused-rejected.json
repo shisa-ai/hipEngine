@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_q4_sub32_fused_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Remove both bounded candidates. Reusing the fused WMMA row32 owner below R32 changes production BF16 bits. The exact grouped fused-R6 sibling wins isolated leaf medians but regresses marker-scoped target/device time because two-matrix pressure exceeds its launch savings.",
+  "source": {
+    "base_commit": "be6e4000c",
+    "dirty_candidate": true,
+    "candidate_removed": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "wmma_sub32": {
+    "candidate": "two-active-wave fused WMMA row32 owner at R28/R24",
+    "control": "current production exact separate gate + up + SiLU composition",
+    "layers": [0, 32, 64],
+    "sample_pairs_per_cell": 40,
+    "launches_per_sample": 3,
+    "all_candidate_medians_positive": true,
+    "speedup_range": [1.2760738696294158, 1.490361940554255],
+    "all_bf16_bit_exact": false,
+    "mismatches": {
+      "r28-l0": 86555,
+      "r28-l32": 86222,
+      "r28-l64": 86339,
+      "r24-l0": 73928,
+      "r24-l32": 73201,
+      "r24-l64": 74127
+    },
+    "verdict": "Rejected at the strict leaf gate; no route or profile gate."
+  },
+  "grouped_dual_rows6": {
+    "candidate": "grid.y-grouped exact fused R6 chunks",
+    "control": "current grouped single-matrix gate + up followed by SiLU",
+    "rows": [12, 18, 24, 30, 36],
+    "layers": [0, 32, 64],
+    "sample_pairs_per_cell": 40,
+    "launches_per_sample": 3,
+    "all_bf16_bit_exact": true,
+    "positive_cells": 15,
+    "cells": 15,
+    "speedup_range": [1.0258743938374146, 1.0542963399955831],
+    "minimum_pair_wins": 29,
+    "c8_marker": {
+      "protocol": "cached-only rocprofv3 kernel+ROCTx, one train prompt, C8/K3/D12; prior exact-C8 baseline trace versus dirty candidate trace",
+      "baseline": {
+        "target_wall_ms": 519.013679,
+        "device_union_ms": 441.459714,
+        "kernel_launches": 4714,
+        "q4_nonfused_ms": 152.889,
+        "q4_fused_row32_ms": 70.991
+      },
+      "candidate": {
+        "target_wall_ms": 521.836437,
+        "device_union_ms": 444.318854,
+        "kernel_launches": 4590,
+        "q4_nonfused_ms": 108.231,
+        "q4_fused_row32_ms": 70.750,
+        "q4_grouped_dual_rows6_ms": 47.803,
+        "grouped_dual_launches": 64,
+        "grouped_dual_grid": [139264, 4]
+      },
+      "delta_pct": {
+        "target_wall": 0.5438696732307235,
+        "device_union": 0.6476559263117743,
+        "combined_q4": 1.2971234589958858
+      },
+      "launch_delta": -124,
+      "verdict": "Rejected at marker admission; no full-suite spend."
+    }
+  },
+  "validation": {
+    "temporary_grouped_exact_test": "3/3 R12/R24/R36 nodes passed before candidate removal",
+    "final_tree": "No candidate kernel, wrapper, registry entry, policy, environment flag, or test remains."
+  },
+  "limitations": [
+    "Dirty current-source screen: diagnostic rejection only, not a retained performance claim.",
+    "The marker baseline is the immediately prior exact-C8 trace with equivalent effective defaults, not a same-process arm. The regression is therefore used only to reject, never to claim performance."
+  ]
+}
