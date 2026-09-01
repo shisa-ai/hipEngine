@@ -127,6 +127,11 @@ explicit K3 MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP
 C1-C2/C5-C8. [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
 [`Preserved external matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
 
+The first retained prefill extension cuts a representative 288-row tick by
+**2.65%** with exact output. Tracked-clean C1-C8 collateral remains exact;
+C8 combined prompt throughput improves **237.685->239.658 tok/s (+0.83%)**,
+still below the frozen 305.847 target. [`Y1 evidence`](results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json).
+
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md). Detailed historical and
 quality rows live in [`HISTORY.md`](HISTORY.md) and result artifacts.

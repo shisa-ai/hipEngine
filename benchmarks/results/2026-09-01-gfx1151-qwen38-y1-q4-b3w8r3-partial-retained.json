@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1151-qwen38-y1-q4-b3w8r3-partial-retained",
   "created_at": "2026-09-01T08:04:00Z",
-  "status": "validated_partial_retention_pending_full_c1c8",
+  "status": "retained_partial_y1_full_collateral_pass",
   "source_commit_before_unit": "3dcafbc64",
   "physical_host": {
     "hostname": "gfx1151",
@@ -217,10 +217,111 @@
       "path": "/tmp/y1-b3w8r3-final-rocprof/gfx1151/2308297_kernel_trace.csv",
       "sha256": "2d6d17ea3f5a8657c3ab5e92a2e21febe830c2665fd369e97cd7c011707184f3",
       "bytes": 2302
+    },
+    {
+      "path": "/tmp/y1-c1c8-control.json",
+      "sha256": "68bd908a083b339364d300183709a959d984c1a2b70a24a29e61b9a5973b1cbf",
+      "bytes": 3735586
+    },
+    {
+      "path": "/tmp/y1-c1c8-candidate.json",
+      "sha256": "7b3879e02b9f8382f45598c036d8e07913107a9dc5b458ae94d0c54bc65b1e95",
+      "bytes": 3735597
     }
   ],
   "limitations": [
     "Y1 remains open: rows385-1024 retain 2-4 Q4 sweeps.",
-    "Frozen C1-C8 collateral run follows from the committed clean source before performance promotion."
-  ]
+    "C8 combined prompt throughput is 239.658 tok/s, below the frozen 305.847 target."
+  ],
+  "source_commit": "3db466d53",
+  "full_c1c8_collateral": {
+    "protocol": "tracked-clean frozen ten-prompt widths1-8 max_tokens1, control candidate policy disabled, candidate committed default",
+    "passed_control": true,
+    "passed_candidate": true,
+    "cells_per_arm": 80,
+    "control_candidate_ids_equal": true,
+    "rows": [
+      {
+        "width": 1,
+        "control_combined_prompt_tok_s": 147.0050131187122,
+        "candidate_combined_prompt_tok_s": 146.9604991815947,
+        "combined_delta_pct": -0.03028055722259504,
+        "control_ar_prompt_tok_s": 147.06909227438913,
+        "candidate_ar_prompt_tok_s": 147.03041404556078,
+        "control_second_arm_prompt_tok_s": 146.94098977829643,
+        "candidate_second_arm_prompt_tok_s": 146.890650776871
+      },
+      {
+        "width": 2,
+        "control_combined_prompt_tok_s": 156.41366564709386,
+        "candidate_combined_prompt_tok_s": 154.90003734013894,
+        "combined_delta_pct": -0.9677084803894509,
+        "control_ar_prompt_tok_s": 141.29179748906608,
+        "candidate_ar_prompt_tok_s": 139.26221838362923,
+        "control_second_arm_prompt_tok_s": 175.16034199517455,
+        "candidate_second_arm_prompt_tok_s": 174.49405560438706
+      },
+      {
+        "width": 3,
+        "control_combined_prompt_tok_s": 182.0924872274069,
+        "candidate_combined_prompt_tok_s": 188.2060741942522,
+        "combined_delta_pct": 3.3574075789356117,
+        "control_ar_prompt_tok_s": 165.13634285683798,
+        "candidate_ar_prompt_tok_s": 175.3124579175943,
+        "control_second_arm_prompt_tok_s": 202.92918831004178,
+        "candidate_second_arm_prompt_tok_s": 203.14680937669843
+      },
+      {
+        "width": 4,
+        "control_combined_prompt_tok_s": 204.98565763769025,
+        "candidate_combined_prompt_tok_s": 204.843174516254,
+        "combined_delta_pct": -0.06950882470425634,
+        "control_ar_prompt_tok_s": 185.96095720705014,
+        "candidate_ar_prompt_tok_s": 185.87439475008017,
+        "control_second_arm_prompt_tok_s": 228.3466147146067,
+        "candidate_second_arm_prompt_tok_s": 228.12354806376712
+      },
+      {
+        "width": 5,
+        "control_combined_prompt_tok_s": 222.31210559595823,
+        "candidate_combined_prompt_tok_s": 223.0170447950902,
+        "combined_delta_pct": 0.3170943828012529,
+        "control_ar_prompt_tok_s": 206.06834062190248,
+        "candidate_ar_prompt_tok_s": 206.02863859854858,
+        "control_second_arm_prompt_tok_s": 241.33590997884016,
+        "candidate_second_arm_prompt_tok_s": 243.0588321838952
+      },
+      {
+        "width": 6,
+        "control_combined_prompt_tok_s": 229.98322553075386,
+        "candidate_combined_prompt_tok_s": 234.3053886585869,
+        "combined_delta_pct": 1.8793384247300704,
+        "control_ar_prompt_tok_s": 218.5158916455207,
+        "candidate_ar_prompt_tok_s": 223.97359556074025,
+        "control_second_arm_prompt_tok_s": 242.7207903981092,
+        "candidate_second_arm_prompt_tok_s": 245.63648009024396
+      },
+      {
+        "width": 7,
+        "control_combined_prompt_tok_s": 234.95124041811945,
+        "candidate_combined_prompt_tok_s": 236.53231698088348,
+        "combined_delta_pct": 0.6729381636591203,
+        "control_ar_prompt_tok_s": 223.36789087226416,
+        "candidate_ar_prompt_tok_s": 224.74716213709362,
+        "control_second_arm_prompt_tok_s": 247.80167004320182,
+        "candidate_second_arm_prompt_tok_s": 249.62183476205695
+      },
+      {
+        "width": 8,
+        "control_combined_prompt_tok_s": 237.68509665046489,
+        "candidate_combined_prompt_tok_s": 239.6575803327855,
+        "combined_delta_pct": 0.8298726803310341,
+        "control_ar_prompt_tok_s": 231.01548809595724,
+        "candidate_ar_prompt_tok_s": 230.09812439821405,
+        "control_second_arm_prompt_tok_s": 244.75126856830497,
+        "candidate_second_arm_prompt_tok_s": 250.04576347788762
+      }
+    ],
+    "active_widths_summary": "All 160 control/candidate arm cells are ID-exact. Combined prompt-throughput deltas are reported for every width; direct rows288 engagement is established separately because the server artifact does not expose per-kernel selector counts."
+  }
 }
