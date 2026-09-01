@@ -11,6 +11,10 @@ _q4_t16_physical_extra_rowtiles: ContextVar[bool] = ContextVar(
     "q4_t16_physical_extra_rowtiles",
     default=False,
 )
+_target_verifier_active_slots: ContextVar[int] = ContextVar(
+    "target_verifier_active_slots",
+    default=0,
+)
 _q5_t16_physical_rowtile: ContextVar[bool] = ContextVar(
     "q5_t16_physical_rowtile",
     default=False,
@@ -56,6 +60,26 @@ def q4_t16_physical_extra_rowtiles_enabled() -> bool:
     """Return whether the current target selected its production extra rowtiles."""
 
     return bool(_q4_t16_physical_extra_rowtiles.get())
+
+
+@contextlib.contextmanager
+def target_verifier_active_slots_session(active_slots: int) -> Iterator[None]:
+    """Publish live request geometry for one packed target-verifier call."""
+
+    slots = int(active_slots)
+    if slots < 0:
+        raise ValueError("target verifier active slots must be non-negative")
+    token = _target_verifier_active_slots.set(slots)
+    try:
+        yield
+    finally:
+        _target_verifier_active_slots.reset(token)
+
+
+def target_verifier_active_slots() -> int:
+    """Return the live request count for the current packed target call."""
+
+    return int(_target_verifier_active_slots.get())
 
 
 @contextlib.contextmanager
@@ -194,4 +218,6 @@ __all__ = [
     "q6_t16_physical_mixed_rowtiles_session",
     "q6_t16_physical_rowtile_enabled",
     "q6_t16_physical_rowtile_session",
+    "target_verifier_active_slots",
+    "target_verifier_active_slots_session",
 ]

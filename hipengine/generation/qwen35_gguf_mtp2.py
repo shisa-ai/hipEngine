@@ -84,6 +84,7 @@ from hipengine.core.specdec2_scope import (
     q5_t16_physical_rowtile_session,
     q6_t16_physical_mixed_rowtiles_session,
     q6_t16_physical_rowtile_session,
+    target_verifier_active_slots_session,
 )
 from hipengine.speculative.transaction import (
     SpecCycleResult,
@@ -3040,6 +3041,7 @@ class Qwen35GGUFMTP2Adapter:
         target_started = time.perf_counter()
         device_result = batch is None or ngram_proposal is not None
         with (
+            target_verifier_active_slots_session(len(jobs)),
             q4_t16_physical_extra_rowtiles_session(
                 bool(getattr(self, "production_physical_extra_rowtiles", False))
             ),
