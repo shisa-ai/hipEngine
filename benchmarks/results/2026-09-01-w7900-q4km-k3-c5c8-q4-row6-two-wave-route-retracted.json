@@ -1,0 +1,118 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_k3_c5c8_q4_row6_two_wave_route_retraction",
+  "date": "2026-09-01",
+  "status": "invalid_retracted",
+  "performance_claim": false,
+  "decision": "Retract the prior two-wave Q4 R6 MTP wall claim and return its policy default-off. The refreshed marker-scoped physical C8 target contains zero candidate launches; all R6 Q4 work remains on the WG32 parent.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "target_arch": "gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "host_name": "epyc",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "source": {
+    "commit": "22b4c1c064ec603d6420cad8996fa31f0765f988",
+    "tracked_clean": true,
+    "child_sha256": "5b0d611390e75de71eb5eda70d71f002f892a628736ed450290f134678ff1ccb",
+    "kernel_csv_sha256": "a38a684db98296c3ba81219fb9fa8d2a034ee9bf97e8cd21cc3e33a2fe2832a9",
+    "marker_csv_sha256": "9c2c8e65c1313367e0d8bb71dc074762e7b55a255a1ec5f9c3cc3649183d1196",
+    "raw_retained": false
+  },
+  "protocol": {
+    "classification": "single-prompt profiler packet; route-identity attribution only",
+    "prompt_id": "code_merge_intervals",
+    "concurrency": 8,
+    "candidate_budget": 3,
+    "max_tokens": 12,
+    "physical_target_rows": [
+      36,
+      36,
+      24
+    ],
+    "command": [
+      "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+      "scripts/specdec2_perf_bridge.py",
+      "--model",
+      "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "--backend",
+      "hip_gfx1100",
+      "--target-arch",
+      "gfx1100",
+      "--quant-label",
+      "Q4_K_M",
+      "--execution-profile",
+      "production",
+      "--scope",
+      "train",
+      "--limit",
+      "1",
+      "--concurrency",
+      "8",
+      "--service-capacity",
+      "8",
+      "--budgets",
+      "3",
+      "--max-tokens",
+      "12",
+      "--runs",
+      "1",
+      "--max-sequence-length",
+      "1024",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--roctx-markers",
+      "--profile-child",
+      "--output",
+      "/tmp/he-k3-current-c8-profile/child.json"
+    ],
+    "profile_transport": "rocprofv3 kernel+marker+HIP-runtime+memory traces; cache-only child"
+  },
+  "route_identity": {
+    "candidate_kernel": "q4_k_t16_dense_rowtile16_w2_gemv_kernel<unsigned short, 6>",
+    "candidate_calls_per_cycle": 0.0,
+    "parent_kernel": "q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 6>",
+    "parent_calls_per_cycle": 1024.0,
+    "parent_ms_per_cycle": 64.00486033333333,
+    "q4_family_ms_per_cycle": 105.58284466666667,
+    "target_marker_ms_per_cycle": 238.34272333333334,
+    "target_kernel_union_ms_per_cycle": 196.77409266666666,
+    "target_uncovered_ms_per_cycle": 41.568630666666664
+  },
+  "prior_artifact": {
+    "path": "benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-q4-row6-two-wave-retained.json",
+    "old_wall_deltas_pct": {
+      "5": 0.900676382264054,
+      "6": 0.8466254862047551,
+      "7": 0.4749565477457416,
+      "8": 0.4719568492816968
+    },
+    "disposition": "invalid noise; candidate did not own the measured physical target route"
+  },
+  "valid_remaining_evidence": {
+    "actual_weight_leaf_exact": true,
+    "leaf_speedup_range": [
+      1.0389464656890421,
+      1.3302741730014713
+    ],
+    "registered_strict_parent": true,
+    "candidate_default": false
+  },
+  "correctness_and_ownership": {
+    "profile_child_complete": true,
+    "exact_ar_mtp_generated_ids": true,
+    "one_physical_group": true,
+    "candidate_d2h_after_target": 0,
+    "final_active_allocations": 0,
+    "final_allocated_bytes": 0
+  },
+  "next": "Wire the candidate through the gfx1100 physical wrapper default-off, prove marker-scoped ownership, and rerun the complete gate before any new MTP claim."
+}
