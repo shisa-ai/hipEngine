@@ -901,7 +901,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Post-retention rows256 Q5 is now **1.00 sweep**; Q6 remains **4.84 sweeps /
   223.79 ms (26.76% wall)**, decomposed as 48 standard gridY1, 64 planar
   shared4 gridY8, and 16 planar plain gridY4 hits. Its family-wide removable
-  ceiling is **177.54 ms**, so planar Q6 remains open.
+  ceiling is **177.54 ms**. An exact planar `<4,3,2>` owner now covers both
+  physical planar shapes at rows256: leaves improve **1.94x/2.48x**, complete
+  wall falls **827.488 -> 735.999 ms (-11.06%)**, and the token is unchanged.
+  Trace confirms 80 gridY2 hits, 128 threads, VGPR176, LDS16 KiB, scratch0.
+  Tracked-clean C1-C8 collateral remains pending, so Y2 remains open.
+  [`Planar rows256 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
   [`Rows256 residual`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-post-retention-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
