@@ -845,10 +845,15 @@ prompt-conditioned tuning, sized full-wall bound before code).
   peers are flat and unchanged. Standard Q5 K6144/N5120 rows257-384 now uses
   the same exact `<8,3,2>` one-sweep geometry: rows288 is bit-exact and
   **1.54x** faster at the leaf, reducing the complete tick
-  **1100.915->1068.494 ms (-2.94%)** with the same token. GDN and remaining
-  Q5/Q6 row bands keep Y2 open.
+  **1100.915->1068.494 ms (-2.94%)** with the same token. GDN's measured
+  64.37 ms (5.48% of rows288 wall) has **zero Y2 multiplicity bound**: all
+  five stages launch exactly once per recurrent layer, and recurrence already
+  uses the retained compact peer-wave owner (1.42-1.52x over strict direct at
+  rows512-4096). Further GDN work enters Y3. Remaining Q5/Q6 row bands keep Y2
+  open.
   [`Q6 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json),
-  [`Q5 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json).
+  [`Q5 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json),
+  [`GDN blocker`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-gdn-no-multiplicity-blocker.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging

@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-gdn-no-multiplicity-blocker",
+  "created_at": "2026-09-01T09:54:00Z",
+  "status": "measured_named_blocker",
+  "source_commit_before_unit": "71838feecf4723ea3d2623c5a1a7c739946cd3c5",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "rows288": {
+    "tick_wall_ms": 1175.554506,
+    "gdn_gpu_ms": 64.370878,
+    "gdn_share_of_tick_wall": 0.05475788461653858,
+    "stages": [
+      {
+        "kernel": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>(float const*, float const*, float const*, float const*, float const*, float*, float*, int const*, long const*, long, long, long, long)",
+        "launches": 48,
+        "gpu_ms": 42.578905,
+        "launches_per_recurrent_layer": 1.0
+      },
+      {
+        "kernel": "(anonymous namespace)::qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel(float const*, unsigned short const*, float const*, unsigned short*, float, long, long, long)",
+        "launches": 48,
+        "gpu_ms": 13.249224,
+        "launches_per_recurrent_layer": 1.0
+      },
+      {
+        "kernel": "void (anonymous namespace)::qwen35_linear_attn_prefill_prepare_compact_peer_normalized_kernel<unsigned short>(float const*, unsigned short const*, unsigned short const*, float const*, float const*, float*, float*, float*, float*, float*, long, long, long, long, long)",
+        "launches": 48,
+        "gpu_ms": 4.460453,
+        "launches_per_recurrent_layer": 1.0
+      },
+      {
+        "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_tile32x128_kernel(float const*, float const*, float const*, float*, long, long)",
+        "launches": 48,
+        "gpu_ms": 3.945603,
+        "launches_per_recurrent_layer": 1.0
+      },
+      {
+        "kernel": "(anonymous namespace)::qwen35_linear_attn_conv_prefill_state_kernel(float const*, float*, long, long, long)",
+        "launches": 48,
+        "gpu_ms": 0.136693,
+        "launches_per_recurrent_layer": 1.0
+      }
+    ],
+    "recurrent_layers": 48,
+    "multiplicity_removable_ms": 0.0,
+    "multiplicity_bound_share_of_tick_wall": 0.0
+  },
+  "prior_retained_route": {
+    "artifact": "benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p3-compact-peer-gdn.json",
+    "route": "chain_compact_peer_wave32",
+    "production_chain_speedup_at_rows512_1024_4096": [
+      1.5171821974681219,
+      1.478586624322573,
+      1.4224107461484732
+    ],
+    "peer_output_and_state_bits_exact": true,
+    "strict_fallback": "chain_lds32_direct_nonvolatile"
+  },
+  "finding": "Every GDN component is already one launch per recurrent layer at rows288. The recurrence is already the retained compact peer-wave owner; there is no duplicate M-grid or source-weight sweep for Y2 to remove. The measured Y2 multiplicity bound is therefore 0 ms even though total GDN is 64.37 ms (5.48% of wall). Further GDN optimization is algorithmic recurrence/issue/fusion work and enters Y3.",
+  "raw_sources": [
+    {
+      "path": "/tmp/y0-prefill-sweep-profiled-final.json",
+      "sha256": "d3427ebbc6c32f686881172c9e57b8dbbea283c8bf07fe2e1331c3593a5c8ca8",
+      "bytes": 800684
+    },
+    {
+      "path": "/tmp/y0-prefill-rocprof-final/gfx1151/2269158_kernel_trace.csv",
+      "sha256": "665d6642d9ccb8b5d5588ab2ffcd6ac90f12390a53da039ba2119e50c589b2a0",
+      "bytes": 4956901
+    }
+  ],
+  "command": "python3 kernel-granularity audit over the Y0 cache-only rows288 trace using scripts.qwen38_prefill_sweep_analyze.classify_kernel"
+}
