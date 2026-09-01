@@ -351,9 +351,18 @@ control.
   34.7-76.4 ms target and 28.0-36.7 ms proposal. `accept_ms` is an aggregate
   synchronization boundary, not standalone accept-kernel time. K1 traces
   constrain host/API attribution but are not substituted into K3.
-- [ ] Compare physical batch shape, token-budget use, target-row geometry,
+- [x] Compare physical batch shape, token-budget use, target-row geometry,
   quant-family ownership, launch count, and accepted-token accounting against
   the external leader.
+
+  Comparison: [`2026-09-01-gfx1151-qwen38-z2-external-shape-comparison.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-external-shape-comparison.json).
+  Both routes use K3 and D24. hipEngine's measured target rows are
+  C5 `{10,15,20}`, C6 `{12,18,24}`, C7 `{14,21,28}`, and C8 `{16,24,32}`;
+  smaller values are tail passes. Its acceptance is 78.89%, versus leader
+  acceptance of 81.01%, 70.67%, 77.91%, and 80.51%. External HTTP telemetry
+  does not expose physical rows, quant-family kernels, or launch counts, so
+  those cross-runtime fields are a named instrumentation bound and remain
+  null. No geometry or ownership equality is inferred.
 - [ ] For C1/C2, run teacher-forced proposal parity against the matched
   Laurent route before changing target kernels. Report agreement by category,
   position, and heldout split.
