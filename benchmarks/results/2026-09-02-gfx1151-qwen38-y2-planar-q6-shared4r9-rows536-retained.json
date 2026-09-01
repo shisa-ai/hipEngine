@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "gfx1151-qwen38-y2-planar-q6-shared4r9-rows536-retained",
-  "status": "validated_retained_pending_collateral",
+  "status": "validated_retained",
   "physical_host": {
     "hostname": "gfx1151",
     "gpu": "AMD Radeon 8060S",
@@ -98,10 +98,103 @@
       "path": "/tmp/y2-q6-planar-shared4r9-rows536-rocprof/gfx1151/2652951_kernel_trace.csv",
       "sha256": "dbd1a9a3a5e94ded0de33af8bdae2dcc1953e34ac2abc8f3aa66cf4b7cd4d96f",
       "bytes": 1149059
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r9-rows536-c1c8-control.json",
+      "sha256": "b9f9f93f953736777ef9ff88786cb5d18678f7c0ebb344df316e172627a724bf",
+      "bytes": 3735600
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r9-rows536-c1c8-candidate.json",
+      "sha256": "dfab7de91e4e7ca94f0ae8137bc6989634e93a868b0af49c2d12233a79b50c77",
+      "bytes": 3735554
     }
   ],
   "limitations": [
-    "Tracked-clean collateral follows atomic commit.",
-    "Y2 remains open."
-  ]
+    "Y2 remains open pending rows1024 residual closure."
+  ],
+  "c1_c8_collateral": {
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 76.32523088925518,
+        "candidate_wall_seconds": 75.40604801801965,
+        "wall_delta_pct": -1.2042975311391202
+      },
+      "mtp": {
+        "control_wall_seconds": 65.82531325076707,
+        "candidate_wall_seconds": 65.79270483669825,
+        "wall_delta_pct": -0.049537803101051825
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "wall_delta_pct": 0.011659948471298698
+        },
+        "mtp": {
+          "wall_delta_pct": 0.047433993397905105
+        }
+      },
+      "2": {
+        "ar": {
+          "wall_delta_pct": 2.112118126157947
+        },
+        "mtp": {
+          "wall_delta_pct": 0.13506981479713964
+        }
+      },
+      "3": {
+        "ar": {
+          "wall_delta_pct": 0.06383711813511272
+        },
+        "mtp": {
+          "wall_delta_pct": 0.24406854178466997
+        }
+      },
+      "4": {
+        "ar": {
+          "wall_delta_pct": -3.5864781309894345
+        },
+        "mtp": {
+          "wall_delta_pct": 0.01822724992741609
+        }
+      },
+      "5": {
+        "ar": {
+          "wall_delta_pct": 0.15174617097222232
+        },
+        "mtp": {
+          "wall_delta_pct": 0.1455439643699652
+        }
+      },
+      "6": {
+        "ar": {
+          "wall_delta_pct": -1.7841385287345357
+        },
+        "mtp": {
+          "wall_delta_pct": -0.5527491569813248
+        }
+      },
+      "7": {
+        "ar": {
+          "wall_delta_pct": -0.06481824511335166
+        },
+        "mtp": {
+          "wall_delta_pct": -0.01696310275632884
+        }
+      },
+      "8": {
+        "ar": {
+          "wall_delta_pct": -3.590720688023308
+        },
+        "mtp": {
+          "wall_delta_pct": -0.09371441756483856
+        }
+      }
+    }
+  }
 }
