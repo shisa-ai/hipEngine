@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-planar-q6-quartet-decode",
+  "status": "rejected_and_scope_reverted",
+  "source_commit": "afa84f64e",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "rows": 288,
+  "candidate": "shared4r6 one decode unit per four-column qmicro quartet",
+  "bound_wall_pct": 4.634,
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 timeout 300 .venv/bin/python /tmp/y3_q6_shared4r6_quartet_rows288_smoke.py",
+  "results": {
+    "wide_planar_17408x5120": {"parent_ms": 3.646760177612305, "candidate_ms": 3.8199489593505858, "speedup": 0.9546620168014696, "regression_pct": 4.748, "exact": true, "mismatch_count": 0, "max_abs": 0.0},
+    "narrow_planar_5120x1024": {"parent_ms": 0.3424262046813965, "candidate_ms": 0.3632734060287476, "speedup": 0.9426129163286416, "regression_pct": 6.088, "exact": true, "mismatch_count": 0, "max_abs": 0.0}
+  },
+  "decision": "Reject and scope-revert. Both binding rows288 planar leaves regress despite exact output, so no full-wall or collateral run is warranted.",
+  "raw": "/tmp/y3-q6-shared4r6-quartet-rows288-smoke.json",
+  "rejected_patch": "/tmp/y3-shared4r6-quartet-rejected.diff"
+}
