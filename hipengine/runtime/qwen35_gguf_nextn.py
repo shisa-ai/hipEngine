@@ -22,6 +22,7 @@ from hipengine.kernels.hip_gfx1100.linear.lm_head import argmax_f32_rows_i32
 from hipengine.kernels.hip_gfx1100.quant.gguf_q3_k_gemv import register_gguf_q3_k_gemv_kernels
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
     build_gguf_q6_k_pack8_gemv,
+    gguf_q6_k_pack8_top1_stage2_gather_mapped_f32,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     build_gguf_q6_k_t16_gemv,
@@ -1234,8 +1235,17 @@ class Qwen35GGUFNextNExecutor:
         if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
             raise RuntimeError("NextN device state-only batch returned a scored result")
 
-    def _device_top1_rows(self, rows: int) -> Tensor:
+    def _device_top1_rows(
+        self,
+        rows: int,
+        *,
+        score_vocab_size: int | None = None,
+        token_map_i32_ptr: int | None = None,
+    ) -> Tensor:
         owner = self._batch_session
+        score_vocab = self.vocab_size if score_vocab_size is None else int(score_vocab_size)
+        if score_vocab <= 0 or score_vocab > self.vocab_size:
+            raise ValueError("score vocabulary must be positive and no larger than full vocab")
         owner._ensure_verify_lm_head_buffers(int(rows), runtime=self.runtime)
         if (
             owner._verify_lm_block_values is None
@@ -1251,11 +1261,25 @@ class Qwen35GGUFNextNExecutor:
             owner._verify_lm_out_indices_i32.ptr,
             owner._verify_lm_out_values.ptr,
             int(rows),
-            self.vocab_size,
+            score_vocab,
             threads=owner._lm_head_threads,
             library=owner._lm_head_library,
             runtime=self.runtime,
         )
+        if token_map_i32_ptr is not None:
+            gguf_q6_k_pack8_top1_stage2_gather_mapped_f32(
+                owner._verify_lm_out_values.ptr,
+                owner._verify_lm_out_indices_i32.ptr,
+                int(token_map_i32_ptr),
+                owner._verify_lm_out_indices_i32.ptr,
+                None,
+                int(rows),
+                1,
+                score_vocab,
+                self.vocab_size,
+                library=self._lm_head_top1_libraries["q6_pack8"],
+                runtime=self.runtime,
+            )
         return Tensor.from_handle(
             owner._verify_lm_out_indices_i32.ptr,
             (int(rows),),
@@ -1340,6 +1364,11 @@ class Qwen35GGUFNextNExecutor:
             out_features=self.hidden_size,
             runtime=self.runtime,
         )
+        hot_vocab = (
+            getattr(self.weights, "hot_vocab", None)
+            if bool(getattr(self, "_lm_head_top1_mapped", False))
+            else None
+        )
         self._batch_session.step_hidden_batch_native(
             self._fused_buf.ptr,
             sessions=sessions,
@@ -1347,10 +1376,20 @@ class Qwen35GGUFNextNExecutor:
             output_hidden_ptr=self._final_hidden_buf.ptr,
             logits_ptr=self._logits_buf.ptr,
             score_output=True,
+            score_weight=None if hot_vocab is None else hot_vocab.lm_head,
+            score_vocab_size=None if hot_vocab is None else int(hot_vocab.size),
             synchronize=False,
         )
         self._publish_batch_consumed_positions(ids, pos)
-        token_ids = self._device_top1_rows(rows)
+        token_ids = self._device_top1_rows(
+            rows,
+            score_vocab_size=None if hot_vocab is None else int(hot_vocab.size),
+            token_map_i32_ptr=(
+                None
+                if hot_vocab is None
+                else int(hot_vocab.token_ids.tensor.ptr)
+            ),
+        )
         hidden = tuple(
             Tensor.from_handle(
                 self._final_hidden_buf.ptr + row * hidden_nbytes,
@@ -1360,7 +1399,11 @@ class Qwen35GGUFNextNExecutor:
             )
             for row in range(rows)
         )
-        self.last_lm_head_path = "physical_batch_device_top1"
+        self.last_lm_head_path = (
+            "physical_batch_selected_q6_top1"
+            if hot_vocab is not None
+            else "physical_batch_device_top1"
+        )
         return token_ids, hidden
 
     def _run_step_device_top1(
@@ -1392,18 +1435,44 @@ class Qwen35GGUFNextNExecutor:
             eps=self.weights.config.rms_norm_eps,
             runtime=self.runtime,
         )
-        launch_gguf_linear(
-            self.weights.fallback("lm_head"),
-            final_hidden_ptr,
-            self._logits_buf.ptr,
-            rows=1,
-            in_features=self.hidden_size,
-            out_features=self.vocab_size,
-            output_dtype=GGUF_OUTPUT_F32,
-            runtime=self.runtime,
+        hot_vocab = (
+            getattr(self.weights, "hot_vocab", None)
+            if bool(getattr(self, "_lm_head_top1_mapped", False))
+            else None
         )
-        token_ids = self._device_top1_rows(1)
-        self.last_lm_head_path = "physical_singleton_device_top1"
+        if hot_vocab is not None:
+            owner = self._batch_session
+            owner._ensure_verify_lm_head_buffers(1, runtime=self.runtime)
+            if (
+                owner._verify_lm_out_indices_i32 is None
+                or owner._verify_lm_out_values is None
+                or not self._enqueue_exact_lm_head_top1(
+                    final_hidden_ptr,
+                    owner._verify_lm_out_indices_i32.ptr,
+                    owner._verify_lm_out_values.ptr,
+                )
+            ):
+                raise RuntimeError("selected NextN singleton top-1 is unavailable")
+            token_ids = Tensor.from_handle(
+                owner._verify_lm_out_indices_i32.ptr,
+                (1,),
+                DType.INT32,
+                Device("hip", 0),
+            )
+            self.last_lm_head_path = "physical_singleton_selected_q6_top1"
+        else:
+            launch_gguf_linear(
+                self.weights.fallback("lm_head"),
+                final_hidden_ptr,
+                self._logits_buf.ptr,
+                rows=1,
+                in_features=self.hidden_size,
+                out_features=self.vocab_size,
+                output_dtype=GGUF_OUTPUT_F32,
+                runtime=self.runtime,
+            )
+            token_ids = self._device_top1_rows(1)
+            self.last_lm_head_path = "physical_singleton_device_top1"
         return token_ids, Tensor.from_handle(
             final_hidden_ptr,
             (1, self.hidden_size),

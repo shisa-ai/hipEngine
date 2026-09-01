@@ -21741,6 +21741,8 @@ class Qwen35GGUFResidentSession:
         logits_ptr: int,
         stream: int = 0,
         score_output: bool = True,
+        score_weight: Qwen35GGUFDeviceWeight | None = None,
+        score_vocab_size: int | None = None,
         synchronize: bool = True,
     ) -> None:
         """Run one packed model step from caller-owned BF16 hidden rows.
@@ -21761,6 +21763,10 @@ class Qwen35GGUFResidentSession:
             and min(int(output_hidden_ptr), int(logits_ptr)) <= 0
         ):
             raise ValueError("hidden batch pointers must be non-zero")
+        if (score_weight is None) != (score_vocab_size is None):
+            raise ValueError("score_weight and score_vocab_size must be provided together")
+        if score_vocab_size is not None and int(score_vocab_size) <= 0:
+            raise ValueError("score_vocab_size must be positive")
         if self.runner is None or self.runner.weights is None or self.scratch is None:
             raise RuntimeError("GGUF resident session is closed")
         if self._bulk_prefill_scratch is None or self._prefill_hidden_b is None:
@@ -21847,12 +21853,20 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
             launch_gguf_linear(
-                self.runner.weights.root("lm_head"),
+                (
+                    self.runner.weights.root("lm_head")
+                    if score_weight is None
+                    else score_weight
+                ),
                 int(output_hidden_ptr),
                 int(logits_ptr),
                 rows=rows,
                 in_features=self.runner.hidden_size,
-                out_features=self.runner.vocab_size,
+                out_features=(
+                    self.runner.vocab_size
+                    if score_vocab_size is None
+                    else int(score_vocab_size)
+                ),
                 output_dtype=GGUF_OUTPUT_F32,
                 stream=stream,
                 runtime=runtime,
