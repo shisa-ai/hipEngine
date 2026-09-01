@@ -260,10 +260,6 @@ _Q4_T16_ROWTILE16_W2_R6_SHAPES = {
     (5_120, 17_408),
     (6_144, 5_120),
 }
-GGUF_SPECDEC2_Q4_PHYSICAL_UNEQUAL_PAIR_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_Q4_T16_PHYSICAL_UNEQUAL_PAIR_CHUNKS",
-    "enabled_default": False,
-}
 GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
     "gguf_q4_k_t16_v1": {
         "canonical": True,
