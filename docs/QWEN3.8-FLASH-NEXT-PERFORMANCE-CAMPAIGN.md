@@ -1561,8 +1561,12 @@ the existing escalation thresholds permit each rung.
 Goal: exceed true AR on the full suite, then match only correctness-valid
 external MTP rows.
 
-- [ ] Reconfirm the per-stream hyper-connection combiner and sidecar tensor map;
-      do not replace it with mean pooling.
+- [x] Reconfirm the per-stream hyper-connection combiner and sidecar tensor map;
+      do not replace it with mean pooling. Focused GGUF-map and draft-runner
+      tests pass **6/6**: all 34 sidecar tensors are pinned with shape/qtype
+      drift rejection, the global-normalization reference pairs every branch
+      independently, and the real local sidecar is deterministic and
+      transactional. Per-stream hyper-connection ownership remains unchanged.
 - [ ] Add phase timing/census for target hidden export, draft input fusion,
       draft layer/head, sampler, target verify, acceptance, commit/rollback,
       copies, and graphs on every category. The first isolated Qwen4Exp sidecar
