@@ -268,7 +268,7 @@ API time is attribution evidence only.
 
 | Rank | Lane and measured owner | Amdahl interpretation | Next decision |
 | ---: | --- | --- | --- |
-| 1 | Exact p4096 QSA decode: the retained ordered three-pass route reduces four-category complete wall **93.912→80.061 ms/token** and the traced QSA operation role from **36.304 to 20.913 ms/token**. | Local complete-wall `s=1.173`; the unit saves **13.851 ms/token** and covers **35.4%** of its measured final-valid gap. The residual QSA role still exceeds llama's prior **0.591-ms** attention family and remains rankable after a fresh comparator-aligned ledger. | Re-profile the retained stack, then optimize the exact score/value dataflow only if its refreshed gap coverage still outranks operation-complete prefill MoE. Do not revisit partial-softmax merges. |
+| 1 | Exact p4096 QSA decode: the retained ordered three-pass route reduces four-category complete wall **93.912→80.061 ms/token** and the traced QSA operation role from **36.304 to 20.913 ms/token**. | Local complete-wall `s=1.173`; the unit saves **13.851 ms/token** and covers **35.4%** of its measured final-valid gap. The residual QSA role still exceeds llama's prior **0.591-ms** attention family. Exact four-column-per-thread value grouping loses its leaf screen and is removed. | Require a new exact data-reuse mechanism or fresh profile before more value-pass scheduling; re-rank against operation-complete prefill MoE. Do not revisit partial-softmax merges. |
 | 2 | Operation-complete prefill MoE owns **3.408/6.307/25.398 s** at p512/p1024/p4096. Exact 512-row chunks activate a median **333/327/325 of 512 experts** with seven median rows per active expert. | Zero cost covers **89.4%/72.5%/58.0%** of the final-valid prefill gaps. The workload is broad-active-expert, not a tiny sparse set. | Transfer llama's device compact maps, projection/activation reuse, and graph fusion as one boundary. Stop isolated tile-constant work. |
 | 3 | Dense linear + GR-read roles own **1.839/3.442/13.864 s**; aligned dense-projection delta reaches **1.131/2.079/8.429 s**. | No single projection closes prefill, but these uniform boundaries cover **48.3%/39.6%/31.6%** of the current final-valid gaps at zero cost. | Fuse shared layouts across `attn_qkv`, `attn_gate`, `ssm_out`, HC projection/read, and inject/publication boundaries. |
 | 4 | p4096 QSA prefill attention is **10.229 s** versus llama's **0.526 s**; its share grows from **0.85%** at p512 to **18.68%** at p4096. | Its p4096 zero-cost role ceiling covers **23.8%** of the final-valid gap, but the short rows are only 1–2% owners. | Differential-profile the exact flash/index materialization and build a prefill-specific path; do not assume the decode design transfers. |
@@ -1288,6 +1288,14 @@ direct-launch surface before graph capture hides it.
       role to **20.913 ms/token** with 100% attribution and no measured-window
       allocations. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json`.
+      A follow-up exact four-column-per-thread weighted-V schedule is rejected
+      and removed: after fixing a RED-caught reciprocal-multiply
+      reassociation, it remains bit-exact but measures **1.469 ms** versus the
+      retained **1.180-ms** leaf in separate cached-build runs. The magnitude
+      is diagnostic because the runs used separate processes, but the candidate
+      clearly fails leaf admission and does not warrant whole-model timing.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-value-col4-rejected.json`.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
