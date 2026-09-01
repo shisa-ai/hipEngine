@@ -1631,11 +1631,6 @@ GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS = {
     for rows in (20, 24, 32)
     for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
 } | {
-    ("gguf_q5_k_t16_v1", rows, 6_144, 5_120): (
-        "t16_wmma_prefill_bf16_bf16_out"
-    )
-    for rows in (20, 24, 32)
-} | {
     ("gguf_q6_k_t16_v1", rows, 5_120, 10_240): (
         "t16_wmma_prefill_shared4_bf16_bf16_out"
     )
