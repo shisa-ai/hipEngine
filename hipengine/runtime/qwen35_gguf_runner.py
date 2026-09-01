@@ -23863,10 +23863,10 @@ class Qwen35GGUFResidentSession:
         self,
         jobs: Sequence[dict[str, object]],
     ) -> tuple[tuple[int, ...], _FullStackScratch] | None:
-        """Resolve a candidate target-verifier route onto resident state slabs."""
+        """Resolve a qualified target-verifier route onto resident state slabs."""
 
-        if not _env_flag(
-            "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", False
+        if not self._backend_environment_policy_enabled(
+            "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY"
         ):
             return None
         sessions = tuple(job.get("session") for job in jobs)

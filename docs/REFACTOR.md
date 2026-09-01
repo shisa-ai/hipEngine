@@ -42,17 +42,16 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-02 gfx1100 direct resident verifier linear state — open
+## 2026-09-02 gfx1100 direct resident verifier linear state — closed
 
-- `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=1` opts into a
-  default-off packed-target candidate that indexes the resident batch owner's
-  Conv/GDN state slabs directly and skips only the initial packed-state import.
-  Captured state-row kernels remain read-only on the initial state; the existing
-  GPU-selected row commit still owns exact post-accept mutation.
-- Removal trigger: remove the environment read, routing helper, and direct
-  target branch if same-build C8 marker plus the complete C5-C8 gate does not
-  pass. If retained, promote through backend capability metadata and keep the
-  copy-in route as strict fallback.
+- Promoted through gfx1100 capability metadata after exact same-build C8 tracing
+  and a positive complete C5-C8 category/heldout gate. Packed target verification
+  indexes the resident batch owner's Conv/GDN slabs directly, while captured
+  state rows remain read-only and the existing GPU-selected row kernel remains
+  the sole exact post-accept commit owner.
+- `HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=0` restores the fused
+  resident-to-packed import for bisection. Remove the environment override after
+  the next stable milestone audit; keep the copy-in route as strict fallback.
 
 ## 2026-09-02 gfx1100 planar-Q6 root R8 rollback — closed
 

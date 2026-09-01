@@ -235,6 +235,14 @@ GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY = {
 GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER_POLICY = (
     GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY
 )
+# Packed physical C5-C8 target verification is qualified to index the resident
+# multi-slot Conv/GDN slabs directly. Captured candidate rows read initial state
+# without mutation and the existing selected-row kernel remains the sole commit
+# owner. Explicit disable restores the fused resident-to-packed import.
+GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE",
+    "enabled_default": True,
+}
 # W7900 physical SPECDEC2 R6 reuses retained C1 rowtile arithmetic for five
 # standard-Q4 target shapes. One rows6 launch is BF16-bit exact to two
 # independent rows3 owners while avoiding the shared-B kernel's padded 256-row

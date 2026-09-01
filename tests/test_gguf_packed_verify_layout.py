@@ -175,7 +175,14 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
     monkeypatch.setattr(
         gguf_runner,
         "backend_package_capability",
-        lambda backend, name, default: False,
+        lambda backend, name, default: (
+            {
+                "enabled_env": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE",
+                "enabled_default": True,
+            }
+            if name == "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY"
+            else False
+        ),
     )
 
     assert owner._direct_resident_linear_state((owner, peer, None)) is None
@@ -189,6 +196,10 @@ def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None
     jobs = ({"session": owner}, {"session": peer})
     monkeypatch.delenv(
         "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", raising=False
+    )
+    assert owner._direct_resident_verify_linear_state(jobs) == ((0, 5), slab)
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", "0"
     )
     assert owner._direct_resident_verify_linear_state(jobs) is None
     monkeypatch.setenv(

@@ -1,0 +1,452 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_k3_c5c8_direct_resident_verify_linear_state_retained",
+  "date": "2026-09-02",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote direct resident Conv/GDN initial-state reads for gfx1100 packed target verification. Every C5-C8 aggregate, category, heldout, and process-order slice improves with exact IDs, acceptance, selected-row ownership, and lifecycle.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "58f6889ab8a8a16453f2b8f720929b16489252c9",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1-candidate": {
+        "path": "/tmp/he-direct-resident-verify-full-gate/r1-candidate.json",
+        "sha256": "2bb3addf3dc97f7fbe1685a6330a3662c8df3a47ee7859d934eaa794d40fb9cf"
+      },
+      "r1-control": {
+        "path": "/tmp/he-direct-resident-verify-full-gate/r1-control.json",
+        "sha256": "0cbe9f2c785441d1d60c487df140162487b1ee76f19f98c671d84c65370307d9"
+      },
+      "r2-control": {
+        "path": "/tmp/he-direct-resident-verify-full-gate/r2-control.json",
+        "sha256": "735f2141a0e9b2635e0e6bd3206289d812abcccad02db900267798f0ff065502"
+      },
+      "r2-candidate": {
+        "path": "/tmp/he-direct-resident-verify-full-gate/r2-candidate.json",
+        "sha256": "8f795b96434a262f0fe1091d45965c9be488cb484fa3662cc5df73ee7b9456bb"
+      }
+    }
+  },
+  "candidate": {
+    "scope": "gfx1100 packed physical target verification backed by one multi-slot resident owner",
+    "mechanism": "Map packed segment state_indices to canonical resident slot slabs and skip only the initial resident-to-packed Conv/GDN import. Captured-row kernels read initial state without mutation; existing GPU-selected row commits remain the sole post-accept owner.",
+    "default_after_decision": true,
+    "rollback": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=0",
+    "strict_fallback": "existing fused resident-to-packed pointer-table copy followed by unchanged selected-row commit"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=1",
+    "rollback_flag": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=0",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "all_cells_exact": true,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "all_processes_drained": true,
+    "cross_arm_generated_ids_and_acceptance_equal": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 40,
+        "cells": 40,
+        "median_delta_pct": 2.1223353951577706,
+        "minimum_delta_pct": 1.2751005661339798,
+        "maximum_delta_pct": 4.13099911207524,
+        "generated_ids_and_acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 1.2516842331944722,
+        "minimum_delta_pct": -0.16388900161981024,
+        "maximum_delta_pct": 3.5582976948092426,
+        "generated_ids_and_acceptance_equal": true
+      }
+    ],
+    "cross_arm_rows_compared": 520,
+    "one_physical_group_per_row": true,
+    "recoverable_failure_count": 0,
+    "captured_state_rows_read_initial_state_without_mutation": true,
+    "gpu_selected_row_commit_preserved": true
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 66.54399841232589,
+        "candidate_tok_s": 67.88154545635382,
+        "candidate_delta_pct": 2.0100190489608094,
+        "rollback_wall_seconds": 36.066362966783345,
+        "candidate_wall_seconds": 35.35570653062314,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 66.68985964934065,
+          "candidate_tok_s": 68.57008795658803,
+          "candidate_delta_pct": 2.8193616197930815
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 66.398773825898,
+          "candidate_tok_s": 67.20669340224889,
+          "candidate_delta_pct": 1.2167688193599924
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 68.91863740084915,
+          "candidate_tok_s": 70.20564830097365,
+          "candidate_delta_pct": 1.8674352086198498
+        },
+        "general_en": {
+          "rollback_tok_s": 71.44479358061717,
+          "candidate_tok_s": 72.9287723034878,
+          "candidate_delta_pct": 2.0770984819154625
+        },
+        "general_ja": {
+          "rollback_tok_s": 63.307753140970654,
+          "candidate_tok_s": 64.66279478092487,
+          "candidate_delta_pct": 2.1404039358921434
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 61.25253461551931,
+          "candidate_tok_s": 62.52683630121011,
+          "candidate_delta_pct": 2.080406457772832
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 66.55751463780719,
+          "candidate_tok_s": 67.86909533829655,
+          "candidate_delta_pct": 1.970597471415103
+        },
+        "heldout": {
+          "rollback_tok_s": 66.52373436404187,
+          "candidate_tok_s": 67.90022920037855,
+          "candidate_delta_pct": 2.069178541306771
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 74.55215520591041,
+        "candidate_tok_s": 76.02477823218574,
+        "candidate_delta_pct": 1.975292360372416,
+        "rollback_wall_seconds": 38.63067394960672,
+        "candidate_wall_seconds": 37.88238607160747,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 74.75476388527748,
+          "candidate_tok_s": 76.48716590767475,
+          "candidate_delta_pct": 2.3174469857946356
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 74.35064182312459,
+          "candidate_tok_s": 75.56794750543752,
+          "candidate_delta_pct": 1.6372497297451938
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 73.84360918759931,
+          "candidate_tok_s": 75.77873079054646,
+          "candidate_delta_pct": 2.6205674725770622
+        },
+        "general_en": {
+          "rollback_tok_s": 81.90101197598986,
+          "candidate_tok_s": 83.22398209916237,
+          "candidate_delta_pct": 1.6153281763604532
+        },
+        "general_ja": {
+          "rollback_tok_s": 73.46079224953378,
+          "candidate_tok_s": 74.65029475550175,
+          "candidate_delta_pct": 1.619234518908308
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 70.6199199625838,
+          "candidate_tok_s": 71.61354019834639,
+          "candidate_delta_pct": 1.4069971139715864
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 74.0241779578027,
+          "candidate_tok_s": 75.6944817374806,
+          "candidate_delta_pct": 2.2564300283483663
+        },
+        "heldout": {
+          "rollback_tok_s": 75.35839553291467,
+          "candidate_tok_s": 76.52566332521603,
+          "candidate_delta_pct": 1.5489552080385272
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 72.60693235230434,
+        "candidate_tok_s": 73.78718794225763,
+        "candidate_delta_pct": 1.6255411869302572,
+        "rollback_wall_seconds": 46.27657292690128,
+        "candidate_wall_seconds": 45.536360629834235,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 72.75387775503965,
+          "candidate_tok_s": 74.27240063445383,
+          "candidate_delta_pct": 2.087205419520055
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 72.46057934209493,
+          "candidate_tok_s": 73.30827377528695,
+          "candidate_delta_pct": 1.169869798017964
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 72.83413361853447,
+          "candidate_tok_s": 73.97124969430838,
+          "candidate_delta_pct": 1.561240615189452
+        },
+        "general_en": {
+          "rollback_tok_s": 80.75851206598874,
+          "candidate_tok_s": 82.1622484660787,
+          "candidate_delta_pct": 1.738190023787145
+        },
+        "general_ja": {
+          "rollback_tok_s": 68.04838360924957,
+          "candidate_tok_s": 69.18215002882675,
+          "candidate_delta_pct": 1.6661180757614247
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 69.8018227897128,
+          "candidate_tok_s": 70.92563571098123,
+          "candidate_delta_pct": 1.6100051207173394
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 72.30360691522117,
+          "candidate_tok_s": 73.49482914629239,
+          "candidate_delta_pct": 1.6475280859334918
+        },
+        "heldout": {
+          "rollback_tok_s": 73.06672260028508,
+          "candidate_tok_s": 74.23011352354395,
+          "candidate_delta_pct": 1.592230884123902
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 76.77843477667527,
+        "candidate_tok_s": 77.99569716424205,
+        "candidate_delta_pct": 1.585422249238877,
+        "rollback_wall_seconds": 50.01404380239546,
+        "candidate_wall_seconds": 49.23348517436534,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 76.89556358215235,
+          "candidate_tok_s": 78.40010506065236,
+          "candidate_delta_pct": 1.9566037472273923
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 76.66166225421199,
+          "candidate_tok_s": 77.59543993739474,
+          "candidate_delta_pct": 1.2180503992808456
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 78.16081446895058,
+          "candidate_tok_s": 79.38450044940386,
+          "candidate_delta_pct": 1.5656003443252242
+        },
+        "general_en": {
+          "rollback_tok_s": 81.54760310155791,
+          "candidate_tok_s": 82.76402605563499,
+          "candidate_delta_pct": 1.4916722353717216
+        },
+        "general_ja": {
+          "rollback_tok_s": 73.08215931197083,
+          "candidate_tok_s": 74.26909188835155,
+          "candidate_delta_pct": 1.6241071522175243
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 73.59338940275654,
+          "candidate_tok_s": 74.82134495693956,
+          "candidate_delta_pct": 1.6685677397772158
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 76.56627756697412,
+          "candidate_tok_s": 77.78760519063881,
+          "candidate_delta_pct": 1.5951247239313293
+        },
+        "heldout": {
+          "rollback_tok_s": 77.09888428815908,
+          "candidate_tok_s": 78.30993105922269,
+          "candidate_delta_pct": 1.570770812372957
+        }
+      }
+    }
+  },
+  "profiling": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=<1-or-0> PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "source_commit": "58f6889ab8a8a16453f2b8f720929b16489252c9",
+    "same_build": true,
+    "cached_build_required": true,
+    "generated_ids_and_acceptance_equal": true,
+    "rollback": {
+      "raw_child": "/tmp/he-direct-resident-verify-c8-profile-rollback/child.json",
+      "raw_child_sha256": "259f11d3c469215aa2d4858a69bbabca61db494bcdecd77d96766ef21500b884",
+      "raw_kernel_trace": "/tmp/he-direct-resident-verify-c8-profile-rollback/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "5f97917e662bd85ca73b3dd557e7631cdd091f18425ab7a34c78f799f67acc78",
+      "raw_marker_trace": "/tmp/he-direct-resident-verify-c8-profile-rollback/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "8e1ce51048b2145c33584afae95f000eca57f3118f2b0a511469f22a0158ae1d",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "target_wall_ms": 172.199531,
+      "complete_wall_seconds": 1.3439257526770234,
+      "target_kernel_launches": 1560,
+      "target_kernel_sum_ms": 159.480409,
+      "target_device_union_ms": 143.78342,
+      "linear_state_commit_launches": 9,
+      "linear_state_commit_sum_ms": 8.518383,
+      "linear_state_commit_grid_x": [
+        12288,
+        98304
+      ],
+      "acceptance_counts": [
+        3,
+        3,
+        2
+      ]
+    },
+    "candidate": {
+      "raw_child": "/tmp/he-direct-resident-verify-c8-profile-candidate/child.json",
+      "raw_child_sha256": "3ce1d6b33c5a2461a74eadd00cada63406bcb73e49e9a1229cb7c7217e12e36f",
+      "raw_kernel_trace": "/tmp/he-direct-resident-verify-c8-profile-candidate/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "40d6834e037dc5cb0e15da5a7ea1210d5f5540074e5302017ddcdc1da940fb8f",
+      "raw_marker_trace": "/tmp/he-direct-resident-verify-c8-profile-candidate/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "3030d838e6cf541dacbc09693994f3df7f0a3cf20d02624a894e746dab66d35a",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "target_wall_ms": 167.929393,
+      "complete_wall_seconds": 1.3298905724659562,
+      "target_kernel_launches": 1550,
+      "target_kernel_sum_ms": 154.602261,
+      "target_device_union_ms": 141.718521,
+      "linear_state_commit_launches": 8,
+      "linear_state_commit_sum_ms": 4.276111,
+      "linear_state_commit_grid_x": [
+        12288
+      ],
+      "acceptance_counts": [
+        3,
+        3,
+        2
+      ]
+    },
+    "deltas": {
+      "complete_throughput_pct": 1.0553635390498695,
+      "target_wall_pct": -2.479761689943283,
+      "target_kernel_sum_pct": -3.0587757020362316,
+      "target_device_union_pct": -1.4361175996509212,
+      "linear_state_commit_sum_pct": -49.80137662276983,
+      "linear_state_commit_launches": -1,
+      "target_kernel_launches": -10
+    }
+  },
+  "validation": {
+    "candidate_focused_tests": "uv run pytest -q tests/test_gguf_packed_verify_layout.py tests/test_qwen35_gguf_linear_state_commit.py — 36 passed",
+    "promotion_bundle": "uv run pytest -q tests/test_gguf_packed_verify_layout.py tests/test_qwen35_gguf_linear_state_commit.py tests/test_gfx1151_backend.py::test_gfx1151_backend_declares_generation2_physical_widths — 63 passed, one stale packed-prefill capability expectation failed; focused repair below",
+    "focused_repair": "uv run pytest -q tests/test_gfx1151_backend.py::test_gfx1151_backend_declares_generation2_physical_widths tests/test_gguf_packed_verify_layout.py::test_gguf_direct_resident_linear_state_maps_owner_slots — 2 passed",
+    "full_gate_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "Explicit K3 remains diagnostic at capacity 8; automatic policy remains K0 outside separately qualified cells.",
+    "Peer backends retain the existing copy-in route until independently qualified."
+  ]
+}
