@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_q4_dualchunk_rows6_leaf_screen",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove the exact WG128 dual-R6-chunk Q4 owner. Every actual-weight role loses to the retained WG64 grouped-R6 owner, so no runtime route or complete-suite gate is justified.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "source": {
+    "base_commit": "7daa03723",
+    "tracked_clean_before_candidate": true,
+    "candidate_retained": false,
+    "raw_result": "/tmp/he-k3-q4-dualchunk-rows6-screen.json",
+    "raw_result_sha256": "73ccea9813ef4c05768015d8d3b83fa853e1649509f407ade50f1d08656c8d78",
+    "screen_script": "/tmp/he-k3-q4-dualchunk-rows6-screen.py",
+    "screen_script_sha256": "a56cf0b1ee3d578c970d1e331bdb3b7083e40f54163059c72c57edad34c202e0"
+  },
+  "candidate": {
+    "mechanism": "Pair two independent 64-thread R6/16-column subgroups in one WG128 block for the same output columns. Each subgroup preserves the retained R6 accumulator, reduction, and BF16 store order.",
+    "control": "one retained WG64 grouped-R6 launch over physical R24",
+    "candidate_geometry": "WG128 with two independent R6 row subgroups; grid.y owns R12 packets",
+    "why_distinct": "Unlike the rejected four-wave/32-column owner, output ownership remains 16 columns; unlike grouped R12, each subgroup retains only an R6 accumulator.",
+    "removal": "Kernel, launcher, Python wrapper, registry key, and exactness test removed byte-for-byte after the leaf rejection."
+  },
+  "protocol": {
+    "rows": 24,
+    "warmups": 5,
+    "sample_pairs": 30,
+    "launches_per_sample": 3,
+    "order": "alternating control/candidate and candidate/control",
+    "timing": "HIP event and synchronized operation-complete wall",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python /tmp/he-k3-q4-dualchunk-rows6-screen.py"
+  },
+  "measurements": [
+    {
+      "role": "ffn_gate",
+      "tensor": "blk.0.ffn_gate.weight",
+      "shape_k_n": [5120, 17408],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9702871683420128,
+      "event_pair_wins": 5,
+      "wall_speedup": 0.9760224740073651,
+      "wall_pair_wins": 6
+    },
+    {
+      "role": "recurrent_gate",
+      "tensor": "blk.0.attn_gate.weight",
+      "shape_k_n": [5120, 6144],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.926672163175827,
+      "event_pair_wins": 7,
+      "wall_speedup": 0.9269290163539595,
+      "wall_pair_wins": 7
+    },
+    {
+      "role": "full_q",
+      "tensor": "blk.3.attn_q.weight",
+      "shape_k_n": [5120, 12288],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9655053911857565,
+      "event_pair_wins": 6,
+      "wall_speedup": 0.9690807378288477,
+      "wall_pair_wins": 7
+    },
+    {
+      "role": "full_k",
+      "tensor": "blk.3.attn_k.weight",
+      "shape_k_n": [5120, 1024],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.8221488451110773,
+      "event_pair_wins": 0,
+      "wall_speedup": 0.8427771489074155,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "full_output",
+      "tensor": "blk.3.attn_output.weight",
+      "shape_k_n": [6144, 5120],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9331600551712683,
+      "event_pair_wins": 4,
+      "wall_speedup": 0.9267932994693523,
+      "wall_pair_wins": 4
+    },
+    {
+      "role": "recurrent_qkv",
+      "tensor": "blk.8.attn_qkv.weight",
+      "shape_k_n": [5120, 10240],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9464776357017481,
+      "event_pair_wins": 3,
+      "wall_speedup": 0.9492086070558331,
+      "wall_pair_wins": 3
+    },
+    {
+      "role": "ffn_down",
+      "tensor": "blk.8.ffn_down.weight",
+      "shape_k_n": [17408, 5120],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9735128542556662,
+      "event_pair_wins": 7,
+      "wall_speedup": 0.9735172356755467,
+      "wall_pair_wins": 7
+    }
+  ],
+  "summary": {
+    "all_bf16_bit_exact": true,
+    "cells": 7,
+    "candidate_event_median_wins": 0,
+    "candidate_wall_median_wins": 0,
+    "event_speedup_range": [0.8221488451110773, 0.9735128542556662],
+    "wall_speedup_range": [0.8427771489074155, 0.9760224740073651],
+    "minimum_event_pair_wins": 0,
+    "minimum_wall_pair_wins": 0
+  },
+  "limitations": [
+    "This is a bounded actual-weight leaf rejection, not a complete workload benchmark.",
+    "No current scoreboard or benchmark changelog row changes.",
+    "The retained grouped-R6 owner remains the production default."
+  ]
+}
