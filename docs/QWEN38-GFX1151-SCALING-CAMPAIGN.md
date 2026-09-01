@@ -952,7 +952,8 @@ prompt-conditioned tuning, sized full-wall bound before code).
   gridY1 and lowers complete wall **1651.846 -> 1643.521 ms (-0.50%)**, token
   unchanged; narrow rows536 and rows1024 lose at 0.70-0.93x and retain
   fallback. Trace: 64 hits, 128 threads, VGPR256, LDS16 KiB, scratch0.
-  Collateral remains pending.
+  Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate
+  wall **1.20% AR / 0.05% MTP**.
   [`Post-shared4r6 ledger`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json).
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
