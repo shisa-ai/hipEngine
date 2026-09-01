@@ -1080,6 +1080,35 @@ def test_q4_t16_physical_r36_pair_silu_routes_row48_candidate(monkeypatch) -> No
     ]
 
 
+def test_q4_t16_physical_row48_flag_is_not_resolved_on_row_miss(monkeypatch) -> None:
+    from hipengine.runtime import gguf_linear as gguf_linear_module
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48", "invalid")
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    dispatch = gguf_linear_module.GGUFLinearDispatch(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
+        "t16",
+    )
+    with q4_t16_physical_extra_rowtiles_session(True):
+        assert (
+            gguf_linear_module._q4_t16_physical_dual_silu_variant(
+                dispatch.key.backend,
+                30,
+            )
+            is None
+        )
+        with pytest.raises(ValueError, match="must be a boolean value"):
+            gguf_linear_module._q4_t16_physical_dual_silu_variant(
+                dispatch.key.backend,
+                36,
+            )
+
+
 def test_q4_t16_dense_pair_silu_retile_rollback(monkeypatch) -> None:
     from hipengine.runtime import gguf_linear as gguf_linear_module
 
