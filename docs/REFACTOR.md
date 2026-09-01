@@ -56,14 +56,6 @@ should be removed or collapsed.
   repeated-R6 path for bisection; remove the flag after the grouped owner is
   stable across the next production campaign.
 
-## 2026-09-02 gfx1100 grouped Q4 R24 rows8 screen — open
-
-- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS8=1` selects the exact
-  grouped-R8 owner only for physical R24; default zero keeps the retained
-  grouped-R6 owner. Remove the candidate flag and either promote or delete the
-  R8 primitive after cached C8 marker evidence and, if positive, the complete
-  product gate.
-
 ## 2026-09-01 gfx1100 grouped Q4 rows6 pair-seam rollback — closed
 
 - Promoted after exact marker ownership and complete C5-C8 qualification.
