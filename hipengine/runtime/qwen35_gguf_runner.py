@@ -23877,7 +23877,10 @@ class Qwen35GGUFResidentSession:
         # commit leaf on gfx1151 even while every source/destination range is
         # live and in bounds. Return the existing strict per-layer D2D chain for
         # this activation-only shape. Multi-slot imports retain the fused helper.
-        if n_entries == linear_layer_count:
+        if (
+            n_entries == linear_layer_count
+            and not self._fused_linear_state_single_slot_transfer_enabled()
+        ):
             return False
         tables_ready = (
             self._verify_linear_state_src_conv_table_buf is not None
@@ -25568,18 +25571,10 @@ class Qwen35GGUFResidentSession:
                 stream,
             )
 
-    def _fused_linear_state_transfer_enabled(self) -> bool:
-        if bool(
-            backend_package_capability(
-                self.backend,
-                "GGUF_FUSED_LINEAR_STATE_TRANSFER",
-                False,
-            )
-        ):
-            return True
+    def _backend_environment_policy_enabled(self, capability: str) -> bool:
         policy = backend_package_capability(
             self.backend,
-            "GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY",
+            capability,
             {},
         )
         if not isinstance(policy, Mapping):
@@ -25592,6 +25587,28 @@ class Qwen35GGUFResidentSession:
         if value is None:
             return default
         return value.strip().lower() not in {"0", "false", "no", "off"}
+
+    def _fused_linear_state_transfer_enabled(self) -> bool:
+        return bool(
+            backend_package_capability(
+                self.backend,
+                "GGUF_FUSED_LINEAR_STATE_TRANSFER",
+                False,
+            )
+        ) or self._backend_environment_policy_enabled(
+            "GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY"
+        )
+
+    def _fused_linear_state_single_slot_transfer_enabled(self) -> bool:
+        return bool(
+            backend_package_capability(
+                self.backend,
+                "GGUF_FUSED_LINEAR_STATE_SINGLE_SLOT_TRANSFER",
+                False,
+            )
+        ) or self._backend_environment_policy_enabled(
+            "GGUF_FUSED_LINEAR_STATE_SINGLE_SLOT_TRANSFER_POLICY"
+        )
 
     def _fused_linear_state_commit_enabled(self) -> bool:
         value = os.environ.get("HIPENGINE_FUSED_LINEAR_STATE_COMMIT")
