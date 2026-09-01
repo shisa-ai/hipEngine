@@ -1887,6 +1887,61 @@ def _q4_t16_physical_dual_silu_variant(
     return variant if enabled else None
 
 
+def _q4_t16_grouped_pair_rows6_variant(
+    backend: str,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> str | None:
+    """Return the backend-qualified grouped physical-pair sibling."""
+
+    if int(rows) < 12 or int(rows) % 6:
+        return None
+    policy = backend_package_capability(
+        backend,
+        "GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return None
+    shapes = policy.get("shapes", ())
+    try:
+        if (int(in_features), int(out_features)) not in shapes:
+            return None
+    except TypeError:
+        return None
+    variant = policy.get("variant")
+    enabled_env = policy.get("enabled_env")
+    if (
+        not isinstance(variant, str)
+        or not variant
+        or not isinstance(enabled_env, str)
+        or not enabled_env
+    ):
+        return None
+    enabled_default = bool(policy.get("enabled_default", False))
+    cache_key = (enabled_env, enabled_default)
+    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
+    if enabled is None:
+        raw = os.environ.get(
+            enabled_env,
+            "1" if enabled_default else "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            enabled = True
+        elif raw in {"0", "false", "no", "off"}:
+            enabled = False
+        else:
+            raise ValueError(f"{enabled_env} must be a boolean value")
+        _rowtile_variant_policy_env_cache[cache_key] = enabled
+    if not enabled:
+        return None
+    key = KernelKey(backend, "linear", "gguf_q4_k_t16_v1", variant)
+    _ensure_linear_kernel_registered(key)
+    return variant if is_registered(key) else None
+
+
 def _q4_t16_dual_wmma_silu_dispatch(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -3824,6 +3879,53 @@ def launch_gguf_linear_pair(
         if physical_pad_counts:
             chunk = min(int(value) for value in physical_pad_counts)
             if chunk > 0 and int(rows) % chunk == 0:
+                grouped_variant = (
+                    _q4_t16_grouped_pair_rows6_variant(
+                        resolved_backend,
+                        rows=rows,
+                        in_features=in_features,
+                        out_features=out_features,
+                    )
+                    if chunk == 6
+                    else None
+                )
+                if grouped_variant is not None:
+                    grouped_key = KernelKey(
+                        resolved_backend,
+                        "linear",
+                        "gguf_q4_k_t16_v1",
+                        grouped_variant,
+                    )
+                    grouped_fn = resolve(
+                        backend=grouped_key.backend,
+                        layer=grouped_key.layer,
+                        quant=grouped_key.quant,
+                        variant=grouped_key.variant,
+                    )
+                    library = None
+                    if libraries is not None:
+                        library = libraries.get(
+                            f"{grouped_key.quant}:{grouped_key.variant}",
+                            libraries.get(grouped_key.quant),
+                        )
+                    grouped_kwargs = {"stream": stream, "runtime": runtime}
+                    if library is not None:
+                        grouped_kwargs["library"] = library
+                    for weight, output in (
+                        (weight_a, out_a_ptr),
+                        (weight_b, out_b_ptr),
+                    ):
+                        _LAUNCH_ABI["t16"](
+                            grouped_fn,
+                            weight,
+                            x_ptr,
+                            output,
+                            rows,
+                            in_features,
+                            out_features,
+                            grouped_kwargs,
+                        )
+                    return True
                 element = DType.BF16.itemsize
                 for row_base in range(0, int(rows), chunk):
                     x_chunk = int(x_ptr) + row_base * int(in_features) * element

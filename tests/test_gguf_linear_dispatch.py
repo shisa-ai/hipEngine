@@ -6444,6 +6444,123 @@ def test_physical_q4_pair_chunks_rows6_and_preserves_unfused_fallback(
     ]
 
 
+def test_physical_q4_pair_grouped_rows6_policy_consolidates_both_outputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.core.specdec2_scope import (
+        q4_t16_physical_extra_rowtiles_session,
+    )
+
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    variant = "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out"
+    key = KernelKey("hip_gfx1100", "linear", "gguf_q4_k_t16_v1", variant)
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[tuple] = []
+    register(
+        key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6",
+        "1",
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "backend_package_capability",
+        lambda backend, name, default: (
+            (6,)
+            if name == "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS"
+            else {
+                "enabled_env": (
+                    "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6"
+                ),
+                "enabled_default": False,
+                "variant": variant,
+                "shapes": frozenset({(10, 20)}),
+            }
+            if name == "GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY"
+            else default
+        ),
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_resolve_gguf_linear_pair_kind",
+        lambda *args, **kwargs: None,
+    )
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    try:
+        with q4_t16_physical_extra_rowtiles_session(True):
+            assert launch_gguf_linear_pair(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_a_ptr=200,
+                out_b_ptr=300,
+                rows=12,
+                in_features=10,
+                out_features=20,
+                backend="hip_gfx1100",
+            )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+
+    assert [call[0] for call in calls] == [
+        (100, 14, 200, 12, 10, 20),
+        (100, 14, 300, 12, 10, 20),
+    ]
+
+
+def test_gfx1100_grouped_q4_pair_rows6_policy_is_shape_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    env = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6"
+    monkeypatch.setenv(env, "1")
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    try:
+        assert gguf_linear_module._q4_t16_grouped_pair_rows6_variant(
+            "hip_gfx1100",
+            rows=24,
+            in_features=5_120,
+            out_features=17_408,
+        ) == "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out"
+        assert gguf_linear_module._q4_t16_grouped_pair_rows6_variant(
+            "hip_gfx1100",
+            rows=24,
+            in_features=5_120,
+            out_features=5_120,
+        ) is None
+        assert gguf_linear_module._q4_t16_grouped_pair_rows6_variant(
+            "hip_gfx1151",
+            rows=24,
+            in_features=5_120,
+            out_features=17_408,
+        ) is None
+        monkeypatch.setenv(env, "0")
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+        assert gguf_linear_module._q4_t16_grouped_pair_rows6_variant(
+            "hip_gfx1100",
+            rows=24,
+            in_features=5_120,
+            out_features=17_408,
+        ) is None
+    finally:
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+
+
 def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor() -> None:
     """The dense Q4T16 bulk FFN fused SiLU owner stays admitted from 33 rows.
 
