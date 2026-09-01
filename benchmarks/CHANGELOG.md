@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y2 planar Q6 rows536 r9 retained] Exact wide-only `<4,9,2>` reaches gridY1 and reduces complete wall **1651.846->1643.521 ms (-0.50%)**, token unchanged; narrow/rows1024 candidates lose at 0.70-0.93x. Trace: 64 hits, 128 threads, VGPR256, LDS16 KiB, scratch0. `benchmarks/results/2026-09-02-gfx1151-qwen38-y2-planar-q6-shared4r9-rows536-retained.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y2 post-shared4r6 residual] Rows288 reaches **1.00 Q6 sweep**; rows536/1024 remain **1.77/3.78 sweeps** at 310.16/587.02 ms. Narrow rows1024 fallback is only 8.81 ms, while wide gridY2/gridY3 remains material. `benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 high-row planar shared4r6 retained] Exact `<4,6,2>` reduces rows288/536/1024 complete walls **7.63%/10.53%/9.40%**, tokens unchanged; narrow rows1024 stays fallback after a 0.96x rejection. Trace: 152 gridY1/2/3 hits, 128 threads, VGPR200, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate wall **0.83% AR / 3.02% MTP**; C8 MTP improves 7.24%. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json`.
