@@ -1,0 +1,910 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-prefill-y0-sweep-multiplicity",
+  "created_at": "2026-09-01T12:35:10.244368+00:00",
+  "status": "measurement_only_no_performance_claim",
+  "source": {
+    "raw_kind": "qwen38-prefill-sweep-trace-raw",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "host": "gfx1151",
+    "backend": "hip_gfx1151",
+    "token_source": {
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "prompt_categories": [
+        "code",
+        "code",
+        "code",
+        "code",
+        "general_en",
+        "general_en",
+        "general_ja",
+        "general_ja",
+        "mixed_ja_en",
+        "mixed_ja_en"
+      ],
+      "construction": "round_robin_complete_or_truncated_chat_prompts",
+      "sha256": "86c0a64e3bbf20b9a793865b9702c99e2a8532cf1ea557927904d18263d63fbc"
+    }
+  },
+  "definitions": {
+    "sweep_multiplicity": "byte-weighted M-tile passes across active family weights",
+    "swept_weight_bytes": "sum of active source-weight bytes times the matched weight-bearing dispatch's M-grid sweep count",
+    "per_tile_gb_s": "decimal GB/s; swept bytes divided by traced family duration",
+    "effective_tf_s": "2*logical family elements*rows divided by traced family duration",
+    "limitation": "swept bytes are derived from active GGUF source-weight bytes and matched launch M-grid geometry; rocprofv3 does not report physical DRAM bytes"
+  },
+  "model_family_inventory": {
+    "q4": {
+      "tensor_count": 294,
+      "resident_bytes": 11370332160,
+      "logical_elements": 20213923840
+    },
+    "q5": {
+      "tensor_count": 48,
+      "resident_bytes": 1038090240,
+      "logical_elements": 1509949440
+    },
+    "q6": {
+      "tensor_count": 67,
+      "resident_bytes": 4526592000,
+      "logical_elements": 5518131200
+    },
+    "other": {
+      "tensor_count": 457,
+      "resident_bytes": 160763904,
+      "logical_elements": 78693376
+    }
+  },
+  "points": [
+    {
+      "rows": 16,
+      "tick_wall_ms": 242.849618,
+      "tick_hip_event_gpu_span_ms": 242.84347534179688,
+      "tick_wall_minus_gpu_ms": 0.006142658203117435,
+      "traced_kernel_ms": 231.309175,
+      "trace_coverage_of_hip_span": 0.9525031490940302,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 101.576913,
+          "gpu_share": 0.4391391435294341,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 16,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 10498867200,
+          "per_tile_gb_s": 103.35879374479514,
+          "effective_tf_s": 5.879966933037235
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 29.626537,
+          "gpu_share": 0.1280819794545547,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1.0,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 1038090240,
+          "per_tile_gb_s": 35.03920286059758,
+          "effective_tf_s": 1.6309156240569054
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 85.441574,
+          "gpu_share": 0.36938255475598836,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 4449177600,
+          "per_tile_gb_s": 52.07274856617225,
+          "effective_tf_s": 1.5849233713789026
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 9.035275,
+          "gpu_share": 0.039061463947549856,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 32.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 5.628876,
+          "gpu_share": 0.024334858312472906,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 16,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 0.0,
+          "q5": 0.0,
+          "q6": 0.0
+        },
+        "all_quant_savings_ms": 0.0,
+        "all_quant_share_of_tick_wall": 0.0
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 0.0,
+        "share_of_tick_wall": 0.0,
+        "projected_tick_wall_ms": 242.849618,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 35,
+      "tick_wall_ms": 271.183284,
+      "tick_hip_event_gpu_span_ms": 271.1758117675781,
+      "tick_wall_minus_gpu_ms": 0.007472232421889657,
+      "traced_kernel_ms": 259.62318,
+      "trace_coverage_of_hip_span": 0.9573980006097308,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 161.375149,
+          "gpu_share": 0.6215745027081172,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 35,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 1.3294943820224718,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 13958184960,
+          "per_tile_gb_s": 86.49525683784186,
+          "effective_tf_s": 8.096201330230839
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 24.885123,
+          "gpu_share": 0.09585092902721552,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1.0,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 1038090240,
+          "per_tile_gb_s": 41.71529471644565,
+          "effective_tf_s": 4.247375462038102
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 53.703912,
+          "gpu_share": 0.20685330177374764,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 4449177600,
+          "per_tile_gb_s": 82.84643398045192,
+          "effective_tf_s": 5.459715187973643
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 11.744069,
+          "gpu_share": 0.04523505566798774,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 32.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 7.914927,
+          "gpu_share": 0.030486210822931913,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 35,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 39.994305889921826,
+          "q5": 0.0,
+          "q6": 0.0
+        },
+        "all_quant_savings_ms": 39.994305889921826,
+        "all_quant_share_of_tick_wall": 0.147480719681534
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 39.994305889921826,
+        "share_of_tick_wall": 0.147480719681534,
+        "projected_tick_wall_ms": 231.18897811007818,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 48,
+      "tick_wall_ms": 271.388159,
+      "tick_hip_event_gpu_span_ms": 271.38031005859375,
+      "tick_wall_minus_gpu_ms": 0.007848941406223275,
+      "traced_kernel_ms": 263.31253999999996,
+      "trace_coverage_of_hip_span": 0.9702713507223428,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 162.571804,
+          "gpu_share": 0.6174100329593114,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 1.3367977528089887,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 14034862080,
+          "per_tile_gb_s": 86.33023522332323,
+          "effective_tf_s": 11.021632440026316
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 24.940748,
+          "gpu_share": 0.09471918048415014,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1.0,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 1038090240,
+          "per_tile_gb_s": 41.62225768048336,
+          "effective_tf_s": 5.811980708838404
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 52.570674,
+          "gpu_share": 0.19965123575200788,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 4449177600,
+          "per_tile_gb_s": 84.63231040180311,
+          "effective_tf_s": 7.631050135670697
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 13.569585,
+          "gpu_share": 0.05153413886023052,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 32.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 9.659729,
+          "gpu_share": 0.03668541194430012,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 40.95893948224417,
+          "q5": 0.0,
+          "q6": 0.0
+        },
+        "all_quant_savings_ms": 40.95893948224417,
+        "all_quant_share_of_tick_wall": 0.15092382671804105
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 40.95893948224417,
+        "share_of_tick_wall": 0.15092382671804105,
+        "projected_tick_wall_ms": 230.4292195177558,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 72,
+      "tick_wall_ms": 403.213425,
+      "tick_hip_event_gpu_span_ms": 403.18212890625,
+      "tick_wall_minus_gpu_ms": 0.03129609374997244,
+      "traced_kernel_ms": 390.432699,
+      "trace_coverage_of_hip_span": 0.9683779885263353,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 252.326704,
+          "gpu_share": 0.646274517083929,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 2,
+          "grid_size_y_max": 72,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 2.017134831460674,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 21177630720,
+          "per_tile_gb_s": 83.92940732899994,
+          "effective_tf_s": 10.65170653994672
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 27.830614,
+          "gpu_share": 0.07128146303135333,
+          "grid_size_y_min": 2,
+          "grid_size_y_median": 2.0,
+          "grid_size_y_max": 2,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 2.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 2076180480,
+          "per_tile_gb_s": 74.60059918189373,
+          "effective_tf_s": 7.812717296140143
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 78.953714,
+          "gpu_share": 0.20222105935855542,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 2,
+          "grid_size_y_max": 3,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 2.0749154180763654,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 9231667200,
+          "per_tile_gb_s": 116.92505307603389,
+          "effective_tf_s": 7.60550384038932
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 17.481078,
+          "gpu_share": 0.044773601301257814,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 32.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 13.840589,
+          "gpu_share": 0.03544935922490447,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 72,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 127.23506408355382,
+          "q5": 13.915307,
+          "q6": 40.90218027859306
+        },
+        "all_quant_savings_ms": 182.0525513621469,
+        "all_quant_share_of_tick_wall": 0.4515041912658213
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 127.23506408355382,
+        "share_of_tick_wall": 0.31555264828683177,
+        "projected_tick_wall_ms": 275.97836091644615,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 96,
+      "tick_wall_ms": 440.3251,
+      "tick_hip_event_gpu_span_ms": 440.31732177734375,
+      "tick_wall_minus_gpu_ms": 0.007778222656270373,
+      "traced_kernel_ms": 427.61903,
+      "trace_coverage_of_hip_span": 0.9711610442076478,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 276.312473,
+          "gpu_share": 0.646165052570275,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 2,
+          "grid_size_y_max": 96,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 2.1064606741573035,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 22115450880,
+          "per_tile_gb_s": 80.03783050358352,
+          "effective_tf_s": 12.969422982219118
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 29.954237,
+          "gpu_share": 0.07004888673920802,
+          "grid_size_y_min": 2,
+          "grid_size_y_median": 2.0,
+          "grid_size_y_max": 2,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 2.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 2076180480,
+          "per_tile_gb_s": 69.31174644842397,
+          "effective_tf_s": 9.678440231343565
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 81.4361,
+          "gpu_share": 0.19044077622083375,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 2,
+          "grid_size_y_max": 3,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 2.263412276462059,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 10070323200,
+          "per_tile_gb_s": 123.65920273686977,
+          "effective_tf_s": 9.821149356612118
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 21.51432,
+          "gpu_share": 0.050311886260066586,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 32.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 18.4019,
+          "gpu_share": 0.04303339820961663,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 96,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 145.1386626412855,
+          "q5": 14.9771185,
+          "q6": 45.456751099722396
+        },
+        "all_quant_savings_ms": 205.57253224100788,
+        "all_quant_share_of_tick_wall": 0.4668653507170222
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 145.1386626412855,
+        "share_of_tick_wall": 0.3296170548562539,
+        "projected_tick_wall_ms": 295.18643735871456,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 256,
+      "tick_wall_ms": 890.277573,
+      "tick_hip_event_gpu_span_ms": 890.2700805664062,
+      "tick_wall_minus_gpu_ms": 0.007492433593711212,
+      "traced_kernel_ms": 879.414339,
+      "trace_coverage_of_hip_span": 0.9878062379008631,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 432.072197,
+          "gpu_share": 0.49131811688596994,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 256,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 1.1747191011235956,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 12333219840,
+          "per_tile_gb_s": 28.54434959164938,
+          "effective_tf_s": 22.117373670308158
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 70.974271,
+          "gpu_share": 0.08070629264551939,
+          "grid_size_y_min": 4,
+          "grid_size_y_median": 4.0,
+          "grid_size_y_max": 4,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 4.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 4152360960,
+          "per_tile_gb_s": 58.505158298843256,
+          "effective_tf_s": 10.892596745093726
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 253.911433,
+          "gpu_share": 0.288727874608831,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 8,
+          "grid_size_y_max": 8,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 7.386176897051715,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 32862412800,
+          "per_tile_gb_s": 129.4247069213303,
+          "effective_tf_s": 8.383047518462865
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 56.01706,
+          "gpu_share": 0.06369814263399223,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 48.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 66.439378,
+          "gpu_share": 0.07554957322568742,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 256,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 64.26324881252992,
+          "q5": 53.230703250000005,
+          "q6": 219.53486220579768
+        },
+        "all_quant_savings_ms": 337.0288142683276,
+        "all_quant_share_of_tick_wall": 0.37856599389854295
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 64.26324881252992,
+        "share_of_tick_wall": 0.0721833850042743,
+        "projected_tick_wall_ms": 826.01432418747,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 288,
+      "tick_wall_ms": 1072.801775,
+      "tick_hip_event_gpu_span_ms": 1072.772705078125,
+      "tick_wall_minus_gpu_ms": 0.029069921874906868,
+      "traced_kernel_ms": 1058.0380460000001,
+      "trace_coverage_of_hip_span": 0.9862648825716983,
+      "families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 623.454051,
+          "gpu_share": 0.5892548508600607,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 288,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 1.676685393258427,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 17603297280,
+          "per_tile_gb_s": 28.235115726275072,
+          "effective_tf_s": 17.243997365252504
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 43.088317,
+          "gpu_share": 0.040724733068814425,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1.0,
+          "grid_size_y_max": 1,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 1.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 1038090240,
+          "per_tile_gb_s": 24.09215101160716,
+          "effective_tf_s": 20.18484215663378
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 247.873667,
+          "gpu_share": 0.23427670482843863,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 5,
+          "grid_size_y_max": 9,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 5.214596423392943,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 23200665600,
+          "per_tile_gb_s": 93.5987508507711,
+          "effective_tf_s": 9.659366961961313
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 64.319384,
+          "gpu_share": 0.060791182550726526,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 48.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 79.302627,
+          "gpu_share": 0.07495252869195972,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 288,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 251.61682172206397,
+          "q5": 0.0,
+          "q6": 200.33908390397627
+        },
+        "all_quant_savings_ms": 451.95590562604025,
+        "all_quant_share_of_tick_wall": 0.42128556846025006
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 251.61682172206397,
+        "share_of_tick_wall": 0.2345417649239665,
+        "projected_tick_wall_ms": 821.184953277936,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 536,
+      "tick_wall_ms": 1861.253204,
+      "tick_hip_event_gpu_span_ms": 1861.245361328125,
+      "tick_wall_minus_gpu_ms": 0.00784267187509613,
+      "traced_kernel_ms": 1801.8237279999998,
+      "trace_coverage_of_hip_span": 0.9680742611572051,
+      "families": {
+        "q4": {
+          "dispatches": 225,
+          "gpu_ms": 1027.809255,
+          "gpu_share": 0.5704271949736472,
+          "grid_size_y_min": 3,
+          "grid_size_y_median": 3,
+          "grid_size_y_max": 536,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 3.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 31496601600,
+          "per_tile_gb_s": 30.64440356688557,
+          "effective_tf_s": 19.46714111034153
+        },
+        "q5": {
+          "dispatches": 576,
+          "gpu_ms": 76.242412,
+          "gpu_share": 0.042314023738952565,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1.0,
+          "grid_size_y_max": 5,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 4.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 4152360960,
+          "per_tile_gb_s": 54.46261275154831,
+          "effective_tf_s": 21.23051667987629
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 468.589109,
+          "gpu_share": 0.26006379076832764,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 9,
+          "grid_size_y_max": 17,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 11.658289028516192,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 51869798400,
+          "per_tile_gb_s": 110.69356372941225,
+          "effective_tf_s": 9.504859716916725
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 161.304938,
+          "gpu_share": 0.08952315117919238,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 48.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1361,
+          "gpu_ms": 67.878014,
+          "gpu_share": 0.0376718393398802,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 536,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 685.20617,
+          "q5": 57.181809,
+          "q6": 428.3954658458605
+        },
+        "all_quant_savings_ms": 1170.7834448458605,
+        "all_quant_share_of_tick_wall": 0.6290296464391528
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 685.20617,
+        "share_of_tick_wall": 0.368142372315293,
+        "projected_tick_wall_ms": 1176.0470340000002,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    },
+    {
+      "rows": 1024,
+      "tick_wall_ms": 3065.408964,
+      "tick_hip_event_gpu_span_ms": 3065.401123046875,
+      "tick_wall_minus_gpu_ms": 0.007840953125196393,
+      "traced_kernel_ms": 3045.471125,
+      "trace_coverage_of_hip_span": 0.9934984045327597,
+      "families": {
+        "q4": {
+          "dispatches": 225,
+          "gpu_ms": 1542.498348,
+          "gpu_share": 0.5064892375231435,
+          "grid_size_y_min": 4,
+          "grid_size_y_median": 4,
+          "grid_size_y_max": 1024,
+          "active_weight_bytes": 10498867200,
+          "sweep_multiplicity": 4.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 41995468800,
+          "per_tile_gb_s": 27.225616711000846,
+          "effective_tf_s": 24.781361344057657
+        },
+        "q5": {
+          "dispatches": 576,
+          "gpu_ms": 118.206975,
+          "gpu_share": 0.03881401929233527,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1.0,
+          "grid_size_y_max": 8,
+          "active_weight_bytes": 1038090240,
+          "sweep_multiplicity": 4.0,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 4152360960,
+          "per_tile_gb_s": 35.127884458594764,
+          "effective_tf_s": 26.16069358952803
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 872.819351,
+          "gpu_share": 0.2865958385995204,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 16,
+          "grid_size_y_max": 32,
+          "active_weight_bytes": 4449177600,
+          "sweep_multiplicity": 22.666022232962785,
+          "sweep_basis": "byte-weighted rocprof Grid_Size_Y for one matched weight-bearing dispatch per launch group; Q5 rocBLAS dequant routes count one source sweep",
+          "swept_weight_bytes": 100845158400,
+          "per_tile_gb_s": 115.53955384291199,
+          "effective_tf_s": 9.746092399456895
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 369.236366,
+          "gpu_share": 0.12124113178055496,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 48.0,
+          "grid_size_y_max": 48,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        },
+        "other": {
+          "dispatches": 1361,
+          "gpu_ms": 142.710085,
+          "gpu_share": 0.04685977280444581,
+          "grid_size_y_min": 1,
+          "grid_size_y_median": 1,
+          "grid_size_y_max": 1024,
+          "active_weight_bytes": null,
+          "sweep_multiplicity": null,
+          "swept_weight_bytes": null,
+          "per_tile_gb_s": null,
+          "effective_tf_s": null
+        }
+      },
+      "single_sweep_upper_bounds": {
+        "by_quant_family_savings_ms": {
+          "q4": 1156.873761,
+          "q5": 88.65523125,
+          "q6": 834.3115201142315
+        },
+        "all_quant_savings_ms": 2079.8405123642315,
+        "all_quant_share_of_tick_wall": 0.6784871241618224
+      },
+      "y1_q4_single_sweep_upper_bound": {
+        "savings_ms": 1156.873761,
+        "share_of_tick_wall": 0.3773962217068796,
+        "projected_tick_wall_ms": 1908.5352030000001,
+        "assumption": "all Q4 family time above one measured sweep is removable"
+      }
+    }
+  ]
+}
