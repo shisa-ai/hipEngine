@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_q6_root_col4_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Remove the exact low-pressure planar-Q6 F32 R8/col4 sibling. Keep the retained DPP R8/col8 root owner.",
+  "source": {"base_commit": "5456373c3", "dirty_candidate": true, "candidate_removed": true},
+  "hardware": {"physical_host": "epyc", "gpu": "AMD Radeon Pro W7900", "target_arch": "gfx1100", "compute_units": 96, "rocm": "7.2.4"},
+  "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "quant": "Q4_K_M", "kv": "BF16", "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"},
+  "candidate": {
+    "mechanism": "Halve per-thread output accumulators from eight to four while preserving each column's K traversal, FMA order, DPP reduction, ordered wave sum, and F32 store; grid.x doubles.",
+    "tensor": "output.weight",
+    "shape_k_n": [5120, 248320],
+    "rows": 8,
+    "control": "retained planar-qmicro DPP R8/col8",
+    "candidate": "planar-qmicro DPP R8/col4",
+    "protocol": {"warmups": 5, "sample_pairs": 40, "launches_per_event_sample": 3, "order": "alternating", "timing": "HIP event operation-complete"},
+    "f32_bit_exact": true,
+    "mismatches": 0,
+    "finite": true,
+    "control_median_ms": 3.4764138857523603,
+    "candidate_median_ms": 4.07476552327474,
+    "candidate_speedup": 0.8531567929235088,
+    "candidate_pair_wins": 0
+  },
+  "validation": {"leaf_verdict": "Exact but 17.2% slower. Lower accumulator pressure does not offset doubled block traffic over 248,320 outputs. Rejected before route, marker, or suite.", "final_tree": "No candidate kernel, wrapper, route, environment flag, or test remains."},
+  "limitations": ["Dirty candidate rejection only; no retained performance claim."]
+}
