@@ -87,6 +87,54 @@ def test_verify_lm_head_rowtile_chunked_uses_gfx1151_chunk8_and_env_rollback(
     assert calls == [8]
 
 
+def test_verify_lm_head_rowtile_chunked_groups_r8_prefix_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = object.__new__(runner_mod.Qwen35GGUFResidentSession)
+    session.runner = SimpleNamespace(
+        hidden_size=64, vocab_size=128, backend="hip_gfx1100"
+    )
+    grouped_calls: list[tuple[int, int, int]] = []
+    rowtile_calls: list[tuple[int, int, int]] = []
+
+    def fake_grouped(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        grouped_calls.append((int(hidden_ptr), int(out_ptr), int(rows)))
+        return True
+
+    def fake_rowtile(self, hidden_ptr, out_ptr, rows, *, stream=0, runtime=None):
+        rowtile_calls.append((int(hidden_ptr), int(out_ptr), int(rows)))
+        return True
+
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_max_rows",
+        lambda self: 8,
+    )
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile_grouped_rows8",
+        fake_grouped,
+    )
+    monkeypatch.setattr(
+        runner_mod.Qwen35GGUFResidentSession,
+        "_verify_lm_head_rowtile",
+        fake_rowtile,
+    )
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8", raising=False)
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 24)
+    assert grouped_calls == []
+    assert [call[2] for call in rowtile_calls] == [8, 8, 8]
+
+    rowtile_calls.clear()
+    monkeypatch.setenv("HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8", "1")
+    assert session._verify_lm_head_rowtile_chunked(0x100000, 0x200000, 30)
+    assert grouped_calls == [(0x100000, 0x200000, 24)]
+    assert rowtile_calls == [
+        (0x100000 + 24 * 64 * 2, 0x200000 + 24 * 128 * 4, 6)
+    ]
+
+
 def test_verify_lm_head_rowtile_chunked_falls_back_when_chunk_unsupported(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -131,17 +179,27 @@ def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
         quant_key,
         "t16_gemv_rowtile_bf16_f32_out",
     )
+    grouped_key = runner_mod.KernelKey(
+        "hip_gfx1100",
+        "linear",
+        quant_key,
+        "t16_gemv_rowtile_col8_grouped_rows8_bf16_f32_out",
+    )
     calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
 
-    monkeypatch.setattr(runner_mod, "is_registered", lambda key: key == expected_key)
+    monkeypatch.setattr(
+        runner_mod, "is_registered", lambda key: key in {expected_key, grouped_key}
+    )
 
     def fake_resolve(**kwargs):
-        assert runner_mod.KernelKey(**kwargs) == expected_key
+        key = runner_mod.KernelKey(**kwargs)
+        assert key in {expected_key, grouped_key}
 
         def kernel(*args, **kernel_kwargs):
             calls.append((args, kernel_kwargs))
 
-        setattr(kernel, "_hipengine_max_rows", 4)
+        if key == expected_key:
+            setattr(kernel, "_hipengine_max_rows", 4)
         return kernel
 
     monkeypatch.setattr(runner_mod, "resolve", fake_resolve)
@@ -156,11 +214,22 @@ def test_verify_lm_head_rowtile_resolves_planar_qmicro_sibling(
 
     assert handled is True
     assert session._verify_lm_head_rowtile_max_rows() == 4
+    assert session._verify_lm_head_rowtile_grouped_rows8(
+        0x3000,
+        0x4000,
+        24,
+        stream=9,
+        runtime=runtime,
+    )
     assert calls == [
         (
             (0x1000, 0x2200, 0x2000, 4, 5120, 248320),
             {"stream": 7, "runtime": runtime},
-        )
+        ),
+        (
+            (0x3000, 0x2200, 0x4000, 24, 5120, 248320),
+            {"stream": 9, "runtime": runtime},
+        ),
     ]
 
 
