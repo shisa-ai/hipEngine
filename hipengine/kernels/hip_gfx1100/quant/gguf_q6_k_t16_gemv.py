@@ -1390,7 +1390,7 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
 setattr(
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
     "_hipengine_max_rows",
-    4,
+    8,
 )
 
 

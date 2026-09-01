@@ -2637,16 +2637,17 @@ should be boring.
   direct/server refreshes and an independent gfx1100 transfer. Keep the old
   per-row and 16-column rowtile bodies as unsupported-width fallbacks.
 
-## `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (gfx1151 C8 rollback)
-- The physical-C8 Q6T16 lm-head reads the full ~417 MiB head twice. The prior
-  **6+2** partition uses 200/88 VGPR; gfx1151 now defaults to exact **5+3** at
-  168/104 VGPR. Isolated wall improves **4.865 -> 4.815 ms (-1.02%)** and
-  clean direct C8 improves **152.192 -> 152.709 tok/s (+0.340%)**.
-- `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6` restores 6+2. gfx1100 package
-  metadata remains 6 pending independent W7900 transfer. Values outside [2,6]
-  are invalid.
-- Remove after one release window plus defaults-only gfx1151 direct/server
-  refresh and gfx1100 transfer. Keep `_small_b_rowtile_chunks` and all 2-6 row
+## `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (Q6 F32 root rollback)
+- gfx1151 already defaults to its exact native R8 root owner. The independent
+  W7900 transfer now makes gfx1100 R8-capable as well: actual Qwen3.8
+  `output.weight` F32 logits are bit-exact to two R4 launches and improve
+  **4.756 -> 3.700 ms (1.285x, 40/40 paired wins)** at the leaf.
+- Both packages now advertise maximum chunk 8. Setting
+  `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` restores the prior effective gfx1100
+  composition; values outside [2,8] are invalid. The candidate still requires
+  its complete gfx1100 C5-C8 promotion gate before the rollback clock starts.
+- Remove after one release window plus defaults-only gfx1151 and gfx1100
+  direct/server refreshes. Keep `_small_b_rowtile_chunks` and all 2-8 row
   kernels because they remain exact fallbacks for arbitrary packed widths.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 c4/c8 rollback; c2 diagnostic)
