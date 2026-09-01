@@ -1,0 +1,106 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_dense_f32_high_row_pair_rejected",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove gfx1100 physical rows15/18/21/24 dense-F32 alpha/beta pair admission. Keep two singleton projections.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "base_commit": "2d905131ec6c825105c723234848cf38f82b6767",
+    "candidate_was_uncommitted": true,
+    "final_product_code_matches_base": true
+  },
+  "candidate": {
+    "scope": "physical C5-C8 B3 verifier alpha/beta rows15/18/21/24, K5120, N48+N48",
+    "mechanism": "Extend the retained exact flat same-input dense-F32 pair to physical high rows and admit only four gfx1100 shapes, removing one launch per recurrent layer.",
+    "arithmetic": "Each output block preserves the singleton K traversal, FMA order, local256 reduction tree, and BF16 store.",
+    "fallback": "two dense_gemv_bf16_f32w_bf16_out launches",
+    "final_state": "high-row wrapper range, capability, route tests, and HIP range extension removed; existing rows1-4 primitive retained"
+  },
+  "correctness": {
+    "red": "4 focused contract nodes failed on the absent capability, wrapper range, and route",
+    "green": "4 focused contract nodes passed after the candidate implementation",
+    "gpu_gate": "tests/test_dense_f32_pair.py::test_dense_f32_pair_is_scalar_bit_exact_and_passes_cpu_kl_top1[24] passed on W7900",
+    "rows24_scalar_bf16_bit_exact": true,
+    "cpu_kl_max_at_most": 0.05,
+    "cpu_top1_agreement_at_least": 0.90,
+    "profile_candidate_exact_true_ar": true,
+    "candidate_and_control_generated_ids_equal": true,
+    "generated_rows": 8,
+    "generated_tokens_per_row": 12
+  },
+  "profiling": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q4_T16_GROUPED_DUAL_SILU_ROWS6=0 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "cached_build_required": true,
+    "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+    "control": {
+      "raw_child": "/tmp/he-q4-grouped-dual-silu-c8-profile-rollback/child.json",
+      "raw_child_sha256": "14e024342d1697f307f3724ec70c287674b3093e7959f873effc024ceb6081b5",
+      "raw_kernel_trace": "/tmp/he-q4-grouped-dual-silu-c8-profile-rollback/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "8f1ef626bcfc15247dda375abca68283a1475fe13ae74b8f15e8bfdb4e45e813",
+      "raw_marker_trace": "/tmp/he-q4-grouped-dual-silu-c8-profile-rollback/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "1a80b2c9d85a23d4b3fecf3899c57ae6117cfb71434f85521b1212ac7ed9755e",
+      "complete_wall_seconds": 1.3673572214320302,
+      "target_marker_ms": 173.632824,
+      "target_kernel_sum_ms": 159.009213,
+      "target_launches": 1560,
+      "dense_f32_singleton_launches": 96,
+      "dense_f32_singleton_sum_ms": 2.0565
+    },
+    "candidate": {
+      "raw_child": "/tmp/he-dense-f32-pair-r24-c8-profile/child.json",
+      "raw_child_sha256": "00e34b563c4fd6e3a93ea8cb2ffd212fe34565a21c048f2ed4b736040c930a05",
+      "raw_kernel_trace": "/tmp/he-dense-f32-pair-r24-c8-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "86370e906ce8b3c62becab9a259d3a73e2fc03861daabe7589582a46ce8968d6",
+      "raw_marker_trace": "/tmp/he-dense-f32-pair-r24-c8-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "5a31e77cb06810446220033c039fbc6157ac45bb9eca694d5d9a974cb503dafb",
+      "complete_wall_seconds": 1.3519550934433937,
+      "target_marker_ms": 173.816277,
+      "target_kernel_sum_ms": 160.441627,
+      "target_launches": 1515,
+      "dense_f32_pair_launches": 48,
+      "dense_f32_pair_sum_ms": 1.469006,
+      "post_measure_exit": "bridge artifact guard exited 2 because the candidate worktree was intentionally uncommitted; workload, child packet, and profiler traces completed"
+    },
+    "deltas": {
+      "complete_wall_pct": -1.1264158149182024,
+      "target_marker_pct": 0.10565571403711171,
+      "target_marker_ms": 0.1834530000000143,
+      "target_kernel_sum_pct": 0.900837110614483,
+      "target_kernel_sum_ms": 1.4324140000000227,
+      "dense_f32_family_pct": -28.56766350595673,
+      "dense_f32_family_ms": -0.5874940000000002,
+      "target_launches": -45
+    }
+  },
+  "gate_decision": {
+    "full_c5c8_gate_run": false,
+    "reason": "The exact family/launch contraction does not survive the operation-complete gate: target marker and target kernel sum both regress. The outer complete-wall direction is uncounterbalanced and nonbinding, matching the prior low-row W7900 rejection mode."
+  },
+  "limitations": [
+    "Control and candidate are adjacent same-host traces rather than a same-build environment toggle; the candidate only extends validation/admission around the already-retained pair body.",
+    "One clean C8 marker per arm is sufficient for rejection because both binding operation metrics regress; no throughput claim or full-suite claim is made."
+  ]
+}
