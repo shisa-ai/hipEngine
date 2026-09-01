@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 rows256 practical floor] Final multiplicity is **1.00 Q5 / 1.08 Q6**. The sole residual is 16 narrow-planar gridY2 hits totaling **3.87 ms / 0.54% wall**, below Y2's 2% threshold; exact gridY1 loses locally at 0.94x. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-final-ledger.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y2 planar Q6 rows256 r4 retained] Exact wide-only `<4,4,2>` improves its leaf **1.45x** and complete wall **734.190->706.580 ms (-3.76%)**; narrow stays `<4,3,2>` after a 0.94x rejection. Token unchanged. Trace: 64 gridY1 hits, 128 threads, VGPR176, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact**, aggregate wall **+0.18% AR / -0.05% MTP**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r4-rows256-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 post-planar rows256 ledger] Q5 remains **1.00 sweep**; Q6 falls to **1.73 sweeps / 132.22 ms / 17.80% wall**, gridY1/gridY2 only, with a **55.68 ms** one-sweep removable ceiling. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-after-planar-ledger.json`.

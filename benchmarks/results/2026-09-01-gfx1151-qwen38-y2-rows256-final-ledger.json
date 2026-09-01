@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-rows256-final-ledger",
+  "status": "measurement_only",
+  "source_commit": "a8d6057e9",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "rows": 256,
+  "tick_wall_ms": 716.405551,
+  "q5": {"gpu_ms": 42.036343, "gpu_share": 0.059898059623634536, "sweep_multiplicity": 1.0},
+  "q6": {"gpu_ms": 105.161854, "gpu_share": 0.14984631277330546, "sweep_multiplicity": 1.0773320444659256, "grid_y_min": 1, "grid_y_median": 1, "grid_y_max": 2},
+  "narrow_planar_residual": {"hits": 16, "grid_y": 2, "gpu_ms": 3.868301, "wall_ceiling_pct": 0.5399583147905778, "blocker": "shared4r4 measured 0.9422x versus exact shared4r3; scope-specific replacement cannot improve complete wall"},
+  "decision": "Rows256 is closed at the practical exact sweep floor: Q5 is 1.00 and byte-weighted Q6 is 1.08. The only gridY2 residual is under the 2% Y2 opening threshold and its exact gridY1 candidate loses locally."
+}
