@@ -1,0 +1,195 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_q4_r6_col4_leaf_screen",
+  "date": "2026-09-02",
+  "status": "rejected_existing_primitive",
+  "performance_claim": false,
+  "decision": "Reject the existing exact Q4 R6 col4 primitive as a low-pressure replacement for the retained WG64 two-wave/16-column R6 owner. Five of seven actual role shapes lose; narrow full-K is the only stable but immaterial positive.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "source": {
+    "commit": "862234e90",
+    "tracked_clean": true,
+    "product_or_test_code_changed": false,
+    "raw_result": "/tmp/he-k3-q4-r6-col4-screen.json",
+    "raw_result_sha256": "92cbf7410bf2d858e50d1a0ea135edd598b4bd4d2558373501f5a6970e944be9",
+    "screen_script": "/tmp/he-k3-q4-r6-col4-screen.py",
+    "screen_script_sha256": "1e1cf8a65d69f3feb82a2b28eef714f3e3e50eb9d83dd95d45d12d3f1dae367f"
+  },
+  "candidate": {
+    "mechanism": "Use one WG32 four-column output owner at R6 to halve per-wave accumulator pressure relative to the retained WG64 two-wave/16-column owner.",
+    "control": "registered dense_rowtile16_w2_bf16_bf16_out at R6",
+    "candidate": "registered dense_rowtile_col4_bf16_bf16_out at R6",
+    "tradeoff": "half the accumulator columns but double output workgroups and encoded-weight traversals"
+  },
+  "protocol": {
+    "warmups": 5,
+    "sample_pairs": 30,
+    "launches_per_sample": 3,
+    "order": "alternating control/candidate and candidate/control",
+    "timing": "HIP event and synchronized operation-complete wall",
+    "rows": 6,
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. PYTHONUNBUFFERED=1 .venv/bin/python /tmp/he-k3-q4-r6-col4-screen.py"
+  },
+  "measurements": [
+    {
+      "role": "ffn_gate",
+      "tensor": "blk.0.ffn_gate.weight",
+      "rows": 6,
+      "shape_k_n": [
+        5120,
+        17408
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.08893950283527374,
+      "candidate_event_median_ms": 0.09338633219401041,
+      "event_speedup": 0.9523824391186243,
+      "event_pair_wins": 5,
+      "control_wall_median_ms": 0.09459474434455237,
+      "candidate_wall_median_ms": 0.09841953093806902,
+      "wall_speedup": 0.9611379310888667,
+      "wall_pair_wins": 6
+    },
+    {
+      "role": "recurrent_gate",
+      "tensor": "blk.0.attn_gate.weight",
+      "rows": 6,
+      "shape_k_n": [
+        5120,
+        6144
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.03263349955280622,
+      "candidate_event_median_ms": 0.036533666153748826,
+      "event_speedup": 0.8932445874846208,
+      "event_pair_wins": 3,
+      "control_wall_median_ms": 0.03761379048228264,
+      "candidate_wall_median_ms": 0.04176221167047819,
+      "wall_speedup": 0.9006656730508342,
+      "wall_pair_wins": 4
+    },
+    {
+      "role": "full_q",
+      "tensor": "blk.3.attn_q.weight",
+      "rows": 6,
+      "shape_k_n": [
+        5120,
+        12288
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.07001366714636484,
+      "candidate_event_median_ms": 0.07501383374134699,
+      "event_speedup": 0.9333434068678176,
+      "event_pair_wins": 2,
+      "control_wall_median_ms": 0.07495113338033357,
+      "candidate_wall_median_ms": 0.07972260937094688,
+      "wall_speedup": 0.9401490238683511,
+      "wall_pair_wins": 2
+    },
+    {
+      "role": "full_k",
+      "tensor": "blk.3.attn_k.weight",
+      "rows": 6,
+      "shape_k_n": [
+        5120,
+        1024
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.01834700008233388,
+      "candidate_event_median_ms": 0.01821333294113477,
+      "event_speedup": 1.0073389720393913,
+      "event_pair_wins": 30,
+      "control_wall_median_ms": 0.023905187845230103,
+      "candidate_wall_median_ms": 0.023742051174243294,
+      "wall_speedup": 1.0068712121707406,
+      "wall_pair_wins": 27
+    },
+    {
+      "role": "full_output",
+      "tensor": "blk.3.attn_output.weight",
+      "rows": 6,
+      "shape_k_n": [
+        6144,
+        5120
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.03649366647005081,
+      "candidate_event_median_ms": 0.04042683417598407,
+      "event_speedup": 0.9027089856007129,
+      "event_pair_wins": 3,
+      "control_wall_median_ms": 0.0411371390024821,
+      "candidate_wall_median_ms": 0.044938797752062484,
+      "wall_speedup": 0.9154036391771094,
+      "wall_pair_wins": 4
+    },
+    {
+      "role": "recurrent_qkv",
+      "tensor": "blk.8.attn_qkv.weight",
+      "rows": 6,
+      "shape_k_n": [
+        5120,
+        10240
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.05995366722345352,
+      "candidate_event_median_ms": 0.05976699789365133,
+      "event_speedup": 1.0031232843606157,
+      "event_pair_wins": 7,
+      "control_wall_median_ms": 0.06439583376049995,
+      "candidate_wall_median_ms": 0.0648857094347477,
+      "wall_speedup": 0.9924501761864778,
+      "wall_pair_wins": 7
+    },
+    {
+      "role": "ffn_down",
+      "tensor": "blk.8.ffn_down.weight",
+      "rows": 6,
+      "shape_k_n": [
+        17408,
+        5120
+      ],
+      "bf16_bit_exact": true,
+      "control_event_median_ms": 0.09864066541194916,
+      "candidate_event_median_ms": 0.10934049884478252,
+      "event_speedup": 0.9021420832547817,
+      "event_pair_wins": 0,
+      "control_wall_median_ms": 0.10338813687364261,
+      "candidate_wall_median_ms": 0.11378806084394455,
+      "wall_speedup": 0.9086026785836082,
+      "wall_pair_wins": 0
+    }
+  ],
+  "summary": {
+    "all_exact": true,
+    "cells": 7,
+    "all_event_medians_positive": false,
+    "all_wall_medians_positive": false,
+    "minimum_event_speedup": 0.8932445874846208,
+    "maximum_event_speedup": 1.0073389720393913,
+    "minimum_wall_speedup": 0.9006656730508342,
+    "maximum_wall_speedup": 1.0068712121707406,
+    "minimum_event_pair_wins": 0,
+    "minimum_wall_pair_wins": 0,
+    "candidate_wall_median_wins": 1,
+    "candidate_event_median_wins": 2
+  },
+  "limitations": [
+    "This is a bounded actual-weight leaf rejection, not a complete workload benchmark.",
+    "No runtime route, current scoreboard, or benchmark changelog row changes.",
+    "Full-K is 1.0069x wall-positive but saves about 0.16 us per isolated R6 operation; its scope is too small to justify a physical grouped candidate."
+  ]
+}
