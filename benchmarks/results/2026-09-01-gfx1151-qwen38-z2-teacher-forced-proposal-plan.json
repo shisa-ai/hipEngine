@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1151_qwen38_z2_teacher_forced_proposal_plan",
   "date": "2026-09-01",
-  "status": "protocol_ready_capture_pending",
+  "status": "superseded_by_completed_capture",
   "performance_claim": false,
   "physical_host": {
     "hostname": "gfx1151",
@@ -14,10 +14,10 @@
   "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
   "widths": [1, 2],
   "positions_per_prompt": 24,
-  "teacher_owner": "Laurent no-spec raw-greedy token trajectory returned with return_tokens=true",
+  "teacher_owner": "Pinned Laurent slot-0 iterative n_predict=4 root trajectory returned with return_tokens=true",
   "protocol": [
-    "Start pinned Laurent c28d538df with verbose logging and cache disabled.",
-    "Generate the D24 raw-token teacher trajectory with speculation disabled and return_tokens=true.",
+    "Start pinned Laurent c28d538df with verbose logging, fixed slot IDs, and cache disabled.",
+    "Generate the D24 raw-token teacher trajectory iteratively: at each exact teacher-prefix context, retain only the n_predict=4 response root. This avoids free-running accepted-draft ownership.",
     "For every prompt and decode position, submit the exact prompt-token plus teacher-prefix context to Laurent MTP with n_predict=4 and to hipEngine production MTP, collect only the first K3 proposal, then discard the free-running continuation. A pinned smoke showed that n_predict=1 emits no Laurent draft call.",
     "For C2, submit two identical teacher contexts in one physical request so logical width does not change context.",
     "Report top-1 proposal agreement by category, heldout split, width, and draft depth/position. Teacher tokens, not either candidate proposal, own every subsequent context."
@@ -29,6 +29,6 @@
     "parser": "scripts/llamacpp_mtp_draft_trace.py parses seq_id/rank/position/token/probability lines",
     "offline_comparator": "scripts/mtp_proposal_trace_compare.py provides proposal-row comparison primitives"
   },
-  "blocker": "Existing aggregate HTTP artifacts are not teacher-forced and cannot close the item. The pinned Laurent fork lacks LLAMA_MTP_TOKEN_TRACE; the capture must segment verbose log records by request and pair them with fresh hipEngine first-cycle proposals.",
-  "next_command": "Implement the C1/C2 orchestration harness, then run the 10-prompt x 24-position x 2-width capture with cached HIP builds and Laurent n_predict=4."
+  "blocker": null,
+  "result": "benchmarks/results/2026-09-01-gfx1151-qwen38-z2-teacher-forced-proposal-parity.json"
 }

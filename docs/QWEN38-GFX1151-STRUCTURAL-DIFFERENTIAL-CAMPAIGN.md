@@ -363,7 +363,7 @@ control.
   does not expose physical rows, quant-family kernels, or launch counts, so
   those cross-runtime fields are a named instrumentation bound and remain
   null. No geometry or ownership equality is inferred.
-- [ ] For C1/C2, run teacher-forced proposal parity against the matched
+- [x] For C1/C2, run teacher-forced proposal parity against the matched
   Laurent route before changing target kernels. Report agreement by category,
   position, and heldout split.
 
@@ -398,7 +398,18 @@ control.
   confirms exact prompt accounting and diagnostic device-proposal
   materialization. Initial C1 and both C2 rows exactly match Laurent's first
   K3 `[12305, 198, 727]`. The diagnostic adds a synchronization/readback and
-  carries no timing claim; the full 480-context capture remains open.
+  carries no timing claim.
+
+  Final parity: [`2026-09-01-gfx1151-qwen38-z2-teacher-forced-proposal-parity.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-teacher-forced-proposal-parity.json).
+  On contexts where both target roots equal the fixed Laurent teacher, exact
+  K3 agreement is 147/222 (66.22%) at C1 and 304/446 physical rows (68.16%)
+  at C2. Depth-1/2/3 agreement is 89.19/77.03/69.37% at C1 and
+  90.13/78.48/71.75% at C2. All 240 C2 pairs are internally identical, so
+  batching does not alter proposal IDs. Eighteen C1 and seventeen C2 contexts
+  are root-non-comparable and are reported separately, not scored as proposal
+  disagreement. The category, heldout, teacher-position, and draft-depth
+  breakdown is in the artifact. Proposal mismatch is a measured acceptance
+  mechanism and must remain separate from target cost.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
