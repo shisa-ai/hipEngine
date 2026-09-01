@@ -38,6 +38,7 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_score_f32,
     qwen4_exp_qsa_select_blocks_f32_i64,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
+    qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32,
     qwen4_exp_qsa_split_norm_rope_f32,
     register_qwen4_exp_qsa_kernels,
 )
@@ -193,6 +194,7 @@ __all__ = [
     "qwen4_exp_qsa_score_f32",
     "qwen4_exp_qsa_select_blocks_f32_i64",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
+    "qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32",
     "qwen4_exp_qsa_split_norm_rope_f32",
     "qwen35_full_attn_decode_context_bf16",
     "qwen35_full_attn_gate_mul_bf16",

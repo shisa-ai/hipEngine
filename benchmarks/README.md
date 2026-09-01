@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-01**
+Last updated: **2026-09-02**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -277,6 +277,19 @@ experts are 333/327/325 of 512. The old 41.6% remainder was incomplete table
 coverage. The patched llama CSVs flushed and hashed, but rocprof required forced
 exit after flush, so comparator subwindows remain diagnostic attribution.
 [`canonical impact profile`](results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
+
+The first retained impact-ranked unit replaces the serialized H256 p4096 QSA
+attention owner with an exact three-pass path: parallel incumbent-order QK
+scores, one global selected-order online-softmax coefficient recurrence, and
+independent output-column weighted-V recurrences. Across four canonical p4096
+categories and 12 counterbalanced tg128 pairs, complete decode improves
+**93.912→80.061 ms/token (1.173x)**; every pair wins, the aggregate 95% ratio
+interval is **1.170–1.176**, and full logits/IDs remain exact. The named trace
+records all three expected kernels, reduces the QSA role **36.304→20.913
+ms/token**, attributes 100% of device time, allocates nothing in the measured
+windows, and tears down to zero. This retained row does not replace the
+five-pair section-6 closure baseline.
+[`exact ordered QSA decode`](results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json).
 
 A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
 the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up

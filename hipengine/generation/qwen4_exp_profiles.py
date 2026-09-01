@@ -69,6 +69,10 @@ _DEVICE_ARGMAX_EVIDENCE = (
     "benchmarks/results/"
     "2026-08-31-gfx1151-qwen38-flash-next-p5-device-argmax.json"
 )
+_QSA_ORDERED_DECODE_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json"
+)
 
 
 def _selection(
@@ -107,6 +111,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "bf16_context_batch_spans",
             "w4_paro",
             evidence=_QSA_DENSE_FIXED256_EVIDENCE,
+        ),
+        _selection(
+            "qsa_sparse_attention",
+            "qwen4exp_c1_h256_indexed_sparse_decode",
+            "strict_spans",
+            "strict_spans",
+            "bf16_kv",
         ),
         _selection(
             "linear+gr_gated_mean",
@@ -187,6 +198,14 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             "bf16_context_batch_paged_c1_exact_spans",
             "w4_paro",
             evidence=_QSA_DENSE_FIXED256_EVIDENCE,
+        ),
+        _selection(
+            "qsa_sparse_attention",
+            "qwen4exp_c1_h256_indexed_sparse_decode",
+            "strict_ordered_three_pass_spans",
+            "strict_spans",
+            "bf16_kv",
+            evidence=_QSA_ORDERED_DECODE_EVIDENCE,
         ),
         _selection(
             "linear+gr_gated_mean",
@@ -316,6 +335,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
             if production
             else ""
         ),
+        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_DOWN": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4": "1",
         "HIPENGINE_QWEN4_EXP_EXACT_GROUPED_Q4_ALL": "1",

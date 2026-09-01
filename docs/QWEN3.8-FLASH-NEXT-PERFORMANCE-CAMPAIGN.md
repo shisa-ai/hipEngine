@@ -16,7 +16,12 @@ to admission-pending because its replacement 1.112x ratio mixes a strict
 runner denominator with a graph result imported from another run; production
 `O` and `s` remain unknown. Cold PLE and MTP remain separate lanes. This is not
 section 6 closure: five thermal pairs, cold-PLE isolation, and category
-heldouts remain open.
+heldouts remain open. The first retained post-profile unit replaces serialized
+p4096 QSA decode with an exact ordered three-pass owner. Four-category tg128
+improves **93.912→80.061 ms/token (1.173x)** across 12 counterbalanced pairs
+with exact full logits and IDs; the named trace reduces the QSA operation role
+to **20.913 ms/token**. This is a retained production improvement, not section
+6 closure.
 
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
@@ -263,7 +268,7 @@ API time is attribution evidence only.
 
 | Rank | Lane and measured owner | Amdahl interpretation | Next decision |
 | ---: | --- | --- | --- |
-| 1 | Exact p4096 QSA decode: live-4097 QSA owns **36.304 ms/token** operation-complete; the attention family alone is **35.587 ms** versus llama's **0.591 ms**. | Zero cost covers **92.8%** of the final-valid gap and exceeds the 26.747-ms HIP gap. The rejected reassociated candidates prove local speed potential but provide no valid `s`. | Replace barrier-per-selected-token attention with exact ordered QK-score, one global selected-order online-softmax state, and output-column weighted-V recurrence. Do not revisit partial-softmax merges. |
+| 1 | Exact p4096 QSA decode: the retained ordered three-pass route reduces four-category complete wall **93.912→80.061 ms/token** and the traced QSA operation role from **36.304 to 20.913 ms/token**. | Local complete-wall `s=1.173`; the unit saves **13.851 ms/token** and covers **35.4%** of its measured final-valid gap. The residual QSA role still exceeds llama's prior **0.591-ms** attention family and remains rankable after a fresh comparator-aligned ledger. | Re-profile the retained stack, then optimize the exact score/value dataflow only if its refreshed gap coverage still outranks operation-complete prefill MoE. Do not revisit partial-softmax merges. |
 | 2 | Operation-complete prefill MoE owns **3.408/6.307/25.398 s** at p512/p1024/p4096. Exact 512-row chunks activate a median **333/327/325 of 512 experts** with seven median rows per active expert. | Zero cost covers **89.4%/72.5%/58.0%** of the final-valid prefill gaps. The workload is broad-active-expert, not a tiny sparse set. | Transfer llama's device compact maps, projection/activation reuse, and graph fusion as one boundary. Stop isolated tile-constant work. |
 | 3 | Dense linear + GR-read roles own **1.839/3.442/13.864 s**; aligned dense-projection delta reaches **1.131/2.079/8.429 s**. | No single projection closes prefill, but these uniform boundaries cover **48.3%/39.6%/31.6%** of the current final-valid gaps at zero cost. | Fuse shared layouts across `attn_qkv`, `attn_gate`, `ssm_out`, HC projection/read, and inject/publication boundaries. |
 | 4 | p4096 QSA prefill attention is **10.229 s** versus llama's **0.526 s**; its share grows from **0.85%** at p512 to **18.68%** at p4096. | Its p4096 zero-cost role ceiling covers **23.8%** of the final-valid gap, but the short rows are only 1–2% owners. | Differential-profile the exact flash/index materialization and build a prefill-specific path; do not assume the decode design transfers. |
@@ -922,7 +927,7 @@ matrix before implementation claims parity.
       is retired, and P8 returns to admission-pending. Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json`.
 
-- [ ] Declare and hold one GPU clock policy across every arm of every paired
+- [x] Declare and hold one GPU clock policy across every arm of every paired
       row, and record it in host state next to the existing power/clock samples.
       Pat1entZ3r0 measures +3-7% interactive decode from pinning
       `power_dpm_force_performance_level=high`, which is the same magnitude as
@@ -930,7 +935,10 @@ matrix before implementation claims parity.
       explicitly declare `auto` and prove both arms ran under it;
       `scripts/pn3_clock_probe.py` already samples the control. An unpinned,
       undeclared clock policy invalidates the five thermal closure pairs before
-      they are collected.
+      they are collected. The campaign declares `auto`; canonical host
+      metadata now records every visible
+      `power_dpm_force_performance_level` value, and paired campaign commands
+      verify `auto` before launch.
 - [ ] Audit every comparator lane for configuration it is entitled to before the
       closure freeze. `GGML_VK_ALLOW_GRAPHICS_QUEUE=1` measures +4.0% decode on
       RADV APUs externally and appears nowhere in this tree, so both Vulkan
@@ -1268,13 +1276,27 @@ direct-launch surface before graph capture hides it.
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-wave8-h256-rejected.json`
       and
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-qsa-contiguous-h256-rejected.json`.
+      The exact successor is retained. It computes incumbent-order QK scores in
+      parallel, runs one global selected-order online-softmax coefficient
+      recurrence per query head, and applies those coefficients in independent
+      output-column weighted-V recurrences. The actual 2,051-selected-token leaf
+      improves **2.158→1.180 ms (1.829x)** and is bit-exact to strict.
+      Four-category p4096 tg128 improves **93.912→80.061 ms/token (1.173x)**;
+      all 12 counterbalanced pairs win, the aggregate 95% ratio interval is
+      **1.170–1.176**, full logits/IDs are exact, and teardown is zero. A named
+      `rocprofv3` trace records all three expected kernels and reduces the QSA
+      role to **20.913 ms/token** with 100% attribution and no measured-window
+      allocations. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json`.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
 - [ ] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
       replace them only with same-role evidence.
-- [ ] After every retained fusion, update direct launches, graph launches,
+- [x] After every retained fusion, update direct launches, graph launches,
       kernel rows, API time, copy bytes, and context-conditioned tg128 wall.
+      The retained ordered-QSA unit refreshes this census; the requirement
+      remains binding for every later retained unit.
 
 ### Phase P7 — normalized/transposed GDN decode
 
