@@ -5093,6 +5093,12 @@ def test_gfx1100_production_verifier_q4_scope_is_default_off_and_bounded() -> No
             in_features=5_120,
             out_features=17_408,
         )
+        assert scope(
+            dispatch,
+            rows=32,
+            in_features=5_120,
+            out_features=17_408,
+        )
         assert not scope(
             dispatch,
             rows=30,

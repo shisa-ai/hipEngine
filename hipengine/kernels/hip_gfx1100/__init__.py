@@ -306,9 +306,10 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_PROMPT_STREAMING = True
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
     {(5_120, 17_408), (6_144, 5_120)}
 )
-# Default-off T2 screen: decompose the physical R36 target gate/up owner into
-# five existing fused rowtiles. The strict fused WMMA remains the fallback.
-GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({36})
+# Default-off T2 screen: decompose C8's active R32 or padded physical R36
+# target gate/up owner into existing fused rowtiles. The strict fused WMMA
+# remains the fallback.
+GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({32, 36})
 GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES = frozenset(
     {(5_120, 17_408)}
 )
