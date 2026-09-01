@@ -1761,7 +1761,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     }
     assert GFX1100_GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
     assert GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
-    assert GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK == 6
+    assert GFX1100_GGUF_Q6_LM_HEAD_MAX_CHUNK == 8
     assert GGUF_Q6_LM_HEAD_MAX_CHUNK == 8
     assert GFX1100_GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
     assert GGUF_Q8_T16_DECODE_ROWTILE_ALL is False
@@ -2024,7 +2024,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_Q6_LM_HEAD_MAX_CHUNK",
         )
-        == 6
+        == 8
     )
     assert (
         backend_package_capability(

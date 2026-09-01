@@ -686,7 +686,7 @@ def test_p9_h3_q6_t16_wrappers_validate_args() -> None:
             gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
             "_hipengine_max_rows",
         )
-        == 4
+        == 8
     )
     with pytest.raises(ValueError, match="positive multiple of 256"):
         gguf_q6_k_t16_gemv_decode_bf16_f32_out(0, 0, 0, 1, 128, 16)
@@ -1070,6 +1070,48 @@ def test_q6_t16_qmicro_planar_rowtile_f32_matches_generic_legacy_tree(
     )
 
     np.testing.assert_array_equal(actual, expected)
+
+
+def test_q6_t16_qmicro_planar_rowtile_f32_rows8_matches_two_rows4_bits(
+    q6_t16_library,
+) -> None:
+    rows, in_features, out_features = 8, 512, 256
+    rng = np.random.default_rng(0x6A1608)
+    qweight = make_q6_k_weight(out_features, in_features)
+    qmicro_tiles = repack_gguf_q6_k_tile16_qmicro_planar(
+        qweight[None, ...]
+    ).tiles
+    x = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
+    )
+    fn = t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out
+    control = np.concatenate(
+        [
+            _run_single(
+                fn,
+                chunk,
+                qmicro_tiles,
+                4,
+                in_features,
+                out_features,
+                np.float32,
+                q6_t16_library,
+            )
+            for chunk in np.split(x, 2)
+        ],
+        axis=0,
+    )
+    candidate = _run_single(
+        fn,
+        x,
+        qmicro_tiles,
+        rows,
+        in_features,
+        out_features,
+        np.float32,
+        q6_t16_library,
+    )
+    np.testing.assert_array_equal(candidate, control)
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

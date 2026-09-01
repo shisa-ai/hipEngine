@@ -526,7 +526,10 @@ GGUF_T16_F16_ROCBLAS_SOLUTION_INDICES = {
     (4_096, 17_408, 512): -1_140_855_997,
     (4_096, 6_144, 512): -1_140_855_996,
 }
-GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
+# Actual W7900 Qwen3.8 root F32 logits: native R8 is bit-exact to two R4
+# chunks and 1.285x faster (40/40 paired wins). The request-local env remains
+# an explicit smaller-chunk rollback.
+GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
 # Concurrency2 C2-6 W7900 qualification (re-qualified 2026-08-17 after the
 # conv_out arena-aliasing fix 422209168 and the state-oracle checkout fix
 # 46466a86e). Shared-slot packed AR decode is byte-exact through physical c8:
