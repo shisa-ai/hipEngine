@@ -18,16 +18,6 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-01 gfx1100 planar-Q6 R6 parallel epilogue — open
-
-- `HIPENGINE_GGUF_Q6_R6_PARALLEL_EPILOGUE` temporarily gates the exact
-  production-physical recurrent-QKV/full-V candidate while complete-wall
-  qualification is pending. FFN-down, strict, peer backends, and shape misses
-  retain the serial-epilogue parent.
-- Remove the candidate and flag on any binding C5-C8 regression. If retained,
-  promote it to default and remove the opt-out after the next stable milestone
-  audit.
-
 ## 2026-09-01 gfx1100 Q4 row6 two-wave screen — closed
 
 - The complete counterbalanced C5-C8 category+heldout gate retained the exact

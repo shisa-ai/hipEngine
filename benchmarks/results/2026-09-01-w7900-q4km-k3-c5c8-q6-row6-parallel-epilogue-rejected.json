@@ -1,0 +1,297 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_q6_row6_parallel_epilogue_rejected",
+  "date": "2026-09-01",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove the exact planar-Q6 R6 parallel epilogue. Aggregate widths are positive but C7 mixed_ja_en and heldout regress, failing the binding all-category/heldout rule.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "source": {
+    "commit": "6f603b6411feacf3ee95b8298521e4bb87db1ea9",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-q6epi-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "b1ddc8ee0707f23ce2075012f060be424a858f791e2f0c85e01b9a129a5d1bf1"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-q6epi-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "86784f8826d76114b25d55b47d13042a64e9063accbcc40dfc3e99e582aaff7a"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-q6epi-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "51df1647fd7c025fe038decee30688acba31d5ea7d3e6aa08c7af099d303ed8a"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-q6epi-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "59c8251402664d979336e2f33016eb9f351c5c8c95ab9cd6c5f80f76c35ec62a"
+      }
+    }
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_Q6_R6_PARALLEL_EPILOGUE=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q6_R6_PARALLEL_EPILOGUE=0"
+  },
+  "leaf_screen": {
+    "raw": "/tmp/he-k3-q6-row6-parallel-epilogue-screen.json",
+    "recurrent_qkv_speedup": 1.0584355889504626,
+    "full_v_speedup": 1.0221382066509088,
+    "ffn_down_speedup": 0.97594179918745,
+    "all_bit_exact": true
+  },
+  "correctness": {
+    "all_packets_passed": true,
+    "cross_arm_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "rows_compared": 520,
+    "all_processes_drained": true
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 60.52664774901211,
+        "candidate_tok_s": 61.02422577029677,
+        "candidate_delta_pct": 0.8220809177273303
+      },
+      "categories": {
+        "code": {
+          "rollback_tok_s": 62.57634777263228,
+          "candidate_tok_s": 63.02663461255345,
+          "candidate_delta_pct": 0.7195799306748629
+        },
+        "general_en": {
+          "rollback_tok_s": 64.79752580101447,
+          "candidate_tok_s": 65.38068915524487,
+          "candidate_delta_pct": 0.8999778109139767
+        },
+        "general_ja": {
+          "rollback_tok_s": 57.29278507440912,
+          "candidate_tok_s": 57.780437764443334,
+          "candidate_delta_pct": 0.8511589886944337
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 56.30506288177257,
+          "candidate_tok_s": 56.81777648303697,
+          "candidate_delta_pct": 0.910599464813644
+        }
+      },
+      "scopes": {
+        "train": {
+          "candidate_delta_pct": 0.8022046231537017
+        },
+        "heldout": {
+          "candidate_delta_pct": 0.851950662790113
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 68.08173275246925,
+        "candidate_tok_s": 68.52204018601573,
+        "candidate_delta_pct": 0.6467335887988312
+      },
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.61351262342065,
+          "candidate_tok_s": 68.32735805751888,
+          "candidate_delta_pct": 1.0557733305087247
+        },
+        "general_en": {
+          "rollback_tok_s": 74.33064344180481,
+          "candidate_tok_s": 74.7400411140498,
+          "candidate_delta_pct": 0.5507791313087651
+        },
+        "general_ja": {
+          "rollback_tok_s": 66.54320728580454,
+          "candidate_tok_s": 66.7508128571222,
+          "candidate_delta_pct": 0.31198612117686597
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 65.01941528806309,
+          "candidate_tok_s": 65.19937485379188,
+          "candidate_delta_pct": 0.27677819760680844
+        }
+      },
+      "scopes": {
+        "train": {
+          "candidate_delta_pct": 0.7700697320536243
+        },
+        "heldout": {
+          "candidate_delta_pct": 0.4593199495604994
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 65.83087541988883,
+        "candidate_tok_s": 65.97521468534491,
+        "candidate_delta_pct": 0.21925770322124283
+      },
+      "categories": {
+        "code": {
+          "rollback_tok_s": 66.07026889323383,
+          "candidate_tok_s": 66.28518631033992,
+          "candidate_delta_pct": 0.3252861244645189
+        },
+        "general_en": {
+          "rollback_tok_s": 72.86690056880855,
+          "candidate_tok_s": 73.1474942773488,
+          "candidate_delta_pct": 0.38507704643657714
+        },
+        "general_ja": {
+          "rollback_tok_s": 61.4120780202288,
+          "candidate_tok_s": 61.7177544136882,
+          "candidate_delta_pct": 0.4977463771193458
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 63.79867306975135,
+          "candidate_tok_s": 63.53409419914634,
+          "candidate_delta_pct": -0.4147090493806127
+        }
+      },
+      "scopes": {
+        "train": {
+          "candidate_delta_pct": 0.470472296404556
+        },
+        "heldout": {
+          "candidate_delta_pct": -0.15922206295430064
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 69.37667214600276,
+        "candidate_tok_s": 69.61013114543525,
+        "candidate_delta_pct": 0.3365093657723639
+      },
+      "categories": {
+        "code": {
+          "rollback_tok_s": 70.70970762477917,
+          "candidate_tok_s": 70.86922804842361,
+          "candidate_delta_pct": 0.2255990429078425
+        },
+        "general_en": {
+          "rollback_tok_s": 73.37837481232249,
+          "candidate_tok_s": 73.71554205144194,
+          "candidate_delta_pct": 0.45949128742877043
+        },
+        "general_ja": {
+          "rollback_tok_s": 65.81249284722436,
+          "candidate_tok_s": 65.82665359771259,
+          "candidate_delta_pct": 0.021516812197197588
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 66.83152354357702,
+          "candidate_tok_s": 67.33754307993134,
+          "candidate_delta_pct": 0.7571569665389521
+        }
+      },
+      "scopes": {
+        "train": {
+          "candidate_delta_pct": 0.17943867488838805
+        },
+        "heldout": {
+          "candidate_delta_pct": 0.5746300371787028
+        }
+      }
+    }
+  },
+  "prompt_cell_pairs": [
+    {
+      "order": "candidate->rollback",
+      "candidate_prompt_cell_wins": 38,
+      "cells": 40,
+      "median_delta_pct": 0.9158770922442994,
+      "minimum_delta_pct": -0.8545289408584678,
+      "maximum_delta_pct": 3.0995791576645892,
+      "generated_ids_equal": true,
+      "acceptance_equal": true
+    },
+    {
+      "order": "rollback->candidate",
+      "candidate_prompt_cell_wins": 17,
+      "cells": 40,
+      "median_delta_pct": -0.042449319732906776,
+      "minimum_delta_pct": -1.5707612516631886,
+      "maximum_delta_pct": 1.9687481198237933,
+      "generated_ids_equal": true,
+      "acceptance_equal": true
+    }
+  ],
+  "binding_failures": [
+    {
+      "width": 7,
+      "scope": "category:mixed_ja_en",
+      "candidate_delta_pct": -0.4147090493806127
+    },
+    {
+      "width": 7,
+      "scope": "heldout",
+      "candidate_delta_pct": -0.15922206295430064
+    }
+  ],
+  "cleanup": "All candidate kernel, wrapper, flag, selector, tests, and refactor-ledger entries removed; parent unchanged."
+}

@@ -66,10 +66,6 @@ _Q6_T16_QMICRO_PLANAR_BF16_F32_TOP1_STAGE1 = (
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out"
 )
-_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_PARALLEL_EPILOGUE_R6_BF16_BF16 = (
-    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
-    "parallel_epilogue_r6_bf16_bf16_out"
-)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "bf16_residual_bf16_out"
@@ -107,9 +103,6 @@ _QK_K = 256
 _T16_COLS = 16
 _ENV_Q6_PLANAR_EXACT_PREFILL = "HIPENGINE_GGUF_Q6_PLANAR_EXACT_PREFILL"
 _Q6_PLANAR_EXACT_PREFILL_RESOLVED: bool | None = None
-_ENV_Q6_R6_PARALLEL_EPILOGUE = "HIPENGINE_GGUF_Q6_R6_PARALLEL_EPILOGUE"
-_Q6_R6_PARALLEL_EPILOGUE_RESOLVED: bool | None = None
-_Q6_R6_PARALLEL_EPILOGUE_SHAPES = frozenset({(5_120, 10_240), (5_120, 1_024)})
 
 
 def _q6_planar_exact_prefill_enabled() -> bool:
@@ -128,24 +121,6 @@ def _q6_planar_exact_prefill_enabled() -> bool:
             )
         _Q6_PLANAR_EXACT_PREFILL_RESOLVED = value
     return _Q6_PLANAR_EXACT_PREFILL_RESOLVED
-
-
-def _q6_r6_parallel_epilogue_enabled() -> bool:
-    """Return the default-off physical-Q6 R6 epilogue experiment state."""
-
-    global _Q6_R6_PARALLEL_EPILOGUE_RESOLVED
-    if _Q6_R6_PARALLEL_EPILOGUE_RESOLVED is None:
-        raw = os.environ.get(_ENV_Q6_R6_PARALLEL_EPILOGUE, "0").strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            value = True
-        elif raw in {"0", "false", "no", "off"}:
-            value = False
-        else:
-            raise ValueError(
-                f"{_ENV_Q6_R6_PARALLEL_EPILOGUE} must be a boolean value"
-            )
-        _Q6_R6_PARALLEL_EPILOGUE_RESOLVED = value
-    return _Q6_R6_PARALLEL_EPILOGUE_RESOLVED
 
 
 def plan_gguf_q6_k_t16_gemv_build(
@@ -977,49 +952,8 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
 
     if rows < 2 or rows > 8:
         raise ValueError("qmicro planar rowtile requires rows in [2, 8]")
-    symbol = _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
-    if (
-        rows == 6
-        and (int(in_features), int(out_features))
-        in _Q6_R6_PARALLEL_EPILOGUE_SHAPES
-        and q6_t16_physical_rowtile_enabled()
-        and _q6_r6_parallel_epilogue_enabled()
-    ):
-        symbol = (
-            _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_PARALLEL_EPILOGUE_R6_BF16_BF16
-        )
     _launch(
-        symbol,
-        x_ptr,
-        tiles_ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
-
-
-def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_parallel_epilogue_r6_bf16_bf16_out(
-    x_ptr: int,
-    tiles_ptr: int,
-    out_ptr: int,
-    rows: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Exact planar-qmicro R6 col8 rowtile with a parallel output epilogue."""
-
-    if rows != 6:
-        raise ValueError("qmicro planar parallel epilogue requires rows == 6")
-    _launch(
-        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_PARALLEL_EPILOGUE_R6_BF16_BF16,
+        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1674,7 +1608,6 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out",
-    "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_parallel_epilogue_r6_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out",
