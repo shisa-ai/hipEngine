@@ -5000,7 +5000,7 @@ def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
         ("gguf_q6_k_t16_qmicro_planar_v1", 5_120, 1_024),
     ),
 )
-@pytest.mark.parametrize("rows", (32,))
+@pytest.mark.parametrize("rows", (20, 24, 32))
 def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
     quant_key: str,
     in_features: int,
