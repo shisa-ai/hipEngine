@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Evaluate scoped Qwen3.8 C2/C3 K3 production Q4 verifier rowtiles.
+"""Evaluate scoped Qwen3.8 production Q4 verifier rowtiles.
 
-The strict side uses FP32 recurrent state and the strict small-M/shared-B Q4
-WMMA target owners. The candidate uses FP16 recurrent state and profile-selected
-Q4 rowtiles inside an R8 or R12 packed target verifier. Both sides replay
+The strict side uses FP32 recurrent state and strict small-M/shared-B Q4 WMMA
+target owners. The candidate uses the selected recurrent-state dtype and
+profile-selected Q4 rowtiles inside a packed target verifier. Both sides replay
 identical strict-teacher token blocks and emit full-vocabulary logits.
 """
 
@@ -347,9 +347,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
     candidate: dict[str, list[tuple[dict[str, object], ...]]] = {
         str(row["id"]): [] for row in prompt_rows
     }
+    candidate_fp16_state = str(args.candidate_state) == "fp16"
     stack, sessions = _make_sessions(
         args,
-        fp16_state=True,
+        fp16_state=candidate_fp16_state,
         q4_rowtile=True,
         max_sequence_length=max_sequence_length,
     )
@@ -404,7 +405,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         repo_root=ROOT,
         configured_backend=str(args.backend),
         resolved_backend=str(args.backend),
-        target_arch="gfx1151",
+        target_arch=str(args.backend).removeprefix("hip_"),
         model_path=args.model,
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
@@ -417,7 +418,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "0",
             },
             "candidate": {
-                FP16_STATE_ENV: "1",
+                FP16_STATE_ENV: "1" if candidate_fp16_state else "0",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "1",
             },
         },
@@ -454,10 +455,11 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         "hard_gates_passed": hard_passed,
         "performance_claim": False,
         "candidate": {
-            "arithmetic_class": "T1+T2",
+            "arithmetic_class": "T1+T2" if candidate_fp16_state else "T2",
             "strict": "FP32 state + strict small-M/shared-B Q4 WMMA",
             "production": (
-                "FP16 state + shape-scoped Q4/Q5/Q6 verifier rowtiles at "
+                f"{'FP16' if candidate_fp16_state else 'FP32'} state + "
+                "shape-scoped Q4 verifier rowtiles at "
                 f"physical R{int(args.concurrency) * rows_per_job}"
             ),
             "strict_fallbacks": [
@@ -465,7 +467,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 "linear_pair_silu/gguf_q4_k_t16_v1/dense_dual_wmma_prefill_bf16_bf16_out",
             ],
             "excluded": [
-                "rows outside the selected R8/R12 cell",
+                f"rows outside physical R{int(args.concurrency) * rows_per_job}",
                 "narrow K5120/N1024",
                 "peer backends",
             ],
@@ -526,8 +528,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--concurrency", type=int, choices=(2, 3), default=2)
+    parser.add_argument("--concurrency", type=int, choices=(2, 3, 9), default=2)
     parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=3)
+    parser.add_argument(
+        "--candidate-state",
+        choices=("fp16", "fp32"),
+        default="fp16",
+        help="recurrent-state dtype for the candidate arm",
+    )
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--decode-steps", type=int, default=24)

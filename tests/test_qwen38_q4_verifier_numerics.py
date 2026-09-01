@@ -16,6 +16,7 @@ def test_q4_verifier_numerics_parser_freezes_product_horizon() -> None:
     assert args.backend == "hip_gfx1151"
     assert args.concurrency == 2
     assert args.candidate_budget == 3
+    assert args.candidate_state == "fp16"
 
 
 def test_q4_verifier_numerics_accepts_c3_tail_budget_and_pads_final_group() -> None:
@@ -37,6 +38,27 @@ def test_q4_verifier_numerics_accepts_c3_tail_budget_and_pads_final_group() -> N
         ((rows[0], rows[1], rows[2]), 3),
         ((rows[3], rows[4], rows[4]), 2),
     )
+
+
+def test_q4_verifier_numerics_accepts_gfx1100_r36_isolated_q4_route() -> None:
+    args = gate.build_parser().parse_args(
+        (
+            "--backend",
+            "hip_gfx1100",
+            "--concurrency",
+            "9",
+            "--candidate-budget",
+            "3",
+            "--candidate-state",
+            "fp32",
+            "--output",
+            "/tmp/out.json",
+        )
+    )
+
+    assert args.backend == "hip_gfx1100"
+    assert args.concurrency * (args.candidate_budget + 1) == 36
+    assert args.candidate_state == "fp32"
 
 
 def test_q4_verifier_environment_restores_caller(
