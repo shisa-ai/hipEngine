@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_c7_fused_r28_production_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Remove the default-off T2 fused-WMMA R28 candidate. It delivers decisive C7 speed and mostly small numerical drift, but one real general_en transition exceeds the absolute production KL ceiling on all seven slots and changes target top-1/acceptance scheduling. Prompt-conditioned exclusion is prohibited; retain the exact grouped-rowtile fallback globally at R28.",
+  "source": {"candidate_commit": "2eaf56d4d", "capture_commits": ["685e2c9cb", "4f5131993"], "candidate_removed": true},
+  "hardware": {"physical_host": "epyc", "gpu": "AMD Radeon Pro W7900", "target_arch": "gfx1100", "compute_units": 96, "rocm": "7.2.4"},
+  "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "quant": "Q4_K_M", "kv": "BF16", "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"},
+  "candidate": {"arithmetic_class": "T2 fused production reassociation", "scope": "gfx1100 production physical C7/R28 Q4 gate/up K5120/N17408", "variant": "dense_dual_wmma_prefill_row32_bf16_bf16_out", "strict_fallback": "exact grouped Q4 R8 prefix + strict R4 tail for separate gate/up, then separate SiLU", "removed_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28"},
+  "leaf_and_marker": {
+    "actual_weight_speedup_range": [1.485778334382055, 1.490361940554255],
+    "marker": {"generated_ids_equal_ar": true, "accepted_counts_equal": true, "control_complete_wall_seconds": 1.1431860132142901, "candidate_complete_wall_seconds": 1.0881764683872461, "target_wall_delta_pct": -8.421328924155165, "device_union_delta_pct": -8.757011438959743, "complete_throughput_delta_pct": 5.055203510818939}
+  },
+  "task_performance_gate": {
+    "protocol": "Ten category+heldout prompts, C7/K3/D24, two counterbalanced fresh-process orders.",
+    "candidate_tok_s": 82.13446877635478,
+    "control_tok_s": 76.43412811123706,
+    "delta_pct": 7.457847438021181,
+    "prompt_order_wins": 20,
+    "prompt_order_cells": 20,
+    "minimum_prompt_delta_pct": 4.475571809696222,
+    "all_category_heldout_slices_positive": true,
+    "generated_id_rows_equal": 140,
+    "acceptance": {"candidate_accepted": 1099, "control_accepted": 1099, "candidate_drafts": 1400, "control_drafts": 1393, "difference": "general_en_plan uses seven cycles with candidate accepted counts [3,1,3,3,3,2,1] versus strict six cycles [3,1,3,3,3,3]; accepted total is unchanged but one top-1 transition differs."}
+  },
+  "strict_teacher_full_logits": {
+    "capture": "Diagnostic BF16 normalized hidden rows with exact slot IDs, positions, schedules, request/transaction IDs, and deterministic candidate repeat; unchanged Q6 root reconstructs full-vocabulary F32 logits offline.",
+    "rows_evaluated": 1922,
+    "repeat_bit_exact": true,
+    "metadata_schedule_exact": true,
+    "global": {"mean_kl": 0.003747120553283678, "p95_kl": 0.0003824814273514221, "p99_kl": 0.002001943237491588, "max_kl": 1.0091005119591046, "top1_agreement": 0.9963579604578564},
+    "binding_failure": {"prompt_id": "general_en_plan", "category": "general_en", "heldout": false, "shape": "R28", "position": 56, "row_indices": [3, 7, 11, 15, 19, 23, 27], "rows": 7, "kl_each": 1.0091005119591046, "strict_top1": 424, "candidate_top1": 25, "real_active_candidate_rows": true, "general_en_top1_agreement": 0.9805555555555555},
+    "non_outlier_active_rows": {"rows": 1915, "mean_kl": 0.00007219954031200906, "p95_kl": 0.00032714884645841354, "p99_kl": 0.001576674128688893, "max_kl": 0.003494089201502959, "top1_agreement": 1.0},
+    "thresholds": {"mean_kl_max": 0.001, "p95_kl_max": 0.005, "p99_kl_max": 0.02, "max_kl_absolute": 0.05, "top1_overall_min": 0.99, "top1_per_scope_min": 0.97},
+    "passed": false
+  },
+  "capture_note": "The layout active_mask is slot-level, not per packed row; it was renamed slot_active_mask after an initial mistaken pad-row interpretation. The seven outliers are real third-candidate rows whose token IDs are device-overlaid after host layout construction.",
+  "validation": {"final_tree": "The R28 policy, environment flag, selector route/test, and REFACTOR entry are removed. Diagnostic packed-verifier capture tooling remains because it closes a genuine evaluator gap and has no effect unless explicitly enabled."}
+}

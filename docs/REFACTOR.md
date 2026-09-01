@@ -63,16 +63,6 @@ should be removed or collapsed.
   same-build rollback. Remove the environment override after the next stable
   milestone audit; keep the exact padded composition available.
 
-## 2026-09-02 gfx1100 fused Q4 R28 production candidate — open
-
-- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28=1` enables a default-off T2
-  production reassociation only at C7 physical R28. Explicit zero retains the
-  exact grouped-rowtile gate/up chain plus separate SiLU.
-- Remove the flag/policy and selector test if any binding strict-teacher KL,
-  top-1, repeat/isolation, BF16-relative, task, ownership, or performance gate
-  fails. If retained, promote only the exact qualified C7/R28 scope and keep the
-  registered strict fallback.
-
 ## 2026-09-02 gfx1100 fused Q4 row32 / exact C8 target rows — closed
 
 - Promoted exact physical C8/K3 R32 and its two-active-wave fused gate/up+SiLU

@@ -288,13 +288,6 @@ GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY = {
         36: "dense_dual_wmma_prefill_row48_bf16_bf16_out",
     },
 }
-GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28",
-    "enabled_default": False,
-    "rows_to_variant": {
-        28: "dense_dual_wmma_prefill_row32_bf16_bf16_out",
-    },
-}
 GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
     "gguf_q4_k_t16_v1": {
         "canonical": True,
