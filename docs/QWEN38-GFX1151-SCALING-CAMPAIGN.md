@@ -986,7 +986,14 @@ prompt-conditioned tuning, sized full-wall bound before code).
   it already uses VGPR256. No in-tree/native named split-barrier wrapper was
   found; whole-block barriers cannot overlap roles. A five-wave prototype is
   still expressible with double-buffer ready/done shared-memory atomics and
-  block fences, but requires timeout-protected hang and residency validation.
+  block fences. The timeout-protected actual-weight prototype launches and is
+  bit-exact on both rows288 planar shapes, but regresses the binding wide
+  K17408/N5120 leaf **27.88%** (3.713->4.748 ms); the narrow shape gains only
+  2.97%. The route/export is scope-reverted. Dedicated-wave overlap is thus
+  blocked by producer under-partitioning and atomic handoff cost, not safety or
+  parity; the remaining Y3 ladder must change decode granularity/issue
+  scheduling rather than add producer waves.
+  [`Pipeline rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json).
   [`Slab analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json).
   [`Y3 entry bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json).
 - [ ] Y4 **(Conditional) INT4-WMMA Q4 body.** The only raised tensor roof on

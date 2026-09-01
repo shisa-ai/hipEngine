@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-shared4r6-pipeline-screen",
+  "status": "rejected_and_scope_reverted",
+  "source_commit": "2ea90e930",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "rows": 288,
+  "prototype": "five waves: one Q6 producer, four shared4r6 consumers, two 16 KiB LDS buffers, shared atomic ready/done handoff",
+  "timeout_seconds": 300,
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_DECODE_REPACK=1 timeout 300 .venv/bin/python /tmp/y3_q6_shared4r6_pipeline_rows288_smoke.py",
+  "results": {
+    "wide_planar_17408x5120": {"parent_ms": 3.712983322143555, "candidate_ms": 4.74827766418457, "speedup": 0.7819642372959652, "delta_pct": 27.883, "exact": true, "mismatch_count": 0, "max_abs": 0.0},
+    "narrow_planar_5120x1024": {"parent_ms": 0.3495680093765259, "candidate_ms": 0.3392045974731445, "speedup": 1.030552097408414, "delta_pct": -2.965, "exact": true, "mismatch_count": 0, "max_abs": 0.0}
+  },
+  "decision": "Reject and scope-revert. The prototype launches, completes within timeout, and preserves exact BF16 output, but the binding wide-planar shape regresses 27.88%; the narrow 2.97% gain cannot cover it. No policy integration or export retained.",
+  "raw_result": "/tmp/y3-q6-shared4r6-pipeline-rows288-smoke.json",
+  "rejected_patch": "/tmp/y3-shared4r6-pipeline-rejected.diff"
+}
