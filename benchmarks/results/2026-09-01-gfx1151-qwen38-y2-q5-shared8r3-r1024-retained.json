@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q5-shared8r3-r1024-retained",
+  "status": "validated_retention_pending_c1c8",
+  "source_commit_before_unit": "853995e52a833894da1a716f656d310233f5e2b5",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "pre_code_full_wall_bound": {
+    "rows536_ms": 57,
+    "rows1024_ms": 86,
+    "basis": "Y0 Q5 duration times 3/4 removable multiplicity"
+  },
+  "candidate": {
+    "geometry": "<8,3,2> gridY3",
+    "scope": "Q5 K6144/N5120 rows1024 only",
+    "strict_fallback": "plain Q5 on misses"
+  },
+  "direct_current_owner_comparison": {
+    "rows": [
+      536,
+      1024
+    ],
+    "results": {
+      "gguf_q5_k_t16_v1:6144x5120": {
+        "536": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 2.430500030517578,
+          "candidate_ms": 1.9575445175170898,
+          "speedup": 1.2416065171280883
+        },
+        "1024": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 4.402111053466797,
+          "candidate_ms": 3.3844654083251955,
+          "speedup": 1.3006813550637482
+        }
+      }
+    }
+  },
+  "complete_ticks": {
+    "536": {
+      "control_wall_ms": 1810.21571,
+      "candidate_wall_ms": 1811.547996,
+      "wall_delta_pct": 0.07359819012950908,
+      "control_next_token_id": 10562,
+      "candidate_next_token_id": 10562
+    },
+    "1024": {
+      "control_wall_ms": 3050.717431,
+      "candidate_wall_ms": 3045.50818,
+      "wall_delta_pct": -0.1707549492151017,
+      "control_next_token_id": 709,
+      "candidate_next_token_id": 709
+    }
+  },
+  "decision": {
+    "rows536": "rejected: +0.0736% complete wall",
+    "rows1024": "retained: -0.1708% complete wall"
+  },
+  "rocprof": {
+    "kernel": "gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<8,3,2>",
+    "grid_y3_hits": 29,
+    "threads": 256,
+    "vgpr": 96,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0
+  },
+  "limitations": [
+    "Tracked-clean C1-C8 collateral follows after commit.",
+    "Rows536 was scoped out after complete-wall regression.",
+    "Y2 remains open."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q5-shared8r3-r536-r1024.json",
+      "sha256": "f639b8dda86270517e53d0d3df6cbfcf16703e70b7f72f28fbf9ce2ec7f21462",
+      "bytes": 544
+    },
+    {
+      "path": "/tmp/y2-q5-shared8r3-rows536-1024-full-pair.json",
+      "sha256": "2ce0bdb1c711d86561bcb91dae7037294f5fb8b99a512e4a176da12c36e6e349",
+      "bytes": 346996
+    },
+    {
+      "path": "/tmp/y2-q5-shared8r3-high-rocprof/gfx1151/2468144_kernel_trace.csv",
+      "sha256": "a9905aa9993eb149ff0a925f812cbcc3b9639dddab8849d86e0910ec935fe9bb",
+      "bytes": 73822
+    }
+  ]
+}
