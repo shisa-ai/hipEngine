@@ -21,6 +21,7 @@ from hipengine.core.specdec2_scope import (
     moe_physical_c2_exact_linear_enabled,
     moe_physical_c2_f32_residual_disabled,
     moe_physical_c2_pairreuse_enabled,
+    physical_exact_rowtiles_enabled,
 )
 from hipengine.core.hip import (
     HIP_HOST_REGISTER_MAPPED,
@@ -174,6 +175,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
     qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
@@ -10764,6 +10766,7 @@ _GGUF_VERIFY_CAPTURE_F32_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_F32_CHA
 _GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_REGULAR_CHAIN_GDN"
 _GGUF_VERIFY_CAPTURE_BF16_GDN_OUT_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_BF16_GDN_OUT"
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+_GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV = "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE"
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV"
 _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
 _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
@@ -12343,13 +12346,16 @@ def _gdn_decode_order_state_rows_kernel(use_fp16_state: bool | None = None):
 def _gdn_decode_order_segments_state_rows_kernel(
     use_fp16_state: bool | None = None,
 ):
-    """Segment-aware decode-order row-state writer (fp16-state under the flag)."""
+    """Resolve the scoped segmented decode-order row-state writer."""
 
-    return (
-        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
-    )
+    if _resolve_fp16_recurrent_state_flag(use_fp16_state):
+        return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
+    if (
+        physical_exact_rowtiles_enabled()
+        and _env_flag(_GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV, False)
+    ):
+        return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce
+    return qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
 
 
 def _gdn_decode_order_segments_inplace_kernel(
