@@ -1509,7 +1509,7 @@ request-owned transition submission.
       that merely hides a slower kernel chain is not a retained win.
 - [ ] Target no per-layer graph launches and no unexplained direct launch in the
       steady transition; document any irreducible boundary.
-- [ ] Do not spend a rung on submission batching alone. The nearest external
+- [x] Do not spend a rung on submission batching alone. The nearest external
       evidence (`GGML_VK_MAX_NODES_PER_SUBMIT` 200-800, -1.3 to -2.4%) concludes
       cost is per-dispatch, not per-submit. A P8 win must remove dispatches; a
       variant that only bundles more nodes into one submission is pre-rejected
