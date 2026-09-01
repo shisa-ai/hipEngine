@@ -384,7 +384,15 @@ control.
   retains only the first K3 proposal and discards the free-running response.
   Concurrent C2 log segmentation resolves draft calls through candidate
   `seq_id` to slot/task ownership rather than the most recent prompt marker;
-  an interleaved two-slot RED/GREEN test pins this behavior.
+  an interleaved two-slot RED/GREEN test pins this behavior. The Laurent half
+  is now durable
+  ([artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-laurent-teacher-proposal-capture.json)):
+  all 720 physical requests expose exactly nine first-proposal candidates. Of
+  240 contexts per width, 239 preserve the teacher root. C1 diverges at
+  `code_markdown_table` position 13 (6943→83889); C2 diverges at
+  `general_en_explain` position 20 (7255→191280). Those contexts are bounded
+  non-comparable rather than counted as proposal disagreement. hipEngine
+  capture is still required before this item closes.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.

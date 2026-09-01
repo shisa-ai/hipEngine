@@ -78,6 +78,19 @@ slot update_slots: id 2 | task 8 | accepted 0/1 draft tokens, new n_tokens = 24
     assert trace["calls"][1]["accepted"] == 0
 
 
+def test_parse_llamacpp_mtp_draft_trace_accepts_timestamped_verbose_prefix() -> None:
+    text = """
+0.46.485.303 I slot operator(): id 1 | task 3 | new prompt, task.n_tokens = 40
+0.46.829.838 D spec draft:  - seq_id 1, draft candidate   0, pos   0:  12305 (   1.000) 'python'
+0.46.842.356 D spec common_specu: called impl draft-mtp, hist size = 40, call_count = 1, gen = 1
+"""
+
+    trace = parse_llamacpp_mtp_draft_trace(text)
+
+    assert trace["calls"][0]["candidates"][0]["token_id"] == 12305
+    assert trace["calls"][0]["request_index"] == 0
+
+
 def test_parse_llamacpp_mtp_draft_trace_resolves_interleaved_calls_by_slot() -> None:
     text = """
 slot update_slots: id 1 | task 70 | new prompt, task.n_tokens = 31
