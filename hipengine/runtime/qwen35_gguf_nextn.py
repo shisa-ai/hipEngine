@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import hashlib
-import os
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
@@ -15,7 +14,7 @@ from hipengine.core.dtype import DType
 from hipengine.core.hip import HipMemcpyKind, HipRuntime, get_hip_runtime
 from hipengine.core.memory import DeviceBuffer, copy_device_to_host, copy_host_to_device, free, host_array_ptr, malloc
 from hipengine.core.tensor import Tensor
-from hipengine.kernels.backends import backend_package_capability, resolve_backend
+from hipengine.kernels.backends import resolve_backend
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
@@ -27,9 +26,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     build_gguf_q6_k_t16_gemv,
-)
-from hipengine.kernels.hip_gfx1100.speculative.dflash_commit import (
-    build_dflash_commit,
 )
 from hipengine.kernels.hip_gfx1100.runtime import (
     advance_decode_position_i64,
@@ -78,31 +74,6 @@ class Qwen35GGUFNextNStateAdvance:
     request_id: int
     input_token: int
     position: int
-
-
-@dataclass(slots=True)
-class _NextNRootStatePairCopy:
-    """Precomputed slot-adjusted pointer tables for exact root snapshots."""
-
-    kernel: object
-    live_conv_table: DeviceBuffer
-    snapshot_conv_table: DeviceBuffer
-    live_recurrent_table: DeviceBuffer
-    snapshot_recurrent_table: DeviceBuffer
-    row_zero_i32: DeviceBuffer
-    layer_count: int
-    conv_row_nbytes: int
-    recurrent_row_nbytes: int
-
-    @property
-    def buffers(self) -> tuple[DeviceBuffer, ...]:
-        return (
-            self.live_conv_table,
-            self.snapshot_conv_table,
-            self.live_recurrent_table,
-            self.snapshot_recurrent_table,
-            self.row_zero_i32,
-        )
 
 
 @dataclass(slots=True)
@@ -442,9 +413,6 @@ class Qwen35GGUFNextNExecutor:
             else malloc(int(state.nbytes), runtime=self.runtime)
             for state in root_state_buffers
         )
-        self._provider_root_state_copy_plan = (
-            self._allocate_provider_root_state_copy_plan()
-        )
         self._provider_root_state_metadata: dict[int, tuple[int, int, int]] = {}
         self._request_slots: dict[int, int] = {}
         # Pageable host token arrays backing nonblocking prompt-prime H2D
@@ -570,146 +538,8 @@ class Qwen35GGUFNextNExecutor:
                 self._proposal_target_hidden,
                 self._proposal_results,
                 *self._provider_root_state_snapshots,
-                *(
-                    ()
-                    if self._provider_root_state_copy_plan is None
-                    else self._provider_root_state_copy_plan.buffers
-                ),
             )
             if buffer is not None
-        )
-
-    def _allocate_provider_root_state_copy_plan(
-        self,
-    ) -> _NextNRootStatePairCopy | None:
-        """Materialize backend-owned pointer tables for fused root snapshots."""
-
-        policy = backend_package_capability(
-            self.backend,
-            "GGUF_NEXTN_ROOT_STATE_PAIR_COPY_POLICY",
-            {},
-        )
-        if not isinstance(policy, Mapping):
-            return None
-        enabled_env = policy.get("enabled_env")
-        if not isinstance(enabled_env, str) or not enabled_env:
-            return None
-        default = bool(policy.get("enabled_default", False))
-        raw = os.environ.get(enabled_env, "1" if default else "0").strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            enabled = True
-        elif raw in {"0", "false", "no", "off"}:
-            enabled = False
-        else:
-            raise ValueError(f"{enabled_env} must be a boolean value")
-        if not enabled:
-            return None
-        key = KernelKey(
-            self.backend,
-            "linear_state_pair_copy",
-            "f32",
-            "chunked_i32",
-        )
-        if not is_registered(key):
-            return None
-        kernel = resolve(
-            backend=key.backend,
-            layer=key.layer,
-            quant=key.quant,
-            variant=key.variant,
-        )
-        if kernel is None:
-            return None
-
-        conv_states = tuple(self.scratch.layer_conv_states)
-        recurrent_states = tuple(self.scratch.layer_recurrent_states)
-        count = len(conv_states)
-        if count <= 0 or len(recurrent_states) != count:
-            return None
-        snapshots = self._provider_root_state_snapshots
-        if len(snapshots) != 2 * count:
-            return None
-        layer_rows = tuple(
-            (
-                conv_states[layer],
-                snapshots[layer],
-                recurrent_states[layer],
-                snapshots[count + layer],
-            )
-            for layer in range(count)
-        )
-        if any(
-            any(item is None for item in row) and any(item is not None for item in row)
-            for row in layer_rows
-        ):
-            return None
-        pairs = tuple(row for row in layer_rows if row[0] is not None)
-        if not pairs:
-            return None
-        conv_row_nbytes, conv_remainder = divmod(
-            int(pairs[0][0].nbytes), self.max_requests
-        )
-        recurrent_row_nbytes, recurrent_remainder = divmod(
-            int(pairs[0][2].nbytes), self.max_requests
-        )
-        if (
-            conv_remainder
-            or recurrent_remainder
-            or conv_row_nbytes <= 0
-            or recurrent_row_nbytes <= 0
-            or any(
-                int(conv.nbytes) != self.max_requests * conv_row_nbytes
-                or int(conv_snapshot.nbytes) != int(conv.nbytes)
-                or int(recurrent.nbytes)
-                != self.max_requests * recurrent_row_nbytes
-                or int(recurrent_snapshot.nbytes) != int(recurrent.nbytes)
-                for conv, conv_snapshot, recurrent, recurrent_snapshot in pairs
-            )
-        ):
-            return None
-
-        def pointer_table(index: int, row_nbytes: int) -> np.ndarray:
-            return np.asarray(
-                [
-                    int(pair[index].ptr) + slot * row_nbytes
-                    for slot in range(self.max_requests)
-                    for pair in pairs
-                ],
-                dtype=np.uint64,
-            )
-
-        hosts = (
-            pointer_table(0, conv_row_nbytes),
-            pointer_table(1, conv_row_nbytes),
-            pointer_table(2, recurrent_row_nbytes),
-            pointer_table(3, recurrent_row_nbytes),
-            np.zeros((1,), dtype=np.int32),
-        )
-        allocated: list[DeviceBuffer] = []
-        try:
-            for host in hosts:
-                buffer = malloc(host.nbytes, runtime=self.runtime)
-                allocated.append(buffer)
-                copy_host_to_device(
-                    buffer,
-                    host_array_ptr(host),
-                    host.nbytes,
-                    runtime=self.runtime,
-                )
-        except BaseException:
-            for buffer in reversed(allocated):
-                free(buffer, runtime=self.runtime)
-            raise
-        return _NextNRootStatePairCopy(
-            kernel=kernel,
-            live_conv_table=allocated[0],
-            snapshot_conv_table=allocated[1],
-            live_recurrent_table=allocated[2],
-            snapshot_recurrent_table=allocated[3],
-            row_zero_i32=allocated[4],
-            layer_count=len(pairs),
-            conv_row_nbytes=conv_row_nbytes,
-            recurrent_row_nbytes=recurrent_row_nbytes,
         )
 
     def _prepare_exact_lm_head_top1(self) -> None:
@@ -2601,51 +2431,6 @@ class Qwen35GGUFNextNExecutor:
         self._set_batch_session_position(slot, int(position) + 1)
         self.runtime.device_synchronize()
 
-    def _copy_provider_root_state(self, slot: int, *, restore: bool) -> bool:
-        """Copy one slot's Conv/GDN root state through the pointer-table leaf."""
-
-        plan = getattr(self, "_provider_root_state_copy_plan", None)
-        if plan is None:
-            return False
-        slot = int(slot)
-        if slot < 0 or slot >= self.max_requests:
-            raise ValueError("GGUF NextN root snapshot slot is outside capacity")
-        library = getattr(self._batch_session, "_dflash_commit_library", None)
-        if library is None:
-            library = build_dflash_commit(
-                load=True,
-                compiler_version=self.compiler_version,
-                require_cached=self.require_cached_build,
-            )
-            self._batch_session._dflash_commit_library = library
-        table_offset = slot * int(plan.layer_count) * np.dtype(np.uint64).itemsize
-        source_conv = (
-            plan.snapshot_conv_table if restore else plan.live_conv_table
-        )
-        destination_conv = (
-            plan.live_conv_table if restore else plan.snapshot_conv_table
-        )
-        source_recurrent = (
-            plan.snapshot_recurrent_table if restore else plan.live_recurrent_table
-        )
-        destination_recurrent = (
-            plan.live_recurrent_table if restore else plan.snapshot_recurrent_table
-        )
-        plan.kernel(
-            source_conv.ptr + table_offset,
-            destination_conv.ptr + table_offset,
-            plan.conv_row_nbytes,
-            source_recurrent.ptr + table_offset,
-            destination_recurrent.ptr + table_offset,
-            plan.recurrent_row_nbytes,
-            plan.row_zero_i32.ptr,
-            plan.layer_count,
-            stream=0,
-            library=library,
-            runtime=self.runtime,
-        )
-        return True
-
     def capture_request_root_state(self, request_id: int) -> None:
         """Persist the exact provider state/cursor immediately after its root."""
 
@@ -2657,23 +2442,22 @@ class Qwen35GGUFNextNExecutor:
             *self.scratch.layer_conv_states,
             *self.scratch.layer_recurrent_states,
         )
-        if not self._copy_provider_root_state(slot, restore=False):
-            for state, snapshot in zip(
-                owner_states,
-                self._provider_root_state_snapshots,
-                strict=True,
-            ):
-                if state is None or snapshot is None:
-                    continue
-                row_nbytes, remainder = divmod(int(state.nbytes), self.max_requests)
-                if remainder:
-                    raise ValueError("GGUF NextN root snapshot state is not slot-major")
-                self.runtime.memcpy(
-                    int(snapshot.ptr) + int(slot) * row_nbytes,
-                    int(state.ptr) + int(slot) * row_nbytes,
-                    row_nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                )
+        for state, snapshot in zip(
+            owner_states,
+            self._provider_root_state_snapshots,
+            strict=True,
+        ):
+            if state is None or snapshot is None:
+                continue
+            row_nbytes, remainder = divmod(int(state.nbytes), self.max_requests)
+            if remainder:
+                raise ValueError("GGUF NextN root snapshot state is not slot-major")
+            self.runtime.memcpy(
+                int(snapshot.ptr) + int(slot) * row_nbytes,
+                int(state.ptr) + int(slot) * row_nbytes,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
         slot_scratch = self.scratch.for_slot(slot, span_role="decode")
         consumed_position = int(slot_scratch.position_host[0])
         context_length = int(slot_scratch.context_host[0])
@@ -2699,23 +2483,22 @@ class Qwen35GGUFNextNExecutor:
             *self.scratch.layer_conv_states,
             *self.scratch.layer_recurrent_states,
         )
-        if not self._copy_provider_root_state(slot, restore=True):
-            for state, snapshot in zip(
-                owner_states,
-                self._provider_root_state_snapshots,
-                strict=True,
-            ):
-                if state is None or snapshot is None:
-                    continue
-                row_nbytes, remainder = divmod(int(state.nbytes), self.max_requests)
-                if remainder:
-                    raise ValueError("GGUF NextN root snapshot state is not slot-major")
-                self.runtime.memcpy(
-                    int(state.ptr) + int(slot) * row_nbytes,
-                    int(snapshot.ptr) + int(slot) * row_nbytes,
-                    row_nbytes,
-                    HipMemcpyKind.DEVICE_TO_DEVICE,
-                )
+        for state, snapshot in zip(
+            owner_states,
+            self._provider_root_state_snapshots,
+            strict=True,
+        ):
+            if state is None or snapshot is None:
+                continue
+            row_nbytes, remainder = divmod(int(state.nbytes), self.max_requests)
+            if remainder:
+                raise ValueError("GGUF NextN root snapshot state is not slot-major")
+            self.runtime.memcpy(
+                int(state.ptr) + int(slot) * row_nbytes,
+                int(snapshot.ptr) + int(slot) * row_nbytes,
+                row_nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
         _slot, consumed_position, context_length = metadata
         slot_scratch = self.scratch.for_slot(slot, span_role="decode")
         slot_scratch.position_host[0] = int(consumed_position)
