@@ -1,0 +1,114 @@
+{
+  "schema": 1,
+  "kind": "w7900_q4km_k3_q6_grouped_root_rows8_rejected",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove the exact grouped-grid F32 R8 root candidate. The actual-weight leaf saves 0.71%, but the same-build C8 marker worsens operation-complete target wall, target device-union, and complete wall despite exact IDs and acceptance.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "host_name": "epyc",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "source": {
+    "commit": "5da420e8e2bfd8adee391a02430c5cb958589264",
+    "tracked_clean": true,
+    "candidate_default": false,
+    "candidate_flag": "HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8=0"
+  },
+  "candidate": {
+    "variant": "t16_gemv_rowtile_col8_grouped_rows8_bf16_f32_out",
+    "mechanism": "Map independent exact R8 root chunks to grid.y so one grouped launch replaces repeated R8 launches without changing the retained DPP block body or per-row arithmetic.",
+    "outcome": "removed_from_product_test_and_registry_paths"
+  },
+  "leaf_screen": {
+    "shape_k_n": [5120, 248320],
+    "rows": 24,
+    "output_dtype": "F32",
+    "control": "three retained R8 launches",
+    "candidate": "one grouped R24 launch",
+    "float_bit_exact": true,
+    "mismatches": 0,
+    "finite": true,
+    "sample_pairs": 40,
+    "pair_wins": 38,
+    "control_median_ms": 10.395442008972168,
+    "candidate_median_ms": 10.321634928385416,
+    "candidate_speedup": 1.0071507160540794,
+    "raw": "/tmp/he-k3-q6-root-f32-grouped-r8-screen.json",
+    "raw_sha256": "48121052d2771a57d28e0721d159efe9fc000bd9997a52308dd3adc2da6c036e",
+    "script": "/tmp/he-k3-q6-root-f32-grouped-r8-screen.py",
+    "script_sha256": "75cdf5e6903f6189dc649dea0295bc31f8d44674cbab7bf6807ae7782f173453"
+  },
+  "marker_protocol": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=8 HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8=<1-or-0> PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "prompt": "code_merge_intervals",
+    "concurrency": 8,
+    "candidate_budget": 3,
+    "max_tokens": 12,
+    "require_cached_build": true,
+    "same_build": true,
+    "marker": "target_accept_commit_provider"
+  },
+  "marker_measurements": {
+    "rollback": {
+      "complete_wall_seconds": 1.335901701822877,
+      "target_wall_ms": 169.860868,
+      "target_kernel_count": 1560,
+      "target_kernel_sum_ms": 157.607451,
+      "target_device_union_ms": 143.122235,
+      "root_launches": 3,
+      "root_wall_ms": 8.357824,
+      "root_symbol": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>",
+      "raw": {
+        "child_json_sha256": "6ed414ef00e3662516366d243bd9ef5426570d7dfa73f1c4d38f4f08d72be446",
+        "kernel_trace_sha256": "7d1108e30dca48d488bc7e333a334d007a4c48f1817726838beeaff5026ace63",
+        "marker_trace_sha256": "552dfcd39bcce2cb10e32fba5a3e4930708eac475bb0aace33d623347696a8e1"
+      }
+    },
+    "candidate": {
+      "complete_wall_seconds": 1.3439657464623451,
+      "target_wall_ms": 170.989301,
+      "target_kernel_count": 1558,
+      "target_kernel_sum_ms": 158.309996,
+      "target_device_union_ms": 145.155757,
+      "root_launches": 1,
+      "root_wall_ms": 8.31162,
+      "root_symbol": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_kernel<float, 8, true>",
+      "raw": {
+        "child_json_sha256": "b0295f3241c85bc53b23e492c2c004b31ed428783471c633d0e23d9beba18a7b",
+        "kernel_trace_sha256": "9c6768e4c663214c650fc343e300ac5ee1a3266defc2218735b314ef07c5ad2e",
+        "marker_trace_sha256": "051a1a87cf107528650db74dbb2c0b9118edacff5d56b9cb60d8bd450fef8d24"
+      }
+    },
+    "candidate_deltas": {
+      "complete_wall_pct": 0.6036405693970348,
+      "target_wall_pct": 0.6643278191655,
+      "target_kernel_count": -2,
+      "target_kernel_sum_pct": 0.4457562098380885,
+      "target_device_union_pct": 1.420828846055966,
+      "root_launches": -2,
+      "root_wall_pct": -0.5528233186054332
+    }
+  },
+  "correctness": {
+    "generated_ids_equal": true,
+    "acceptance_equal": true,
+    "candidate_acceptance_counts": [3, 3, 2],
+    "rollback_acceptance_counts": [3, 3, 2]
+  },
+  "gate": {
+    "passed": false,
+    "reason": "The launch-count and root-only gain do not offset higher operation-complete target wall/device-union and complete wall. Stop before the expensive full C5-C8 suite.",
+    "full_suite_run": false
+  }
+}

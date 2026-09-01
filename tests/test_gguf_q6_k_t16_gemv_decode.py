@@ -32,7 +32,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out,
-    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     plan_gguf_q6_k_t16_gemv_build,
@@ -193,46 +192,6 @@ def test_q6_planar_grouped_rowtiles_match_repeated_chunk_bits(
     )
 
     np.testing.assert_array_equal(candidate, repeated)
-
-
-def test_q6_planar_grouped_root_rows8_f32_matches_repeated_chunks_bits(
-    q6_t16_library,
-) -> None:
-    in_features, out_features, total_rows = 512, 256, 24
-    rng = np.random.default_rng(0x6F32)
-    raw = make_q6_k_weight(out_features, in_features)
-    x = _f32_to_bf16_u16(
-        rng.normal(0.0, 0.4, size=(total_rows, in_features)).astype(np.float32)
-    )
-    tiles = repack_gguf_q6_k_tile16_qmicro_planar(raw[None, ...]).tiles
-    repeated = np.concatenate(
-        [
-            _run_single(
-                gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
-                x[row_base : row_base + 8],
-                tiles,
-                8,
-                in_features,
-                out_features,
-                np.float32,
-                q6_t16_library,
-            )
-            for row_base in range(0, total_rows, 8)
-        ],
-        axis=0,
-    )
-    candidate = _run_single(
-        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out,
-        x,
-        tiles,
-        total_rows,
-        in_features,
-        out_features,
-        np.float32,
-        q6_t16_library,
-    )
-
-    np.testing.assert_array_equal(candidate.view(np.uint32), repeated.view(np.uint32))
 
 
 def test_q6_planar_decode_uses_request_scoped_physical_rowtile(monkeypatch) -> None:
@@ -529,12 +488,6 @@ def test_p9_h3_q6_t16_registry_key_resolves() -> None:
         quant="gguf_q6_k_t16_qmicro_planar_v1",
         variant="t16_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out",
     ) is gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out
-    assert resolve(
-        backend="hip_gfx1100",
-        layer="linear",
-        quant="gguf_q6_k_t16_qmicro_planar_v1",
-        variant="t16_gemv_rowtile_col8_grouped_rows8_bf16_f32_out",
-    ) is gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear+residual",

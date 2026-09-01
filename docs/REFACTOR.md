@@ -42,16 +42,6 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-02 gfx1100 grouped planar-Q6 root R8 candidate — open
-
-- `HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8=1` opts into a default-off exact
-  grouped-grid candidate for full R8 root prefixes; the current repeated-R8
-  composition remains default.
-- Removal trigger: remove the environment read, grouped F32 symbol/key, and
-  routing branch if same-build marker plus complete C5-C8 qualification does
-  not pass. If retained, make grouped ownership default and keep only a bounded
-  rollback override until the next production campaign.
-
 ## 2026-09-02 gfx1100 planar-Q6 root R8 rollback — closed
 
 - Promoted after BF16-bit exact actual-weight, same-build C8 marker, and complete

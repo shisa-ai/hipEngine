@@ -70,10 +70,6 @@ _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "grouped_rows8_bf16_bf16_out"
 )
-_Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_F32 = (
-    "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
-    "grouped_rows8_bf16_f32_out"
-)
 _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS6_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_"
     "grouped_rows6_bf16_bf16_out"
@@ -1098,35 +1094,6 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out(
     )
 
 
-def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out(
-    x_ptr: int,
-    tiles_ptr: int,
-    out_ptr: int,
-    rows: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Launch exact F32 DPP R8 chunks through one two-dimensional grid."""
-
-    _launch_q6_planar_grouped_rowtiles(
-        _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_F32,
-        8,
-        x_ptr,
-        tiles_ptr,
-        out_ptr,
-        rows,
-        in_features,
-        out_features,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
-
-
 def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1674,16 +1641,6 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_gemv_rowtile_col8_grouped_rows8_bf16_f32_out",
-        ),
-        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out,
-        replace=replace,
-    )
-    register(
-        KernelKey(
-            "hip_gfx1100",
             "linear_q8_1",
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_q8_1_dp4a_gemv_bf16_bf16_out",
@@ -1829,7 +1786,6 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_f32_top1_stage1",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
-    "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows8_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
