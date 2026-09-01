@@ -249,7 +249,10 @@ def gguf_q6_k_t16_gemv_decode_bf16_bf16_out(
 
 
 def _q6_grouped_target_rowtiles_enabled() -> bool:
-    raw = os.environ.get(_ENV_Q6_GROUPED_TARGET_ROWTILES, "0").strip().lower()
+    raw = os.environ.get(
+        _ENV_Q6_GROUPED_TARGET_ROWTILES,
+        "1",
+    ).strip().lower()
     if raw in {"1", "true", "yes", "on"}:
         return True
     if raw in {"0", "false", "no", "off"}:

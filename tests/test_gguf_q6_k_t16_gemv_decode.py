@@ -233,6 +233,10 @@ def test_q6_planar_mixed_r8_chunks_are_candidate_and_shape_bounded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[int, int, int]] = []
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES",
+        "0",
+    )
     monkeypatch.setattr(
         t16_mod,
         "_launch",
@@ -280,13 +284,13 @@ def test_q6_planar_mixed_r8_chunks_are_candidate_and_shape_bounded(
             assert [call[0] for call in calls] == [6, 6, 6, 6]
 
 
-def test_q6_planar_grouped_mixed_chunks_consolidate_identical_prefix_and_tail(
+def test_q6_planar_grouped_mixed_chunks_default_on_for_identical_prefix_and_tail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, int, int, int]] = []
-    monkeypatch.setenv(
+    monkeypatch.delenv(
         "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES",
-        "1",
+        raising=False,
     )
     monkeypatch.setattr(
         t16_mod,
@@ -337,6 +341,33 @@ def test_q6_planar_grouped_mixed_chunks_consolidate_identical_prefix_and_tail(
                 out_ptr + 24 * 5_120 * 2,
             ),
         ]
+
+
+def test_q6_planar_grouped_mixed_chunks_have_explicit_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES",
+        "0",
+    )
+    monkeypatch.setattr(
+        t16_mod,
+        "_launch",
+        lambda _symbol, _x, _tiles, _out, rows, *_args, **_kwargs: calls.append(
+            int(rows)
+        ),
+    )
+
+    with (
+        q6_t16_physical_rowtile_session(True),
+        q6_t16_physical_mixed_rowtiles_session(True),
+    ):
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 24, 5_120, 10_240
+        )
+
+    assert calls == [8, 8, 8]
 
 
 def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> None:

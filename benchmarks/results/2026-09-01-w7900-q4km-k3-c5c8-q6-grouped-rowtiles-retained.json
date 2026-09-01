@@ -1,0 +1,472 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_q6_grouped_rowtiles_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote exact grouped-grid ownership for identical chunks inside the retained planar-Q6 mixed route. Every C5-C8 aggregate, category, and heldout slice improves, with exact IDs, acceptance, ownership, and lifecycle.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "3a3a6cfc30840400225da69400d59f6514575feb",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-q6-grouped-rowtiles-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "3db763abafd5c202c0bc3a3ab5d982931d8a04f98aa16c117571c9ba0283e353"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-q6-grouped-rowtiles-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "0b2a0364cecc2d294231ac7c087ff8deed8aa527aba2e9b1ff2e76c7d4e2b813"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-q6-grouped-rowtiles-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "e63b9340ec69a24d927aa7f8adce59df5205582bfa9af37e57594aec865cdcb5"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-q6-grouped-rowtiles-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "1ab690ca7312ab1e7b306af8cf517ccaf8dc1682fcfbe98a82dcfb876a568b96"
+      }
+    }
+  },
+  "candidate": {
+    "variants": [
+      "t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+      "t16_gemv_rowtile_col8_grouped_rows6_bf16_bf16_out"
+    ],
+    "scope": "gfx1100 production planar-Q6 mixed physical route at admitted recurrent-QKV/full-V/FFN-down shapes",
+    "mechanism": "Map identical R8 DPP and R6 shuffle chunks to grid.y while preserving each retained WG128/four-wave block body and row arithmetic.",
+    "candidate_flag_during_gate": "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=1",
+    "rollback": "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=0",
+    "strict_fallback": "existing mixed sequence of ordinary R8/R6 rowtile launches",
+    "default_after_decision": true
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=0",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "cross_arm_generated_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "cross_arm_rows_compared": 520,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_row": true,
+    "recoverable_failure_count": 0,
+    "all_processes_drained": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 2.241923972720272,
+        "minimum_delta_pct": -0.20140674452636675,
+        "maximum_delta_pct": 3.3191860506815107,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 40,
+        "cells": 40,
+        "median_delta_pct": 0.9514237263049452,
+        "minimum_delta_pct": 0.19338877643375607,
+        "maximum_delta_pct": 2.7918395306708144,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    ]
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 65.16677054643402,
+        "candidate_tok_s": 66.30853839230109,
+        "candidate_delta_pct": 1.7520706278570497,
+        "rollback_wall_seconds": 36.82858579419553,
+        "candidate_wall_seconds": 36.194433751516044,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 65.32909932525928,
+          "candidate_tok_s": 66.95241236457348,
+          "candidate_delta_pct": 2.4848238473824225
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 65.00524647238305,
+          "candidate_tok_s": 65.67693058773217,
+          "candidate_delta_pct": 1.0332767765667716
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.41996990014356,
+          "candidate_tok_s": 68.613532647793,
+          "candidate_delta_pct": 1.7703400778986245
+        },
+        "general_en": {
+          "rollback_tok_s": 69.86777404101694,
+          "candidate_tok_s": 71.19964975959739,
+          "candidate_delta_pct": 1.906280451698028
+        },
+        "general_ja": {
+          "rollback_tok_s": 61.92427878634279,
+          "candidate_tok_s": 63.02439813942714,
+          "candidate_delta_pct": 1.776555778517963
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 60.24127548806925,
+          "candidate_tok_s": 61.18296956595759,
+          "candidate_delta_pct": 1.5632040826805582
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 65.16787317565138,
+          "candidate_tok_s": 66.31388169642226,
+          "candidate_delta_pct": 1.7585482921653073
+        },
+        "heldout": {
+          "rollback_tok_s": 65.16511667256734,
+          "candidate_tok_s": 66.30052505045603,
+          "candidate_delta_pct": 1.7423560884479716
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 73.2720885653615,
+        "candidate_tok_s": 74.3492525745189,
+        "candidate_delta_pct": 1.470087764997352,
+        "rollback_wall_seconds": 39.30555353872478,
+        "candidate_wall_seconds": 38.73609888833016,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 73.4488247279795,
+          "candidate_tok_s": 74.84815457775083,
+          "candidate_delta_pct": 1.9051766382291335
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 73.09620090347609,
+          "candidate_tok_s": 73.8569574175295,
+          "candidate_delta_pct": 1.0407606751792642
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 72.79984826864944,
+          "candidate_tok_s": 74.13444961546683,
+          "candidate_delta_pct": 1.833247429160001
+        },
+        "general_en": {
+          "rollback_tok_s": 80.11553102784565,
+          "candidate_tok_s": 81.3814969982958,
+          "candidate_delta_pct": 1.5801754718571814
+        },
+        "general_ja": {
+          "rollback_tok_s": 71.9844687004838,
+          "candidate_tok_s": 72.84037714196593,
+          "candidate_delta_pct": 1.1890182103634572
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 69.48129054253727,
+          "candidate_tok_s": 70.14735099907232,
+          "candidate_delta_pct": 0.9586184299891221
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 72.78072943010154,
+          "candidate_tok_s": 74.00849705928836,
+          "candidate_delta_pct": 1.6869405387946346
+        },
+        "heldout": {
+          "rollback_tok_s": 74.0216943194411,
+          "candidate_tok_s": 74.86631025991392,
+          "candidate_delta_pct": 1.1410383783271305
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 71.0761679367573,
+        "candidate_tok_s": 71.91367437175651,
+        "candidate_delta_pct": 1.1783224381826773,
+        "rollback_wall_seconds": 47.273229516111314,
+        "candidate_wall_seconds": 46.722685627639294,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 71.01824096007381,
+          "candidate_tok_s": 72.26545914813882,
+          "candidate_delta_pct": 1.7561941428064776
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 71.13418948840642,
+          "candidate_tok_s": 71.56529794639955,
+          "candidate_delta_pct": 0.6060495819150358
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 71.52611941724413,
+          "candidate_tok_s": 72.02766446377214,
+          "candidate_delta_pct": 0.701205448603015
+        },
+        "general_en": {
+          "rollback_tok_s": 78.74724864219934,
+          "candidate_tok_s": 79.96932188362943,
+          "candidate_delta_pct": 1.551893256592085
+        },
+        "general_ja": {
+          "rollback_tok_s": 66.45561724229428,
+          "candidate_tok_s": 67.40048168728737,
+          "candidate_delta_pct": 1.4217977113178515
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 68.31179178048926,
+          "candidate_tok_s": 69.35191443934382,
+          "candidate_delta_pct": 1.5226107114813425
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 70.72559476906366,
+          "candidate_tok_s": 71.55979162603106,
+          "candidate_delta_pct": 1.1794836928430863
+        },
+        "heldout": {
+          "rollback_tok_s": 71.60859296660026,
+          "candidate_tok_s": 72.45111021170202,
+          "candidate_delta_pct": 1.1765588600445298
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 75.08947437219568,
+        "candidate_tok_s": 76.35141499738096,
+        "candidate_delta_pct": 1.6805825792976181,
+        "rollback_wall_seconds": 51.13899161107838,
+        "candidate_wall_seconds": 50.29376338515431,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 75.17987613576707,
+          "candidate_tok_s": 76.8625939227919,
+          "candidate_delta_pct": 2.238255599126049
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 74.99928975884839,
+          "candidate_tok_s": 75.84699039928704,
+          "candidate_delta_pct": 1.1302782241862985
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 76.36569683184027,
+          "candidate_tok_s": 77.73275739928417,
+          "candidate_delta_pct": 1.7901500597240716
+        },
+        "general_en": {
+          "rollback_tok_s": 79.69663034353006,
+          "candidate_tok_s": 80.96312053708999,
+          "candidate_delta_pct": 1.5891389486616392
+        },
+        "general_ja": {
+          "rollback_tok_s": 71.49763834667586,
+          "candidate_tok_s": 72.75515799870624,
+          "candidate_delta_pct": 1.7588268383536665
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 72.13237096864495,
+          "candidate_tok_s": 73.19861910765495,
+          "candidate_delta_pct": 1.4781825755782796
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 74.85107971224528,
+          "candidate_tok_s": 76.14389472519555,
+          "candidate_delta_pct": 1.7271828514970222
+        },
+        "heldout": {
+          "rollback_tok_s": 75.44992728404365,
+          "candidate_tok_s": 76.66482499711631,
+          "candidate_delta_pct": 1.6102039548679503
+        }
+      }
+    }
+  },
+  "leaf_screen": {
+    "raw": "/tmp/he-k3-q6-grouped-rowtiles-screen.json",
+    "raw_sha256": "2d5f0e11ff986badf8f21d60b06275b6c7e773ed83a770a21c804e66c5f5a153",
+    "script": "/tmp/he-k3-q6-grouped-rowtiles-screen.py",
+    "script_sha256": "5a5f04e721ffc91e7c95f44bf566104a2fc9e32da4c0f311de184e6063a2ff14",
+    "protocol": {
+      "warmups": 5,
+      "sample_pairs": 30,
+      "launches_per_event_sample": 3,
+      "order": "alternating control/candidate and candidate/control",
+      "timing": "HIP event operation-complete retained mixed chunks vs grouped identical chunks"
+    },
+    "roles": [
+      "recurrent_qkv",
+      "full_v",
+      "ffn_down"
+    ],
+    "rows": [
+      24,
+      30,
+      36
+    ],
+    "cells": 9,
+    "all_bf16_bit_exact": true,
+    "event_speedup_range": [
+      1.1084201344802882,
+      2.002365141053629
+    ],
+    "minimum_pair_wins": 28
+  },
+  "profiling": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=<1-or-0> PYTHONUNBUFFERED=1 timeout 600 rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace/trace> -- /home/lhl/mambaforge/envs/therock/bin/python3.12 scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "source_commit": "3a3a6cfc30840400225da69400d59f6514575feb",
+    "same_build": true,
+    "cached_build_required": true,
+    "generated_ids_and_acceptance_equal": true,
+    "rollback": {
+      "raw_child": "/tmp/he-q6-grouped-rowtiles-c8-profile-rollback/child.json",
+      "raw_child_sha256": "ced49a9588073e74160c17ef212c8328799870b70f76d0344ee165697ef19083",
+      "raw_kernel_trace": "/tmp/he-q6-grouped-rowtiles-c8-profile-rollback/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "686d7dbbf27d4df889cd291e9e47c16e4f89e318d4f4a6dc63a014e57d46470b",
+      "raw_marker_trace": "/tmp/he-q6-grouped-rowtiles-c8-profile-rollback/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "185d130d12e760f8688424ef947c5a97ffb248c5c2b480d856afd4981c5027b4",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 178.464203,
+      "complete_wall_seconds": 1.37547414470464,
+      "kernel_launches": 1691,
+      "q6_bf16_rowtile_launches": 192,
+      "grouped_q6_launches": 0,
+      "repeated_q6_launches": 192,
+      "q6_bf16_device_sum_ms": 29.669231
+    },
+    "candidate": {
+      "raw_child": "/tmp/he-q6-grouped-rowtiles-c8-profile/child.json",
+      "raw_child_sha256": "ef6be4777d79e8d909d108f08bf33624f399105430fc99e14adb3ed95e75ef44",
+      "raw_kernel_trace": "/tmp/he-q6-grouped-rowtiles-c8-profile/trace/trace_kernel_trace.csv",
+      "raw_kernel_trace_sha256": "3b1d870545c061d1ce36475c44155b6a055f5b0bb5c63efbfff8c0463021bd3a",
+      "raw_marker_trace": "/tmp/he-q6-grouped-rowtiles-c8-profile/trace/trace_marker_api_trace.csv",
+      "raw_marker_trace_sha256": "47534aa8ffd7d3cc76b8dced5311e59c50c44071fc6123f73ed83c0373c34cf2",
+      "marker": "specdec2_perf_specdec2_target_accept_commit_provider_000049",
+      "host_marker_ms": 174.248249,
+      "complete_wall_seconds": 1.3617245620116591,
+      "kernel_launches": 1563,
+      "q6_bf16_rowtile_launches": 64,
+      "grouped_q6_launches": 64,
+      "repeated_q6_launches": 0,
+      "q6_bf16_device_sum_ms": 25.693219
+    },
+    "deltas": {
+      "complete_throughput_pct": 1.0097183436765356,
+      "target_host_marker_pct": -2.362352745889329,
+      "target_host_marker_ms": -4.215954000000011,
+      "q6_bf16_device_sum_pct": -13.401129270927182,
+      "q6_bf16_rowtile_launches": -128,
+      "repeated_q6_launches": -192,
+      "total_kernel_launches": -128
+    }
+  },
+  "validation": {
+    "fixture_and_routing_tests": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 uv run pytest -q tests/test_gguf_q6_k_t16_gemv_decode.py::<Q6 grouped exact/default/rollback/registry nodes>",
+    "full_gate_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=<1-or-0> PYTHONUNBUFFERED=1 timeout 1200 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --expected-mtp-widths 5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>"
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "The candidate-first order had one -0.20% prompt cell; all aggregate/category/heldout slices and all 40 rollback-first cells were positive."
+  ]
+}
