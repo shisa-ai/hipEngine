@@ -887,6 +887,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Q5 rows65-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json),
   [`Q5 rows1024 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json),
   [`GDN blocker`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-gdn-no-multiplicity-blocker.json).
+  Current-head re-trace still sizes Y2 above threshold: rows72/96 Q5 is
+  **2.00 sweeps** and Q6 **2.07/2.26**; rows256 Q5/Q6 is **4.00/7.39**;
+  rows536 **4.00/11.66**; rows1024 **4.00/22.67**. Rows256 is the next
+  highest-feasibility band because existing one-sweep bodies may apply.
+  [`Current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-current-head-sweep-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging

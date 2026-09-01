@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 current-head ledger] Cache-only nine-point re-trace after retained Y2 routes still measures above-threshold multiplicity: rows72/96 Q5 **2.00** and Q6 **2.07/2.26** sweeps; rows256 Q5/Q6 **4.00/7.39**; rows536 **4.00/11.66**; rows1024 **4.00/22.67**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-current-head-sweep-ledger.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y2 planar-Q6 six-wave blocked] The sized planar `<6,1,2>` attempt fails its first actual-weight launch with **HIP 719** before output comparison; no correctness/performance claim is possible. The uncommitted export is removed and prior exact planar owners remain. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared6r1-launch-blocker.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows65-96 shared6r1 rejected] Exact Q5 `<6,1,2>` improves four leaves **1.31-1.35x** and complete rows72/96 walls **2.06%/0.86%**, but tracked-clean collateral is **160/160 exact**, **-0.37% MTP wall**, and **+0.19% AR wall**. Route and export removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json`.
