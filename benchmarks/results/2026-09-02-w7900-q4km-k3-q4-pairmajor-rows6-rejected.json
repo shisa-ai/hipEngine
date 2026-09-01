@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_q4_pairmajor_rows6_leaf_screen",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove the exact pair-major grouped-R6 Q4 schedule. It does not reduce compiled VGPR usage and six of seven actual-weight roles lose, so no runtime route or complete-suite gate is justified.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "source": {
+    "base_commit": "76c1f40d4e7f9281cf74500be46aa9b3df9e4bb5",
+    "tracked_clean_before_candidate": true,
+    "candidate_retained": false,
+    "raw_result": "/tmp/he-k3-q4-pairmajor-rows6-screen.json",
+    "raw_result_sha256": "a1a1d4c2b4b948d7e6d80d8e89b5ad6a67ceda6ba00b5eff57fe2e982c2bad54",
+    "screen_script": "/tmp/he-k3-q4-pairmajor-rows6-screen.py",
+    "screen_script_sha256": "dd446b1bcf274ea834b48c47ae7b24c06c19de249a00e479e9397fe406ae7452"
+  },
+  "candidate": {
+    "mechanism": "Process each independent output-column pair across blk/j before the next pair, preserving each output's exact FMA order while shortening scale/min/decoded-weight source liveness.",
+    "control": "retained grouped WG64 R6 helper with eight columns simultaneously scheduled",
+    "tradeoff": "Expected lower register pressure in exchange for repeated cacheable activation reads.",
+    "removal": "Candidate helper, kernel, launcher, Python wrapper, registry key, and parity test removed byte-for-byte after rejection."
+  },
+  "protocol": {
+    "rows": 24,
+    "warmups": 5,
+    "sample_pairs": 30,
+    "launches_per_sample": 3,
+    "order": "alternating control/candidate and candidate/control",
+    "timing": "HIP event and synchronized operation-complete wall",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python /tmp/he-k3-q4-pairmajor-rows6-screen.py"
+  },
+  "measurements": [
+    {
+      "role": "ffn_gate",
+      "shape_k_n": [5120, 17408],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9559265809009496,
+      "event_pair_wins": 5,
+      "wall_speedup": 0.956436239880369,
+      "wall_pair_wins": 6
+    },
+    {
+      "role": "recurrent_gate",
+      "shape_k_n": [5120, 6144],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.962177902900599,
+      "event_pair_wins": 7,
+      "wall_speedup": 0.9636777153903257,
+      "wall_pair_wins": 7
+    },
+    {
+      "role": "full_q",
+      "shape_k_n": [5120, 12288],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9531371362751955,
+      "event_pair_wins": 10,
+      "wall_speedup": 0.9596331912290244,
+      "wall_pair_wins": 10
+    },
+    {
+      "role": "full_k",
+      "shape_k_n": [5120, 1024],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.976717380042061,
+      "event_pair_wins": 1,
+      "wall_speedup": 0.9829985531654641,
+      "wall_pair_wins": 1
+    },
+    {
+      "role": "full_output",
+      "shape_k_n": [6144, 5120],
+      "bf16_bit_exact": true,
+      "event_speedup": 1.0087421795682416,
+      "event_pair_wins": 10,
+      "wall_speedup": 1.0062536204566142,
+      "wall_pair_wins": 10
+    },
+    {
+      "role": "recurrent_qkv",
+      "shape_k_n": [5120, 10240],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9789624707161633,
+      "event_pair_wins": 7,
+      "wall_speedup": 0.9812188175232658,
+      "wall_pair_wins": 8
+    },
+    {
+      "role": "ffn_down",
+      "shape_k_n": [17408, 5120],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9714106316220904,
+      "event_pair_wins": 5,
+      "wall_speedup": 0.9716025173504566,
+      "wall_pair_wins": 5
+    }
+  ],
+  "resources": {
+    "profile_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. timeout 600 rocprofv3 --kernel-trace --output-format csv --output-file /tmp/he-k3-q4-pairmajor-rows6-profile/trace -- .venv/bin/python /tmp/he-k3-q4-pairmajor-rows6-profile.py",
+    "cached_build_required": true,
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "trace": "/tmp/he-k3-q4-pairmajor-rows6-profile/trace_kernel_trace.csv",
+    "trace_sha256": "a48adf3c1fe7301da5166e9b715a4d800bc1180ec0b259565dd2196f209046f9",
+    "control": {
+      "launches": 672,
+      "workgroup_size": 64,
+      "vgpr": 192,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    },
+    "candidate": {
+      "launches": 672,
+      "workgroup_size": 64,
+      "vgpr": 192,
+      "sgpr": 128,
+      "lds_bytes": 0,
+      "scratch_bytes": 0
+    }
+  },
+  "summary": {
+    "all_bf16_bit_exact": true,
+    "cells": 7,
+    "candidate_event_median_wins": 1,
+    "candidate_wall_median_wins": 1,
+    "event_speedup_range": [0.9531371362751955, 1.0087421795682416],
+    "wall_speedup_range": [0.956436239880369, 1.0062536204566142],
+    "minimum_event_pair_wins": 1,
+    "minimum_wall_pair_wins": 1,
+    "compiled_vgpr_reduction": 0
+  },
+  "validation": {
+    "candidate_parity": "test_q4_t16_dense_pairmajor_grouped_rows6_matches_grouped_bits — 3 passed before candidate removal",
+    "retained_fallback": "uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtile16_w2_grouped_rows6_matches_repeated_bits tests/test_gguf_q4_k_t16_dense.py::test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches — 4 passed"
+  },
+  "limitations": [
+    "This is a bounded actual-weight leaf rejection, not a complete workload benchmark.",
+    "No current scoreboard or benchmark changelog row changes.",
+    "The retained grouped-R6 owner remains the production default."
+  ]
+}
