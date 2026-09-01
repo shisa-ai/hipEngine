@@ -992,7 +992,15 @@ prompt-conditioned tuning, sized full-wall bound before code).
   2.97%. The route/export is scope-reverted. Dedicated-wave overlap is thus
   blocked by producer under-partitioning and atomic handoff cost, not safety or
   parity; the remaining Y3 ladder must change decode granularity/issue
-  scheduling rather than add producer waves.
+  scheduling rather than add producer waves. Generated shared4r6 ISA confirms
+  the cooperative decode region between its two static workgroup barriers has
+  **326 instructions, 22 global loads, 17 convert and 17 mix-FMA operations,
+  but zero WMMA**; 192 WMMA instructions appear as sixteen separated groups of
+  twelve. Same-wave overlap therefore cannot cross the existing handoff. The
+  next exact candidate pairs adjacent output columns during decode to reuse the
+  qmicro low byte shared by each pair (and high byte shared by each quartet),
+  while preserving LDS layout and WMMA accumulation order.
+  [`ISA analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json).
   [`Pipeline rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json).
   [`Slab analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json).
   [`Y3 entry bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json).
