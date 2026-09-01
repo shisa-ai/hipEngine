@@ -1,7 +1,7 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
-Status: **active plan, reviewed 2026-08-31.** The category-balanced exact-token
-screening baseline now covers p512/p1024/p4096 plus 128 autoregressive
+Status: **active plan, impact-reviewed 2026-09-01.** The category-balanced
+exact-token screening baseline covers p512/p1024/p4096 plus 128 autoregressive
 transitions after each prefix. Named hipEngine production measures
 **83.70/83.16/69.10 tok/s** prefill and **14.40/14.42/10.42 tok/s** decode.
 Repeatability-valid screening comparators remain **2.86–4.26x** ahead on HIP
@@ -9,10 +9,16 @@ prefill and **2.87–3.86x** ahead on Vulkan prefill; decode gaps are
 **1.18–1.42x** and **1.39–1.74x**. The first depth-specific blocker is the
 2,051-token QSA path transition: p1024→p4096 adds **26.64 ms/token** in
 hipEngine versus **5.61–8.47 ms/token** on the repeatability-valid upstream
-lanes. This is not section-6 closure: the run used three repetitions rather
-than five pairs, and cold-PLE plus heldout modes remain open. Shape CV is at
-most 1.155% prefill and 0.625% decode. The frozen
-p508/tg32 role baseline remains the attribution anchor.
+lanes. The next execution queue is impact-ordered: canonical-screen the exact
+P8 whole-transition graph, replace the serialized p4096 QSA attention dataflow,
+then attack the current prefill MoE/GR/GDN portfolio from one fresh canonical
+role ledger. Cold PLE and MTP remain separate lanes and cannot displace larger
+short-AR owners. This is not section 6 closure: the run used three repetitions
+rather than five pairs, and cold-PLE plus heldout modes remain open. Shape CV is
+at most 1.155% prefill and 0.625% decode. The frozen p508/tg32 role baseline
+remains the attribution anchor, not permission to rank new work from stale
+shares.
+
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
 authority; this file owns only the gap-closure campaign. Cross-engine speed,
@@ -167,9 +173,11 @@ dense-equivalent path. p4096 crosses the boundary: each of 12 QSA layers adds
 the index-query projection, normalization/RoPE, score over about context/4
 pooled blocks, stable top-k expansion, and sparse attention over 2,048 selected
 tokens plus the tail. The path transition is confirmed from dispatch and model
-geometry. Which sub-role owns hipEngine's excess 15–20 ms/token versus the
-external transitions is **not yet measured**; it must be split by a boundary
-profile at QSA live counts 2,051/2,052 and at p4096 before optimization.
+geometry. The retained P6 boundary profile now localizes the cliff: clean wall
+adds **29.27 ms/token** at live 2,051→2,052, of which sparse attention owns
+**27.47 ms** and score/top-k only **0.92 ms** in the profiled delta. Live
+2,052→4,097 is flat, confirming fixed selected-budget cost rather than
+context-length growth. This supersedes the earlier unlocalized diagnosis.
 
 #### Repeatability-valid performance targets
 
@@ -187,7 +195,58 @@ and paired confidence intervals. Cross-engine generated-ID equality is
 recorded but remains diagnostic for named production arithmetic; each lane's
 repeatability and hipEngine's execution-profile gates are separate checks.
 
-### 2.2 Historical external-fork shape refresh
+### 2.2 Wall-time gap budget and Amdahl ledger
+
+Throughput ratios hide how much time an optimization must actually remove. The
+following budget derives synchronized wall from the canonical rates in section
+2.1. The HIP target is the fastest repeatability-valid HIP lane for that row.
+The final target is the fastest repeatability-valid HIP or Vulkan lane; invalid
+Nathan/apepojken rows and EngramHalo p4096 are excluded.
+
+| Workload | hipEngine wall | HIP target wall; reduction required | Final valid wall; reduction required |
+| --- | ---: | ---: | ---: |
+| p512 prefill | 6.117 s | 2.140 s; **3.977 s (65.0%)** | 2.129 s; **3.988 s (65.2%)** |
+| p1024 prefill | 12.314 s | 3.251 s; **9.063 s (73.6%)** | 3.251 s; **9.063 s (73.6%)** |
+| p4096 prefill | 59.276 s | 13.910 s; **45.367 s (76.5%)** | 13.910 s; **45.367 s (76.5%)** |
+| p512 decode | 69.449 ms/token | 56.367 ms; **13.083 ms (18.8%)** | 43.527 ms; **25.922 ms (37.3%)** |
+| p1024 decode | 69.343 ms/token | 58.672 ms; **10.672 ms (15.4%)** | 49.719 ms; **19.624 ms (28.3%)** |
+| p4096 decode | 96.006 ms/token | 67.714 ms; **28.292 ms (29.5%)** | 55.325 ms; **40.681 ms (42.4%)** |
+
+Every profile artifact and candidate decision now uses one Amdahl row with:
+
+- `W`: current unprofiled complete wall for the exact workload;
+- `C`: current same-host comparator wall under the same protocol;
+- `O`: the current path's **exclusive** owner wall, normalized per request or
+  token; and
+- `s`: a locally measured owner speedup. A source or comparator ratio is
+  recorded separately as a hypothesis until the local leaf screen runs.
+
+The zero-cost ceiling is `O/W`; the maximum complete-wall speedup is
+`W/(W-O)`. A realistic candidate projects `saved = O*(1-1/s)` and
+`gap_coverage = saved/(W-C)`. `s` is `unknown` until measured; a competitor
+kernel ratio is a hypothesis, not a local result. Kernel, submission, copy, and
+host-stage buckets must be mutually exclusive before they are added. In
+particular, graph savings and the kernels hidden by that graph cannot be summed
+from separate traces. The unprofiled wall is always the denominator; profiler
+API time is attribution evidence only.
+
+#### Current impact queue
+
+| Rank | Lane and measured owner | Amdahl interpretation | Next decision |
+| ---: | --- | --- | --- |
+| Admit | Decode topology: production still loops over 48 layers in Python and replays 48 MoE-only graphs. The separate exact P8 probe measures **194.758→61.910 ms/step**, including host PLE publication, but is not canonical. | Canonical `O` is **unknown** because the probe and production protocols differ. The 3.15x local mechanism result justifies one canonical feasibility screen, not production integration or a replacement speed claim. | Extend the probe to the named production path and canonical p512/p1024/p4096 tg128 contexts. Integrate a request-owned runtime cache only if the measured row passes section 5.1; then rebaseline every decode owner. |
+| 1 | p4096 QSA transition: clean wall increases **29.27 ms/token** at live 2,051→2,052; 27.47 ms of the profiled increase is sparse attention. | The clean cliff is **30.5%** of current p4096 wall and **103.4%** of the HIP gap. Removing only this cliff projects about **14.98 tok/s**, enough to screen above patched HIP's 14.77 tok/s before confidence intervals. | Replace barrier-per-selected-token attention with an exact ordered three-pass dataflow; do not revisit partial-softmax merge schedules. |
+| 2 | p508 prefill early MoE: layers 0–26 own **2.366 s**; gate/up and down are 1.200/1.152 s. | Its zero-cost bound is about **59% of the p512 HIP gap**, but the shape/profile predates later retained work. It is the largest known prefill family, yet cannot close the 3.977-s gap alone. | Collect one current p512/p1024/p4096 hipEngine+llama role ledger, then pursue operation-complete expert compaction + gate/up/activation/down/weighting reuse rather than another tile constant. |
+| 3 | p508 prefill GR projection/read + `attn_qkv+attn_gate` + `ssm_out`: **1.325 s** in the stacked P3 trace. | Zero-cost is about **33% of the p512 HIP gap**. These are uniform 36/48-layer boundaries and must be part of the prefill portfolio after MoE. | Compare operation-complete boundaries with llama's backend graph/fusion selection and require one shared activation/layout mechanism. |
+| 4 | Early strict GDN prefill: **522.58 ms** across 21 calls; decode GDN is about 2.70 ms/token versus llama's historical 0.47 ms/token. | At most about **13% of the p512 HIP gap** and **17% of the p512 decode HIP gap** before interaction with graph capture. Material, but below the graph/QSA/MoE owners. | Port the four-warp, multi-column, transposed-state-in-register dataflow as a fused operation-complete boundary; do not revive the one-wave-per-value candidate. |
+| Defer | MTP full draft head: 3.153 ms per proposal. | Even a free head saves only **0.97%** of the retained suite wall and remains 0.964x AR. | Keep below device-output and target-verifier work until its complete-wall ceiling rises. |
+
+The prefill rows come from different retained profile snapshots and are **not
+additive evidence**. The first new campaign artifact must put all current owners
+and the matched llama roles in one canonical ledger before implementation work
+is ranked within prefill.
+
+### 2.3 Historical external-fork shape refresh
 
 The 2026-08-30 refresh used the existing four-part `UD-Q4_K_XL`; no new
 weight quant was downloaded. EngramHalo HEAD remained `1423f689...`. Its
@@ -532,20 +591,76 @@ This is how each mechanism maps to the current hipEngine implementation:
 | Fully masked FA slice skip | Current sparse attention no longer scans a dense selected-token mask, while short prefill has separate dense flash geometry. | Test only against a trace-proven masked slice in P4/P10; reject if it optimizes work hipEngine does not execute. |
 | Chunked GDN prefill | hipEngine has strict serial/prepare+peer/column-warp owners; Engram's chunked kernel was not active in its published rows. | Treat it as a design hypothesis in P4. Require local arithmetic classification, state parity, and whole-role evidence. |
 
+### 4.2 Direct hipEngine versus pinned llama.cpp implementation audit
+
+This audit compares the current in-tree runtime with the compute sources behind
+the pinned upstream HIP lane. The local readable checkout is
+`llama.cpp-hip@17252c769`; the measured comparator is `f1793c1c4`. The Qwen4Exp
+model graph, scheduler reuse, GDN kernel, and MoE graph builder are unchanged
+between those revisions. The relevant measured-revision delta specializes the
+HIP `mm_ids_helper` for top-10 routing. Loader patches affect startup ownership,
+not these compute conclusions.
+
+| Boundary | hipEngine implementation | Pinned llama.cpp implementation | Gap-closing action |
+| --- | --- | --- | --- |
+| Decode execution topology | `Qwen4ExpGGUFResidentModelRunner.step()` executes embedding, optional host PLE staging, and 48 physical layers from Python. Production `MoeGraphCache` captures only each stateless MoE subgraph, leaving about 1,195 direct launches plus 48 graph launches/token in the frozen profile. The exact full-transition graph exists only in `scripts/qwen4exp_stateful_layer_graph_probe.py`. | `src/models/qwen4exp.cpp` constructs one declarative root→48-layer→head graph. `llama_context::process_ubatch()` reuses topology when `can_reuse()` passes and submits it through the backend scheduler; the frozen decode trace expands 31 large graph launches over 32 outputs. | Canonical-screen P8 before more decode leaf tuning. Integrate only if the screen gives it a valid `W/C/O/s` row; the exact 3.15x research result establishes mechanism, not canonical impact. |
+| QSA selected attention | `qsa_sparse_attention_paged_bf16_f32_kernel` gives one CTA to each query head and iterates about 2,048 selected tokens serially. Every token performs QK reduction, online-softmax update, weighted-V update, and several CTA barriers. Twelve calls own 35.88 ms/token above the QSA boundary. | `build_qsa_top_k()` builds selected visibility, then `build_attn_qsa()` turns it into an attention mask and delegates the QKV work to the backend MHA/flash-attention path. It does not run a barrier-per-selected-token Qwen-specific kernel. | Build strict ordered QK-score, online-softmax-coefficient, and weighted-V-recurrence passes in P6. Preserve the current stable selector and selected-position ABI; replace only the serialized attention owner. |
+| GDN recurrence/state | The strict decode kernel assigns one CTA per value head, repeatedly reads/writes strict-layout state, and combines prepare/recurrence/norm-gate through separate ownership. The rejected transposed candidate assigned one wave to each output value, creating 6,144 blocks. | `ggml-cuda/gated_delta_net.cu` assigns four output columns to a CTA, stores transposed state shards in registers across the token loop, and writes each shard once. Qwen4Exp then applies its sigmoid-gated norm in the graph. | Implement a four-or-more-column operation-complete owner with persistent transposed state. Do not retry transpose as a sidecar around the current stages. |
+| Routed MoE | `run_qwen4_exp_moe()` explicitly materializes router logits, top-10, BF16 activation, count/prefix/scatter maps, quant-specific gate/up, activation, down, weighting, and reduction. Some WMMA prefill routes read `group_wmma_total` back to the host to size launches. Three exact early-MoE tile/grid schedules have already lost. | `build_moe_ffn()` expresses routing, `MUL_MAT_ID` gate/up, GLU, down, weighting, and ordered adds in one graph. HIP `mm_ids_helper` builds expert bounds plus compact forward/inverse maps on device; `f1793c1c4` specializes top-10. The backend has dedicated multi-token MoE kernels and recognizes matmul/GLU subgraphs for fusion. | Stop changing isolated tile constants. Differential-profile one operation-complete early-MoE boundary, then transfer device compact-map, activation-reuse, and graph-fusion mechanisms that reduce the measured 2.366-s owner while preserving hipEngine's strict order. |
+| PLE publication | hipEngine keeps the 28.8-GB IQ4_NL table as a sparse mmap, hashes on host, gathers/dequantizes 16 rows into pinned staging, and publishes 10 KiB before the graph. This is memory-efficient but remains a host boundary. | llama computes PLE row IDs in `llm_graph_input_ple::set_input()` and presents them as reusable graph inputs; `ggml_get_rows` and downstream PLE operations remain in the graph. Its loader needs host-specific patches for this artifact. | Keep hipEngine's sparse ownership. Make the host stage request-owned/direct-to-ring and overlap or enclose everything after publication; do not copy llama's full table residency. |
+| Prefill orchestration | hipEngine runs fixed chunks (512 default) through explicit Python-owned kernels. Chunk 1024 improved only 2.3–2.6% at longer shapes, proving chunk size is not the 3–4x explanation. | llama's reusable graph and backend operator selection use larger ubatches and generic MMQ/`MUL_MAT_ID` paths. Its p508 device sum is 3.67x faster despite more kernel rows. | Treat prefill as a kernel/data-reuse portfolio: current early MoE first, then uniform GR/qkv/GDN boundaries. Graphing alone cannot erase a 3.67x device-sum gap. |
+
+This source comparison narrows the campaign to mechanisms visible in both code
+and profiles. It does not prove the size of any unimplemented hipEngine win;
+section 2.2's local Amdahl row remains the admission gate.
+
 ## 5. Plan
 
-The phase order is the default priority, not permission to keep working a
-low-Amdahl idea after the profile changes. After every retained unit, collect a
-fresh role/launch/copy census and re-rank the remaining work. If a phase is
-blocked, record the concrete blocker and continue the highest-value independent
-phase; a blocker is not campaign closure.
+Phase numbers preserve evidence lineage; they are not the execution queue. The
+impact queue in section 2.2 controls what runs next. After every retained unit,
+collect a fresh role/launch/copy census, recompute overlapping Amdahl rows, and
+re-rank the remaining work. If a phase is blocked, record the concrete blocker
+and continue the highest-gap-coverage independent phase; a blocker is not
+campaign closure.
 
-### 5.1 Definition of done for one optimization unit
+### 5.1 Impact gate and reprofile cadence
+
+Before implementation, a campaign-critical candidate must:
+
+1. come from the current named-production whole-path trace for the exact shape;
+2. name an exclusive owner `O`, current wall `W`, comparator wall `C`, plausible
+   local owner speedup `s`, zero-cost ceiling, projected wall saving, and
+   target-gap coverage;
+3. identify overlap with graph, copy, synchronization, host-stage, and kernel
+   buckets so savings are counted once;
+4. cite the concrete hipEngine and comparator implementation difference that
+   could produce `s`; and
+5. define the cheapest falsifying leaf test plus the binding whole-model gate.
+
+By default, do not spend a dedicated campaign iteration when either the
+zero-cost ceiling is below **1% of complete wall** or the candidate can close
+below **5% of the current comparator gap**. An exception must unblock a
+higher-impact owner, repair correctness, or have negligible implementation cost. Exact small
+sub-window wins remain retainable under repository policy, but they do not
+outrank a larger measured owner and they accumulate in a separate ledger until
+the complete-wall effect resolves.
+
+After a topology change such as whole-step graphing, rerun the complete affected
+profile before using any old kernel share. After an ordinary retained kernel
+change, refresh its role plus the launch/copy census immediately and refresh the
+full canonical ledger when cumulative measured savings reach 3% of wall or the
+owner order changes. Two losses in one scheduling family still require a new
+mechanism or profile. A micro win whose whole-role effect is below timing
+resolution is bundled into an operation-complete boundary rather than tuned
+again in isolation.
+
+### 5.2 Definition of done for one optimization unit
 
 Every code or kernel unit follows the same loop:
 
-1. Name the measured owner, arithmetic class (T0-T3), affected layers/shapes,
-   Amdahl ceiling, expected mechanism, and registered strict fallback.
+1. Name `W/C/O/s`, zero-cost ceiling, projected wall saving, target-gap
+   coverage, arithmetic class (T0-T3), affected layers/shapes, expected
+   mechanism, overlap exclusions, and registered strict fallback.
 2. Add the RED oracle before implementation. For a port, run
    `scripts/check_lineage.py`, inspect source drift, and cite source path plus
    commit.
@@ -584,7 +699,7 @@ matrix before implementation claims parity.
       upstream llama.cpp, EngramHalo HIP, and Nathan Vulkan, with deterministic
       rows separated from non-binding diagnostics. Refresh a comparator only as
       a separate baseline event with old and new binaries measured on the same
-      host. A five-pair section-6 closure refresh remains open.
+      host. A five-pair section 6 closure refresh remains open.
 - [x] Record hostname/machine ID, source and binary hashes, compiler/driver,
       profile manifest, model-part hashes, exact command, CPU governor/TuneD,
       `amd_iommu`, power/clock samples, free/available/swap, and active GPU
@@ -612,6 +727,13 @@ matrix before implementation claims parity.
       renders marker-scoped wall/kernel/residual time, kernel rows/families,
       direct/graph/memcpy call counts and API time; raw profile artifacts retain
       copy direction/bytes, sync calls, and kernel VGPR/LDS/scratch resources.
+- [ ] Emit the first current canonical Amdahl ledger after the P8 admission
+      decision: one clean unprofiled wall packet plus matched hipEngine/llama
+      role traces for p512/p1024/p4096 prefill and context-conditioned decode.
+      Every candidate
+      row records `W/C/O/s`, overlap exclusions, zero-cost ceiling, projected
+      saving, target-gap coverage, confidence, and the exact implementation
+      difference. Old p508 rows remain historical attribution only.
 
 ### Phase P1 — layer 2 and the Q8 expert-down family
 
@@ -682,7 +804,10 @@ Evidence:
       retained; telemetry wall is excluded from performance evidence.
 - [ ] Remove the per-layer `group_wmma_total` stream sync/D2H read. Launch a
       safe maximum tile grid with a device count guard, or prove a different
-      device-only submission scheme.
+      device-only submission scheme. The pinned llama `MUL_MAT_ID` path builds
+      expert bounds and forward/inverse compact maps entirely on device and has
+      a top-10 specialization at `f1793c1c4`; use that ownership pattern as a
+      differential design reference, not as inherited performance evidence.
 - [ ] Optimize T0 exact association first: physical-lane contraction,
       multi-row weight reuse, coalesced metadata, and output grouping while
       preserving the strict reduction/publication tree. Gate/up and down are
@@ -912,8 +1037,15 @@ direct-launch surface before graph capture hides it.
       rejected and removed: p4096 teacher top-1 is **98/100**, three category
       scopes fail, and only **2/4** free-generation tasks match strict. Future
       attention dataflow must preserve global selected-token softmax order or
-      pass this same gate. A second contiguous-chunk merge lowers mean/p95/max
-      KL to **0.000565/0.002551/0.004372** but worsens top-1 to **97/100** and
+      pass this same gate. The next exact design splits the current serialized
+      body into three passes: parallel selected-token QK scores using the
+      incumbent reduction tree; deterministic selected-order online-softmax
+      coefficients; then one weighted-V recurrence per output column using those
+      coefficients in the same selected order. This removes per-token CTA
+      barriers without another partial-softmax merge. llama's selected-mask to
+      backend MHA path is topology evidence only. A second contiguous-chunk
+      merge lowers mean/p95/max KL to **0.000565/0.002551/0.004372** but worsens
+      top-1 to **97/100** and
       free tasks to **1/4**; it is also removed. Partial-softmax merge schedules
       are exhausted. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json`
@@ -949,7 +1081,12 @@ c1-shaped layout without reviving the rejected prefill-colwarps route.
       overhead. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-transposed-integration-rejected.json`.
 - [ ] Port the relevant llama four-warp decode dataflow, not its prefill body or
-      constants.
+      constants. `ggml-cuda/gated_delta_net.cu` assigns four output columns to
+      one CTA, keeps each transposed state shard in registers, and writes state
+      once after the token loop. The rejected hipEngine primitive instead used
+      one wave per value (**6,144 blocks**) plus separate prepare/gate stages.
+      A new candidate must combine four or more columns per CTA and fuse enough
+      prepare/recurrence/norm-gate work to win the complete boundary.
 - [ ] Prove CPU-reference state/output parity on reduced and actual fixtures,
       repeated steps, restore/replay, cancellation, and c2 isolation.
 - [ ] Require expected kernel trace, complete profile packet, and canonical
@@ -1022,6 +1159,12 @@ request-owned transition submission.
       multi-prompt generation, context buckets, fallback, cold PLE, and c2.
       Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json`.
+- [ ] Extend the proven probe to the named production configuration and run a
+      canonical p512/p1024/p4096 tg128 feasibility A/B before production
+      integration. If its `W/C/O/s` row passes section 5.1, add a request-owned
+      transition graph cache and run the complete lifecycle packet. If canonical
+      wall does not improve, localize the mismatch and stop graph integration;
+      do not extrapolate the 3.15x shallow result.
 - [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key.
@@ -1189,9 +1332,10 @@ milestone and denominator.
    that fails output equivalence is not a target.
 8. **Evidence closure:** the final artifact contains exact commands,
    source/binary/model/manifest hashes, raw trace/result hashes, role and
-   launch/API/copy census, host state, all correctness verdicts, and a generated
-   report from `scripts/qwen4exp_perf_gap_report.py`. Rollups, catalog, refactor
-   ledger, worklog, and atomic commits are current.
+   launch/API/copy census, the final non-overlapping Amdahl ledger, host state,
+   all correctness verdicts, and a generated report from
+   `scripts/qwen4exp_perf_gap_report.py`. Rollups, catalog, refactor ledger,
+   worklog, and atomic commits are current.
 
 A final deliberate comparator refresh freezes the closure target. A later
 external commit does not retroactively invalidate the artifact; it is a new
@@ -1207,23 +1351,26 @@ Do not obtain or substitute a new weight quant. Treat Q8 K/V and MTP as separate
 product configurations with their own gates.
 
 Do not declare success after a microbenchmark, a single prompt, HIP-only parity,
-or one accepted optimization. Continue through the highest-Amdahl unblocked
-punchlist item, re-profile after every retained unit, and re-rank the remaining
-work. The short-AR objective is complete only when named hipEngine production
-matches or beats the final refreshed best same-host HIP and Vulkan comparators
-on exact-matched p512, p1024, p4096, and their tg128 rows under section 6's
-statistical rule, while the complete execution-profile, task, determinism,
-state/isolation, lifecycle,
-and strict-fallback gates pass. Then continue through every unlocked
+or one accepted optimization. Execute section 2.2's impact queue, not phase
+number order. Before coding, record W/C/O/s, overlap exclusions, zero-cost
+ceiling, projected wall saving, and target-gap coverage. Re-profile after every
+retained unit and re-rank the remaining work. The short-AR objective is complete
+only when named hipEngine production matches or beats the final refreshed best
+same-host HIP and Vulkan comparators on exact-matched p512, p1024, p4096, and
+their tg128 rows under section 6's statistical rule, while the complete
+execution-profile, task, determinism, state/isolation, lifecycle, and strict-
+fallback gates pass. Then continue through every unlocked
 long-context rung and the device-resident MTP milestone; MTP must beat true AR
 on the full category+heldout suite and reach the section 6 target without
 benchmark gaming.
 
-For every implementation unit: declare the measured owner, Amdahl ceiling,
-arithmetic class, affected scope, mechanism, and strict fallback; add the RED
-oracle; inspect kernel lineage before a port; benchmark actual rotating weights;
-prove the expected kernel ran; run the full applicable gate and same-session
-whole-model A/B; retain or reject from evidence; update compact artifacts,
+For every implementation unit: declare the measured owner, complete-wall and
+gap-coverage ceilings, arithmetic class, affected scope, mechanism, and strict
+fallback; cite the concrete hipEngine-versus-comparator implementation delta;
+add the RED oracle; inspect kernel lineage before a port; benchmark actual
+rotating weights; prove the expected kernel ran; run the full applicable gate
+and same-session whole-model A/B; retain or reject from evidence; update compact
+artifacts,
 benchmark rollups, kernel/refactor docs, and the immutable worklog; then commit
 the validated unit immediately. Never hardcode prompt/token/candidate behavior,
 weaken a gate, relabel a different representation, add torch to the hot path,
