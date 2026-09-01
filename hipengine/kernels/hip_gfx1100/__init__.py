@@ -293,6 +293,15 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         },
     }
 }
+# The physical pair helper owns a distinct split seam from the single-projection
+# wrapper. Screen grouped-grid launch ownership independently before broadening
+# the retained single route; repeated R6 pair fallback remains exact.
+GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6",
+    "enabled_default": False,
+    "variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+    "shapes": frozenset(_Q4_T16_ROWTILE16_W2_R6_SHAPES),
+}
 # Rows for which the single-wave leaf owns a single-wave shape instead of the
 # 256-row shared-B tile. The shared-B kernel launches on a
 # ``Q4_DENSE_TILE_ROWS = 4*4*16 = 256`` row tile, so small rows pay nearly the
@@ -1017,6 +1026,7 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
+    "GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
     "GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_SHAPES",
