@@ -349,6 +349,13 @@ adding 24.375/65/65 MiB temporary peak, no duplicate weight payload, and zero
 teardown. All natural tokens/acceptance are identical; every full/train/
 heldout/category scope stays within the frozen 0.5% decode guard. Evidence:
 [`Qwen3.8 Q5 source-F16`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p4-q5-source-f16.json).
+For rows257-384, the exact standard-Q5 path instead uses an eight-wave,
+three-row-tile, two-output-tile shared-weight owner. It preserves the parent
+K16 WMMA order, leaves the existing exact selector as the row/shape fallback,
+and reduces the rows288 complete tick 1100.915->1068.494 ms (-2.94%) with the
+same token. A cache-only trace confirms gridY1, 256 threads, VGPR96, LDS16 KiB,
+and no scratch. Evidence:
+[`Qwen3.8 Y2 Q5 single sweep`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json).
 On 2026-08-17 the same admission was extended to the byte-identical Q4_K_S
 model (MOSTLY_Q4_K_S added to the dense H5120 F16 policy; its 48 recurrent
 outputs are byte-identical to K_M), and the Q4_K_S bulk-prefill scratch row cap
