@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 exact QSA row tile — blocked] Static geometry rejects another T0 implementation: the incumbent already exposes **12,288 row/head CTAs/chunk**, while an exact row consumes 256 threads and **11 barriers/selected token**; a four-row tile hits the 1,024-thread limit without reducing wave work and couples variable row counts. Further QSA work must be explicitly T1/T2. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-exact-rowtile-blocked.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 multirow QSA prefill — rejected] A byte-exact T0 three-pass RED passed at H256 and 2,049–2,051 selections, but the QK geometry generated about **25.2M CTAs per 512-row chunk**; the whole-model p4096 screen did not complete its first warmup after more than 168 s at 99% GPU use, so it was terminated and the implementation removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-multirow-grid-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 QSA prefill audit — diagnostic] Variable-selection sparse rows own **9.418 s** of the **10.229-s** attention role; dense attention is **0.638 s**, index score **0.129 s**, and top-k expand **0.023 s**. The next mechanism is bounded multirow ordered attention, not selector tuning. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.

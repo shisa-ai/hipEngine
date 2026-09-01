@@ -1235,6 +1235,16 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       Any retry must tile rows or persist selected-token work rather than launch
       one CTA per `(row, head, selected token)`. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-multirow-grid-rejected.json`.
+      **Exact-mechanism blocker:** the incumbent already exposes 12,288
+      row/head CTAs per 512-row chunk. Each exact H256 row needs all 256 threads
+      to preserve the QK tree and executes 11 block barriers per selected token.
+      A four-row tile reaches the 1,024-thread block limit, preserves total wave
+      work, couples variable row counts at block barriers, and cannot remove the
+      binding recurrence. Wave reductions or partial-summary merging cross into
+      T1/T2. Exact sparse-prefill QSA is therefore exhausted at this geometry;
+      re-rank to an independent owner unless production-numerics widening is
+      explicitly admitted. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-exact-rowtile-blocked.json`.
 - [ ] Confirm selected-position attention already removes dense-mask work.
       Evaluate fully-masked-slice skipping only if a current trace proves such
       slices still execute.
