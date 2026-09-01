@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 Q6 rows49-96 single sweep retained] Exact standard-Q6 `<6,1,2>` improves rows49/64/72/96 leaves **1.31-1.68x**; complete rows72/96 walls fall **408.827->396.426 ms (-3.03%)** and **432.039->423.395 ms (-2.00%)** with unchanged tokens. `rocprofv3` confirms gridY1, 192 threads, VGPR72, LDS16 KiB, scratch0. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y2 Q6 rows33-48 single sweep retained] Exact standard/planar `<3,1,2>` owners improve six rows35/48 physical-shape leaves **1.12-5.57x**. Complete rows35/48 walls fall **281.276->265.883 ms (-5.47%)** and **286.328->269.313 ms (-5.94%)** with unchanged tokens; trace confirms gridY1, 128 threads, VGPR176, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate wall **1.74% AR / 0.15% MTP**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 GDN multiplicity branch blocked] Rows288 GDN is **64.37 ms / 5.48%** of tick wall, but all five traced stages launch exactly once per each of 48 recurrent layers; the current compact peer-wave recurrence already beat strict direct **1.42-1.52x**. Y2's removable multiplicity bound is therefore **0 ms**; further GDN work enters Y3. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-gdn-no-multiplicity-blocker.json`.
