@@ -2318,7 +2318,8 @@ int launch_q5_t16_dense_wmma_prefill_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-int launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
+template <int WAVES, int ROW_TILES>
+int launch_q5_t16_dense_wmma_prefill_shared_bf16(
     const uint16_t* x,
     const uint8_t* tiles,
     uint16_t* out,
@@ -2331,8 +2332,6 @@ int launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  constexpr int WAVES = 8;
-  constexpr int ROW_TILES = 3;
   constexpr int OUT_TILES = 2;
   const dim3 block(WAVES * 32);
   const dim3 grid(
@@ -2345,6 +2344,18 @@ int launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
           WAVES, ROW_TILES, OUT_TILES>),
       grid, block, 0, stream, x, tiles, out, rows, in_features, out_features);
   return static_cast<int>(hipGetLastError());
+}
+
+int launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_shared_bf16<8, 3>(
+      x, tiles, out, rows, in_features, out_features, stream);
 }
 
 template <int Q5_LOWVGPR_ROW_TILES>
@@ -2630,6 +2641,13 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q5_t16_dense_wmma_prefill_bf16(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared6r1_bf16_bf16_out(
+    const uint16_t* x, const uint8_t* tiles, uint16_t* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_shared_bf16<6, 1>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
