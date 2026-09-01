@@ -1419,7 +1419,7 @@ def _capture_packed_verify_norm_rows(
         input_token_ids=np.ascontiguousarray(layout.input_token_ids, dtype=np.int64),
         row_positions=np.ascontiguousarray(layout.row_positions, dtype=np.int64),
         cu_seqlens=np.ascontiguousarray(layout.cu_seqlens, dtype=np.int32),
-        active_mask=np.ascontiguousarray(layout.active_mask, dtype=np.bool_),
+        slot_active_mask=np.ascontiguousarray(layout.active_mask, dtype=np.bool_),
         request_ids=np.asarray(
             tuple(int(job.get("request_id", -1)) for job in jobs),
             dtype=np.int64,
