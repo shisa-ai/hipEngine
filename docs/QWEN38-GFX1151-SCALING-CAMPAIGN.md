@@ -658,14 +658,15 @@ are not started.
   strict fallback and automatic K0 remain unchanged.
   [`Row-curve evidence`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-two-wave-rowcurve.json)
   [`Pipeline bound`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w1-pipeline-bound.json).
-- [ ] W2 **Single-sweep multi-family layer dataflow.** Schedule each layer's
-  Q4/Q5/Q6 stage kernels so the layer's weights stream once per verify pass
-  (fused or co-scheduled sweep; persistent-kernel variants allowed). This is
-  the closeout's literal reopen condition. Constraint from history: the
-  gfx1100 B4 FFN megakernel was **2.66x slower on-GPU**
-  ([MEGAKERNEL.md](MEGAKERNEL.md)) — fuse the sweep schedule and stage
-  boundaries, not necessarily one giant kernel; every fused composite keeps
-  its strict unfused chain.
+- [x] W2 **Single-sweep multi-family layer dataflow — measured blocked.**
+  W1 exhausted within-tensor one-decode owners. Q4/Q5/Q6 projection tensors
+  are distinct, and the runtime already attempts mixed pair/triple and gate/up
+  owners, so cross-family co-scheduling cannot share mandatory weight bytes.
+  Current R32 target wall is 51.223 ms host / 49.016 ms summed kernels; even
+  deleting the full 2.207 ms gap saves only 4.31% of target and less of full
+  wall, versus 19.2%/20.1% required. The gfx1100 B4 FFN megakernel was 2.66x
+  slower on GPU, so a giant fused retry is not justified by this bound.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w2-multifamily-bound.json).
 - [ ] W3 **Depth reopen behind W1.** Re-screen K2/K3 with W1's owners plus a
   prompt-independent width x depth admission table (the review's named
   follow-up). The earlier K2 rejection (C6 0.606x / C8 0.537x) is
