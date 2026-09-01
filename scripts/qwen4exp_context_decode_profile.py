@@ -95,6 +95,22 @@ def _repeat_summary(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _memory_growth(
+    before: Mapping[str, Any], after: Mapping[str, Any]
+) -> dict[str, Any]:
+    allocation_growth = int(after["active_allocations"]) - int(
+        before["active_allocations"]
+    )
+    allocated_byte_growth = int(after["current_allocated_bytes"]) - int(
+        before["current_allocated_bytes"]
+    )
+    return {
+        "allocation_growth": allocation_growth,
+        "allocated_byte_growth": allocated_byte_growth,
+        "passed": allocation_growth == 0 and allocated_byte_growth == 0,
+    }
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -201,9 +217,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 token_id_resident=True,
             )
             warm_state = _state_summary(runner)
+            runner.runtime.device_synchronize()
+            context_memory_after_warmup = memory_stats()
             if memory_after_warmup is None:
-                runner.runtime.device_synchronize()
-                memory_after_warmup = memory_stats()
+                memory_after_warmup = context_memory_after_warmup
             runner.restore(snapshot)
             graph_before = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
             rows: list[dict[str, Any]] = []
@@ -262,9 +279,23 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                         "runtime_census": census.snapshot(),
                     }
                 )
+            runner.runtime.device_synchronize()
+            context_memory_after_measurement = memory_stats()
+            context_lifecycle = {
+                "after_warmup": context_memory_after_warmup,
+                "after_measurement": context_memory_after_measurement,
+                **_memory_growth(
+                    context_memory_after_warmup,
+                    context_memory_after_measurement,
+                ),
+            }
             summary = _repeat_summary(rows)
             summary["finite"] = all(bool(row["state_finite"]) for row in rows)
-            summary["passed"] = bool(summary["passed"] and summary["finite"])
+            summary["passed"] = bool(
+                summary["passed"]
+                and summary["finite"]
+                and context_lifecycle["passed"]
+            )
             contexts.append(
                 {
                     "live_count": live_count,
@@ -283,6 +314,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                         runner.moe_graph_cache, runner.runtime
                     ),
                     "repeats": rows,
+                    "lifecycle": context_lifecycle,
                     "summary": summary,
                 }
             )
@@ -309,10 +341,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and all(row["summary"]["passed"] for row in contexts)
         and memory_after_warmup is not None
         and memory_after_measurement is not None
-        and int(memory_after_measurement["active_allocations"])
-        == int(memory_after_warmup["active_allocations"])
-        and int(memory_after_measurement["current_allocated_bytes"])
-        == int(memory_after_warmup["current_allocated_bytes"])
+        and all(row["lifecycle"]["passed"] for row in contexts)
         and int(after_close["active_allocations"]) == 0
         and int(after_close["current_allocated_bytes"]) == 0
     )
@@ -352,30 +381,21 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         },
         "contexts": contexts,
         "lifecycle": {
-            "after_warmup": memory_after_warmup,
-            "after_measurement": memory_after_measurement,
-            "steady_allocation_growth": (
-                int(memory_after_measurement["active_allocations"])
-                - int(memory_after_warmup["active_allocations"])
+            "after_first_context_warmup": memory_after_warmup,
+            "after_all_contexts": memory_after_measurement,
+            "cross_bucket_growth": (
+                _memory_growth(memory_after_warmup, memory_after_measurement)
                 if memory_after_warmup is not None
                 and memory_after_measurement is not None
                 else None
             ),
-            "steady_allocated_byte_growth": (
-                int(memory_after_measurement["current_allocated_bytes"])
-                - int(memory_after_warmup["current_allocated_bytes"])
-                if memory_after_warmup is not None
-                and memory_after_measurement is not None
-                else None
+            "steady_windows_passed": bool(
+                contexts and all(row["lifecycle"]["passed"] for row in contexts)
             ),
             "after_close": after_close,
             "passed": bool(
-                memory_after_warmup is not None
-                and memory_after_measurement is not None
-                and int(memory_after_measurement["active_allocations"])
-                == int(memory_after_warmup["active_allocations"])
-                and int(memory_after_measurement["current_allocated_bytes"])
-                == int(memory_after_warmup["current_allocated_bytes"])
+                contexts
+                and all(row["lifecycle"]["passed"] for row in contexts)
                 and int(after_close["active_allocations"]) == 0
                 and int(after_close["current_allocated_bytes"]) == 0
             ),
