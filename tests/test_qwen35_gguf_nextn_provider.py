@@ -1456,7 +1456,7 @@ def test_device_batch_top1_keeps_model_step_enqueue_only(
     monkeypatch.setattr(
         Qwen35GGUFNextNExecutor,
         "_device_top1_rows",
-        lambda self, rows: Tensor.from_handle(
+        lambda self, rows, **kwargs: Tensor.from_handle(
             1000,
             (rows,),
             DType.INT32,
@@ -1478,3 +1478,137 @@ def test_device_batch_top1_keeps_model_step_enqueue_only(
     assert tokens.shape == (2,)
     assert len(hidden) == 2
     assert calls and calls[0]["synchronize"] is False
+    assert calls[0]["score_weight"] is None
+    assert calls[0]["score_vocab_size"] is None
+
+
+def test_device_batch_top1_routes_selected_head_and_maps_full_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor.vocab_size = 32
+    executor.max_requests = 2
+    executor._lm_head_top1_mapped = True
+    executor.runtime = SimpleNamespace(memcpy_async=lambda *args, **kwargs: None)
+    executor._request_slots = {10: 0, 20: 1}
+    executor._batch_sessions = (
+        SimpleNamespace(position=4),
+        SimpleNamespace(position=7),
+    )
+    for name, ptr in (
+        ("_token_buf", 100),
+        ("_embedding_buf", 200),
+        ("_enorm_buf", 300),
+        ("_hnorm_buf", 400),
+        ("_fusion_buf", 500),
+        ("_fused_buf", 600),
+        ("_final_hidden_buf", 700),
+        ("_logits_buf", 800),
+    ):
+        setattr(executor, name, SimpleNamespace(ptr=ptr))
+
+    def weight():
+        return SimpleNamespace(
+            allocation=lambda name="raw": SimpleNamespace(
+                tensor=SimpleNamespace(ptr=900)
+            )
+        )
+
+    hot_weight = weight()
+    executor.weights = SimpleNamespace(
+        hot_vocab=SimpleNamespace(
+            lm_head=hot_weight,
+            size=16,
+            token_ids=SimpleNamespace(tensor=SimpleNamespace(ptr=0xA000)),
+        ),
+        fallback=lambda name: weight(),
+        nextn=lambda name: weight(),
+        config=SimpleNamespace(rms_norm_eps=1e-6),
+    )
+    step_calls = []
+    top1_calls = []
+    executor._batch_session = SimpleNamespace(
+        step_hidden_batch_native=lambda *args, **kwargs: step_calls.append(kwargs),
+    )
+    monkeypatch.setattr(nextn_mod, "launch_gguf_embedding", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "gguf_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "launch_gguf_linear", lambda *a, **k: None)
+    monkeypatch.setattr(
+        Qwen35GGUFNextNExecutor,
+        "_device_top1_rows",
+        lambda self, rows, **kwargs: (
+            top1_calls.append((rows, kwargs))
+            or Tensor.from_handle(1000, (rows,), DType.INT32, Device("hip", 0))
+        ),
+    )
+    monkeypatch.setattr(
+        Qwen35GGUFNextNExecutor,
+        "_publish_batch_consumed_positions",
+        lambda *args, **kwargs: None,
+    )
+
+    executor._run_step_batch_device_top1(
+        (10, 20),
+        (4, 7),
+        Tensor.from_handle(1100, (2, 8), DType.BF16, Device("hip", 0)),
+    )
+
+    assert step_calls[0]["score_weight"] is hot_weight
+    assert step_calls[0]["score_vocab_size"] == 16
+    assert top1_calls == [
+        (2, {"score_vocab_size": 16, "token_map_i32_ptr": 0xA000})
+    ]
+    assert executor.last_lm_head_path == "physical_batch_selected_q6_top1"
+
+
+def test_device_top1_maps_compact_batch_ids_in_place(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.vocab_size = 1024
+    executor.runtime = object()
+    executor._lm_head_top1_libraries = {"q6_pack8": object()}
+    owner = SimpleNamespace(
+        _verify_lm_block_values=SimpleNamespace(ptr=0x1000),
+        _verify_lm_block_indices_i32=SimpleNamespace(ptr=0x2000),
+        _verify_lm_out_indices_i32=SimpleNamespace(ptr=0x3000),
+        _verify_lm_out_values=SimpleNamespace(ptr=0x4000),
+        _lm_head_threads=128,
+        _lm_head_library=object(),
+        _ensure_verify_lm_head_buffers=lambda rows, runtime: None,
+    )
+    executor._batch_session = owner
+    argmax_calls = []
+    map_calls = []
+    monkeypatch.setattr(
+        nextn_mod,
+        "argmax_f32_rows_i32",
+        lambda *args, **kwargs: argmax_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        nextn_mod,
+        "gguf_q6_k_pack8_top1_stage2_gather_mapped_f32",
+        lambda *args, **kwargs: map_calls.append((args, kwargs)),
+    )
+    executor._logits_buf = SimpleNamespace(ptr=0x5000)
+
+    tokens = executor._device_top1_rows(
+        6,
+        score_vocab_size=256,
+        token_map_i32_ptr=0x6000,
+    )
+
+    assert tokens.ptr == 0x3000
+    assert argmax_calls[0][0][-2:] == (6, 256)
+    assert map_calls[0][0] == (
+        0x4000,
+        0x3000,
+        0x6000,
+        0x3000,
+        None,
+        6,
+        1,
+        256,
+        1024,
+    )
