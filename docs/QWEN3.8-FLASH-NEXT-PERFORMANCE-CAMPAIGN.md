@@ -1393,7 +1393,7 @@ c1-shaped layout without reviving the rejected prefill-colwarps route.
       and removed: **0.06633→0.06754 ms (0.982x)** at production geometry.
       Thread count is not the state-traffic solution. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-t128-rejected.json`.
-- [ ] Keep recurrent state transposed in the decode-native layout across steps;
+- [x] Keep recurrent state transposed in the decode-native layout across steps;
       define exact construction, snapshot, rollback, reset, and strict
       conversion boundaries. Exact strict↔transposed conversion and a
       default-unselected wave-per-value primitive now pass actual-shape
