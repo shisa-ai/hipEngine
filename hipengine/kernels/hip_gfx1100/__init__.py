@@ -263,7 +263,7 @@ _Q4_T16_ROWTILE16_W2_R6_SHAPES = {
 }
 GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48",
-    "enabled_default": False,
+    "enabled_default": True,
     "rows_to_variant": {
         36: "dense_dual_wmma_prefill_row48_bf16_bf16_out",
     },
