@@ -32,8 +32,8 @@ retained C6/C8 K1 successor supplies a newer value.
 
 | Lane | Cell | hipEngine evidence | External leader | Gap |
 | --- | --- | ---: | ---: | ---: |
-| Prefill | C2 | 154.900 tok/s | Laurent 211.888 | **-26.9%** |
-| Prefill | C8 | 239.658 tok/s | Laurent 305.847 | **-21.6%** |
+| Prefill | C2 | 178.660 tok/s | Laurent 196.824 | **-9.2%** |
+| Prefill | C8 | 283.540 tok/s | Laurent 297.325 | **-4.6%** |
 | Prefill | C6 | 234.305 tok/s | Laurent 250.4 | -6.4% |
 | Prefill | C7 | 236.532 tok/s | Laurent 252.3 | -6.2% |
 | MTP | C7 | 33.106 tok/s K3 | Stock HIP 46.084 | **-28.2%** |
@@ -277,8 +277,18 @@ pass budgets.
 Primary cells: C2 and C8 against Laurent Vulkan. Secondary cells: C6/C7.
 Carry C1/C3/C4/C5 as regression controls, not targets.
 
-- [ ] Run hipEngine and Laurent under the same model, prompt suite, one-output
+- [x] Run hipEngine and Laurent under the same model, prompt suite, one-output
   prefill boundary, physical host, and concurrency schedule.
+
+  Matched parity: [`2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json).
+  On barrier-to-last-completion wall, current hipEngine reaches 178.660 versus
+  Laurent 196.824 prompt tok/s at C2 (**-9.23%**) and 283.540 versus 297.325
+  at C8 (**-4.64%**). Both use the same 17.1 GB model hash, ten prompts,
+  one-output boundary, no prompt cache, and barrier-released C2/C8 schedule on
+  physical host `gfx1151`; all correctness/repetition checks pass. Laurent's
+  internal `prompt_ms` reports 212.057/308.340 tok/s, but those values are not
+  compared against hipEngine complete wall. This corrects the earlier
+  211.888/305.847 cross-boundary targets without attributing a mechanism.
 - [ ] Compare complete wall, kernel-family time, launch counts, row shapes,
   weight-byte movement, dequant strategy, LDS/register pressure, occupancy,
   and final-head behavior.

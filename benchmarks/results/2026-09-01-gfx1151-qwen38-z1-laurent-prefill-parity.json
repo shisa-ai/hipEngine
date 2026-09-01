@@ -1,0 +1,413 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z1_laurent_prefill_parity",
+  "date": "2026-09-01",
+  "status": "matched_external_parity_complete",
+  "performance_claim": true,
+  "performance_claim_scope": "same-host C2/C8 one-output complete-wall prompt throughput",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586",
+    "backend": "hip_gfx1151",
+    "gpu_max_hw_queues": "2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ]
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "widths": [
+      2,
+      8
+    ],
+    "output_tokens_per_request": 1,
+    "sampling": "greedy temperature=0 top_k=1",
+    "prompt_cache": false,
+    "schedule": "one barrier-released request per logical width; barrier-to-last-completion wall per prompt; sum ten prompt walls",
+    "timing_boundary": "prompt tokens divided by barrier-to-last-completion complete wall; llama.cpp internal prompt_ms is diagnostic only",
+    "arithmetic": "hipEngine production BF16; Laurent llama.cpp default F16. Same deployable model/protocol, not identical internal arithmetic."
+  },
+  "engines": {
+    "hipengine": {
+      "source": {
+        "commit": "d61c5817ff2059332082bf2e00036d0bcfce0818",
+        "dirty": false
+      },
+      "backend": "hip_gfx1151",
+      "execution_profile": {
+        "requested": "production",
+        "resolved": "production",
+        "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+        "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+      },
+      "command": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --expected-mtp-widths none --output /tmp/q38-z0-run-20260901-201730/prefill-c1c8.json"
+    },
+    "laurent": {
+      "source": {
+        "commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+        "dirty": false
+      },
+      "backend": "Vulkan/RADV",
+      "driver": "Mesa 26.1.6-arch3.1",
+      "device": "AMD Radeon 8060S Graphics (RADV STRIX_HALO)",
+      "server_binary_sha256": "880ec9a59ade5d4b8469548780646c483b4fcab9bcff0de755e7c0bb4c830940",
+      "harness_sha256": "dcf2ed3663d612ca82c397579ebcca1eed6587182d1e0ec82b9546ad174f6608",
+      "server_command": "/home/lhl/.local/state/hipengine-external-survey/repos/laurent/build-vulkan/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 8192 -np 8 --host 127.0.0.1 --port 48215",
+      "harness_command": "python3 /home/lhl/.local/state/hipengine-external-survey/llama_q4_c1c8.py --base http://127.0.0.1:48215 --label laurent-c28d538df-z1-prefill-c2c8 --arm ar --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 2,8 --max-tokens 1 --model-sha256 7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169 --engine-commit c28d538df5c02643e701a8004db84dbf1bb0ffb2 --backend Vulkan/RADV --server-command '<recorded server command>' --out /tmp/q38-z1-run-20260901-2142/laurent-prefill-c2c8.json"
+    }
+  },
+  "raw_sources": {
+    "hipengine": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-c1c8.json",
+      "sha256": "88bff2ef12f33e585bc4ea271867558cf8e173a65e250321a7cdaaf8ae4b0f11"
+    },
+    "laurent": {
+      "path": "/tmp/q38-z1-run-20260901-2142/laurent-prefill-c2c8.json",
+      "sha256": "1d650d87b0431ce35ad9b8dc68e8c501b86b5269a296876d00873eb79d243bb6"
+    },
+    "laurent_stdout": {
+      "path": "/tmp/q38-z1-run-20260901-2142/laurent-prefill-c2c8.txt",
+      "sha256": "13d729e4976f528a9ae17605a3020c68407aca17292408c4327ed7543ec191f0"
+    }
+  },
+  "widths": {
+    "2": {
+      "requests": 20,
+      "prompt_tokens": 898,
+      "hipengine_complete_wall_ms": 5026.316618314013,
+      "laurent_complete_wall_ms": 4562.457351945341,
+      "hipengine_complete_wall_prompt_tok_s": 178.6596564028666,
+      "laurent_complete_wall_prompt_tok_s": 196.82375762199965,
+      "hipengine_vs_laurent": 0.9077138784535491,
+      "hipengine_gap_fraction": 0.09228612154645088,
+      "laurent_internal_prompt_tok_s_diagnostic": 212.0574245838314,
+      "categories": {
+        "code": {
+          "prompt_tokens": 346,
+          "hipengine_tok_s": 180.02165452339563,
+          "laurent_tok_s": 190.3684164920607,
+          "hipengine_vs_laurent": 0.9456487469963454
+        },
+        "general_en": {
+          "prompt_tokens": 142,
+          "hipengine_tok_s": 155.0322405068608,
+          "laurent_tok_s": 179.3736347775438,
+          "hipengine_vs_laurent": 0.8642978144426253
+        },
+        "general_ja": {
+          "prompt_tokens": 156,
+          "hipengine_tok_s": 168.62565519004113,
+          "laurent_tok_s": 161.11477908227246,
+          "hipengine_vs_laurent": 1.046618169671035
+        },
+        "mixed_ja_en": {
+          "prompt_tokens": 254,
+          "hipengine_tok_s": 201.06692570447686,
+          "laurent_tok_s": 257.8597750654987,
+          "hipengine_vs_laurent": 0.7797529709835669
+        }
+      },
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "heldout": false,
+          "prompt_tokens": 72,
+          "hipengine_complete_wall_ms": 459.20017012394965,
+          "laurent_complete_wall_ms": 395.34254907630384,
+          "hipengine_complete_wall_prompt_tok_s": 156.79436699809017,
+          "laurent_complete_wall_prompt_tok_s": 182.12054373662548,
+          "hipengine_vs_laurent": 0.8609372879143119
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "heldout": false,
+          "prompt_tokens": 92,
+          "hipengine_complete_wall_ms": 484.8295650444925,
+          "laurent_complete_wall_ms": 456.05058083310723,
+          "hipengine_complete_wall_prompt_tok_s": 189.75740473161372,
+          "laurent_complete_wall_prompt_tok_s": 201.73200926953234,
+          "hipengine_vs_laurent": 0.9406410287525593
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "heldout": false,
+          "prompt_tokens": 86,
+          "hipengine_complete_wall_ms": 487.1823519933969,
+          "laurent_complete_wall_ms": 481.6091889515519,
+          "hipengine_complete_wall_prompt_tok_s": 176.52527774890666,
+          "laurent_complete_wall_prompt_tok_s": 178.56802148484604,
+          "hipengine_vs_laurent": 0.9885604168150973
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "heldout": true,
+          "prompt_tokens": 96,
+          "hipengine_complete_wall_ms": 490.77891395427287,
+          "laurent_complete_wall_ms": 484.5260630827397,
+          "hipengine_complete_wall_prompt_tok_s": 195.6074258091385,
+          "laurent_complete_wall_prompt_tok_s": 198.13175660605617,
+          "hipengine_vs_laurent": 0.9872593326776142
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "heldout": false,
+          "prompt_tokens": 70,
+          "hipengine_complete_wall_ms": 458.33284012041986,
+          "laurent_complete_wall_ms": 395.8122998010367,
+          "hipengine_complete_wall_prompt_tok_s": 152.72743707740554,
+          "laurent_complete_wall_prompt_tok_s": 176.85150268242538,
+          "hipengine_vs_laurent": 0.8635914016046573
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "heldout": true,
+          "prompt_tokens": 72,
+          "hipengine_complete_wall_ms": 457.60567393153906,
+          "laurent_complete_wall_ms": 395.8313560578972,
+          "hipengine_complete_wall_prompt_tok_s": 157.34070642395858,
+          "laurent_complete_wall_prompt_tok_s": 181.89564545126322,
+          "hipengine_vs_laurent": 0.8650053498180975
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "heldout": false,
+          "prompt_tokens": 78,
+          "hipengine_complete_wall_ms": 459.82438907958567,
+          "laurent_complete_wall_ms": 484.99485314823687,
+          "hipengine_complete_wall_prompt_tok_s": 169.6299758177896,
+          "laurent_complete_wall_prompt_tok_s": 160.82644896885037,
+          "hipengine_vs_laurent": 1.0547392975806134
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "heldout": true,
+          "prompt_tokens": 78,
+          "hipengine_complete_wall_ms": 465.3017420787364,
+          "laurent_complete_wall_ms": 483.258964959532,
+          "hipengine_complete_wall_prompt_tok_s": 167.63315703812938,
+          "laurent_complete_wall_prompt_tok_s": 161.40414489057994,
+          "hipengine_vs_laurent": 1.0385926405531423
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "heldout": false,
+          "prompt_tokens": 120,
+          "hipengine_complete_wall_ms": 611.8765859864652,
+          "laurent_complete_wall_ms": 491.22068705037236,
+          "hipengine_complete_wall_prompt_tok_s": 196.11797991344355,
+          "laurent_complete_wall_prompt_tok_s": 244.28938593885923,
+          "hipengine_vs_laurent": 0.8028100736334406
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "heldout": true,
+          "prompt_tokens": 134,
+          "hipengine_complete_wall_ms": 651.3843860011548,
+          "laurent_complete_wall_ms": 493.81080898456275,
+          "hipengine_complete_wall_prompt_tok_s": 205.71570777528962,
+          "laurent_complete_wall_prompt_tok_s": 271.3589851861445,
+          "hipengine_vs_laurent": 0.7580943289354305
+        }
+      ],
+      "correctness": {
+        "hipengine": "10/10 exact with MTP disengaged",
+        "laurent": "min unique-char30 fraction 1.0; max repeated word trigram 0; every request generated one token"
+      }
+    },
+    "8": {
+      "requests": 80,
+      "prompt_tokens": 3592,
+      "hipengine_complete_wall_ms": 12668.395006796345,
+      "laurent_complete_wall_ms": 12081.073636421934,
+      "hipengine_complete_wall_prompt_tok_s": 283.540258894119,
+      "laurent_complete_wall_prompt_tok_s": 297.32456800617985,
+      "hipengine_vs_laurent": 0.9536388492733828,
+      "hipengine_gap_fraction": 0.04636115072661717,
+      "laurent_internal_prompt_tok_s_diagnostic": 308.3399695385519,
+      "categories": {
+        "code": {
+          "prompt_tokens": 1384,
+          "hipengine_tok_s": 290.34065631675315,
+          "laurent_tok_s": 299.40538157972355,
+          "hipengine_vs_laurent": 0.9697242407095589
+        },
+        "general_en": {
+          "prompt_tokens": 568,
+          "hipengine_tok_s": 252.8842034722918,
+          "laurent_tok_s": 289.9133604549603,
+          "hipengine_vs_laurent": 0.8722750930672573
+        },
+        "general_ja": {
+          "prompt_tokens": 624,
+          "hipengine_tok_s": 279.3655548457205,
+          "laurent_tok_s": 257.4241404547418,
+          "hipengine_vs_laurent": 1.0852344863703107
+        },
+        "mixed_ja_en": {
+          "prompt_tokens": 1016,
+          "hipengine_tok_s": 296.9144732770779,
+          "laurent_tok_s": 330.36813506025345,
+          "hipengine_vs_laurent": 0.8987382309826151
+        }
+      },
+      "per_prompt": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "heldout": false,
+          "prompt_tokens": 288,
+          "hipengine_complete_wall_ms": 1069.7888480499387,
+          "laurent_complete_wall_ms": 975.0627879984677,
+          "hipengine_complete_wall_prompt_tok_s": 269.212004336164,
+          "laurent_complete_wall_prompt_tok_s": 295.36559444667535,
+          "hipengine_vs_laurent": 0.9114534983009571
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "heldout": false,
+          "prompt_tokens": 368,
+          "hipengine_complete_wall_ms": 1221.548352157697,
+          "laurent_complete_wall_ms": 1193.7994121108204,
+          "hipengine_complete_wall_prompt_tok_s": 301.25700660966766,
+          "laurent_complete_wall_prompt_tok_s": 308.25949172593374,
+          "hipengine_vs_laurent": 0.9772837972415401
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "heldout": false,
+          "prompt_tokens": 344,
+          "hipengine_complete_wall_ms": 1209.8249020054936,
+          "laurent_complete_wall_ms": 1222.61495096609,
+          "hipengine_complete_wall_prompt_tok_s": 284.33866704988515,
+          "laurent_complete_wall_prompt_tok_s": 281.36413654043486,
+          "hipengine_vs_laurent": 1.0105718182353451
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "heldout": true,
+          "prompt_tokens": 384,
+          "hipengine_complete_wall_ms": 1265.6522239558399,
+          "laurent_complete_wall_ms": 1231.018251972273,
+          "hipengine_complete_wall_prompt_tok_s": 303.4008811676518,
+          "laurent_complete_wall_prompt_tok_s": 311.93688589488846,
+          "hipengine_vs_laurent": 0.9726354749527345
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "heldout": false,
+          "prompt_tokens": 280,
+          "hipengine_complete_wall_ms": 1176.822513807565,
+          "laurent_complete_wall_ms": 976.6300881747156,
+          "hipengine_complete_wall_prompt_tok_s": 237.92882674726414,
+          "laurent_complete_wall_prompt_tok_s": 286.70015739870286,
+          "hipengine_vs_laurent": 0.8298873251624542
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "heldout": true,
+          "prompt_tokens": 288,
+          "hipengine_complete_wall_ms": 1069.2647949326783,
+          "laurent_complete_wall_ms": 982.5759280938655,
+          "hipengine_complete_wall_prompt_tok_s": 269.3439467612255,
+          "laurent_complete_wall_prompt_tok_s": 293.10711952683556,
+          "hipengine_vs_laurent": 0.9189266613381104
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "heldout": false,
+          "prompt_tokens": 312,
+          "hipengine_complete_wall_ms": 1117.278469959274,
+          "laurent_complete_wall_ms": 1214.314152020961,
+          "hipengine_complete_wall_prompt_tok_s": 279.24998860075834,
+          "laurent_complete_wall_prompt_tok_s": 256.9351592260899,
+          "hipengine_vs_laurent": 1.0868500420179261
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "heldout": true,
+          "prompt_tokens": 312,
+          "hipengine_complete_wall_ms": 1116.3540920242667,
+          "laurent_complete_wall_ms": 1209.7009341232479,
+          "hipengine_complete_wall_prompt_tok_s": 279.4812167833375,
+          "laurent_complete_wall_prompt_tok_s": 257.914986422762,
+          "hipengine_vs_laurent": 1.0836175929894403
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "heldout": false,
+          "prompt_tokens": 480,
+          "hipengine_complete_wall_ms": 1588.7801270000637,
+          "laurent_complete_wall_ms": 1527.680701110512,
+          "hipengine_complete_wall_prompt_tok_s": 302.1185825796654,
+          "laurent_complete_wall_prompt_tok_s": 314.20178290599284,
+          "hipengine_vs_laurent": 0.9615431834454526
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "heldout": true,
+          "prompt_tokens": 536,
+          "hipengine_complete_wall_ms": 1833.0806829035282,
+          "laurent_complete_wall_ms": 1547.6764298509806,
+          "hipengine_complete_wall_prompt_tok_s": 292.403932352283,
+          "laurent_complete_wall_prompt_tok_s": 346.32562056373064,
+          "hipengine_vs_laurent": 0.8443034964503153
+        }
+      ],
+      "correctness": {
+        "hipengine": "10/10 exact with MTP disengaged",
+        "laurent": "min unique-char30 fraction 1.0; max repeated word trigram 0; every request generated one token"
+      }
+    }
+  },
+  "findings": [
+    "On the matched complete-wall boundary, hipEngine reaches 178.660 versus Laurent 196.824 prompt tok/s at C2 (9.23% gap) and 283.540 versus 297.325 at C8 (4.64% gap).",
+    "Laurent internal prompt timing reports 212.057/308.340 tok/s, but those values are not compared against hipEngine complete wall. The prior 211.888/305.847 leaderboard targets used that different boundary.",
+    "This is a same-model, same-host, same-prompt, same-concurrency-schedule engine comparison. It does not attribute the remaining gap to a mechanism."
+  ]
+}
