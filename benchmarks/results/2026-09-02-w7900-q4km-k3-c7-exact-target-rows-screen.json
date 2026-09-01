@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_exact_c7_target_rows_screen",
+  "date": "2026-09-02",
+  "status": "candidate_pending_full_gate",
+  "performance_claim": false,
+  "decision": "Keep a default-off C7-only exact-R28 screen after positive current-source marker attribution. Explicitly exclude C8: unpadded R32 loses the retained fused gate/up owner and regresses complete wall in two sequential pairs even though target wall/device union improve. Run a tracked-clean counterbalanced C7 category+heldout gate before retention.",
+  "source": {
+    "base_commit": "07f1ba6ae37e7d624c60239cafd51bea8d2beecf",
+    "dirty_candidate": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "protocol": {
+    "command": "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS=<0|1> rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file <trace> -- <python> scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency <7|8> --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output <child.json>",
+    "scope": "one train prompt, K3, D12, three target cycles; current dirty candidate screen only"
+  },
+  "c7": {
+    "control": {
+      "physical_rows": [
+        30,
+        30,
+        24
+      ],
+      "acceptance": [
+        3,
+        3,
+        2
+      ],
+      "complete_wall_seconds": 1.150963807478547,
+      "generated_ids_sha256": "5a088b0385cd548777a2e7e3990be1a8a075c3db92102eb9f777d2f0e5549561",
+      "ar_ids_sha256": "5a088b0385cd548777a2e7e3990be1a8a075c3db92102eb9f777d2f0e5549561",
+      "generated_ids_equal_ar": true,
+      "sums": {
+        "target_wall_ms": 563.169843,
+        "device_union_ms": 488.27753399999995,
+        "kernel_sum_ms": 521.8748479999995,
+        "kernel_launches": 4794,
+        "q4_sum_ms": 262.14494999999994,
+        "q5_sum_ms": 49.088961,
+        "q6_sum_ms": 140.442331
+      }
+    },
+    "candidate": {
+      "physical_rows": [
+        28,
+        28,
+        24
+      ],
+      "acceptance": [
+        3,
+        3,
+        2
+      ],
+      "complete_wall_seconds": 1.1475122962146997,
+      "generated_ids_sha256": "5a088b0385cd548777a2e7e3990be1a8a075c3db92102eb9f777d2f0e5549561",
+      "ar_ids_sha256": "5a088b0385cd548777a2e7e3990be1a8a075c3db92102eb9f777d2f0e5549561",
+      "generated_ids_equal_ar": true,
+      "sums": {
+        "target_wall_ms": 548.367451,
+        "device_union_ms": 467.51386,
+        "kernel_sum_ms": 501.8245519999996,
+        "kernel_launches": 5467,
+        "q4_sum_ms": 249.64015300000008,
+        "q5_sum_ms": 48.25979100000001,
+        "q6_sum_ms": 135.0945170000001
+      }
+    },
+    "deltas_pct": {
+      "complete_throughput": 0.3007820722473076,
+      "target_wall_ms": -2.6284063651469403,
+      "device_union_ms": -4.2524327977784715,
+      "kernel_sum_ms": -3.841974005231219,
+      "q4_sum_ms": -4.770184205341299,
+      "q5_sum_ms": -1.6891170297941183,
+      "q6_sum_ms": -3.807836257004227
+    },
+    "checks": {
+      "candidate_ar_exact": true,
+      "control_ar_exact": true,
+      "candidate_control_ids_equal": true,
+      "acceptance_equal": true
+    }
+  },
+  "c8_rejected": {
+    "control": {
+      "physical_rows": [
+        36,
+        36,
+        24
+      ],
+      "acceptance": [
+        3,
+        3,
+        2
+      ],
+      "complete_wall_seconds": 1.3375650020316243,
+      "generated_ids_sha256": "244ee39aaaaea50f690944dd79ba3adc1e469ea549149f3af98e44ec4ea73d82",
+      "ar_ids_sha256": "244ee39aaaaea50f690944dd79ba3adc1e469ea549149f3af98e44ec4ea73d82",
+      "generated_ids_equal_ar": true,
+      "sums": {
+        "target_wall_ms": 581.580541,
+        "device_union_ms": 500.94362,
+        "kernel_sum_ms": 540.7695890000016,
+        "kernel_launches": 4750,
+        "q4_sum_ms": 156.49733700000007,
+        "q5_sum_ms": 53.849909000000004,
+        "q6_sum_ms": 156.2820049999999
+      }
+    },
+    "candidate": {
+      "physical_rows": [
+        32,
+        32,
+        24
+      ],
+      "acceptance": [
+        3,
+        3,
+        2
+      ],
+      "complete_wall_seconds": 1.3419050639495254,
+      "generated_ids_sha256": "244ee39aaaaea50f690944dd79ba3adc1e469ea549149f3af98e44ec4ea73d82",
+      "ar_ids_sha256": "244ee39aaaaea50f690944dd79ba3adc1e469ea549149f3af98e44ec4ea73d82",
+      "generated_ids_equal_ar": true,
+      "sums": {
+        "target_wall_ms": 573.256942,
+        "device_union_ms": 492.3678709999999,
+        "kernel_sum_ms": 529.771011000001,
+        "kernel_launches": 4965,
+        "q4_sum_ms": 260.41479100000004,
+        "q5_sum_ms": 54.00268200000003,
+        "q6_sum_ms": 142.76627199999987
+      }
+    },
+    "deltas_pct": {
+      "complete_throughput": -0.3234254072435827,
+      "target_wall_ms": -1.4312031461176544,
+      "device_union_ms": -1.7119189979902472,
+      "kernel_sum_ms": -2.033875096478588,
+      "q4_sum_ms": 66.40205896922062,
+      "q5_sum_ms": 0.283701500776945,
+      "q6_sum_ms": -8.648297671891303
+    },
+    "checks": {
+      "candidate_ar_exact": true,
+      "control_ar_exact": true,
+      "candidate_control_ids_equal": true,
+      "acceptance_equal": true
+    }
+  },
+  "limitations": [
+    "This screen is intentionally not a retained performance claim because candidate source was dirty.",
+    "C7 must pass tracked-clean both-order full category+heldout qualification before promotion.",
+    "C8 remains padded R36."
+  ]
+}

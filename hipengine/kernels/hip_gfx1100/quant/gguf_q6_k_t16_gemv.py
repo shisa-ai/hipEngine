@@ -321,7 +321,7 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
                 tail_symbol = (
                     _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS6_BF16_BF16
                 )
-            elif tail == (6,):
+            elif tail in {(4,), (6,)}:
                 tail_symbol = _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
             else:
                 raise RuntimeError(f"unsupported grouped Q6 tail: {tail}")

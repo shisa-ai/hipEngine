@@ -341,6 +341,18 @@ def test_q6_planar_grouped_mixed_chunks_default_on_for_identical_prefix_and_tail
                 out_ptr + 24 * 5_120 * 2,
             ),
         ]
+        calls.clear()
+
+        launch(x_ptr, 2, out_ptr, 28, 5_120, 10_240)
+        assert calls == [
+            (grouped8, 24, x_ptr, out_ptr),
+            (
+                t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16,
+                4,
+                x_ptr + 24 * 5_120 * 2,
+                out_ptr + 24 * 10_240 * 2,
+            ),
+        ]
 
 
 def test_q6_planar_grouped_mixed_chunks_have_explicit_rollback(

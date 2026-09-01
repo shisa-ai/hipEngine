@@ -15,9 +15,11 @@ import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
+from hipengine.core.dtype import DType
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
 from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY,
+    GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_ROWS,
     GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES,
     GGUF_Q4_T16_PHYSICAL_SHARED_B_ROW64_ROWS,
@@ -464,6 +466,37 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         and int(rows) % 6 == 0
         and shape in rowtile_shapes
     )
+    wide_exact_rows = GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY["rows"]
+    if (
+        physical_exact_rowtiles_enabled()
+        and int(rows) in wide_exact_rows
+        and shape in rowtile_shapes
+        and row6_chunk_fn is gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
+    ):
+        prefix_rows = 24
+        gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out(
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            prefix_rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+        tail_rows = int(rows) - prefix_rows
+        if tail_rows:
+            tail_fn = _q4_physical_rowtile(tail_rows, shape)
+            element = DType.BF16.itemsize
+            tail_fn(
+                int(x_ptr) + prefix_rows * int(in_features) * element,
+                tiles_ptr,
+                int(out_ptr) + prefix_rows * int(out_features) * element,
+                tail_rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+        return
     if (
         int(rows) in GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY["rows"]
         and grouped_rows6

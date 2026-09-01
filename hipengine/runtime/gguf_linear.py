@@ -12,7 +12,10 @@ from typing import Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
-from hipengine.core.specdec2_scope import q4_t16_physical_extra_rowtiles_enabled
+from hipengine.core.specdec2_scope import (
+    physical_exact_rowtiles_enabled,
+    q4_t16_physical_extra_rowtiles_enabled,
+)
 from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
@@ -3871,6 +3874,35 @@ def launch_gguf_linear_pair(
         and int(rows) >= 12
         and q4_t16_physical_extra_rowtiles_enabled()
     ):
+        wide_exact_policy = backend_package_capability(
+            resolved_backend,
+            "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
+            {},
+        )
+        if (
+            physical_exact_rowtiles_enabled()
+            and int(rows) in wide_exact_policy.get("rows", ())
+        ):
+            for weight, output in (
+                (weight_a, out_a_ptr),
+                (weight_b, out_b_ptr),
+            ):
+                launch_gguf_linear(
+                    weight,
+                    x_ptr,
+                    output,
+                    rows,
+                    in_features,
+                    out_features,
+                    backend=resolved_backend,
+                    stream=stream,
+                    libraries=libraries,
+                    runtime=runtime,
+                    use_wmma_prefill=use_wmma_prefill,
+                    use_gemv_decode=use_gemv_decode,
+                    threads=threads,
+                )
+            return True
         physical_pad_counts = backend_package_capability(
             resolved_backend,
             "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",

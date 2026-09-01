@@ -471,6 +471,11 @@ def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(
         "gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
         lambda *args, **kwargs: calls.append(("rows8", int(args[3]))),
     )
+    monkeypatch.setattr(
+        t16_prefill,
+        "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append(("generic", int(args[3]))),
+    )
     policy = gfx1100_backend.GGUF_Q4_T16_GROUPED_ROWS8_C5C6_POLICY
     assert policy["enabled_default"] is True
     assert policy["active_slots"] == frozenset({5, 6})
@@ -493,6 +498,15 @@ def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(
         ("rows6", 24),
         ("rows6", 24),
     ]
+
+    calls.clear()
+    with (
+        q4_t16_physical_extra_rowtiles_session(True),
+        physical_exact_rowtiles_session(True),
+        target_verifier_active_slots_session(7),
+    ):
+        selector(1, 2, 3, 28, 5_120, 17_408)
+    assert calls == [("rows8", 24), ("generic", 4)]
 
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", "0")
