@@ -1423,6 +1423,20 @@ def test_q5_t16_exact_c7_rows_use_grouped_rows6_prefix_and_strict_tail(
                 out_ptr + 24 * 5_120 * 2,
             ),
         ]
+        calls.clear()
+
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            x_ptr, 2, out_ptr, 32, 6_144, 5_120
+        )
+        assert calls == [
+            (grouped, 30, x_ptr, out_ptr),
+            (
+                rowtile,
+                2,
+                x_ptr + 30 * 6_144 * 2,
+                out_ptr + 30 * 5_120 * 2,
+            ),
+        ]
 
 
 def test_q5_t16_grouped_rows6_policy_has_explicit_repeated_rollback(

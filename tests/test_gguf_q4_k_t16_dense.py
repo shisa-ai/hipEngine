@@ -506,7 +506,13 @@ def test_gfx1100_grouped_rows8_defaults_on_only_for_live_c5c6(
         target_verifier_active_slots_session(7),
     ):
         selector(1, 2, 3, 28, 5_120, 17_408)
-    assert calls == [("rows8", 24), ("generic", 4)]
+    with (
+        q4_t16_physical_extra_rowtiles_session(True),
+        physical_exact_rowtiles_session(True),
+        target_verifier_active_slots_session(8),
+    ):
+        selector(1, 2, 3, 32, 5_120, 17_408)
+    assert calls == [("rows8", 24), ("generic", 4), ("rows8", 32)]
 
     calls.clear()
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6", "0")
@@ -1184,6 +1190,53 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     assert calls == [
         (expected_variant, (0x3000, 0x1000, 0x2000, 0x4000, rows, 5_120, 17_408))
     ]
+
+
+def test_q4_t16_physical_r32_pair_silu_selects_two_wave_fused_owner(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import gguf_linear as gguf_linear_module
+
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48", raising=False)
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
+    weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
+    variant = "dense_dual_wmma_prefill_row32_bf16_bf16_out"
+    key = KernelKey(
+        "hip_gfx1100", "linear_pair_silu", "gguf_q4_k_t16_v1", variant
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[str] = []
+    try:
+        register(
+            key,
+            lambda *args, **kwargs: calls.append(variant),
+            replace=True,
+        )
+        with (
+            q4_t16_physical_extra_rowtiles_session(True),
+            physical_exact_rowtiles_session(True),
+        ):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                0x3000,
+                0x4000,
+                32,
+                5_120,
+                17_408,
+            )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+        clear_gguf_linear_dispatch_cache()
+
+    assert calls == [variant]
 
 
 def test_q4_t16_physical_r36_pair_silu_defaults_row48_with_rollback(monkeypatch) -> None:
@@ -2044,6 +2097,14 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain(rows: int) -> None:
         (192, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
         (511, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
         (512, gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out),
+        (
+            32,
+            getattr(
+                t16_prefill,
+                "gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out",
+                None,
+            ),
+        ),
         (36, gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out),
         (64, gguf_q4_k_t16_dense_dual_wmma_prefill_row64_silu_bf16_bf16_out),
         (67, gguf_q4_k_t16_dense_dual_wmma_prefill_row128_silu_bf16_bf16_out),
@@ -2060,6 +2121,7 @@ def test_q4_t16_dense_dual_wmma_silu_matches_unfused_chain_at_production_shape(
     the shared-x epilogue are shape dependent.
     """
 
+    assert candidate is not None
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
         build_paro_silu,

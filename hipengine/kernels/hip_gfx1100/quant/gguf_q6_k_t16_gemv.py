@@ -302,19 +302,21 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
         chunks = tuple(int(value) for value in mixed_chunks)
         if chunks[:3] != (8, 8, 8):
             raise RuntimeError("grouped Q6 target requires the retained R8 prefix")
+        all_rows8 = all(value == 8 for value in chunks)
+        prefix_rows = int(rows) if all_rows8 else 24
         _launch(
             _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_GROUPED_ROWS8_BF16_BF16,
             x_ptr,
             tiles_ptr,
             out_ptr,
-            24,
+            prefix_rows,
             in_features,
             out_features,
             stream=stream,
             library=library,
             runtime=runtime,
         )
-        tail = chunks[3:]
+        tail = () if all_rows8 else chunks[3:]
         if tail:
             row_base = 24
             if tail == (6, 6):

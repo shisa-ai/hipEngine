@@ -400,6 +400,21 @@ def test_exact_target_rows_are_production_defaults_with_rollbacks(
     ) == 2
     c7_rollback.close()
 
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", "1")
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS", "1")
+    c8_candidate = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert c8_candidate.production_exact_target_row_counts == (8, 28, 32)
+    assert c8_candidate._target_group_pad_rows(
+        request_count=8, candidate_rows=24
+    ) == 0
+    c8_candidate.close()
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS", "0")
+
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "0")
     rollback = Qwen35GGUFMTP2Adapter(
         owner,

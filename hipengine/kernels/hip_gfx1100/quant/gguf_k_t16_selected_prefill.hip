@@ -2138,6 +2138,20 @@ extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_ou
       out_features, stream);
 }
 
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row32_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_prefill_silu_bf16<false, false, 1, 2>(
+      x, tiles_a, tiles_b, nullptr, nullptr, out, rows, in_features,
+      out_features, stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_row48_silu_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles_a,
