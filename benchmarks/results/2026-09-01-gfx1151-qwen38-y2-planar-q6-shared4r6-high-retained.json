@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained",
-  "status": "validated_retained_pending_collateral",
+  "status": "validated_retained",
   "physical_host": {
     "hostname": "gfx1151",
     "gpu": "AMD Radeon 8060S",
@@ -131,10 +131,103 @@
       "path": "/tmp/y2-q6-planar-shared4r6-high-rocprof/gfx1151/2634310_kernel_trace.csv",
       "sha256": "002916f986c08c6ab035a027a9f86a82fc04c46b0c04efe49bb18239e1e09f70",
       "bytes": 2107233
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-c1c8-control.json",
+      "sha256": "8a7c0db79811b083b015060686cbd238abc85a756b5383676cf19a395a1eaeca",
+      "bytes": 3735614
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-c1c8-candidate.json",
+      "sha256": "d7510836de347152f8b8b70d5d9cd5827fb51369eacc4566c4780fcbfc6dd260",
+      "bytes": 3735626
     }
   ],
   "limitations": [
-    "Tracked-clean collateral follows atomic kernel commit.",
-    "Y2 remains open."
-  ]
+    "Y2 remains open pending post-retention residual trace."
+  ],
+  "c1_c8_collateral": {
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 76.46645364700817,
+        "candidate_wall_seconds": 75.82866994058713,
+        "wall_delta_pct": -0.834069943095872
+      },
+      "mtp": {
+        "control_wall_seconds": 67.89203068683855,
+        "candidate_wall_seconds": 65.84237268846482,
+        "wall_delta_pct": -3.018996453100753
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "wall_delta_pct": 0.07833621273412028
+        },
+        "mtp": {
+          "wall_delta_pct": 0.024920626234914423
+        }
+      },
+      "2": {
+        "ar": {
+          "wall_delta_pct": -3.0600275495871854
+        },
+        "mtp": {
+          "wall_delta_pct": 0.11655289595087215
+        }
+      },
+      "3": {
+        "ar": {
+          "wall_delta_pct": 1.3878342109043817
+        },
+        "mtp": {
+          "wall_delta_pct": -0.0030142110000630495
+        }
+      },
+      "4": {
+        "ar": {
+          "wall_delta_pct": 0.6477191125912718
+        },
+        "mtp": {
+          "wall_delta_pct": 0.12931706170142832
+        }
+      },
+      "5": {
+        "ar": {
+          "wall_delta_pct": 3.9582295679003288
+        },
+        "mtp": {
+          "wall_delta_pct": -2.2067243828275185
+        }
+      },
+      "6": {
+        "ar": {
+          "wall_delta_pct": 0.5615196143333279
+        },
+        "mtp": {
+          "wall_delta_pct": -2.735521514211081
+        }
+      },
+      "7": {
+        "ar": {
+          "wall_delta_pct": -2.186460111048305
+        },
+        "mtp": {
+          "wall_delta_pct": -4.823600307444731
+        }
+      },
+      "8": {
+        "ar": {
+          "wall_delta_pct": -5.2753733277829955
+        },
+        "mtp": {
+          "wall_delta_pct": -7.244463062809459
+        }
+      }
+    }
+  }
 }

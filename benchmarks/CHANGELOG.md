@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-09-01 gfx1151 Qwen3.8 Y2 high-row planar shared4r6 retained] Exact `<4,6,2>` reduces rows288/536/1024 complete walls **7.63%/10.53%/9.40%**, tokens unchanged; narrow rows1024 stays fallback after a 0.96x rejection. Trace: 152 gridY1/2/3 hits, 128 threads, VGPR200, LDS16 KiB, scratch0. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json`.
+- [2026-09-01 gfx1151 Qwen3.8 Y2 high-row planar shared4r6 retained] Exact `<4,6,2>` reduces rows288/536/1024 complete walls **7.63%/10.53%/9.40%**, tokens unchanged; narrow rows1024 stays fallback after a 0.96x rejection. Trace: 152 gridY1/2/3 hits, 128 threads, VGPR200, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate wall **0.83% AR / 3.02% MTP**; C8 MTP improves 7.24%. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 high-row planar shared8r3 blocked] `<8,3,2>` fails its first rows288 wide actual-weight launch with **HIP 719** before output comparison; export removed, prior exact owners retained. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared8r3-high-launch-blocker.json`.
 

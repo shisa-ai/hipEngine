@@ -943,7 +943,9 @@ prompt-conditioned tuning, sized full-wall bound before code).
   wide planar owns rows288-1024, narrow owns rows288-536 (narrow rows1024 is
   rejected at 0.96x), and complete rows288/536/1024 walls fall
   **7.63%/10.53%/9.40%**, tokens unchanged. Trace: 152 gridY1/2/3 hits,
-  128 threads, VGPR200, LDS16 KiB, scratch0. Collateral remains pending.
+  128 threads, VGPR200, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral
+  is **160/160 exact** and improves aggregate wall **0.83% AR / 3.02% MTP**;
+  C8 MTP wall improves **7.24%**.
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
