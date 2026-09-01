@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 GDN multiplicity branch blocked] Rows288 GDN is **64.37 ms / 5.48%** of tick wall, but all five traced stages launch exactly once per each of 48 recurrent layers; the current compact peer-wave recurrence already beat strict direct **1.42-1.52x**. Y2's removable multiplicity bound is therefore **0 ms**; further GDN work enters Y3. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-gdn-no-multiplicity-blocker.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y2 standard-Q5 rows257-384 one-sweep retained] Standard K6144/N5120 rows288 shared8r3 is BF16-bit exact and improves the leaf **1.342->0.872 ms (1.54x)**. Complete rows288 tick wall falls **1100.915->1068.494 ms (-2.94%)** with the same token; trace confirms gridY1/VGPR96/LDS16 KiB/scratch0. Y2 remains open. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 standard-Q6 rows257-384 one-sweep retained] Corrected direct shared4 comparison proves standard K5120/N10240 rows288 bit-exact and **3.199->1.639 ms (1.95x)**; planar peers are flat and unchanged. Complete rows288 tick wall falls **1137.857->1098.788 ms (-3.43%)** with the same token. Trace confirms gridY1/VGPR96/LDS16 KiB/scratch0. Y2 remains open. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json`.
