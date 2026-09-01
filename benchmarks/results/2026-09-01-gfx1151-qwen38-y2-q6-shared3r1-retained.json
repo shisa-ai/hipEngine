@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1151-qwen38-y2-q6-shared3r1-retained",
   "created_at": "2026-09-01T10:12:00Z",
-  "status": "validated_retention_pending_c1c8",
+  "status": "validated_retained",
   "source_commit_before_unit": "c37e424b57507ff8a51c38cd633d5ad06090fbc5",
   "physical_host": {
     "hostname": "gfx1151",
@@ -127,7 +127,6 @@
     }
   },
   "limitations": [
-    "Tracked-clean C1-C8 collateral follows after commit.",
     "Y2 remains open for high-row Q5/Q6 multiplicity."
   ],
   "raw_sources": [
@@ -145,6 +144,135 @@
       "path": "/tmp/y2-q6-shared3r1-rocprof/gfx1151/2405723_kernel_trace.csv",
       "sha256": "3e5c868d9f5a7a49071f6c3d2c8de4eeb5fa0177418bc390e3fa7681d16000ff",
       "bytes": 142348
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-c1c8-control.json",
+      "sha256": "a3c438861a67c3d558916c839fd34507c53bed541fa3eadc8409423fe47575ce",
+      "bytes": 3735600
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-c1c8-candidate.json",
+      "sha256": "23ae99f1623163a9b0563680345371d56d5e0dcc8c6cada3987f7b6cd6bf57c8",
+      "bytes": 3735579
     }
-  ]
+  ],
+  "c1_c8_collateral": {
+    "protocol": "frozen standard Q4_K_M ten-prompt, D1 AR-exact collateral, widths C1-C8; control disables only shared3r1",
+    "control_passed": true,
+    "candidate_passed": true,
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "control_wall_seconds": 3.0447088598739356,
+          "candidate_wall_seconds": 2.9222783383447677,
+          "wall_delta_pct": -4.021091249238095
+        },
+        "mtp": {
+          "control_wall_seconds": 3.0478041511960328,
+          "candidate_wall_seconds": 2.922492189100012,
+          "wall_delta_pct": -4.111549032664885
+        }
+      },
+      "2": {
+        "ar": {
+          "control_wall_seconds": 6.440476955380291,
+          "candidate_wall_seconds": 6.307961802231148,
+          "wall_delta_pct": -2.057536329486298
+        },
+        "mtp": {
+          "control_wall_seconds": 5.112794215558097,
+          "candidate_wall_seconds": 5.122979219071567,
+          "wall_delta_pct": 0.19920620866136218
+        }
+      },
+      "3": {
+        "ar": {
+          "control_wall_seconds": 8.144491025945172,
+          "candidate_wall_seconds": 7.891601204173639,
+          "wall_delta_pct": -3.105041444160528
+        },
+        "mtp": {
+          "control_wall_seconds": 6.625180399045348,
+          "candidate_wall_seconds": 6.631110742222518,
+          "wall_delta_pct": 0.08951217657444666
+        }
+      },
+      "4": {
+        "ar": {
+          "control_wall_seconds": 9.643032947089523,
+          "candidate_wall_seconds": 9.519183721393347,
+          "wall_delta_pct": -1.2843389250635773
+        },
+        "mtp": {
+          "control_wall_seconds": 7.790623941691592,
+          "candidate_wall_seconds": 7.7975449045188725,
+          "wall_delta_pct": 0.08883708004749913
+        }
+      },
+      "5": {
+        "ar": {
+          "control_wall_seconds": 10.797582453815266,
+          "candidate_wall_seconds": 10.678322029998526,
+          "wall_delta_pct": -1.1045104246886317
+        },
+        "mtp": {
+          "control_wall_seconds": 9.064167820150033,
+          "candidate_wall_seconds": 9.07040636613965,
+          "wall_delta_pct": 0.06882646166093132
+        }
+      },
+      "6": {
+        "ar": {
+          "control_wall_seconds": 12.091997293988243,
+          "candidate_wall_seconds": 11.643833676120266,
+          "wall_delta_pct": -3.706282816411055
+        },
+        "mtp": {
+          "control_wall_seconds": 10.703942570835352,
+          "candidate_wall_seconds": 10.661868656985462,
+          "wall_delta_pct": -0.39306931601564843
+        }
+      },
+      "7": {
+        "ar": {
+          "control_wall_seconds": 13.654317219275981,
+          "candidate_wall_seconds": 13.541603959398344,
+          "wall_delta_pct": -0.8254770858737492
+        },
+        "mtp": {
+          "control_wall_seconds": 12.17487851716578,
+          "candidate_wall_seconds": 12.18691670964472,
+          "wall_delta_pct": 0.09887731086570817
+        }
+      },
+      "8": {
+        "ar": {
+          "control_wall_seconds": 15.146555658895522,
+          "candidate_wall_seconds": 15.08479765499942,
+          "wall_delta_pct": -0.4077362886118041
+        },
+        "mtp": {
+          "control_wall_seconds": 13.736522832885385,
+          "candidate_wall_seconds": 13.758588820230216,
+          "wall_delta_pct": 0.16063735789093592
+        }
+      }
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 78.96316241426393,
+        "candidate_wall_seconds": 77.58958238665946,
+        "wall_delta_pct": -1.7395200313764958
+      },
+      "mtp": {
+        "control_wall_seconds": 68.25591444852762,
+        "candidate_wall_seconds": 68.15190760791302,
+        "wall_delta_pct": -0.15237777041728906
+      }
+    }
+  }
 }
