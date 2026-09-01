@@ -905,7 +905,9 @@ prompt-conditioned tuning, sized full-wall bound before code).
   physical planar shapes at rows256: leaves improve **1.94x/2.48x**, complete
   wall falls **827.488 -> 735.999 ms (-11.06%)**, and the token is unchanged.
   Trace confirms 80 gridY2 hits, 128 threads, VGPR176, LDS16 KiB, scratch0.
-  Tracked-clean C1-C8 collateral remains pending, so Y2 remains open.
+  Tracked-clean C1-C8 collateral is **160/160 exact**; aggregate wall changes
+  **-0.23% AR / +0.01% MTP** (per-width MTP range -0.51% to +0.28%), passing
+  the collateral guard. Y2 remains open pending refreshed multiplicity.
   [`Planar rows256 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
   [`Rows256 residual`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-post-retention-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
