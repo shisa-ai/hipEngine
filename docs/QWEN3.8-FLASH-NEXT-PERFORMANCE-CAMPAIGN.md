@@ -1067,6 +1067,14 @@ Evidence:
       requires an actual K2560/production-FFN owner oracle before whole-model
       execution. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q4-grouped-silu-rejected.json`.
+      **Exact down+route blocker:** grouped Q5 publishes expert-major BF16 rows,
+      while the binding reducer gathers token-major lanes and evaluates ordered
+      `fmaf(value, weight, accumulator)`. Preweighting rows rounds the product
+      before addition; expert-major atomics cannot preserve top-k order; keeping
+      BF16 publication leaves the reducer intact. Do not add a nominal epilogue.
+      A retry needs cooperative token-major ownership or explicit T1/T2 gates.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`.
 - [ ] Sweep wave32 ownership, workgroup size, row/output tiles, and LDS padding
       on rotating actual weights. Use Nathan's wave32/bank-conflict findings as
       hypotheses, never as transferable constants.
