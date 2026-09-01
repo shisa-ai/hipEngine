@@ -945,7 +945,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   **7.63%/10.53%/9.40%**, tokens unchanged. Trace: 152 gridY1/2/3 hits,
   128 threads, VGPR200, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral
   is **160/160 exact** and improves aggregate wall **0.83% AR / 3.02% MTP**;
-  C8 MTP wall improves **7.24%**.
+  C8 MTP wall improves **7.24%**. Post-retention rows288 reaches **1.00 Q6
+  sweep**; rows536/1024 remain **1.77/3.78 sweeps** because `<4,6,2>` has
+  384-row capacity. The narrow rows1024 fallback is only **8.81 ms**, but wide
+  gridY2/gridY3 remains material, so larger four-wave row-tile bodies remain
+  open before Y2 closure.
+  [`Post-shared4r6 ledger`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json).
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
