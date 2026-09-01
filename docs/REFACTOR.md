@@ -42,6 +42,14 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
+## 2026-09-01 gfx1100 grouped Q4 dual-SiLU rows6 — open
+
+- `HIPENGINE_GGUF_Q4_T16_GROUPED_DUAL_SILU_ROWS6=1` tests one exact grouped
+  WG64 dual gate/up+SiLU launch at request-local physical R24/R30. Promote only
+  after actual-weight exactness, marker ownership, and complete C5-C8
+  qualification;
+  otherwise remove the kernel, wrapper, policy, route, tests, and flag.
+
 ## 2026-09-01 gfx1100 grouped Q6 mixed-rowtile rollback — closed
 
 - Promoted after exact tracked-clean marker ownership and complete C5-C8
