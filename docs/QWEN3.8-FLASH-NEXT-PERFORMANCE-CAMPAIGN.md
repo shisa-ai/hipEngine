@@ -268,12 +268,12 @@ API time is attribution evidence only.
 
 | Rank | Lane and measured owner | Amdahl interpretation | Next decision |
 | ---: | --- | --- | --- |
-| 1 | Exact p4096 QSA decode: the retained ordered three-pass route reduces four-category complete wall **93.912→80.061 ms/token** and the traced QSA operation role from **36.304 to 20.913 ms/token**. | Local complete-wall `s=1.173`; the unit saves **13.851 ms/token** and covers **35.4%** of its measured final-valid gap. The residual QSA role still exceeds llama's prior **0.591-ms** attention family. Exact four-column-per-thread value grouping loses its leaf screen and is removed. | Require a new exact data-reuse mechanism or fresh profile before more value-pass scheduling; re-rank against operation-complete prefill MoE. Do not revisit partial-softmax merges. |
-| 2 | Operation-complete prefill MoE owns **3.408/6.307/25.398 s** at p512/p1024/p4096. Exact 512-row chunks activate a median **333/327/325 of 512 experts** with seven median rows per active expert. | Zero cost covers **89.4%/72.5%/58.0%** of the final-valid prefill gaps. The workload is broad-active-expert, not a tiny sparse set. | Transfer llama's device compact maps, projection/activation reuse, and graph fusion as one boundary. Stop isolated tile-constant work. |
-| 3 | Dense linear + GR-read roles own **1.839/3.442/13.864 s**; aligned dense-projection delta reaches **1.131/2.079/8.429 s**. | No single projection closes prefill, but these uniform boundaries cover **48.3%/39.6%/31.6%** of the current final-valid gaps at zero cost. | Fuse shared layouts across `attn_qkv`, `attn_gate`, `ssm_out`, HC projection/read, and inject/publication boundaries. |
-| 4 | p4096 QSA prefill attention is **10.229 s** versus llama's **0.526 s**; its share grows from **0.85%** at p512 to **18.68%** at p4096. | Its p4096 zero-cost role ceiling covers **23.8%** of the final-valid gap, but the short rows are only 1–2% owners. | Differential-profile the exact flash/index materialization and build a prefill-specific path; do not assume the decode design transfers. |
-| 5 | Short decode selected Q4+Q5_1 projection deltas total **6.617 ms** at live 513; dense-Q8 adds **2.866 ms**. | Together they cover about **38.7%** of the p512 final-valid gap and most of its HIP gap after interactions; measure one exclusive operation-complete owner at a time. | Rank selected projection/data reuse before another submission-only campaign; preserve strict ordered weighting. |
-| 6 | GDN owns **0.655/1.233/4.983 s** prefill versus llama **0.083/0.222/1.845 s**; live-513 is **2.670 vs 0.531 ms**. | Zero-cost GDN covers **17.2%/14.2%/11.4%** of final-valid prefill gaps and **8.7%** of the p512 final-valid decode gap. | Port the multi-column transposed-state-in-register mechanism as an operation-complete owner, not another transpose sidecar. |
+| Blocked | Exact p4096 QSA decode: the retained ordered three-pass route reduces four-category complete wall **93.912→80.061 ms/token** and the traced QSA operation role from **36.304 to 20.913 ms/token**. | Local complete-wall `s=1.173`; the unit saves **13.851 ms/token** and covers **35.4%** of its measured final-valid gap. Exact four-column-per-thread value grouping loses its leaf screen and is removed. | Require a new exact data-reuse mechanism or fresh profile before more value-pass scheduling. Do not revisit partial-softmax merges. |
+| Blocked | Operation-complete prefill MoE owns **3.408/6.307/25.398 s** at p512/p1024/p4096. Exact chunks activate a median **333/327/325 of 512 experts** with seven rows per active expert. | Exact worker/output/team schedules are exhausted. Early exact layers already use device maps. A worst-case guarded grid removes the remaining WMMA-suffix D2H but is neutral at **1.0008x**, 95% CI **0.9994–1.0022**. | A paying route needs new projection/activation reuse or device-sized indirect dispatch, neither currently exists in-tree. Continue the highest independent owner. |
+| 1 | Dense linear + GR-read roles own **1.839/3.442/13.864 s**; aligned dense-projection delta reaches **1.131/2.079/8.429 s**. | No single projection closes prefill, but these uniform boundaries cover **48.3%/39.6%/31.6%** of the current final-valid gaps at zero cost. | Fuse shared layouts across `attn_qkv`, `attn_gate`, `ssm_out`, HC projection/read, and inject/publication boundaries. |
+| 2 | p4096 QSA prefill attention is **10.229 s** versus llama's **0.526 s**; its share grows from **0.85%** at p512 to **18.68%** at p4096. | Its p4096 zero-cost role ceiling covers **23.8%** of the final-valid gap, but the short rows are only 1–2% owners. | Differential-profile the exact flash/index materialization and build a prefill-specific path; do not assume the decode design transfers. |
+| 3 | Short decode selected Q4+Q5_1 projection deltas total **6.617 ms** at live 513; dense-Q8 adds **2.866 ms**. | Together they cover about **38.7%** of the p512 final-valid gap and most of its HIP gap after interactions; measure one exclusive operation-complete owner at a time. | Rank selected projection/data reuse before another submission-only campaign; preserve strict ordered weighting. |
+| 4 | GDN owns **0.655/1.233/4.983 s** prefill versus llama **0.083/0.222/1.845 s**; live-513 is **2.670 vs 0.531 ms**. | Zero-cost GDN covers **17.2%/14.2%/11.4%** of final-valid prefill gaps and **8.7%** of the p512 final-valid decode gap. | Port the multi-column transposed-state-in-register mechanism as an operation-complete owner, not another transpose sidecar. |
 | Admit | P8 whole-transition production graph. | Production `O` and `s` are **unknown**. The strict 68.855-ms runner denominator and 61.910-ms graph row came from different runs, so 1.112x/6.945 ms cannot rank this rung. | Admit only from a same-session named-production graph arm. Do not integrate from the current denominator. |
 | Defer | MTP full draft head: 3.153 ms per proposal. | Even a free head saves only **0.97%** of retained suite wall and remains 0.964x AR. | Keep below device-output and target-verifier work until its complete-wall ceiling rises. |
 
@@ -1025,12 +1025,20 @@ Evidence:
       reduction, and host synchronization by layer and actual active-row count.
       A clean role/API/copy trace plus separately instrumented routing census is
       retained; telemetry wall is excluded from performance evidence.
-- [ ] Remove the per-layer `group_wmma_total` stream sync/D2H read. Launch a
+- [~] Remove the per-layer `group_wmma_total` stream sync/D2H read. Launch a
       safe maximum tile grid with a device count guard, or prove a different
       device-only submission scheme. The pinned llama `MUL_MAT_ID` path builds
       expert bounds and forward/inverse compact maps entirely on device and has
       a top-10 specialization at `f1793c1c4`; use that ownership pattern as a
       differential design reference, not as inherited performance evidence.
+      **Blocked:** early exact layers already avoid this read. For the production
+      WMMA suffix, a T0 maximum-grid candidate removes runner D2H calls and keeps
+      all logits exact, but four-category p512 is neutral: aggregate **1.0008x**,
+      95% CI **0.9994–1.0022**, with only 8/12 pair wins. Worst-case invalid
+      CTAs offset the synchronization saving. The candidate is removed; a paying
+      route needs device-sized indirect dispatch or compact graph submission,
+      neither currently exists in-tree. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-moe-device-tile-grid-blocked.json`.
 - [ ] Optimize T0 exact association first: physical-lane contraction,
       multi-row weight reuse, coalesced metadata, and output grouping while
       preserving the strict reduction/publication tree. Gate/up and down are
