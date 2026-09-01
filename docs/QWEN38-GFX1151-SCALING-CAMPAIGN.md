@@ -4,7 +4,10 @@ Status: **punchlist closed; post-closeout review corrections recorded
 2026-08-31; bounded C6/C8 K1 successor loop closed on 2026-09-01; extension W
 (dataflow-wall successor punchlist) opened 2026-09-01, W0 instrumentation done
 and W1 closed measured-blocked; extension Y (prefill sweep-multiplicity punchlist) opened 2026-09-01, no Y
-unit measured yet**.
+unit measured yet**. Successor:
+[`structural differential campaign`](QWEN38-GFX1151-STRUCTURAL-DIFFERENTIAL-CAMPAIGN.md);
+its section 7 records the 2026-09-02 review of the W/Y closures and the
+mechanisms it pre-sizes.
 Successor to the closed
 [`external-parity campaign`](QWEN38-GFX1151-PARITY-CAMPAIGN.md).
 Owner: scaling loop.

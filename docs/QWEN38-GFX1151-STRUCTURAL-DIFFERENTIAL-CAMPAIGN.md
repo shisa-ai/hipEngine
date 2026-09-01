@@ -1,6 +1,7 @@
 # Qwen3.8-27B gfx1151 Structural Differential Campaign
 
-Status: **opened 2026-09-02; Z0 pending**
+Status: **opened 2026-09-02; review of the W/Y closures folded in the same
+day (section 7) with pre-sized mechanism candidates; Z0 pending**
 Successor to the closed
 [`scaling campaign`](QWEN38-GFX1151-SCALING-CAMPAIGN.md) and the
 [`external implementation survey`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md).
@@ -76,6 +77,14 @@ but also produced bounds that rule out another local tuning pass:
 
 These are measured closure conditions, not a request to try harder on the
 same axes.
+
+Review addendum (2026-09-02, section 7): the W closure bounds were computed
+against the `<= 1.25x R32/R8` flatness ideal, not against the pass budget the
+frozen protocol actually imposes, and W closed hours before Y2 built the exact
+single-sweep Q6/Q5 bodies it needed; those bodies were never registered on
+the verify side. The premise "the local same-dataflow ladder is closed"
+therefore holds for the prefill ladder, not yet for the verify path, and
+section 7 pre-sizes the mechanisms Z0-Z3 should start from.
 
 ## 3. Correctness and arithmetic policy
 
@@ -165,11 +174,28 @@ further work unjustified.
 - [ ] Collect current-head C2/C8 prefill and C5/C7/C8 MTP operation-complete
   attribution: kernel family, launch count, host/API/copy time, proposal,
   target, accept/commit, KV, scheduler, and server overhead.
+- [ ] Attribute at launch granularity, not family granularity: one R16, R24,
+  and R32 target pass each, naming owner, grid, and per-launch ms for every
+  Q4/Q5/Q6 launch, with the Q6 lm-head, Q5 `ssm_out`, planar/standard direct
+  GEMV, and rowtile-chunk launches split out (section 7, F3/F4). Reconcile
+  against W0's family totals and W1's window numbers, which do not reconcile
+  with W1's own per-launch results.
+- [ ] Reconcile decode-only cycle wall against the stage sum at C6/C8 K1,
+  using the prefill tick from telemetry, and localize the residual (F6:
+  ~57 ms per C8 cycle) to host, batch window, proposal sync, or untraced
+  kernels.
+- [ ] Record per-tick row composition for the C2 prefill protocol from
+  `scheduler_token_chunks`/`prompt_lengths` and state whether the two prompts
+  share a tick (F9). This is a baseline fact, not a mechanism.
+- [ ] Publish the pass budgets per section 7.2 for C5/R20, C6/R24, C7/R28,
+  C8/R32, and the C2 grouped-tick budget for 211.888 tok/s, next to the
+  prefill share of each complete wall (F5).
 - [ ] Publish one compact Z0 artifact and update the benchmark rollup only if
   a retained public number changes.
 
 Exit: one same-host, current-head matrix and attribution set that can serve
-as the denominator for every later candidate.
+as the denominator for every later candidate, plus the published per-cell
+pass budgets.
 
 ### Z1 — prefill external differential
 
@@ -189,6 +215,10 @@ Carry C1/C3/C4/C5 as regression controls, not targets.
 - [ ] Compute an optimistic complete-wall bound for each mechanism. Continue
   only when the bound is at least **1.25x the required wall reduction** for a
   primary cell: at least 33.6% for C2 and 27.1% for C8.
+- [ ] Treat C2 as an M = 35-96 owner problem plus an admission question, not
+  a high-row problem: Z0's tick-composition fact decides whether grouped
+  prefill (mechanism C in section 7.3) applies, and the M = 17-48 owners
+  shared with the verify side (mechanisms A/E/F) are the kernel candidates.
 
 Exit: either a named prefill dataflow candidate with a measured bound, or a
 stronger impossibility result that closes the remaining prefill gap.
@@ -214,6 +244,13 @@ control.
   only when the bound is at least **1.25x the required wall reduction** for a
   primary cell: at least 35.2% for C7, 28.5% for C8, 18.1% for C5, 14.7% for
   C2, and 31.8% for C1.
+- [ ] Use the pass budget from section 7.2 as the wide-cell entry condition
+  in place of W1's flatness gate: a one-pass K3 cycle at C8 needs an R32
+  target pass of roughly 220-275 ms, i.e. `<= ~2.0-2.5x` the R8 forward, not
+  `<= 1.25x`. Start the wide-cell differential from mechanisms A/B/D in
+  section 7.3, which are already sized above the required reduction when
+  combined; stock HIP's 56.222 tok/s at C8 K3 (1.854x its own AR) is the
+  existence proof for the R32 pass cost.
 
 Exit: either a named MTP mechanism with a measured bound, or a per-cell
 blocker that supersedes the scaling campaign's broad multi-family blocker.
@@ -221,6 +258,8 @@ blocker that supersedes the scaling campaign's broad multi-family blocker.
 ### Z3 — mechanism selection and RED plan
 
 Open implementation only after Z0-Z2 identify a mechanism with enough bound.
+Section 7.3 is the starting ledger; Z0-Z2 confirm or reject each row's bound
+before it enters here.
 
 - [ ] Declare the arithmetic class (T0/T1/T2/T3), affected layers/shapes,
   stateful surfaces, strict fallback, expected mechanism, and whether the
@@ -277,7 +316,170 @@ Close the campaign when one of the following holds for each primary cell:
 The campaign may close with blockers. It must not close with untested
 recommendations or a claim based on a pre-Y2/Y3 baseline.
 
-## 7. Evidence map
+## 7. Review of the W/Y closures (2026-09-02) and pre-sized mechanisms
+
+Reviewer pass over the scaling campaign's sections 8-9, the W0-W7/Y0-Y5
+entries, the retained raw W0/W1 traces still under `/tmp` (hashes in the W0
+and W1 artifacts), and the external survey. Every number is read from a
+committed artifact or derived from one; derived values are labelled; none is
+a performance claim. Z0 re-measures all of them at current head.
+
+### 7.1 Findings
+
+**F1 — the flatness gate was sufficient, not necessary.** From the frozen
+complete-wall protocol
+([W0 raw suite](../benchmarks/results/2026-09-01-gfx1151-qwen38-w0-sweep-economics.json),
+C8 cell `code_merge_intervals`, 36-token prompt x 8): AR cell wall 3.726 s,
+of which the rows288 prefill tick is ~0.99 s
+([Y5](../benchmarks/results/2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json)
+measures 990.82 ms), leaving 114 ms per AR decode tick — equal to the R8
+forward (W0 row curve: 118.6 ms host / 111.8 ms kernel). A 1.15x-own-AR MTP
+cell must finish in 3.240 s, i.e. 2.25 s of decode; K3 at the historical
+78.894% acceptance commits 3.37 tokens/request/cycle, so 24 tokens need 7.12
+cycles at `<= 316 ms`. Subtracting three proposal steps (3 x 10.8 ms, W0
+stage telemetry), provider/commit (7.7 ms), and the non-stage residual (F6,
+57 ms) leaves an R32 target pass of **~219 ms (residual kept) to ~276 ms
+(residual removed)** against the current **790 ms** (W0 R32 kernel median).
+Required R32/R8 is ~2.0-2.5x, not 1.25x. W1 rejected its candidate at 3.43x
+without computing this budget; W3 and W7 closed on W1's gate by dependency.
+Both dependency closures are conditionally void.
+
+**F2 — W closed before Y built the owners W needed.** W0's `Next` said "build
+one shared B-stationary M-loop tile mechanism, start with Q6". W1-W7 closed
+between 03:59 and 04:33 UTC on 2026-09-01; Y2's exact single-sweep Q6 owners
+for rows33-48 (`<3,1,2>` standard and planar,
+[artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json))
+landed at 10:12 the same day, followed by the rows49-96 and rows256+ Q5/Q6
+bodies. None was registered under a verifier key or run through the R8-R32
+row curve. `GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS` still points
+R20-R32 at the pre-Y2 `shared4` body on three shapes only.
+
+**F3 — verify R20-R32 and prefill rows33-48 are the same GEMMs on the same
+T16 tensors, owned by two ladders that differ by up to ~9x.** Per full target
+pass (W0 row curve versus Y0/Y2 prefill sizing; derived per-pass sums use the
+model inventory of 33 Q6 `ffn_down` K17408/N5120, 24 Q6 `attn_qkv`
+K5120/N10240, 9 Q6 `attn_v` K5120/N1024, 48 Q5 `ssm_out` K6144/N5120, and
+the Q6 lm-head 248320x5120):
+
+| Family | Verify R8 | Verify R32 (today) | Prefill rows33-48 owner (derived per pass) |
+| --- | ---: | ---: | ---: |
+| Q4 (10.5 GB) | 60.7 ms | 137.8 ms, flat R20-R32, fetch 0.93x | ~110-130 ms (Y0 multiplicity 1.30-1.34) |
+| Q5 (1.04 GB) | 8.3 ms | 104.7 ms, fetch 33x | ~30 ms (rocBLAS-dequant route, multiplicity 1.0) |
+| Q6 (4.45 GB) | 32.9 ms | 515.6 ms, fetch 21x | ~50 ms (33x0.96 + 24x0.70 + 9x0.10 ms Y2 leaves) + lm-head |
+| other | ~10 ms | ~31 ms | — |
+| **pass** | **112 ms** | **790 ms** | **~230-260 ms** |
+
+The prefill-owner column lands inside the F1 budget with no new kernel. Above
+R16 the verify path drops its Q6 planar/standard tensors to per-row direct
+GEMVs (`q6_k_t16_qmicro_planar_gemv_bf16` gridY=rows at 6.5-7.8 ms/launch,
+`q6_k_t16_gemv` gridY=20/24 at 3.7-4.5 ms) and re-sweeps Q5 `ssm_out` 33x;
+both are bandwidth-bound on refetched bytes (~225 GB/s). That is why W1's
+per-launch two-wave results (0.71/0.38/0.11 ms at R32) beat the owners they
+replaced by 10-50x while the *family* did not flatten: the family still held
+launches the candidate never owned.
+
+**F4 — the Q6 lm-head is re-swept per row-tile chunk above R8.** In the
+retained W1 trace (`/tmp/wy-w1-rowcurve-two-wave/`, sha256 in the
+[W1 row-curve artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-two-wave-rowcurve.json);
+whole-process one-prompt diagnostic), the
+`q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, N>` launches with
+grid 3,973,120 = 248,320 vocab / 8 columns x 128 threads are the 1.04 GB
+lm-head at rowtile N = 2..8: 4.6-6.7 ms per launch, one full sweep per 2-8
+rows (~155-225 GB/s), 6.75 s across the run. At R32 that is ~4 sweeps
+(~23 ms) where one WMMA sweep is ~6-8 ms. W0 counted it inside "Q6 family"
+flatness; W1's pipeline bound reasons only about the two-wave body and cannot
+see it.
+
+**F5 — prefill is 27-37% of the C8 D24 complete wall on both arms.** C8 cells
+run 35-67-token prompts x 8 = rows280-536 prefill ticks (0.99-1.64 s) inside
+3.73-4.50 s AR cells. So (a) the "AR-step equivalent" metric amortizes
+prefill into the AR step and stage sums cannot be compared to it directly;
+(b) every retained prefill win raises both AR and MTP absolute C6/C8 rates
+and the external-parity position while barely moving the ratio; (c)
+decode-only AR at C8 is ~114 ms/tick = the R8 forward at ~188 GB/s actual
+fetch, so AR C3-C8 is at its forward time and the AR non-goal stands.
+
+**F6 — ~57 ms per K1 C8 cycle (~21% of decode wall) is outside every
+telemetry stage.** MTP cell 4.182 s - 0.99 s prefill = 3.19 s over 11.5
+cycles = 277 ms/cycle, versus the W0 stage sum target 33.4 + accept 167.8 +
+proposal 10.8 + provider 4.7 + commit 3.0 = 219.7 ms. C6 shows a similar
+~40-50 ms gap (rows216 prefill tick not separately measured). W0's
+host-minus-kernel bound (15.5 ms) covers the target pass only; M2b-M2i closed
+host explanations for the accept window, not for the cycle. Candidates:
+proposal-side host sync/argmax, engine-loop tick overhead, the protocol's
+50 ms `batch_window_ms` if re-armed per cycle, Python per-request
+bookkeeping. Worth ~0.66 s per C8 cell alone (derived: K1 43.7 -> ~50 tok/s).
+
+**F7 — P3 closed integer MMQ for all M from a rows256 screen.** The regime
+where MMQ's dequant removal pays (M = 16-48) was never screened, and it is
+the regime of both open targets. P3 measured only rows256 against the
+large-M `selected-wmma` body; the M = 17-48 competitors are the direct
+GEMV/shared-B WMMA owners in F3. Stock HIP llama.cpp's R32 verify runs its
+MMQ path and reaches 56.222 tok/s at C8 K3 on this host and model
+([survey](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)). In-tree `mmq32_q8_1_*`
+producer bodies (gfx1100-only, rejected WPF-1B) and the gfx1151
+`mmq128x32`/`mmq64x64` `ge512` bodies exist to screen from.
+
+**F8 — Y3 optimized the schedule of the LDS-staged body, never the
+staging.** Y3's ISA analysis shows the structure: per K256 slab, cooperative
+decode -> LDS -> barrier -> WMMA -> barrier, 326 decode instructions with zero
+WMMA between two barriers. Producer waves, quartet decode, and shared-byte
+decode all lost inside that structure. The Marlin-style alternative — repack
+weights at load into WMMA B-operand lane order so each lane decodes its own
+16-K strip in VGPRs and feeds `v_wmma` directly, no LDS, no barrier — was
+never tried; [`MARLIN.md`](MARLIN.md) covers only a rows==1 layout. It is T2
+by construction and fits section 3.
+
+**F9 — P1's C2 grouping verdict is not supported by its own artifact.** P1
+recorded grouped rows72-96 ticks at 408-440 ms versus 2 x 278 ms serial (a
++26-36% C2 bound), then measured C2 at -3.0% and declared scheduling null
+([P1](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json)).
+The artifact records no per-tick row composition for the benchmark run, so it
+cannot show the two C2 prompts ever shared a tick under the frozen protocol
+(barrier-released HTTP requests, an equal-length grouping gate, a server batch
+window defaulting to 0 ms). The reviewed C2 = 139.8 tok/s equals 80 tokens /
+(2 x 278 ms + overhead), i.e. serial. Post-Y2 grouped ticks (rows72/96 at
+396/423 ms) put a grouped C2 at ~180-190 tok/s before any owner work.
+
+**F10 — Y5's closure bound assumed the exact-only ladder.** Y2's first Q6
+one-sweep body was 29x faster at the leaf and failed strict parity (max
+difference 0.0078125 on 0.6% of outputs); it was reverted with "may reopen
+as T2" and the exact variant recovered 1.95x. Section 3 already settles this:
+Z candidates declare T2 up front instead of exhausting the exact ladder.
+
+### 7.2 Pass budgets (the corrected requirement)
+
+The M = 17-48 regime (verify R20-R32 at C5-C8, prefill rows35-48 at C2,
+rows72-96 at grouped C2) must run at `<= ~2.5x` the R8 forward per pass, one
+weight sweep per family, lm-head swept once. Z0 publishes the exact budget
+per cell; the C8 derivation is in F1. Derived C8/K3 expectation with the F3
+"existing owners" pass (~250 ms): cycle ~347 ms with the F6 residual (~56
+tok/s, 1.08x own AR, 17% wall reduction versus the retained K1 cell) and
+~290 ms without it (~63 tok/s, 1.22x, 27% reduction); with a Q4 rows17-48
+owner at the R16 rate (95 ms) the pass is ~215 ms (~68 tok/s, ~33%
+reduction). Only the last two clear this campaign's 28.5% C8 bar; the first
+clears the scaling campaign's 1.15x bar only with the residual fixed.
+
+### 7.3 Pre-sized mechanism candidates (Z3 starting ledger)
+
+| Mech. | Description | Class | Cells | Sized bound (derived) | Prerequisite |
+| --- | --- | --- | --- | --- | --- |
+| A | Register retained exact prefill owners (Y2 `<3,1,2>` Q6 standard/planar, prefill Q5 one-sweep route, best Q4 rows17-48 owner) under verifier R17-R32 keys incl. mixed R20/R24/R32 packed subshapes; strict fallback = current owner | T0 registry transfer (T2 where the owner already carries it) | C5-C8 MTP | R32 pass 790 -> ~230-260 ms (F3); C8 K3 17-27% wall (7.2) | Z0 attribution |
+| B | Q6 lm-head as one sweep at R > 8 (Y2 standard body or dense WMMA lm-head path) | T0/T2 | C5-C8 MTP, prefill | ~15-20 ms per R32 pass (F4) | Z0 |
+| C | Grouped C2 prefill on the benchmark path (ragged grouping or the declared batch window) | control/admission | C2 prefill, AR C2 | +26-36% C2 (F9); ~15-23% wall | Z0 tick-composition fact |
+| D | Cycle residual outside GPU stages | host/scheduler | C5-C8 MTP | ~57 ms x 11.5 cycles = ~0.66 s per C8 cell (F6) | Z0 reconciliation |
+| E | Integer MMQ (Q8_1 activations) for M = 17-48 on the three Q6 shapes, `ssm_out`, two binding Q4 shapes; screen against A, not `selected-wmma` | T2 | C2 prefill, C5-C8 MTP | anchor: stock HIP R32 verify at ~2.5x its R8 (F7) | A/C measured |
+| F | Fragment-direct WMMA body (load-time repack to B-lane order, per-lane VGPR decode, no LDS/barriers) on the Y3 planar-down shape at rows32 and rows288 | T2 | C2/C8 prefill, C5-C8 MTP | opens only if E fails; Y3 ISA artifact is the before-picture (F8) | E |
+
+Order: `Z0` (with the F3/F4/F6/F9 attribution items) -> A and C in
+parallel (cheapest units relative to bound: a registry transfer of bodies
+that already passed their gates, and a telemetry check) -> B and D as Z0
+sizes them -> E, then F, conditional. One-pass K3/R32 and K2/R24 at C5-C8
+with the A owners is the first Z4 measurement; width x depth admission stays
+prompt-independent and automatic serving stays K0 until the complete
+production/lifecycle gates pass.
+
+## 8. Evidence map
 
 Current references:
 
@@ -298,3 +500,13 @@ Current references:
   — retained Y3 exact planar Q6 pair decode.
 - [`2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json)
   — retained C6/C8 K1 MTP closeout.
+- [`2026-09-01-gfx1151-qwen38-w0-sweep-economics.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w0-sweep-economics.json)
+  — W0 stage telemetry, R8-R32 family row curve, fetch multiplicities, and
+  the raw-suite cell walls used in section 7.
+- [`2026-09-01-gfx1151-qwen38-w1-q6-two-wave-rowcurve.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w1-q6-two-wave-rowcurve.json)
+  — W1 two-wave candidate row curve and the retained raw trace hash used for
+  F3/F4.
+- [`2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json`](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json)
+  — P1 C2 blocker whose grouping verdict F9 reopens.
+- [`2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json)
+  — rows288 tick wall used for the prefill share in F1/F5.
