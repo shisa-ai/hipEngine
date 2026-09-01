@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-slab-serialization-analysis",
+  "status": "measurement_and_source_analysis",
+  "source_commit": "d56b74c09",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel",
+  "current_structure": {
+    "per_k256_slab": ["cooperative arithmetic Q6 decode into LDS", "block barrier", "all-wave WMMA consumption", "block barrier"],
+    "weight_tile_bytes": 16384,
+    "buffers": 1,
+    "shared4r6": {"threads": 128, "vgpr": 200, "lds_bytes": 16384, "scratch_bytes": 0},
+    "shared4r9": {"threads": 128, "vgpr": 256, "lds_bytes": 16384, "scratch_bytes": 0}
+  },
+  "bound": {"rows288_wall_pct": 4.82, "rows536_wall_pct": 5.28, "rows1024_wall_pct": 5.99},
+  "analysis": {
+    "simple_double_buffering": "insufficient alone: Q6 decode is arithmetic executed by the same waves, not an asynchronous global-to-LDS copy",
+    "required_overlap": "dedicated producer wave(s) decoding the next slab into a second 16 KiB LDS buffer while consumer waves execute WMMA on the current slab",
+    "lds_for_two_buffers_bytes": 32768,
+    "risk": "producer/consumer role split changes wave allocation and requires per-buffer handoff synchronization; shared4r9 is already VGPR256, so first screen shared4r6 rather than shared4r9"
+  },
+  "decision": "Y3 remains open. The first algorithmic candidate is a shared4r6 producer/consumer double-buffered kernel, screened on actual wide-planar rows288/536/1024 under the existing exact parent contract."
+}

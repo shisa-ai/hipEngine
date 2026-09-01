@@ -977,7 +977,14 @@ prompt-conditioned tuning, sized full-wall bound before code).
   measured rows256 **20.24 TF/s / 45.6 GB/s** reference. Matching that in-tree
   rate sizes **47.8/90.2/166.8 ms**, or **4.82%/5.28%/5.99%** tick wall, at
   rows288/536/1024. Y3 therefore opens; Y4 remains closed because achieved
-  tensor rate is far below the BF16 roof.
+  tensor rate is far below the BF16 roof. Source/resource analysis confirms
+  each K256 slab serializes arithmetic Q6 decode, a block barrier, all-wave
+  WMMA, and a second barrier around one 16 KiB LDS buffer. Merely adding a
+  second buffer cannot overlap arithmetic performed by the same waves; the
+  concrete Y3 candidate is a dedicated producer-wave/shared4r6 consumer split
+  with two 16 KiB buffers. Shared4r9 is excluded from the first screen because
+  it already uses VGPR256.
+  [`Slab analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json).
   [`Y3 entry bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json).
 - [ ] Y4 **(Conditional) INT4-WMMA Q4 body.** The only raised tensor roof on
   gfx1151 (118.8 vs 59.4 TOP/s). Opens only if Y3's trace shows

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y3 slab analysis] Current planar-Q6 serializes arithmetic decode/barrier/WMMA/barrier around one 16 KiB LDS buffer. Double buffering alone cannot overlap same-wave arithmetic; the bounded candidate is a dedicated producer-wave shared4r6 split using 32 KiB LDS. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y3 entry bound] Post-dataflow high-row Q6 sustains **14.36-14.49 TF/s** versus a measured 20.24 TF/s rows256 reference, sizing **47.8/90.2/166.8 ms (4.82%/5.28%/5.99% wall)** at rows288/536/1024. Y3 opens; Y4 stays closed because tensor rate is far below roof. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y2 closed] Every Q5/Q6/GDN row band is retained at its best exact practical owner, below the 2% opening threshold, or carries a measured launch, local-performance, collateral, or capacity blocker; no above-threshold unblocked multiplicity unit remains. `benchmarks/results/2026-09-02-gfx1151-qwen38-y2-closure.json`.
