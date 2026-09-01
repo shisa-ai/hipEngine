@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y1-row288-parent-rejected",
+  "created_at": "2026-09-01T07:34:00Z",
+  "status": "measured_rejected_policy_candidate",
+  "source_commit": "1ec5dba86",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "cpu_apu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "protocol": {
+    "rows": 288,
+    "token_source": "round-robin frozen ten-prompt chat-token stream",
+    "compiler_version_file": "/tmp/hipengine-review-hipcc-version.txt",
+    "require_cached_build": true,
+    "control": "current reduced-accumulator periodic policy",
+    "candidate": "clear GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES so all candidate shapes use the existing 48-column/4-wave/256-row strict parent",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/y1_rows288_parent_screen.py"
+  },
+  "results": {
+    "control_wall_ms": 1168.811784,
+    "control_gpu_ms": 1168.8055419921875,
+    "parent_wall_ms": 1200.2413,
+    "parent_gpu_ms": 1200.2349853515625,
+    "wall_delta_pct": 2.6890142989865584,
+    "control_next_token_id": 15685,
+    "parent_next_token_id": 15685
+  },
+  "decision": "reject",
+  "interpretation": "The existing parent reduces logical M-grid sweeps for most rows288 Q4 launches, but its larger 48-column/256-row accumulator geometry loses 2.69% on complete tick wall. Y1 cannot be a threshold-only rollback; proceed to a new one-sweep algorithm that preserves enough parallelism.",
+  "raw_source": {
+    "path": "/tmp/y1-rows288-parent-screen.json",
+    "sha256": "61390910c70c5dc50a382c284c9eba14736af839c8026aba50ec486b666eb7a0",
+    "bytes": 199207
+  }
+}
