@@ -260,6 +260,7 @@ _Q4_T16_ROWTILE16_W2_R6_SHAPES = {
     (5_120, 12_288),
     (5_120, 17_408),
     (6_144, 5_120),
+    (17_408, 5_120),
 }
 GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48",
@@ -279,14 +280,6 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         },
         "rows_by_shape": {
             shape: (6,) for shape in _Q4_T16_ROWTILE16_W2_R6_SHAPES
-        },
-        "experimental_shapes": {
-            (17_408, 5_120): {
-                "variant": "dense_rowtile16_w2_bf16_bf16_out",
-                "rows": (6,),
-                "enabled_env": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_FFN_DOWN",
-                "enabled_default": False,
-            },
         },
     }
 }

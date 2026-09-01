@@ -5591,8 +5591,8 @@ def test_gfx1151_q4_k_decode_smallm_two_wave_shape_policy(
         (6, 5_120, 12_288, True),
         (6, 5_120, 17_408, True),
         (6, 6_144, 5_120, True),
+        (6, 17_408, 5_120, True),
         (4, 5_120, 12_288, False),
-        (6, 17_408, 5_120, False),
     ],
 )
 def test_gfx1100_q4_k_decode_row6_two_wave_shape_policy(
