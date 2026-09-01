@@ -22,6 +22,7 @@ from hipengine.core.specdec2_scope import (
     q5_t16_physical_rowtile_enabled,
 )
 from hipengine.kernels.hip_gfx1100 import (
+    GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
 )
 from hipengine.kernels.registry import KernelKey, register
@@ -1846,6 +1847,45 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch the one-expert dense Q5T16 producer."""
 
+    wide_exact_rows = GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY["rows"]
+    if (
+        q5_t16_physical_rowtile_enabled()
+        and physical_exact_rowtiles_enabled()
+        and int(rows) in wide_exact_rows
+        and _q5_dense_rowtile_grouped_rows6_enabled()
+    ):
+        prefix_rows = 24
+        _check_dense_q5_t16_shape(6, in_features, out_features, rowtile=True)
+        _launch_dense_q5_t16(
+            _Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            prefix_rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        tail_rows = int(rows) - prefix_rows
+        _check_dense_q5_t16_shape(
+            tail_rows, in_features, out_features, rowtile=True
+        )
+        element = DType.BF16.itemsize
+        _launch_dense_q5_t16(
+            _Q5_DENSE_ROWTILE_BF16,
+            int(x_ptr) + prefix_rows * int(in_features) * element,
+            tiles_ptr,
+            int(out_ptr) + prefix_rows * int(out_features) * element,
+            tail_rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
     if (
         q5_t16_physical_rowtile_enabled()
         and int(rows) >= 12

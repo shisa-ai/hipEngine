@@ -357,12 +357,14 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES = frozenset(
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q5_ROWTILE_ROWS = frozenset({6})
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_ROWTILE_ROWS = frozenset({6})
 # Default-off Q6 launch-composition screen for larger physical target groups.
-# Actual Qwen3.8 weights select only R24/R30/R36: every recurrent-QKV,
+# Actual Qwen3.8 weights select R24/R30/R36 by default: every recurrent-QKV,
 # full-attention-V, and FFN-down leaf is BF16-bit exact and 1.079x-1.234x
 # faster. R18 remains repeated R6 after recurrent QKV lost and FFN-down was
-# noise-flat.
+# noise-flat. A default-off exact-C7 target policy additionally composes R28;
+# that entry is unreachable unless its adapter policy removes inactive padding.
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS = {
     24: (8, 8, 8),
+    28: (8, 8, 8, 4),
     30: (8, 8, 8, 6),
     36: (8, 8, 8, 6, 6),
 }
@@ -375,6 +377,15 @@ GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES = frozenset(
 # 1.31x-1.84x faster. The adapter enables this capability only inside its
 # request-local production scope and retains explicit padded-R12 rollback.
 GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS = frozenset({8})
+# Default-off screen for removing the final two inactive rows at physical C7
+# K3. R28 composes an exact grouped prefix plus strict tail. The adapter reads
+# this policy without backend branches and leaves padded R30 as rollback. C8
+# remains padded R36 because unpadded R32 loses its fused gate/up owner.
+GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS",
+    "enabled_default": False,
+    "rows": frozenset({28}),
+}
 # The production dense adapter owns one physical request group through C8. The
 # adapter derives frontier/accept workspaces from this package capability and
 # retains an environment rollback to the previous C4 ceiling. Strict remains
@@ -1062,6 +1073,7 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_CHUNKS",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_Q6_MIXED_ROWTILE_SHAPES",
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
+    "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
     "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",

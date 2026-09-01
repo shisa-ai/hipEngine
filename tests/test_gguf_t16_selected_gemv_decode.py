@@ -1066,6 +1066,7 @@ def test_q4_t16_dense_rowtile16_w2_grouped_rows8_matches_grouped_rows6_bits(
     np.testing.assert_array_equal(candidate, control)
 
 
+
 @pytest.mark.parametrize("rows", [1, 2, 3, 4])
 def test_qmicro_q4_dense_primitives_match_t16_bits(
     rows: int,
@@ -1384,6 +1385,44 @@ def test_q5_t16_dense_decode_defaults_to_grouped_physical_rows6_launches(
             24,
         )
     ]
+
+
+def test_q5_t16_exact_c7_rows_use_grouped_rows6_prefix_and_strict_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int, int, int]] = []
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        selected_t16_mod,
+        "_launch_dense_q5_t16",
+        lambda symbol, x, _tiles, out, rows, *_args, **_kwargs: calls.append(
+            (str(symbol), int(rows), int(x), int(out))
+        ),
+    )
+    x_ptr = 0x100_000
+    out_ptr = 0x200_000
+    grouped = selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16
+    rowtile = selected_t16_mod._Q5_DENSE_ROWTILE_BF16
+
+    with (
+        q5_t16_physical_rowtile_session(True),
+        physical_exact_rowtiles_session(True),
+    ):
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            x_ptr, 2, out_ptr, 28, 6_144, 5_120
+        )
+        assert calls == [
+            (grouped, 24, x_ptr, out_ptr),
+            (
+                rowtile,
+                4,
+                x_ptr + 24 * 6_144 * 2,
+                out_ptr + 24 * 5_120 * 2,
+            ),
+        ]
 
 
 def test_q5_t16_grouped_rows6_policy_has_explicit_repeated_rollback(

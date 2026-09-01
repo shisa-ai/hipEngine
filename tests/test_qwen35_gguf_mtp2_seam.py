@@ -382,6 +382,25 @@ def test_unpadded_r8_target_is_production_default_with_rollback(
     assert default._target_group_pad_rows(request_count=1, candidate_rows=3) == 2
     default.close()
 
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", "1")
+    wide_exact = Qwen35GGUFMTP2Adapter(
+        owner,
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    assert wide_exact.production_exact_target_row_counts == (8, 28)
+    assert wide_exact._target_group_pad_rows(
+        request_count=7, candidate_rows=21
+    ) == 0
+    assert wide_exact._target_group_pad_rows(
+        request_count=8, candidate_rows=24
+    ) == 4
+    wide_exact.close()
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", raising=False
+    )
+
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "0")
     rollback = Qwen35GGUFMTP2Adapter(
         owner,
