@@ -157,6 +157,7 @@ _target_verifier_wide_q6_shared4_leaf_enabled: ContextVar[bool] = ContextVar(
 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
 )
+TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV = "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4"
 
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
 # Q4_K verifier continuation blocks. Default ON: every specialization preserves
@@ -1280,7 +1281,14 @@ def target_verifier_wide_q6_shared4_session(
 def target_verifier_wide_q6_shared4_policy_enabled() -> bool:
     """Return whether the outer W1 logical-width policy is enabled."""
 
-    return _target_verifier_wide_q6_shared4_policy_enabled.get()
+    if _target_verifier_wide_q6_shared4_policy_enabled.get():
+        return True
+    return os.environ.get(TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV, "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 @contextlib.contextmanager
@@ -6810,6 +6818,7 @@ __all__ = [
     "target_verifier_wide_q6_shared4_policy_enabled",
     "target_verifier_wide_q6_shared4_leaf_session",
     "TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV",
+    "TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",
