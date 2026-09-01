@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q6_two_wave_persistent_screen",
+  "status": "candidate_default_off",
+  "performance_claim": false,
+  "geometry": {
+    "waves": 2,
+    "row_tiles_per_wave": 1,
+    "out_tiles": 2,
+    "threads": 64,
+    "lds_bytes": 16384,
+    "row_capacity": 32
+  },
+  "results": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "8": {
+        "exact": false,
+        "mismatch_count": 4160,
+        "max_abs": 0.0078125,
+        "parent_ms": 0.41820859909057617,
+        "shared4_ms": 0.7075191974639893,
+        "speedup": 0.5910915217418702
+      },
+      "20": {
+        "exact": false,
+        "mismatch_count": 10319,
+        "max_abs": 0.0078125,
+        "parent_ms": 6.4906982421875,
+        "shared4_ms": 0.7065011978149414,
+        "speedup": 9.187101539617846
+      },
+      "24": {
+        "exact": false,
+        "mismatch_count": 12505,
+        "max_abs": 0.0078125,
+        "parent_ms": 7.774771118164063,
+        "shared4_ms": 0.7074312210083008,
+        "speedup": 10.990144182614236
+      },
+      "32": {
+        "exact": false,
+        "mismatch_count": 16574,
+        "max_abs": 0.00390625,
+        "parent_ms": 10.396220397949218,
+        "shared4_ms": 0.7095791816711425,
+        "speedup": 14.651247762744243
+      }
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "8": {
+        "exact": false,
+        "mismatch_count": 8175,
+        "max_abs": 0.0078125,
+        "parent_ms": 0.3722424030303955,
+        "shared4_ms": 0.3936906099319458,
+        "speedup": 0.9455201461237344
+      },
+      "20": {
+        "exact": false,
+        "mismatch_count": 20792,
+        "max_abs": 0.0078125,
+        "parent_ms": 3.4028175354003904,
+        "shared4_ms": 0.37806119918823244,
+        "speedup": 9.000705554304094
+      },
+      "24": {
+        "exact": false,
+        "mismatch_count": 25333,
+        "max_abs": 0.0078125,
+        "parent_ms": 4.034400558471679,
+        "shared4_ms": 0.3773158073425293,
+        "speedup": 10.692370899820874
+      },
+      "32": {
+        "exact": false,
+        "mismatch_count": 33653,
+        "max_abs": 0.0078125,
+        "parent_ms": 5.37116813659668,
+        "shared4_ms": 0.3814836025238037,
+        "speedup": 14.079682851536276
+      }
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "8": {
+        "exact": false,
+        "mismatch_count": 813,
+        "max_abs": 0.00390625,
+        "parent_ms": 0.027900201082229615,
+        "shared4_ms": 0.10081299543380737,
+        "speedup": 0.2767520294598186
+      },
+      "20": {
+        "exact": false,
+        "mismatch_count": 2018,
+        "max_abs": 0.00390625,
+        "parent_ms": 0.18964380025863647,
+        "shared4_ms": 0.10058079957962036,
+        "speedup": 1.8854871014274777
+      },
+      "24": {
+        "exact": false,
+        "mismatch_count": 2517,
+        "max_abs": 0.00390625,
+        "parent_ms": 0.21495521068572998,
+        "shared4_ms": 0.09940260052680969,
+        "speedup": 2.162470695399511
+      },
+      "32": {
+        "exact": false,
+        "mismatch_count": 3398,
+        "max_abs": 0.00390625,
+        "parent_ms": 0.282698392868042,
+        "shared4_ms": 0.10853159427642822,
+        "speedup": 2.6047566586740976
+      }
+    }
+  },
+  "finding": "Two-wave R32-sized geometry removes shared4 idle row capacity. R32 speedups vs strict parent: 14.65x planar down, 14.08x standard qkv, 2.60x narrow planar; max leaf delta <=0.0078125 (T2).",
+  "raw": {
+    "path": "/tmp/wy-w1-q6-shared4-screen.json",
+    "sha256": "09ee6cf69abf9ac470daf9f31213a7d4589e9d43ac4a37e355a906267c39ea8a",
+    "size_bytes": 2991
+  }
+}

@@ -27,6 +27,10 @@ should be removed or collapsed.
   addition is excluded after its complete target stage regressed 0.25%
   production-numerics campaign. The context defaults off; current chunk/direct
   owners remain the strict fallback, and automatic C6/C8 serving remains K0.
+- Rename the historical `shared4` symbol/variant after the W1 geometry settles;
+  its current default-off implementation is the measured two-wave R20-R32
+  geometry, while the ABI name was retained to avoid a broad experiment-only
+  registry/cache migration.
 - Remove the candidate context after the complete C6/C8 strict-teacher,
   determinism/isolation/task, full-suite performance, and profiler gates either
   promote the shape policy or reject it. A promotion should leave one immutable
