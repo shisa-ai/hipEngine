@@ -735,26 +735,24 @@ recorded in each retained unit's artifact.
 Re-reading the three P closures together names one structural defect rather
 than three independent walls.
 
-**The Q4 prefill owner's swept bytes scale with `ceil(rows/16)`, not with
-sweeps.** [P1](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json)
-measured ticks 100.0% GPU-busy, rows<=48 all ~278 ms — one ~16.3 GB Q4
-weight pass at ~57 GB/s aggregate — and the owner re-streaming the full
-weight set **per 16-row M-tile at ~184 GB/s/tile**. Cross-check against P1's
-own rows256 tick: 16 tiles x 16.3 GB / 184 GB/s = **1417 ms** vs measured
-**1418 ms**. The rows256 prefill tick is ~100% explained by re-streamed
-weight bytes at near-roof per-tile rate (221 GB/s practical,
-[ROOFLINE-gfx1151.md](ROOFLINE-gfx1151.md)): the owner is efficient per tile
-and multiplicative per tick. Define **sweep multiplicity** = swept
-family-bytes per tick / resident family-bytes; the Q4 owner runs at
-multiplicity ~= `ceil(rows/16)` (C2 rows35-48: 3; C8 rows256+: 16+) where one
-sweep suffices. P1's external attribution says exactly this from the other
-side: external engines rise 20-42% C1->C2 because their prefill GEMMs
-amortize weight streaming across all grouped rows; we *fall* C1->C2.
+**Y0 corrects the original `ceil(rows/16)` attribution.**
+[P1](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c2-scaling-blocker.json)
+correctly measured GPU-busy ticks and repeated weight traffic, but its
+whole-family `ceil(rows/16)` inference did not account for the mixed shared-B
+owners already present at current head. Y0 matches each active source-weight
+launch group to its `rocprofv3` M-grid. Q4's byte-weighted sweep multiplicity
+is **1.00/1.30/1.34/2.02/2.09/1.17/2.87/3.00/4.00** at rows
+16/35/48/72/96/256/288/536/1024—not 1/3/3/5/6/16/18/34/64. Shared-B
+variants therefore amortize many shapes, including rows256, while the
+rows288+ policy/shape mix still repeats Q4 traffic. Per-tile Q4 bandwidth
+falls from 104 GB/s at rows16 to 27 GB/s at rows1024 as the issue wall binds.
+[`Y0 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-prefill-y0-sweep-multiplicity.json).
 
-**This is the same disease extension W names in the verify path** — cost
-scaling with row tiles instead of staying sweep-bound — appearing in the
-prefill owner instead of the verify ladder. Both external gaps that remain
-in the survey (C6/C8 MTP, all-width prefill) are byte-multiplicity defects.
+The remaining defect is still **tiles instead of one sweep**, but it is
+shape- and owner-dependent rather than uniform. This is the same class of
+dataflow defect extension W found in the verify path; Y1 must flatten the
+remaining Q4 multiplicity without replacing shared-B owners that already
+reach approximately one sweep.
 
 **The dequant/LDS/issue wall is the second wall behind the first.**
 [P2](../benchmarks/results/2026-08-31-gfx1151-qwen38-prefill-c8-current-trace-blocker.json)
@@ -766,15 +764,14 @@ dequant-free bodies hit the same LDS-staging/issue structure at 0.81x). P3
 did **not** close loop-order/dataflow change, and did not test INT4 — the
 only raised tensor roof on gfx1151 (118.8 TOP/s).
 
-**Screening arithmetic (not a measurement; Y0 must replace it with sized
-bounds before any Y code, per the extension rule inherited from W):**
-multiplicity-1 at P1's measured per-tile rate puts a rows256 Q4 pass near
-~90 ms vs today's 1418; even fully issue-bound at P2's 19-24 TF/s, the Q4
-family's 60% share of the C8 trace (16.8 s of 27.9 s) collapses far past the
->=2x that P2's written sizing already projected to ~330 >= 305.847. At C2,
-removing two of three sweeps attacks a +51.6% gate with ~3x headroom on the
-dominant owner. Both gates sit inside sized headroom; no new physics is
-required.
+**Measured Y0 bounds supersede the screening arithmetic.** At C2-like
+rows35/48, perfect Q4 single-sweep dataflow can remove only **13.1-14.3%**
+of tick wall; perfect Q4+Q5+Q6 single-sweep dataflow removes **26.1-27.5%**,
+below the **34.0%** wall reduction needed for 139.8->211.888 tok/s. C2
+therefore requires post-dataflow issue/fusion work even if Y1/Y2 are played
+perfectly. At C8-like rows288, Q4 alone has a **36.6%** wall bound and all
+quant families **62.9%**, above the **19.1%** wall reduction needed for
+247.3->305.847 tok/s. These are upper bounds, not performance claims.
 
 **The requirement, stated once:** prefill weight bytes swept per tick per
 quant family must be ~= 1.0 sweeps regardless of grouped rows (multiplicity
@@ -786,14 +783,15 @@ Rules unchanged (frozen protocol, exact ownership + strict fallback,
 applicable `docs/EXECUTION-PROFILES.md` gate per unit, no
 prompt-conditioned tuning, sized full-wall bound before code).
 
-- [ ] Y0 **Prefill sweep-multiplicity instrumentation (entry gate for all of
-  Y).** Extend the prefill trace harness to publish, per family
-  (Q4/Q5/Q6/GDN/other) at representative grouped-row points
-  (16/35/48/72/96/256/288/536/1024): swept weight-bytes per tick, sweep
-  multiplicity, per-tile GB/s, TF/s, and tick wall vs hipEvent GPU span, as a
-  durable committed artifact (P1/P2 raw sources live under `/tmp` — the
-  audit-limitation-1 pattern). Confirms the `ceil(rows/16)` attribution per
-  family and sizes Y1's full-wall bound per width. No perf claim.
+- [x] Y0 **Prefill sweep-multiplicity instrumentation (entry gate for all of
+  Y).** The committed capture/analyzer publishes Q4/Q5/Q6/GDN/other timing,
+  active swept bytes, byte-weighted multiplicity, per-tile GB/s, effective
+  TF/s, tick wall vs HIP-event span, and Y1/Y2 full-wall bounds at all nine
+  required row points. It rejects the blanket `ceil(rows/16)` premise:
+  current shared-B owners make Q4 multiplicity shape-dependent (1.00-4.00),
+  while rows288 still leaves a 36.6% Q4 wall bound. Raw profiler sources stay
+  under `/tmp` with hashes in the durable artifact; no performance claim.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-prefill-y0-sweep-multiplicity.json).
 - [ ] Y1 **Single-sweep (B-stationary) Q4 prefill dataflow.** Restructure the
   Q4 prefill owner family so each weight tile is fetched and dequantized once
   per tick and looped across all M-tiles (workgroup-owns-weight-tile with an
