@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 Q6 one-sweep exact rejection] Standard-Q6 shared8r3 rows288 screens **48.255->1.662 ms (29.0x)** but differs in 300,641 BF16 outputs (max delta 0.0078125); planar peers also differ. Exact-first policy rejects and scope-reverts the candidate. Reopen only as declared T2 with complete production gates. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-exact-rejected.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y1 closes on rows1024 workgroup limit] Exact rows1024 `<3,16,4>` and hardware-limit `<3,32,2>` one-sweep bodies regress strict shared-B **43.5%/57.6%**. The latter traces gridY1, 1024 threads/32 waves, VGPR96, LDS24 KiB, scratch0; cross-workgroup ownership requires synchronization/FP32 partial spill, whose measured prototype loses 55.1%. The retained rows288-384 band moves C8 only +0.83%, so the blocked remainder cannot cover the 19.1% target gap. Y1 closes. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-rows1024-workgroup-limit.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y1 rows536 one-sweep full-wall rejected] Exact shared-B `<3,12,3>` improves K17408/N5120 rows513/536/576 leaves **8.58/16.28/13.84%** and traces gridY1/VGPR152/LDS24 KiB/scratch0, but complete rows536 tick regresses **1870.193->1883.896 ms (+0.73%)** with the same token. The 384-thread candidate is scope-reverted; rows288-384 retention is unchanged. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-b3w12r3-full-wall-rejected.json`.
