@@ -744,6 +744,8 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     )
     fn = gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 5_120, 10_240, stream=7)
+    fn(1, 2, 3, 1_024, 5_120, 10_240, stream=13)
+    fn(1, 2, 3, 1_025, 5_120, 10_240, stream=14)
     fn(1, 2, 3, 288, 5_120, 10_240, stream=11)
     fn(1, 2, 3, 96, 5_120, 10_240, stream=8)
     fn(1, 2, 3, 95, 5_120, 10_240, stream=9)
@@ -751,7 +753,9 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     fn(1, 2, 3, 1_024, 5_120, 5_120, stream=10)
 
     assert calls == [
-        ("shared4", (1, 2, 3, 512, 5_120, 10_240), {"stream": 7}),
+        ("shared8r3", (1, 2, 3, 512, 5_120, 10_240), {"stream": 7}),
+        ("shared8r3", (1, 2, 3, 1_024, 5_120, 10_240), {"stream": 13}),
+        ("shared4", (1, 2, 3, 1_025, 5_120, 10_240), {"stream": 14}),
         ("shared8r3", (1, 2, 3, 288, 5_120, 10_240), {"stream": 11}),
         ("shared6r1", (1, 2, 3, 96, 5_120, 10_240), {"stream": 8}),
         ("shared6r1", (1, 2, 3, 95, 5_120, 10_240), {"stream": 9}),
