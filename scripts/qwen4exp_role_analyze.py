@@ -123,11 +123,20 @@ def analyze(trace_dir: Path, measure_prefix: str) -> dict[str, Any]:
             unattributed[row["kernel"]][0] += row["ns"]
             unattributed[row["kernel"]][1] += 1
 
+    total_ns = sum(int(row["ns"]) for row in rows)
+    attributed_ns = sum(
+        int(row["ns"]) for row in rows if row["role"] != "unattributed"
+    )
+    unattributed_ns = total_ns - attributed_ns
     return {
         "window_ms": (measure_end - measure_start) / 1e6,
         "role_ranges": len(windows),
         "kernel_rows": len(rows),
         "attributed_rows": sum(row["role"] != "unattributed" for row in rows),
+        "attributed_ms": attributed_ns / 1e6,
+        "attributed_time_pct": 100 * attributed_ns / total_ns if total_ns else 0.0,
+        "unattributed_ms": unattributed_ns / 1e6,
+        "unattributed_time_pct": 100 * unattributed_ns / total_ns if total_ns else 0.0,
         "roles": [
             {"name": name, "ms": values[0] / 1e6, "rows": values[1], "symbols": len(values[2])}
             for name, values in sorted(grouped.items(), key=lambda item: -item[1][0])

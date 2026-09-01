@@ -170,10 +170,12 @@ def summarize(args: argparse.Namespace) -> dict[str, Any]:
     hip_api_path = one(root, "*_hip_api_trace.csv")
     marker_path = one(root, "*_marker_api_trace.csv")
     copy_path = one(root, "*_memory_copy_trace.csv")
+    allocation_path = one(root, "*_memory_allocation_trace.csv")
     kernels = read_csv(kernel_path)
     apis = read_csv(hip_api_path)
     markers = read_csv(marker_path)
     copies = read_csv(copy_path)
+    allocations = read_csv(allocation_path)
     windows = marker_windows(markers, args.marker_prefix) if args.marker_prefix else []
     family_fn: Callable[[str], str] = hipengine_family if args.engine == "hipengine" else llama_family
 
@@ -227,6 +229,47 @@ def summarize(args: argparse.Namespace) -> dict[str, Any]:
         bounds = timestamps(row)
         if bounds is not None and inside(bounds, windows):
             selected_copies.append({"row": row, "ns": bounds[1] - bounds[0]})
+
+    selected_allocations: list[dict[str, Any]] = []
+    parsed_allocations: list[dict[str, Any]] = []
+    for row in allocations:
+        bounds = timestamps(row)
+        if bounds is None:
+            continue
+        parsed = {
+            "row": row,
+            "start": bounds[0],
+            "end": bounds[1],
+            "agent": str(row.get("Agent_Id") or "unknown"),
+            "operation": str(row.get("Operation") or "unknown"),
+            "bytes": opt_int(row.get("Allocation_Size")) or 0,
+        }
+        parsed_allocations.append(parsed)
+        if inside(bounds, windows):
+            selected_allocations.append(parsed)
+
+    graph_starts = [
+        bounds[0]
+        for row in apis
+        if api_family(str(row.get("Function") or row.get("Name") or ""))
+        == "graph_launch"
+        if (bounds := timestamps(row)) is not None
+    ]
+    first_graph_launch = min(graph_starts) if graph_starts else None
+    def is_allocate(row: dict[str, Any]) -> bool:
+        return row["operation"] == "MEMORY_ALLOCATION_ALLOCATE"
+
+    selected_allocate_rows = [row for row in selected_allocations if is_allocate(row)]
+    allocations_after_first_graph = [
+        row
+        for row in parsed_allocations
+        if first_graph_launch is not None
+        and row["start"] >= first_graph_launch
+        and is_allocate(row)
+    ]
+
+    def allocated_bytes(rows: Iterable[dict[str, Any]]) -> int:
+        return sum(int(row["bytes"]) for row in rows)
 
     kernel_families: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     kernel_symbols: dict[str, list[int]] = defaultdict(lambda: [0, 0])
@@ -293,6 +336,26 @@ def summarize(args: argparse.Namespace) -> dict[str, Any]:
             "sum_ms": sum(row["ns"] for row in selected_copies) / 1e6,
             "sample_keys": list(selected_copies[0]["row"].keys()) if selected_copies else [],
         },
+        "memory_allocation": {
+            "csv": str(allocation_path) if allocation_path else None,
+            "events_in_window": len(selected_allocations),
+            "rows_in_window": len(selected_allocate_rows),
+            "allocated_bytes_in_window": allocated_bytes(selected_allocate_rows),
+            "agents_in_window": dict(
+                sorted(
+                    (
+                        agent,
+                        sum(row["agent"] == agent for row in selected_allocate_rows),
+                    )
+                    for agent in {row["agent"] for row in selected_allocate_rows}
+                )
+            ),
+            "first_graph_launch_ns": first_graph_launch,
+            "rows_at_or_after_first_graph_launch": len(allocations_after_first_graph),
+            "allocated_bytes_at_or_after_first_graph_launch": allocated_bytes(
+                allocations_after_first_graph
+            ),
+        },
     }
 
 
@@ -317,6 +380,7 @@ def main() -> None:
                 "kernel": {key: output["kernel"][key] for key in ("rows", "sum_ms", "span_ms")},
                 "hip_api": output["hip_api"],
                 "memory_copy": output["memory_copy"],
+                "memory_allocation": output["memory_allocation"],
             },
             indent=2,
         )

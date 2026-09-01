@@ -170,6 +170,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     generator, resolved, _index = _make_generator(factory_args, "production")
     roctx = Roctx() if args.profile else None
     contexts: list[dict[str, Any]] = []
+    memory_after_warmup: dict[str, Any] | None = None
+    memory_after_measurement: dict[str, Any] | None = None
     try:
         runner = generator.runner
         if not runner.index_states:
@@ -199,6 +201,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 token_id_resident=True,
             )
             warm_state = _state_summary(runner)
+            if memory_after_warmup is None:
+                runner.runtime.device_synchronize()
+                memory_after_warmup = memory_stats()
             runner.restore(snapshot)
             graph_before = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
             rows: list[dict[str, Any]] = []
@@ -224,13 +229,19 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 try:
                     if roctx is not None:
                         roctx.push(marker)
+                    if roles is not None:
+                        roctx.push("qwen4exp_role:decode_boundary")
                     started = time.perf_counter()
-                    result = runner.step(
-                        root_token,
-                        capture_logits=False,
-                        capture_target_hidden=False,
-                        token_id_resident=True,
-                    )
+                    try:
+                        result = runner.step(
+                            root_token,
+                            capture_logits=False,
+                            capture_target_hidden=False,
+                            token_id_resident=True,
+                        )
+                    finally:
+                        if roles is not None:
+                            roctx.pop()
                     wall_seconds = time.perf_counter() - started
                     if roctx is not None:
                         roctx.pop()
@@ -282,6 +293,8 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 f"median_ms={summary['wall_seconds']['median'] * 1e3:.3f}",
                 flush=True,
             )
+        runner.runtime.device_synchronize()
+        memory_after_measurement = memory_stats()
     finally:
         generator.close()
     after_close = memory_stats()
@@ -294,6 +307,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         and source["tracked_clean"]
         and script_tracked
         and all(row["summary"]["passed"] for row in contexts)
+        and memory_after_warmup is not None
+        and memory_after_measurement is not None
+        and int(memory_after_measurement["active_allocations"])
+        == int(memory_after_warmup["active_allocations"])
+        and int(memory_after_measurement["current_allocated_bytes"])
+        == int(memory_after_warmup["current_allocated_bytes"])
+        and int(after_close["active_allocations"]) == 0
         and int(after_close["current_allocated_bytes"]) == 0
     )
     return {
@@ -332,8 +352,33 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         },
         "contexts": contexts,
         "lifecycle": {
+            "after_warmup": memory_after_warmup,
+            "after_measurement": memory_after_measurement,
+            "steady_allocation_growth": (
+                int(memory_after_measurement["active_allocations"])
+                - int(memory_after_warmup["active_allocations"])
+                if memory_after_warmup is not None
+                and memory_after_measurement is not None
+                else None
+            ),
+            "steady_allocated_byte_growth": (
+                int(memory_after_measurement["current_allocated_bytes"])
+                - int(memory_after_warmup["current_allocated_bytes"])
+                if memory_after_warmup is not None
+                and memory_after_measurement is not None
+                else None
+            ),
             "after_close": after_close,
-            "passed": int(after_close["current_allocated_bytes"]) == 0,
+            "passed": bool(
+                memory_after_warmup is not None
+                and memory_after_measurement is not None
+                and int(memory_after_measurement["active_allocations"])
+                == int(memory_after_warmup["active_allocations"])
+                and int(memory_after_measurement["current_allocated_bytes"])
+                == int(memory_after_warmup["current_allocated_bytes"])
+                and int(after_close["active_allocations"]) == 0
+                and int(after_close["current_allocated_bytes"]) == 0
+            ),
         },
         "decision": {
             "passed": passed,

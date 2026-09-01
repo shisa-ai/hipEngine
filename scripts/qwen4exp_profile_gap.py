@@ -17,12 +17,24 @@ import hashlib
 import json
 import os
 import statistics
+import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
+    DEFAULT_FIXTURE,
+    _git_metadata,
+    _host_metadata,
+    load_fixture,
+)
 
 ROUTE_ENV_KEYS = (
     "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL",
@@ -312,6 +324,13 @@ def _wall_summary(mode: str, prompt_tokens: int, walls: list[float]) -> dict[str
     }
 
 
+def _select_fixture_case(fixture: dict[str, Any], case_id: str) -> dict[str, Any]:
+    matches = [row for row in fixture.get("cases", ()) if str(row.get("id")) == case_id]
+    if len(matches) != 1:
+        raise ValueError(f"fixture must contain exactly one case {case_id!r}")
+    return dict(matches[0])
+
+
 def _parse_overrides(values: list[str]) -> dict[str, str]:
     overrides: dict[str, str] = {}
     for raw in values:
@@ -343,6 +362,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model-root", type=Path, required=True, help="Directory containing the split GGUF parts")
     parser.add_argument("--mode", choices=("prefill", "decode"), required=True)
     parser.add_argument("--prompt-file", type=Path, help="Prompt text for prefill mode")
+    parser.add_argument(
+        "--fixture",
+        type=Path,
+        default=DEFAULT_FIXTURE,
+        help="Exact-token fixture used with --case-id",
+    )
+    parser.add_argument(
+        "--case-id",
+        help="Canonical exact-token fixture case for prefill mode",
+    )
     parser.add_argument("--expected-prompt-tokens", type=int, help="Optional token-count assertion for the prompt")
     parser.add_argument("--profile", action="store_true", help="Emit ROCTX measurement ranges")
     parser.add_argument("--role-markers", action="store_true", help="Emit profiler-only qwen4exp_role:* ranges")
@@ -364,7 +393,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--warm-decode-steps", type=int, default=8)
     parser.add_argument("--warm-trajectory-repetitions", type=int, default=0)
-    parser.add_argument("--max-sequence-length", type=int, help="Defaults to 768 for prefill and 128 for decode")
+    parser.add_argument(
+        "--max-sequence-length",
+        type=int,
+        help=(
+            "Defaults to 768 for text-prefill, case length + 1 for larger "
+            "canonical cases, and 128 for decode"
+        ),
+    )
     parser.add_argument("--prefill-chunk-size", type=int, help="Defaults to 512 for prefill and 256 for decode")
     parser.add_argument("--hip-arch", default="gfx1151")
     parser.add_argument("--compiler-version-file", type=Path)
@@ -389,13 +425,25 @@ def main() -> None:
         overrides = _parse_overrides(args.override)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
-    if args.mode == "prefill" and args.prompt_file is None:
-        raise SystemExit("--prompt-file is required in prefill mode")
+    if args.mode == "prefill" and (args.prompt_file is None) == (args.case_id is None):
+        raise SystemExit("prefill mode requires exactly one of --prompt-file or --case-id")
+    if args.mode == "decode" and args.case_id is not None:
+        raise SystemExit("--case-id is supported only in prefill mode")
     if args.moe_telemetry and args.mode != "prefill":
         raise SystemExit("--moe-telemetry is supported only in prefill mode")
     if args.moe_telemetry and args.profile:
         raise SystemExit("run --moe-telemetry separately from --profile")
-    max_sequence_length = args.max_sequence_length or (768 if args.mode == "prefill" else 128)
+    fixture_case: dict[str, Any] | None = None
+    fixture_sha256: str | None = None
+    if args.case_id is not None:
+        fixture, fixture_sha256 = load_fixture(args.fixture)
+        fixture_case = _select_fixture_case(fixture, str(args.case_id))
+    default_max_sequence_length = 768 if args.mode == "prefill" else 128
+    if fixture_case is not None:
+        default_max_sequence_length = max(
+            default_max_sequence_length, int(fixture_case["prompt_tokens"]) + 1
+        )
+    max_sequence_length = args.max_sequence_length or default_max_sequence_length
     prefill_chunk_size = args.prefill_chunk_size or (512 if args.mode == "prefill" else 256)
 
     os.environ.setdefault("HIPENGINE_HIP_ARCH", args.hip_arch)
@@ -404,7 +452,7 @@ def main() -> None:
     if args.require_cached_build:
         os.environ.setdefault("HIPENGINE_REQUIRE_CACHED_BUILD", "1")
 
-    from hipengine.core.memory import memory_stats
+    from hipengine.core.memory import memory_stats, reset_memory_stats
     from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
     from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
     from hipengine.generation.qwen4_exp_profiles import (
@@ -443,11 +491,28 @@ def main() -> None:
     report: dict[str, Any] = {
         "schema": 1,
         "kind": "qwen4exp_profile_gap_window",
+        "command": [Path(sys.argv[0]).name, *sys.argv[1:]],
+        "source": _git_metadata(ROOT),
+        "host": _host_metadata(),
         "mode": args.mode,
         "decode_output": args.decode_output if args.mode == "decode" else None,
         "profile": bool(args.profile),
         "model_root": str(args.model_root),
         "prompt_file": str(args.prompt_file) if args.prompt_file else None,
+        "fixture": str(args.fixture) if fixture_case is not None else None,
+        "fixture_sha256": fixture_sha256,
+        "case": (
+            {
+                "id": str(fixture_case["id"]),
+                "category": str(fixture_case["category"]),
+                "prompt_tokens": int(fixture_case["prompt_tokens"]),
+                "prompt_token_ids_sha256": str(
+                    fixture_case["prompt_token_ids_sha256"]
+                ),
+            }
+            if fixture_case is not None
+            else None
+        ),
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
         "fell_back_to_strict": resolved.fell_back_to_strict,
@@ -460,7 +525,9 @@ def main() -> None:
         "bound_route_env": {},
         "route_env": {},
         "wall_seconds": [],
+        "lifecycle": {},
     }
+    reset_memory_stats()
     generator = resolved.construct_generator(factory)
     try:
         runner = generator.runner
@@ -468,13 +535,18 @@ def main() -> None:
             _apply_post_binder_overrides(overrides)
         )
         if args.mode == "prefill":
-            ids = generator.tokenizer.encode(args.prompt_file.read_text())
+            ids = (
+                [int(value) for value in fixture_case["prompt_token_ids"]]
+                if fixture_case is not None
+                else generator.tokenizer.encode(args.prompt_file.read_text())
+            )
             if args.expected_prompt_tokens is not None and len(ids) != args.expected_prompt_tokens:
                 raise RuntimeError(
                     f"expected {args.expected_prompt_tokens} prompt tokens, got {len(ids)}"
                 )
             runner.prefill(ids)
             runner.runtime.device_synchronize()
+            report["lifecycle"]["after_warmup"] = memory_stats()
             census = RuntimeCensus(runner.runtime)
             census.install()
             roles = RoleMarkers(runner_module, roctx) if args.role_markers and roctx else None
@@ -487,15 +559,22 @@ def main() -> None:
                 for rep in range(args.repetitions):
                     if roctx:
                         roctx.push(f"qwen4exp_prefill_p{len(ids)}_{rep}")
+                    if roles is not None:
+                        roctx.push("qwen4exp_role:prefill_boundary")
                     started = time.perf_counter()
-                    result = runner.prefill(ids)
-                    runner.runtime.device_synchronize()
+                    try:
+                        result = runner.prefill(ids)
+                        runner.runtime.device_synchronize()
+                    finally:
+                        if roles is not None:
+                            roctx.pop()
                     report["wall_seconds"].append(time.perf_counter() - started)
                     if roctx:
                         roctx.pop()
                 report["token_id"] = int(result.token_id)
                 report["logits_sha256"] = hashlib.sha256(result.logits.tobytes()).hexdigest()
                 report["runtime_census"] = census.snapshot()
+                report["lifecycle"]["after_measurement"] = memory_stats()
                 if telemetry is not None:
                     report["moe_telemetry"] = telemetry.snapshot()
             finally:
@@ -528,6 +607,7 @@ def main() -> None:
             for _ in range(args.warm_decode_steps):
                 result = runner.step(int(result.token_id), **step_kwargs)
             runner.runtime.device_synchronize()
+            report["lifecycle"]["after_warmup"] = memory_stats()
             report["graph_before"] = _graph_snapshot(runner.moe_graph_cache, runner.runtime)
             census = RuntimeCensus(runner.runtime)
             census.install()
@@ -540,8 +620,14 @@ def main() -> None:
                 for step in range(args.decode_steps):
                     if roctx:
                         roctx.push(f"qwen4exp_decode_step_{step}")
+                    if roles is not None:
+                        roctx.push("qwen4exp_role:decode_boundary")
                     started = time.perf_counter()
-                    result = runner.step(int(result.token_id), **step_kwargs)
+                    try:
+                        result = runner.step(int(result.token_id), **step_kwargs)
+                    finally:
+                        if roles is not None:
+                            roctx.pop()
                     report["wall_seconds"].append(time.perf_counter() - started)
                     if roctx:
                         roctx.pop()
@@ -555,6 +641,7 @@ def main() -> None:
                     else hashlib.sha256(result.logits.tobytes()).hexdigest()
                 )
                 report["runtime_census"] = census.snapshot()
+                report["lifecycle"]["after_measurement"] = memory_stats()
             finally:
                 if roles is not None:
                     roles.close()
@@ -565,6 +652,23 @@ def main() -> None:
     finally:
         generator.close()
     report["memory_after_close"] = memory_stats()
+    report["lifecycle"]["after_close"] = report["memory_after_close"]
+    after_warmup = report["lifecycle"]["after_warmup"]
+    after_measurement = report["lifecycle"]["after_measurement"]
+    report["lifecycle"]["steady_allocation_growth"] = (
+        int(after_measurement["active_allocations"])
+        - int(after_warmup["active_allocations"])
+    )
+    report["lifecycle"]["steady_allocated_byte_growth"] = (
+        int(after_measurement["current_allocated_bytes"])
+        - int(after_warmup["current_allocated_bytes"])
+    )
+    report["lifecycle"]["passed"] = bool(
+        report["lifecycle"]["steady_allocation_growth"] == 0
+        and report["lifecycle"]["steady_allocated_byte_growth"] == 0
+        and int(report["memory_after_close"]["active_allocations"]) == 0
+        and int(report["memory_after_close"]["current_allocated_bytes"]) == 0
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
