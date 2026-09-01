@@ -28,16 +28,14 @@ should be removed or collapsed.
   Remove the environment opt-out after the next stable milestone audit; keep
   the registered strict parent.
 
-## 2026-09-01 gfx1100 Q4 row6 two-wave screen — open
+## 2026-09-01 gfx1100 Q4 row6 two-wave screen — closed
 
-- The prior C5-C8 MTP claim is retracted: a refreshed marker-scoped C8 trace
-  records zero WG64 candidate launches and 1,024 WG32-parent launches per
-  target cycle because the physical wrapper bypasses the canonical policy.
-- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=1` now reaches the physical wrapper but
-  remains default-off pending candidate-symbol target evidence and the complete
-  category/heldout gate. Remove the policy entirely on rejection; on retention,
-  promote it only after both gates. Keep the registered WG32 strict parent in
-  either case.
+- The first unrouted claim remains retracted as invalid history. The corrected
+  physical-wrapper route is independently retained after marker-scoped
+  candidate ownership plus a complete positive C5-C8 category/heldout gate.
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0` remains same-build rollback. Remove
+  the environment/cache policy after the next stable milestone audit; keep the
+  registered WG32 strict parent.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 

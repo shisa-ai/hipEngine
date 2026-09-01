@@ -264,7 +264,7 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
     "gguf_q4_k_t16_v1": {
         "canonical": True,
         "enabled_env": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2",
-        "enabled_default": False,
+        "enabled_default": True,
         "shapes": {
             shape: "dense_rowtile16_w2_bf16_bf16_out"
             for shape in _Q4_T16_ROWTILE16_W2_R6_SHAPES

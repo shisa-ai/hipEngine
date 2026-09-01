@@ -5654,7 +5654,7 @@ def test_gfx1100_q4_k_decode_row6_two_wave_shape_policy(
     assert calls == ["two_wave" if expect_two_wave else "parent"]
 
 
-def test_gfx1100_q4_k_decode_row6_two_wave_defaults_off(
+def test_gfx1100_q4_k_decode_row6_two_wave_defaults_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", raising=False)
@@ -5668,7 +5668,7 @@ def test_gfx1100_q4_k_decode_row6_two_wave_defaults_off(
         )
     finally:
         gguf_linear_module._rowtile_variant_policy_env_cache.clear()
-    assert variants[0] == "dense_rowtile_bf16_bf16_out"
+    assert variants[0] == "dense_rowtile16_w2_bf16_bf16_out"
 
 
 @pytest.mark.parametrize(

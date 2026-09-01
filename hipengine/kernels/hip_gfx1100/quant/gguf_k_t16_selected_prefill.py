@@ -397,14 +397,15 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES
         | GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES
     )
-    rowtile_fn = _q4_physical_rowtile(6, shape)
+    rowtile_fn = _q4_physical_rowtile(rows, shape)
+    row6_chunk_fn = _q4_physical_rowtile(6, shape)
     if (
         int(rows) > 6
         and q4_t16_physical_extra_rowtiles_enabled()
         and int(rows) % 6 == 0
         and shape in rowtile_shapes
         and launch_physical_rows6_chunked(
-            rowtile_fn,
+            row6_chunk_fn,
             x_ptr,
             tiles_ptr,
             out_ptr,
