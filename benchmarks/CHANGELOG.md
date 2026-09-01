@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y3 planar-Q6 pair decode retained] Exact adjacent-column-pair cooperative decode lowers complete rows288/536/1024 walls 988.838->983.912 ms (-0.50%), 1676.896->1645.574 ms (-1.87%), and 2752.863->2747.827 ms (-0.18%) with unchanged tokens; the direct body remains a strict fallback. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y3 shared4r6 ISA analysis] Generated ISA has zero WMMA in the 326-instruction cooperative decode region between two barriers; 192 WMMAs remain in sixteen separated groups. Next exact screen pairs adjacent columns to reuse shared qmicro record bytes without changing accumulation. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y3 producer pipeline rejected] The five-wave, two-buffer shared4r6 prototype completes and is bit-exact at rows288, but wide planar K17408/N5120 regresses 3.713->4.748 ms (+27.88%); narrow gains 2.97%. Route/export scope-reverted. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json`.

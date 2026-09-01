@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-planar-q6-pair-decode",
+  "status": "retained_pending_collateral_publication",
+  "source_commit": "8945377b1",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "change": "shared4r6 cooperative decode assigns each work item an adjacent output-column pair; strict direct shared4r6 fallback retained",
+  "bound_wall_pct": {"rows288": 4.82, "rows536": 5.28, "rows1024": 5.99},
+  "actual_weight_exactness": {"shapes": ["17408x5120", "5120x1024"], "rows": [288, 536, 1024], "cells": 6, "exact_cells": 6, "mismatch_count": 0, "max_abs": 0.0},
+  "full_wall": {
+    "rows288": {"control_ms": 988.837975, "candidate_ms": 983.912085, "delta_pct": -0.49814935556049544, "token": 15685},
+    "rows536": {"control_ms": 1676.895572, "candidate_ms": 1645.574151, "delta_pct": -1.867821796597835, "token": 10562},
+    "rows1024": {"control_ms": 2752.863438, "candidate_ms": 2747.827182, "delta_pct": -0.18294608916956667, "token": 709}
+  },
+  "rocprof": {"command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/y3-q6-shared4r6-pair-rocprof -- .venv/bin/python /tmp/y2_q6_planar_shared4r6_high_trace.py", "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4, 6, 2, true>", "hits": 120, "threads": 128, "vgpr": 200, "lds_bytes": 16384, "scratch_bytes": 0, "median_duration_ns": 3666157.5},
+  "raw": {"leaf": "/tmp/y3-q6-shared4r6-pair-final-screen.json", "full_wall": "/tmp/y3-q6-shared4r6-pair-high-full-pair.json", "rocprof": "/tmp/y3-q6-shared4r6-pair-rocprof"},
+  "decision": "Retain as the default shared4r6 body. All measured full walls improve with unchanged tokens, exact output is preserved, and the pre-pair body remains an explicit strict fallback. Publish tracked-clean C1-C8 collateral in the follow-up benchmark unit."
+}
