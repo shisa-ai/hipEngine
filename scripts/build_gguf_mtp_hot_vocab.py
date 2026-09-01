@@ -152,6 +152,10 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         "kind": HOT_VOCAB_KIND,
         "model": {
             "path": str(Path(args.model)),
+            "architecture": info.metadata.get("general.architecture"),
+            "basename": info.metadata.get("general.basename"),
+            "block_count": info.metadata.get("qwen35.block_count"),
+            "file_type": info.file_type_name,
             "vocab_size": vocab_size,
             "tokenizer_tokens_sha256": gguf_tokenizer_tokens_sha256(info),
             "output_weight": next(

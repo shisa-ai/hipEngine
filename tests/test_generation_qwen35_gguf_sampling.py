@@ -517,6 +517,19 @@ def test_gguf_exact_gfx1151_qwen38_rejected_artifact_falls_back_to_bf16(
     assert generator.kv_capability_provenance["promotion_eligible"] is False
 
 
+def test_gguf_mtp_hot_vocab_defaults_only_in_production_with_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", raising=False)
+    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("production") == "auto"
+    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("strict") is None
+
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "0")
+    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("production") is None
+    monkeypatch.setenv("HIPENGINE_GGUF_MTP_HOT_VOCAB", "/tmp/custom.json")
+    assert qwen35_gguf._gguf_mtp_hot_vocab_setting("strict") == "/tmp/custom.json"
+
+
 def test_gguf_mtp_server_defer_verify_scatter_default_on_with_opt_out(monkeypatch) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_MTP_SERVER_DEFER_VERIFY_SCATTER", raising=False)
     assert qwen35_gguf._gguf_mtp_server_defer_verify_scatter_enabled() is True
