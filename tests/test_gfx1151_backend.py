@@ -916,7 +916,7 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     ) == 8
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_C2_PACKED_PREFILL_MAX_ROWS", 1
-    ) == 1
+    ) == 8
     assert GGUF_DIRECT_RESIDENT_LINEAR_STATE is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
@@ -924,6 +924,15 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_DIRECT_RESIDENT_LINEAR_STATE", False
     ) is False
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY", {}
+    ) == {
+        "enabled_env": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE",
+        "enabled_default": True,
+    }
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY", {}
+    ) == {}
     assert GGUF_FUSED_LINEAR_STATE_TRANSFER is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False
