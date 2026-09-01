@@ -1118,7 +1118,7 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       FFN GR reads/writes, `attn_qkv`, `attn_gate`, `ssm_out`, QSA projections,
       casts, and elementwise tails. Exact per-layer roles and kernel symbols are
       retained from the fresh current-production trace.
-- [ ] Evaluate an exact F32 router+stable-top-10 owner so 512 router logits are
+- [x] Evaluate an exact F32 router+stable-top-10 owner so 512 router logits are
       not written and reread when the public path only needs deterministic
       routing. Keep the full-logit primitive for diagnostics. The retained
       multirow producer now reuses each F32 weight row across four prompt rows,
