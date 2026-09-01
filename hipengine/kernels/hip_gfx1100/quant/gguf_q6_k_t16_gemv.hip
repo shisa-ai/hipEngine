@@ -1858,7 +1858,11 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_kernel(
 // payload groups each K4/column-quartet as four QL01 bytes, four QL23 bytes,
 // then four QH bytes. Every row/output retains the legacy col8 K traversal,
 // integer coefficient product, FP32 FMA stream, wave tree, and BF16 boundary.
-template <typename out_t, int ROW_TILE, bool USE_DPP_REDUCTION = false>
+template <
+    typename out_t,
+    int ROW_TILE,
+    bool USE_DPP_REDUCTION = false,
+    bool HOIST_D = false>
 __global__ __launch_bounds__(128, 4)
 void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
     const uint16_t* __restrict__ x,
@@ -1888,6 +1892,14 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
     const int64_t k_base = blk * QK_K;
     const int8_t* __restrict__ scales =
         reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+    float d_cache[kTileCols];
+    if constexpr (HOIST_D) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        d_cache[local_col] = fp16_bytes_to_float(
+            tile + Q6_T16_D_OFFSET + (col_base + local_col) * 2);
+      }
+    }
     for (int k_in_block = tid; k_in_block < QK_K;
          k_in_block += blockDim.x) {
       const int g16 = k_in_block >> 4;
@@ -1924,8 +1936,9 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
           const uint8_t high =
               (high_packed >> (2 * col4)) & 0x03u;
           const int q_i = static_cast<int>(low | (high << 4)) - 32;
-          const float d =
-              fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+          const float d = HOIST_D
+              ? d_cache[local_col]
+              : fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
           const int scale_i =
               static_cast<int>(scales[g16 * T16_COLS + col]);
           const float w = d * static_cast<float>(scale_i * q_i);
@@ -2434,6 +2447,32 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
   return hipGetLastError();
 }
 
+template <typename out_t>
+int launch_q6_t16_qmicro_planar_rowtile_col8_hoist_d_r6(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 6 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  hipLaunchKernelGGL(
+      (q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<
+          out_t, 6, false, true>),
+      grid, block, 0, stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<out_t*>(out), rows, in_features, out_features);
+  return hipGetLastError();
+}
+
 template <bool ADD_RESIDUAL>
 int launch_q6_t16_qmicro_planar_q8_1_dp4a(
     const void* xq,
@@ -2616,6 +2655,14 @@ hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
         x, tiles, out, rows, in_features, out_features, stream);
   }
   return launch_q6_t16_qmicro_planar<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_hoist_d_r6_bf16_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_rowtile_col8_hoist_d_r6<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
