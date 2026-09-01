@@ -811,6 +811,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   slabs and is bit-exact/one-sweep, but rows288 K5120/N6144 regresses
   **55.1%** versus shared-B2W2; FP32 partial spill traffic is rejected.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-lds-accum384-rejected.json).
+  Register-resident `<3 output tiles, 8 waves, 3 row tiles/wave>` succeeds
+  narrowly: rows288-384 on three measured shapes is one-sweep and bit-exact,
+  improves nine leaf cells **6.25-16.24%**, and cuts complete rows288 tick wall
+  **2.65%**. Retained as a partial Y1 win; rows385-1024 remain open.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json).
 - [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured

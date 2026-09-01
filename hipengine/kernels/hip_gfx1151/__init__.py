@@ -50,6 +50,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
@@ -237,6 +238,13 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
         and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
     ):
         fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS
+        <= row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out
     elif (
         GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
         < row_count
@@ -1532,6 +1540,13 @@ GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES = frozenset(
 )
 GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES = frozenset(
     GGUF_Q4_T16_DENSE_LOWM_SHAPES - {(5_120, 12_288)}
+)
+# Y1 exact one-sweep row band. Eight waves x three row tiles cover 384 rows
+# while retaining the parent's 48-column ownership. Rows288/320/384 actual-
+# weight screens admit only these three consistently positive shapes.
+GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS = 288
+GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 12_288), (5_120, 17_408)}
 )
 GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS = 96
 GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS = 128
@@ -2886,6 +2901,10 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         (
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
             gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
         ),
     ):
         key = KernelKey(BACKEND, "linear", "gguf_q4_k_t16_v1", variant)

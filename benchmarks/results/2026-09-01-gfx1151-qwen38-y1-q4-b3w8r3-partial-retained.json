@@ -1,0 +1,226 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y1-q4-b3w8r3-partial-retained",
+  "created_at": "2026-09-01T08:04:00Z",
+  "status": "validated_partial_retention_pending_full_c1c8",
+  "source_commit_before_unit": "3dcafbc64",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "cpu_apu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "variant": "t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
+    "geometry": "48 output columns, 8 waves, 3 row tiles/wave, 384-row capacity",
+    "scope": {
+      "rows_min": 288,
+      "rows_max": 384,
+      "shapes": [
+        [
+          17408,
+          5120
+        ],
+        [
+          5120,
+          12288
+        ],
+        [
+          5120,
+          17408
+        ]
+      ]
+    },
+    "strict_fallback": "existing gfx1151 periodic shared-B selector",
+    "arithmetic": "same per-output K16 WMMA order and direct BF16 store"
+  },
+  "microbench": [
+    {
+      "rows": 288,
+      "in_features": 17408,
+      "out_features": 5120,
+      "control_owner": "shared_b2w2",
+      "control_ms": 3.3238010946661234,
+      "candidate_ms": 2.9583959840238094,
+      "improvement_pct": 12.351460474378918,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 288,
+      "in_features": 5120,
+      "out_features": 12288,
+      "control_owner": "shared_b",
+      "control_ms": 2.337838988751173,
+      "candidate_ms": 2.083874074742198,
+      "improvement_pct": 12.187152625352082,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 288,
+      "in_features": 5120,
+      "out_features": 17408,
+      "control_owner": "shared_b2w2",
+      "control_ms": 3.1506421510130167,
+      "candidate_ms": 2.9651839286088943,
+      "improvement_pct": 6.254526763576829,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 320,
+      "in_features": 17408,
+      "out_features": 5120,
+      "control_owner": "shared_b2w2",
+      "control_ms": 3.635450964793563,
+      "candidate_ms": 3.15042189322412,
+      "improvement_pct": 15.395686292449785,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 320,
+      "in_features": 5120,
+      "out_features": 12288,
+      "control_owner": "shared_b",
+      "control_ms": 2.562109846621752,
+      "candidate_ms": 2.3064010310918093,
+      "improvement_pct": 11.086919060597822,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 320,
+      "in_features": 5120,
+      "out_features": 17408,
+      "control_owner": "shared_b2w2",
+      "control_ms": 3.4320810809731483,
+      "candidate_ms": 3.160982159897685,
+      "improvement_pct": 8.57641414478081,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 384,
+      "in_features": 17408,
+      "out_features": 5120,
+      "control_owner": "shared_b2w2",
+      "control_ms": 3.7329739425331354,
+      "candidate_ms": 3.2113571651279926,
+      "improvement_pct": 16.242876471958944,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 384,
+      "in_features": 5120,
+      "out_features": 12288,
+      "control_owner": "shared_b",
+      "control_ms": 2.5723399594426155,
+      "candidate_ms": 2.2756329271942377,
+      "improvement_pct": 13.038439930389178,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    {
+      "rows": 384,
+      "in_features": 5120,
+      "out_features": 17408,
+      "control_owner": "shared_b2w2",
+      "control_ms": 3.551723901182413,
+      "candidate_ms": 3.085169941186905,
+      "improvement_pct": 15.122471983375373,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    }
+  ],
+  "complete_rows288_tick": {
+    "control_wall_ms": 1169.002112,
+    "candidate_wall_ms": 1138.043415,
+    "improvement_pct": 2.7203441091919744,
+    "control_gpu_ms": 1168.997314453125,
+    "candidate_gpu_ms": 1138.0374755859375,
+    "control_next_token_id": 15685,
+    "candidate_next_token_id": 15685
+  },
+  "rocprof": {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 8, 3>",
+    "vgpr": 224,
+    "lds_bytes": 24576,
+    "scratch_bytes": 0,
+    "workgroup_threads": 256,
+    "grid_y": 1,
+    "sample_duration_ms": 3.133796
+  },
+  "commands": {
+    "microbench": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/gguf_q4_t16_dense_prefill_owner_microbench.py --rows <288|320|384> --in-features <K> --out-features <N> --warmup 1 --iters 3 --json /tmp/<artifact>.json",
+    "full_tick": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/y1_b3w8r3_rows288_full_pair.py",
+    "profile": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/y1-b3w8r3-final-rocprof -- .venv/bin/python scripts/gguf_q4_t16_dense_prefill_owner_microbench.py --rows 288 --in-features 17408 --out-features 5120 --warmup 0 --iters 1 --json /tmp/y1-b3w8r3-final-profile.json"
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y1-b3w8r3-final-r288-k17408-n5120.json",
+      "sha256": "dcee7833362671260d8b7df6da8e34738890ca0ea65ce838d585075674274114",
+      "bytes": 2198
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r288-k5120-n12288.json",
+      "sha256": "925675f73c9611b947ca51feeb63a5848de1caf569e1f8b3a7c050749dab664e",
+      "bytes": 2997
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r288-k5120-n17408.json",
+      "sha256": "f71b3219f2c33e6ceecd51dac2a77c93f7cf5090aca59e9c3e5499f0863bcd99",
+      "bytes": 3000
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r320-k17408-n5120.json",
+      "sha256": "7e72311163f2c35b2df06d6cbfebc84558febd605c1dc65d526ffd6790bcdb8c",
+      "bytes": 2997
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r320-k5120-n12288.json",
+      "sha256": "abed3202bd8e4cbe8680d091b0aeb5375eac06c39ac264e472c16a1ff431806f",
+      "bytes": 3007
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r320-k5120-n17408.json",
+      "sha256": "dea4e51223bd49094ac3c1d03484520561ae9786c5494655ab40d46c7e98a24b",
+      "bytes": 2998
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r384-k17408-n5120.json",
+      "sha256": "eeb8877f1218af02a2f44741ff16dd0ac59bfed5569c2ed46e36f974c41f66a7",
+      "bytes": 2996
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r384-k5120-n12288.json",
+      "sha256": "9695ec775510acdff13467623bbd4bb0b21532154f2b9014d91a74946188ede3",
+      "bytes": 3003
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-r384-k5120-n17408.json",
+      "sha256": "8bc7a957b139a03e153ca8a97d24150a0e1712cafa211031747ca185370e05b3",
+      "bytes": 2993
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-rows288-full-pair.json",
+      "sha256": "92fab8e142ade3730073712a4818bef09cf505a6a0d59d16c1aa23603c9a4991",
+      "bytes": 199217
+    },
+    {
+      "path": "/tmp/y1-b3w8r3-final-rocprof/gfx1151/2308297_kernel_trace.csv",
+      "sha256": "2d6d17ea3f5a8657c3ab5e92a2e21febe830c2665fd369e97cd7c011707184f3",
+      "bytes": 2302
+    }
+  ],
+  "limitations": [
+    "Y1 remains open: rows385-1024 retain 2-4 Q4 sweeps.",
+    "Frozen C1-C8 collateral run follows from the committed clean source before performance promotion."
+  ]
+}
