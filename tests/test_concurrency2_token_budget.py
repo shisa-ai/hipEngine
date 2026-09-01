@@ -62,6 +62,7 @@ def test_execution_planner_lowers_every_logical_width_through_c32(logical_c: int
     plan = plan_execution_groups(_work(logical_c), key_resolver=lambda request_id: _key())
 
     assert isinstance(plan, ExecutionPlan)
+    assert all(group.work.declared_logical_c == logical_c for group in plan.groups)
     assert tuple(
         request_id
         for group in plan.groups

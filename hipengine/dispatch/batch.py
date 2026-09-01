@@ -131,10 +131,15 @@ class WorkItem:
     tree_parents: tuple[int, ...] = ()
     slot_ids: tuple[int, ...] = ()
     active_mask: tuple[bool, ...] = ()
+    declared_logical_c: int = 0
 
     def __post_init__(self) -> None:
         if not self.request_ids:
             raise ValueError("work item must include at least one request")
+        logical_c = int(self.declared_logical_c) or len(self.request_ids)
+        if logical_c < len(self.request_ids):
+            raise ValueError("declared_logical_c cannot be smaller than request_ids")
+        object.__setattr__(self, "declared_logical_c", logical_c)
         if not self.row_to_request:
             raise ValueError("work item must include row_to_request metadata")
         known = set(self.request_ids)
