@@ -884,10 +884,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   while **160/160 exact** and -0.11% MTP wall, regresses aggregate AR wall
   **0.62%**; both high-row routes are rejected and removed.
   [`Q5 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json),
-  A narrower Q5 rows65-80 admission retains exact `<6,1,2>` while excluding
-  the weaker rows81-96 band: rows72 complete wall falls **394.407 -> 388.301
-  ms (-1.55%)**, token unchanged. Trace confirms 144 gridY1 hits, 192 threads,
-  VGPR72, LDS16 KiB, scratch0. Tracked-clean collateral remains pending.
+  A narrower Q5 rows65-80 admission is exact and lowers rows72 wall **1.55%**,
+  but tracked-clean collateral regresses aggregate wall **0.53% AR / 0.04%
+  MTP** despite 160/160 exact cells. Its route/export are removed; this family
+  is blocked by complete-suite wall regression rather than local leaf speed.
   [`Q5 rows65-80 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained.json),
   [`Q5 rows65-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json),
   [`Q5 rows1024 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json),

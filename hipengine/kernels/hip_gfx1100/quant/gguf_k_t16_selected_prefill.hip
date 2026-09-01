@@ -2644,13 +2644,6 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
-extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared6r1_bf16_bf16_out(
-    const uint16_t* x, const uint8_t* tiles, uint16_t* out, int64_t rows,
-    int64_t in_features, int64_t out_features, hipStream_t stream) {
-  return launch_q5_t16_dense_wmma_prefill_shared_bf16<6, 1>(
-      x, tiles, out, rows, in_features, out_features, stream);
-}
-
 extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,

@@ -91,9 +91,6 @@ _Q4_DENSE_UNEQUAL_DUAL_WMMA_BF16 = (
 _Q5_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out"
 )
-_Q5_DENSE_WMMA_SHARED6R1_BF16 = (
-    "hipengine_gguf_q5_k_t16_wmma_prefill_shared6r1_bf16_bf16_out"
-)
 _Q5_DENSE_WMMA_SHARED8R3_BF16 = (
     "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out"
 )
@@ -885,21 +882,6 @@ def gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
     )
 
 
-def gguf_q5_k_t16_wmma_prefill_shared6r1_bf16_bf16_out(
-    x_ptr: int, tiles_ptr: int, out_ptr: int, rows: int,
-    in_features: int, out_features: int, *, stream: int = 0,
-    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
-    tile_m: int | None = None, tile_n: int | None = None,
-) -> None:
-    """Launch the six-wave, one-row-tile shared Q5T16 owner."""
-    del tile_m, tile_n
-    _launch_dense_t16(
-        _Q5_DENSE_WMMA_SHARED6R1_BF16, x_ptr, tiles_ptr, out_ptr, rows,
-        in_features, out_features, stream=stream, library=library,
-        runtime=runtime,
-    )
-
-
 def gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1456,7 +1438,6 @@ __all__ = [
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
-    "gguf_q5_k_t16_wmma_prefill_shared6r1_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
