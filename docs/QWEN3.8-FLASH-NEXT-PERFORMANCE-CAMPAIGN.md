@@ -993,8 +993,15 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       **0.569/0.581/0.592/0.586 s**. This confirms impact but does not overturn
       the same-mechanism negative; a materially new owner is required. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
-- [ ] Fuse route scaling/ordered accumulation into Q8 down only if the declared
-      strict/T2 contract passes. (Not attempted.)
+- [x] Fuse route scaling/ordered accumulation into Q8 down only if the declared
+      strict/T2 contract passes. **Blocked before implementation:** Q8 down has
+      the same expert-major BF16 publication versus token-major ordered-FMA
+      ownership boundary as Q5. Preweighting rounds early and atomics lose
+      top-k order, so no strict candidate was admitted; no T2 contract was
+      declared merely to close the checkbox. Keep the primitive chain. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
 - [x] Run the complete 450-row/three-repeat packet, tasks, physical c2,
       lifecycle, paired p512/p1024, and the canonical p4096 gate. Bind only
       certified scopes. The 450-row/three-repeat numerical, state, task-screen,
