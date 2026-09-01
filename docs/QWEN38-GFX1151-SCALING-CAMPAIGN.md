@@ -871,8 +871,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Q6 rows49-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json),
   [`Q6 high-grid artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-high-retained.json),
   Q5 high-row shared8r3 is exact and 1.24x/1.23x faster at rows536/1024,
-  but complete rows536 wall regresses **0.07%** and is scoped out; rows1024
-  alone is retained at **3050.717->3045.508 ms (-0.17%)**, same token.
+  but complete rows536 wall regresses **0.07%**. Rows1024 improves its tick
+  **3050.717->3045.508 ms (-0.17%)**, but tracked-clean C1-C8 collateral,
+  while **160/160 exact** and -0.11% MTP wall, regresses aggregate AR wall
+  **0.62%**; both high-row routes are rejected and removed.
   [`Q5 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json),
   [`Q5 rows1024 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json),
   [`GDN blocker`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-gdn-no-multiplicity-blocker.json).
