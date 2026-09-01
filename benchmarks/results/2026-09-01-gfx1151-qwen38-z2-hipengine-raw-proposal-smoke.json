@@ -1,0 +1,259 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z2_hipengine_raw_proposal_smoke",
+  "date": "2026-09-01",
+  "status": "capture_path_validated",
+  "performance_claim": false,
+  "source_commit": "f1c016fd1",
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "runtime_profile": {
+    "resolved": "production",
+    "manifest": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
+  },
+  "protocol": {
+    "context": "code_merge_intervals initial 40 raw token IDs",
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "diagnostic": "synchronize and D2H materialize device proposal immediately after launch; correctness diagnostic only"
+  },
+  "c1": {
+    "prompt_accounting": {
+      "schema_version": 1,
+      "input_type": "token_ids",
+      "prompt_token_ids_sha256": [
+        "017e1f666c332549c7915a4bba8bc5ba709c636e553d945737282543b1c21547"
+      ],
+      "prompt_tokens": [
+        40
+      ],
+      "total_prompt_tokens": 40
+    },
+    "route": {
+      "requested_route": "speculative_mtp",
+      "selected_route": "speculative_mtp",
+      "reason": "diagnostic_physical_gguf_mtp",
+      "k0_class": "not_k0",
+      "static_eligibility": {
+        "state": "speculative_capable",
+        "eligible": true,
+        "reason": "diagnostic_physical_gguf_mtp",
+        "max_candidate_count": 3,
+        "max_realized_group_rows": 8,
+        "automatic_eligible": false,
+        "strict_fallback_key": "gguf_target_ar",
+        "evidence_key": "gguf-c1-c8-generation2-diagnostic",
+        "evidence_fingerprint": "sha256:bf1438abc5428f02b25b8e21c9aa7ddcefe55b50bfd288bcbeb5debd2a02fcde",
+        "evidence_artifacts": []
+      },
+      "static_eligibility_fingerprint": "sha256:55f32966f6fe5fd6b019a0f4b73a95d1e89705e9717c43f3e706cbde6cd234e8",
+      "static_intent_allowed": true,
+      "policy_cell": "gguf-c1-c8-generation2-diagnostic",
+      "selected_candidate_count": 3,
+      "policy_reason": "diagnostic_physical_gguf_mtp",
+      "policy_fingerprint": "sha256:e364139aeac5e9dea818d4d2961cae28431ef3e7c80874ffa58050ee19f7fd75",
+      "realized_group_rows": 1,
+      "output_horizon_tokens": 24,
+      "exact_default_required": true,
+      "automatic_eligible": false,
+      "evidence": "model_plugin_speculative_mtp_serving_plan"
+    },
+    "first_k3": [
+      12305,
+      198,
+      727
+    ],
+    "generated_token_ids": [
+      71093,
+      8678,
+      13,
+      198,
+      2,
+      220,
+      17,
+      15,
+      17,
+      15,
+      271,
+      91,
+      198,
+      2,
+      220,
+      17,
+      15,
+      17,
+      15,
+      271,
+      91,
+      198,
+      2,
+      34339
+    ]
+  },
+  "c2": {
+    "prompt_accounting": [
+      {
+        "schema_version": 1,
+        "input_type": "token_ids",
+        "prompt_token_ids_sha256": [
+          "017e1f666c332549c7915a4bba8bc5ba709c636e553d945737282543b1c21547"
+        ],
+        "prompt_tokens": [
+          40
+        ],
+        "total_prompt_tokens": 40
+      },
+      {
+        "schema_version": 1,
+        "input_type": "token_ids",
+        "prompt_token_ids_sha256": [
+          "017e1f666c332549c7915a4bba8bc5ba709c636e553d945737282543b1c21547"
+        ],
+        "prompt_tokens": [
+          40
+        ],
+        "total_prompt_tokens": 40
+      }
+    ],
+    "routes": [
+      {
+        "requested_route": "speculative_mtp",
+        "selected_route": "default",
+        "reason": "physical_group_not_qualified",
+        "k0_class": "transitional_k0",
+        "static_eligibility": {
+          "state": "speculative_capable",
+          "eligible": true,
+          "reason": "diagnostic_physical_gguf_mtp",
+          "max_candidate_count": 3,
+          "max_realized_group_rows": 8,
+          "automatic_eligible": false,
+          "strict_fallback_key": "gguf_target_ar",
+          "evidence_key": "gguf-c1-c8-generation2-diagnostic",
+          "evidence_fingerprint": "sha256:bf1438abc5428f02b25b8e21c9aa7ddcefe55b50bfd288bcbeb5debd2a02fcde",
+          "evidence_artifacts": []
+        },
+        "static_eligibility_fingerprint": "sha256:55f32966f6fe5fd6b019a0f4b73a95d1e89705e9717c43f3e706cbde6cd234e8",
+        "static_intent_allowed": true,
+        "policy_cell": "gguf-c1-c8-generation2-diagnostic",
+        "selected_candidate_count": 0,
+        "policy_reason": "diagnostic_physical_gguf_mtp",
+        "policy_fingerprint": "sha256:e364139aeac5e9dea818d4d2961cae28431ef3e7c80874ffa58050ee19f7fd75",
+        "realized_group_rows": 2,
+        "output_horizon_tokens": 24,
+        "exact_default_required": true,
+        "automatic_eligible": false,
+        "evidence": "model_plugin_speculative_mtp_serving_plan"
+      },
+      {
+        "requested_route": "speculative_mtp",
+        "selected_route": "default",
+        "reason": "physical_group_not_qualified",
+        "k0_class": "transitional_k0",
+        "static_eligibility": {
+          "state": "speculative_capable",
+          "eligible": true,
+          "reason": "diagnostic_physical_gguf_mtp",
+          "max_candidate_count": 3,
+          "max_realized_group_rows": 8,
+          "automatic_eligible": false,
+          "strict_fallback_key": "gguf_target_ar",
+          "evidence_key": "gguf-c1-c8-generation2-diagnostic",
+          "evidence_fingerprint": "sha256:bf1438abc5428f02b25b8e21c9aa7ddcefe55b50bfd288bcbeb5debd2a02fcde",
+          "evidence_artifacts": []
+        },
+        "static_eligibility_fingerprint": "sha256:55f32966f6fe5fd6b019a0f4b73a95d1e89705e9717c43f3e706cbde6cd234e8",
+        "static_intent_allowed": true,
+        "policy_cell": "gguf-c1-c8-generation2-diagnostic",
+        "selected_candidate_count": 0,
+        "policy_reason": "diagnostic_physical_gguf_mtp",
+        "policy_fingerprint": "sha256:e364139aeac5e9dea818d4d2961cae28431ef3e7c80874ffa58050ee19f7fd75",
+        "realized_group_rows": 2,
+        "output_horizon_tokens": 24,
+        "exact_default_required": true,
+        "automatic_eligible": false,
+        "evidence": "model_plugin_speculative_mtp_serving_plan"
+      }
+    ],
+    "first_k3_by_request": [
+      [
+        12305,
+        198,
+        727
+      ],
+      [
+        12305,
+        198,
+        727
+      ]
+    ],
+    "generated_token_ids": [
+      [
+        71093,
+        12305,
+        198,
+        727,
+        10562,
+        87682,
+        1494,
+        40798,
+        1590,
+        198,
+        262,
+        413,
+        524,
+        26126,
+        25,
+        198,
+        285,
+        460,
+        2958,
+        198,
+        262,
+        10300,
+        87682,
+        283
+      ],
+      [
+        71093,
+        12305,
+        198,
+        727,
+        10562,
+        87682,
+        1494,
+        40798,
+        1590,
+        198,
+        262,
+        413,
+        524,
+        26126,
+        25,
+        198,
+        285,
+        460,
+        2958,
+        198,
+        262,
+        10300,
+        87682,
+        283
+      ]
+    ]
+  },
+  "comparison_to_laurent_smoke": {
+    "laurent_first_k3": [
+      12305,
+      198,
+      727
+    ],
+    "c1_exact": true,
+    "c2_exact": true
+  },
+  "raw_source": {
+    "path": "/tmp/q38-z2-teacher/hip-smoke.json",
+    "sha256": "88f725907f7a85d322331a9384bfa1cd0ba05da63d8553cadb017d44073e1b03"
+  },
+  "decision": "Exact token-ID accounting and synchronized diagnostic proposal materialization work on the production physical C1/C2 route. Full capture may use max_tokens=4 with a documented diagnostic admission override; proposal timing is not measured."
+}

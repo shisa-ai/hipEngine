@@ -392,7 +392,13 @@ control.
   `code_markdown_table` position 13 (6943→83889); C2 diverges at
   `general_en_explain` position 20 (7255→191280). Those contexts are bounded
   non-comparable rather than counted as proposal disagreement. hipEngine
-  capture is still required before this item closes.
+  capture is still required before this item closes. A production-route raw
+  token smoke
+  ([artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-hipengine-raw-proposal-smoke.json))
+  confirms exact prompt accounting and diagnostic device-proposal
+  materialization. Initial C1 and both C2 rows exactly match Laurent's first
+  K3 `[12305, 198, 727]`. The diagnostic adds a synchronization/readback and
+  carries no timing claim; the full 480-context capture remains open.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
