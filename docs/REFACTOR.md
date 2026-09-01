@@ -37,10 +37,6 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   registered WG32 strict parent. A separate physical-registry-key extension was
   removed after marker-scoped C8 evidence showed no ownership change.
-- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_FFN_DOWN=1` is the default-off arm for
-  extending the exact two-wave R6 owner to Q4 FFN-down K17408/N5120. Promote
-  it into the main shape set only after the expected 170.7 calls/cycle transfer
-  and complete category+heldout gate; otherwise remove the experimental policy.
 - `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48=0` remains same-build rollback for
   the retained physical-R36 three-active-wave fused gate/up+SiLU owner. Remove
   the environment/cache policy after the next stable milestone audit; keep the

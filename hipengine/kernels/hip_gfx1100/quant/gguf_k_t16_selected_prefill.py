@@ -107,7 +107,6 @@ _ENV_SHARED_B_ROW64_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
 _SHARED_B_ROW64_MAX_ROWS_RESOLVED: int | None = None
 _ENV_Q4_ROWTILE16_W2 = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2"
 _Q4_ROWTILE16_W2_RESOLVED: bool | None = None
-_Q4_ROWTILE16_W2_FFN_DOWN_RESOLVED: bool | None = None
 
 
 def _q4_rowtile16_w2_enabled() -> bool:
@@ -131,29 +130,6 @@ def _q4_rowtile16_w2_enabled() -> bool:
     return _Q4_ROWTILE16_W2_RESOLVED
 
 
-def _q4_rowtile16_w2_ffn_down_enabled(policy: dict[str, object]) -> bool:
-    """Resolve the independently gated physical FFN-down shape."""
-
-    global _Q4_ROWTILE16_W2_FFN_DOWN_RESOLVED
-    if _Q4_ROWTILE16_W2_FFN_DOWN_RESOLVED is None:
-        enabled_env = policy.get("enabled_env")
-        if not isinstance(enabled_env, str) or not enabled_env:
-            return False
-        default = bool(policy.get("enabled_default", False))
-        raw = os.environ.get(
-            enabled_env,
-            "1" if default else "0",
-        ).strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            value = True
-        elif raw in {"0", "false", "no", "off"}:
-            value = False
-        else:
-            raise ValueError(f"{enabled_env} must be a boolean value")
-        _Q4_ROWTILE16_W2_FFN_DOWN_RESOLVED = value
-    return _Q4_ROWTILE16_W2_FFN_DOWN_RESOLVED
-
-
 def _q4_physical_rowtile(
     rows: int,
     shape: tuple[int, int],
@@ -166,19 +142,6 @@ def _q4_physical_rowtile(
     if (
         preferred == "dense_rowtile16_w2_bf16_bf16_out"
         and int(rows) in admitted_rows
-    ):
-        return gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
-    experimental_shapes = policy.get("experimental_shapes", {})
-    experimental = (
-        experimental_shapes.get(shape)
-        if isinstance(experimental_shapes, dict)
-        else None
-    )
-    if (
-        isinstance(experimental, dict)
-        and experimental.get("variant") == "dense_rowtile16_w2_bf16_bf16_out"
-        and int(rows) in experimental.get("rows", ())
-        and _q4_rowtile16_w2_ffn_down_enabled(experimental)
     ):
         return gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
     return gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
