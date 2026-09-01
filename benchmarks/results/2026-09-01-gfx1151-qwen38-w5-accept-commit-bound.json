@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w5_accept_commit_bound",
+  "status": "blocked_below_threshold",
+  "performance_claim": false,
+  "measured": {
+    "provider_plus_selected_commit_ms_per_cycle": {
+      "C6": 11.8953568453,
+      "C8": 13.9894039894
+    },
+    "71_cycle_owned_s": {
+      "C6": 0.8445703360193874,
+      "C8": 0.9932476832473185
+    },
+    "fraction_of_k3_wall": {
+      "C6": 0.0141732961,
+      "C8": 0.0135728543
+    },
+    "fraction_of_remaining_gap": {
+      "C6": 0.11321318177203583,
+      "C8": 0.11185221658190522
+    },
+    "remaining_gap_s": {
+      "C6": 7.46,
+      "C8": 8.88
+    }
+  },
+  "ownership": "The larger accept interval is 98% GPU-busy verifier drain and overlaps W1 target math; it cannot be credited again to W5. Distinct W5 ownership is provider-update plus selected commit.",
+  "decision": "Close W5 under its written drop rule. Distinct ownership is 1.42%/1.36% of wall (<2%); even zero cost covers only 11.3%/11.2% of remaining gaps. No fusion implementation justified."
+}

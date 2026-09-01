@@ -682,12 +682,14 @@ are not started.
   or fused top-1 policy would be T3 and can reduce acceptance, while zero cost
   still cannot close the objective, so implementation is not justified.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w4-proposal-bound.json).
-- [ ] W5 **Accept/commit stage fusion.** Fold acceptance + selected-state/KV
-  commit into the verify epilogue (N3/N4 device-state lineage,
-  [NATIVE_SPEC_CYCLE.md](NATIVE_SPEC_CYCLE.md)). M2i showed the accept window
-  is ~98% GPU-busy, so the win is stage/launch/sync-structure removal, not
-  host idle — size it with W0 before building; drop if the sized bound is
-  under ~2% of wall.
+- [x] W5 **Accept/commit stage fusion — below-threshold blocker.** W0 measures
+  distinct provider-update plus selected-commit ownership at 0.845/0.993 s
+  over 71 C6/C8 cycles, only 1.42%/1.36% of K3 wall and below W5's written 2%
+  drop threshold. Even free stages cover only 11.3%/11.2% of the remaining
+  gaps. The larger accept interval is 98% GPU-busy verifier drain already
+  owned by W1; crediting it here would double-count target math. No fusion is
+  justified.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w5-accept-commit-bound.json).
 - [ ] W6 **Width-6/8 prompt-streaming engagement.** Iteration 5's C6
   streaming repeated ~+4.0% (38.616/38.599/38.602) and was reverted only
   because C8 never engaged and failed the compound minimum. Extend engagement
