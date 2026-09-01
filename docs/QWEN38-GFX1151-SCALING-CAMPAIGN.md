@@ -1006,8 +1006,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   strict fallback. Trace confirms 120 pair-kernel hits, 128 threads, VGPR200,
   LDS16 KiB, and scratch0. Tracked-clean C1-C8 collateral preserves **160/160
   control/candidate generated-ID rows**; aggregate wall changes **+0.16% AR /
-  -0.15% MTP**, and C8 MTP improves 0.24%, passing the collateral guard. Y3
-  remains open.
+  -0.15% MTP**, and C8 MTP improves 0.24%, passing the collateral guard. The
+  post-pair trace still sustains only **14.58/14.65/14.84 TF/s** at
+  rows288/536/1024. Matching the retained rows256 20.24 TF/s rate sizes
+  **45.9/83.8/152.9 ms**, or **4.63%/4.95%/5.54%** wall, so Y3 remains open.
+  The next exact screen uses one decode unit per four-column qmicro quartet.
+  [`Post-pair bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-post-pair-residual-bound.json).
   [`Pair result`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
   [`ISA analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json).
   [`Pipeline rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json).
