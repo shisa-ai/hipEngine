@@ -143,6 +143,7 @@ def test_packed_verify_norm_capture_writes_aligned_diagnostic_rows(
             capture["input_token_ids"], layout.input_token_ids
         )
         np.testing.assert_array_equal(capture["row_positions"], layout.row_positions)
+        np.testing.assert_array_equal(capture["active_mask"], layout.active_mask)
         np.testing.assert_array_equal(capture["request_ids"], (10, 20))
         np.testing.assert_array_equal(capture["transaction_ids"], (100, 200))
 
