@@ -15,6 +15,7 @@ from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.loading.gguf import GGUFReader
 from hipengine.loading.gguf_mtp_hot_vocab import (
     GGUFHotVocabSelection,
+    default_gguf_hot_vocab_path,
     load_gguf_hot_vocab_selection,
 )
 from hipengine.loading.materialize import (
@@ -342,16 +343,21 @@ def materialize_qwen35_gguf_nextn_weights(
             slot: borrowed[slot] if borrowed is not None and slot in borrowed else load(spec)
             for slot, spec in plan.fallback_specs.items()
         }
+        resolved_hot_vocab_path = (
+            default_gguf_hot_vocab_path(reader.info)
+            if hot_vocab_path == "auto"
+            else hot_vocab_path
+        )
         hot_vocab = (
             _materialize_hot_vocab(
                 reader,
                 plan.fallback_specs["lm_head"],
-                load_gguf_hot_vocab_selection(hot_vocab_path, reader.info),
+                load_gguf_hot_vocab_selection(resolved_hot_vocab_path, reader.info),
                 device=device,
                 runtime=runtime,
                 backend=str(backend),
             )
-            if hot_vocab_path is not None
+            if resolved_hot_vocab_path is not None
             else None
         )
     except Exception:

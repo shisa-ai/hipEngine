@@ -375,6 +375,18 @@ def _gguf_decode_graph_enabled() -> bool:
     return os.environ.get(_GGUF_DECODE_GRAPH_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _gguf_mtp_hot_vocab_setting(execution_profile: str) -> str | None:
+    """Resolve packaged production default, explicit map, or full-head rollback."""
+
+    raw = os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV)
+    if raw is None:
+        return "auto" if str(execution_profile) == "production" else None
+    value = raw.strip()
+    if value.lower() in {"", "0", "false", "off", "none"}:
+        return None
+    return value
+
+
 def _gguf_mtp_server_packed_prefill_enabled() -> bool:
     return os.environ.get(_GGUF_MTP_SERVER_PACKED_PREFILL_ENV, "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1508,7 +1520,9 @@ class Qwen35GGUFBringupGenerator:
         )
 
         self._ensure_shared_pools()
-        hot_vocab_path = os.environ.get(_GGUF_MTP_HOT_VOCAB_ENV, "").strip() or None
+        hot_vocab_path = _gguf_mtp_hot_vocab_setting(
+            str(getattr(self, "execution_profile", "strict"))
+        )
         key = (
             int(id(target.runtime)),
             "dense_nextn",

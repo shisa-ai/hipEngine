@@ -356,17 +356,17 @@ fallback count is not a success metric.
 
 ## Qwen3.8 NextN selected-vocabulary proposal head
 
-- Added 2026-08-31 as a default-off screen sourced from exllamav3 PR #303.
-  `HIPENGINE_GGUF_MTP_HOT_VOCAB=<artifact.json>` loads a tokenizer-hash-bound,
-  sorted individual-token map, repacks those Q6 output rows into a compact
-  planar-T16 proposal head, and maps the compact winner to the full token ID in
-  the registered stage-2 reduction. The full target head remains authoritative;
-  unset keeps the existing exact full-vocabulary proposal owner.
-- Removal trigger: reject and remove the loader/map/composite if the complete
-  counterbalanced C5-C8 category+heldout gate is not exact and non-regressive
-  after acceptance. If retained, replace the environment path with a model
-  plugin artifact declaration after one release checkpoint while preserving the
-  full-head registered fallback and tokenizer identity check.
+- Added 2026-08-31 as a screen sourced from exllamav3 PR #303 and promoted
+  2026-09-01 for Qwen3.8-27B `Q4_K_M` production. The packaged model/tokenizer-bound
+  131,072-row CJK-aware map repacks selected Q6 rows into a compact planar-T16
+  head; singleton and physical-batch reducers map winners to full token IDs on
+  device. The full target remains authoritative. Strict and
+  `HIPENGINE_GGUF_MTP_HOT_VOCAB=0` retain the exact full-vocabulary proposal
+  owner; an explicit path selects another validated map.
+- Removal trigger: after one release checkpoint, remove the environment path
+  override and retain a simple on/off rollback while preserving the packaged
+  model-plugin artifact, exact identity validation, and full-head registered
+  fallback.
 
 ## Server default-AR ready-cohort rollback
 
