@@ -1,0 +1,188 @@
+{
+  "schema": 1,
+  "kind": "rx7900xtx_bridgespec_feasibility_campaign",
+  "date": "2026-09-02",
+  "decision": "Retain the current hipEngine defaults. The BridgeSpec mechanism claims do not justify a new architecture route on this card: the 40,960-row draft head is a useful head micro-optimization but fails the full quality/promotion gate, graph capture is bounded by real kernel work, and K/V-only provider catch-up is already implemented. No public benchmark row changes.",
+  "source": {
+    "commit": "07f1ba6ae37e7d624c60239cafd51bea8d2beecf",
+    "tree": "clean detached worktree /tmp/hipengine-bridgespec-gpu1",
+    "bridge_reference": {
+      "repo": "https://github.com/syv-ai/qwen38-27b-rtx3090",
+      "commit": "c954724104a7856a07abb7031cc4af780ae7f5bf",
+      "license": "Apache-2.0"
+    }
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu_index": 1,
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "vram_bytes": 25753026560,
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "size_bytes": 17106773984
+  },
+  "b1_current_baseline": {
+    "protocol": "ten canonical prompts, D24, greedy, production/BF16, same-session AR exactness; forced C1/K3 uses resident capacity 1 because capacity 8 exceeds 24 GiB on the RX 7900 XTX; automatic C2/K2 uses capacity 2",
+    "unprofiled": {
+      "c1_k3": {
+        "ar_tok_s": 27.333640458379467,
+        "mtp_tok_s": 41.097410182961475,
+        "mtp_over_ar": 1.5035468929043645,
+        "exact_cells": 10,
+        "engaged_cells": 10
+      },
+      "c2_k2": {
+        "ar_tok_s": 43.958861354901714,
+        "mtp_tok_s": 63.086613312702184,
+        "mtp_over_ar": 1.4351284671223086,
+        "exact_cells": 10,
+        "engaged_cells": 10
+      }
+    },
+    "under_rocprof": {
+      "c1_k3": {
+        "ar_tok_s": 24.651611684145,
+        "mtp_tok_s": 38.444642203313364,
+        "mtp_over_ar": 1.5595184077980397,
+        "exact_cells": 10,
+        "engaged_cells": 10
+      },
+      "c2_k2": {
+        "ar_tok_s": 42.56508609897126,
+        "mtp_tok_s": 61.38425555931976,
+        "mtp_over_ar": 1.4421268975373538,
+        "exact_cells": 10,
+        "engaged_cells": 10
+      }
+    },
+    "ownership": {
+      "reading": "Full-process rocprof attribution remains dominated by the existing Q4 and Q6 T16 owners. This is evidence against opening another speculative local/cache GEMV geometry without a narrower stage-local win.",
+      "c1_k3_family_ms": {
+        "q4_t16": 7289.811075,
+        "q6_t16": 3268.916461,
+        "q5_t16": 732.180556
+      },
+      "c2_k2_family_ms": {
+        "q4_t16": 8628.4,
+        "q6_t16": 4091.7,
+        "q5_t16": 1546.5
+      }
+    },
+    "raw": {
+      "root": "/tmp/bridgespec-gpu1-b1",
+      "summary_sha256": "d452f7ea82ca5b136a8627e97b4920d932eaca163dd206feb582961f6e0ae941",
+      "c1_k3_warm_sha256": "20687bbd8f61b928085bc1bb9485023dfd3ca1250e36988c00a045753688447c",
+      "c1_k3_profile_sha256": "ec021698a12fe1de8ed66c8bdd190f5d478e472d6cb744891661d6313f453196",
+      "c2_k2_warm_sha256": "626c9c09674d991dc7d646056009d3bde6d586275894a219a9adff59f8f6dc1e",
+      "c2_k2_profile_sha256": "a75f5ab7b6ce02c86d21862e94bed162170ef65a8eae3c412dadde97e9366f74"
+    }
+  },
+  "b2_sliced_dflash_head": {
+    "protocol": "one prompt from each canonical category, D24, sequential exact target verification, DFlash2 B4 verification prefix, full 248,320-row Q6 target head versus BridgeSpec 40,960-row sorted token set, temporary compact-ID D2H/host-map/H2D included",
+    "selection": {
+      "rows": 40960,
+      "ordered_i32_sha256": "8490b42e79b3c339b2460e57ac9193ab51b8814812c6e058555c2f06ef55dfd4",
+      "json_sha256": "b64b6dfcf5441eb995ddf77d3d37b018e91b88c56ad1b4c5774ad8fbfac1c388"
+    },
+    "full": {
+      "tok_s": 10.708955829947024,
+      "mean_acceptance": 2.4615384615384612,
+      "mean_recall_at1": 0.7018020594965675,
+      "mean_recall_at16": 0.8828089244851257,
+      "score_calls": 40,
+      "score_total_ms": 107.02011547982693,
+      "score_mean_ms": 2.675502886995673,
+      "ar_exact": true
+    },
+    "slice40960": {
+      "tok_s": 11.865667411039064,
+      "mean_acceptance": 2.2727272727272725,
+      "mean_recall_at1": 0.6039759725400458,
+      "mean_recall_at16": 0.7197654462242562,
+      "score_calls": 49,
+      "score_total_ms": 81.26269280910492,
+      "score_mean_ms": 1.658422302226631,
+      "ar_exact": true
+    },
+    "slice_over_full_tok_s": 1.1080134795081849,
+    "same_output_ids_all_prompts": true,
+    "quality_blocker": "The restricted head changes draft candidates. Aggregate acceptance and recall regress, and Japanese mean acceptance falls from 1.8462 to 1.0909. More cycles erase part of the per-call head win. This fails the anti-gaming full-suite/category quality gate and is not promotable.",
+    "native_batch_verifier_blocker": "The B4 native verifier diagnostic returned INT_MAX token sentinels on the RX 7900 XTX; the binding B2 comparison therefore used the exact sequential target verifier. This is a separate existing diagnostic-path blocker, not evidence for the sliced head.",
+    "raw": {
+      "root": "/tmp/bridgespec-gpu1-b2",
+      "result_sha256": "32e275f5e49e9b0cdb7934269ae1e7fa1e078704b238085e887aded8f1c3f107",
+      "probe_sha256": "7480b7d24f4c852a380e715732db4e50415ec87d68559456f6abcf3bf9ceb39e"
+    }
+  },
+  "b3_complete_dflash_graph": {
+    "protocol": "real DFlash2 weights, fixed B8 geometry, context 32, ten measured cycles after two warmups; native 5-layer forward plus full-vocabulary top16 and selector; output-head scoring excluded because B2 measured it separately",
+    "unprofiled_ms_per_cycle": 17.225144244730473,
+    "profiled_ms_per_cycle": 17.618038598448038,
+    "marker_kernel_ms_per_cycle": 16.4524345,
+    "kernel_calls_per_cycle": 127.0,
+    "dominant_kernel_ms_per_cycle": {
+      "dense_bf16_wmma": 7.6014,
+      "top16": 4.2375,
+      "qkv_projection": 2.5407,
+      "selector_walk": 1.0998,
+      "selector_projection": 0.4377
+    },
+    "decision": "Do not open a graph-capture implementation. About 93% of profiled cycle wall is real device kernel time, so removing launch overhead cannot approach the claimed 5.7x graph compression. The live work is kernel/top16/selector math, not graph API overhead.",
+    "raw": {
+      "root": "/tmp/bridgespec-gpu1-b3",
+      "result_sha256": "0fc15326cdb8bd774ba2f9aae48577ffda7d16136f84d5d9be1875f8604baf98",
+      "trace_summary_sha256": "edf33bae708ca6d64ffa59b45d3dcfdc5d092e05eef125b1a2833d8a5da61a84"
+    }
+  },
+  "b4_provider_catchup": {
+    "protocol": "Qwen3.8 trailing NextN blk.64, twelve exact accepted-tail updates, existing full-block control versus existing kv_write_only branch, followed by full logits/top16/state check",
+    "unprofiled": {
+      "full_ms_per_token": 1.2614171331127484,
+      "kv_only_ms_per_token": 0.5579751450568438,
+      "speedup": 2.2607048795771028,
+      "saved_ms_per_token": 0.7034419880559047
+    },
+    "under_rocprof": {
+      "full_ms_per_token": 1.5886221081018448,
+      "kv_only_ms_per_token": 0.6596257444471121,
+      "speedup": 2.408368868976457,
+      "saved_ms_per_token": 0.9289963636547327,
+      "full_kernel_ms_per_token": 0.9287556666666666,
+      "kv_only_kernel_ms_per_token": 0.23644175,
+      "full_kernel_calls": 288,
+      "kv_only_kernel_calls": 168
+    },
+    "exact": {
+      "cache_before_follow": true,
+      "follow_token": true,
+      "follow_logit": true,
+      "follow_logits": true,
+      "follow_top16": true,
+      "state_after_follow": true
+    },
+    "decision": "Mechanism confirmed, but it is already implemented and used by current prompt/state-only catch-up paths. Do not claim it as a new BridgeSpec port. A future route-usage audit may check whether every accepted-tail owner reaches this branch.",
+    "raw": {
+      "root": "/tmp/bridgespec-gpu1-b4",
+      "result_sha256": "a554b75ab05e5ff75cf7209f51ab92008a22f0c797d9c2bcf9aeb944751e263c",
+      "trace_summary_sha256": "87b5d0d91871eb439744ef929b0262dd094b872d27b461e35a11edc6f194a91e"
+    }
+  },
+  "correctness": {
+    "b1": "20/20 ten-prompt arm cells exact and engaged across C1/K3 and automatic C2/K2",
+    "b2": "full and slice target outputs exact to same-session AR on all four categories; candidate quality regressed for slice",
+    "b3": "deterministic path hash across all measured cycles",
+    "b4": "byte-exact cache, full logits, top16, selected token/logit, and final state"
+  },
+  "limitations": [
+    "The RX 7900 XTX has 24 GiB; C1/K3 used resident capacity 1 rather than the W7900 capacity-8 diagnostic because capacity 8 OOMs on this card.",
+    "B1 family totals cover complete AR+MTP processes and establish current ownership, not stage-exclusive MTP kernel attribution.",
+    "B2 is the required four-category feasibility gate, not the final ten-prompt plus heldout promotion suite; its quality regression already rejects promotion.",
+    "The DFlash2 model files were downloaded from the pinned Apache-2.0 snapshot and remain local cache artifacts, not repository content."
+  ],
+  "performance_claim": false,
+  "public_rollup_change": false
+}
