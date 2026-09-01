@@ -33,11 +33,11 @@ should be removed or collapsed.
 - The prior C5-C8 MTP claim is retracted: a refreshed marker-scoped C8 trace
   records zero WG64 candidate launches and 1,024 WG32-parent launches per
   target cycle because the physical wrapper bypasses the canonical policy.
-- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=1` is default-off while a correctly
-  routed physical-wrapper candidate is qualified. Remove the policy entirely
-  on rejection; on retention, promote it only after candidate-symbol target
-  evidence plus the complete category/heldout gate. Keep the registered WG32
-  strict parent in either case.
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=1` now reaches the physical wrapper but
+  remains default-off pending candidate-symbol target evidence and the complete
+  category/heldout gate. Remove the policy entirely on rejection; on retention,
+  promote it only after both gates. Keep the registered WG32 strict parent in
+  either case.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 

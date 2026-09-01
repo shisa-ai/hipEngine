@@ -26,9 +26,11 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES,
+    GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
     launch_physical_rows6_chunked,
 )
 from hipengine.kernels.registry import KernelKey, register
@@ -100,6 +102,45 @@ _ENV_SINGLE_WAVE_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SINGLE_WAVE_MAX_ROWS"
 _SINGLE_WAVE_MAX_ROWS_RESOLVED: int | None = None
 _ENV_SHARED_B_ROW64_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
 _SHARED_B_ROW64_MAX_ROWS_RESOLVED: int | None = None
+_ENV_Q4_ROWTILE16_W2 = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2"
+_Q4_ROWTILE16_W2_RESOLVED: bool | None = None
+
+
+def _q4_rowtile16_w2_enabled() -> bool:
+    """Resolve the physical-wrapper two-wave screen once per process."""
+
+    global _Q4_ROWTILE16_W2_RESOLVED
+    if _Q4_ROWTILE16_W2_RESOLVED is None:
+        policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"]
+        default = bool(policy.get("enabled_default", False))
+        raw = os.environ.get(
+            _ENV_Q4_ROWTILE16_W2,
+            "1" if default else "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            value = True
+        elif raw in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(f"{_ENV_Q4_ROWTILE16_W2} must be a boolean value")
+        _Q4_ROWTILE16_W2_RESOLVED = value
+    return _Q4_ROWTILE16_W2_RESOLVED
+
+
+def _q4_physical_rowtile(
+    rows: int,
+    shape: tuple[int, int],
+):
+    policy = GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT["gguf_q4_k_t16_v1"]
+    preferred = policy.get("shapes", {}).get(shape)
+    admitted_rows = policy.get("rows_by_shape", {}).get(shape, ())
+    if (
+        _q4_rowtile16_w2_enabled()
+        and preferred == "dense_rowtile16_w2_bf16_bf16_out"
+        and int(rows) in admitted_rows
+    ):
+        return gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
+    return gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
 
 
 def _single_wave_max_rows(shape: tuple[int, int]) -> int:
@@ -356,13 +397,14 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES
         | GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES
     )
+    rowtile_fn = _q4_physical_rowtile(6, shape)
     if (
         int(rows) > 6
         and q4_t16_physical_extra_rowtiles_enabled()
         and int(rows) % 6 == 0
         and shape in rowtile_shapes
         and launch_physical_rows6_chunked(
-            gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
+            rowtile_fn,
             x_ptr,
             tiles_ptr,
             out_ptr,
@@ -400,12 +442,12 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         else:
             fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
     elif shape in GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES:
-        fn = gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+        fn = rowtile_fn
     elif (
         q4_t16_physical_extra_rowtiles_enabled()
         and shape in GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXTRA_ROWTILE_SHAPES
     ):
-        fn = gguf_q4_k_t16_dense_rowtile_bf16_bf16_out
+        fn = rowtile_fn
     elif shape in GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES:
         fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
     else:
