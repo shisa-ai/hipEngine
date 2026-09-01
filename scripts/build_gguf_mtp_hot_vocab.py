@@ -63,6 +63,30 @@ def _corpus_paths(roots: Iterable[Path]) -> tuple[Path, ...]:
     return tuple(sorted(paths, key=lambda path: str(path)))
 
 
+def _matches_script(text: str, script: str) -> bool:
+    if script == "cjk":
+        return any(
+            "\u3040" <= char <= "\u30ff" or "\u3400" <= char <= "\u9fff"
+            for char in text
+        )
+    raise ValueError(f"unsupported tokenizer script: {script}")
+
+
+def _script_token_ids(
+    tokenizer: Qwen35GGUFTokenizer,
+    scripts: Iterable[str],
+) -> set[int]:
+    requested = tuple(dict.fromkeys(str(script) for script in scripts))
+    return {
+        token_id
+        for token_id in range(len(tokenizer.tokens))
+        if any(
+            _matches_script(tokenizer.decode([token_id]), script)
+            for script in requested
+        )
+    }
+
+
 def _required_token_ids(info) -> set[int]:
     metadata = info.metadata
     required = {
@@ -106,9 +130,11 @@ def build(args: argparse.Namespace) -> dict[str, object]:
         corpus_tokens += len(ids)
         corpus_chars += len(text)
 
-    required = _required_token_ids(info)
+    special = _required_token_ids(info)
+    script_ids = _script_token_ids(tokenizer, args.include_script)
+    required = special | script_ids
     if len(required) > args.tokens:
-        raise ValueError("--tokens does not leave room for all tokenizer special tokens")
+        raise ValueError("--tokens does not leave room for all required tokenizer rows")
     selected = set(required)
     for token_id, _count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
         if len(selected) >= args.tokens:
@@ -139,13 +165,15 @@ def build(args: argparse.Namespace) -> dict[str, object]:
             ),
         },
         "selection": {
-            "strategy": "special_tokens_then_corpus_frequency_then_token_id",
+            "strategy": "required_scripts_then_corpus_frequency_then_token_id",
             "corpus_roots": [str(Path(value)) for value in args.corpus],
             "corpus_files": len(paths),
             "corpus_chars": corpus_chars,
             "corpus_tokens": corpus_tokens,
             "corpus_sha256": corpus_digest.hexdigest(),
-            "required_special_tokens": len(required),
+            "required_special_tokens": len(special),
+            "required_script_tokens": len(script_ids),
+            "included_scripts": list(args.include_script),
             "selected_tokens": len(token_ids),
             "corpus_token_coverage": covered / max(corpus_tokens, 1),
         },
@@ -163,6 +191,13 @@ def main() -> int:
     parser.add_argument("--corpus", action="append", required=True)
     parser.add_argument("--tokens", type=int, default=65_536)
     parser.add_argument("--max-chars-per-file", type=int, default=1_000_000)
+    parser.add_argument(
+        "--include-script",
+        action="append",
+        choices=("cjk",),
+        default=[],
+        help="Require every tokenizer token containing this Unicode script",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     payload = build(args)

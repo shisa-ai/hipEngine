@@ -10,6 +10,7 @@ from hipengine.loading.gguf_mtp_hot_vocab import (
     gguf_tokenizer_tokens_sha256,
     load_gguf_hot_vocab_selection,
 )
+from scripts.build_gguf_mtp_hot_vocab import _matches_script, _script_token_ids
 
 
 def _info(vocab_size: int = 64):
@@ -29,6 +30,17 @@ def _payload(info, token_ids):
         "selection": {"strategy": "fixture"},
         "token_ids": token_ids,
     }
+
+
+def test_cjk_selection_covers_han_hiragana_and_katakana() -> None:
+    tokenizer = SimpleNamespace(
+        tokens=("plain", "日本", "かな", "カナ", "한글"),
+        decode=lambda ids: ("plain", "日本", "かな", "カナ", "한글")[ids[0]],
+    )
+
+    assert _script_token_ids(tokenizer, ("cjk",)) == {1, 2, 3}
+    assert _matches_script("日本語", "cjk")
+    assert not _matches_script("한국어", "cjk")
 
 
 def test_hot_vocab_selection_is_model_bound_and_sorted(tmp_path) -> None:
