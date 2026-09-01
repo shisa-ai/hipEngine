@@ -1,0 +1,496 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_q4_row6_two_wave_qkv_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_default",
+  "performance_claim": true,
+  "decision": "Promote exact two-wave R6 ownership for standard-Q4 recurrent QKV K5120/N10240. Every C5-C8 aggregate/category/heldout slice improves; IDs, acceptance, ownership, and drain remain exact.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "33d280db66335a65895c875aed4f6370a3dbd11d",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-q4w2-qkv-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "22d9cf765f06ec16b964e7d87171d185485c385298b13973363766b294ca82c4"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-q4w2-qkv-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "990a6696b1022b53a78fe6fc8724c0bda8b5f9dc32e22dcd34f9aaddb668893c"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-q4w2-qkv-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "8af3e1bde826d7171cd836335940e21f9e52d5f4833cbb2ba18b969981bdf117"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-q4w2-qkv-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "b3ca2e7cb305484397b5605dd8ad03e4197cba9d3fe827101c3badd4ed3fa768"
+      }
+    }
+  },
+  "candidate": {
+    "variant": "dense_rowtile16_w2_bf16_bf16_out",
+    "scope": "gfx1100 production physical R6, recurrent-QKV K5120/N10240",
+    "mechanism": "Adjacent wave32 owners share one WG64/16-column block without changing per-output arithmetic.",
+    "candidate_flag_during_gate": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV=1",
+    "rollback_flag_during_gate": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV=0",
+    "post_promotion_rollback": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0",
+    "strict_fallback": "dense_rowtile_bf16_bf16_out",
+    "default_after_decision": true
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV=1",
+    "rollback_flag": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV=0"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "cross_arm_generated_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "cross_arm_rows_compared": 520,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_cell": true,
+    "recoverable_failure_count": 0,
+    "all_processes_drained": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 0.9411763945374685,
+        "minimum_delta_pct": -0.4147017865565594,
+        "maximum_delta_pct": 2.3304079453542403,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 32,
+        "cells": 40,
+        "median_delta_pct": 0.19191776527672788,
+        "minimum_delta_pct": -1.5937071490230936,
+        "maximum_delta_pct": 1.9458326181438057,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    ]
+  },
+  "leaf_screen": {
+    "raw": "/tmp/he-k3-q4-row6-w2-qkv-screen.json",
+    "script_sha256": "da2d8144307d03a1d0f9e88d1ade067540343d9442b70fde1481dbe90e35615d",
+    "protocol": {
+      "warmups": 5,
+      "sample_pairs": 40,
+      "launches_per_event_sample": 3,
+      "order": "alternating control/candidate and candidate/control",
+      "timing": "HIP event operation-complete kernel launch"
+    },
+    "summary": {
+      "all_exact": true,
+      "cells": 3,
+      "all_candidate_medians_positive": true,
+      "minimum_speedup": 1.0621296032796514,
+      "maximum_speedup": 1.1203654777036667,
+      "minimum_pair_wins": 31
+    },
+    "cases": {
+      "blk.8.attn_qkv.weight": {
+        "shape_k_n": [
+          5120,
+          10240
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_median_ms": 0.05885983258485794,
+        "candidate_median_ms": 0.05512633423010509,
+        "candidate_speedup": 1.0677262220841441,
+        "candidate_pair_wins": 31,
+        "sample_pairs": 40
+      },
+      "blk.32.attn_qkv.weight": {
+        "shape_k_n": [
+          5120,
+          10240
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_median_ms": 0.06081400066614151,
+        "candidate_median_ms": 0.05428050210078557,
+        "candidate_speedup": 1.1203654777036667,
+        "candidate_pair_wins": 38,
+        "sample_pairs": 40
+      },
+      "blk.54.attn_qkv.weight": {
+        "shape_k_n": [
+          5120,
+          10240
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_median_ms": 0.058127167324225106,
+        "candidate_median_ms": 0.05472700049479802,
+        "candidate_speedup": 1.0621296032796514,
+        "candidate_pair_wins": 34,
+        "sample_pairs": 40
+      }
+    }
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 61.27649569662662,
+        "candidate_tok_s": 61.9399633779209,
+        "candidate_delta_pct": 1.0827441643840752,
+        "rollback_wall_seconds": 39.16673061531037,
+        "candidate_wall_seconds": 38.74719759449363,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 61.38118706503181,
+          "candidate_tok_s": 62.54392969021809,
+          "candidate_delta_pct": 1.8942980427445688
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 61.172160842038835,
+          "candidate_tok_s": 61.34755011266031,
+          "candidate_delta_pct": 0.2867141984314925
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 63.42380879882746,
+          "candidate_tok_s": 64.0017780281334,
+          "candidate_delta_pct": 0.9112811738241522
+        },
+        "general_en": {
+          "rollback_tok_s": 65.7332884814116,
+          "candidate_tok_s": 66.31777373234905,
+          "candidate_delta_pct": 0.8891769519529413
+        },
+        "general_ja": {
+          "rollback_tok_s": 58.07409352089313,
+          "candidate_tok_s": 58.696680956723895,
+          "candidate_delta_pct": 1.0720570879109381
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 56.71801640568835,
+          "candidate_tok_s": 57.60851781806551,
+          "candidate_delta_pct": 1.5700503452159564
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 61.2233758546024,
+          "candidate_tok_s": 61.93555858464278,
+          "candidate_delta_pct": 1.1632529570595906
+        },
+        "heldout": {
+          "rollback_tok_s": 61.356348518240345,
+          "candidate_tok_s": 61.946571742704805,
+          "candidate_delta_pct": 0.961959501695242
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 68.9654810544284,
+        "candidate_tok_s": 69.41361612732014,
+        "candidate_delta_pct": 0.6497961966481114,
+        "rollback_wall_seconds": 41.76002191193402,
+        "candidate_wall_seconds": 41.4904187489301,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 69.02612653640477,
+          "candidate_tok_s": 69.82378060648267,
+          "candidate_delta_pct": 1.1555828352286523
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 68.90494204361507,
+          "candidate_tok_s": 69.0082423487159,
+          "candidate_delta_pct": 0.14991712065506313
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 68.61423759447425,
+          "candidate_tok_s": 69.1644732604891,
+          "candidate_delta_pct": 0.8019263717056413
+        },
+        "general_en": {
+          "rollback_tok_s": 75.29368390007225,
+          "candidate_tok_s": 75.70637309960114,
+          "candidate_delta_pct": 0.5481060005997351
+        },
+        "general_ja": {
+          "rollback_tok_s": 67.36769639122815,
+          "candidate_tok_s": 67.70909232720993,
+          "candidate_delta_pct": 0.5067650435887971
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 65.67569688131972,
+          "candidate_tok_s": 66.06152308617916,
+          "candidate_delta_pct": 0.5874718094832865
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 68.568304152662,
+          "candidate_tok_s": 69.05118995721945,
+          "candidate_delta_pct": 0.7042405533063123
+        },
+        "heldout": {
+          "rollback_tok_s": 69.56994934215746,
+          "candidate_tok_s": 69.96444543273357,
+          "candidate_delta_pct": 0.5670495584751745
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 66.5867958208556,
+        "candidate_tok_s": 66.98467665600826,
+        "candidate_delta_pct": 0.5975371396802487,
+        "rollback_wall_seconds": 50.460454788058996,
+        "candidate_wall_seconds": 50.160725821740925,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 66.63622628908873,
+          "candidate_tok_s": 67.19830395759242,
+          "candidate_delta_pct": 0.8435016503864246
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 66.53743863288419,
+          "candidate_tok_s": 66.77240331723542,
+          "candidate_delta_pct": 0.3531315439532223
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.04329347346636,
+          "candidate_tok_s": 67.1983102195197,
+          "candidate_delta_pct": 0.23121887070580716
+        },
+        "general_en": {
+          "rollback_tok_s": 73.61034171517531,
+          "candidate_tok_s": 74.28128180393946,
+          "candidate_delta_pct": 0.9114753078586002
+        },
+        "general_ja": {
+          "rollback_tok_s": 62.218698047636096,
+          "candidate_tok_s": 62.52776478883857,
+          "candidate_delta_pct": 0.49674254026634834
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 64.09802007399513,
+          "candidate_tok_s": 64.8254216932394,
+          "candidate_delta_pct": 1.1348269703253866
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 66.4983986317922,
+          "candidate_tok_s": 66.69352995330762,
+          "candidate_delta_pct": 0.2934376248605375
+        },
+        "heldout": {
+          "rollback_tok_s": 66.71983313811897,
+          "candidate_tok_s": 67.42619431516327,
+          "candidate_delta_pct": 1.0586974574442243
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 69.88838319683211,
+        "candidate_tok_s": 70.20831504413829,
+        "candidate_delta_pct": 0.4577754308682902,
+        "rollback_wall_seconds": 54.944753682240844,
+        "candidate_wall_seconds": 54.694376265630126,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 69.89060334151883,
+          "candidate_tok_s": 70.42248424047663,
+          "candidate_delta_pct": 0.7610191835929481
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 69.88616319319112,
+          "candidate_tok_s": 69.99544456291254,
+          "candidate_delta_pct": 0.1563705384989067
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 71.02609705316185,
+          "candidate_tok_s": 71.38105082481572,
+          "candidate_delta_pct": 0.49975119903913345
+        },
+        "general_en": {
+          "rollback_tok_s": 74.03177246752269,
+          "candidate_tok_s": 74.29680272550446,
+          "candidate_delta_pct": 0.3579952892496907
+        },
+        "general_ja": {
+          "rollback_tok_s": 66.3189525993322,
+          "candidate_tok_s": 66.73181238698771,
+          "candidate_delta_pct": 0.6225366527571774
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 67.57841517327314,
+          "candidate_tok_s": 67.78232133238355,
+          "candidate_delta_pct": 0.30173267394268954
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 69.64380564241672,
+          "candidate_tok_s": 69.9561178259456,
+          "candidate_delta_pct": 0.4484421559792784
+        },
+        "heldout": {
+          "rollback_tok_s": 70.25848752045793,
+          "candidate_tok_s": 70.59003887307196,
+          "candidate_delta_pct": 0.47190220614625744
+        }
+      }
+    }
+  },
+  "profiling": {
+    "status": "passed",
+    "commit": "33d280db66335a65895c875aed4f6370a3dbd11d",
+    "scope": "C8/K3 D12 marker target_accept_commit_provider",
+    "raw_sources": {
+      "rollback_summary": {
+        "path": "/tmp/he-k3-q4w2-qkv-rollback-c8-profile/summary.json",
+        "retained": false,
+        "sha256": "102e4143f2f2cae6007ee2ce96bb575d06c5b85fc4b19fc0e45b58c032d41b7f"
+      },
+      "candidate_summary": {
+        "path": "/tmp/he-k3-q4w2-qkv-physical-c8-profile/summary.json",
+        "retained": false,
+        "sha256": "72b39e499fb473de67e85024ff0c725032080b2face2946da23c815f8a36f483"
+      },
+      "rollback_child": {
+        "path": "/tmp/he-k3-q4w2-qkv-rollback-c8-profile/child.json",
+        "retained": false,
+        "sha256": "92032ff0e00217396930a5278bcd2e87069306f20709ece6a7e7db9c0b01823d"
+      },
+      "candidate_child": {
+        "path": "/tmp/he-k3-q4w2-qkv-physical-c8-profile/child.json",
+        "retained": false,
+        "sha256": "1f50a1aebdf814ca8d9a0bf4124ac0bd52a9a6a77429a976c85992dcdeedf59a"
+      }
+    },
+    "rollback": {
+      "candidate_calls_per_cycle": 725.3333333333334,
+      "candidate_ms_per_cycle": 35.273827000000004,
+      "parent_calls_per_cycle": 298.6666666666667,
+      "parent_ms_per_cycle": 25.473827666666665,
+      "q4_family_ms_per_cycle": 101.78507333333333,
+      "device_union_ms_per_cycle": 192.866763,
+      "host_marker_ms_per_cycle": 234.672954
+    },
+    "candidate": {
+      "candidate_calls_per_cycle": 853.3333333333334,
+      "candidate_ms_per_cycle": 42.16049266666666,
+      "parent_calls_per_cycle": 170.66666666666666,
+      "parent_ms_per_cycle": 18.04028,
+      "q4_family_ms_per_cycle": 101.20238866666666,
+      "device_union_ms_per_cycle": 192.17278966666666,
+      "host_marker_ms_per_cycle": 234.00994433333335
+    },
+    "ownership_delta_calls_per_cycle": {
+      "candidate": 128.0,
+      "parent": -128.00000000000003
+    }
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host, model, and protocol.",
+    "The separate Q4 FFN-down K17408/N5120 shape remains on WG32 after its earlier leaf loss."
+  ]
+}
