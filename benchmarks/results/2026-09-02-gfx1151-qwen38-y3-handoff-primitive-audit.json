@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-handoff-primitive-audit",
+  "status": "source_and_toolchain_audit",
+  "source_commit": "446c2681b",
+  "scope": ["hipengine/", "/opt/rocm/include", "/opt/rocm/lib/llvm/lib/clang/*/include"],
+  "findings": {
+    "in_tree_subgroup_handoff_pattern": false,
+    "discoverable_named_or_split_barrier_wrapper": false,
+    "block_barrier": "__syncthreads is whole-workgroup and cannot allow producer and consumers to advance independently",
+    "feasible_fallback": "two LDS-ready/done counters using shared-memory atomics plus block memory fences; requires all five waves resident and must be hang-tested"
+  },
+  "resource_plan": {"consumer_waves": 4, "producer_waves": 1, "threads": 160, "lds_buffers": 2, "lds_bytes": 32768, "consumer_baseline_vgpr": 200},
+  "decision": "No native in-tree split-barrier path was found, but the design is not yet structurally blocked. Screen a five-wave atomic-handoff prototype with a timeout-protected actual-weight smoke before any performance claim."
+}

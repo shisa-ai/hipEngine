@@ -983,7 +983,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   second buffer cannot overlap arithmetic performed by the same waves; the
   concrete Y3 candidate is a dedicated producer-wave/shared4r6 consumer split
   with two 16 KiB buffers. Shared4r9 is excluded from the first screen because
-  it already uses VGPR256.
+  it already uses VGPR256. No in-tree/native named split-barrier wrapper was
+  found; whole-block barriers cannot overlap roles. A five-wave prototype is
+  still expressible with double-buffer ready/done shared-memory atomics and
+  block fences, but requires timeout-protected hang and residency validation.
   [`Slab analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json).
   [`Y3 entry bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json).
 - [ ] Y4 **(Conditional) INT4-WMMA Q4 body.** The only raised tensor roof on
