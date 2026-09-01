@@ -1860,6 +1860,12 @@ def _q4_t16_physical_dual_silu_variant(
     )
     if not isinstance(policy, Mapping):
         return None
+    rows_to_variant = policy.get("rows_to_variant", {})
+    if not isinstance(rows_to_variant, Mapping):
+        return None
+    variant = rows_to_variant.get(int(rows))
+    if not isinstance(variant, str) or not variant:
+        return None
     enabled_env = policy.get("enabled_env")
     if not isinstance(enabled_env, str) or not enabled_env:
         return None
@@ -1878,13 +1884,7 @@ def _q4_t16_physical_dual_silu_variant(
         else:
             raise ValueError(f"{enabled_env} must be a boolean value")
         _rowtile_variant_policy_env_cache[cache_key] = enabled
-    if not enabled:
-        return None
-    rows_to_variant = policy.get("rows_to_variant", {})
-    if not isinstance(rows_to_variant, Mapping):
-        return None
-    variant = rows_to_variant.get(int(rows))
-    return variant if isinstance(variant, str) and variant else None
+    return variant if enabled else None
 
 
 def _q4_t16_dual_wmma_silu_dispatch(
