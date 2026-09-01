@@ -339,9 +339,6 @@ from hipengine.runtime.gguf_linear import (
     resolve_q8_mmq_prefill_policy,
     target_verifier_production_q4_rowtile_session,
     target_verifier_rowtile_session,
-    target_verifier_wide_q6_shared4_leaf_session,
-    target_verifier_wide_q6_shared4_policy_enabled,
-    target_verifier_wide_q6_shared4_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig, resolve_prefill_config_for_sequence
@@ -18402,18 +18399,6 @@ class Qwen35GGUFResidentSession:
         ``NotImplementedError`` so the scheduler can fall back to per-slot
         verification.
         """
-
-        logical_requests = len({int(job["request_id"]) for job in jobs})
-        if target_verifier_wide_q6_shared4_policy_enabled() and logical_requests >= 8:
-            with (
-                target_verifier_wide_q6_shared4_session(False),
-                target_verifier_wide_q6_shared4_leaf_session(True),
-            ):
-                return self.verify_target_blocks_batch(
-                    jobs,
-                    stream=stream,
-                    device_result=device_result,
-                )
 
         stage_timings: dict[str, float] = {}
         self.last_packed_verify_stage_timings_ms = stage_timings
