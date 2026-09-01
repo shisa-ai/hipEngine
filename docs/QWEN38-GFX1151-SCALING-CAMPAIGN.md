@@ -802,7 +802,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   **Shared lineage with W1:** M1's wide-verify trace shows Q4 falling back to
   `wmma_prefill<false,2>` at R>16 — a multiplicity-1 M-loop GEMM body is the
   same shape W1 needs for row-invariant R20-R32 verify owners. Build the tile
-  machinery once, register it under both keys.
+  machinery once, register it under both keys. First rows288 policy screen:
+  forcing the existing 48-column/256-row parent over the retained periodic
+  owner regresses complete tick wall **2.69%** despite fewer M-grid sweeps;
+  threshold rollback is rejected, so Y1 proceeds to a new one-sweep body.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-row288-parent-rejected.json).
 - [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured
