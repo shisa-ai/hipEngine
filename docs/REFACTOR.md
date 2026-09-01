@@ -42,6 +42,14 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
+## 2026-09-01 gfx1100 NextN root-state pair-copy screen — open
+
+- `HIPENGINE_GGUF_NEXTN_ROOT_STATE_PAIR_COPY=1` is the default-off arm for
+  replacing per-buffer NextN root-state snapshot/restore copies with the
+  registered chunked pointer-table pair-copy kernel. Promote only after exact
+  transaction tests, copy-kernel attribution, and full category/heldout gate;
+  otherwise remove the plan/tables/policy while retaining the strict loop.
+
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
 - `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved
