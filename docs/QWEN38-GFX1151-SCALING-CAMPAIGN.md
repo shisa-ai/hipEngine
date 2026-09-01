@@ -939,8 +939,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   standard owner is active, but planar gridY9/17/32 dominates; exact planar
   high-row ownership remains an open implementation unit. Planar `<8,3,2>`
   cannot provide it: the first rows288 wide actual-weight launch fails with
-  **HIP 719** before output comparison. Its export is removed; four-wave
-  higher-row-tile geometry remains feasible.
+  **HIP 719** before output comparison. Exact `<4,6,2>` avoids that failure:
+  wide planar owns rows288-1024, narrow owns rows288-536 (narrow rows1024 is
+  rejected at 0.96x), and complete rows288/536/1024 walls fall
+  **7.63%/10.53%/9.40%**, tokens unchanged. Trace: 152 gridY1/2/3 hits,
+  128 threads, VGPR200, LDS16 KiB, scratch0. Collateral remains pending.
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at

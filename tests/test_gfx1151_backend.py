@@ -720,6 +720,27 @@ def test_gfx1151_q6_shared3r1_is_scoped_to_rows33_48(
     ]
 
 
+def test_gfx1151_q6_planar_shared4r6_routes_high_rows_by_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared4r6"),
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("fallback"),
+    )
+    fn = gfx1151_backend.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    fn(1, 2, 3, 1_024, 17_408, 5_120)
+    fn(1, 2, 3, 536, 5_120, 1_024)
+    fn(1, 2, 3, 1_024, 5_120, 1_024)
+    assert calls == ["shared4r6", "shared4r6", "fallback"]
+
+
 def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

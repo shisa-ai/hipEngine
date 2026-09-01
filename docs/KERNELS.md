@@ -356,6 +356,13 @@ The wide 17408x5120 shape further uses exact `<4,4,2>` at rows256, reaching
 734.190->706.580 ms (-3.76%), token unchanged. Trace: 64 hits, gridY1,
 128 threads, VGPR176, LDS16 KiB, scratch0. Evidence:
 [`Qwen3.8 Y2 planar-Q6 rows256 r4`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r4-rows256-retained.json).
+For high rows, exact planar `<4,6,2>` reaches 384-row capacity without the
+8-wave launch failure. Wide 17408x5120 owns rows288-1024; narrow 5120x1024
+owns rows288-536 and retains fallback at rows1024 after a 0.96x leaf rejection.
+Complete rows288/536/1024 walls fall 7.63%/10.53%/9.40%, tokens unchanged.
+Trace: 152 hits, gridY1/2/3, 128 threads, VGPR200, LDS16 KiB, scratch0.
+Evidence:
+[`Qwen3.8 Y2 planar-Q6 high rows`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json).
 
 Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
 K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact
