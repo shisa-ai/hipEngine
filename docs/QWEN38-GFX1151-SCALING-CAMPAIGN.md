@@ -1020,7 +1020,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   and expands static code 50,376->51,440 bytes. The pair win comes from halving
   cooperative scheduling units, not operation count. One exact unit therefore
   remains: specialize pair decode to load each shared low byte once and extract
-  both nibbles while retaining independent scales/stores.
+  both nibbles while retaining independent scales/stores. That specialization
+  is bit-exact but regresses rows288 wide/narrow planar leaves **8.67%/10.18%**;
+  the longer dependent unpack chain outweighs fewer loads. Route/export
+  scope-reverted. The exact decode-granularity/byte-sharing ladder is exhausted
+  at retained scheduling-only pair decode.
+  [`Shared-byte rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-sharedbytes-rejected.json).
   [`Direct/pair ISA`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-direct-pair-isa-comparison.json).
   [`Quartet rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-quartet-decode-rejected.json).
   [`Post-pair bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-post-pair-residual-bound.json).
