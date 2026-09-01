@@ -2,7 +2,7 @@
 
 Status: **opened 2026-09-02; review of the W/Y closures folded in the same
 day (section 7) with pre-sized mechanism candidates; Z0 baseline refresh
-recorded with a C5 correctness failure, attribution pending**
+recorded with a C5 correctness failure, operation attribution partial**
 Successor to the closed
 [`scaling campaign`](QWEN38-GFX1151-SCALING-CAMPAIGN.md) and the
 [`external implementation survey`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md).
@@ -183,9 +183,21 @@ further work unjustified.
   cycle accounting are in the checkpoint artifact. The observed C5 4+1
   subgroup split localizes the next investigation but does not establish a
   root cause. No performance candidate or public number was retained.
-- [ ] Collect current-head C2/C8 prefill and C5/C7/C8 MTP operation-complete
+- [~] Collect current-head C2/C8 prefill and C5/C7/C8 MTP operation-complete
   attribution: kernel family, launch count, host/API/copy time, proposal,
   target, accept/commit, KV, scheduler, and server overhead.
+
+  Partial checkpoint: [`2026-09-01-gfx1151-qwen38-z0-operation-attribution.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z0-operation-attribution.json).
+  The exact C2/C8 grouped-row grid is GPU-bound at every prompt shape: wall
+  minus HIP-event span is below 0.04 ms, with no memory-copy engine event in
+  any tick. At correctness-passing C7/C8, operation wall is 647.6/661.9 ms
+  per average request cycle; named telemetry stages account for 439.3/439.6
+  ms, leaving 208.3/222.4 ms outside those stages. Q4/Q5/Q6, attention/KV,
+  state-commit, API, and copy-kernel time and launch counts are durable in the
+  artifact. C5 remains attribution-only because it reproduced the baseline
+  correctness failure. This item stays partial until the scheduler/server and
+  inter-group shares of the residual are separated; the C6/C8 K1
+  reconciliation item owns that follow-up.
 - [ ] Attribute at launch granularity, not family granularity: one R16, R24,
   and R32 target pass each, naming owner, grid, and per-launch ms for every
   Q4/Q5/Q6 launch, with the Q6 lm-head, Q5 `ssm_out`, planar/standard direct
@@ -196,9 +208,15 @@ further work unjustified.
   using the prefill tick from telemetry, and localize the residual (F6:
   ~57 ms per C8 cycle) to host, batch window, proposal sync, or untraced
   kernels.
-- [ ] Record per-tick row composition for the C2 prefill protocol from
+- [x] Record per-tick row composition for the C2 prefill protocol from
   `scheduler_token_chunks`/`prompt_lengths` and state whether the two prompts
   share a tick (F9). This is a baseline fact, not a mechanism.
+
+  The two C2 requests share one grouped prefill tick in all ten cells. Their
+  starts differ by 0.19-1.03 ms and completions by 0.24-0.79 ms. Per-request
+  prompt lengths are 35-67 tokens; grouped ticks are 70, 72, 78, 86, 92, 96,
+  120, and 134 rows. The exact-grid trace covers every shape; this admission
+  fact does not itself establish mechanism C's speedup.
 - [ ] Publish the pass budgets per section 7.2 for C5/R20, C6/R24, C7/R28,
   C8/R32, and the C2 grouped-tick budget for 211.888 tok/s, next to the
   prefill share of each complete wall (F5).
