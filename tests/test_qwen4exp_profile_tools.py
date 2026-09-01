@@ -38,12 +38,19 @@ def _synthetic_trace(tmp_path: Path) -> None:
         ["Function", "Start_Timestamp", "End_Timestamp", "Thread_Id", "Correlation_Id"],
         [
             {
+                "Function": "hipGraphLaunch",
+                "Start_Timestamp": 120,
+                "End_Timestamp": 130,
+                "Thread_Id": 1,
+                "Correlation_Id": 6,
+            },
+            {
                 "Function": "hipLaunchKernel",
                 "Start_Timestamp": 160,
                 "End_Timestamp": 170,
                 "Thread_Id": 1,
                 "Correlation_Id": 7,
-            }
+            },
         ],
     )
     _write_csv(
@@ -64,6 +71,41 @@ def _synthetic_trace(tmp_path: Path) -> None:
             },
         ],
     )
+    _write_csv(
+        tmp_path / "sample_memory_allocation_trace.csv",
+        [
+            "Kind",
+            "Operation",
+            "Agent_Id",
+            "Allocation_Size",
+            "Address",
+            "Correlation_Id",
+            "Start_Timestamp",
+            "End_Timestamp",
+        ],
+        [
+            {
+                "Kind": "MEMORY_ALLOCATION",
+                "Operation": "MEMORY_ALLOCATION_ALLOCATE",
+                "Agent_Id": "Agent 1",
+                "Allocation_Size": 4096,
+                "Address": "0x1",
+                "Correlation_Id": 1,
+                "Start_Timestamp": 50,
+                "End_Timestamp": 60,
+            },
+            {
+                "Kind": "MEMORY_ALLOCATION",
+                "Operation": "MEMORY_ALLOCATION_ALLOCATE",
+                "Agent_Id": "Agent 1",
+                "Allocation_Size": 64,
+                "Address": "0x2",
+                "Correlation_Id": 2,
+                "Start_Timestamp": 140,
+                "End_Timestamp": 150,
+            },
+        ],
+    )
 
 
 def test_qwen4exp_trace_analyze_synthetic_window(tmp_path: Path) -> None:
@@ -80,6 +122,9 @@ def test_qwen4exp_trace_analyze_synthetic_window(tmp_path: Path) -> None:
     assert result["kernel"]["rows"] == 2
     assert result["kernel"]["sum_ms"] == 0.0001
     assert result["hip_api"]["direct_launch_correlations"] == 1
+    assert result["memory_allocation"]["rows_in_window"] == 1
+    assert result["memory_allocation"]["allocated_bytes_in_window"] == 64
+    assert result["memory_allocation"]["rows_at_or_after_first_graph_launch"] == 1
     families = {row["name"]: row for row in result["kernel"]["families"]}
     assert families["moe_gate_up_q4"]["rows"] == 1
     assert families["copy_fill_kernel"]["rows"] == 1
@@ -91,6 +136,8 @@ def test_qwen4exp_role_analyze_synthetic_window(tmp_path: Path) -> None:
     result = module.analyze(tmp_path, "qwen4exp_prefill_p508_")
     assert result["kernel_rows"] == 2
     assert result["attributed_rows"] == 1
+    assert result["attributed_time_pct"] == 80.0
+    assert result["unattributed_time_pct"] == 20.0
     roles = {row["name"]: row for row in result["roles"]}
     assert roles["moe:layers.*.expert_gate"]["rows"] == 1
     assert roles["unattributed"]["rows"] == 1

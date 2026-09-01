@@ -136,6 +136,47 @@ def test_moe_telemetry_wraps_copies_and_restores(monkeypatch: pytest.MonkeyPatch
     assert telemetry.snapshot()["copy_bytes"] == selected.nbytes
 
 
+def test_select_fixture_case_returns_exact_token_ids() -> None:
+    module = _load_script()
+    fixture = {
+        "cases": [
+            {
+                "id": "code-p512",
+                "category": "code",
+                "prompt_tokens": 3,
+                "prompt_token_ids": [10, 11, 12],
+                "prompt_token_ids_sha256": "digest",
+            }
+        ]
+    }
+
+    case = module._select_fixture_case(fixture, "code-p512")
+
+    assert case["prompt_token_ids"] == [10, 11, 12]
+    with pytest.raises(ValueError, match="exactly one"):
+        module._select_fixture_case(fixture, "general_en-p512")
+
+
+def test_parser_collects_canonical_fixture_case(tmp_path: Path) -> None:
+    module = _load_script()
+
+    args = module.build_parser().parse_args(
+        [
+            "--model-root",
+            str(tmp_path / "model"),
+            "--mode",
+            "prefill",
+            "--case-id",
+            "code-p512",
+            "--output",
+            str(tmp_path / "result.json"),
+        ]
+    )
+
+    assert args.case_id == "code-p512"
+    assert args.fixture.name == "qwen4exp_canonical_ar_p512_p1024_p4096.json"
+
+
 def test_parser_collects_moe_telemetry_flag(tmp_path: Path) -> None:
     module = _load_script()
 
