@@ -36,14 +36,17 @@ SNAPSHOT_ROWS = {
 README_ROWS = SNAPSHOT_ROWS
 LABELS = {"ar": "hipEngine AR", "k3": "hipEngine explicit K3"}
 README_PATH = pathlib.Path(__file__).resolve().parents[1] / "benchmarks" / "README.md"
-# README row label -> (arm, role) in the row-table shape above.
+# The compact scoreboard reuses engine labels in workload-scoped tables. Keep the
+# heading and row maps separate so an unrelated table cannot silently become a baseline.
+ARM_MARKERS = {
+    "**True AR decode**": "ar",
+    "**Explicit K3 MTP decode diagnostic**": "k3",
+    "**Prefill**": None,
+}
 ROW_LABELS = {
-    "hipEngine AR": ("ar", "hipengine"),
-    "llama.cpp current HIP AR": ("ar", "llama_current"),
-    "llama.cpp Laurent HIP AR": ("ar", "llama_laurent"),
-    "hipEngine explicit K3": ("k3", "hipengine"),
-    "llama.cpp current HIP K3": ("k3", "llama_current"),
-    "llama.cpp Laurent HIP K3": ("k3", "llama_laurent"),
+    "hipEngine": "hipengine",
+    "llama.cpp current HIP": "llama_current",
+    "llama.cpp Laurent HIP": "llama_laurent",
 }
 
 
@@ -76,17 +79,21 @@ def read_readme_rows(path: pathlib.Path | None = None) -> dict[str, dict[str, li
     }
     if not target.is_file():
         return rows
+    active_arm: str | None = None
     for line in target.read_text().splitlines():
-        if not line.lstrip().startswith("|"):
+        marker = ARM_MARKERS.get(line.strip(), ...)
+        if marker is not ...:
+            active_arm = marker
+            continue
+        if active_arm is None or not line.lstrip().startswith("|"):
             continue
         label = line.lstrip().strip().strip("|").split("|")[0].strip()
-        mapped = ROW_LABELS.get(label)
-        if mapped is None:
+        role = ROW_LABELS.get(label)
+        if role is None:
             continue
         parsed = parse_markdown_row(line)
         if parsed and len(parsed) == 8:
-            arm, role = mapped
-            rows[arm][role] = parsed
+            rows[active_arm][role] = parsed
     return rows
 
 
@@ -152,13 +159,13 @@ def main() -> int:
             peers = [README_ROWS[key][r][width - 1] for r in ("llama_current", "llama_laurent")]
             return f"**{value:.3f}**" if value >= max(peers) else f"{value:.3f}"
 
-        print(f"  | {LABELS[key]} | " + " | ".join(cell(i, v) for i, v in enumerate(new)) + " |")
+        print(f"  | hipEngine | " + " | ".join(cell(i, v) for i, v in enumerate(new)) + " |")
         # Full comparable block with bold recomputed across all three rows, because
         # a refreshed hipEngine value can move a column's bold to or from a peer row.
-        rows = {"hipEngine AR" if key == "ar" else "hipEngine explicit K3": list(new)}
+        rows = {"hipEngine": list(new)}
         for row, label in (
-            ("llama_current", "llama.cpp current HIP " + key.upper()),
-            ("llama_laurent", "llama.cpp Laurent HIP " + key.upper()),
+            ("llama_current", "llama.cpp current HIP"),
+            ("llama_laurent", "llama.cpp Laurent HIP"),
         ):
             rows[label] = [README_ROWS[key][row][w - 1] for w in widths]
         print(f"  --- full {key.upper()} block (bold recomputed) ---")

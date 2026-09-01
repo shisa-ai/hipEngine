@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_c1c8_current_scoreboard_rollup",
+  "date": "2026-09-02",
+  "status": "current_rollup_no_new_measurement",
+  "performance_claim": false,
+  "decision": "Publish one compact provenance index for the current standardized W7900 Qwen3.8 Q4_K_M C1-C8 prefill, true-AR, and forced-K3 rows. This artifact only rolls forward retained measurements; it does not create a new benchmark claim.",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "size_bytes": 17106773984,
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_fallback_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "heldouts": 4,
+    "widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "resident_capacity": 8,
+    "batch_window_ms": 20.0,
+    "max_sequence_length": 1024,
+    "sampling": "raw greedy",
+    "timing": "blocking barrier-to-last-completion complete wall; values are aggregate tok/s across all active requests",
+    "prefill": "D1 one generated token per request; prompt tokens divided by complete wall",
+    "true_ar": "D24 ordinary packed autoregressive decode",
+    "explicit_k3": "D24 forced Generation-2 verifier with candidate budget 3; diagnostic engine path, not the capacity-8 automatic product route"
+  },
+  "rows_tok_s": {
+    "prefill": {
+      "hipengine": [189.074, 289.870, 370.318, 405.343, 440.200, 457.406, 469.752, 473.754],
+      "llama_cpp_current_hip": [179.035, 206.603, 207.636, 258.750, 308.960, 330.059, 360.231, 405.406],
+      "llama_cpp_laurent_hip": [184.024, 225.730, 221.227, 259.929, 316.711, 357.259, 365.592, 404.240]
+    },
+    "true_ar": {
+      "hipengine": [22.854, 37.903, 52.296, 63.613, 70.994, 77.046, 81.256, 83.939],
+      "llama_cpp_current_hip": [21.657, 34.649, 30.367, 27.748, 36.248, 45.343, 51.757, 57.687],
+      "llama_cpp_laurent_hip": [21.298, 34.151, 30.635, 27.850, 36.695, 46.091, 52.681, 58.840]
+    },
+    "explicit_k3": {
+      "hipengine": [34.623, 51.769, 54.590, 55.780, 66.309, 74.349, 71.914, 76.351],
+      "llama_cpp_current_hip": [32.553, 41.042, 45.324, 49.977, 59.644, 72.195, 75.354, 94.735],
+      "llama_cpp_laurent_hip": [32.733, 40.808, 45.947, 51.054, 61.013, 74.628, 78.281, 101.072]
+    },
+    "explicit_k3_divided_by_published_true_ar": [1.5150, 1.3658, 1.0439, 0.8769, 0.9340, 0.9650, 0.8850, 0.9096]
+  },
+  "automatic_product_scope": {
+    "capacity_8_c1_c8": "K0 at every width; requests use the ordinary AR path",
+    "promoted_qwen38_c2_k2": "resident capacity 2, physical C2, context 4-95, D24, production/BF16",
+    "promoted_qwen38_c2_k2_tok_s": 36.726,
+    "same_protocol_true_ar_tok_s": 30.720,
+    "speedup": 1.1970
+  },
+  "correctness_summary": {
+    "prefill_and_ar": "retained source packets pass exact trajectory/content, full-native-group, category/heldout, provenance, and clean-drain gates",
+    "explicit_k3": "each retained source packet preserves its declared exact generated-ID/acceptance and ownership contract; all C1-C8 cells engage K3 in explicit mode"
+  },
+  "source_artifacts": [
+    {
+      "path": "benchmarks/results/2026-08-31-w7900-q4km-fused-q4-prefill-retiles-retained.json",
+      "scope": "current hipEngine prefill C1-C3"
+    },
+    {
+      "path": "benchmarks/results/2026-08-31-w7900-q4km-c1c8-prefill-peer-repeat.json",
+      "scope": "current prefill C4-C8 and all peer prefill rows"
+    },
+    {
+      "path": "benchmarks/results/2026-08-31-w7900-q4km-c1c8-ar-peer-repeat-attribution.json",
+      "scope": "current true-AR C1-C8 and all peer AR rows"
+    },
+    {
+      "path": "benchmarks/results/2026-08-31-w7900-q4km-k3-c2-unpadded-r8-retained.json",
+      "scope": "current hipEngine explicit-K3 C1-C2"
+    },
+    {
+      "path": "benchmarks/results/2026-08-31-w7900-q4km-p13-final-audit.json",
+      "scope": "current hipEngine explicit-K3 C3-C4 and capacity-8 route audit"
+    },
+    {
+      "path": "benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-q6-grouped-rowtiles-retained.json",
+      "scope": "current hipEngine explicit-K3 C5-C8"
+    },
+    {
+      "path": "benchmarks/results/2026-08-30-w7900-qwen38-q4km-c1c8-cross-engine.json",
+      "scope": "peer explicit-K3 rows and standardized cross-engine protocol"
+    },
+    {
+      "path": "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json",
+      "scope": "promoted automatic capacity-2 C2/K2 product key"
+    }
+  ],
+  "limitations": [
+    "Rows are a provenance rollup of retained measurements at different tracked-clean commits, not one new simultaneous process packet.",
+    "The explicit-K3/AR ratio is derived from the displayed canonical rows; binding candidate decisions use same-packet true-AR controls in the source artifacts.",
+    "llama.cpp uses F16 KV while hipEngine uses BF16 KV; this is a deployable-configuration comparison."
+  ]
+}

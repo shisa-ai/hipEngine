@@ -219,6 +219,54 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     _assert_local_markdown_links_exist(scoreboard, scoreboard_path.parent)
 
 
+def test_qwen38_c1c8_current_rollup_matches_scoreboard() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    scoreboard = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
+    artifact = json.loads(
+        (
+            repo_root
+            / "benchmarks/results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json"
+        ).read_text(encoding="utf-8")
+    )
+
+    headings = {
+        "**True AR decode**": "true_ar",
+        "**Explicit K3 MTP decode diagnostic**": "explicit_k3",
+        "**Prefill**": "prefill",
+    }
+    labels = {
+        "hipEngine": "hipengine",
+        "llama.cpp current HIP": "llama_cpp_current_hip",
+        "llama.cpp Laurent HIP": "llama_cpp_laurent_hip",
+    }
+    markers = list(headings)
+    for index, marker in enumerate(markers):
+        begin = scoreboard.index(marker)
+        end = (
+            scoreboard.index(markers[index + 1], begin)
+            if index + 1 < len(markers)
+            else scoreboard.index("The ten-prompt suite", begin)
+        )
+        section = scoreboard[begin:end]
+        for label, role in labels.items():
+            line = next(
+                row for row in section.splitlines() if row.startswith(f"| {label} |")
+            )
+            cells = [cell.strip().strip("*") for cell in line.strip("|").split("|")[1:]]
+            assert [float(cell) for cell in cells] == artifact["rows_tok_s"][headings[marker]][role]
+
+    assert artifact["performance_claim"] is False
+    for source in artifact["source_artifacts"]:
+        assert (repo_root / source["path"]).is_file()
+    assert artifact["rows_tok_s"]["explicit_k3_divided_by_published_true_ar"] == [
+        round(mtp / ar, 4)
+        for mtp, ar in zip(
+            artifact["rows_tok_s"]["explicit_k3"]["hipengine"],
+            artifact["rows_tok_s"]["true_ar"]["hipengine"],
+        )
+    ]
+
+
 def test_compact_mtp_scoreboard_uses_true_ar_artifacts() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     results = repo_root / "benchmarks/results"

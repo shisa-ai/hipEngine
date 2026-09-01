@@ -54,12 +54,6 @@ EXCEPTIONS: dict[str, str] = {
         "2026-08-16 gfx1151 lane: same shape - the command references a /tmp script from the "
         "ROCMFPX transfer campaign that was never committed."
     ),
-    "2026-08-28-gfx1151-qwen38-external-reproduction-survey.json::SCRIPT-MISSING::"
-    "scripts/conc_bench.py": (
-        "2026-08-28 gfx1151 lane: scripts/conc_bench.py, cited by the survey artifact, is not in "
-        "the tree. Either the tool was never committed or it was deleted without updating the "
-        "citation."
-    ),
     "2026-08-08-gfx1151-maple-d0-selector-snapshot-retained.json::UNKNOWN-FLAG::--comparison": (
         "2026-08-08 gfx1151 lane: maple_c1_bench.py dropped --comparison after the run; the row "
         "is a selector snapshot on hardware not present here. Owner to re-measure or annotate."
