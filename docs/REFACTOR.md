@@ -52,15 +52,16 @@ should be removed or collapsed.
   rollback. Remove the environment/cache override after the next stable
   milestone audit; keep the registered grouped-R6 fallback.
 
-## 2026-09-02 gfx1100 exact physical C7 target rows — open
+## 2026-09-02 gfx1100 exact physical C7 target rows — closed
 
-- `HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS=1` removes the two inactive
-  padding rows at physical C7/K3 and composes exact R28 Q4/Q5/Q6 prefixes and
-  tails. Explicit zero retains padded R30. C8 remains padded R36 because its
-  unpadded R32 screen loses the fused gate/up owner and regresses complete wall.
-- Remove the flag/policy and R28 maps if the tracked-clean C7 category+heldout
-  gate fails. If retained, promote through gfx1100 capability metadata while
-  keeping padded R30 as rollback.
+- Promoted exact physical C7/K3 R28 through gfx1100 capability metadata after
+  both process orders and every category/heldout slice passed. It removes two
+  inactive padding rows and composes exact Q4/Q5/Q6 prefixes and tails. C8
+  remains padded R36 because its unpadded R32 screen loses the fused gate/up
+  owner and regresses complete wall.
+- `HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS=0` retains padded R30 for
+  same-build rollback. Remove the environment override after the next stable
+  milestone audit; keep the exact padded composition available.
 
 ## 2026-09-02 gfx1100 packed verifier model graph — closed (rejected)
 

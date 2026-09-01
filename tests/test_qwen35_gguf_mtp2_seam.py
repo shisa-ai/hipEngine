@@ -357,7 +357,7 @@ def test_mixed_q6_target_rowtiles_are_default_on_with_rollback_and_profile_scope
     rollback.close()
 
 
-def test_unpadded_r8_target_is_production_default_with_rollback(
+def test_exact_target_rows_are_production_defaults_with_rollbacks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     owner = SimpleNamespace(
@@ -371,35 +371,34 @@ def test_unpadded_r8_target_is_production_default_with_rollback(
     monkeypatch.delenv(
         "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", raising=False
     )
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", raising=False
+    )
     default = Qwen35GGUFMTP2Adapter(
         owner,
         enabled=True,
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert default.production_exact_target_row_counts == (8,)
+    assert default.production_exact_target_row_counts == (8, 28)
     assert default._target_group_pad_rows(request_count=2, candidate_rows=6) == 0
+    assert default._target_group_pad_rows(request_count=7, candidate_rows=21) == 0
+    assert default._target_group_pad_rows(request_count=8, candidate_rows=24) == 4
     assert default._target_group_pad_rows(request_count=1, candidate_rows=3) == 2
     default.close()
 
-    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", "1")
-    wide_exact = Qwen35GGUFMTP2Adapter(
+    monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", "0")
+    c7_rollback = Qwen35GGUFMTP2Adapter(
         owner,
         enabled=True,
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert wide_exact.production_exact_target_row_counts == (8, 28)
-    assert wide_exact._target_group_pad_rows(
+    assert c7_rollback.production_exact_target_row_counts == (8,)
+    assert c7_rollback._target_group_pad_rows(
         request_count=7, candidate_rows=21
-    ) == 0
-    assert wide_exact._target_group_pad_rows(
-        request_count=8, candidate_rows=24
-    ) == 4
-    wide_exact.close()
-    monkeypatch.delenv(
-        "HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS", raising=False
-    )
+    ) == 2
+    c7_rollback.close()
 
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS", "0")
     rollback = Qwen35GGUFMTP2Adapter(
