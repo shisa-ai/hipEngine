@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows1024 shared8r3 retained] Exact Q5 `<8,3,2>` leaves improve **1.24x/1.23x** at rows536/1024. Complete rows536 regresses **0.07%** and is scoped out; rows1024 improves **3050.717->3045.508 ms (-0.17%)** with unchanged token and is retained. Trace confirms gridY3, 256 threads, VGPR96, LDS16 KiB, scratch0. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json`.
+- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 high-row shared8r3 rejected] Exact Q5 `<8,3,2>` leaves improve **1.24x/1.23x** at rows536/1024. Complete rows536 regresses **0.07%**; rows1024 improves **0.17%**, but tracked-clean collateral is **160/160 exact**, **-0.11% MTP wall**, and **+0.62% AR wall**. Both high-row routes are removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 Q6 high-row shared8r3 retained] Exact standard-Q6 `<8,3,2>` improves rows536/1024 leaves **1.68x/1.66x**; complete walls fall **1867.136->1810.768 ms (-3.02%)** and **3150.993->3046.379 ms (-3.32%)** with unchanged tokens. Trace confirms 58 each gridY2/gridY3 hits, 256 threads, VGPR96, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate wall **0.60% AR / 0.26% MTP**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-high-retained.json`.
 
