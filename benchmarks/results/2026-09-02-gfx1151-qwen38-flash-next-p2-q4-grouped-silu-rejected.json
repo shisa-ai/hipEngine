@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_grouped_q4_silu_candidate",
+  "status": "rejected",
+  "arithmetic_class": "T0",
+  "scope": "p4096 routed-MoE Q4 gate/up family; screened at code-p512",
+  "clock_policy": "auto",
+  "amdahl": {
+    "complete_wall_seconds": 57.730,
+    "comparator_wall_seconds": 13.910,
+    "owner_seconds": 10.233,
+    "hypothesized_local_speedup": 1.03,
+    "hypothesized_savings_seconds": 0.298,
+    "hypothesized_gap_coverage": 0.0068
+  },
+  "mechanism": "preserve the dual-Q4 reduction, BF16-round gate/up inside the owner, then apply the incumbent SiLU/multiply expression and publish one BF16 plane",
+  "strict_fallback": "grouped dual Q4 plus silu_mul_separate_out_bf16",
+  "red": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest tests/test_gguf_q4_k_selected_wmma_prefill.py::test_grouped_rowbatch8_matches_strict_selected_dual_bits -q",
+    "result": "pass",
+    "contract": "fused BF16 output byte-equal to strict grouped gate/up plus separate SiLU on the synthetic grouped fixture"
+  },
+  "whole_model_screen": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen4exp_route_pair.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --case-id code-p512 --mode prefill --pairs 1 --warmups 1 --max-sequence-length 1024 --override HIPENGINE_QWEN4_EXP_Q4_GROUPED_SILU=1",
+    "result": "GPU page fault before the first bound warmup was recorded",
+    "samples": 0,
+    "partial_artifact": "/tmp/qwen4exp-q4-grouped-silu-p512-screen.json"
+  },
+  "restored_baseline": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen4exp_profile_gap.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --mode prefill --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --case-id code-p512 --repetitions 1 --output /tmp/qwen4exp-q4-silu-restored-baseline.json",
+    "wall_seconds": 5.5171037889958825,
+    "tok_s": 92.8023143268045,
+    "token_id": 248068,
+    "logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+    "lifecycle_passed": true
+  },
+  "decision": "Remove the prototype. A small synthetic RED is insufficient for this resource-sensitive production grouped template; require an actual K2560/production-FFN owner oracle before any retry.",
+  "overlap_exclusions": ["Q5 down", "routing", "weighting/reduce", "dense/GR/GDN/QSA", "copies", "host stages"]
+}

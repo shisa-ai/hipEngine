@@ -1060,7 +1060,13 @@ Evidence:
       this scheduling family without a new reuse mechanism.
 - [ ] Add operation-complete grouped dual gate/up+SiLU and
       down+route-weight+scatter/ordered-reduce candidates. Keep primitive
-      chains registered.
+      chains registered. The first T0 grouped-Q4+SiLU epilogue passed a small
+      byte-exact RED but faulted the GPU before the first bound p512 warmup was
+      recorded. Removing it restored named-production p512 to **5.517 s / 92.802
+      tok/s** with exact lifecycle closure. It is rejected/removed; any retry
+      requires an actual K2560/production-FFN owner oracle before whole-model
+      execution. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q4-grouped-silu-rejected.json`.
 - [ ] Sweep wave32 ownership, workgroup size, row/output tiles, and LDS padding
       on rotating actual weights. Use Nathan's wave32/bank-conflict findings as
       hypotheses, never as transferable constants.
