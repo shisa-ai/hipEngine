@@ -78,6 +78,31 @@ def test_repeat_summary_requires_token_and_state_exactness() -> None:
     assert state_mismatch["state_exact"] is False
 
 
+def test_memory_growth_distinguishes_steady_window_from_bucket_transition() -> None:
+    module = _load_script()
+    before = {"active_allocations": 10, "current_allocated_bytes": 100}
+
+    steady = module._memory_growth(
+        before,
+        {"active_allocations": 10, "current_allocated_bytes": 100},
+    )
+    resized = module._memory_growth(
+        before,
+        {"active_allocations": 10, "current_allocated_bytes": 120},
+    )
+
+    assert steady == {
+        "allocation_growth": 0,
+        "allocated_byte_growth": 0,
+        "passed": True,
+    }
+    assert resized == {
+        "allocation_growth": 0,
+        "allocated_byte_growth": 20,
+        "passed": False,
+    }
+
+
 def test_parser_defaults_to_binding_transition_live_counts(tmp_path: Path) -> None:
     module = _load_script()
 
