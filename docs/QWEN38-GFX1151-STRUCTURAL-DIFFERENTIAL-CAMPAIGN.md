@@ -382,6 +382,9 @@ control.
   shows that Laurent emits no draft call for `n_predict=1`; `n_predict=4`
   returns the target root plus a three-token proposal. The capture therefore
   retains only the first K3 proposal and discards the free-running response.
+  Concurrent C2 log segmentation resolves draft calls through candidate
+  `seq_id` to slot/task ownership rather than the most recent prompt marker;
+  an interleaved two-slot RED/GREEN test pins this behavior.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
