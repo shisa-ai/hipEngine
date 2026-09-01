@@ -42,12 +42,12 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-01 gfx1100 grouped Q5 rows6 screen — open
+## 2026-09-01 gfx1100 grouped Q5 rows6 rollback — closed
 
-- `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6=1` maps independent physical Q5
-  R6 chunks to `grid.y` while preserving each WG128/four-wave block verbatim.
-  Promote only after tracked-clean marker ownership and a complete C5-C8 gate;
-  otherwise remove the sibling, wrapper branch, and environment flag.
+- Promoted after exact tracked-clean marker ownership and complete C5-C8
+  qualification. `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6=0` retains the
+  repeated-R6 path for bisection; remove the flag after the grouped owner is
+  stable across the next production campaign.
 
 ## 2026-09-01 gfx1100 grouped Q4 rows6 pair-seam rollback — closed
 

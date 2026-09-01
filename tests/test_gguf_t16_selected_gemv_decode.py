@@ -1328,13 +1328,13 @@ def test_q5_t16_grouped_rows6_matches_repeated_rows6_bits(
     np.testing.assert_array_equal(grouped, repeated)
 
 
-def test_q5_t16_dense_decode_groups_physical_rows6_launches(
+def test_q5_t16_dense_decode_defaults_to_grouped_physical_rows6_launches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, int]] = []
-    monkeypatch.setenv(
+    monkeypatch.delenv(
         "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
-        "1",
+        raising=False,
     )
     monkeypatch.setattr(
         selected_t16_mod,
@@ -1356,13 +1356,13 @@ def test_q5_t16_dense_decode_groups_physical_rows6_launches(
     ]
 
 
-def test_q5_t16_grouped_rows6_policy_defaults_to_repeated_rollback(
+def test_q5_t16_grouped_rows6_policy_has_explicit_repeated_rollback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, int]] = []
-    monkeypatch.delenv(
+    monkeypatch.setenv(
         "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
-        raising=False,
+        "0",
     )
     monkeypatch.setattr(
         selected_t16_mod,
