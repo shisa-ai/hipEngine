@@ -22,8 +22,9 @@ should be removed or collapsed.
 
 - `target_verifier_wide_q6_shared4_session()` and the temporary
   `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` cross-thread experiment flag expose
-  the existing B-stationary exact Q4 shared-b2w2, Q5 WMMA, and standard/planar
-  Q6 shared4 owners at physical R20/R24/R32 for the W1
+  the existing B-stationary exact Q4 shared-b2w2 and standard/planar Q6
+  shared4 owners at physical R20/R24/R32 for the W1. The screened Q5 WMMA
+  addition is excluded after its complete target stage regressed 0.25%
   production-numerics campaign. The context defaults off; current chunk/direct
   owners remain the strict fallback, and automatic C6/C8 serving remains K0.
 - Remove the candidate context after the complete C6/C8 strict-teacher,

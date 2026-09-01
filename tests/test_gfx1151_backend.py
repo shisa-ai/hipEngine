@@ -594,10 +594,9 @@ def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None
     assert GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS[
         ("gguf_q5_k_t16_v1", 16, 6_144, 5_120)
     ] == "t16_gemv_rowtile16_col8_bf16_bf16_out"
-    assert len(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS) == 18
+    assert len(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS) == 15
     assert set(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS.values()) == {
         "t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
-        "t16_wmma_prefill_bf16_bf16_out",
         "t16_wmma_prefill_shared4_bf16_bf16_out",
     }
     assert {

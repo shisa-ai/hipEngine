@@ -4998,7 +4998,6 @@ def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
     (
         ("gguf_q4_k_t16_v1", 5_120, 1_024, "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"),
         ("gguf_q4_k_t16_v1", 17_408, 5_120, "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"),
-        ("gguf_q5_k_t16_v1", 6_144, 5_120, "t16_wmma_prefill_bf16_bf16_out"),
         ("gguf_q6_k_t16_v1", 5_120, 10_240, "t16_wmma_prefill_shared4_bf16_bf16_out"),
         ("gguf_q6_k_t16_qmicro_planar_v1", 17_408, 5_120, "t16_wmma_prefill_shared4_bf16_bf16_out"),
         ("gguf_q6_k_t16_qmicro_planar_v1", 5_120, 1_024, "t16_wmma_prefill_shared4_bf16_bf16_out"),
