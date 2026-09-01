@@ -948,6 +948,15 @@ matrix before implementation claims parity.
       *best* same-host Vulkan engine: a target frozen against an
       under-configured lane is invalid and would have to be re-frozen.
       Chunk/ubatch needs no action; every lane already runs `-b 8192 -ub 2048`.
+      **Hybrid-04 subaudit:** on exact code-p512 with one warmup and three
+      measured repetitions, graphics queue changes median pp/tok/s from
+      **212.08/25.59** to **209.60/25.96** (+1.43% decode, -1.19% prefill).
+      Relative to queue-on/repack/fit-off, no-repack is **+0.40%/-0.03%** and
+      fit-on is **+0.17%/+0.02%**, both neutral. Every repetition has the same
+      generated-ID hash. This does not extrapolate to or close the historical
+      upstream/Nathan Vulkan lanes; their old temporary binaries are absent and
+      must be rebuilt for separate A/B. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-vulkan-config-screen.json`.
 - [x] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
       shards with BF16 K/V and run it through the canonical 12-case screen. It
       is a patch series over a pinned base, so it is the cheapest new comparator
