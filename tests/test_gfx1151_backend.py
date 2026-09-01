@@ -454,6 +454,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
         ),
         KernelKey(
             "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
             "linear_pair",
             "gguf_q4_k",
             "pack8_dual_decode_bf16_bf16_out",
@@ -845,6 +851,19 @@ def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
     )
 
 
+def test_gfx1151_registers_y1_q4_single_sweep_variant() -> None:
+    register_gfx1151_kernels(replace=True)
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
+        )
+        is gfx1151_backend.gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out
+    )
+
+
 def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -857,6 +876,7 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
         "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out": "q4_shared",
         "gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out": "q4_shared2w2",
         "gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out": "q4_shared2w4",
+        "gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out": "q4_shared3w8r3",
         # Q5 owners
         "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out": "q5_plain",
         "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q5_lv",
@@ -940,10 +960,20 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
     )
     assert_routes(
         q4,
-        (257, 384),
+        (257, 287),
         {
             **{shape: "q4_shared2w2" for shape in shapes},
             (5_120, 12_288): "q4_shared",
+        },
+    )
+    assert_routes(
+        q4,
+        (288, 384),
+        {
+            **{shape: "q4_shared2w2" for shape in shapes},
+            (5_120, 12_288): "q4_shared3w8r3",
+            (5_120, 17_408): "q4_shared3w8r3",
+            (17_408, 5_120): "q4_shared3w8r3",
         },
     )
     assert_routes(q4, (385,), {shape: "q4_shared" for shape in shapes})

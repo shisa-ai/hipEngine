@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y1 rows288-384 Q4 single-sweep retained] Add exact shared-B `<3,8,3>` for three measured Q4 shapes: nine rows288/320/384 actual-weight cells improve **6.25-16.24%** with bit-exact output, and complete rows288 tick wall falls **1169.002->1138.043 ms (-2.65%)** with the same next token. Cache-only trace confirms gridY1, VGPR224, LDS24 KiB, scratch0. Y1 remains open above rows384; clean C1-C8 collateral follows. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y1 LDS-accumulator one-sweep rejected] A strict rows<=384 Q4T16 prototype keeps all FP32 outputs in LDS across K256 slabs and reaches one M-grid sweep, but rows288 K5120/N6144 is **1.103->1.712 ms (+55.1%)** versus retained shared-B2W2 despite bit-exact output. FP32 LDS partial traffic/output under-parallelism dominates; candidate source is scope-reverted. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-lds-accum384-rejected.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y1 rows288 parent policy rejected] Forcing the existing 48-column/256-row strict parent over the retained 32-column/128-row periodic owner reduces logical sweeps but regresses complete rows288 tick wall **1168.812->1200.241 ms (+2.69%)** with the same next token. Y1 requires a new single-sweep body that preserves output parallelism, not a threshold rollback. `benchmarks/results/2026-09-01-gfx1151-qwen38-y1-row288-parent-rejected.json`.

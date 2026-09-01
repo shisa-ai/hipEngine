@@ -662,7 +662,7 @@ template <
     int OUT_TILES_PER_BLOCK_ = 3,
     int WAVES_PER_BLOCK_ = 4,
     int ROW_TILES_PER_WAVE_ = 4>
-__launch_bounds__(128, 1)
+__launch_bounds__((WAVES_PER_BLOCK_ > 4 ? 256 : 128), 1)
 __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
@@ -2350,6 +2350,18 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2, 1>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 8, 3>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
