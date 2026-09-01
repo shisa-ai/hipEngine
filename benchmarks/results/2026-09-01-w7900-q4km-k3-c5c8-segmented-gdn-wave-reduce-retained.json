@@ -1,0 +1,444 @@
+{
+  "schema": 2,
+  "kind": "w7900_q4km_k3_c5c8_segmented_gdn_wave_reduce_retained",
+  "date": "2026-09-01",
+  "status": "retained_production_default",
+  "performance_claim": true,
+  "decision": "Promote the exact request-local physical C5-C8 segmented GDN wave reduction. Counterbalanced pooled complete wall and every category/heldout slice improve; exact leaf timing independently establishes the device mechanism.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff",
+    "strict_manifest_sha256": "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+  },
+  "source": {
+    "commit": "16f14961d2acf929b03653ba26e532810f697a54",
+    "tracked_clean": true,
+    "raw_sources": {
+      "r1_candidate": {
+        "path": "/tmp/he-gdn-wave-full-gate/r1-candidate.json",
+        "retained": false,
+        "sha256": "f3bb6df1a15bbae84fc3518d44b3434d9cca66fdf1e90784580ed8e615ac6e86"
+      },
+      "r1_rollback": {
+        "path": "/tmp/he-gdn-wave-full-gate/r1-control.json",
+        "retained": false,
+        "sha256": "8fb898cf4c14c6e90b1d7aaa8042e19c95625085b41543ad9a93e764a7611472"
+      },
+      "r2_rollback": {
+        "path": "/tmp/he-gdn-wave-full-gate/r2-control.json",
+        "retained": false,
+        "sha256": "64eba878c31af562e7d0f00fc2d56a8016c255503a1da8a06da0865aaed37ebc"
+      },
+      "r2_candidate": {
+        "path": "/tmp/he-gdn-wave-full-gate/r2-candidate.json",
+        "retained": false,
+        "sha256": "5a16e7897bf11c9514e2a77674c89efa79b31aebf5ad3db346e33ccc145f3f07"
+      }
+    }
+  },
+  "candidate": {
+    "variant": "decode_order_bf16_segments_state_rows_no_copy_wave_reduce",
+    "scope": "request-local physical C5-C8, 16K/48V/K128/V128, segment lengths 3 or 4, FP32 state",
+    "mechanism": "Reconstruct local128 Q/K and norm addition trees with wave32 shuffles, removing redundant workgroup barriers without changing arithmetic.",
+    "rollback": "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0",
+    "strict_fallback": "decode_order_bf16_segments_state_rows_no_copy"
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine-main/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": true,
+    "mtp_request_mode": "explicit",
+    "server_mtp_mode": "opt_in",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "capture_prefill_attribution": true,
+    "process_order": [
+      "candidate",
+      "rollback",
+      "rollback",
+      "candidate"
+    ],
+    "candidate_flag": "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=1",
+    "rollback_flag": "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0"
+  },
+  "correctness_and_ownership": {
+    "all_packets_passed": true,
+    "cross_arm_generated_ids_equal": true,
+    "cross_arm_acceptance_equal": true,
+    "cross_arm_rows_compared": 520,
+    "all_cells_engaged": true,
+    "all_cells_budget_conformed": true,
+    "one_physical_group_per_cell": true,
+    "recoverable_failure_count": 0,
+    "all_processes_drained": true,
+    "prompt_cell_pairs": [
+      {
+        "order": "candidate->rollback",
+        "candidate_prompt_cell_wins": 39,
+        "cells": 40,
+        "median_delta_pct": 0.6557740653802213,
+        "minimum_delta_pct": -0.5042635255077532,
+        "maximum_delta_pct": 3.1531144540248635,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      },
+      {
+        "order": "rollback->candidate",
+        "candidate_prompt_cell_wins": 13,
+        "cells": 40,
+        "median_delta_pct": -0.08091488554665127,
+        "minimum_delta_pct": -0.45478273057860674,
+        "maximum_delta_pct": 2.1895213782918033,
+        "generated_ids_equal": true,
+        "acceptance_equal": true
+      }
+    ]
+  },
+  "leaf_screen": {
+    "raw": "/tmp/he-k3-gdn-wave-reduce-screen-r2.json",
+    "protocol": {
+      "warmups": 5,
+      "pairs": 80,
+      "inner": 10,
+      "order": "alternating"
+    },
+    "rows": [
+      {
+        "segments": 5,
+        "length": 4,
+        "bf16_exact": true,
+        "state_rows_exact": true,
+        "parent_median_ms": 0.09285620152950286,
+        "candidate_median_ms": 0.08908849954605103,
+        "speedup": 1.0422916762842578,
+        "wins": 66,
+        "pairs": 80
+      },
+      {
+        "segments": 6,
+        "length": 4,
+        "bf16_exact": true,
+        "state_rows_exact": true,
+        "parent_median_ms": 0.11753075122833252,
+        "candidate_median_ms": 0.10347070097923278,
+        "speedup": 1.1358843625880304,
+        "wins": 79,
+        "pairs": 80
+      },
+      {
+        "segments": 7,
+        "length": 4,
+        "bf16_exact": true,
+        "state_rows_exact": true,
+        "parent_median_ms": 0.15388510227203367,
+        "candidate_median_ms": 0.15090110301971435,
+        "speedup": 1.0197745357231052,
+        "wins": 55,
+        "pairs": 80
+      },
+      {
+        "segments": 8,
+        "length": 4,
+        "bf16_exact": true,
+        "state_rows_exact": true,
+        "parent_median_ms": 0.22167764902114867,
+        "candidate_median_ms": 0.2142035961151123,
+        "speedup": 1.0348922849176623,
+        "wins": 73,
+        "pairs": 80
+      }
+    ]
+  },
+  "measurements": {
+    "5": {
+      "aggregate": {
+        "rollback_tok_s": 60.610790170145606,
+        "candidate_tok_s": 61.05193107799835,
+        "candidate_delta_pct": 0.7278257000352228,
+        "rollback_wall_seconds": 39.59690994396806,
+        "candidate_wall_seconds": 39.310795868746936,
+        "generated_tokens_per_arm": 2400
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 60.78511609059964,
+          "candidate_tok_s": 61.762824443734075,
+          "candidate_delta_pct": 1.6084667037193245
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 60.43746129052855,
+          "candidate_tok_s": 60.35721633569553,
+          "candidate_delta_pct": -0.1327735366766558
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 62.65807603427813,
+          "candidate_tok_s": 63.00753003719045,
+          "candidate_delta_pct": 0.5577158205769761
+        },
+        "general_en": {
+          "rollback_tok_s": 64.91522329845448,
+          "candidate_tok_s": 65.44238854729377,
+          "candidate_delta_pct": 0.8120826241567292
+        },
+        "general_ja": {
+          "rollback_tok_s": 57.37266426198983,
+          "candidate_tok_s": 57.77377532223368,
+          "candidate_delta_pct": 0.6991327061476316
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 56.37079444831777,
+          "candidate_tok_s": 56.92897850570238,
+          "candidate_delta_pct": 0.9902007996292816
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 60.590476345659695,
+          "candidate_tok_s": 61.032814239010236,
+          "candidate_delta_pct": 0.7300452480800246
+        },
+        "heldout": {
+          "rollback_tok_s": 60.641286459101224,
+          "candidate_tok_s": 61.080628801361925,
+          "candidate_delta_pct": 0.7244937696976539
+        }
+      }
+    },
+    "6": {
+      "aggregate": {
+        "rollback_tok_s": 68.1673667886519,
+        "candidate_tok_s": 68.53115388353947,
+        "candidate_delta_pct": 0.5336675186757178,
+        "rollback_wall_seconds": 42.24895482510328,
+        "candidate_wall_seconds": 42.02468274347484,
+        "generated_tokens_per_arm": 2880
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 68.24868812482438,
+          "candidate_tok_s": 68.99333826737893,
+          "candidate_delta_pct": 1.0910834523186974
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 68.08623901778898,
+          "candidate_tok_s": 68.07512061329072,
+          "candidate_delta_pct": -0.01632988494981724
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 67.80019282270405,
+          "candidate_tok_s": 68.35373120497596,
+          "candidate_delta_pct": 0.8164259705269572
+        },
+        "general_en": {
+          "rollback_tok_s": 74.29236377760381,
+          "candidate_tok_s": 74.4923624037189,
+          "candidate_delta_pct": 0.2692048226030197
+        },
+        "general_ja": {
+          "rollback_tok_s": 66.50883635403876,
+          "candidate_tok_s": 66.76643885780955,
+          "candidate_delta_pct": 0.38732071991083306
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 65.1274487250147,
+          "candidate_tok_s": 65.36725160353014,
+          "candidate_delta_pct": 0.36820554652454707
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 67.75511363641634,
+          "candidate_tok_s": 68.19732603093871,
+          "candidate_delta_pct": 0.6526627597369883
+        },
+        "heldout": {
+          "rollback_tok_s": 68.79523941967763,
+          "candidate_tok_s": 69.03806885251383,
+          "candidate_delta_pct": 0.3529741808947717
+        }
+      }
+    },
+    "7": {
+      "aggregate": {
+        "rollback_tok_s": 65.8599587803045,
+        "candidate_tok_s": 66.10590110121376,
+        "candidate_delta_pct": 0.3734322423882386,
+        "rollback_wall_seconds": 51.01734137441963,
+        "candidate_wall_seconds": 50.8275349708274,
+        "generated_tokens_per_arm": 3360
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 66.03663872710143,
+          "candidate_tok_s": 66.445504169563,
+          "candidate_delta_pct": 0.6191493848607399
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 65.68422171944728,
+          "candidate_tok_s": 65.76975180418577,
+          "candidate_delta_pct": 0.13021404912707535
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 66.03195877329682,
+          "candidate_tok_s": 66.44924262093576,
+          "candidate_delta_pct": 0.6319422524956098
+        },
+        "general_en": {
+          "rollback_tok_s": 73.05064481256747,
+          "candidate_tok_s": 73.21105582172339,
+          "candidate_delta_pct": 0.21958876553040962
+        },
+        "general_ja": {
+          "rollback_tok_s": 61.61191040935145,
+          "candidate_tok_s": 61.731091979006436,
+          "candidate_delta_pct": 0.19343917249625697
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 63.65154527221352,
+          "candidate_tok_s": 63.77705428878027,
+          "candidate_delta_pct": 0.19718141331839245
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 65.68001451023197,
+          "candidate_tok_s": 65.8950855917374,
+          "candidate_delta_pct": 0.3274528532144716
+        },
+        "heldout": {
+          "rollback_tok_s": 66.13173154673612,
+          "candidate_tok_s": 66.42466576238867,
+          "candidate_delta_pct": 0.44295561117362325
+        }
+      }
+    },
+    "8": {
+      "aggregate": {
+        "rollback_tok_s": 69.55087979357502,
+        "candidate_tok_s": 69.71692470927778,
+        "candidate_delta_pct": 0.23873877109186203,
+        "rollback_wall_seconds": 55.21137922909111,
+        "candidate_wall_seconds": 55.0798821952194,
+        "generated_tokens_per_arm": 3840
+      },
+      "pairs": [
+        {
+          "order": "candidate->rollback",
+          "rollback_tok_s": 69.68785389225378,
+          "candidate_tok_s": 69.98226761401258,
+          "candidate_delta_pct": 0.4224749440756126
+        },
+        {
+          "order": "rollback->candidate",
+          "rollback_tok_s": 69.41444309410649,
+          "candidate_tok_s": 69.45358633840748,
+          "candidate_delta_pct": 0.05639063364366592
+        }
+      ],
+      "categories": {
+        "code": {
+          "rollback_tok_s": 70.82464776435855,
+          "candidate_tok_s": 70.89452460579558,
+          "candidate_delta_pct": 0.09866175638391095
+        },
+        "general_en": {
+          "rollback_tok_s": 73.6590127292605,
+          "candidate_tok_s": 73.84912191039595,
+          "candidate_delta_pct": 0.2580935775425175
+        },
+        "general_ja": {
+          "rollback_tok_s": 65.7825598768563,
+          "candidate_tok_s": 66.16575029142128,
+          "candidate_delta_pct": 0.5825106461078811
+        },
+        "mixed_ja_en": {
+          "rollback_tok_s": 67.23416225887816,
+          "candidate_tok_s": 67.32650503102033,
+          "candidate_delta_pct": 0.13734501782980413
+        }
+      },
+      "scopes": {
+        "train": {
+          "rollback_tok_s": 69.23989355804054,
+          "candidate_tok_s": 69.4711584410725,
+          "candidate_delta_pct": 0.33400525498801237
+        },
+        "heldout": {
+          "rollback_tok_s": 70.02263257483271,
+          "candidate_tok_s": 70.08885190819326,
+          "candidate_delta_pct": 0.09456847154352133
+        }
+      }
+    }
+  },
+  "profiling": {
+    "status": "blocked",
+    "attempts": 3,
+    "evidence": "rocprofv3 1.3.2 deadlocked before launching the cached-build child under both ROCR_VISIBLE_DEVICES=0 and unset ROCR scope; 120-300 second bounded attempts emitted only tool initialization. HIP remained healthy. Direct raw-symbol exact tests and HIP-event leaf screens establish execution, but no profiler trace is claimed."
+  },
+  "limitations": [
+    "Absolute rates apply only to the stated host/model/protocol.",
+    "The reverse-order pair is noise-flat at C5/C6 (-0.13%/-0.02%); retention rests on exact leaf margin plus positive counterbalanced pooled/category/heldout results."
+  ]
+}

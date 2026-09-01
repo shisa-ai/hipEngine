@@ -163,6 +163,16 @@ tok/s and drops 24 MiB; 512/1K/4K peak falls 24/128/128 MiB. rocprof confirms
 or scratch). Exact direct LDS32 remains the explicit rollback. Evidence:
 [`Qwen3.8 compact-peer GDN`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p3-compact-peer-gdn.json).
 
+The independent gfx1100 Qwen3.8 physical C5-C8 row-state path selects
+`decode_order_bf16_segments_state_rows_no_copy_wave_reduce` only for FP32
+state, K128/V128, and three- or four-token segments. It reconstructs the
+parent local128 Q/K and norm reduction trees with wave32 shuffles, preserving
+BF16 output and every FP32 state row bit-for-bit while removing redundant
+workgroup barriers. Strict, FP16-state, peer, non-physical, and shape misses
+retain the registered parent; `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0`
+is the same-build rollback. Evidence:
+[`gfx1100 segmented GDN wave reduction`](../benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-segmented-gdn-wave-reduce-retained.json).
+
 ### GGUF / Qwen / Laguna path
 
 GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layouts, exact expanded planes, and source-F16 Laguna tensors have distinct storage and registry keys.
