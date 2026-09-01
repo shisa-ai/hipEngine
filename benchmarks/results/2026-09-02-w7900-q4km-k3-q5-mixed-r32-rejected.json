@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_q5_mixed_r32_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Remove the exact mixed-tail Q5 R32 owner after catastrophic actual-weight leaf losses. Keep the retained grouped R30 prefix plus strict R2 tail.",
+  "source": {
+    "base_commit": "09e6a3258",
+    "dirty_candidate": true,
+    "candidate_removed": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "candidate": {
+    "mechanism": "One six-block grid.y launch for R32, with runtime active-row guards in the final block so it owns the strict R2 tail without out-of-bounds reads or stores.",
+    "control": "Retained grouped R30 prefix plus strict R2 rowtile tail.",
+    "rows": 32,
+    "role": "ssm_out Q5",
+    "protocol": {
+      "warmups": 5,
+      "sample_pairs": 40,
+      "launches_per_event_sample": 3,
+      "order": "alternating control/candidate and candidate/control",
+      "timing": "HIP event operation-complete"
+    },
+    "cases": {
+      "layer0": {
+        "bf16_bit_exact": true,
+        "control_median_ms": 0.4091285069783529,
+        "candidate_median_ms": 0.887976845105489,
+        "candidate_speedup": 0.46074231465996124,
+        "candidate_pair_wins": 0
+      },
+      "layer32": {
+        "bf16_bit_exact": true,
+        "control_median_ms": 0.41912933190663654,
+        "candidate_median_ms": 0.9485533237457275,
+        "candidate_speedup": 0.4418616449010407,
+        "candidate_pair_wins": 0
+      }
+    }
+  },
+  "validation": {
+    "fixture_exactness": "Mixed R32 matches repeated R6 prefix plus R2 tail bit-for-bit.",
+    "leaf_verdict": "0/40 pair wins on both actual-weight layers; candidate is 2.17-2.26x slower. Rejected before marker or suite.",
+    "final_tree": "No candidate kernel, wrapper, registry route, environment flag, or test remains."
+  },
+  "limitations": [
+    "Layer64 does not exist for this model; the exploratory script terminated on that missing tensor after completing layers 0 and 32.",
+    "Dirty candidate rejection only; no retained performance claim."
+  ]
+}
