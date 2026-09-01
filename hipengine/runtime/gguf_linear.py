@@ -3757,37 +3757,12 @@ def launch_gguf_linear_pair(
     # exactly rows6. A padded 12/18/24-row group therefore preserves that
     # owner by decomposing the normal unfused gate/up fallback into rows6
     # groups. Per-chunk pair misses intentionally fall through to two single
-    # projections; the caller keeps the existing full-row SiLU stage. Unequal
-    # recurrent QKV/gate pairs use the same decomposition only under a separate
-    # backend policy so their product effect can be measured independently.
-    unequal_physical_policy = backend_package_capability(
-        resolved_backend,
-        "GGUF_SPECDEC2_Q4_PHYSICAL_UNEQUAL_PAIR_POLICY",
-        {},
-    )
-    unequal_physical_enabled = False
-    if isinstance(unequal_physical_policy, Mapping):
-        enabled_env = unequal_physical_policy.get("enabled_env")
-        if isinstance(enabled_env, str) and enabled_env:
-            enabled_default = bool(
-                unequal_physical_policy.get("enabled_default", False)
-            )
-            raw = os.environ.get(
-                enabled_env,
-                "1" if enabled_default else "0",
-            ).strip().lower()
-            if raw in {"1", "true", "yes", "on"}:
-                unequal_physical_enabled = True
-            elif raw not in {"0", "false", "no", "off"}:
-                raise ValueError(f"{enabled_env} must be a boolean value")
+    # projections; the caller keeps the existing full-row SiLU stage.
     if (
         not registered_decode_only
         and activation_dtype == GGUF_ACTIVATION_BF16
         and output_dtype == GGUF_OUTPUT_BF16
-        and (
-            int(out_features_b) == int(out_features)
-            or unequal_physical_enabled
-        )
+        and int(out_features_b) == int(out_features)
         and weight_a.spec.quant_key == weight_b.spec.quant_key
         == "gguf_q4_k_t16_v1"
         and int(rows) >= 12
