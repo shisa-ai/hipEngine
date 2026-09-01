@@ -280,6 +280,14 @@ GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
         "rows_by_shape": {
             shape: (6,) for shape in _Q4_T16_ROWTILE16_W2_R6_SHAPES
         },
+        "experimental_shapes": {
+            (17_408, 5_120): {
+                "variant": "dense_rowtile16_w2_bf16_bf16_out",
+                "rows": (6,),
+                "enabled_env": "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_FFN_DOWN",
+                "enabled_default": False,
+            },
+        },
     }
 }
 # Rows for which the single-wave leaf owns a single-wave shape instead of the
