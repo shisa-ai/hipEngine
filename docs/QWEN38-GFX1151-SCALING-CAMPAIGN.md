@@ -839,6 +839,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   max 0.0078125); scope-reverted. It may reopen only as declared T2 with the
   complete production gate.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-exact-rejected.json).
+  Corrected direct shared4 comparison recovers strict parity: standard Q6
+  rows257-384 shared8r3 is bit-exact, 1.95x faster at rows288, and cuts the
+  complete rows288 tick wall **3.43%**; retained as a partial Y2 win. Planar
+  peers are flat and unchanged; Q5/GDN remain open.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
