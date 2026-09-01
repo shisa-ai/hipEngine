@@ -1388,7 +1388,7 @@ direct-launch surface before graph capture hides it.
 Goal: replace the measured **2.659 vs 0.465 ms/token** recurrence with a
 c1-shaped layout without reviving the rejected prefill-colwarps route.
 
-- [ ] Normalize Q/K once per head instead of once per output column. An exact
+- [x] Normalize Q/K once per head instead of once per output column. An exact
       t128 sibling that removes the t256 zero-only reduction half is rejected
       and removed: **0.06633→0.06754 ms (0.982x)** at production geometry.
       Thread count is not the state-traffic solution. Evidence:
