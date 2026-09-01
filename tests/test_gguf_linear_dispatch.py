@@ -5671,6 +5671,58 @@ def test_gfx1100_q4_k_decode_row6_two_wave_defaults_off(
     assert variants == ("dense_rowtile_bf16_bf16_out",)
 
 
+@pytest.mark.parametrize(
+    "backend,enabled,expected_variant",
+    [
+        ("hip_gfx1100", True, "dense_rowtile16_w2_bf16_bf16_out"),
+        ("hip_gfx1100", False, "dense_rowtile_bf16_bf16_out"),
+        ("hip_gfx1151", True, "dense_rowtile_bf16_bf16_out"),
+    ],
+)
+def test_q4_t16_row6_two_wave_canonical_scope(
+    backend: str,
+    enabled: bool,
+    expected_variant: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2",
+        "1" if enabled else "0",
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_native_batch_decode_session_enabled",
+        True,
+    )
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    dispatch = gguf_linear_module.GGUFLinearDispatch(
+        KernelKey(
+            backend,
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_gemv_decode_bf16_bf16_out",
+        ),
+        "t16",
+    )
+    for variant in (
+        "dense_rowtile16_w2_bf16_bf16_out",
+        "dense_rowtile_bf16_bf16_out",
+    ):
+        gguf_linear_module._ensure_linear_kernel_registered(
+            KernelKey(backend, "linear", "gguf_q4_k_t16_v1", variant)
+        )
+    try:
+        resolved = gguf_linear_module._q4_t16_dense_native_dispatch(
+            dispatch,
+            rows=6,
+            in_features=5_120,
+            out_features=12_288,
+        )
+    finally:
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    assert resolved.key.variant == expected_variant
+
+
 def test_gfx1151_q4_k_t16_shared_down_selects_native_tail_batch() -> None:
     """The production tail boundary consumes the resident T16 sidecar."""
 

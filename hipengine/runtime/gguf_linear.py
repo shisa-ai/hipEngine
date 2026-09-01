@@ -2783,6 +2783,7 @@ def _q4_t16_sidecar_decode_variants(
     in_features: int,
     out_features: int,
     backend: str | None = None,
+    canonical: bool = False,
 ) -> tuple[str, ...]:
     """Rank exact rowtile variants by measured backend shape policy."""
 
@@ -2810,6 +2811,11 @@ def _q4_t16_sidecar_decode_variants(
         if isinstance(rowtile_variants, Mapping)
         else None
     )
+    if canonical and not (
+        isinstance(variant_policy, Mapping)
+        and bool(variant_policy.get("canonical", False))
+    ):
+        return variants
     if isinstance(variant_policy, Mapping):
         enabled_env = variant_policy.get("enabled_env")
         if isinstance(enabled_env, str) and enabled_env:
@@ -2918,6 +2924,8 @@ def _q4_t16_dense_native_dispatch(
         rows=rows,
         in_features=in_features,
         out_features=out_features,
+        backend=dispatch.key.backend,
+        canonical=True,
     ):
         key = KernelKey(
             dispatch.key.backend,
