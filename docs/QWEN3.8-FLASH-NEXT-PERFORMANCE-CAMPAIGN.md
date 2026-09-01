@@ -1427,7 +1427,7 @@ request-owned transition submission.
       relaunch hazard on current ROCm; localization moves to cross-kernel/full-
       layer composition. Do not widen production capture yet. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p8-gdn-graph-replay-probe.json`.
-- [ ] Capture in rungs: one stateful layer, one complete attention/FFN
+- [x] Capture in rungs: one stateful layer, one complete attention/FFN
       transition, a multi-layer segment, then the full token step. **Rung 1 is
       complete:** strict layer 0's full 34-kernel GR→Conv/GDN→MoE transition is
       output/state exact through four replays and measures **4.051→1.258 ms
