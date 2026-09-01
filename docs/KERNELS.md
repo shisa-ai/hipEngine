@@ -345,6 +345,12 @@ owners as fallback. The actual-weight leaves improve 1.94x/2.48x and complete
 wall falls 827.488->735.999 ms (-11.06%) with the same token. Cache-only trace:
 80 hits, 128 threads, gridY2, VGPR176, LDS16 KiB, scratch0. Evidence:
 [`Qwen3.8 Y2 planar-Q6 rows256`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
+The wide 17408x5120 shape further uses exact `<4,4,2>` at rows256, reaching
+256-row capacity and gridY1. The narrow shape remains `<4,3,2>` because
+`<4,4,2>` regresses it 5.78%. Wide leaf improves 1.45x; complete wall falls
+734.190->706.580 ms (-3.76%), token unchanged. Trace: 64 hits, gridY1,
+128 threads, VGPR176, LDS16 KiB, scratch0. Evidence:
+[`Qwen3.8 Y2 planar-Q6 rows256 r4`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r4-rows256-retained.json).
 
 Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
 K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact
