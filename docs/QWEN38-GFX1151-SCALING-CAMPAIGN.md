@@ -807,6 +807,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   owner regresses complete tick wall **2.69%** despite fewer M-grid sweeps;
   threshold rollback is rejected, so Y1 proceeds to a new one-sweep body.
   [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-row288-parent-rejected.json).
+  The first new body keeps rows<=384 FP32 accumulators in LDS across K256
+  slabs and is bit-exact/one-sweep, but rows288 K5120/N6144 regresses
+  **55.1%** versus shared-B2W2; FP32 partial spill traffic is rejected.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y1-lds-accum384-rejected.json).
 - [ ] Y2 **Sibling-family multiplicity (Q5/Q6/GDN).** The C8 trace remainder
   (Q6 5.13 s, Q5 2.03 s, GDN 1.82 s, other 2.08 s of 27.9 s) becomes the
   binding share after Y1. Extend the single-sweep dataflow per Y0's measured

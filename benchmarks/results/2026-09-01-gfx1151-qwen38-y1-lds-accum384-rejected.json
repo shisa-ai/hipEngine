@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y1-lds-accum384-rejected",
+  "created_at": "2026-09-01T07:43:00Z",
+  "status": "measured_rejected_kernel_candidate",
+  "source_commit": "7720d2ea1",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "cpu_apu": "AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "candidate": {
+    "name": "Q4T16 LDS FP32 accumulator one-sweep rows<=384",
+    "geometry": "one 16-column output tile/workgroup; 24 KiB FP32 accumulator at rows384 + 8 KiB decoded K256 weight slab; gridY=1",
+    "contract": "same K16 WMMA order and direct BF16 store as shared-B parent; FP32 LDS spill/reload only between K256 slabs",
+    "retained": false
+  },
+  "protocol": {
+    "rows": 288,
+    "in_features": 5120,
+    "out_features": 6144,
+    "warmup": 1,
+    "iterations": 3,
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/gguf_q4_t16_dense_prefill_owner_microbench.py --rows 288 --in-features 5120 --out-features 6144 --warmup 1 --iters 3 --json /tmp/y1-ldsaccum-r288-k5120-n6144.json"
+  },
+  "results": {
+    "shared_b": {
+      "median_ms": 1.2527620419859886,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    "lds_accum384": {
+      "median_ms": 1.7116519156843424,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    "shared_b2w2": {
+      "median_ms": 1.1034111957997084,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    "shared_b2w4": {
+      "median_ms": 1.2320128735154867,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    "default": {
+      "median_ms": 1.266486942768097,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    "lowvgpr": {
+      "median_ms": 1.3283740263432264,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    },
+    "lowvgpr48": {
+      "median_ms": 1.172971911728382,
+      "bit_exact_vs_shared_b": true,
+      "max_abs_vs_shared_b": 0.0
+    }
+  },
+  "comparison": {
+    "current_shared_b2w2_ms": 1.1034111957997084,
+    "candidate_ms": 1.7116519156843424,
+    "candidate_vs_current_pct": 55.1236676046055,
+    "candidate_vs_parent_pct": 36.630250464077065
+  },
+  "decision": "reject and scope-revert uncommitted kernel",
+  "interpretation": "The exact one-sweep body removes source-weight repetition but FP32 accumulator LDS traffic and one-output-tile ownership dominate; it is 55% slower than the retained rows288 owner. Y1 needs a different algorithm, not global/LDS partial accumulation.",
+  "raw_sources": [
+    {
+      "path": "/tmp/y1-ldsaccum-r288-k5120-n6144.json",
+      "sha256": "96c175076cf1dac9927dbdd0fcc29cef8099b05b6f832829de0401f4ae06457a",
+      "bytes": 2208
+    },
+    {
+      "path": "/tmp/y1-ldsaccum384-candidate.patch",
+      "sha256": "22e724aeccc04126551a177a136ccad3a9c43a9d2ff178ebfb3b4b9ac147152b",
+      "bytes": 13250
+    }
+  ]
+}
