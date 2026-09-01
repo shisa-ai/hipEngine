@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y3 planar-Q6 pair decode collateral] Tracked-clean C1-C8 preserves 160/160 control/candidate generated-ID rows; aggregate wall changes +0.16% AR / -0.15% MTP and C8 MTP improves 0.24%, passing the collateral guard. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y3 planar-Q6 pair decode retained] Exact adjacent-column-pair cooperative decode lowers complete rows288/536/1024 walls 988.838->983.912 ms (-0.50%), 1676.896->1645.574 ms (-1.87%), and 2752.863->2747.827 ms (-0.18%) with unchanged tokens; the direct body remains a strict fallback. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y3 shared4r6 ISA analysis] Generated ISA has zero WMMA in the 326-instruction cooperative decode region between two barriers; 192 WMMAs remain in sixteen separated groups. Next exact screen pairs adjacent columns to reuse shared qmicro record bytes without changing accumulation. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json`.
