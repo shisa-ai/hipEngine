@@ -864,7 +864,8 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Q6 rows385-1024 now reuses exact `<8,3,2>` at gridY2/3: rows536/1024
   leaves improve **1.68x/1.66x**, and complete walls fall
   **1867.136->1810.768 ms (-3.02%)** and **3150.993->3046.379 ms (-3.32%)**
-  with unchanged tokens.
+  with unchanged tokens. Tracked-clean C1-C8 collateral is **160/160 exact**
+  and improves aggregate wall **0.60% AR / 0.26% MTP**.
   [`Q6 high-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json),
   [`Q6 mid-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json),
   [`Q6 rows49-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json),
