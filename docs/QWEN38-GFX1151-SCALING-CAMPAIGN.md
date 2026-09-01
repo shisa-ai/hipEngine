@@ -870,10 +870,10 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Q6 mid-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json),
   [`Q6 rows49-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json),
   [`Q6 high-grid artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-high-retained.json),
-  Q5 rows65-96 now uses exact `<6,1,2>` after existing `<8,3,2>` lost:
-  four rows65/80/81/96 leaves improve **1.31-1.35x**, and complete rows72/96
-  walls fall **396.135->387.975 ms (-2.06%)** and
-  **424.846->421.180 ms (-0.86%)**, same tokens. Q5 high-row shared8r3 is
+  Q5 rows65-96 exact `<6,1,2>` improves four leaves **1.31-1.35x** and
+  complete rows72/96 walls **2.06%/0.86%**, but its tracked-clean collateral,
+  while **160/160 exact** and -0.37% MTP wall, regresses aggregate AR wall
+  **0.19%**; the route and export are removed. Q5 high-row shared8r3 is
   exact and 1.24x/1.23x faster at rows536/1024,
   but complete rows536 wall regresses **0.07%**. Rows1024 improves its tick
   **3050.717->3045.508 ms (-0.17%)**, but tracked-clean C1-C8 collateral,
