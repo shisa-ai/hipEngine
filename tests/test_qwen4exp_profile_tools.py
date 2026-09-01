@@ -128,6 +128,17 @@ def test_qwen4exp_trace_family_classifies_complete_qwen4exp_owners() -> None:
     ) == "dense_quant_q8"
     assert module.hipengine_family("argmax_stage1_kernel") == "output_selection"
     assert module.llama_family("argmax_f32") == "output_selection"
+    assert module.llama_family(
+        "mul_mat_q<(ggml_type)13, 128, false>"
+    ) == "moe_gate_up_q5k"
+    assert module.llama_family(
+        "mul_mat_vec_q<(ggml_type)13, 1, true, false, false>"
+    ) == "moe_gate_up_q5k"
+    assert module.llama_family("concat_non_cont<unsigned int, 0>") == "layout_copy_rows"
+    assert module.llama_family("k_get_rows_float_vec<float>") == "layout_copy_rows"
+    assert module.llama_family("reduce_rows_f32<false>") == "selection_reduce"
+    assert module.llama_family("soft_max_f32<true, 512, 512, float>") == "selection_reduce"
+    assert module.llama_family("mul_mat_f<__hip_bfloat162>") == "dense_other"
 
 
 def test_qwen4exp_trace_analyze_synthetic_window(tmp_path: Path) -> None:

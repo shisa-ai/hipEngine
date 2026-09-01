@@ -146,6 +146,9 @@ def llama_family(name: str) -> str:
     q4 = any(part in lowered for part in ("type12", "type 12", "(ggml_type)12"))
     q5 = any(part in lowered for part in ("type7", "type 7", "(ggml_type)7"))
     q8 = any(part in lowered for part in ("type8", "type 8", "(ggml_type)8"))
+    q5k = any(part in lowered for part in ("type13", "type 13", "(ggml_type)13"))
+    if any(part in lowered for part in ("mul_mat_q", "mul_mat_vec_q")) and q5k:
+        return "moe_gate_up_q5k"
     if "mul_mat_q" in lowered and q4:
         return "moe_gate_up_q4"
     if "mul_mat_q" in lowered and q5:
@@ -158,7 +161,7 @@ def llama_family(name: str) -> str:
         return "dense_quant_q8"
     if any(part in lowered for part in ("cijk_", "rocblas", "gemm")):
         return "dense_gemm_library"
-    if "mul_mat_vec_f" in lowered:
+    if any(part in lowered for part in ("mul_mat_vec_f", "mul_mat_f<")):
         return "dense_other"
     if any(part in lowered for part in ("gated_delta_net", "ssm_conv")):
         return "gdn"
@@ -166,6 +169,19 @@ def llama_family(name: str) -> str:
         return "qsa_attention"
     if any(part in lowered for part in ("topk", "argsort", "mm_ids")):
         return "moe_routing"
+    if any(
+        part in lowered
+        for part in (
+            "concat_",
+            "cpy_scalar",
+            "k_get_rows",
+            "k_set_rows",
+            "fill_kernel",
+        )
+    ):
+        return "layout_copy_rows"
+    if any(part in lowered for part in ("reduce_rows", "soft_max", "op_clamp")):
+        return "selection_reduce"
     if "argmax" in lowered:
         return "output_selection"
     if any(part in lowered for part in ("quantize", "convert")):
