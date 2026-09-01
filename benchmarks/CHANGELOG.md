@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next hybrid-04 comparator — correctness-invalid] The pinned 33-patch Vulkan graphics/BF16-KV screen reaches **270.31/25.83**, **327.03/25.67**, and **364.04/21.26 pp/tok/s** at p512/p1024/p4096, but matches current hipEngine generated-ID hashes on only **2/12** cases. Diagnostic only; one repetition/no warmups is not thermal evidence. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-canonical-screen.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next post-P4 p512 ledger — diagnostic] Fresh named-production trace is **100% attributed**, with **5,483.08 ms** kernel sum in a **5,552.89-ms** window. Top owners: Q4 gate/up **1,265.08 ms**, Q5 down **1,086.52 ms**, dense-other **1,071.12 ms**, dense Q8 **883.63 ms**, GDN **599.36 ms**, GR **403.94 ms**. Output and lifecycle pass. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-p512-ledger.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 dense-other audit — diagnostic] Resolved **8.767 s** into strict selected Q8_0 down **3.086 s**, dense F32 projections **2.775 s**, and layer-2 strict selected Q5_K **2.337 s**. The measured-negative grouped Q8 owner is not extended unchanged; a new mechanism is required. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.

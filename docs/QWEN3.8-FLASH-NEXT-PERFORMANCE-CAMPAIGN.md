@@ -948,7 +948,7 @@ matrix before implementation claims parity.
       *best* same-host Vulkan engine: a target frozen against an
       under-configured lane is invalid and would have to be re-frozen.
       Chunk/ubatch needs no action; every lane already runs `-b 8192 -ub 2048`.
-- [ ] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
+- [x] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
       shards with BF16 K/V and run it through the canonical 12-case screen. It
       is a patch series over a pinned base, so it is the cheapest new comparator
       lane available, and its `MODEL_LOCK.json` shows the program already held
@@ -956,7 +956,16 @@ matrix before implementation claims parity.
       token-parity-clean default line, not the headline stack: patches `0032`
       and `0033` make the head-sum slice tree and the non-bit-exact pooled-key
       cache opt-in. Expect nothing; the point is to convert an author-reported
-      program into a matched row or to close it.
+      program into a matched row or to close it. **Screen complete:** all 33
+      patches apply cleanly to `c589f0ed1`; the opt-in non-bit-exact head-sum
+      and pooled-key routes remain off. On Vulkan graphics queue, BF16 K/V,
+      `-b 8192 -ub 2048`, and `fit off`, one 12-case repetition reaches
+      **270.31/25.83**, **327.03/25.67**, and **364.04/21.26 pp/tok/s** at
+      p512/p1024/p4096. It matches current hipEngine generated-ID hashes on only
+      **2/12** cases, so it is correctness-invalid and cannot bind a parity
+      target. Zero warmups/one repetition is screening, not final thermal
+      evidence. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-canonical-screen.json`.
 
 ### Phase P1 — layer 2 and the Q8 expert-down family
 
