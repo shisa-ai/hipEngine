@@ -2777,6 +2777,30 @@ def _q4_t16_sidecar_allocation(
     return None
 
 
+def _rowtile_variant_policy_enabled(policy: Mapping[str, object]) -> bool:
+    """Resolve one backend-owned boolean rowtile policy."""
+
+    enabled_env = policy.get("enabled_env")
+    if not isinstance(enabled_env, str) or not enabled_env:
+        return True
+    enabled_default = bool(policy.get("enabled_default", False))
+    cache_key = (enabled_env, enabled_default)
+    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
+    if enabled is None:
+        raw = os.environ.get(
+            enabled_env,
+            "1" if enabled_default else "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            enabled = True
+        elif raw in {"0", "false", "no", "off"}:
+            enabled = False
+        else:
+            raise ValueError(f"{enabled_env} must be a boolean value")
+        _rowtile_variant_policy_env_cache[cache_key] = enabled
+    return enabled
+
+
 def _q4_t16_sidecar_decode_variants(
     *,
     rows: int,
@@ -2816,26 +2840,10 @@ def _q4_t16_sidecar_decode_variants(
         and bool(variant_policy.get("canonical", False))
     ):
         return variants
-    if isinstance(variant_policy, Mapping):
-        enabled_env = variant_policy.get("enabled_env")
-        if isinstance(enabled_env, str) and enabled_env:
-            enabled_default = bool(variant_policy.get("enabled_default", False))
-            cache_key = (enabled_env, enabled_default)
-            enabled = _rowtile_variant_policy_env_cache.get(cache_key)
-            if enabled is None:
-                raw = os.environ.get(
-                    enabled_env,
-                    "1" if enabled_default else "0",
-                ).strip().lower()
-                if raw in {"1", "true", "yes", "on"}:
-                    enabled = True
-                elif raw in {"0", "false", "no", "off"}:
-                    enabled = False
-                else:
-                    raise ValueError(f"{enabled_env} must be a boolean value")
-                _rowtile_variant_policy_env_cache[cache_key] = enabled
-            if not enabled:
-                return variants
+    if isinstance(variant_policy, Mapping) and not _rowtile_variant_policy_enabled(
+        variant_policy
+    ):
+        return variants
     shapes = (
         variant_policy.get("shapes", {})
         if isinstance(variant_policy, Mapping)
@@ -2852,6 +2860,23 @@ def _q4_t16_sidecar_decode_variants(
         if isinstance(rows_by_shape, Mapping)
         else (8,)
     )
+    experimental_shapes = (
+        variant_policy.get("experimental_shapes", {})
+        if isinstance(variant_policy, Mapping)
+        else {}
+    )
+    experimental_policy = (
+        experimental_shapes.get(shape)
+        if isinstance(experimental_shapes, Mapping)
+        else None
+    )
+    if (
+        not isinstance(preferred, str)
+        and isinstance(experimental_policy, Mapping)
+        and _rowtile_variant_policy_enabled(experimental_policy)
+    ):
+        preferred = experimental_policy.get("variant")
+        allowed_rows = experimental_policy.get("rows", (8,))
     if isinstance(preferred, str) and preferred and int(rows) in allowed_rows:
         return (preferred, *variants)
     return variants

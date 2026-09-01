@@ -5654,6 +5654,33 @@ def test_gfx1100_q4_k_decode_row6_two_wave_shape_policy(
     assert calls == ["two_wave" if expect_two_wave else "parent"]
 
 
+def test_gfx1100_q4_k_decode_row6_two_wave_qkv_shape_is_independently_gated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV", raising=False)
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    try:
+        variants = gguf_linear_module._q4_t16_sidecar_decode_variants(
+            rows=6,
+            in_features=5_120,
+            out_features=10_240,
+            backend="hip_gfx1100",
+        )
+        assert variants[0] == "dense_rowtile_bf16_bf16_out"
+
+        monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV", "1")
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+        variants = gguf_linear_module._q4_t16_sidecar_decode_variants(
+            rows=6,
+            in_features=5_120,
+            out_features=10_240,
+            backend="hip_gfx1100",
+        )
+        assert variants[0] == "dense_rowtile16_w2_bf16_bf16_out"
+    finally:
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+
+
 def test_gfx1100_q4_k_decode_row6_two_wave_defaults_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
