@@ -673,11 +673,14 @@ are not started.
   **conditional on rows-scaling kernels** and must not be cited as terminal
   once W1's flatness gate passes. Expected sizing: K3 at ~79% acceptance
   commits ~27 tokens/cycle at C8 vs K1's ~15.7.
-- [ ] W4 **Proposal economics at wide rows and depth.** Qualify wide-row
-  proposal/lm-head owners (M1's +198..+264% proposal regression is the
-  bound), and screen a fused top-1-in-sweep head that avoids materializing
-  full-vocab logits per draft step under the greedy protocol. Gate: proposal
-  <= ~15% of a target sweep at C8/K3-shape rows, exact IDs preserved.
+- [x] W4 **Proposal economics at wide rows and depth — measured blocked.**
+  W0 measures 34.46/30.14 ms proposal per C6/C8 cycle. Completely free
+  proposal over 71 cycles saves only 2.45/2.14 s, versus 7.46/8.88 s wall
+  gaps; the portion above the hypothetical post-W1 <=15% gate is only
+  0.85/0.44 s. W1's flat-target denominator is itself blocked. Hot-vocabulary
+  or fused top-1 policy would be T3 and can reduce acceptance, while zero cost
+  still cannot close the objective, so implementation is not justified.
+  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-w4-proposal-bound.json).
 - [ ] W5 **Accept/commit stage fusion.** Fold acceptance + selected-state/KV
   commit into the verify epilogue (N3/N4 device-state lineage,
   [NATIVE_SPEC_CYCLE.md](NATIVE_SPEC_CYCLE.md)). M2i showed the accept window
