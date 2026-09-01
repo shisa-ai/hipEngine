@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y5 closed] Rows288 GDN+other is 143.87 ms / 14.52% wall. Perfect deletion plus Y3's perfect 4.63% residual totals 19.16%, still 2.49 points short of the 21.64% C8 target gap; no Y5 implementation can close the frozen target. `benchmarks/results/2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y3 closed / Y4 not opened] Retained exact pair decode is the best measured Y3 path; producer overlap and 1/4/shared-byte decode variants are blocked. The residual Y3 ceiling is at most 5.54% wall versus approximately 21.6% needed at C8. Y4's tensor-bound condition is false at 14.58-14.84 versus 59.4 TF/s. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-closure-y4-not-opened.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y3 shared-byte pair rejected] Explicit record-address/low-byte/high-byte sharing is exact but regresses rows288 wide/narrow planar leaves 8.67%/10.18%; route/export scope-reverted. The decode-granularity/byte-sharing ladder closes at retained scheduling-only pair decode. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-sharedbytes-rejected.json`.
