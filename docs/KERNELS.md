@@ -338,6 +338,13 @@ peer-backend/diagnostic leaf. Complete actual-weight,
 512/1K/4K, graph, NextN, natural AR/B1-B3, CPU quality, memory, and teardown
 gates retain the role-qualified route. Evidence:
 [`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
+At rows256, the two physical planar-Q6 shapes use an exact four-wave,
+three-row-tile, two-output-tile shared-weight owner. Its 192-row capacity
+reduces gridY8/gridY4 to gridY2 while retaining the existing exact planar
+owners as fallback. The actual-weight leaves improve 1.94x/2.48x and complete
+wall falls 827.488->735.999 ms (-11.06%) with the same token. Cache-only trace:
+80 hits, 128 threads, gridY2, VGPR176, LDS16 KiB, scratch0. Evidence:
+[`Qwen3.8 Y2 planar-Q6 rows256`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json).
 
 Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
 K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact

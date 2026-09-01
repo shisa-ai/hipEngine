@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-01 gfx1151 Qwen3.8 Y2 planar Q6 rows256 retained] Exact planar `<4,3,2>` improves physical leaves **1.94x/2.48x** and complete wall **827.488->735.999 ms (-11.06%)** with unchanged token. Trace: 80 gridY2 hits, 128 threads, VGPR176, LDS16 KiB, scratch0. C1-C8 collateral pending. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r3-rows256-retained.json`.
+
 - [2026-09-01 gfx1151 Qwen3.8 Y2 rows256 residual] Post-retention Q5 is **1.00 sweep**; Q6 remains **4.84 sweeps / 223.79 ms / 26.76% wall**, decomposed as standard gridY1 and planar gridY8/gridY4. Family-wide removable ceiling is **177.54 ms**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-post-retention-ledger.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 Q5/Q6 rows256 retained] Existing exact `<8,3,2>` owners improve physical Q5/standard-Q6 leaves **1.55x/1.83x**; combined complete wall falls **887.889->827.647 ms (-6.78%)** with unchanged token. Trace confirms Q5/Q6 gridY1, 256 threads, VGPR96, LDS16 KiB, scratch0. Tracked-clean C1-C8 collateral is **160/160 exact** and improves aggregate wall **0.79% AR / 0.05% MTP**. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5q6-rows256-retained.json`.
