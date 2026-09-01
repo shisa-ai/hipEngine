@@ -625,6 +625,9 @@ def test_gfx1151_q5_standard_prefill_shared8r3_is_scoped(
     def retained(*args, **kwargs):
         calls.append(("retained", args, kwargs))
 
+    def shared6r1(*args, **kwargs):
+        calls.append(("shared6r1", args, kwargs))
+
     def shared8r3(*args, **kwargs):
         calls.append(("shared8r3", args, kwargs))
 
@@ -640,12 +643,19 @@ def test_gfx1151_q5_standard_prefill_shared8r3_is_scoped(
     )
     monkeypatch.setattr(
         gfx1151_backend,
+        "gguf_q5_k_t16_wmma_prefill_shared6r1_bf16_bf16_out",
+        shared6r1,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
         "gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
         shared8r3,
     )
     fn = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 288, 6_144, 5_120, stream=7)
     fn(1, 2, 3, 65, 6_144, 5_120, stream=13)
+    fn(1, 2, 3, 80, 6_144, 5_120, stream=16)
+    fn(1, 2, 3, 81, 6_144, 5_120, stream=17)
     fn(1, 2, 3, 96, 6_144, 5_120, stream=14)
     fn(1, 2, 3, 97, 6_144, 5_120, stream=15)
     fn(1, 2, 3, 256, 6_144, 5_120, stream=8)
@@ -656,7 +666,9 @@ def test_gfx1151_q5_standard_prefill_shared8r3_is_scoped(
 
     assert calls == [
         ("shared8r3", (1, 2, 3, 288, 6_144, 5_120), {"stream": 7}),
-        ("retained", (1, 2, 3, 65, 6_144, 5_120), {"stream": 13}),
+        ("shared6r1", (1, 2, 3, 65, 6_144, 5_120), {"stream": 13}),
+        ("shared6r1", (1, 2, 3, 80, 6_144, 5_120), {"stream": 16}),
+        ("retained", (1, 2, 3, 81, 6_144, 5_120), {"stream": 17}),
         ("retained", (1, 2, 3, 96, 6_144, 5_120), {"stream": 14}),
         ("retained", (1, 2, 3, 97, 6_144, 5_120), {"stream": 15}),
         ("shared8r3", (1, 2, 3, 256, 6_144, 5_120), {"stream": 8}),

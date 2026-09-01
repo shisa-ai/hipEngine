@@ -369,6 +369,12 @@ and reduces the rows288 complete tick 1100.915->1068.494 ms (-2.94%) with the
 same token. A cache-only trace confirms gridY1, 256 threads, VGPR96, LDS16 KiB,
 and no scratch. Evidence:
 [`Qwen3.8 Y2 Q5 single sweep`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json).
+For rows65-80, the same shape uses exact `<6,1,2>` at gridY1; rows81-96
+remain on the prior exact selector because the wider admission failed its
+aggregate AR collateral gate. The narrowed rows72 complete wall falls
+394.407->388.301 ms (-1.55%), token unchanged. Trace: 144 hits, 192 threads,
+VGPR72, LDS16 KiB, scratch0. Evidence:
+[`Qwen3.8 Y2 Q5 rows65-80`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained.json).
 On 2026-08-17 the same admission was extended to the byte-identical Q4_K_S
 model (MOSTLY_Q4_K_S added to the dense H5120 F16 policy; its 48 recurrent
 outputs are byte-identical to K_M), and the Q4_K_S bulk-prefill scratch row cap
