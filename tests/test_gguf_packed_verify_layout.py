@@ -251,6 +251,12 @@ def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch
     assert len(allocations) == 5
     assert len(uploads) == 7
 
+    owner._fused_linear_state_single_slot_transfer_enabled = MethodType(
+        lambda self: True, owner
+    )
+    assert owner._fused_linear_state_pair_copy(copies[:1], runtime=object(), stream=7)
+    assert launches[-1] == (64, 128, 1)
+
 
 def test_gfx1100_fused_linear_state_transfer_policy_is_default_off(
     monkeypatch,
@@ -262,12 +268,15 @@ def test_gfx1100_fused_linear_state_transfer_policy_is_default_off(
     assert owner._fused_linear_state_transfer_enabled() is False
     monkeypatch.setenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", "1")
     assert owner._fused_linear_state_transfer_enabled() is True
+    assert owner._fused_linear_state_single_slot_transfer_enabled() is True
     monkeypatch.setenv("HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER", "0")
     assert owner._fused_linear_state_transfer_enabled() is False
+    assert owner._fused_linear_state_single_slot_transfer_enabled() is False
 
 
 def test_gguf_single_slot_state_import_uses_strict_unfused_copy() -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.backend = "hip_gfx1151"
     owner.runner = SimpleNamespace(
         weights=SimpleNamespace(
             config=SimpleNamespace(layer_types=(LINEAR_ATTENTION,))

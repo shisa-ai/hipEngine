@@ -232,6 +232,9 @@ GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER",
     "enabled_default": False,
 }
+GGUF_FUSED_LINEAR_STATE_SINGLE_SLOT_TRANSFER_POLICY = (
+    GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY
+)
 # W7900 physical SPECDEC2 R6 reuses retained C1 rowtile arithmetic for five
 # standard-Q4 target shapes. One rows6 launch is BF16-bit exact to two
 # independent rows3 owners while avoiding the shared-B kernel's padded 256-row

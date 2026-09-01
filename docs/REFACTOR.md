@@ -44,9 +44,10 @@ should be removed or collapsed.
 
 ## 2026-09-01 gfx1100 fused packed-state transfer screen — open
 
-- `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=1` opts gfx1100 multi-request
+- `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=1` opts gfx1100
   resident-to-packed Conv/GDN imports into the existing strict pointer-table
-  pair-copy leaf. Promote only after exact lifecycle/state/ID checks,
+  pair-copy leaf, including the physical C5-C8 one-slot-per-request schedule.
+  Promote only after exact lifecycle/state/ID checks,
   marker-scoped ownership, and the complete C5-C8 category/heldout gate;
   otherwise remove the gfx1100 policy and generic policy resolver. The
   per-layer HIP D2D chain remains the strict fallback.
