@@ -868,7 +868,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   and improves aggregate wall **0.60% AR / 0.26% MTP**.
   [`Q6 high-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json),
   [`Q6 mid-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json),
+  Planar Q6 cannot mirror the rows65-96 six-wave owner: `<6,1,2>` fails its
+  first actual-weight launch with **HIP 719** before output comparison; the
+  export is removed and prior exact planar owners remain.
   [`Q6 rows49-96 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json),
+  [`planar Q6 six-wave blocker`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared6r1-launch-blocker.json),
   [`Q6 high-grid artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared8r3-high-retained.json),
   Q5 rows65-96 exact `<6,1,2>` improves four leaves **1.31-1.35x** and
   complete rows72/96 walls **2.06%/0.86%**, but its tracked-clean collateral,

@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared6r1-launch-blocker",
+  "status": "blocked_rejected",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "pre_code_full_wall_bound": {
+    "rows72_q6_family_removable_ceiling_ms": 59.6,
+    "rows96_q6_family_removable_ceiling_ms": 57.7,
+    "note": "Family-wide Y0 ceiling; standard-Q6 shared6r1 already captures part, so planar residual is lower."
+  },
+  "candidate": {
+    "geometry": "planar Q6 <6,1,2>, 192 threads, 96-row capacity",
+    "shapes": [
+      [17408, 5120],
+      [5120, 1024]
+    ],
+    "rows": [65, 80, 81, 96]
+  },
+  "result": {
+    "passed": false,
+    "error": "HIP error 719: unspecified launch failure",
+    "failure_point": "first actual-weight candidate launch before output comparison",
+    "correctness_evidence": "No output produced; candidate cannot enter exactness or performance gates.",
+    "decision": "Remove uncommitted export and retain prior exact planar selectors."
+  },
+  "named_blocker": "The planar shared body has a substantially larger register footprint than standard Q6; the six-wave workgroup cannot launch on physical gfx1151. Smaller retained planar owners remain strict fallbacks.",
+  "raw_source": "/tmp/y2_q6_planar_shared6r1_screen.py"
+}
