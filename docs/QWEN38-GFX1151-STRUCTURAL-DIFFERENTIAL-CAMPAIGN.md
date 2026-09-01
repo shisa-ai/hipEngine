@@ -377,7 +377,11 @@ control.
   counts with host-only RED/GREEN coverage. `gguf_mtp_bench.py` also accepts
   `--prompt-token-ids` to preserve an exact teacher-owned context without a
   decode/re-encode or chat-template round trip. No target-kernel change is
-  admitted before the full capture.
+  admitted before the full capture. A pinned raw-token smoke
+  ([artifact](../benchmarks/results/2026-09-01-gfx1151-qwen38-z2-laurent-raw-proposal-smoke.json))
+  shows that Laurent emits no draft call for `n_predict=1`; `n_predict=4`
+  returns the target root plus a three-token proposal. The capture therefore
+  retains only the first K3 proposal and discards the free-running response.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
