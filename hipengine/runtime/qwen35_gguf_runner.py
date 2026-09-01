@@ -25952,64 +25952,6 @@ class Qwen35GGUFResidentSession:
         )
         return True
 
-    def _verify_lm_head_rowtile_grouped_rows8(
-        self, hidden_ptr: int, out_ptr: int, rows: int, *, stream: int = 0, runtime=None
-    ) -> bool:
-        """Launch exact independent R8 root chunks through one grouped grid."""
-
-        rows = int(rows)
-        if (
-            rows < 16
-            or rows % 8
-            or self.runner is None
-            or self.runner.weights is None
-        ):
-            return False
-        from hipengine.runtime.gguf_linear import (
-            GGUF_ACTIVATION_BF16,
-            resolve_gguf_linear_dispatch,
-        )
-
-        weight = self.runner.weights.root("lm_head")
-        try:
-            dispatch = resolve_gguf_linear_dispatch(
-                weight,
-                activation_dtype=GGUF_ACTIVATION_BF16,
-                output_dtype=GGUF_OUTPUT_F32,
-                backend=self.runner.backend,
-                rows=8,
-            )
-            if dispatch.abi != "t16":
-                return False
-            grouped_key = KernelKey(
-                dispatch.key.backend,
-                dispatch.key.layer,
-                dispatch.key.quant,
-                "t16_gemv_rowtile_col8_grouped_rows8_bf16_f32_out",
-            )
-            if not is_registered(grouped_key):
-                return False
-            grouped = resolve(
-                backend=grouped_key.backend,
-                layer=grouped_key.layer,
-                quant=grouped_key.quant,
-                variant=grouped_key.variant,
-            )
-            tiles_ptr = weight.allocation("tiles").tensor.ptr
-        except Exception:
-            return False
-        grouped(
-            hidden_ptr,
-            tiles_ptr,
-            out_ptr,
-            rows,
-            self.runner.hidden_size,
-            self.runner.vocab_size,
-            stream=stream,
-            runtime=runtime,
-        )
-        return True
-
     def _verify_lm_head_rowtile_max_rows(self) -> int:
         """Return the registered root-head rowtile's explicit width bound.
 
@@ -26092,27 +26034,7 @@ class Qwen35GGUFResidentSession:
         if max_chunk < 2 or max_chunk > 8:
             raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 8]")
         max_chunk = min(max_chunk, primitive_max_rows)
-        if (
-            max_chunk == 8
-            and _env_flag("HIPENGINE_GGUF_Q6_LM_HEAD_GROUPED_ROWS8", False)
-        ):
-            grouped_rows = (rows // 8) * 8
-            if rows - grouped_rows == 1:
-                grouped_rows -= 8
-            if grouped_rows >= 16 and self._verify_lm_head_rowtile_grouped_rows8(
-                hidden_ptr,
-                out_ptr,
-                grouped_rows,
-                stream=stream,
-                runtime=runtime,
-            ):
-                row_offset = grouped_rows
-        remaining_rows = rows - row_offset
-        if remaining_rows == 0:
-            return True
-        for chunk_rows in _small_b_rowtile_chunks(
-            remaining_rows, max_chunk=max_chunk
-        ):
+        for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False
             handled = self._verify_lm_head_rowtile(
