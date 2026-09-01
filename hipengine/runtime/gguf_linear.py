@@ -1942,72 +1942,6 @@ def _q4_t16_grouped_pair_rows6_variant(
     return variant if is_registered(key) else None
 
 
-def _q4_t16_grouped_dual_silu_rows6_variant(
-    backend: str,
-    *,
-    rows: int,
-    in_features: int,
-    out_features: int,
-) -> str | None:
-    """Return the request-local grouped rows6 gate/up+SiLU candidate."""
-
-    if (
-        not q4_t16_physical_extra_rowtiles_enabled()
-        or int(rows) < 12
-        or int(rows) % 6
-    ):
-        return None
-    policy = backend_package_capability(
-        backend,
-        "GGUF_Q4_T16_GROUPED_DUAL_SILU_ROWS6_POLICY",
-        {},
-    )
-    if not isinstance(policy, Mapping):
-        return None
-    try:
-        if int(rows) not in policy.get("rows", ()) or (
-            int(in_features),
-            int(out_features),
-        ) not in policy.get("shapes", ()):
-            return None
-    except TypeError:
-        return None
-    variant = policy.get("variant")
-    enabled_env = policy.get("enabled_env")
-    if (
-        not isinstance(variant, str)
-        or not variant
-        or not isinstance(enabled_env, str)
-        or not enabled_env
-    ):
-        return None
-    enabled_default = bool(policy.get("enabled_default", False))
-    cache_key = (enabled_env, enabled_default)
-    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
-    if enabled is None:
-        raw = os.environ.get(
-            enabled_env,
-            "1" if enabled_default else "0",
-        ).strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            enabled = True
-        elif raw in {"0", "false", "no", "off"}:
-            enabled = False
-        else:
-            raise ValueError(f"{enabled_env} must be a boolean value")
-        _rowtile_variant_policy_env_cache[cache_key] = enabled
-    if not enabled:
-        return None
-    key = KernelKey(
-        backend,
-        "linear_pair_silu",
-        "gguf_q4_k_t16_v1",
-        variant,
-    )
-    _ensure_linear_kernel_registered(key)
-    return variant if is_registered(key) else None
-
-
 def _q4_t16_dual_wmma_silu_dispatch(
     dispatch_a: GGUFLinearDispatch,
     dispatch_b: GGUFLinearDispatch,
@@ -4772,49 +4706,6 @@ def launch_gguf_linear_pair_silu(
                     out_features,
                     **kwargs,
                 )
-            return True
-        grouped_dual_variant = (
-            _q4_t16_grouped_dual_silu_rows6_variant(
-                resolved_backend,
-                rows=rows,
-                in_features=in_features,
-                out_features=out_features,
-            )
-            if dense_pair_quant == "gguf_q4_k_t16_v1"
-            else None
-        )
-        if grouped_dual_variant is not None:
-            grouped_dual_key = KernelKey(
-                resolved_backend,
-                "linear_pair_silu",
-                dense_pair_quant,
-                grouped_dual_variant,
-            )
-            fn = resolve(
-                backend=grouped_dual_key.backend,
-                layer=grouped_dual_key.layer,
-                quant=grouped_dual_key.quant,
-                variant=grouped_dual_key.variant,
-            )
-            kwargs = {"stream": stream, "runtime": runtime}
-            library = None
-            if libraries is not None:
-                library = libraries.get(
-                    f"{grouped_dual_key.quant}:{grouped_dual_key.variant}",
-                    libraries.get(grouped_dual_key.quant),
-                )
-            if library is not None:
-                kwargs["library"] = library
-            fn(
-                x_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_ptr,
-                rows,
-                in_features,
-                out_features,
-                **kwargs,
-            )
             return True
         pack8_wmma_key = _pack8_dual_wmma_silu_dispatch(
             dispatch_a,

@@ -302,15 +302,6 @@ GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY = {
     "variant": "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
     "shapes": frozenset(_Q4_T16_ROWTILE16_W2_R6_SHAPES),
 }
-# Default-off exact WG64 fusion candidate for physical R24/R30 dense FFN. The
-# R36 owner remains the separately retained row48 WMMA sibling.
-GGUF_Q4_T16_GROUPED_DUAL_SILU_ROWS6_POLICY = {
-    "enabled_env": "HIPENGINE_GGUF_Q4_T16_GROUPED_DUAL_SILU_ROWS6",
-    "enabled_default": False,
-    "variant": "dense_dual_rowtile_grouped_rows6_bf16_bf16_out",
-    "rows": frozenset({24, 30}),
-    "shapes": frozenset({(5_120, 17_408)}),
-}
 # Rows for which the single-wave leaf owns a single-wave shape instead of the
 # 256-row shared-B tile. The shared-B kernel launches on a
 # ``Q4_DENSE_TILE_ROWS = 4*4*16 = 256`` row tile, so small rows pay nearly the
@@ -1035,7 +1026,6 @@ __all__ = [
     "GGUF_Q4_T16_PHYSICAL_C1_ROWTILE_SHAPES",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_SHAPES",
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
-    "GGUF_Q4_T16_GROUPED_DUAL_SILU_ROWS6_POLICY",
     "GGUF_Q4_T16_GROUPED_PAIR_ROWS6_POLICY",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS",
     "GGUF_Q4_T16_PHYSICAL_SINGLE_WAVE_MAX_ROWS_BY_SHAPE",
