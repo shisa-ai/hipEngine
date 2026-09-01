@@ -139,6 +139,8 @@ def _weight(
 def test_gfx1100_routes_physical_r6_q4_shapes_to_c1_rowtile(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "0")
+    monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
     selector = getattr(
         t16_prefill,
         "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
