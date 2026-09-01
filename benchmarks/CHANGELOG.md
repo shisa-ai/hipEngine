@@ -4,7 +4,7 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
-- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows65-80 retained] Narrowed exact `<6,1,2>` reduces rows72 complete wall **394.407->388.301 ms (-1.55%)**, token unchanged; rows81-96 remain on fallback. Trace: 144 gridY1 hits, 192 threads, VGPR72, LDS16 KiB, scratch0. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained.json`.
+- [2026-09-01 gfx1151 Qwen3.8 Y2 Q5 rows65-80 rejected] Narrowed exact `<6,1,2>` reduces rows72 wall **1.55%**, but tracked-clean collateral regresses aggregate wall **0.53% AR / 0.04% MTP** despite 160/160 exact cells; route/export removed. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained.json`.
 
 - [2026-09-01 gfx1151 Qwen3.8 Y2 rows256 practical floor] Final multiplicity is **1.00 Q5 / 1.08 Q6**. The sole residual is 16 narrow-planar gridY2 hits totaling **3.87 ms / 0.54% wall**, below Y2's 2% threshold; exact gridY1 loses locally at 0.94x. `benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-final-ledger.json`.
 

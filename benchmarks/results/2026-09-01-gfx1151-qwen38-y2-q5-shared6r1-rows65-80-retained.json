@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "kind": "gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained",
-  "status": "validated_retained_pending_collateral",
+  "status": "rejected_after_c1_c8_collateral",
   "source_prior_artifact": "2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json",
   "physical_host": {
     "hostname": "gfx1151",
@@ -46,10 +46,103 @@
       "path": "/tmp/y2-q5-shared6r1-rows72-only-rocprof/gfx1151/2588026_kernel_trace.csv",
       "sha256": "755f43446f7eb1df91788e2caf6d7974b7631d17e82469a3079a91b62a254a58",
       "bytes": 836323
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows65-80-c1c8-control.json",
+      "sha256": "ed991f29cbb5e0d7e0363b3907fcb7b591181643797d7ad091ffec4479a27603",
+      "bytes": 3735557
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows65-80-c1c8-candidate.json",
+      "sha256": "78d34b2d81fa2b28a4d675bf0e38cc27ac45a415b74163311e2ffcdace8f2f8b",
+      "bytes": 3735576
     }
   ],
   "limitations": [
-    "Tracked-clean C1-C8 collateral follows atomic kernel commit.",
-    "Y2 remains open."
-  ]
+    "Route and export removed after +0.53% aggregate AR and +0.04% aggregate MTP wall regressions."
+  ],
+  "c1_c8_collateral": {
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 76.77561154565774,
+        "candidate_wall_seconds": 77.18461511842906,
+        "wall_delta_pct": 0.5327259067524182
+      },
+      "mtp": {
+        "control_wall_seconds": 67.84978754632175,
+        "candidate_wall_seconds": 67.87503121769987,
+        "wall_delta_pct": 0.0372052327516581
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "wall_delta_pct": -0.055503157334158004
+        },
+        "mtp": {
+          "wall_delta_pct": -0.06537482131943051
+        }
+      },
+      "2": {
+        "ar": {
+          "wall_delta_pct": 3.7848939845153584
+        },
+        "mtp": {
+          "wall_delta_pct": -0.6579215746096101
+        }
+      },
+      "3": {
+        "ar": {
+          "wall_delta_pct": 4.112820062174305
+        },
+        "mtp": {
+          "wall_delta_pct": 0.05916665482261774
+        }
+      },
+      "4": {
+        "ar": {
+          "wall_delta_pct": 1.5637653878078916
+        },
+        "mtp": {
+          "wall_delta_pct": -0.02008129233409539
+        }
+      },
+      "5": {
+        "ar": {
+          "wall_delta_pct": -0.6492917169831469
+        },
+        "mtp": {
+          "wall_delta_pct": 0.26782334725334866
+        }
+      },
+      "6": {
+        "ar": {
+          "wall_delta_pct": -1.734022852287942
+        },
+        "mtp": {
+          "wall_delta_pct": 0.027362278397813355
+        }
+      },
+      "7": {
+        "ar": {
+          "wall_delta_pct": -0.007725320944806935
+        },
+        "mtp": {
+          "wall_delta_pct": 0.15468803152702826
+        }
+      },
+      "8": {
+        "ar": {
+          "wall_delta_pct": 0.008404451032828497
+        },
+        "mtp": {
+          "wall_delta_pct": 0.0872790251008615
+        }
+      }
+    }
+  }
 }
