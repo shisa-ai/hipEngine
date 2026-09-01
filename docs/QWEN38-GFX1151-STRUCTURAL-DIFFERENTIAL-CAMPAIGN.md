@@ -183,7 +183,7 @@ further work unjustified.
   cycle accounting are in the checkpoint artifact. The observed C5 4+1
   subgroup split localizes the next investigation but does not establish a
   root cause. No performance candidate or public number was retained.
-- [~] Collect current-head C2/C8 prefill and C5/C7/C8 MTP operation-complete
+- [x] Collect current-head C2/C8 prefill and C5/C7/C8 MTP operation-complete
   attribution: kernel family, launch count, host/API/copy time, proposal,
   target, accept/commit, KV, scheduler, and server overhead.
 
@@ -195,9 +195,10 @@ further work unjustified.
   ms, leaving 208.3/222.4 ms outside those stages. Q4/Q5/Q6, attention/KV,
   state-commit, API, and copy-kernel time and launch counts are durable in the
   artifact. C5 remains attribution-only because it reproduced the baseline
-  correctness failure. This item stays partial until the scheduler/server and
-  inter-group shares of the residual are separated; the C6/C8 K1
-  reconciliation item owns that follow-up.
+  correctness failure. The C6/C8 K1 reconciliation below closes the remaining
+  scheduler/server/inter-group question with a measured physical-group-entry
+  bound; it does not claim to separate transition time from cross-run prefill
+  error beyond that bound.
 - [x] Attribute at launch granularity, not family granularity: one R16, R24,
   and R32 target pass each, naming owner, grid, and per-launch ms for every
   Q4/Q5/Q6 launch, with the Q6 lm-head, Q5 `ssm_out`, planar/standard direct
@@ -216,10 +217,23 @@ further work unjustified.
   W0/W1 mismatch: family totals mixed distinct direct, rowtile, and lm-head
   launches and cannot substitute for the launch ledger. The diagnostic
   override is run-owned; production grouping is unchanged.
-- [ ] Reconcile decode-only cycle wall against the stage sum at C6/C8 K1,
+- [x] Reconcile decode-only cycle wall against the stage sum at C6/C8 K1,
   using the prefill tick from telemetry, and localize the residual (F6:
   ~57 ms per C8 cycle) to host, batch window, proposal sync, or untraced
   kernels.
+
+  Reconciliation: [`2026-09-01-gfx1151-qwen38-z0-c6c8-k1-cycle-reconciliation.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z0-c6c8-k1-cycle-reconciliation.json).
+  A current-head full-suite refresh passes 20/20 exact, engaged, and K1-budget
+  cells. After subtracting the matching grouped prefill-only tick and all
+  named stages, the residual is **50.7 ms/cycle at C6** and **58.4 ms/cycle
+  at C8**, reproducing F6. The two physical-group entry gaps exceed the one
+  grouped prefill tick by 52.5/61.2 ms/cycle, explaining the residual within
+  1.8/2.8 ms/cycle. Inter-cycle gaps match proposal telemetry within
+  0.52/1.11 ms/cycle; traced kernels cover 95.7%/94.9% of cycle windows and
+  no DMA copy occurs there. The named bound is therefore physical-group
+  prompt streaming/transition plus matched-prefill cross-run error, not the
+  50 ms batch window, proposal synchronization, or an untraced GPU family.
+  Current telemetry cannot partition transition from prefill error further.
 - [x] Record per-tick row composition for the C2 prefill protocol from
   `scheduler_token_chunks`/`prompt_lengths` and state whether the two prompts
   share a tick (F9). This is a baseline fact, not a mechanism.
