@@ -1389,6 +1389,47 @@ def _stage_gguf_packed_verify_token_ids(
         )
 
 
+def _capture_packed_verify_norm_rows(
+    layout: _GGUFPackedVerifyLayout,
+    jobs: Sequence[Mapping[str, object]],
+    norm: DeviceBuffer,
+    *,
+    hidden_size: int,
+    runtime: HipRuntime,
+    sequence: int,
+) -> None:
+    """Write diagnostic BF16 output-norm rows for offline full-logit gates."""
+
+    root_raw = os.environ.get("HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR", "").strip()
+    if not root_raw:
+        return
+    rows = int(layout.rows)
+    norm_bits = np.empty((rows, int(hidden_size)), dtype=np.uint16)
+    copy_device_to_host(
+        host_array_ptr(norm_bits),
+        DeviceBuffer(norm.ptr, norm_bits.nbytes),
+        norm_bits.nbytes,
+        runtime=runtime,
+    )
+    root = Path(root_raw)
+    root.mkdir(parents=True, exist_ok=True)
+    np.savez(
+        root / f"packed-verify-{int(sequence):06d}.npz",
+        norm_bf16_bits=norm_bits,
+        input_token_ids=np.ascontiguousarray(layout.input_token_ids, dtype=np.int64),
+        row_positions=np.ascontiguousarray(layout.row_positions, dtype=np.int64),
+        cu_seqlens=np.ascontiguousarray(layout.cu_seqlens, dtype=np.int32),
+        request_ids=np.asarray(
+            tuple(int(job.get("request_id", -1)) for job in jobs),
+            dtype=np.int64,
+        ),
+        transaction_ids=np.asarray(
+            tuple(int(job.get("transaction_id", -1)) for job in jobs),
+            dtype=np.int64,
+        ),
+    )
+
+
 def _rebind_packed_verify_layout_pages(
     layout: _GGUFPackedVerifyLayout,
     packed_state: _GGUFPackedTargetState,
@@ -18811,6 +18852,22 @@ class Qwen35GGUFResidentSession:
                     stream=stream,
                 )
             add_stage("packed_verify_lm_head_sample", sample_start)
+            capture_root = os.environ.get(
+                "HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR", ""
+            ).strip()
+            if capture_root:
+                capture_sequence = int(
+                    getattr(self, "_packed_verify_capture_sequence", 0)
+                )
+                _capture_packed_verify_norm_rows(
+                    layout,
+                    job_list,
+                    packed_scratch.norm,
+                    hidden_size=self.runner.hidden_size,
+                    runtime=runtime,
+                    sequence=capture_sequence,
+                )
+                self._packed_verify_capture_sequence = capture_sequence + 1
             if gpu_stage_recorder is not None:
                 gpu_stage_recorder.mark("packed_verify_gpu_lm_head_sample")
         scatter_start = time.perf_counter()

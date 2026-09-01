@@ -17,6 +17,7 @@ from hipengine.runtime import qwen35_gguf_runner as runner_mod
 from hipengine.runtime.qwen35_gguf_runner import (
     _GGUFPackedVerifySlotBlock,
     _build_gguf_packed_verify_layout,
+    _capture_packed_verify_norm_rows,
     _stage_gguf_packed_verify_token_ids,
     Qwen35GGUFResidentSession,
     Qwen35GGUFResidentTargetLayout,
@@ -104,6 +105,46 @@ def test_packed_target_stages_device_candidates_without_host_materialization(
         ("candidates", 0x1000, 0x3000 + DType.INT64.itemsize, 1),
         ("candidates", 0x2000, 0x3000 + 3 * DType.INT64.itemsize, 2),
     ]
+
+
+def test_packed_verify_norm_capture_writes_aligned_diagnostic_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock((11, 12), 5),
+            _GGUFPackedVerifySlotBlock((22, 23, 24), 8),
+        )
+    )
+    source = np.arange(layout.rows * 4, dtype=np.uint16).reshape(layout.rows, 4)
+
+    def fake_copy(destination, source_buffer, nbytes, *, runtime):
+        assert source_buffer.ptr == 0x5000
+        ctypes.memmove(destination, source.ctypes.data, nbytes)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_PACKED_VERIFY_CAPTURE_DIR", str(tmp_path))
+    monkeypatch.setattr(runner_mod, "copy_device_to_host", fake_copy)
+    _capture_packed_verify_norm_rows(
+        layout,
+        (
+            {"request_id": 10, "transaction_id": 100},
+            {"request_id": 20, "transaction_id": 200},
+        ),
+        DeviceBuffer(0x5000, source.nbytes),
+        hidden_size=4,
+        runtime=object(),
+        sequence=3,
+    )
+
+    with np.load(tmp_path / "packed-verify-000003.npz") as capture:
+        np.testing.assert_array_equal(capture["norm_bf16_bits"], source)
+        np.testing.assert_array_equal(
+            capture["input_token_ids"], layout.input_token_ids
+        )
+        np.testing.assert_array_equal(capture["row_positions"], layout.row_positions)
+        np.testing.assert_array_equal(capture["request_ids"], (10, 20))
+        np.testing.assert_array_equal(capture["transaction_ids"], (100, 200))
 
 
 def test_gguf_resident_target_layout_is_row_shaped() -> None:
