@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-01**
+Last updated: **2026-09-02**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -130,7 +130,11 @@ C1-C2/C5-C8. [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-curre
 The first retained prefill extension cuts a representative 288-row tick by
 **2.65%** with exact output. Tracked-clean C1-C8 collateral remains exact;
 C8 combined prompt throughput improves **237.685->239.658 tok/s (+0.83%)**,
-still below the frozen 305.847 target. [`Y1 evidence`](results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json).
+still below the frozen 305.847 target. The exact Y3 planar-Q6 pair decode
+further lowers rows288/536/1024 tick wall **0.50%/1.87%/0.18%** with unchanged
+tokens; tracked-clean C1-C8 collateral is pending publication.
+[`Y1 evidence`](results/2026-09-01-gfx1151-qwen38-y1-q4-b3w8r3-partial-retained.json) ·
+[`Y3 pair decode`](results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
 
 `Q4_K_S` uses FP16 recurrent state with FP32 rollback. Its exact W8192 DMS
 sidecar stays default-off. [`DMS`](../docs/DMS.md). Detailed historical and

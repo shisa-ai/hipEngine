@@ -999,7 +999,14 @@ prompt-conditioned tuning, sized full-wall bound before code).
   twelve. Same-wave overlap therefore cannot cross the existing handoff. The
   next exact candidate pairs adjacent output columns during decode to reuse the
   qmicro low byte shared by each pair (and high byte shared by each quartet),
-  while preserving LDS layout and WMMA accumulation order.
+  while preserving LDS layout and WMMA accumulation order. That exact pair
+  body passes all six actual-weight high-row cells and improves complete
+  rows288/536/1024 walls **0.50%/1.87%/0.18%** with unchanged tokens. It is
+  retained as shared4r6's default while the pre-pair body remains an explicit
+  strict fallback. Trace confirms 120 pair-kernel hits, 128 threads, VGPR200,
+  LDS16 KiB, and scratch0. Tracked-clean C1-C8 collateral follows as a separate
+  publication unit; Y3 remains open.
+  [`Pair result`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
   [`ISA analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json).
   [`Pipeline rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json).
   [`Slab analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json).

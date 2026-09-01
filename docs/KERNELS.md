@@ -361,8 +361,14 @@ For high rows, exact planar `<4,6,2>` reaches 384-row capacity without the
 owns rows288-536 and retains fallback at rows1024 after a 0.96x leaf rejection.
 Complete rows288/536/1024 walls fall 7.63%/10.53%/9.40%, tokens unchanged.
 Trace: 152 hits, gridY1/2/3, 128 threads, VGPR200, LDS16 KiB, scratch0.
+Y3 retains adjacent-column-pair cooperative decode in this shared4r6 body;
+the pre-pair body remains an explicit strict fallback. Six actual-weight cells
+are bit-exact, and complete rows288/536/1024 walls improve 0.50%/1.87%/0.18%
+with unchanged tokens. Pair trace: 120 hits, 128 threads, VGPR200, LDS16 KiB,
+scratch0.
 Evidence:
-[`Qwen3.8 Y2 planar-Q6 high rows`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json).
+[`Qwen3.8 Y2 planar-Q6 high rows`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json),
+[`Qwen3.8 Y3 pair decode`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
 Wide planar rows536 further uses exact `<4,9,2>` to reach gridY1. Narrow
 rows536 and both rows1024 cells retain fallback after 0.70-0.93x rejections.
 Complete rows536 wall falls 1651.846->1643.521 ms (-0.50%), token unchanged.

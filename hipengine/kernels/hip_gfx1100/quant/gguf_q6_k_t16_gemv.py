@@ -84,6 +84,10 @@ _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R9_BF16_BF16 = (
 _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R6_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R6_DIRECT_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_"
+    "shared4r6_direct_bf16_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R4_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out"
 )
@@ -440,6 +444,19 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out(
     """Launch 32-column/384-row planar-Q6 shared-weight prefill."""
     _launch(
         _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R6_BF16_BF16,
+        x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,
+        stream=stream, library=library, runtime=runtime,
+    )
+
+
+def gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_direct_bf16_bf16_out(
+    x_ptr: int, tiles_ptr: int, out_ptr: int, rows: int,
+    in_features: int, out_features: int, *, stream: int = 0,
+    library: ctypes.CDLL | None = None, runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the exact pre-pair shared4r6 fallback."""
+    _launch(
+        _Q6_T16_QMICRO_PLANAR_WMMA_PREFILL_SHARED4R6_DIRECT_BF16_BF16,
         x_ptr, tiles_ptr, out_ptr, rows, in_features, out_features,
         stream=stream, library=library, runtime=runtime,
     )
@@ -1622,6 +1639,7 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_direct_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out",
