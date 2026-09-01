@@ -2,9 +2,14 @@
   "schema": 2,
   "kind": "w7900_q4km_k3_c5c8_q4_row6_two_wave_retained",
   "date": "2026-09-01",
-  "status": "retained_exact_default",
-  "performance_claim": true,
-  "decision": "Promote the exact source-grounded WG64/16-column two-wave standard-Q4 R6 owner. Counterbalanced complete wall improves every C5-C8 width and every width/category cell while preserving exact IDs, acceptance, physical ownership, and strict fallback.",
+  "status": "invalid_retracted",
+  "performance_claim": false,
+  "decision": "Retract the MTP performance/default claim. A refreshed marker-scoped C8 trace at commit 22b4c1c06 records zero two-wave launches and 1,024 WG32-parent launches per cycle: the physical wrapper bypassed the canonical policy. The prior wall deltas are noise, not candidate performance; exact leaf evidence remains valid and the candidate is default-off pending a correctly routed gate.",
+  "retraction": {
+    "date": "2026-09-01",
+    "reason": "Candidate launches in the earlier marked process were outside the physical target marker; the complete MTP route kept the parent.",
+    "superseding_artifact": "benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-q4-row6-two-wave-route-retracted.json"
+  },
   "hardware": {
     "backend": "hip_gfx1100",
     "cpu": "AMD Ryzen 9 5950X",
