@@ -2469,6 +2469,21 @@ def launch_gguf_linear(
     """
 
     resolved_backend = _weight_backend(weight, backend=backend)
+    wide_q6_dispatch = (
+        _target_verifier_wide_q6_shared4_variant(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
     split_row_chunk = (
         _native_split_row_chunk(
             weight,
@@ -2482,6 +2497,7 @@ def launch_gguf_linear(
         and threads == 0
         and not use_q4_pack8_wmma
         and registered_variant is None
+        and wide_q6_dispatch is None
         else None
     )
     if split_row_chunk is not None:
@@ -2504,21 +2520,6 @@ def launch_gguf_linear(
                 use_gemv_decode=use_gemv_decode,
             )
         return
-    wide_q6_dispatch = (
-        _target_verifier_wide_q6_shared4_variant(
-            weight,
-            backend=resolved_backend,
-            rows=rows,
-            in_features=in_features,
-            out_features=out_features,
-        )
-        if activation_dtype == GGUF_ACTIVATION_BF16
-        and output_dtype == GGUF_OUTPUT_BF16
-        and threads == 0
-        and not use_q4_pack8_wmma
-        and registered_variant is None
-        else None
-    )
     if wide_q6_dispatch is not None:
         fn = resolve(
             backend=wide_q6_dispatch.key.backend,
