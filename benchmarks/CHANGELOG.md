@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next Q8 MMQ attention gate — blocked] Later state fixes clear the old first-repeat failure: 450-row numerical/state/lifecycle and semantic review pass. Current four-category p512 is only **1.0104x** aggregate (95% CI **1.0002–1.0206**, 9/12 wins); every category interval includes 1.0 and three rows show order drift. The route remains default-off pending stabilized five-pair evidence or a larger dense/GR boundary. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-current-blocked.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next MoE device tile grid — blocked] A guarded maximum WMMA grid removes the production suffix `group_wmma_total` D2H and preserves exact logits, but four-category p512 is neutral at **1.0008x** (95% CI **0.9994–1.0022**, 8/12 wins). Extra invalid CTAs offset synchronization savings; the candidate is removed pending device-sized indirect dispatch or compact graph submission. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-moe-device-tile-grid-blocked.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next ordered-QSA value col4 — rejected] Exact four-column-per-thread weighted-V grouping measures **1.469 ms** versus the retained **1.180-ms** leaf in separate cached-build runs after a RED-caught reciprocal-multiply reassociation is fixed. The candidate is bit-exact but fails leaf admission and is removed without whole-model timing. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-value-col4-rejected.json`.

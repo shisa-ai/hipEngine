@@ -1154,7 +1154,7 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.
       GR down+inject is the secondary operation-complete target.
-- [ ] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
+- [~] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic. The first default-off extension adds the
       omitted K2560/N6144 attention-gate shape: same-process p508 improves 3.52%
@@ -1163,6 +1163,16 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       binding; the scope is rejected/default-off. Ignoring the first run as
       warmup is diagnostic only, not a promotion rule. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json`.
+      **Current recheck blocked on performance, not correctness.** Later state
+      fixes clear the first-repeat failure: the complete 450-row numerical,
+      state-repeat, lifecycle, and semantic task review now passes. Current
+      four-category p512 is only **1.0104x** aggregate (95% CI
+      **1.0002–1.0206**, 9/12 wins), every per-category interval includes 1.0,
+      and alternating first-pair drift makes three categories noisy. This is
+      neither a clean win nor a loss under section 6; the route stays
+      default-off pending thermal stabilization/five pairs or a larger
+      operation-complete mechanism. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-current-blocked.json`.
 - [ ] Require each retained subunit to reduce its complete role and p512/p1024,
       not merely an isolated GEMM; re-run p4096 at the phase gate. A fresh
       stacked profile after the retained router/GR paths re-ranks P3 to GR
