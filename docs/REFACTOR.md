@@ -18,16 +18,6 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-01 gfx1100 planar-Q6 R6 scale hoist — open
-
-- `HIPENGINE_GGUF_Q6_R6_HOIST_D` temporarily gates the exact request-local
-  physical R6 candidate while complete C5-C8 qualification is pending. It
-  hoists per-block FP16 `d` conversion without changing any output arithmetic;
-  strict, peer, non-physical, non-R6, and shape misses keep the parent.
-- Remove the candidate and flag on any binding category/heldout regression. If
-  retained, promote it to default and remove the opt-out after the next stable
-  milestone audit.
-
 ## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
 - The complete counterbalanced C5-C8 category+heldout gate retained the exact
