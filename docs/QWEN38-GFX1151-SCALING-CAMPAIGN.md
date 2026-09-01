@@ -898,6 +898,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   at gridY1. Tracked-clean C1-C8 collateral is **160/160 exact** and improves
   aggregate wall **0.79% AR / 0.05% MTP**.
   [`Rows256 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q5q6-rows256-retained.json).
+  Post-retention rows256 Q5 is now **1.00 sweep**; Q6 remains **4.84 sweeps /
+  223.79 ms (26.76% wall)**, decomposed as 48 standard gridY1, 64 planar
+  shared4 gridY8, and 16 planar plain gridY4 hits. Its family-wide removable
+  ceiling is **177.54 ms**, so planar Q6 remains open.
+  [`Rows256 residual`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-rows256-post-retention-ledger.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
