@@ -37,6 +37,11 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   registered WG32 strict parent. A separate physical-registry-key extension was
   removed after marker-scoped C8 evidence showed no ownership change.
+- `HIPENGINE_GGUF_Q4_T16_PHYSICAL_UNEQUAL_PAIR_CHUNKS=1` is the default-off
+  same-build arm for decomposing physical recurrent-QKV/gate pairs into R6
+  singleton leaves. Promote and merge it into the physical policy only if the
+  candidate-symbol trace and complete category/heldout gate pass; otherwise
+  remove the policy and preserve the equal-width decomposition.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
