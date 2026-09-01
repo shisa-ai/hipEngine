@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y3 entry bound] Post-dataflow high-row Q6 sustains **14.36-14.49 TF/s** versus a measured 20.24 TF/s rows256 reference, sizing **47.8/90.2/166.8 ms (4.82%/5.28%/5.99% wall)** at rows288/536/1024. Y3 opens; Y4 stays closed because tensor rate is far below roof. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y2 closed] Every Q5/Q6/GDN row band is retained at its best exact practical owner, below the 2% opening threshold, or carries a measured launch, local-performance, collateral, or capacity blocker; no above-threshold unblocked multiplicity unit remains. `benchmarks/results/2026-09-02-gfx1151-qwen38-y2-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y2 planar Q6 rows1024 one-sweep blocked] Exact gridY1 `<4,16,2>` is **3.43-3.64x slower** than shared4r6; shared4r9 already loses wide rows1024 at 0.88x. Export removed, exact fallback retained. `benchmarks/results/2026-09-02-gfx1151-qwen38-y2-planar-q6-shared4r16-rows1024-blocker.json`.

@@ -967,12 +967,18 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Y2 closure`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-closure.json).
   [`Post-shared4r6 ledger`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json).
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
-- [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
+- [~] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
   restructure, dual-issue scheduling) per the parity campaign's closing
   instruction — a new high-row Q4 algorithm/fusion, not more threshold
-  tuning. Entry: the post-Y1 trace shows compute/issue-bound.
+  tuning. Entry: the post-Y1 trace shows compute/issue-bound. Post-Y2 high-row
+  Q6 sustains only **14.36-14.49 TF/s / 25.3-28.6 GB/s per tile** versus the
+  measured rows256 **20.24 TF/s / 45.6 GB/s** reference. Matching that in-tree
+  rate sizes **47.8/90.2/166.8 ms**, or **4.82%/5.28%/5.99%** tick wall, at
+  rows288/536/1024. Y3 therefore opens; Y4 remains closed because achieved
+  tensor rate is far below the BF16 roof.
+  [`Y3 entry bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json).
 - [ ] Y4 **(Conditional) INT4-WMMA Q4 body.** The only raised tensor roof on
   gfx1151 (118.8 vs 59.4 TOP/s). Opens only if Y3's trace shows
   tensor-rate-bound; P3's INT8 negative is standing evidence that a format

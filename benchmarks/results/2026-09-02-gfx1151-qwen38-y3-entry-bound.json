@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-entry-bound",
+  "status": "measurement_only",
+  "source_commit": "a1661900e",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "reference": {"rows": 256, "q6_effective_tf_s": 20.24071968453504, "q6_per_tile_gb_s": 45.579660472703345},
+  "high_rows": [
+    {"rows": 288, "q6_gpu_ms": 166.09987, "effective_tf_s": 14.414837951167572, "per_tile_gb_s": 26.786159435284326, "ceiling_ms_at_reference_rate": 47.80, "ceiling_pct_tick_wall": 4.82},
+    {"rows": 536, "q6_gpu_ms": 310.159539, "effective_tf_s": 14.35994443466077, "per_tile_gb_s": 25.32700179181012, "ceiling_ms_at_reference_rate": 90.15, "ceiling_pct_tick_wall": 5.28},
+    {"rows": 1024, "q6_gpu_ms": 587.016399, "effective_tf_s": 14.491210224060538, "per_tile_gb_s": 28.613807772003998, "ceiling_ms_at_reference_rate": 166.77, "ceiling_pct_tick_wall": 5.99}
+  ],
+  "decision": "Y3 opens: post-dataflow high-row Q6 sustains only 14.36-14.49 TF/s versus the measured 20.24 TF/s rows256 reference, sizing 4.82-5.99% tick-wall opportunity. Y4 remains closed because achieved tensor rate is far below the BF16 tensor roof; this is dequant/LDS/issue/occupancy structure, not tensor-rate saturation."
+}
