@@ -243,9 +243,21 @@ further work unjustified.
   prompt lengths are 35-67 tokens; grouped ticks are 70, 72, 78, 86, 92, 96,
   120, and 134 rows. The exact-grid trace covers every shape; this admission
   fact does not itself establish mechanism C's speedup.
-- [ ] Publish the pass budgets per section 7.2 for C5/R20, C6/R24, C7/R28,
+- [x] Publish the pass budgets per section 7.2 for C5/R20, C6/R24, C7/R28,
   C8/R32, and the C2 grouped-tick budget for 211.888 tok/s, next to the
   prefill share of each complete wall (F5).
+
+  Budget artifact: [`2026-09-01-gfx1151-qwen38-z0-pass-budgets.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z0-pass-budgets.json).
+  The current-head one-group K3 diagnostic passes 40/40 exact, engaged, and
+  budget-conformant cells. Its measured non-target stage already exceeds the
+  external-parity cycle allowance at every wide cell: even with a zero-cost
+  target pass and the non-stage residual removed, C5/C6/C7/C8 remain short by
+  135/198/339/412 ms per cycle. Target-only mechanisms A/B therefore have a
+  **zero feasible pass budget** and must follow an accept/non-target dataflow
+  mechanism. This supersedes the provisional positive C8 budget in section
+  7.2, which combined K3 cycle economics with the old K1 accept stage. C2
+  needs 330.4-632.4 ms grouped ticks by prompt to reach 211.888 prompt tok/s;
+  the current grouped suite is 178.660 tok/s and needs 15.68% wall reduction.
 - [ ] Publish one compact Z0 artifact and update the benchmark rollup only if
   a retained public number changes.
 
@@ -301,12 +313,13 @@ control.
   primary cell: at least 35.2% for C7, 28.5% for C8, 18.1% for C5, 14.7% for
   C2, and 31.8% for C1.
 - [ ] Use the pass budget from section 7.2 as the wide-cell entry condition
-  in place of W1's flatness gate: a one-pass K3 cycle at C8 needs an R32
-  target pass of roughly 220-275 ms, i.e. `<= ~2.0-2.5x` the R8 forward, not
-  `<= 1.25x`. Start the wide-cell differential from mechanisms A/B/D in
-  section 7.3, which are already sized above the required reduction when
-  combined; stock HIP's 56.222 tok/s at C8 K3 (1.854x its own AR) is the
-  existence proof for the R32 pass cost.
+  in place of W1's flatness gate. Z0 now measures a **zero target-only pass
+  budget**: current one-group K3 accept/non-target time exceeds the complete
+  cycle allowance before R20-R32 target work. Start the wide-cell differential
+  from the external accept/non-target dataflow; recompute A/B/E target budgets
+  only after that mechanism has a measured complete-cycle bound. Stock HIP's
+  56.222 tok/s at C8 K3 remains the existence proof that both accept and
+  target costs can fit on this host.
 
 Exit: either a named MTP mechanism with a measured bound, or a per-cell
 blocker that supersedes the scaling campaign's broad multi-family blocker.
@@ -503,25 +516,42 @@ difference 0.0078125 on 0.6% of outputs); it was reverted with "may reopen
 as T2" and the exact variant recovered 1.95x. Section 3 already settles this:
 Z candidates declare T2 up front instead of exhausting the exact ladder.
 
-### 7.2 Pass budgets (the corrected requirement)
+### 7.2 Pass budgets (current-head result)
 
-The M = 17-48 regime (verify R20-R32 at C5-C8, prefill rows35-48 at C2,
-rows72-96 at grouped C2) must run at `<= ~2.5x` the R8 forward per pass, one
-weight sweep per family, lm-head swept once. Z0 publishes the exact budget
-per cell; the C8 derivation is in F1. Derived C8/K3 expectation with the F3
-"existing owners" pass (~250 ms): cycle ~347 ms with the F6 residual (~56
-tok/s, 1.08x own AR, 17% wall reduction versus the retained K1 cell) and
-~290 ms without it (~63 tok/s, 1.22x, 27% reduction); with a Q4 rows17-48
-owner at the R16 rate (95 ms) the pass is ~215 ms (~68 tok/s, ~33%
-reduction). Only the last two clear this campaign's 28.5% C8 bar; the first
-clears the scaling campaign's 1.15x bar only with the residual fixed.
+Z0 invalidates the provisional target-only budget derived in F1. That
+calculation combined a hypothetical one-pass **K3** cycle with W0's much
+smaller **K1** accept stage. The current-head one-group C5-C8 K3 suite passes
+40/40 correctness/route/budget cells and measures the complete non-target
+stage under the intended R20/R24/R28/R32 geometry.
+
+| Cell | External target | Allowed decode cycle | Non-target stage | Residual | Target-pass slack, kept / removed | Prefill share, AR / one-group MTP |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| C5/R20 | 32.713 tok/s | 391.7 ms | 526.7 ms | 67.8 ms | **-202.8 / -134.9 ms** | 26.3% / 16.6% |
+| C6/R24 | 37.154 tok/s | 400.3 ms | 598.0 ms | 80.6 ms | **-278.3 / -197.7 ms** | 29.0% / 16.9% |
+| C7/R28 | 46.084 tok/s | 350.7 ms | 689.4 ms | 84.9 ms | **-423.6 / -338.7 ms** | 29.9% / 16.6% |
+| C8/R32 | 56.222 tok/s | 302.6 ms | 714.4 ms | 74.4 ms | **-486.2 / -411.8 ms** | 31.5% / 17.1% |
+
+A positive slack would be the target-pass budget. Every slack is negative,
+even after removing the residual and assigning zero time to the target pass;
+the magnitude is the minimum non-target reduction still required. The
+1.15x-own-AR budgets are also negative in every cell. Therefore A/B/E target
+owner work cannot enter alone: Z2 must first identify an accept/non-target
+mechanism, then recompute the pass budget from its measured complete cycle.
+Automatic serving remains the production width-4 fail-closed route.
+
+For C2, the exact grouped rows 70-134 require per-prompt tick budgets of
+330.4-632.4 ms to reach Laurent's 211.888 prompt tok/s. Current grouped server
+wall is 178.660 prompt tok/s and needs 15.68% aggregate wall reduction;
+prefill is 19.2% of current C2 AR complete wall and 30.2% of current C2 MTP
+complete wall. Exact per-prompt current server/direct ticks and budgets are in
+the Z0 budget artifact.
 
 ### 7.3 Pre-sized mechanism candidates (Z3 starting ledger)
 
 | Mech. | Description | Class | Cells | Sized bound (derived) | Prerequisite |
 | --- | --- | --- | --- | --- | --- |
-| A | Register retained exact prefill owners (Y2 `<3,1,2>` Q6 standard/planar, prefill Q5 one-sweep route, best Q4 rows17-48 owner) under verifier R17-R32 keys incl. mixed R20/R24/R32 packed subshapes; strict fallback = current owner | T0 registry transfer (T2 where the owner already carries it) | C5-C8 MTP | R32 pass 790 -> ~230-260 ms (F3); C8 K3 17-27% wall (7.2) | Z0 attribution |
-| B | Q6 lm-head as one sweep at R > 8 (Y2 standard body or dense WMMA lm-head path) | T0/T2 | C5-C8 MTP, prefill | ~15-20 ms per R32 pass (F4) | Z0 |
+| A | Register retained exact prefill owners (Y2 `<3,1,2>` Q6 standard/planar, prefill Q5 one-sweep route, best Q4 rows17-48 owner) under verifier R17-R32 keys incl. mixed R20/R24/R32 packed subshapes; strict fallback = current owner | T0 registry transfer (T2 where the owner already carries it) | C5-C8 MTP | Target-only entry **blocked**: Z0 gives zero feasible pass budget until accept/non-target dataflow is reduced | Z2 accept differential |
+| B | Q6 lm-head as one sweep at R > 8 (Y2 standard body or dense WMMA lm-head path) | T0/T2 | C5-C8 MTP, prefill | ~15-20 ms per R32 pass remains a measured target sub-bound, but cannot close complete wall before the Z0 non-target blocker | Z2 accept differential |
 | C | Grouped C2 prefill on the benchmark path (ragged grouping or the declared batch window) | control/admission | C2 prefill, AR C2 | +26-36% C2 (F9); ~15-23% wall | Z0 tick-composition fact |
 | D | Cycle residual outside GPU stages | host/scheduler | C5-C8 MTP | ~57 ms x 11.5 cycles = ~0.66 s per C8 cell (F6) | Z0 reconciliation |
 | E | Integer MMQ (Q8_1 activations) for M = 17-48 on the three Q6 shapes, `ssm_out`, two binding Q4 shapes; screen against A, not `selected-wmma` | T2 | C2 prefill, C5-C8 MTP | anchor: stock HIP R32 verify at ~2.5x its R8 (F7) | A/C measured |

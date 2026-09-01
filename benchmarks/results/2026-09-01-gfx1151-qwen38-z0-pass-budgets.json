@@ -1,0 +1,408 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z0_pass_budgets",
+  "date": "2026-09-01",
+  "status": "diagnostic_complete_named_bound",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "source": {
+    "commit": "07b4839e6682f00e4d5fa876985e419b52cff89c",
+    "dirty": false
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "diagnostic_override": {
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS": {
+      "production": 8
+    },
+    "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS": {},
+    "scope": "run-owned driver only; production width-4 fail-closed route unchanged"
+  },
+  "commands": {
+    "one_group_full_suite": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-z0-run-20260901-201730/z0_budget_full_driver.py",
+    "accounting": ".venv/bin/python scripts/mtp_cycle_accounting.py --ar-mtp-raw /tmp/q38-z0-run-20260901-201730/budget-c5c8-full.json --output /tmp/q38-z0-run-20260901-201730/budget-c5c8-full-accounting.json"
+  },
+  "formula": {
+    "allowed_complete_wall_ms": "generated_output_tokens / target_tok_s * 1000",
+    "allowed_decode_cycle_ms": "(allowed_complete_wall_ms - matched_grouped_prefill_wall_ms) / measured_cycles",
+    "pass_slack_residual_removed_ms": "allowed_decode_cycle_ms - (accept + proposal + provider_update + selected_commit)",
+    "pass_slack_residual_kept_ms": "pass_slack_residual_removed_ms - measured_non_stage_residual_ms_per_cycle",
+    "interpretation": "A positive slack is the maximum target-pass budget. A negative slack means even a zero-cost target pass cannot meet the target; its magnitude is the required non-target reduction."
+  },
+  "raw_sources": {
+    "one_group_full_suite": {
+      "path": "/tmp/q38-z0-run-20260901-201730/budget-c5c8-full.json",
+      "sha256": "ede7619a255835833e15ba9e6f21d7763bb1b78324a33fc9c352d364bc1fe739"
+    },
+    "one_group_accounting": {
+      "path": "/tmp/q38-z0-run-20260901-201730/budget-c5c8-full-accounting.json",
+      "sha256": "de8a134f14387069083724d38e0ac7bf1a461447f7ed321de5b4268ce63c28c1"
+    },
+    "matched_prefill_suite": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-c1c8.json",
+      "sha256": "88bff2ef12f33e585bc4ea271867558cf8e173a65e250321a7cdaaf8ae4b0f11"
+    },
+    "production_ar_mtp_suite": {
+      "path": "/tmp/q38-z0-run-20260901-201730/ar-mtp-c1c8.json",
+      "sha256": "c9fccc6b90461c0960072b97175da3684cb558b0d6832953290b6d1229268d27"
+    },
+    "operation_attribution": {
+      "path": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-operation-attribution.json",
+      "sha256": "6b3883ec3f2624135d5b841f1377dcad9818a42f34cefb36832606f720a043d6"
+    }
+  },
+  "wide_cells": {
+    "5": {
+      "full_row": 20,
+      "cells": 10,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant",
+      "cycles": 71.0,
+      "ar_tok_s": 35.585949139252506,
+      "mtp_tok_s": 22.410930775712835,
+      "complete_ar_wall_ms": 33721.17448109202,
+      "complete_mtp_wall_ms": 53545.29947950505,
+      "matched_grouped_prefill_wall_ms": 8870.237810071558,
+      "prefill_share_of_ar_wall": 0.2630465263019008,
+      "prefill_share_of_mtp_wall": 0.16565857127135356,
+      "stage_ms_per_cycle": {
+        "accept": 490.7760859506441,
+        "proposal": 28.049010642423806,
+        "provider_update": 5.212658773583006,
+        "selected_commit": 2.6221294579109258,
+        "target": 34.72363632394366
+      },
+      "non_target_stage_ms_per_cycle": 526.6598848245618,
+      "measured_non_stage_residual_ms_per_cycle": 67.84269954774084,
+      "current_target_pass_ms_per_cycle": 34.72363632394366,
+      "external": {
+        "name": "mainline_vulkan",
+        "tok_s": 32.713,
+        "source_commit": "4e97ac86"
+      },
+      "budgets": {
+        "external_parity": {
+          "target_tok_s": 32.713,
+          "allowed_complete_wall_ms": 36682.66438418977,
+          "allowed_decode_cycle_ms": 391.7243179453269,
+          "pass_slack_residual_kept_ms": -202.77826642697573,
+          "pass_slack_residual_removed_ms": -134.9355668792349,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 202.77826642697573,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 134.9355668792349
+        },
+        "one_point_fifteen_own_ar": {
+          "target_tok_s": 40.92384151014038,
+          "allowed_complete_wall_ms": 29322.760418340888,
+          "allowed_decode_cycle_ms": 288.0636987080187,
+          "pass_slack_residual_kept_ms": -306.43888566428393,
+          "pass_slack_residual_removed_ms": -238.5961861165431,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 306.43888566428393,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 238.5961861165431
+        }
+      },
+      "decision": "No nonnegative target-pass-only budget under either target, even with the measured residual removed; a candidate must reduce accept/non-target dataflow before target owner speed can close the cell."
+    },
+    "6": {
+      "full_row": 24,
+      "cells": 10,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant",
+      "cycles": 71.0,
+      "ar_tok_s": 40.34359045441616,
+      "mtp_tok_s": 23.50782664747096,
+      "complete_ar_wall_ms": 35693.40219302103,
+      "complete_mtp_wall_ms": 61256.19444088079,
+      "matched_grouped_prefill_wall_ms": 10334.337941138074,
+      "prefill_share_of_ar_wall": 0.2895307621630616,
+      "prefill_share_of_mtp_wall": 0.1687068228032332,
+      "stage_ms_per_cycle": {
+        "accept": 552.4497270079094,
+        "proposal": 34.57605054037987,
+        "provider_update": 6.2885097339486995,
+        "selected_commit": 4.706891748765615,
+        "target": 38.549138338028165
+      },
+      "non_target_stage_ms_per_cycle": 598.0211790310036,
+      "measured_non_stage_residual_ms_per_cycle": 80.6389291062178,
+      "current_target_pass_ms_per_cycle": 38.549138338028165,
+      "external": {
+        "name": "laurent_vulkan",
+        "tok_s": 37.154,
+        "source_commit": "c28d538df"
+      },
+      "budgets": {
+        "external_parity": {
+          "target_tok_s": 37.154,
+          "allowed_complete_wall_ms": 38757.60348818431,
+          "allowed_decode_cycle_ms": 400.3276837612146,
+          "pass_slack_residual_kept_ms": -278.3324243760068,
+          "pass_slack_residual_removed_ms": -197.69349526978903,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 278.3324243760068,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 197.69349526978903
+        },
+        "one_point_fifteen_own_ar": {
+          "target_tok_s": 46.39512902257858,
+          "allowed_complete_wall_ms": 31037.741037409593,
+          "allowed_decode_cycle_ms": 291.59722670804956,
+          "pass_slack_residual_kept_ms": -387.06288142917185,
+          "pass_slack_residual_removed_ms": -306.42395232295405,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 387.06288142917185,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 306.42395232295405
+        }
+      },
+      "decision": "No nonnegative target-pass-only budget under either target, even with the measured residual removed; a candidate must reduce accept/non-target dataflow before target owner speed can close the cell."
+    },
+    "7": {
+      "full_row": 28,
+      "cells": 10,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant",
+      "cycles": 71.0,
+      "ar_tok_s": 43.48126866270944,
+      "mtp_tok_s": 24.110026831846426,
+      "complete_ar_wall_ms": 38637.327098986134,
+      "complete_mtp_wall_ms": 69680.5528968107,
+      "matched_grouped_prefill_wall_ms": 11554.153590463102,
+      "prefill_share_of_ar_wall": 0.2990412240697232,
+      "prefill_share_of_mtp_wall": 0.16581604350317863,
+      "stage_ms_per_cycle": {
+        "accept": 639.6925162563336,
+        "proposal": 36.6782974255022,
+        "provider_update": 7.196325851394467,
+        "selected_commit": 5.853433949007115,
+        "target": 44.34025057746479
+      },
+      "non_target_stage_ms_per_cycle": 689.4205734822375,
+      "measured_non_stage_residual_ms_per_cycle": 84.9208563113906,
+      "current_target_pass_ms_per_cycle": 44.34025057746479,
+      "external": {
+        "name": "stock_hip",
+        "tok_s": 46.084,
+        "source_commit": "9d57ce456"
+      },
+      "budgets": {
+        "external_parity": {
+          "target_tok_s": 46.084,
+          "allowed_complete_wall_ms": 36455.16882215085,
+          "allowed_decode_cycle_ms": 350.7185243899683,
+          "pass_slack_residual_kept_ms": -423.6229054036598,
+          "pass_slack_residual_removed_ms": -338.7020490922692,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 423.6229054036598,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 338.7020490922692
+        },
+        "one_point_fifteen_own_ar": {
+          "target_tok_s": 50.00345896211585,
+          "allowed_complete_wall_ms": 33597.675738248814,
+          "allowed_decode_cycle_ms": 310.47214292655934,
+          "pass_slack_residual_kept_ms": -463.86928686706875,
+          "pass_slack_residual_removed_ms": -378.94843055567816,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 463.86928686706875,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 378.94843055567816
+        }
+      },
+      "decision": "No nonnegative target-pass-only budget under either target, even with the measured residual removed; a candidate must reduce accept/non-target dataflow before target owner speed can close the cell."
+    },
+    "8": {
+      "full_row": 32,
+      "cells": 10,
+      "correctness": "10/10 exact, engaged, K3-budget-conformant",
+      "cycles": 71.0,
+      "ar_tok_s": 47.67948016580421,
+      "mtp_tok_s": 25.914605992662388,
+      "complete_ar_wall_ms": 40268.89541000128,
+      "complete_mtp_wall_ms": 74089.492255589,
+      "matched_grouped_prefill_wall_ms": 12668.395006796345,
+      "prefill_share_of_ar_wall": 0.31459504607245803,
+      "prefill_share_of_mtp_wall": 0.17098774227111396,
+      "stage_ms_per_cycle": {
+        "accept": 667.1108204025355,
+        "proposal": 33.39557556278059,
+        "provider_update": 6.954466317399916,
+        "selected_commit": 6.912125238466641,
+        "target": 76.35920253521127
+      },
+      "non_target_stage_ms_per_cycle": 714.3729875211827,
+      "measured_non_stage_residual_ms_per_cycle": 74.35368668716444,
+      "current_target_pass_ms_per_cycle": 76.35920253521127,
+      "external": {
+        "name": "stock_hip",
+        "tok_s": 56.222,
+        "source_commit": "9d57ce456"
+      },
+      "budgets": {
+        "external_parity": {
+          "target_tok_s": 56.222,
+          "allowed_complete_wall_ms": 34150.332610010315,
+          "allowed_decode_cycle_ms": 302.56250145371786,
+          "pass_slack_residual_kept_ms": -486.1641727546293,
+          "pass_slack_residual_removed_ms": -411.81048606746486,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 486.1641727546293,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 411.81048606746486
+        },
+        "one_point_fifteen_own_ar": {
+          "target_tok_s": 54.83140219067484,
+          "allowed_complete_wall_ms": 35016.43079130546,
+          "allowed_decode_cycle_ms": 314.7610673874523,
+          "pass_slack_residual_kept_ms": -473.9656068208949,
+          "pass_slack_residual_removed_ms": -399.61192013373045,
+          "feasible_target_pass_budget_residual_kept_ms": 0,
+          "feasible_target_pass_budget_residual_removed_ms": 0,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_kept": 473.9656068208949,
+          "required_non_target_reduction_even_with_zero_target_ms_residual_removed": 399.61192013373045
+        }
+      },
+      "decision": "No nonnegative target-pass-only budget under either target, even with the measured residual removed; a candidate must reduce accept/non-target dataflow before target owner speed can close the cell."
+    }
+  },
+  "c2_grouped_tick": {
+    "target_tok_s": 211.888,
+    "rows_total": 898,
+    "current_server_wall_ms": 5026.316618314013,
+    "current_server_prompt_tok_s": 178.6596564028666,
+    "target_wall_budget_ms": 4238.0880465151395,
+    "wall_reduction_required_ms": 788.2285717988734,
+    "wall_reduction_required_fraction": 0.15682031826782739,
+    "prefill_share_of_current_ar_complete_wall": 0.19247543611307355,
+    "prefill_share_of_current_mtp_complete_wall": 0.30243373723867717,
+    "per_prompt": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "grouped_rows": 72,
+        "current_server_complete_wall_ms": 459.20017012394965,
+        "current_direct_tick_wall_ms": 399.174692,
+        "target_tick_budget_ms_at_211_888_tok_s": 339.80215963150346,
+        "server_wall_reduction_required_ms": 119.39801049244619,
+        "direct_tick_reduction_required_ms": 59.372532368496536
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "grouped_rows": 92,
+        "current_server_complete_wall_ms": 484.8295650444925,
+        "current_direct_tick_wall_ms": 429.483283,
+        "target_tick_budget_ms_at_211_888_tok_s": 434.1916484180322,
+        "server_wall_reduction_required_ms": 50.63791662646031,
+        "direct_tick_reduction_required_ms": -4.708365418032201
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "grouped_rows": 86,
+        "current_server_complete_wall_ms": 487.1823519933969,
+        "current_direct_tick_wall_ms": 425.975811,
+        "target_tick_budget_ms_at_211_888_tok_s": 405.8748017820735,
+        "server_wall_reduction_required_ms": 81.30755021132336,
+        "direct_tick_reduction_required_ms": 20.101009217926503
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "grouped_rows": 96,
+        "current_server_complete_wall_ms": 490.77891395427287,
+        "current_direct_tick_wall_ms": 434.982334,
+        "target_tick_budget_ms_at_211_888_tok_s": 453.0695461753379,
+        "server_wall_reduction_required_ms": 37.70936777893496,
+        "direct_tick_reduction_required_ms": -18.087212175337925
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "grouped_rows": 70,
+        "current_server_complete_wall_ms": 458.33284012041986,
+        "current_direct_tick_wall_ms": 399.612573,
+        "target_tick_budget_ms_at_211_888_tok_s": 330.3632107528506,
+        "server_wall_reduction_required_ms": 127.96962936756927,
+        "direct_tick_reduction_required_ms": 69.2493622471494
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "grouped_rows": 72,
+        "current_server_complete_wall_ms": 457.60567393153906,
+        "current_direct_tick_wall_ms": 399.174692,
+        "target_tick_budget_ms_at_211_888_tok_s": 339.80215963150346,
+        "server_wall_reduction_required_ms": 117.8035143000356,
+        "direct_tick_reduction_required_ms": 59.372532368496536
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "grouped_rows": 78,
+        "current_server_complete_wall_ms": 459.82438907958567,
+        "current_direct_tick_wall_ms": 409.301349,
+        "target_tick_budget_ms_at_211_888_tok_s": 368.119006267462,
+        "server_wall_reduction_required_ms": 91.70538281212367,
+        "direct_tick_reduction_required_ms": 41.18234273253802
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "grouped_rows": 78,
+        "current_server_complete_wall_ms": 465.3017420787364,
+        "current_direct_tick_wall_ms": 409.301349,
+        "target_tick_budget_ms_at_211_888_tok_s": 368.119006267462,
+        "server_wall_reduction_required_ms": 97.18273581127443,
+        "direct_tick_reduction_required_ms": 41.18234273253802
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "grouped_rows": 120,
+        "current_server_complete_wall_ms": 611.8765859864652,
+        "current_direct_tick_wall_ms": 553.5726,
+        "target_tick_budget_ms_at_211_888_tok_s": 566.3369327191724,
+        "server_wall_reduction_required_ms": 45.539653267292806,
+        "direct_tick_reduction_required_ms": -12.764332719172444
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "grouped_rows": 134,
+        "current_server_complete_wall_ms": 651.3843860011548,
+        "current_direct_tick_wall_ms": 595.969233,
+        "target_tick_budget_ms_at_211_888_tok_s": 632.4095748697425,
+        "server_wall_reduction_required_ms": 18.974811131412253,
+        "direct_tick_reduction_required_ms": -36.4403418697425
+      }
+    ]
+  },
+  "findings": [
+    "All 40 one-group C5-C8 K3 cells pass exactness, engagement, and budget checks, but the run-owned route is slower than AR and is not a retention candidate.",
+    "At every C5/R20-C8/R32 cell, measured accept/non-target stage time already exceeds both external-parity and 1.15x-own-AR cycle allowances. The target-pass-only budget is therefore zero; residual removal does not change the verdict.",
+    "This supersedes section 7.2's provisional positive C8 pass budget, which reused the old K1 accept stage while sizing a K3 one-group cycle. Mechanisms A/B cannot enter alone; they require an accept/non-target dataflow mechanism first.",
+    "C2 grouped ticks need 330.4-632.4 ms by prompt to reach 211.888 prompt tok/s; the artifact records exact current server/direct walls and reductions."
+  ]
+}
