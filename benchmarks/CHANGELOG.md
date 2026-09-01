@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y3 producer pipeline rejected] The five-wave, two-buffer shared4r6 prototype completes and is bit-exact at rows288, but wide planar K17408/N5120 regresses 3.713->4.748 ms (+27.88%); narrow gains 2.97%. Route/export scope-reverted. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y3 handoff audit] No in-tree/toolchain named split-barrier wrapper was found. Whole-block barriers cannot overlap producer/consumer roles; a five-wave, 32 KiB LDS atomic-ready/done prototype remains feasible but requires timeout-protected hang/residency validation. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-handoff-primitive-audit.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y3 slab analysis] Current planar-Q6 serializes arithmetic decode/barrier/WMMA/barrier around one 16 KiB LDS buffer. Double buffering alone cannot overlap same-wave arithmetic; the bounded candidate is a dedicated producer-wave shared4r6 split using 32 KiB LDS. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json`.
