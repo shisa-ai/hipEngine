@@ -2879,67 +2879,6 @@ void q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel(
   }
 }
 
-// Exact grouped gate/up+SiLU sibling for the physical rows6 route. Each WG64
-// block executes the retained two-wave dual rowtile unchanged while grid.y owns
-// independent contiguous rows6 chunks. Gate/up round independently to BF16 in
-// LDS before the unchanged standalone SiLU expression.
-template <typename scalar_t, int ROW_TILE>
-__global__ __launch_bounds__(64, 1)
-void q4_k_t16_dense_dual_rowtile_grouped_silu_gemv_kernel(
-    const scalar_t* __restrict__ x,
-    const uint8_t* __restrict__ tiles_a,
-    const uint8_t* __restrict__ tiles_b,
-    scalar_t* __restrict__ out,
-    int64_t in_features,
-    int64_t out_features) {
-  constexpr int kTileCols = 8;
-  const int tid = threadIdx.x;
-  const int wave = tid >> 5;
-  const int lane = tid & 31;
-  const int64_t out_group = blockIdx.x;
-  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * ROW_TILE;
-  const scalar_t* __restrict__ chunk_x = x + row_base * in_features;
-  scalar_t* __restrict__ chunk_out = out + row_base * out_features;
-  const uint8_t* __restrict__ tiles = wave == 0 ? tiles_a : tiles_b;
-  float acc[ROW_TILE][kTileCols];
-  q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE, kTileCols>(
-      chunk_x, tiles, lane, in_features, out_group, acc);
-
-#pragma unroll
-  for (int row = 0; row < ROW_TILE; ++row) {
-#pragma unroll
-    for (int local_col = 0; local_col < kTileCols; ++local_col) {
-      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
-    }
-  }
-
-  __shared__ uint16_t projected[2][ROW_TILE][kTileCols];
-  if (lane == 0) {
-#pragma unroll
-    for (int row = 0; row < ROW_TILE; ++row) {
-#pragma unroll
-      for (int local_col = 0; local_col < kTileCols; ++local_col) {
-        projected[wave][row][local_col] =
-            float_to_scalar<scalar_t>(0.0f + acc[row][local_col]);
-      }
-    }
-  }
-  __syncthreads();
-
-  if (tid < ROW_TILE * kTileCols) {
-    const int row = tid / kTileCols;
-    const int local_col = tid % kTileCols;
-    const float gate = scalar_to_float<scalar_t>(
-        projected[0][row][local_col]);
-    const float up = scalar_to_float<scalar_t>(
-        projected[1][row][local_col]);
-    const float sig = 1.0f / (1.0f + expf(-gate));
-    chunk_out[static_cast<int64_t>(row) * out_features +
-              out_group * kTileCols + local_col] =
-        float_to_scalar<scalar_t>(gate * sig * up);
-  }
-}
-
 // Exact compact-Q4 FFN-down plus rounded-BF16 residual owner. The producer
 // keeps the established dot/reduction and first BF16 boundary, then consumes
 // BF16 residual bits and performs the same FP32 add/final BF16 rounding as the
@@ -6636,36 +6575,6 @@ int launch_q4_dense_rowtile16_w2_grouped_rows6(
 }
 
 template <typename scalar_t>
-int launch_q4_dense_dual_rowtile_grouped_rows6_silu(
-    const void* x,
-    const void* tiles_a,
-    const void* tiles_b,
-    void* out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    hipStream_t stream) {
-  if (!x || !tiles_a || !tiles_b || !out ||
-      rows < 12 || (rows % 6) != 0 ||
-      in_features <= 0 || (in_features % QK_K) != 0 ||
-      out_features <= 0 || (out_features % T16_COLS) != 0) {
-    return hipErrorInvalidValue;
-  }
-  const dim3 block(64);
-  const dim3 grid(
-      static_cast<unsigned int>(out_features / 8),
-      static_cast<unsigned int>(rows / 6));
-  hipLaunchKernelGGL(
-      (q4_k_t16_dense_dual_rowtile_grouped_silu_gemv_kernel<scalar_t, 6>),
-      grid, block, 0, stream,
-      reinterpret_cast<const scalar_t*>(x),
-      reinterpret_cast<const uint8_t*>(tiles_a),
-      reinterpret_cast<const uint8_t*>(tiles_b),
-      reinterpret_cast<scalar_t*>(out), in_features, out_features);
-  return hipGetLastError();
-}
-
-template <typename scalar_t>
 int launch_q4_qmicro_dense_rowtile(
     const void* x,
     const void* tiles,
@@ -7749,15 +7658,6 @@ hipengine_gguf_q4_k_qmicro_t16_dense_rowtile_gemv_bf16_bf16_out(
   if (rows < 2 || rows > 4) return hipErrorInvalidValue;
   return launch_q4_qmicro_dense_rowtile<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
-}
-
-extern "C" int
-hipengine_gguf_q4_k_t16_dense_dual_rowtile_grouped_rows6_silu_gemv_bf16_bf16_out(
-    const void* x, const void* tiles_a, const void* tiles_b, void* out,
-    int64_t rows, int64_t in_features, int64_t out_features,
-    hipStream_t stream) {
-  return launch_q4_dense_dual_rowtile_grouped_rows6_silu<uint16_t>(
-      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int

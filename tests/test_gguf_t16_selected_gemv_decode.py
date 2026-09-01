@@ -17,10 +17,6 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     build_paro_combine,
     weighted_sum_out_bf16_f32w,
 )
-from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
-    build_paro_silu,
-    silu_mul_separate_out_bf16,
-)
 from hipengine.kernels.hip_gfx1100.quant import (
     gguf_t16_selected_gemv as selected_t16_mod,
 )
@@ -44,7 +40,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_q8_1x2_dp4a_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_q8_1x2_split_weight_dp4a_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
-    gguf_q4_k_t16_dense_dual_rowtile_grouped_rows6_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
@@ -146,13 +141,6 @@ def combine_library():
     if not HIP_AVAILABLE:
         pytest.skip("HIP runtime is not available")
     return build_paro_combine(load=True)
-
-
-@pytest.fixture(scope="module")
-def silu_library():
-    if not HIP_AVAILABLE:
-        pytest.skip("HIP runtime is not available")
-    return build_paro_silu(load=True)
 
 
 @pytest.fixture(scope="module")
@@ -611,39 +599,6 @@ def _run_dense_dual_silu(
         return out_arr
     finally:
         for buf in (x_buf, ta_buf, tb_buf, out_buf):
-            free(buf)
-
-
-def _run_silu_separate_bf16(
-    gate: np.ndarray,
-    up: np.ndarray,
-    library,
-) -> np.ndarray:
-    if (
-        gate.shape != up.shape
-        or gate.dtype != np.uint16
-        or up.dtype != np.uint16
-    ):
-        raise ValueError("gate/up must be same-shape BF16 bit arrays")
-    gate_buf = malloc(gate.nbytes)
-    up_buf = malloc(up.nbytes)
-    out = np.zeros_like(gate)
-    out_buf = malloc(out.nbytes)
-    try:
-        copy_host_to_device(gate_buf, host_array_ptr(gate), gate.nbytes)
-        copy_host_to_device(up_buf, host_array_ptr(up), up.nbytes)
-        silu_mul_separate_out_bf16(
-            gate_buf.ptr,
-            up_buf.ptr,
-            out_buf.ptr,
-            gate.shape[0],
-            gate.shape[1],
-            library=library,
-        )
-        copy_device_to_host(host_array_ptr(out), out_buf, out.nbytes)
-        return out
-    finally:
-        for buf in (gate_buf, up_buf, out_buf):
             free(buf)
 
 
@@ -1122,54 +1077,6 @@ def test_qmicro_q4_dense_primitives_match_t16_bits(
         t16_selected_library,
     )
     np.testing.assert_array_equal(candidate, control)
-
-
-@pytest.mark.parametrize("rows", [12, 24, 30])
-def test_q4_t16_grouped_dual_silu_matches_grouped_w2_plus_standalone_bits(
-    rows: int,
-    t16_selected_library,
-    silu_library,
-) -> None:
-    rng = np.random.default_rng(20260902 + rows)
-    in_features = 512
-    out_features = 32
-    raw_a = make_q4_k_weight(out_features, in_features)
-    raw_b = np.roll(raw_a, shift=3, axis=0).copy()
-    tiles_a = repack_gguf_q4_k_tile16(raw_a[None, ...]).tiles
-    tiles_b = repack_gguf_q4_k_tile16(raw_b[None, ...]).tiles
-    x_bf16 = _f32_to_bf16_u16(
-        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
-    )
-    gate = _run_dense_single(
-        gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
-        x_bf16,
-        tiles_a,
-        out_features,
-        np.uint16,
-        t16_selected_library,
-    )
-    up = _run_dense_single(
-        gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
-        x_bf16,
-        tiles_b,
-        out_features,
-        np.uint16,
-        t16_selected_library,
-    )
-    expected = _run_silu_separate_bf16(gate, up, silu_library)
-    candidate = _run_dense_dual_silu(
-        x_bf16,
-        tiles_a,
-        tiles_b,
-        out_features,
-        np.uint16,
-        t16_selected_library,
-        fn=(
-            gguf_q4_k_t16_dense_dual_rowtile_grouped_rows6_silu_bf16_bf16_out
-        ),
-    )
-
-    np.testing.assert_array_equal(candidate, expected)
 
 
 @pytest.mark.parametrize("rows", [2, 3, 4])
@@ -2059,14 +1966,6 @@ def test_p9_h3d_registry_keys_resolve() -> None:
     ) is gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
-        layer="linear_pair_silu",
-        quant="gguf_q4_k_t16_v1",
-        variant="dense_dual_rowtile_grouped_rows6_bf16_bf16_out",
-    ) is (
-        gguf_q4_k_t16_dense_dual_rowtile_grouped_rows6_silu_bf16_bf16_out
-    )
-    assert resolve(
-        backend="hip_gfx1100",
         layer="linear",
         quant="gguf_q5_k_t16_v1",
         variant="t16_gemv_decode_bf16_bf16_out",
@@ -2135,10 +2034,6 @@ def test_p9_h3d_wrappers_validate_args() -> None:
     with pytest.raises(ValueError, match=r"rows in \{2,3,4,6,8\}"):
         gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out(
             0, 0, 0, 5, 256, 16
-        )
-    with pytest.raises(ValueError, match="rows >= 12 divisible by 6"):
-        gguf_q4_k_t16_dense_dual_rowtile_grouped_rows6_silu_bf16_bf16_out(
-            0, 0, 0, 0, 20, 256, 16
         )
     with pytest.raises(ValueError, match="rows in 2..4"):
         gguf_q4_k_qmicro_t16_dense_rowtile_bf16_bf16_out(
