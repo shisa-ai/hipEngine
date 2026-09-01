@@ -198,12 +198,24 @@ further work unjustified.
   correctness failure. This item stays partial until the scheduler/server and
   inter-group shares of the residual are separated; the C6/C8 K1
   reconciliation item owns that follow-up.
-- [ ] Attribute at launch granularity, not family granularity: one R16, R24,
+- [x] Attribute at launch granularity, not family granularity: one R16, R24,
   and R32 target pass each, naming owner, grid, and per-launch ms for every
   Q4/Q5/Q6 launch, with the Q6 lm-head, Q5 `ssm_out`, planar/standard direct
   GEMV, and rowtile-chunk launches split out (section 7, F3/F4). Reconcile
   against W0's family totals and W1's window numbers, which do not reconcile
   with W1's own per-launch results.
+
+  Launch ledger: [`2026-09-01-gfx1151-qwen38-z0-r16-r24-r32-launch-ledger.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z0-r16-r24-r32-launch-ledger.json).
+  The current-head one-group diagnostic passes all R16/R24/R32 correctness,
+  route, and budget checks. At R32 the binding launches are Q6 planar direct
+  grid `[40960,32,1]` (32 launches, 330.7 ms/pass, 10.32 ms median/launch),
+  Q6 standard direct `[81920,32,1]` (24, 142.6 ms, 5.94 ms), Q5 `ssm_out`
+  selected-direct `[40960,32,1]` (48, 104.7 ms, 2.18 ms), and Q6 lm-head
+  rowtile `[3973120,1,1]` (8, 37.9 ms, 4.74 ms). R24 uses the same direct
+  owners at grids Y=24; R16 stays on rowtile/WMMA owners. This resolves the
+  W0/W1 mismatch: family totals mixed distinct direct, rowtile, and lm-head
+  launches and cannot substitute for the launch ledger. The diagnostic
+  override is run-owned; production grouping is unchanged.
 - [ ] Reconcile decode-only cycle wall against the stage sum at C6/C8 K1,
   using the prefill tick from telemetry, and localize the residual (F6:
   ~57 ms per C8 cycle) to host, batch window, proposal sync, or untraced
