@@ -1,0 +1,93 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained",
+  "created_at": "2026-09-01T09:05:00Z",
+  "status": "validated_partial_retention_pending_c1c8",
+  "source_commit_before_unit": "7a7251880",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "candidate": {
+    "variant": "standard Q6 shared8r3",
+    "geometry": "2 output tiles,8 waves,3 row tiles/wave; 384-row one-sweep",
+    "scope": "K5120/N10240 rows257-384",
+    "strict_fallback": "existing shared4/global selector"
+  },
+  "direct_shared4_comparison": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "288": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 6.188195037841797,
+        "shared4_ms": 6.181759262084961,
+        "speedup": 1.0010410912952092
+      }
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "288": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 3.103361701965332,
+        "shared4_ms": 1.6884153366088868,
+        "speedup": 1.8380321681976115
+      }
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "288": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.3135241985321045,
+        "shared4_ms": 0.3138607978820801,
+        "speedup": 0.9989275521114871
+      }
+    }
+  },
+  "complete_rows288_tick": {
+    "control_wall_ms": 1137.857396,
+    "candidate_wall_ms": 1098.787875,
+    "improvement_pct": 3.555692767359675,
+    "control_gpu_ms": 1137.8525390625,
+    "candidate_gpu_ms": 1098.7825927734375,
+    "control_next_token_id": 15685,
+    "candidate_next_token_id": 15685
+  },
+  "rocprof": {
+    "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel<8,3,2>",
+    "grid_y": 1,
+    "threads": 256,
+    "vgpr": 96,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "sample_duration_ms": 1.599
+  },
+  "limitations": [
+    "Y2 remains open for planar Q6, Q5, GDN, and rows outside 257-384.",
+    "Tracked-clean C1-C8 collateral follows after commit."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-shared8r3-r288.json",
+      "sha256": "0617efda937e0c70584c80648efbc35ba6224c362251b992fe5c3546b5bcf252",
+      "bytes": 863
+    },
+    {
+      "path": "/tmp/y2-q6-shared8r3-rows288-full-pair.json",
+      "sha256": "dffba2a554522021a89011fc4ed115f916f8f6d933df9f22a6a20563817ca977",
+      "bytes": 199226
+    },
+    {
+      "path": "/tmp/y2-q6-shared8r3-rocprof/gfx1151/2355039_kernel_trace.csv",
+      "sha256": "9f1f2d669a87b0b28bdc47725237a0a1eb171a4a7414c92ab38f71a831d44dd3",
+      "bytes": 91425
+    }
+  ]
+}

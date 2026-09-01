@@ -596,7 +596,7 @@ void q6_k_t16_wmma_prefill_bf16_kernel(
 // one output slab into LDS, then its waves consume independent M16 row tiles.
 // W1 instantiates two waves x one row tile x two output tiles for R20-R32.
 template <int WAVES_PER_BLOCK, int ROW_TILES_PER_WAVE, int OUT_TILES_PER_BLOCK>
-__global__ __launch_bounds__(128, 1)
+__global__ __launch_bounds__((WAVES_PER_BLOCK > 4 ? 256 : 128), 1)
 void q6_k_t16_wmma_prefill_shared_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
@@ -2529,6 +2529,31 @@ hipengine_gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out(
     int64_t in_features, int64_t out_features, hipStream_t stream) {
   return launch_q6_t16_qmicro_planar_wmma_prefill_shared4(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
+    const void* x, const void* tiles, void* out, int64_t rows,
+    int64_t in_features, int64_t out_features, hipStream_t stream) {
+  if (!x || !tiles || !out || rows <= 0 || in_features <= 0 ||
+      out_features <= 0 || (in_features % QK_K) != 0 ||
+      (out_features % T16_COLS) != 0) return hipErrorInvalidValue;
+  constexpr int OUT_TILES = 2;
+  constexpr int WAVES = 8;
+  constexpr int ROW_TILES = 3;
+  const dim3 block(WAVES * 32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + OUT_TILES * T16_COLS - 1) /
+                                (OUT_TILES * T16_COLS)),
+      static_cast<unsigned int>((rows + WAVES * ROW_TILES * 16 - 1) /
+                                (WAVES * ROW_TILES * 16)));
+  hipLaunchKernelGGL(
+      (q6_k_t16_wmma_prefill_shared_bf16_kernel<WAVES, ROW_TILES, OUT_TILES>),
+      grid, block, 0, stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<uint16_t*>(out), rows, in_features, out_features);
+  return hipGetLastError();
 }
 
 extern "C" int

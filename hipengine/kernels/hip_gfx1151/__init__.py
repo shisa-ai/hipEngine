@@ -62,6 +62,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
@@ -378,11 +379,16 @@ def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
 ):
     """Select shared-weight WMMA only for the admitted standard-Q6 QKV."""
 
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
     fn = (
-        gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
-        if int(rows) >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
+        if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS <= row_count
+        <= GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
+        if row_count >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
         else gguf_q6_k_t16_wmma_prefill_bf16_bf16_out
     )
     return fn(
@@ -1760,6 +1766,8 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
 # and positive at every point; shape misses and rows<96 retain 16x16.
 GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS = 96
 GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES = frozenset({(5_120, 10_240)})
+GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS = 257
+GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS = 384
 # The planar sibling uses the same exact shared schedule. The six-shape
 # rows256/384/480/536 screen admits shared4 from row256; rows145-255 retain
 # plain, and the periodic rows81-144 bands above select separately.
@@ -3048,6 +3056,8 @@ __all__ = [
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS",
     "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES",
     "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",

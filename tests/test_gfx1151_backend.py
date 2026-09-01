@@ -628,6 +628,9 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     def shared4(*args, **kwargs):
         calls.append(("shared4", args, kwargs))
 
+    def shared8r3(*args, **kwargs):
+        calls.append(("shared8r3", args, kwargs))
+
     monkeypatch.setattr(
         gfx1151_backend,
         "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
@@ -638,14 +641,21 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
         "gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out",
         shared4,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
+        shared8r3,
+    )
     fn = gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 5_120, 10_240, stream=7)
+    fn(1, 2, 3, 288, 5_120, 10_240, stream=11)
     fn(1, 2, 3, 96, 5_120, 10_240, stream=8)
     fn(1, 2, 3, 95, 5_120, 10_240, stream=9)
     fn(1, 2, 3, 1_024, 5_120, 5_120, stream=10)
 
     assert calls == [
         ("shared4", (1, 2, 3, 512, 5_120, 10_240), {"stream": 7}),
+        ("shared8r3", (1, 2, 3, 288, 5_120, 10_240), {"stream": 11}),
         ("shared4", (1, 2, 3, 96, 5_120, 10_240), {"stream": 8}),
         ("retained", (1, 2, 3, 95, 5_120, 10_240), {"stream": 9}),
         ("retained", (1, 2, 3, 1_024, 5_120, 5_120), {"stream": 10}),
