@@ -1227,6 +1227,14 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       The next mechanism is therefore a bounded multirow ordered-attention path,
       not score/top-k tuning or a direct copy of the c1 scratch layout. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
+      **Rejected follow-up:** the first bounded three-pass implementation was
+      byte-exact at H256 and 2,049–2,051 selected tokens, but its QK grid exposed
+      about **25.2 million CTAs per 512-row chunk**. The p4096 whole-model screen
+      remained in its first warmup at 99% GPU use after more than 168 seconds,
+      so it was terminated before collecting an invalid sample and removed.
+      Any retry must tile rows or persist selected-token work rather than launch
+      one CTA per `(row, head, selected token)`. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-multirow-grid-rejected.json`.
 - [ ] Confirm selected-position attention already removes dense-mask work.
       Evaluate fully-masked-slice skipping only if a current trace proves such
       slices still execute.

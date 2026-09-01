@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 multirow QSA prefill — rejected] A byte-exact T0 three-pass RED passed at H256 and 2,049–2,051 selections, but the QK geometry generated about **25.2M CTAs per 512-row chunk**; the whole-model p4096 screen did not complete its first warmup after more than 168 s at 99% GPU use, so it was terminated and the implementation removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-multirow-grid-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next p4096 QSA prefill audit — diagnostic] Variable-selection sparse rows own **9.418 s** of the **10.229-s** attention role; dense attention is **0.638 s**, index score **0.129 s**, and top-k expand **0.023 s**. The next mechanism is bounded multirow ordered attention, not selector tuning. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next Q8 MMQ attention gate — blocked] Later state fixes clear the old first-repeat failure: 450-row numerical/state/lifecycle and semantic review pass. Current four-category p512 is only **1.0104x** aggregate (95% CI **1.0002–1.0206**, 9/12 wins); every category interval includes 1.0 and three rows show order drift. The route remains default-off pending stabilized five-pair evidence or a larger dense/GR boundary. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-current-blocked.json`.
