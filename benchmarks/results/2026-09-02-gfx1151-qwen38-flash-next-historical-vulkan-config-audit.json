@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_historical_vulkan_configuration_audit",
+  "status": "accepted_configuration_audit",
+  "host": "zbook",
+  "clock_policy": "auto",
+  "case": "exact code-p512, 128 decode transitions",
+  "common": {"model": "pinned UD-Q4_K_XL c8b5954a", "kv": "BF16/BF16", "batch": 8192, "ubatch": 2048, "warmups": 1, "repetitions": 3},
+  "builds": {
+    "upstream": {"source": "ggml-org/llama.cpp", "commit": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d", "binary_sha256": "070ae16710ad4279abffaf3a16e438c19d5b1f950817b7910d4474dfcdc2dce0"},
+    "nathan": {"source": "Nathanw1014/llama.cpp", "commit": "ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5", "binary_sha256": "563c54db7a7ace8000082635b3cc17d3dafb5378a7b5a0b22de21b42c46516b2", "tensor_read_lazy": true}
+  },
+  "medians": {
+    "upstream": {
+      "queue_off_repack_fitoff": [205.26587142177885, 24.589650600275636],
+      "queue_on_repack_fitoff": [205.62579318543268, 25.150633628951525],
+      "queue_on_norepack_fitoff": [205.84793064532923, 25.171797518060767],
+      "queue_on_repack_fiton": [187.41260789036363, 25.065562110896312]
+    },
+    "nathan": {
+      "queue_off_repack_fitoff": [372.6658344766847, 23.93898849544579],
+      "queue_on_repack_fitoff": [371.1936340291764, 24.503905980044248],
+      "queue_on_norepack_fitoff": [367.40619122487624, 24.493679291244774],
+      "queue_on_repack_fiton": [364.553702961358, 24.514967536820333]
+    }
+  },
+  "deltas_vs_queue_on_repack_fitoff_percent": {
+    "upstream": {"queue_off": [-0.1750372645756837, -2.230492626754843], "no_repack": [0.1080299589148348, 0.08414853248421839], "fit_on": [-8.85744196431839, -0.3382480112043118]},
+    "nathan": {"queue_off": [0.39661252579363815, -2.3054181037852506], "no_repack": [-1.0203415298880025, -0.04173493322984223], "fit_on": [-1.7888052108394947, 0.045142014440857636]}
+  },
+  "correctness": {
+    "upstream_all_arms_exact": true,
+    "upstream_hash": "4ae0bf0468b6bb5defcf3ce1b55bbe1490cc84b5098566dfda205e59433909f4",
+    "nathan_arm_hash_sets_equal": true,
+    "nathan_within_arm_repeatable": false,
+    "note": "Nathan produced the same four repetition-position hashes in every arm; configuration did not change outputs, but the lane remains nondeterministic across repetitions and diagnostic."
+  },
+  "decision": "Both Vulkan lanes are entitled to graphics queue and explicit fit off. Upstream no-repack is neutral; Nathan no-repack loses 1.02% prefill, so retain repack. Canonical comparator rows must be refreshed with queue-on/repack/fit-off before freeze.",
+  "raw_json_sha256": {
+    "upstream_qoff": "1b328808cfbab053c3ec6583548afc93415404b5ffd864f79cc4a7a453b99ad9",
+    "upstream_qon": "c2a8ab019eef12784efc9f5b48ff571fffbdce516833c7d2a39fd19663d0250b",
+    "upstream_norepack": "b56950a312017b0459b3cb9e8f8b62f190f989bb0bacf802dd39ccb2af47326f",
+    "upstream_fiton": "9f6e9419469d7bb060a6f25fca7ae35ba82c38233150a6d40cf7be31c19e8e5e",
+    "nathan_qoff": "6940171ffa3157e6b96ebc422ec80370fd8b3d2866c2f20a077ba79c2eb00b04",
+    "nathan_qon": "986f9ebe0f4fd5c438ec75d747af9cd8ff4316963a51faff6e1d8f1d832a2d8a",
+    "nathan_norepack": "a2e350f7a610cf45323287a397cb470f39c79974ac33d3023d18d52acfb2a61a",
+    "nathan_fiton": "07522a308b77670e1fa94a1651ca38dda26953b79d8dfb438ba65fe7c663ee46"
+  }
+}
