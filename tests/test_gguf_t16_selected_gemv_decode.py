@@ -79,6 +79,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out,
     gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
     gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
+    gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out,
     gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_gemv_bf16_bf16_out,
     gguf_q5_k_t16_selected_qwen_tile8_gemv_bf16_bf16_out,
@@ -1293,6 +1294,93 @@ def test_q4_t16_dense_c_n_chunked_rowtile_composes_bit_exact_vs_c1(
     np.testing.assert_array_equal(candidate, expected)
 
 
+@pytest.mark.parametrize("rows", [12, 24, 36])
+def test_q5_t16_grouped_rows6_matches_repeated_rows6_bits(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260901 + rows)
+    in_features = 512
+    out_features = 32
+    raw = make_q5_k_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    repeated = _run_dense_single_chunked(
+        gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        [(6, row_base) for row_base in range(0, rows, 6)],
+    )
+    grouped = _run_dense_single(
+        gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+
+    np.testing.assert_array_equal(grouped, repeated)
+
+
+def test_q5_t16_dense_decode_groups_physical_rows6_launches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
+        "1",
+    )
+    monkeypatch.setattr(
+        selected_t16_mod,
+        "_launch_dense_q5_t16",
+        lambda symbol, *args, **kwargs: calls.append((symbol, int(args[3]))),
+    )
+
+    with q5_t16_physical_rowtile_session(True):
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 24, 6_144, 5_120
+        )
+
+    assert calls == [
+        (
+            "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows6_"
+            "bf16_bf16_out",
+            24,
+        )
+    ]
+
+
+def test_q5_t16_grouped_rows6_policy_defaults_to_repeated_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        selected_t16_mod,
+        "_launch_dense_q5_t16",
+        lambda symbol, *args, **kwargs: calls.append((symbol, int(args[3]))),
+    )
+
+    with q5_t16_physical_rowtile_session(True):
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 12, 6_144, 5_120
+        )
+
+    assert calls == [
+        (selected_t16_mod._Q5_DENSE_ROWTILE_BF16, 6),
+        (selected_t16_mod._Q5_DENSE_ROWTILE_BF16, 6),
+    ]
+
+
 def test_q5_t16_dense_decode_uses_request_scoped_physical_rowtile(
     monkeypatch,
 ) -> None:
@@ -1894,6 +1982,12 @@ def test_p9_h3d_registry_keys_resolve() -> None:
         quant="gguf_q5_k_t16_v1",
         variant="t16_gemv_rowtile_bf16_bf16_out",
     ) is gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1100",
+        layer="linear",
+        quant="gguf_q5_k_t16_v1",
+        variant="t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
+    ) is gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out
     assert resolve(
         backend="hip_gfx1100",
         layer="linear",

@@ -11,6 +11,7 @@ consume the T16 tile layouts produced by the resident materializer:
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -162,6 +163,12 @@ _Q5_DENSE_ROWTILE_BF16 = (
 )
 _Q5_DENSE_ROWTILE_COL8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out"
+)
+_Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16 = (
+    "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out"
+)
+_Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV = (
+    "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6"
 )
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_QMICRO_SINGLE_DIRECT_BF16 = (
@@ -1759,6 +1766,17 @@ def launch_physical_rows6_chunked(
     )
 
 
+def _q5_dense_rowtile_grouped_rows6_enabled() -> bool:
+    raw = os.environ.get(_Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV, "0").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(
+        f"{_Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV} must be a boolean value"
+    )
+
+
 def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1773,6 +1791,26 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
 ) -> None:
     """Launch the one-expert dense Q5T16 producer."""
 
+    if (
+        q5_t16_physical_rowtile_enabled()
+        and int(rows) >= 12
+        and int(rows) % 6 == 0
+        and _q5_dense_rowtile_grouped_rows6_enabled()
+    ):
+        _check_dense_q5_t16_shape(6, in_features, out_features, rowtile=True)
+        _launch_dense_q5_t16(
+            _Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
     if q5_t16_physical_rowtile_enabled() and launch_physical_rows6_chunked(
         lambda x, tiles, out, row_count, in_f, out_f, **kw: (
             _check_dense_q5_t16_shape(row_count, in_f, out_f, rowtile=True),
@@ -1877,6 +1915,39 @@ def gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out(
     _check_dense_q5_t16_shape(rows, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
         _Q5_DENSE_ROWTILE_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact Q5 row6 chunks through one two-dimensional grid."""
+
+    if int(rows) < 12 or int(rows) % 6:
+        raise ValueError(
+            "dense Q5T16 grouped rowtile requires rows >= 12 divisible by 6"
+        )
+    _check_dense_q5_t16_shape(6, in_features, out_features, rowtile=True)
+    _launch_dense_q5_t16(
+        _Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -4250,6 +4321,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out,
+        replace=replace,
+    )
     for variant, fn in (
         (
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
@@ -4654,6 +4735,7 @@ __all__ = [
     "gguf_q5_k_t16_gemv_decode_tile8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
+    "gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
