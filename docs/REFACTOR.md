@@ -42,15 +42,14 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-02 gfx1100 packed verifier layer graphs — open
+## 2026-09-02 gfx1100 packed verifier model graph — open
 
-- `HIPENGINE_GGUF_PACKED_VERIFY_LAYER_GRAPHS=1` captures each stable packed
-  target-verifier model layer once per physical-row/context bucket and replays
-  it on the provider stream. The candidate is default-off pending same-build C8
-  marker and complete C5-C8 qualification.
-- If retained, consolidate the per-branch graph-key construction behind a
-  dedicated packed-verifier graph cache and promote through gfx1100 capability
-  metadata. If rejected, remove the flag, cache field, helpers, and tests.
+- `HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH=1` captures the complete stable
+  packed target-verifier model body once per physical-row/context bucket and
+  replays it on the provider stream. The candidate is default-off pending a
+  same-build C8 marker and complete C5-C8 qualification.
+- If retained, promote through gfx1100 capability metadata. If rejected, remove
+  the flag, cache field, helpers, and tests.
 
 ## 2026-09-02 gfx1100 direct resident verifier linear state — closed
 

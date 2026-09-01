@@ -31,17 +31,17 @@ from hipengine.runtime.qwen35_gguf_runner import (
 )
 
 
-def test_packed_verify_layer_graphs_are_default_off(
+def test_packed_verify_model_graph_is_default_off(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_VERIFY_LAYER_GRAPHS", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH", raising=False)
 
-    assert not gguf_runner._gguf_packed_verify_layer_graphs_enabled()
+    assert not gguf_runner._gguf_packed_verify_model_graph_enabled()
 
 
 @pytest.mark.parametrize(
     ("live", "bound"),
-    ((1, 128), (128, 128), (129, 256), (513, 768), (769, 1023)),
+    ((1, 256), (256, 256), (257, 512), (513, 768), (769, 1023)),
 )
 def test_packed_verify_graph_context_bound(live: int, bound: int) -> None:
     assert gguf_runner._packed_verify_graph_context_bound(live) == bound
@@ -79,7 +79,7 @@ class _FakeGraphRuntime:
         self.calls.append(("graph_destroy", graph))
 
 
-def test_packed_verify_layer_graph_capture_replay_and_destroy() -> None:
+def test_packed_verify_model_graph_capture_replay_and_destroy() -> None:
     runtime = _FakeGraphRuntime()
     cache: dict[tuple[object, ...], tuple[int, int]] = {}
     enqueued: list[int] = []

@@ -1598,7 +1598,7 @@ class _PackedWorkspaceState:
     decode_session_ids: tuple[int, ...] = ()
     decode_positions: tuple[int, ...] = ()
     decode_direct_linear_state: bool = False
-    verify_layer_graphs: dict[tuple[object, ...], tuple[int, int]] = field(
+    verify_model_graphs: dict[tuple[object, ...], tuple[int, int]] = field(
         default_factory=dict
     )
 
@@ -10773,7 +10773,7 @@ _GGUF_GDN_STATE_ROWS_WAVE_REDUCE_ENV = "HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUC
 _GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN_CHAIN_CONV"
 _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PREFILL"
 _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
-_GGUF_PACKED_VERIFY_LAYER_GRAPHS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_LAYER_GRAPHS"
+_GGUF_PACKED_VERIFY_MODEL_GRAPH_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_MODEL_GRAPH"
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _GGUF_PREFILL_DEVICE_METADATA_ENV = "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"
@@ -12393,17 +12393,17 @@ def _gguf_packed_verify_gpu_stage_timings_enabled() -> bool:
     return _env_flag(_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV, False)
 
 
-def _gguf_packed_verify_layer_graphs_enabled() -> bool:
-    return _env_flag(_GGUF_PACKED_VERIFY_LAYER_GRAPHS_ENV, False)
+def _gguf_packed_verify_model_graph_enabled() -> bool:
+    return _env_flag(_GGUF_PACKED_VERIFY_MODEL_GRAPH_ENV, False)
 
 
 def _packed_verify_graph_context_bound(max_live_count: int) -> int:
-    """Bucket dynamic sub-1K attention spans for stable graph kernel args."""
+    """Bucket dynamic sub-1K attention spans for stable model-graph args."""
 
     live = int(max_live_count)
     if live <= 0 or live >= 1024:
         raise ValueError("packed verifier graph context must be within [1, 1023]")
-    for bound in (128, 256, 512, 768, 1023):
+    for bound in (256, 512, 768, 1023):
         if live <= bound:
             return bound
     raise AssertionError("unreachable packed verifier graph context bound")
@@ -18750,8 +18750,6 @@ class Qwen35GGUFResidentSession:
         add_stage("packed_verify_embedding", embedding_start)
         if gpu_stage_recorder is not None:
             gpu_stage_recorder.mark("packed_verify_gpu_embedding")
-        src = self._prefill_hidden_a
-        dst = self._prefill_hidden_b
         linear_state_owner = (
             packed_state if direct_linear_state is None else direct_linear_state[1]
         )
@@ -18761,13 +18759,14 @@ class Qwen35GGUFResidentSession:
             layer_recurrent_states=linear_state_owner.layer_recurrent_states,
         )
         block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
-        layer_graphs_enabled = bool(device_result) and _gguf_packed_verify_layer_graphs_enabled()
-        layer_graph_cache = self._packed_workspace_state().verify_layer_graphs
+        model_graph_enabled = bool(device_result) and _gguf_packed_verify_model_graph_enabled()
+        model_graph_cache = self._packed_workspace_state().verify_model_graphs
         graph_context_bound = (
             _packed_verify_graph_context_bound(layout.max_live_count)
-            if layer_graphs_enabled
+            if model_graph_enabled
             else 0
         )
+        layer_types = tuple(self.runner.weights.config.layer_types)
         with (
             wmma_prefill_session(block_wmma_prefill),
             gemv_decode_session(self.use_gemv_decode),
@@ -18776,16 +18775,18 @@ class Qwen35GGUFResidentSession:
                 self.target_verifier_production_q4_rowtile
             ),
         ):
-            for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
-                layer_start = time.perf_counter()
-                if layer_type == LINEAR_ATTENTION:
-                    linear_state_rows = (
-                        self._verify_linear_state_row_pair(layer_id)
-                        if capture_linear_state_rows
-                        else None
-                    )
 
-                    def enqueue_linear(layer_stream: int) -> None:
+            def enqueue_model(model_stream: int) -> None:
+                layer_src = self._prefill_hidden_a
+                layer_dst = self._prefill_hidden_b
+                for layer_id, layer_type in enumerate(layer_types):
+                    layer_start = time.perf_counter()
+                    if layer_type == LINEAR_ATTENTION:
+                        linear_state_rows = (
+                            self._verify_linear_state_row_pair(layer_id)
+                            if capture_linear_state_rows
+                            else None
+                        )
                         if (
                             moe_physical_c2_exact_linear_enabled()
                             and rows == 6
@@ -18793,22 +18794,22 @@ class Qwen35GGUFResidentSession:
                         ):
                             self.runner._run_moe_physical_c2_linear_rows_exact(
                                 layer_id,
-                                src.ptr,
-                                dst.ptr,
+                                layer_src.ptr,
+                                layer_dst.ptr,
                                 packed_scratch,
                                 rows=rows,
                                 decode_scratch=linear_decode_scratch,
                                 linear_state_rows=linear_state_rows,
-                                stream=layer_stream,
+                                stream=model_stream,
                             )
                         else:
                             self.runner._run_linear_attention_prefill_layer_rows(
                                 layer_id,
-                                src.ptr,
-                                dst.ptr,
+                                layer_src.ptr,
+                                layer_dst.ptr,
                                 packed_scratch,
                                 rows=rows,
-                                stream=layer_stream,
+                                stream=model_stream,
                                 decode_scratch=linear_decode_scratch,
                                 expert_sidecar=None,
                                 linear_state_rows=linear_state_rows,
@@ -18820,97 +18821,74 @@ class Qwen35GGUFResidentSession:
                                 stage_prefix="packed_verify_gpu_linear_attn",
                                 gpu_stage_recorder=gpu_stage_recorder,
                             )
-
-                    if layer_graphs_enabled:
-                        state_row_ptrs = (
-                            tuple(int(buffer.ptr) for buffer in linear_state_rows)
-                            if linear_state_rows is not None
-                            else ()
-                        )
-                        graph_key = (
-                            "linear",
-                            int(layer_id),
-                            int(rows),
-                            int(src.ptr),
-                            int(dst.ptr),
-                            id(linear_state_owner),
-                            state_row_ptrs,
-                            bool(capture_linear_state_rows),
-                            bool(defer_linear_state_commit),
-                            bool(block_wmma_prefill),
-                            bool(self.use_gemv_decode),
-                            bool(self.target_verifier_production_q4_rowtile),
-                        )
-                        _launch_or_capture_cached_graph(
-                            layer_graph_cache,
-                            graph_key,
-                            enqueue_linear,
-                            runtime=runtime,
-                            stream=stream,
-                        )
-                    else:
-                        enqueue_linear(stream)
-                    add_stage("packed_verify_linear_attn_layers", layer_start)
-                elif layer_type == FULL_ATTENTION:
-                    key_cache, value_cache = packed_state.full_cache(layer_id)
-                    layer_scratch = replace(
-                        packed_scratch,
-                        key_cache=key_cache,
-                        value_cache=value_cache,
-                        cos_table=self.scratch.cos_table,
-                        sin_table=self.scratch.sin_table,
-                    )
-                    if layer_graphs_enabled:
+                        add_stage("packed_verify_linear_attn_layers", layer_start)
+                    elif layer_type == FULL_ATTENTION:
+                        key_cache, value_cache = packed_state.full_cache(layer_id)
                         layer_scratch = replace(
-                            layer_scratch,
-                            prefill_spans=replace(
-                                layer_scratch.prefill_spans,
-                                max_live_count=graph_context_bound,
-                            ),
+                            packed_scratch,
+                            key_cache=key_cache,
+                            value_cache=value_cache,
+                            cos_table=self.scratch.cos_table,
+                            sin_table=self.scratch.sin_table,
                         )
-
-                    def enqueue_full(layer_stream: int) -> None:
+                        if model_graph_enabled:
+                            layer_scratch = replace(
+                                layer_scratch,
+                                prefill_spans=replace(
+                                    layer_scratch.prefill_spans,
+                                    max_live_count=graph_context_bound,
+                                ),
+                            )
                         self.runner._run_full_attention_decode_batch_layer_rows(
                             layer_id,
-                            src.ptr,
-                            dst.ptr,
+                            layer_src.ptr,
+                            layer_dst.ptr,
                             layer_scratch,
-                            stream=layer_stream,
+                            stream=model_stream,
                             expert_sidecar=None,
                             stage_timings=None,
                             sync_stage_timings=False,
                             stage_prefix="target_block_packed_full_attn",
                         )
-
-                    if layer_graphs_enabled:
-                        graph_key = (
-                            "full",
-                            int(layer_id),
-                            int(rows),
-                            int(src.ptr),
-                            int(dst.ptr),
-                            int(key_cache.ptr),
-                            int(value_cache.ptr),
-                            int(graph_context_bound),
-                            bool(block_wmma_prefill),
-                            bool(self.use_gemv_decode),
-                            bool(self.target_verifier_production_q4_rowtile),
-                        )
-                        _launch_or_capture_cached_graph(
-                            layer_graph_cache,
-                            graph_key,
-                            enqueue_full,
-                            runtime=runtime,
-                            stream=stream,
-                        )
+                        if gpu_stage_recorder is not None:
+                            gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
+                        add_stage("packed_verify_full_attn_layers", layer_start)
                     else:
-                        enqueue_full(stream)
-                    if gpu_stage_recorder is not None:
-                        gpu_stage_recorder.mark("packed_verify_gpu_full_attn_layers")
-                    add_stage("packed_verify_full_attn_layers", layer_start)
-                else:
-                    raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
-                src, dst = dst, src
+                        raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
+                    layer_src, layer_dst = layer_dst, layer_src
+
+            model_start = time.perf_counter()
+            if model_graph_enabled:
+                model_graph_key = (
+                    "model",
+                    int(rows),
+                    int(layout.slot_count),
+                    int(graph_context_bound),
+                    int(self._prefill_hidden_a.ptr),
+                    int(self._prefill_hidden_b.ptr),
+                    id(packed_state),
+                    id(linear_state_owner),
+                    bool(capture_linear_state_rows),
+                    bool(defer_linear_state_commit),
+                    bool(block_wmma_prefill),
+                    bool(self.use_gemv_decode),
+                    bool(self.target_verifier_production_q4_rowtile),
+                )
+                _launch_or_capture_cached_graph(
+                    model_graph_cache,
+                    model_graph_key,
+                    enqueue_model,
+                    runtime=runtime,
+                    stream=stream,
+                )
+            else:
+                enqueue_model(stream)
+            add_stage("packed_verify_model_graph", model_start)
+            src = (
+                self._prefill_hidden_a
+                if len(layer_types) % 2 == 0
+                else self._prefill_hidden_b
+            )
 
             output_norm_start = time.perf_counter()
             output_norm_weight_ptr = self.runner.weights.root("output_norm").allocation().tensor.ptr
@@ -23262,7 +23240,7 @@ class Qwen35GGUFResidentSession:
 
     def _free_verify_linear_state_row_buffers(self, *, runtime: HipRuntime) -> None:
         _destroy_cached_graphs(
-            self._packed_workspace_state().verify_layer_graphs,
+            self._packed_workspace_state().verify_model_graphs,
             runtime=runtime,
         )
         for buffer in (
@@ -23507,7 +23485,7 @@ class Qwen35GGUFResidentSession:
         if callable(synchronize):
             synchronize()
         _destroy_cached_graphs(
-            self._packed_workspace_state().verify_layer_graphs,
+            self._packed_workspace_state().verify_model_graphs,
             runtime=runtime,
         )
         attention_workspace = getattr(self, "_packed_ar_attention_workspace", None)
