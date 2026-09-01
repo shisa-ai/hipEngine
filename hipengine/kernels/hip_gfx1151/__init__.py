@@ -1621,18 +1621,19 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
         "t16_gemv_rowtile16_col8_bf16_bf16_out"
     ),
 }
-# W1 candidate: existing B-stationary shared4 kernels fetch one Q6 slab for
-# all R32 rows. R24 regressed complete-wall C6 by 3.77%, so it deliberately
-# remains on the current chunk/direct strict path. This table is inert unless
-# the explicit candidate context is active.
+# W1 candidate: C8/R32 packed verification emits mixed physical R20/R24/R32
+# subshapes, so all three must share the candidate transaction. This table is
+# inert unless the explicit outer logical-width context is active.
 GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS = {
-    ("gguf_q6_k_t16_v1", 32, 5_120, 10_240): (
+    ("gguf_q6_k_t16_v1", rows, 5_120, 10_240): (
         "t16_wmma_prefill_shared4_bf16_bf16_out"
     )
+    for rows in (20, 24, 32)
 } | {
-    ("gguf_q6_k_t16_qmicro_planar_v1", 32, in_features, out_features): (
+    ("gguf_q6_k_t16_qmicro_planar_v1", rows, in_features, out_features): (
         "t16_wmma_prefill_shared4_bf16_bf16_out"
     )
+    for rows in (20, 24, 32)
     for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
 }
 # Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
