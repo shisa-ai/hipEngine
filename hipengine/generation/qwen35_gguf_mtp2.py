@@ -2548,7 +2548,7 @@ class Qwen35GGUFMTP2Adapter:
         device_result = batch is None or ngram_proposal is not None
         with target_verifier_wide_q6_shared4_leaf_session(
             target_verifier_wide_q6_shared4_policy_enabled()
-            and len(plan.request_ids) >= 8
+            and plan.declared_logical_c >= 8
         ):
             results = list(verify_batch(jobs, device_result=device_result))
         target_finished_ns = time.perf_counter_ns()

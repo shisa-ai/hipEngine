@@ -229,6 +229,7 @@ def _subset_work(work: WorkItem, request_ids: tuple[int, ...]) -> WorkItem:
         tree_parents=work.tree_parents,
         slot_ids=slot_ids,
         active_mask=active_mask,
+        declared_logical_c=work.declared_logical_c,
     )
 
 

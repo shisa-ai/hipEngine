@@ -2486,6 +2486,7 @@ class ResidentEngineLoop:
             context_bucket_size=self.scheduler.context_bucket_size,
             graph_available=graph_available,
             target_physical_available=target_available,
+            declared_logical_c=work.declared_logical_c,
         )
         claims_fit = getattr(self.runner, "speculative_claims_fit", None)
         if plan.has_speculative_rows and callable(claims_fit) and not bool(claims_fit(plan)):
@@ -2500,6 +2501,7 @@ class ResidentEngineLoop:
                 claims_fit=False,
                 graph_available=graph_available,
                 target_physical_available=target_available,
+                declared_logical_c=work.declared_logical_c,
             )
         self._last_speculative_plan = plan
         self._recent_speculative_plans.append(plan)
