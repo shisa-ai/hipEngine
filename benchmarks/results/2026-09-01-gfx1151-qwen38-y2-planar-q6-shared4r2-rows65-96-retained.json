@@ -1,0 +1,110 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared4r2-rows65-96-retained",
+  "status": "validated_retained_pending_collateral",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "pre_code_bound": {
+    "rows72_q6_ms": 79.0,
+    "rows96_q6_ms": 81.4,
+    "basis": "current-head ledger above 2% opening threshold"
+  },
+  "scope": "both physical planar Q6 shapes rows65-96",
+  "strict_fallback": "prior exact selector",
+  "leaf_screen": {
+    "rows": [
+      72,
+      96
+    ],
+    "results": {
+      "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+        "72": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 1.5892848014831542,
+          "candidate_ms": 1.0361433982849122,
+          "speedup": 1.5338463808328417
+        },
+        "96": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 1.6376075744628906,
+          "candidate_ms": 1.0644284248352052,
+          "speedup": 1.5384853845071125
+        }
+      },
+      "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+        "72": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.4952248096466064,
+          "candidate_ms": 0.1286173939704895,
+          "speedup": 3.8503719781496497
+        },
+        "96": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.5132105827331543,
+          "candidate_ms": 0.12888180017471312,
+          "speedup": 3.982025251334496
+        }
+      }
+    }
+  },
+  "complete_ticks": {
+    "72": {
+      "control_wall_ms": 394.725655,
+      "candidate_wall_ms": 371.912779,
+      "wall_delta_pct": -5.779425712777653,
+      "token": 321
+    },
+    "96": {
+      "control_wall_ms": 425.893666,
+      "candidate_wall_ms": 402.023297,
+      "wall_delta_pct": -5.604772013679105,
+      "token": 436
+    }
+  },
+  "trace": {
+    "hits": 120,
+    "grid_y": 1,
+    "threads": 128,
+    "vgpr": 176,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "duration_ms": 102.59528
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-planar-shared4r2-r72-r96.json",
+      "sha256": "b4197ef31fe99d89d7ec9086e3f5623b92dc17c0c44159fa936701a7d410f804",
+      "bytes": 1055
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r2-rows72-96-full-pair.json",
+      "sha256": "36278d036874698ac54a11c8cd4e9732c6d59a28094828779d9a25a45c7e1ce0",
+      "bytes": 392520
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r2-rows72-96-trace-raw.json",
+      "sha256": "4d2cfe4a9541d78ea6a497d549be6dc732ccbdacea5ca29a341d7ae3a6922fef",
+      "bytes": 183871
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r2-rows72-96-rocprof/gfx1151/2605565_kernel_trace.csv",
+      "sha256": "9a9ae8a3af11ac88d9acbc59315cde932e6bd0b39723e585e6ce54ae444d5f61",
+      "bytes": 1309256
+    }
+  ],
+  "limitations": [
+    "Tracked-clean collateral follows atomic kernel commit.",
+    "Y2 remains open."
+  ]
+}

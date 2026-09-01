@@ -62,6 +62,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r2_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
@@ -445,6 +446,12 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
+        GGUF_Q6_PLANAR_PREFILL_SHARED4R2_MIN_ROWS <= row_count
+        <= GGUF_Q6_PLANAR_PREFILL_SHARED4R2_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R2_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r2_bf16_bf16_out
+    elif (
         GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
         <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
         and shape in GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES
@@ -1826,6 +1833,11 @@ GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MAX_ROWS = 1_024
 # The planar sibling uses the same exact shared schedule. The six-shape
 # rows256/384/480/536 screen admits shared4 from row256; rows145-255 retain
 # plain, and the periodic rows81-144 bands above select separately.
+GGUF_Q6_PLANAR_PREFILL_SHARED4R2_MIN_ROWS = 65
+GGUF_Q6_PLANAR_PREFILL_SHARED4R2_MAX_ROWS = 96
+GGUF_Q6_PLANAR_PREFILL_SHARED4R2_SHAPES = frozenset(
+    {(5_120, 1_024), (17_408, 5_120)}
+)
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS = 256
 GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES = frozenset({(17_408, 5_120)})
 GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS = 256
@@ -3113,6 +3125,9 @@ __all__ = [
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R2_MIN_ROWS",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R2_MAX_ROWS",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R2_SHAPES",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS",
