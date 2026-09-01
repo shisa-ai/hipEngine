@@ -18,6 +18,16 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-01 gfx1100 Q4 row6 two-wave screen — open
+
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2` temporarily gates the exact WG64 /
+  16-column row6 candidate while tracked-clean product-wall measurement is in
+  progress. The registered WG32/eight-column rowtile remains the strict parent.
+- Remove the experiment-only selector after the complete C5-C8 category+heldout
+  gate: reject and remove the row6 route on any binding width regression, or
+  promote a non-regressive win to the default and retain an opt-out only while
+  same-build rollback remains useful.
+
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
 - `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved

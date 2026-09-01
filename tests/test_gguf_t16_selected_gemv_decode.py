@@ -968,7 +968,7 @@ def test_q4_t16_dense_rowtiles_match_pack8_production_bits(
     )
 
 
-@pytest.mark.parametrize("rows", [2, 3, 4, 8])
+@pytest.mark.parametrize("rows", [2, 3, 4, 6, 8])
 def test_q4_t16_dense_rowtile16_w2_matches_rowtile8_bits(
     rows: int,
     t16_selected_library,
@@ -1900,7 +1900,7 @@ def test_p9_h3d_wrappers_validate_args() -> None:
         gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out(
             0, 0, 0, 0, 9, 256, 16
         )
-    with pytest.raises(ValueError, match=r"rows in \{2,3,4,8\}"):
+    with pytest.raises(ValueError, match=r"rows in \{2,3,4,6,8\}"):
         gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out(
             0, 0, 0, 5, 256, 16
         )
