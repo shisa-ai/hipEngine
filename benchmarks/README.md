@@ -124,13 +124,20 @@ dataflow. Both widths remain unpromoted below AR.
 
 The same-host standard-`Q4_K_M` comparison has hipEngine leading AR C3-C8 and
 explicit K3 MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP
-C1-C2/C5-C8. [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
+C1-C2/C5-C8. A current matched-wall Laurent refresh narrows the prefill gaps:
+hipEngine/Laurent is **178.660/196.824 prompt tok/s at C2 (-9.23%)** and
+**283.540/297.325 at C8 (-4.64%)**. Laurent's higher internal `prompt_ms`
+rates are diagnostic and are not mixed with hipEngine complete wall.
+[`Matched C2/C8 parity`](results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json) ·
+[`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
 [`Preserved external matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
 
 The first retained prefill extension cuts a representative 288-row tick by
 **2.65%** with exact output. Tracked-clean C1-C8 collateral remains exact;
-C8 combined prompt throughput improves **237.685->239.658 tok/s (+0.83%)**,
-still below the frozen 305.847 target. The exact Y3 planar-Q6 pair decode
+C8 combined prompt throughput improves **237.685->239.658 tok/s (+0.83%)**
+on that retained comparison. The newer matched-wall Z1 refresh measures
+283.540 versus Laurent 297.325 prompt tok/s; the former 305.847 target used
+Laurent's internal prompt timer. The exact Y3 planar-Q6 pair decode
 further lowers rows288/536/1024 tick wall **0.50%/1.87%/0.18%** with unchanged
 tokens. Tracked-clean C1-C8 collateral preserves 160/160 generated-ID rows;
 aggregate wall changes +0.16% AR / -0.15% MTP.
