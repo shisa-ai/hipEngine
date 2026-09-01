@@ -659,7 +659,7 @@ def test_gfx1151_q5_standard_prefill_shared8r3_is_scoped(
         ("retained", (1, 2, 3, 65, 6_144, 5_120), {"stream": 13}),
         ("retained", (1, 2, 3, 96, 6_144, 5_120), {"stream": 14}),
         ("retained", (1, 2, 3, 97, 6_144, 5_120), {"stream": 15}),
-        ("retained", (1, 2, 3, 256, 6_144, 5_120), {"stream": 8}),
+        ("shared8r3", (1, 2, 3, 256, 6_144, 5_120), {"stream": 8}),
         ("retained", (1, 2, 3, 385, 6_144, 5_120), {"stream": 9}),
         ("retained", (1, 2, 3, 1_024, 6_144, 5_120), {"stream": 11}),
         ("retained", (1, 2, 3, 1_025, 6_144, 5_120), {"stream": 12}),
@@ -762,6 +762,7 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     fn(1, 2, 3, 1_024, 5_120, 10_240, stream=13)
     fn(1, 2, 3, 1_025, 5_120, 10_240, stream=14)
     fn(1, 2, 3, 288, 5_120, 10_240, stream=11)
+    fn(1, 2, 3, 256, 5_120, 10_240, stream=16)
     fn(1, 2, 3, 96, 5_120, 10_240, stream=8)
     fn(1, 2, 3, 95, 5_120, 10_240, stream=9)
     fn(1, 2, 3, 49, 5_120, 10_240, stream=12)
@@ -772,6 +773,7 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
         ("shared8r3", (1, 2, 3, 1_024, 5_120, 10_240), {"stream": 13}),
         ("shared4", (1, 2, 3, 1_025, 5_120, 10_240), {"stream": 14}),
         ("shared8r3", (1, 2, 3, 288, 5_120, 10_240), {"stream": 11}),
+        ("shared8r3", (1, 2, 3, 256, 5_120, 10_240), {"stream": 16}),
         ("shared6r1", (1, 2, 3, 96, 5_120, 10_240), {"stream": 8}),
         ("shared6r1", (1, 2, 3, 95, 5_120, 10_240), {"stream": 9}),
         ("shared6r1", (1, 2, 3, 49, 5_120, 10_240), {"stream": 12}),
