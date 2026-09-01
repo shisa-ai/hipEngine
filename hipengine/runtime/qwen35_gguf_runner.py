@@ -18598,6 +18598,13 @@ class Qwen35GGUFResidentSession:
         )
         slot_capacity = max(1024, max_live_count)
         layout = _build_gguf_packed_verify_layout(slot_blocks, slot_capacity=slot_capacity)
+        direct_linear_state = self._direct_resident_verify_linear_state(job_list)
+        if direct_linear_state is not None:
+            direct_state_indices, _direct_state_owner = direct_linear_state
+            layout = replace(
+                layout,
+                state_indices=np.asarray(direct_state_indices, dtype=np.int64),
+            )
         if int(layout.max_live_count) >= 1024:
             raise NotImplementedError("packed target verifier currently requires context < 1024")
         rows = int(layout.rows)
@@ -18624,6 +18631,7 @@ class Qwen35GGUFResidentSession:
             packed_state,
             runtime=runtime,
             stream=stream,
+            copy_linear_state=direct_linear_state is None,
         )
         add_stage("packed_verify_sync_initial_state", sync_state_start)
         token_upload_start = time.perf_counter()
@@ -18665,10 +18673,13 @@ class Qwen35GGUFResidentSession:
             gpu_stage_recorder.mark("packed_verify_gpu_embedding")
         src = self._prefill_hidden_a
         dst = self._prefill_hidden_b
+        linear_state_owner = (
+            packed_state if direct_linear_state is None else direct_linear_state[1]
+        )
         linear_decode_scratch = replace(
             self.scratch,
-            layer_conv_states=packed_state.layer_conv_states,
-            layer_recurrent_states=packed_state.layer_recurrent_states,
+            layer_conv_states=linear_state_owner.layer_conv_states,
+            layer_recurrent_states=linear_state_owner.layer_recurrent_states,
         )
         block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
         with (
@@ -23752,6 +23763,7 @@ class Qwen35GGUFResidentSession:
         *,
         runtime: HipRuntime,
         stream: int,
+        copy_linear_state: bool = True,
     ) -> None:
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
@@ -23776,6 +23788,8 @@ class Qwen35GGUFResidentSession:
                 raise NotImplementedError("packed verifier job start does not match session position")
             for layer_id, layer_type in enumerate(cfg.layer_types):
                 if layer_type == LINEAR_ATTENTION:
+                    if not copy_linear_state:
+                        continue
                     src_conv = session.scratch.layer_conv_states[layer_id]
                     src_recurrent = session.scratch.layer_recurrent_states[layer_id]
                     if src_conv is None or src_recurrent is None:
@@ -23845,13 +23859,35 @@ class Qwen35GGUFResidentSession:
                 )
         self._packed_verify_max_written_positions = tuple(written_positions)
 
+    def _direct_resident_verify_linear_state(
+        self,
+        jobs: Sequence[dict[str, object]],
+    ) -> tuple[tuple[int, ...], _FullStackScratch] | None:
+        """Resolve a candidate target-verifier route onto resident state slabs."""
+
+        if not _env_flag(
+            "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", False
+        ):
+            return None
+        sessions = tuple(job.get("session") for job in jobs)
+        if not all(
+            isinstance(session, Qwen35GGUFResidentSession) for session in sessions
+        ):
+            return None
+        return self._direct_resident_linear_state(
+            sessions,
+            allow_unqualified=True,
+        )
+
     def _direct_resident_linear_state(
         self,
         sessions: tuple["Qwen35GGUFResidentSession | None", ...],
+        *,
+        allow_unqualified: bool = False,
     ) -> tuple[tuple[int, ...], _FullStackScratch] | None:
         """Resolve packed rows directly onto the batch owner's state slabs."""
 
-        if not bool(
+        if not allow_unqualified and not bool(
             backend_package_capability(
                 self.backend,
                 "GGUF_DIRECT_RESIDENT_LINEAR_STATE",

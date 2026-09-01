@@ -165,25 +165,36 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
 
 def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
-    owner.backend = "hip_gfx1151"
+    owner.backend = "hip_gfx1100"
     slab = SimpleNamespace(slot_count=17)
     owner._target_scratch_owner = slab
-    peer = SimpleNamespace(
-        _resident_batch_owner=owner,
-        _target_scratch_owner=slab,
-        _resident_slot_index=5,
-    )
+    peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer._resident_batch_owner = owner
+    peer._target_scratch_owner = slab
+    peer._resident_slot_index = 5
     monkeypatch.setattr(
         gguf_runner,
         "backend_package_capability",
-        lambda backend, name, default: name == "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
+        lambda backend, name, default: False,
     )
 
-    assert owner._direct_resident_linear_state((owner, peer, None)) == (
-        (0, 5, 0),
-        slab,
+    assert owner._direct_resident_linear_state((owner, peer, None)) is None
+    assert owner._direct_resident_linear_state(
+        (owner, peer, None), allow_unqualified=True
+    ) == ((0, 5, 0), slab)
+    assert owner._direct_resident_linear_state(
+        (SimpleNamespace(),), allow_unqualified=True
+    ) is None
+
+    jobs = ({"session": owner}, {"session": peer})
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", raising=False
     )
-    assert owner._direct_resident_linear_state((SimpleNamespace(),)) is None
+    assert owner._direct_resident_verify_linear_state(jobs) is None
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", "1"
+    )
+    assert owner._direct_resident_verify_linear_state(jobs) == ((0, 5), slab)
 
 
 def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() -> None:
@@ -251,6 +262,20 @@ def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() ->
             {"runtime": runtime, "stream": 7},
         )
     ]
+
+    owner._sync_packed_verify_initial_state(
+        jobs,
+        layout,
+        SimpleNamespace(
+            linear_state_pair=lambda layer_id: pytest.fail(
+                "direct resident route must not materialize packed linear state"
+            )
+        ),
+        runtime=runtime,
+        stream=7,
+        copy_linear_state=False,
+    )
+    assert len(fused_calls) == 1
 
 
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
