@@ -985,10 +985,14 @@ Q5_K/Q5_K/Q8_0, and layers 4/30/46/47 of Q4_K/Q4_K/Q8_0.
       512 experts with a device-driven grouped Q8 owner. Use a fixed-capacity
       grid guarded by device counts or an equivalent no-host-roundtrip design.
       (2a58aa1d8). **Perf-negative** (20260830T202256); strict stays default.
-- [ ] Extend the proven Q8 owner to layers 4/30/46/47 when their independent
+- [x] Extend the proven Q8 owner to layers 4/30/46/47 when their independent
       actual-shape and composition gates pass; do not hardcode only layer 2.
-      (Deferred: owner is perf-negative, so extension is not warranted on
-      present evidence.)
+      (Disposition: owner is perf-negative, so extension is not warranted on
+      present evidence.) The p4096 re-audit measures strict selected Q8_0 down
+      at **3.086 s**: layer 2 **0.758 s** and layers 4/30/46/47
+      **0.569/0.581/0.592/0.586 s**. This confirms impact but does not overturn
+      the same-mechanism negative; a materially new owner is required. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json`.
 - [ ] Fuse route scaling/ordered accumulation into Q8 down only if the declared
       strict/T2 contract passes. (Not attempted.)
 - [ ] Run the complete 450-row/three-repeat packet, tasks, physical c2,
