@@ -30,7 +30,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
-    gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_parallel_epilogue_r6_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
     plan_gguf_q6_k_t16_gemv_build,
@@ -655,51 +654,6 @@ def test_q6_t16_qmicro_planar_c1_is_bit_exact_to_legacy(
     np.testing.assert_array_equal(actual, expected)
 
 
-@pytest.mark.parametrize(
-    "enabled,physical,shape,expect_parallel",
-    [
-        (False, True, (5_120, 10_240), False),
-        (True, False, (5_120, 10_240), False),
-        (True, True, (5_120, 10_240), True),
-        (True, True, (5_120, 1_024), True),
-        (True, True, (17_408, 5_120), False),
-    ],
-)
-def test_q6_t16_qmicro_planar_row6_parallel_epilogue_scope(
-    enabled,
-    physical,
-    shape,
-    expect_parallel,
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv(
-        "HIPENGINE_GGUF_Q6_R6_PARALLEL_EPILOGUE",
-        "1" if enabled else "0",
-    )
-    monkeypatch.setattr(t16_mod, "_Q6_R6_PARALLEL_EPILOGUE_RESOLVED", None)
-    monkeypatch.setattr(
-        t16_mod,
-        "q6_t16_physical_rowtile_enabled",
-        lambda: physical,
-    )
-    calls = []
-    monkeypatch.setattr(t16_mod, "_launch", lambda symbol, *a, **k: calls.append(symbol))
-    t16_mod.gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
-        1,
-        2,
-        3,
-        6,
-        shape[0],
-        shape[1],
-    )
-    expected = (
-        t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_PARALLEL_EPILOGUE_R6_BF16_BF16
-        if expect_parallel
-        else t16_mod._Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_BF16
-    )
-    assert calls == [expected]
-
-
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize("rows", [2, 3, 4, 5, 6, 7, 8])
 def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
@@ -740,40 +694,6 @@ def test_q6_t16_qmicro_planar_rowtile_col8_is_bit_exact_to_legacy(
         q6_t16_library,
     )
 
-    np.testing.assert_array_equal(actual, expected)
-
-
-@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-def test_q6_t16_qmicro_planar_row6_parallel_epilogue_is_parent_bit_exact(
-    q6_t16_library,
-) -> None:
-    rows, in_features, out_features = 6, 512, 256
-    rng = np.random.default_rng(0x6A16)
-    qweight = make_q6_k_weight(out_features, in_features)
-    tiles = repack_gguf_q6_k_tile16_qmicro_planar(qweight[None, ...]).tiles
-    x = _f32_to_bf16_u16(
-        rng.normal(0.0, 0.3, size=(rows, in_features)).astype(np.float32)
-    )
-    expected = _run_single(
-        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out,
-        x,
-        tiles,
-        rows,
-        in_features,
-        out_features,
-        np.uint16,
-        q6_t16_library,
-    )
-    actual = _run_single(
-        gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_parallel_epilogue_r6_bf16_bf16_out,
-        x,
-        tiles,
-        rows,
-        in_features,
-        out_features,
-        np.uint16,
-        q6_t16_library,
-    )
     np.testing.assert_array_equal(actual, expected)
 
 

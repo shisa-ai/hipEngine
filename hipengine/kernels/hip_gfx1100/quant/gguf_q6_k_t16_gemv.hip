@@ -1858,11 +1858,7 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_kernel(
 // payload groups each K4/column-quartet as four QL01 bytes, four QL23 bytes,
 // then four QH bytes. Every row/output retains the legacy col8 K traversal,
 // integer coefficient product, FP32 FMA stream, wave tree, and BF16 boundary.
-template <
-    typename out_t,
-    int ROW_TILE,
-    bool USE_DPP_REDUCTION = false,
-    bool PARALLEL_EPILOGUE = false>
+template <typename out_t, int ROW_TILE, bool USE_DPP_REDUCTION = false>
 __global__ __launch_bounds__(128, 4)
 void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
     const uint16_t* __restrict__ x,
@@ -1967,19 +1963,7 @@ void q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel(
   }
   __syncthreads();
 
-  if constexpr (PARALLEL_EPILOGUE) {
-    if (tid < ROW_TILE * kTileCols) {
-      const int r = tid / kTileCols;
-      const int local_col = tid % kTileCols;
-      float total = 0.0f;
-#pragma unroll
-      for (int g = 0; g < 4; ++g) {
-        total += xchg[(g * ROW_TILE + r) * kTileCols + local_col];
-      }
-      out[r * out_features + out_group * kTileCols + local_col] =
-          float_to_output<out_t>(total);
-    }
-  } else if (tid == 0) {
+  if (tid == 0) {
 #pragma unroll
     for (int r = 0; r < ROW_TILE; ++r) {
       out_t* __restrict__ out_row =
@@ -2450,32 +2434,6 @@ int launch_q6_t16_qmicro_planar_rowtile_col8(
   return hipGetLastError();
 }
 
-template <typename out_t>
-int launch_q6_t16_qmicro_planar_rowtile_col8_parallel_epilogue_r6(
-    const void* x,
-    const void* tiles,
-    void* out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features,
-    hipStream_t stream) {
-  if (!x || !tiles || !out || rows != 6 || in_features <= 0 ||
-      out_features <= 0 || (in_features % QK_K) != 0 ||
-      (out_features % T16_COLS) != 0) {
-    return hipErrorInvalidValue;
-  }
-  const dim3 block(128);
-  const dim3 grid(static_cast<unsigned int>(out_features / 8));
-  hipLaunchKernelGGL(
-      (q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<
-          out_t, 6, false, true>),
-      grid, block, 0, stream,
-      reinterpret_cast<const uint16_t*>(x),
-      reinterpret_cast<const uint8_t*>(tiles),
-      reinterpret_cast<out_t*>(out), rows, in_features, out_features);
-  return hipGetLastError();
-}
-
 template <bool ADD_RESIDUAL>
 int launch_q6_t16_qmicro_planar_q8_1_dp4a(
     const void* xq,
@@ -2659,14 +2617,6 @@ hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out(
   }
   return launch_q6_t16_qmicro_planar<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
-}
-
-extern "C" int
-hipengine_gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_parallel_epilogue_r6_bf16_bf16_out(
-    const void* x, const void* tiles, void* out, int64_t rows,
-    int64_t in_features, int64_t out_features, hipStream_t stream) {
-  return launch_q6_t16_qmicro_planar_rowtile_col8_parallel_epilogue_r6<
-      uint16_t>(x, tiles, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int
