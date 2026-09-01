@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8 Y3 quartet decode rejected] Exact four-column quartet decode regresses rows288 wide/narrow planar leaves 4.75%/6.09% versus retained pair decode; route/export scope-reverted. Pair decode is the local 1/2/4-column optimum. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-quartet-decode-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 Y3 post-pair residual bound] Pair decode leaves Q6 at 14.58/14.65/14.84 TF/s for rows288/536/1024; matching the retained rows256 20.24 TF/s rate sizes 4.63%/4.95%/5.54% tick wall. Y3 remains open for a four-column quartet decode screen. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-post-pair-residual-bound.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y3 planar-Q6 pair decode collateral] Tracked-clean C1-C8 preserves 160/160 control/candidate generated-ID rows; aggregate wall changes +0.16% AR / -0.15% MTP and C8 MTP improves 0.24%, passing the collateral guard. `benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json`.

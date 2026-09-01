@@ -1010,7 +1010,11 @@ prompt-conditioned tuning, sized full-wall bound before code).
   post-pair trace still sustains only **14.58/14.65/14.84 TF/s** at
   rows288/536/1024. Matching the retained rows256 20.24 TF/s rate sizes
   **45.9/83.8/152.9 ms**, or **4.63%/4.95%/5.54%** wall, so Y3 remains open.
-  The next exact screen uses one decode unit per four-column qmicro quartet.
+  A one-unit-per-four-column qmicro quartet prototype is bit-exact at rows288
+  but regresses the wide/narrow planar leaves **4.75%/6.09%** versus retained
+  pair decode; route/export scope-reverted. Pair decode is therefore the local
+  exact decode-granularity optimum among 1/2/4-column units.
+  [`Quartet rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-quartet-decode-rejected.json).
   [`Post-pair bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-post-pair-residual-bound.json).
   [`Pair result`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-pair-decode-retained.json).
   [`ISA analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-isa-analysis.json).
