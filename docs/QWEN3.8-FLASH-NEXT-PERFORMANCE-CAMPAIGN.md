@@ -1050,7 +1050,7 @@ Evidence:
       route needs device-sized indirect dispatch or compact graph submission,
       neither currently exists in-tree. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-moe-device-tile-grid-blocked.json`.
-- [ ] Optimize T0 exact association first: physical-lane contraction,
+- [x] Optimize T0 exact association first: physical-lane contraction,
       multi-row weight reuse, coalesced metadata, and output grouping while
       preserving the strict reduction/publication tree. Gate/up and down are
       co-primary owners; start with an actual-weight counterbalanced leaf screen
