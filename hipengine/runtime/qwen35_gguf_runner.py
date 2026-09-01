@@ -18403,7 +18403,8 @@ class Qwen35GGUFResidentSession:
         verification.
         """
 
-        if target_verifier_wide_q6_shared4_policy_enabled() and len(jobs) >= 8:
+        logical_requests = len({int(job["request_id"]) for job in jobs})
+        if target_verifier_wide_q6_shared4_policy_enabled() and logical_requests >= 8:
             with (
                 target_verifier_wide_q6_shared4_session(False),
                 target_verifier_wide_q6_shared4_leaf_session(True),
