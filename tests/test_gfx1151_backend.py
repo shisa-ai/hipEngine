@@ -795,6 +795,9 @@ def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
     def shared4r3(*args, **kwargs):
         calls.append(("shared4r3", args, kwargs))
 
+    def shared4r4(*args, **kwargs):
+        calls.append(("shared4r4", args, kwargs))
+
     monkeypatch.setattr(
         gfx1151_backend,
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
@@ -810,6 +813,11 @@ def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out",
         shared4r3,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+        shared4r4,
+    )
     fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 17_408, 5_120, stream=7)
     fn(1, 2, 3, 256, 17_408, 5_120, stream=8)
@@ -821,7 +829,7 @@ def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
 
     assert calls == [
         ("shared4", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
-        ("shared4r3", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
+        ("shared4r4", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
         ("shared4r3", (1, 2, 3, 256, 5_120, 1_024), {"stream": 13}),
         ("shared4", (1, 2, 3, 256, 5_120, 6_144), {"stream": 9}),
         ("retained", (1, 2, 3, 255, 5_120, 6_144), {"stream": 10}),

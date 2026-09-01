@@ -1,0 +1,90 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared4r4-rows256-retained",
+  "status": "validated_retained_pending_collateral",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "bound": {
+    "source": "2026-09-01-gfx1151-qwen38-y2-rows256-after-planar-ledger.json",
+    "one_sweep_removable_ceiling_ms": 55.68
+  },
+  "leaf_screen": {
+    "rows": [
+      256
+    ],
+    "results": {
+      "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+        "256": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 2.813730812072754,
+          "candidate_ms": 1.9470928192138672,
+          "speedup": 1.4450933126078649
+        }
+      },
+      "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+        "256": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.23077700138092042,
+          "candidate_ms": 0.24492340087890624,
+          "speedup": 0.9422415357323084
+        }
+      }
+    }
+  },
+  "selection": {
+    "admitted": [
+      "17408x5120@rows256"
+    ],
+    "rejected": [
+      "5120x1024@rows256 regresses 5.78%; remains shared4r3"
+    ]
+  },
+  "complete_tick": {
+    "control_wall_ms": 734.190287,
+    "candidate_wall_ms": 706.580212,
+    "wall_delta_pct": -3.760615672650547,
+    "token": 80018
+  },
+  "trace": {
+    "hits": 64,
+    "grid_y": 1,
+    "threads": 128,
+    "vgpr": 176,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "duration_ms": 123.463993
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256.json",
+      "sha256": "2c19f3dc2d2048f2c592a390ede62eaf6899e063b6c4df380285828142fd7247",
+      "bytes": 607
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-full-pair.json",
+      "sha256": "2ebbf0c1980edd28295e21d25da11268bc29159f9d1c663fafc4ce46c7690079",
+      "bytes": 199235
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-trace-raw.json",
+      "sha256": "bfaa78136ef0c5502a6048667eb08591c5ced62fe371fcac23088067701c71ad",
+      "bytes": 93345
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-rocprof/gfx1151/2567265_kernel_trace.csv",
+      "sha256": "cc7204401bfc13f66db064dc5aac76ec7e2daa8197ba1d9fbdc77e65ed6f45cb",
+      "bytes": 847397
+    }
+  ],
+  "limitations": [
+    "Tracked-clean C1-C8 collateral follows atomic kernel commit.",
+    "Y2 remains open."
+  ]
+}
