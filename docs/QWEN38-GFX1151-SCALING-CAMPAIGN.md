@@ -967,7 +967,7 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Y2 closure`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-closure.json).
   [`Post-shared4r6 ledger`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y2-high-row-post-shared4r6-ledger.json).
   [`High-row current ledger`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-high-row-current-ledger.json).
-- [~] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
+- [x] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
   restructure, dual-issue scheduling) per the parity campaign's closing
@@ -1023,8 +1023,12 @@ prompt-conditioned tuning, sized full-wall bound before code).
   both nibbles while retaining independent scales/stores. That specialization
   is bit-exact but regresses rows288 wide/narrow planar leaves **8.67%/10.18%**;
   the longer dependent unpack chain outweighs fewer loads. Route/export
-  scope-reverted. The exact decode-granularity/byte-sharing ladder is exhausted
-  at retained scheduling-only pair decode.
+  scope-reverted. **Closure:** the exact decode-granularity/byte-sharing ladder
+  and producer/consumer overlap ladder are exhausted at retained scheduling-only
+  pair decode. The maximum post-retention Y3 rate-match ceiling is **5.54%**
+  wall, below the approximately **21.6%** wall reduction needed to move retained
+  C8 prefill 239.658->305.847 tok/s; no named exact Y3 unit can cover the gap.
+  [`Y3 closure`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-closure-y4-not-opened.json).
   [`Shared-byte rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-sharedbytes-rejected.json).
   [`Direct/pair ISA`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-direct-pair-isa-comparison.json).
   [`Quartet rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-planar-q6-quartet-decode-rejected.json).
@@ -1034,11 +1038,13 @@ prompt-conditioned tuning, sized full-wall bound before code).
   [`Pipeline rejection`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-shared4r6-pipeline-rejected.json).
   [`Slab analysis`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-slab-serialization-analysis.json).
   [`Y3 entry bound`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-entry-bound.json).
-- [ ] Y4 **(Conditional) INT4-WMMA Q4 body.** The only raised tensor roof on
-  gfx1151 (118.8 vs 59.4 TOP/s). Opens only if Y3's trace shows
-  tensor-rate-bound; P3's INT8 negative is standing evidence that a format
-  change without fixing the LDS/issue structure loses, so Y4 never opens
-  before Y3 closes.
+- [x] Y4 **(Conditional) INT4-WMMA Q4 body.** The condition is not met, so Y4
+  closes without opening. Post-pair Q6 sustains only **14.58-14.84 TF/s**, far
+  below the measured 59.4 TF/s BF16 roof: the binding structure remains
+  dequant/LDS/issue rather than tensor-rate. P3's format-only INT8 body loses at
+  that same structure, so raising the format roof cannot cover the remaining
+  prefill gap.
+  [`Y3/Y4 resolution`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y3-closure-y4-not-opened.json).
 - [ ] Y5 **(Conditional) non-GEMM prefill tail.** P1.3 traced 1380 launches /
   534.2 ms at M=45 with ~174 ms outside the wmma family. Size with Y0; drop
   if under ~2% of the remaining wall.
