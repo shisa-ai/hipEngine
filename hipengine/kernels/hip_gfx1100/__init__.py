@@ -225,12 +225,12 @@ GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
 # verifier rows, and bulk prefill. This removes the prior 13.037 GiB pack8
 # payload rather than retaining T16 as a 10.049 GiB sidecar.
 GGUF_DENSE_Q4_T16 = True
-# Exact resident-to-packed Conv/GDN state gather is already implemented by the
-# registered chunked pointer-table copy leaf. Screen it independently on
-# multi-request gfx1100 workloads; the per-layer D2D chain stays the default.
+# Exact resident-to-packed Conv/GDN state gather uses the registered chunked
+# pointer-table copy leaf. Physical C5-C8 qualification retained it on gfx1100;
+# the environment arm keeps the per-layer D2D chain as an explicit rollback.
 GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER",
-    "enabled_default": False,
+    "enabled_default": True,
 }
 GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER_POLICY = (
     GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY

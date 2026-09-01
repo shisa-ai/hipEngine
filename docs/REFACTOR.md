@@ -42,15 +42,13 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-01 gfx1100 fused packed-state transfer screen — open
+## 2026-09-01 gfx1100 fused packed-state transfer rollback — closed
 
-- `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=1` opts gfx1100
-  resident-to-packed Conv/GDN imports into the existing strict pointer-table
-  pair-copy leaf, including the physical C5-C8 packed-verifier initial-state
-  gather. Promote only after exact lifecycle/state/ID checks,
-  marker-scoped ownership, and the complete C5-C8 category/heldout gate;
-  otherwise remove the gfx1100 policy and generic policy resolver. The
-  per-layer HIP D2D chain remains the strict fallback.
+- The existing strict pointer-table pair-copy leaf is the retained gfx1100
+  default for resident-to-packed Conv/GDN imports, including physical C5-C8
+  packed-verifier initial-state gather. `HIPENGINE_GGUF_FUSED_PACKED_STATE_TRANSFER=0`
+  restores the per-layer HIP D2D chain. Remove the environment/cache policy
+  after the next stable milestone audit; keep the strict per-layer fallback.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
