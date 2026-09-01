@@ -142,7 +142,7 @@ def _q4_rowtile16_w2_grouped_rows6_enabled() -> bool:
     if _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED is None:
         raw = os.environ.get(
             _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6,
-            "0",
+            "1",
         ).strip().lower()
         if raw in {"1", "true", "yes", "on"}:
             value = True

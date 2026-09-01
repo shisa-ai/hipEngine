@@ -358,9 +358,19 @@ def test_gfx1100_physical_r6_two_wave_policy_routes_target_wrapper(
     )
 
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "1")
+    monkeypatch.setenv(
+        "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6",
+        "0",
+    )
     monkeypatch.setattr(
         t16_prefill,
         "_Q4_ROWTILE16_W2_RESOLVED",
+        None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        t16_prefill,
+        "_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED",
         None,
         raising=False,
     )
@@ -405,9 +415,9 @@ def test_gfx1100_grouped_rows6_policy_consolidates_physical_q4_launches(
         raising=False,
     )
     monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2", "1")
-    monkeypatch.setenv(
+    monkeypatch.delenv(
         "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6",
-        "1",
+        raising=False,
     )
     monkeypatch.setattr(t16_prefill, "_Q4_ROWTILE16_W2_RESOLVED", None)
     monkeypatch.setattr(
