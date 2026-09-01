@@ -82,6 +82,7 @@ def hipengine_family(name: str) -> str:
             "q8_0_sparse_exact_correct",
             "gguf_k_pack8",
             "q8_1_mmq",
+            "quantize_q8_1",
             "dense_q8",
         )
     ):
@@ -131,6 +132,8 @@ def hipengine_family(name: str) -> str:
         return "moe_routing"
     if any(part in lowered for part in ("shared_gate_combine", "silu_mul", "weighted_sum", "f32_to_bf16", "bf16_to_f32")):
         return "cast_combine"
+    if "argmax" in lowered:
+        return "output_selection"
     if any(part in lowered for part in ("rope", "rmsnorm", "norm", "embedding", "repeat_bf16")):
         return "elementwise_norm_rope"
     return "other"
@@ -163,6 +166,8 @@ def llama_family(name: str) -> str:
         return "qsa_attention"
     if any(part in lowered for part in ("topk", "argsort", "mm_ids")):
         return "moe_routing"
+    if "argmax" in lowered:
+        return "output_selection"
     if any(part in lowered for part in ("quantize", "convert")):
         return "cast_combine"
     if any(part in lowered for part in ("rope", "rms_norm", "norm", "unary", "bin_bcast", "scale_f32", "repeat")):
