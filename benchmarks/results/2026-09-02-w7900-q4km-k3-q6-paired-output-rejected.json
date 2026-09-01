@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_q6_paired_output_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Remove the exact paired-output planar-Q6 sibling after every actual-weight role and width loses. Keep independent WG128/col8 grouped-R8 ownership.",
+  "source": {
+    "base_commit": "9cd563935",
+    "dirty_candidate": true,
+    "candidate_removed": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "candidate": {
+    "mechanism": "One WG256 block contains two independent retained WG128/col8 DPP-R8 output owners; each half keeps its original input traversal, arithmetic, reduction, and store order while grid.x is halved.",
+    "control": "Retained grouped DPP-R8 WG128/col8 owner.",
+    "rows": [24, 32],
+    "roles": ["recurrent_qkv", "full_v", "ffn_down"],
+    "protocol": {
+      "warmups": 5,
+      "sample_pairs": 40,
+      "launches_per_event_sample": 3,
+      "order": "alternating control/candidate and candidate/control",
+      "timing": "HIP event operation-complete"
+    },
+    "summary": {
+      "all_bf16_bit_exact": true,
+      "cells": 6,
+      "positive_cells": 0,
+      "speedup_range": [0.8603185772757458, 0.9073698466299717],
+      "total_pair_wins": 1,
+      "total_sample_pairs": 240
+    },
+    "cells": {
+      "recurrent_qkv_r24": {"control_ms": 0.33834099769592285, "candidate_ms": 0.3858009974161784, "speedup": 0.8769832114532907, "pair_wins": 0},
+      "recurrent_qkv_r32": {"control_ms": 0.4403888384501139, "candidate_ms": 0.49352284272511804, "speedup": 0.8923372949028853, "pair_wins": 0},
+      "full_v_r24": {"control_ms": 0.03978033363819122, "candidate_ms": 0.04520033299922943, "speedup": 0.8800893931217142, "pair_wins": 0},
+      "full_v_r32": {"control_ms": 0.0569468339284261, "candidate_ms": 0.06276033322016397, "speedup": 0.9073698466299717, "pair_wins": 0},
+      "ffn_down_r24": {"control_ms": 0.5389306743939718, "candidate_ms": 0.6129643321037292, "speedup": 0.8792202843913126, "pair_wins": 1},
+      "ffn_down_r32": {"control_ms": 0.6692583163579304, "candidate_ms": 0.7779191732406616, "speedup": 0.8603185772757458, "pair_wins": 0}
+    }
+  },
+  "validation": {
+    "leaf_verdict": "Exact but uniformly slower. WG256 reduces block scheduling flexibility/occupancy without reducing total weight work or thread count. Rejected before route, marker, or suite.",
+    "final_tree": "No candidate kernel, wrapper, registry route, environment flag, or test remains."
+  },
+  "limitations": ["Dirty candidate rejection only; no retained performance claim."]
+}
