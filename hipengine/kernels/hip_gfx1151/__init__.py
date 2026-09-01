@@ -53,6 +53,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
@@ -288,6 +289,12 @@ def gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     row_count = int(rows)
     shape = (int(in_features), int(out_features))
     if (
+        GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS <= row_count
+        <= GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
+    elif (
         17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
         and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
     ):
@@ -1492,6 +1499,11 @@ GGUF_Q6_PLANAR_LOWVGPR80_SHAPES = frozenset(
 # Q5 uses separately measured per-band shape sets. The 96/112-VGPR owners
 # preserve the plain owner's per-tile order; row/shape misses retain plain.
 GGUF_Q5_T16_DENSE_LOWM_SHAPES = GGUF_Q4_T16_DENSE_LOWM_SHAPES
+# Y2: exact shared-weight one-sweep owner for the sole physical Qwen3.8 Q5
+# recurrent output shape. Every row/shape miss retains the prior exact owner.
+GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS = 257
+GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS = 384
+GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES = frozenset({(6_144, 5_120)})
 GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS = 32
 GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS = 48
 GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS = 64
@@ -3054,6 +3066,9 @@ __all__ = [
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS",
+    "GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS",
+    "GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS",

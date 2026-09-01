@@ -842,8 +842,13 @@ prompt-conditioned tuning, sized full-wall bound before code).
   Corrected direct shared4 comparison recovers strict parity: standard Q6
   rows257-384 shared8r3 is bit-exact, 1.95x faster at rows288, and cuts the
   complete rows288 tick wall **3.43%**; retained as a partial Y2 win. Planar
-  peers are flat and unchanged; Q5/GDN remain open.
-  [`Artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json).
+  peers are flat and unchanged. Standard Q5 K6144/N5120 rows257-384 now uses
+  the same exact `<8,3,2>` one-sweep geometry: rows288 is bit-exact and
+  **1.54x** faster at the leaf, reducing the complete tick
+  **1100.915->1068.494 ms (-2.94%)** with the same token. GDN and remaining
+  Q5/Q6 row bands keep Y2 open.
+  [`Q6 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json),
+  [`Q5 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json).
 - [ ] Y3 **Post-dataflow issue-wall attack.** With multiplicity ~= 1, large-M
   tiles hit P2's 19-24 TF/s dequant/LDS/issue wall. Re-trace, then attack at
   the algorithm/fusion level (pipelined dequant/WMMA overlap, LDS-staging
