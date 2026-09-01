@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_col4_bf16_bf16_out,
     gguf_q4_k_t16_dense_single_local32_bf16_bf16_out,
@@ -989,6 +990,42 @@ def test_q4_t16_dense_rowtile16_w2_matches_rowtile8_bits(
     )
     candidate = _run_dense_single(
         gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        32,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(candidate, control)
+
+
+@pytest.mark.parametrize("rows", [12, 24, 36])
+def test_q4_t16_dense_rowtile16_w2_grouped_rows6_matches_repeated_bits(
+    rows: int,
+    t16_selected_library,
+) -> None:
+    rng = np.random.default_rng(20260901 + rows)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, 512)).astype(np.float32)
+    )
+    raw = make_q4_k_weight(32, 512)
+    tiles = repack_gguf_q4_k_tile16(raw[None, ...]).tiles
+    control = np.concatenate(
+        [
+            _run_dense_single(
+                gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
+                chunk,
+                tiles,
+                32,
+                np.uint16,
+                t16_selected_library,
+            )
+            for chunk in np.split(x_bf16, rows // 6)
+        ],
+        axis=0,
+    )
+    candidate = _run_dense_single(
+        gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
         x_bf16,
         tiles,
         32,

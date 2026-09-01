@@ -2835,6 +2835,50 @@ void q4_k_t16_dense_rowtile16_w2_gemv_kernel(
   }
 }
 
+// Exact grouped rows6 geometry: grid.y owns independent contiguous row chunks
+// while every WG64 block executes the retained two-wave arithmetic unchanged.
+// This consolidates physical verifier launch overhead without merging waves or
+// changing any row's FMA/reduction/store order.
+template <typename scalar_t, int ROW_TILE>
+__global__ __launch_bounds__(64, 1)
+void q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    scalar_t* __restrict__ out,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int kTileCols = 8;
+  const int wave = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int64_t out_group = blockIdx.x * 2 + wave;
+  const int64_t row_base = static_cast<int64_t>(blockIdx.y) * ROW_TILE;
+  const scalar_t* __restrict__ chunk_x = x + row_base * in_features;
+  scalar_t* __restrict__ chunk_out = out + row_base * out_features;
+  float acc[ROW_TILE][kTileCols];
+  q4_k_t16_dense_rowtile_accumulate<scalar_t, ROW_TILE, kTileCols>(
+      chunk_x, tiles, lane, in_features, out_group, acc);
+
+#pragma unroll
+  for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[row][local_col]);
+    }
+  }
+  if (lane == 0) {
+    const int64_t out_base = out_group * kTileCols;
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        chunk_out[static_cast<int64_t>(row) * out_features +
+                  out_base + local_col] =
+            float_to_scalar<scalar_t>(0.0f + acc[row][local_col]);
+      }
+    }
+  }
+}
+
 // Exact compact-Q4 FFN-down plus rounded-BF16 residual owner. The producer
 // keeps the established dot/reduction and first BF16 boundary, then consumes
 // BF16 residual bits and performs the same FP32 add/final BF16 rounding as the
@@ -6321,6 +6365,33 @@ int launch_q4_dense_rowtile16_w2(
 }
 
 template <typename scalar_t>
+int launch_q4_dense_rowtile16_w2_grouped_rows6(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows < 12 || (rows % 6) != 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(64);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>(rows / 6));
+  hipLaunchKernelGGL(
+      (q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<scalar_t, 6>),
+      grid, block, 0, stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out), in_features, out_features);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_qmicro_dense_rowtile(
     const void* x,
     const void* tiles,
@@ -7384,6 +7455,15 @@ hipengine_gguf_q4_k_t16_dense_rowtile16_w2_gemv_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q4_dense_rowtile16_w2<uint16_t>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_gemv_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_dense_rowtile16_w2_grouped_rows6<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 

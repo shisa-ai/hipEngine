@@ -31,6 +31,7 @@ from hipengine.kernels.hip_gfx1100 import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
     launch_physical_rows6_chunked,
 )
 from hipengine.kernels.registry import KernelKey, register
@@ -107,6 +108,10 @@ _ENV_SHARED_B_ROW64_MAX_ROWS = "HIPENGINE_GGUF_Q4_T16_SHARED_B_ROW64_MAX_ROWS"
 _SHARED_B_ROW64_MAX_ROWS_RESOLVED: int | None = None
 _ENV_Q4_ROWTILE16_W2 = "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2"
 _Q4_ROWTILE16_W2_RESOLVED: bool | None = None
+_ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6 = (
+    "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6"
+)
+_Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED: bool | None = None
 
 
 def _q4_rowtile16_w2_enabled() -> bool:
@@ -128,6 +133,27 @@ def _q4_rowtile16_w2_enabled() -> bool:
             raise ValueError(f"{_ENV_Q4_ROWTILE16_W2} must be a boolean value")
         _Q4_ROWTILE16_W2_RESOLVED = value
     return _Q4_ROWTILE16_W2_RESOLVED
+
+
+def _q4_rowtile16_w2_grouped_rows6_enabled() -> bool:
+    """Resolve the default-off physical rows6 launch-consolidation screen."""
+
+    global _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED
+    if _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED is None:
+        raw = os.environ.get(
+            _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6,
+            "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            value = True
+        elif raw in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(
+                f"{_ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6} must be a boolean value"
+            )
+        _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED = value
+    return _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED
 
 
 def _q4_physical_rowtile(
@@ -403,11 +429,28 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
     )
     rowtile_fn = _q4_physical_rowtile(rows, shape)
     row6_chunk_fn = _q4_physical_rowtile(6, shape)
-    if (
+    grouped_rows6 = bool(
         int(rows) > 6
         and q4_t16_physical_extra_rowtiles_enabled()
         and int(rows) % 6 == 0
         and shape in rowtile_shapes
+    )
+    if (
+        grouped_rows6
+        and _q4_rowtile16_w2_grouped_rows6_enabled()
+        and row6_chunk_fn is gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
+    ):
+        return gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out(
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
+    if (
+        grouped_rows6
         and launch_physical_rows6_chunked(
             row6_chunk_fn,
             x_ptr,

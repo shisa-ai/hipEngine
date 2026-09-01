@@ -42,6 +42,14 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
+## 2026-09-01 gfx1100 grouped Q4 rows6 launch screen — open
+
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=1` consolidates consecutive
+  physical R6 chunks into one two-dimensional-grid launch while preserving the
+  retained WG64/two-wave block arithmetic. Promote only after exact
+  actual-weight, marker-scoped ownership, and complete C5-C8 category/heldout
+  gates; otherwise remove the kernel, wrapper, registry key, and policy.
+
 ## 2026-09-01 gfx1100 fused packed-state transfer rollback — closed
 
 - The existing strict pointer-table pair-copy leaf is the retained gfx1100

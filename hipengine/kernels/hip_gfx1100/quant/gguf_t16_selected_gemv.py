@@ -96,6 +96,10 @@ _Q4_DENSE_ROWTILE_BF16 = (
 _Q4_DENSE_ROWTILE16_W2_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_rowtile16_w2_gemv_bf16_bf16_out"
 )
+_Q4_DENSE_ROWTILE16_W2_GROUPED_ROWS6_BF16 = (
+    "hipengine_gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_gemv_"
+    "bf16_bf16_out"
+)
 _Q4_QMICRO_DENSE_ROWTILE_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_dense_rowtile_gemv_bf16_bf16_out"
 )
@@ -1314,6 +1318,54 @@ def gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out(
         raise RuntimeError(
             f"{_Q4_DENSE_ROWTILE16_W2_BF16} failed with HIP status "
             f"{status}: {rt.error_string(status)}"
+        )
+
+
+def gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact row6 chunks through one two-dimensional grid."""
+
+    _check_dense_q4_t16_rowtile_geometry(in_features, out_features)
+    if rows < 12 or rows % 6:
+        raise ValueError(
+            "dense Q4 T16 grouped rowtile16-w2 requires rows >= 12 divisible by 6"
+        )
+    lib = library or _t16_selected_gemv_library()
+    rt = runtime or get_hip_runtime()
+    fn = getattr(lib, _Q4_DENSE_ROWTILE16_W2_GROUPED_ROWS6_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    status = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if status != HIP_SUCCESS:
+        raise RuntimeError(
+            f"{_Q4_DENSE_ROWTILE16_W2_GROUPED_ROWS6_BF16} failed with HIP "
+            f"status {status}: {rt.error_string(status)}"
         )
 
 
@@ -4102,6 +4154,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         KernelKey(
             "hip_gfx1100",
             "linear",
+            "gguf_q4_k_t16_v1",
+            "dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+        ),
+        gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
             "gguf_q4_k_qmicro_t16_v1",
             "dense_rowtile_bf16_bf16_out",
         ),
@@ -4544,6 +4606,7 @@ __all__ = [
     "gguf_q4_k_t16_dense_dual_rowtile_silu_bf16_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_bf16_bf16_out",
     "gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out",
+    "gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_bf16_residual_bf16_out",
     "gguf_q4_k_t16_dense_rowtile_col4_bf16_bf16_out",
     "gguf_q4_k_t16_dense_single_col4_bf16_bf16_out",
