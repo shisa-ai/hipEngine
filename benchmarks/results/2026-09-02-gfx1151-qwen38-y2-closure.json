@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-closure",
+  "status": "closed_with_retained_wins_and_sized_blockers",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "families": {
+    "gdn": {"status": "closed_zero_multiplicity_bound", "artifact": "2026-09-01-gfx1151-qwen38-y2-gdn-no-multiplicity-blocker.json"},
+    "q5": {
+      "status": "closed",
+      "bands": [
+        {"rows": "16-64", "result": "one-sweep floor"},
+        {"rows": "65-96", "result": "blocked by tracked-clean complete-suite wall", "artifact": "2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained.json"},
+        {"rows": "256-384", "result": "retained exact shared8r3; rows256/288 gridY1", "artifact": "2026-09-01-gfx1151-qwen38-y2-q5q6-rows256-retained.json"},
+        {"rows": "385-1024", "result": "blocked by local/aggregate collateral regressions", "artifact": "2026-09-01-gfx1151-qwen38-y2-q5-shared8r3-r1024-retained.json"}
+      ]
+    },
+    "q6": {
+      "status": "closed",
+      "bands": [
+        {"rows": "16-32", "result": "one-sweep floor"},
+        {"rows": "33-48", "result": "retained exact shared3r1", "artifact": "2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json"},
+        {"rows": "49-96 standard", "result": "retained exact shared6r1", "artifact": "2026-09-01-gfx1151-qwen38-y2-q6-shared6r1-retained.json"},
+        {"rows": "65-96 planar", "result": "blocked by +1.05% aggregate AR collateral", "artifact": "2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r2-rows65-96-retained.json"},
+        {"rows": "256", "result": "practical floor 1.08 byte-weighted sweeps; 0.54% residual below opening threshold", "artifact": "2026-09-01-gfx1151-qwen38-y2-rows256-final-ledger.json"},
+        {"rows": "288", "result": "retained planar shared4r6 at one sweep", "artifact": "2026-09-01-gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained.json"},
+        {"rows": "536", "result": "retained wide shared4r9 gridY1; narrow shared4r6", "artifact": "2026-09-02-gfx1151-qwen38-y2-planar-q6-shared4r9-rows536-retained.json"},
+        {"rows": "1024", "result": "retained shared4r6 gridY3; exact one-sweep shared4r16 blocked at 0.275x/0.292x and shared4r9 loses at 0.878x", "artifact": "2026-09-02-gfx1151-qwen38-y2-planar-q6-shared4r16-rows1024-blocker.json"}
+      ]
+    }
+  },
+  "collateral": "Every retained shared owner passed 160/160 tracked-clean exact cells and its aggregate complete-suite wall gate.",
+  "decision": "No Y2 family/row band remains both above the 2% opening threshold and without a retained exact owner or measured named blocker. Y2 closes; issue-wall work proceeds under Y3."
+}
