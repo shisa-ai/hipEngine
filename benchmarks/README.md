@@ -126,6 +126,9 @@ hermetic target-architecture wrapper; see `docs/BENCHMARK.md`.
 | --- | --- | :-: | :-: | :-: | :-: | :-: | :-: | --- |
 | `qwen35_readme_sweep.py` | Single-request prefill/decode/memory per shape (llama-bench-style), one resident session, per-shape reset | ✓ | | ✓ | ✓ | ✓ | | `--engine gguf --model <model> --backend hip_gfx1151 --workloads 512/128 1K/128 ...` |
 | `qwen4exp_canonical_ar_bench.py` | Exact-token Qwen4Exp cross-engine p512/p1024/p4096 prefill plus context-conditioned tg128, output hashes, and comparison artifact | ✓ | | ✓ | ✓ | | | `hipengine --model-root <model>` or `llamacpp --server-bin <binary> --model <part1>` |
+| `qwen4exp_profile_gap.py` | Exact-fixture prefill ROCTX roles, launch/copy/allocation census, lifecycle, and separate selected-expert telemetry | | | ✓ | | ✓ | | `--mode prefill --case-id code-p512 --profile --role-markers` |
+| `qwen4exp_context_decode_profile.py` | Restored exact live-context transition roles, complete mutable-state hashes, per-bucket lifecycle, and allocation census | ✓ | | | ✓ | ✓ | | `--live-count 513 1025 4097 --repetitions 3 --profile --role-markers` |
+| `qwen4exp_llamacpp_exact_profile.py` | Exact-token pinned llama.cpp prefill and cached single-transition decode under direct rocprof, selected by monotonic bounds | ✓ | | ✓ | ✓ | | | `--case-id code-p512 --case-id code-p1024 --case-id code-p4096` |
 | `qwen4exp_mtp_head_profile.py` | Isolated Qwen4Exp MTP full-Q8 draft/head/D2H timing and selected-head Amdahl ceiling | | ✓ | | ✓ | ✓ | | `--output <json>` |
 | `qwen35_gguf_bench.py` | GGUF c=1 AR prefill/decode, fresh resident session per run, HIP-graph decode | ✓ | | ✓ | ✓ | ✓ | | `--model <model> --prompt-length 512 --decode-tokens 128` |
 | `gguf_true_ar_category_bench.py` | True no-MTP AR baseline over the mtp-bench category suite (the legitimate MTP speed denominator) | ✓ | | ✓ | ✓ | | | `--model <model> --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
@@ -246,22 +249,14 @@ at **154.346→57.900 ms (2.67x)** without reproducing third-replay corruption.
 The complete host-staged transition then adds generated-token PLE publication,
 embedding, final full-vocabulary head, device argmax, and token feedback: the
 changing-token trajectory and 138 owners are exact; reset→replay and forced-
-eager→graph resumption also pass. Operation wall against the **named**
-production step is **68.855→61.910 ms (1.112x)**; the probe's own eager arm of
-194.758 ms disables the shipped per-layer MoE graph cache and adds a
-script-level launch loop, so its 3.15x ratio is retired. Every rung ratio above
-shares that probe-local eager denominator and is a mechanism result, not a
-named-path speedup. It is not yet bound to production; request-cache,
-multi-prompt, cold-PLE, bucket-transition, retained-prefix, and c2 gates remain
-open.
-The named denominator for that ladder is now measured: at the probe's own
-strict profile, prompt, and context, production `runner.step()` is **68.855
-ms/step** with per-layer MoE graphs on and **143.989 ms/step** with them off, so
-the shipped MoE cache is already worth **2.091x** and the probe's script-level
-loop adds a further **1.35x**. Device argmax and host full-logit D2H differ by
-at most 0.35 ms/step with the sign flipping between runs. Steady allocation
-growth is zero and teardown returns 82,741,321,248 bytes / 1,638 allocations to
-zero.
+eager→graph resumption also pass. The probe-local 194.758-ms eager arm disables
+the shipped per-layer MoE cache and adds a script loop, so its 3.15x ratio is
+retired. The follow-up strict runner measures **68.855 ms** with shipped MoE
+graphs and **143.989 ms** without them, but imports the **61.910-ms** graph row
+from the separate probe process. Therefore the derived **1.112x/6.945 ms is not
+a named-production A/B** and P8 remains admission-pending. Device argmax versus
+host full-logit D2H differs by at most 0.35 ms with a sign flip; steady
+allocation growth and teardown pass.
 [`named denominator`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json),
 [`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
 [`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
@@ -270,6 +265,18 @@ zero.
 [`eight-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json),
 [`all 48 physical layers`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json),
 [`full host-staged transition`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json).
+
+The current exact-token impact packet fully attributes p512/p1024/p4096 and
+live-513/1025/4097. hipEngine versus patched llama HIP device sums are
+**5.972/11.196/54.762 s vs 1.926/2.990/10.838 s** prefill and
+**51.062/53.262/87.732 ms vs 41.009/41.110/44.005 ms** decode. At p4096,
+QSA alone is **10.229 s vs 0.526 s** prefill and **35.587 vs 0.591 ms** decode.
+Every hipEngine role window is 100% attributed, both family ledgers have zero
+generic remainder, exact decode state/lifecycle gates pass, and median active
+experts are 333/327/325 of 512. The old 41.6% remainder was incomplete table
+coverage. The patched llama CSVs flushed and hashed, but rocprof required forced
+exit after flush, so comparator subwindows remain diagnostic attribution.
+[`canonical impact profile`](results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
 
 A durable isolated-route recheck reopens the layer-2 grouped-WMMA candidate:
 the p508 trace cuts layer-2 MoE **371.10→88.13 ms (4.21×)** and Q5_K gate/up
