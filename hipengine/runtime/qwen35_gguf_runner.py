@@ -23763,6 +23763,8 @@ class Qwen35GGUFResidentSession:
             self._packed_verify_max_written_positions = tuple(0 for _ in jobs)
         written_positions = list(self._packed_verify_max_written_positions)
         cfg = self.runner.weights.config
+        fuse_linear_state = self._fused_packed_verify_initial_state_transfer_enabled()
+        linear_copies: list[tuple[int, int, int, int, int, int]] = []
         for slot_index, job in enumerate(jobs):
             session = job["session"]
             if not isinstance(session, Qwen35GGUFResidentSession) or session.scratch is None:
@@ -23779,20 +23781,31 @@ class Qwen35GGUFResidentSession:
                     if src_conv is None or src_recurrent is None:
                         raise RuntimeError(f"session layer {layer_id} missing linear state")
                     dst_conv, dst_recurrent = packed_state.linear_state_pair(layer_id)
-                    runtime.memcpy_async(
-                        dst_conv.ptr + slot_index * int(src_conv.nbytes),
-                        src_conv.ptr,
+                    copy = (
+                        int(src_conv.ptr),
+                        int(dst_conv.ptr) + slot_index * int(src_conv.nbytes),
+                        int(src_recurrent.ptr),
+                        int(dst_recurrent.ptr) + slot_index * int(src_recurrent.nbytes),
                         int(src_conv.nbytes),
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
-                    )
-                    runtime.memcpy_async(
-                        dst_recurrent.ptr + slot_index * int(src_recurrent.nbytes),
-                        src_recurrent.ptr,
                         int(src_recurrent.nbytes),
-                        HipMemcpyKind.DEVICE_TO_DEVICE,
-                        stream,
                     )
+                    if fuse_linear_state:
+                        linear_copies.append(copy)
+                    else:
+                        runtime.memcpy_async(
+                            copy[1],
+                            copy[0],
+                            copy[4],
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
+                        runtime.memcpy_async(
+                            copy[3],
+                            copy[2],
+                            copy[5],
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
+                        )
                 elif layer_type == FULL_ATTENTION:
                     if start_position <= int(written_positions[slot_index]):
                         continue
@@ -23810,6 +23823,26 @@ class Qwen35GGUFResidentSession:
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
             written_positions[slot_index] = max(int(written_positions[slot_index]), start_position)
+        if linear_copies and not self._fused_linear_state_pair_copy(
+            linear_copies,
+            runtime=runtime,
+            stream=stream,
+        ):
+            for copy in linear_copies:
+                runtime.memcpy_async(
+                    copy[1],
+                    copy[0],
+                    copy[4],
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
+                runtime.memcpy_async(
+                    copy[3],
+                    copy[2],
+                    copy[5],
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    stream,
+                )
         self._packed_verify_max_written_positions = tuple(written_positions)
 
     def _direct_resident_linear_state(
@@ -23877,10 +23910,7 @@ class Qwen35GGUFResidentSession:
         # commit leaf on gfx1151 even while every source/destination range is
         # live and in bounds. Return the existing strict per-layer D2D chain for
         # this activation-only shape. Multi-slot imports retain the fused helper.
-        if (
-            n_entries == linear_layer_count
-            and not self._fused_linear_state_single_slot_transfer_enabled()
-        ):
+        if n_entries == linear_layer_count:
             return False
         tables_ready = (
             self._verify_linear_state_src_conv_table_buf is not None
@@ -25599,15 +25629,15 @@ class Qwen35GGUFResidentSession:
             "GGUF_FUSED_LINEAR_STATE_TRANSFER_POLICY"
         )
 
-    def _fused_linear_state_single_slot_transfer_enabled(self) -> bool:
+    def _fused_packed_verify_initial_state_transfer_enabled(self) -> bool:
         return bool(
             backend_package_capability(
                 self.backend,
-                "GGUF_FUSED_LINEAR_STATE_SINGLE_SLOT_TRANSFER",
+                "GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER",
                 False,
             )
         ) or self._backend_environment_policy_enabled(
-            "GGUF_FUSED_LINEAR_STATE_SINGLE_SLOT_TRANSFER_POLICY"
+            "GGUF_FUSED_PACKED_VERIFY_INITIAL_STATE_TRANSFER_POLICY"
         )
 
     def _fused_linear_state_commit_enabled(self) -> bool:
