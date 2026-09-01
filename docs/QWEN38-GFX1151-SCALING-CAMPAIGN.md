@@ -853,7 +853,9 @@ prompt-conditioned tuning, sized full-wall bound before code).
   open. Q6 rows33-48 now uses an exact `<3,1,2>` single-sweep owner across
   all three physical shapes: six rows35/48 leaves are bit-exact and improve
   **1.12-5.57x**; complete walls fall **281.276->265.883 ms (-5.47%)** and
-  **286.328->269.313 ms (-5.94%)** with unchanged tokens.
+  **286.328->269.313 ms (-5.94%)** with unchanged tokens. Tracked-clean
+  C1-C8 collateral passes **160/160 exact**; aggregate wall improves **1.74%
+  AR** and **0.15% MTP** (individual MTP widths are -0.39% to +0.20% wall).
   [`Q6 high-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q6-shared8r3-partial-retained.json),
   [`Q6 mid-row artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-q6-shared3r1-retained.json),
   [`Q5 artifact`](../benchmarks/results/2026-09-01-gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained.json),
