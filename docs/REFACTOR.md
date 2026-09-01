@@ -37,6 +37,11 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   registered WG32 strict parent. A separate physical-registry-key extension was
   removed after marker-scoped C8 evidence showed no ownership change.
+- `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_QKV=1` is the default-off same-build arm
+  for extending the exact two-wave R6 owner to recurrent QKV K5120/N10240.
+  Promote it into the main shape set only after 24 QKV tensors transfer in the
+  candidate-symbol trace and the complete category/heldout gate passes;
+  otherwise remove the experimental shape policy.
 
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
