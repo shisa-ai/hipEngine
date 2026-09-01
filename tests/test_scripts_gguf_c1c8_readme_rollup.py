@@ -51,13 +51,24 @@ def test_all_six_published_rows_parse_from_the_real_readme():
             assert len(rows[arm][role]) == 8, f"{arm}/{role} missing from the README"
 
 
-def test_hipengine_row_parsed_from_readme_matches_the_text_we_just_read():
-    """Guards the label mapping: a renamed README row must fail loudly, not silently baseline."""
+def test_scoped_rows_parsed_from_readme_match_the_tables_we_just_read():
+    """A renamed heading or row must fail loudly rather than select another table."""
     module = _module()
     text = (REPO_ROOT / "benchmarks" / "README.md").read_text()
-    for label, (arm, role) in module.ROW_LABELS.items():
-        line = next(l for l in text.splitlines() if l.strip().startswith(f"| {label} "))
-        assert module.read_readme_rows()[arm][role] == module.parse_markdown_row(line)
+    parsed = module.read_readme_rows()
+    for marker, arm in module.ARM_MARKERS.items():
+        if arm is None:
+            continue
+        start = text.index(marker)
+        end = text.find("\n**", start + len(marker))
+        section = text[start : len(text) if end < 0 else end]
+        for label, role in module.ROW_LABELS.items():
+            line = next(
+                row
+                for row in section.splitlines()
+                if row.strip().startswith(f"| {label} ")
+            )
+            assert parsed[arm][role] == module.parse_markdown_row(line)
 
 
 def test_baseline_reports_live_parsing_and_falls_back_loudly(tmp_path, capsys):

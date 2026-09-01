@@ -171,7 +171,9 @@ def test_published_set_in_this_repo_is_clean():
     """The real tree must pass today, or the gate ships broken."""
     repo = pathlib.Path(__file__).resolve().parents[1]
     report = _load().check_repo(repo)
-    assert report["artifacts_checked"] >= 40
+    # The compact scoreboard contract permits fewer than 40 direct result links;
+    # keep enough breadth to catch an accidentally empty or single-lane publication.
+    assert report["artifacts_checked"] >= 30
     assert report["violations"] == []
 
 
