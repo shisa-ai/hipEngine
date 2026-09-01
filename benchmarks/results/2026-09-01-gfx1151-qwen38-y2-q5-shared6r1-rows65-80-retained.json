@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained",
+  "status": "validated_retained_pending_collateral",
+  "source_prior_artifact": "2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "pre_code_bound": {
+    "rows72_previous_complete_wall_gain_ms": 8.160274,
+    "rows96_previous_complete_wall_gain_ms": 3.66572,
+    "decision": "admit rows65-80 only to retain the stronger sub-band and exclude rows81-96 from collateral"
+  },
+  "scope": "Q5 6144x5120 rows65-80 only",
+  "strict_fallback": "prior exact selector on row/shape miss",
+  "complete_tick": {
+    "rows": 72,
+    "control_wall_ms": 394.406684,
+    "candidate_wall_ms": 388.301456,
+    "wall_delta_pct": -1.5479524682700418,
+    "token": 321
+  },
+  "trace": {
+    "hits": 144,
+    "grid_y": 1,
+    "threads": 192,
+    "vgpr": 72,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "duration_ms": 82.965052
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows72-only-full-pair.json",
+      "sha256": "9cb0badc6b76c3f719f7280cc868d0b12698800bec69ace2fda4a2561c04aa3f",
+      "bytes": 198238
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows72-only-trace-raw.json",
+      "sha256": "fe31802f0aaa2a47c7e37364c3d3e56a6995eccf630933d5eee8d84cd779f1d0",
+      "bytes": 92848
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows72-only-rocprof/gfx1151/2588026_kernel_trace.csv",
+      "sha256": "755f43446f7eb1df91788e2caf6d7974b7631d17e82469a3079a91b62a254a58",
+      "bytes": 836323
+    }
+  ],
+  "limitations": [
+    "Tracked-clean C1-C8 collateral follows atomic kernel commit.",
+    "Y2 remains open."
+  ]
+}
