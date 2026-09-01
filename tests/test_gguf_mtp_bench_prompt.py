@@ -5,11 +5,13 @@ from pathlib import Path
 import pytest
 
 from scripts.gguf_mtp_bench import (
+    build_arg_parser,
     build_chat_prompt,
     IM_END_TOKEN,
     IM_START_TOKEN,
     THINK_END_TOKEN,
     THINK_START_TOKEN,
+    select_prompt_tokens,
 )
 
 
@@ -19,6 +21,33 @@ class FakeTokenizer:
 
     def decode(self, ids: list[int]) -> str:
         return "".join(chr(i) for i in ids)
+
+
+def test_select_prompt_tokens_uses_exact_raw_ids_without_tokenizer_roundtrip() -> None:
+    class RejectingTokenizer:
+        def encode(self, _text: str) -> list[int]:
+            raise AssertionError("raw token path must not encode text")
+
+    assert select_prompt_tokens(
+        RejectingTokenizer(),
+        user_prompt="ignored",
+        reasoning="off",
+        raw_token_ids=(248045, 846, 198, 42),
+    ) == [248045, 846, 198, 42]
+
+
+def test_select_prompt_tokens_preserves_existing_chat_template_path() -> None:
+    assert select_prompt_tokens(
+        FakeTokenizer(),
+        user_prompt="Say hi",
+        reasoning="none",
+        raw_token_ids=(),
+    ) == build_chat_prompt(FakeTokenizer(), "Say hi", reasoning="none")
+
+
+def test_prompt_token_ids_cli_parses_exact_nonnegative_ids() -> None:
+    args = build_arg_parser().parse_args(["--prompt-token-ids", "248045,846,198,42"])
+    assert args.prompt_token_ids == (248045, 846, 198, 42)
 
 
 def test_build_chat_prompt_uses_supplied_user_prompt() -> None:

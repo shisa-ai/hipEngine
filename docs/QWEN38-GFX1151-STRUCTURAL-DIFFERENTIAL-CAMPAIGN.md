@@ -374,8 +374,10 @@ control.
   verbose records by request and compare first-cycle K3 proposals on a
   Laurent-owned D24 teacher trajectory. `llamacpp_mtp_draft_trace.py` now
   records request indices, prompt-token counts, and per-request draft-call
-  counts with host-only RED/GREEN coverage. No target-kernel change is admitted
-  before the full capture.
+  counts with host-only RED/GREEN coverage. `gguf_mtp_bench.py` also accepts
+  `--prompt-token-ids` to preserve an exact teacher-owned context without a
+  decode/re-encode or chat-template round trip. No target-kernel change is
+  admitted before the full capture.
 - [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
