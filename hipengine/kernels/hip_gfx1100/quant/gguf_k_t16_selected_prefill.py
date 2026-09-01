@@ -32,6 +32,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_rowtile_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out,
     gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_bf16_bf16_out,
+    gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out,
     launch_physical_rows6_chunked,
 )
 from hipengine.kernels.registry import KernelKey, register
@@ -112,6 +113,10 @@ _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS6 = (
     "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6"
 )
 _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED: bool | None = None
+_ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8 = (
+    "HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS8"
+)
+_Q4_ROWTILE16_W2_GROUPED_ROWS8_RESOLVED: bool | None = None
 
 
 def _q4_rowtile16_w2_enabled() -> bool:
@@ -154,6 +159,27 @@ def _q4_rowtile16_w2_grouped_rows6_enabled() -> bool:
             )
         _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED = value
     return _Q4_ROWTILE16_W2_GROUPED_ROWS6_RESOLVED
+
+
+def _q4_rowtile16_w2_grouped_rows8_enabled() -> bool:
+    """Resolve the default-off physical R24 row8 traversal screen."""
+
+    global _Q4_ROWTILE16_W2_GROUPED_ROWS8_RESOLVED
+    if _Q4_ROWTILE16_W2_GROUPED_ROWS8_RESOLVED is None:
+        raw = os.environ.get(
+            _ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8,
+            "0",
+        ).strip().lower()
+        if raw in {"1", "true", "yes", "on"}:
+            value = True
+        elif raw in {"0", "false", "no", "off"}:
+            value = False
+        else:
+            raise ValueError(
+                f"{_ENV_Q4_ROWTILE16_W2_GROUPED_ROWS8} must be a boolean value"
+            )
+        _Q4_ROWTILE16_W2_GROUPED_ROWS8_RESOLVED = value
+    return _Q4_ROWTILE16_W2_GROUPED_ROWS8_RESOLVED
 
 
 def _q4_physical_rowtile(
@@ -435,6 +461,21 @@ def gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out(
         and int(rows) % 6 == 0
         and shape in rowtile_shapes
     )
+    if (
+        int(rows) == 24
+        and grouped_rows6
+        and _q4_rowtile16_w2_grouped_rows8_enabled()
+        and row6_chunk_fn is gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out
+    ):
+        return gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_bf16_bf16_out(
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            **kwargs,
+        )
     if (
         grouped_rows6
         and _q4_rowtile16_w2_grouped_rows6_enabled()
