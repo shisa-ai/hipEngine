@@ -1283,11 +1283,11 @@ def gguf_q4_k_t16_dense_rowtile16_w2_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Launch the exact gfx1151 two-wave 16-column geometry."""
+    """Launch the exact two-wave 16-column geometry."""
 
     _check_dense_q4_t16_rowtile_shape(rows, in_features, out_features, max_rows=8)
-    if rows not in {2, 3, 4, 8}:
-        raise ValueError("dense Q4 T16 rowtile16-w2 requires rows in {2,3,4,8}")
+    if rows not in {2, 3, 4, 6, 8}:
+        raise ValueError("dense Q4 T16 rowtile16-w2 requires rows in {2,3,4,6,8}")
     lib = library or _t16_selected_gemv_library()
     rt = runtime or get_hip_runtime()
     fn = getattr(lib, _Q4_DENSE_ROWTILE16_W2_BF16)

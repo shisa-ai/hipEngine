@@ -6291,7 +6291,7 @@ int launch_q4_dense_rowtile16_w2(
     int64_t out_features,
     hipStream_t stream) {
   if (!x || !tiles || !out ||
-      (rows != 2 && rows != 3 && rows != 4 && rows != 8) ||
+      (rows != 2 && rows != 3 && rows != 4 && rows != 6 && rows != 8) ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -6311,6 +6311,7 @@ int launch_q4_dense_rowtile16_w2(
     Q4_T16_DENSE_ROWTILE16_W2_CASE(2);
     Q4_T16_DENSE_ROWTILE16_W2_CASE(3);
     Q4_T16_DENSE_ROWTILE16_W2_CASE(4);
+    Q4_T16_DENSE_ROWTILE16_W2_CASE(6);
     Q4_T16_DENSE_ROWTILE16_W2_CASE(8);
     default:
       return hipErrorInvalidValue;

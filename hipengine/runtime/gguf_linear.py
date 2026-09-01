@@ -193,6 +193,7 @@ _PACK8_DUAL_ROWTILE_SILU_OUT_FEATURES = 17_408
 _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS = 33
 _Q4_T16_DUAL_SILU_RETILE_ENV = "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE"
 _Q4_T16_DUAL_SILU_RETILE_RESOLVED: bool | None = None
+_rowtile_variant_policy_env_cache: dict[tuple[str, bool], bool] = {}
 _Q4_QMICRO_T16_EXPANDED_META_MIN_ROWS = 4_096
 _Q4_T16_DENSE_QUANTS = frozenset(
     {"gguf_q4_k_t16_v1", "gguf_q4_k_qmicro_t16_v1"}
@@ -2781,8 +2782,9 @@ def _q4_t16_sidecar_decode_variants(
     rows: int,
     in_features: int,
     out_features: int,
+    backend: str | None = None,
 ) -> tuple[str, ...]:
-    """Rank exact rowtile variants by measured gfx1100 shape policy."""
+    """Rank exact rowtile variants by measured backend shape policy."""
 
     if rows == 1:
         return ("dense_single_local32_bf16_bf16_out",)
@@ -2790,11 +2792,63 @@ def _q4_t16_sidecar_decode_variants(
         return ()
     shape = (in_features, out_features)
     if rows <= 4 and shape in _Q4_T16_COL4_ALL_ROWS_SHAPES:
-        return (
+        variants = (
             "dense_rowtile_col4_bf16_bf16_out",
             "dense_rowtile_bf16_bf16_out",
         )
-    return ("dense_rowtile_bf16_bf16_out",)
+    else:
+        variants = ("dense_rowtile_bf16_bf16_out",)
+    if backend is None:
+        return variants
+    rowtile_variants = backend_package_capability(
+        backend,
+        "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
+        {},
+    )
+    variant_policy = (
+        rowtile_variants.get("gguf_q4_k_t16_v1")
+        if isinstance(rowtile_variants, Mapping)
+        else None
+    )
+    if isinstance(variant_policy, Mapping):
+        enabled_env = variant_policy.get("enabled_env")
+        if isinstance(enabled_env, str) and enabled_env:
+            enabled_default = bool(variant_policy.get("enabled_default", False))
+            cache_key = (enabled_env, enabled_default)
+            enabled = _rowtile_variant_policy_env_cache.get(cache_key)
+            if enabled is None:
+                raw = os.environ.get(
+                    enabled_env,
+                    "1" if enabled_default else "0",
+                ).strip().lower()
+                if raw in {"1", "true", "yes", "on"}:
+                    enabled = True
+                elif raw in {"0", "false", "no", "off"}:
+                    enabled = False
+                else:
+                    raise ValueError(f"{enabled_env} must be a boolean value")
+                _rowtile_variant_policy_env_cache[cache_key] = enabled
+            if not enabled:
+                return variants
+    shapes = (
+        variant_policy.get("shapes", {})
+        if isinstance(variant_policy, Mapping)
+        else {}
+    )
+    rows_by_shape = (
+        variant_policy.get("rows_by_shape", {})
+        if isinstance(variant_policy, Mapping)
+        else {}
+    )
+    preferred = shapes.get(shape) if isinstance(shapes, Mapping) else None
+    allowed_rows = (
+        rows_by_shape.get(shape, (8,))
+        if isinstance(rows_by_shape, Mapping)
+        else (8,)
+    )
+    if isinstance(preferred, str) and preferred and int(rows) in allowed_rows:
+        return (preferred, *variants)
+    return variants
 
 
 def _target_verifier_production_q4_rowtile_scope_enabled(
@@ -2898,48 +2952,15 @@ def launch_gguf_q4_t16_sidecar_decode(
         "gguf_q4_k_t16_v1",
     }:
         return False
+    resolved_backend = _weight_backend(weight, backend=backend)
     variants = _q4_t16_sidecar_decode_variants(
         rows=rows,
         in_features=in_features,
         out_features=out_features,
+        backend=resolved_backend,
     )
     if not variants:
         return False
-    resolved_backend = _weight_backend(weight, backend=backend)
-    if rows in {2, 3, 4, 8}:
-        rowtile_variants = backend_package_capability(
-            resolved_backend,
-            "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
-            {},
-        )
-        variant_policy = (
-            rowtile_variants.get("gguf_q4_k_t16_v1")
-            if isinstance(rowtile_variants, Mapping)
-            else None
-        )
-        shapes = (
-            variant_policy.get("shapes", {})
-            if isinstance(variant_policy, Mapping)
-            else {}
-        )
-        rows_by_shape = (
-            variant_policy.get("rows_by_shape", {})
-            if isinstance(variant_policy, Mapping)
-            else {}
-        )
-        shape = (int(in_features), int(out_features))
-        preferred = shapes.get(shape) if isinstance(shapes, Mapping) else None
-        allowed_rows = (
-            rows_by_shape.get(shape, (8,))
-            if isinstance(rows_by_shape, Mapping)
-            else (8,)
-        )
-        if (
-            isinstance(preferred, str)
-            and preferred
-            and int(rows) in allowed_rows
-        ):
-            variants = (preferred, *variants)
     for variant in variants:
         key = KernelKey(
             resolved_backend,
