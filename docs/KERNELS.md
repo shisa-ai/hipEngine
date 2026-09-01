@@ -441,9 +441,13 @@ The same gfx1151 scalar graph independently admits the existing exact
 `linear_pair/f32/bf16_hidden_bf16_out` body only at rows1 K5120/N48+N48. One
 local256 grid assigns independent alpha/beta output blocks while preserving each
 singleton K/FMA/reduction tree. Capability or registry misses, gfx1100, and
-rows2-4 retain two singleton dense-F32 projections. No payload or scratch is
-added. Evidence:
-[`Qwen3.8 dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json).
+rows2-4 retain two singleton dense-F32 projections. gfx1100 physical verifier
+rows15/18/21/24 also retain those singletons: the exact flat pair contracted the
+family 96→48 launches and 2.057→1.469 ms, but regressed operation-complete target
+wall 173.633→173.816 ms and target kernel sum 159.009→160.442 ms. No payload or
+scratch is added. Evidence:
+[`gfx1151 Qwen3.8 dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json),
+[`gfx1100 high-row rejection`](../benchmarks/results/2026-09-02-w7900-q4km-k3-dense-f32-high-row-pair-rejected.json).
 
 A second gfx1151-only rows1 capability joins those pair blocks to the independent
 C10240/K4 in-place Conv blocks under
