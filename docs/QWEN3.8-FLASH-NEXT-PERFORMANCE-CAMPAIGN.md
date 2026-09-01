@@ -1132,7 +1132,7 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       removed; do not retry without eliminating global coordination or the
       materialized logits. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-fused-select-rejected.json`.
-- [ ] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
+- [x] Fuse shared gate/up+SiLU, then shared down+sigmoid gate+combine, preserving
       F32/BF16 boundaries and the strict shared-expert chain. Reusing one F32
       D4x3 activation pack across the two production-MMQ projections is exact
       and improves their GPU window 1.134→1.077 ms, but is rejected/removed:
