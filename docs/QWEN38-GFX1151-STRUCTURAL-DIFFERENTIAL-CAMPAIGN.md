@@ -314,15 +314,22 @@ Carry C1/C3/C4/C5 as regression controls, not targets.
   the existing F16 staging boundary; perf-node names confirm fused Q4/Q5/Q6
   matmul. This is activation/dequant dataflow, not quantized-weight reuse.
   The external tree remained clean and read-only.
-- [ ] Produce a mechanism table that separates measured facts from inferred
+- [x] Produce a mechanism table that separates measured facts from inferred
   causes.
-- [ ] Compute an optimistic complete-wall bound for each mechanism. Continue
+- [x] Compute an optimistic complete-wall bound for each mechanism. Continue
   only when the bound is at least **1.25x the required wall reduction** for a
   primary cell: at least 33.6% for C2 and 27.1% for C8.
-- [ ] Treat C2 as an M = 35-96 owner problem plus an admission question, not
+- [x] Treat C2 as an M = 35-96 owner problem plus an admission question, not
   a high-row problem: Z0's tick-composition fact decides whether grouped
   prefill (mechanism C in section 7.3) applies, and the M = 17-48 owners
   shared with the verify side (mechanisms A/E/F) are the kernel candidates.
+
+  Bound artifact: [`2026-09-01-gfx1151-qwen38-z1-mechanism-bounds.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z1-mechanism-bounds.json).
+  Only F16 activation-B staging advances: transferring Laurent's measured
+  quant-time delta while holding all other wall fixed gives optimistic
+  19.8%/20.1% C2/C8 wall reductions, above the matched-gap 1.25x thresholds
+  of 11.5%/5.8%. This is an inferred T2 portability bound, not a measured
+  hipEngine win. Chunking and launch reduction are rejected as mechanisms.
 
 Exit: either a named prefill dataflow candidate with a measured bound, or a
 stronger impossibility result that closes the remaining prefill gap.
