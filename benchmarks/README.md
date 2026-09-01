@@ -246,9 +246,23 @@ at **154.346→57.900 ms (2.67x)** without reproducing third-replay corruption.
 The complete host-staged transition then adds generated-token PLE publication,
 embedding, final full-vocabulary head, device argmax, and token feedback: the
 changing-token trajectory and 138 owners are exact; reset→replay and forced-
-eager→graph resumption also pass. Operation wall is **194.758→61.910 ms
-(3.15x)**. It is not yet bound to production; request-cache, multi-prompt,
-cold-PLE, bucket-transition, retained-prefix, and c2 gates remain open.
+eager→graph resumption also pass. Operation wall against the **named**
+production step is **68.855→61.910 ms (1.112x)**; the probe's own eager arm of
+194.758 ms disables the shipped per-layer MoE graph cache and adds a
+script-level launch loop, so its 3.15x ratio is retired. Every rung ratio above
+shares that probe-local eager denominator and is a mechanism result, not a
+named-path speedup. It is not yet bound to production; request-cache,
+multi-prompt, cold-PLE, bucket-transition, retained-prefix, and c2 gates remain
+open.
+The named denominator for that ladder is now measured: at the probe's own
+strict profile, prompt, and context, production `runner.step()` is **68.855
+ms/step** with per-layer MoE graphs on and **143.989 ms/step** with them off, so
+the shipped MoE cache is already worth **2.091x** and the probe's script-level
+loop adds a further **1.35x**. Device argmax and host full-logit D2H differ by
+at most 0.35 ms/step with the sign flipping between runs. Steady allocation
+growth is zero and teardown returns 82,741,321,248 bytes / 1,638 allocations to
+zero.
+[`named denominator`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json),
 [`stateful layer graph`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-stateful-layer-graph.json),
 [`three-layer segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-gdn-segment3-graph.json),
 [`mixed fixed-position segment`](results/2026-09-01-gfx1151-qwen38-flash-next-p8-mixed-segment4-graph.json),
