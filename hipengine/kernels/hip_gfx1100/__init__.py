@@ -388,11 +388,11 @@ GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY = {
     "enabled_default": True,
     "rows": frozenset({28}),
 }
-# Default-off C8 screen. R32 is admitted only together with the exact
-# two-active-wave fused gate/up owner; zero retains padded R36 + row48.
+# Exact C8 R32 is admitted only together with the exact two-active-wave fused
+# gate/up owner; explicit zero retains padded R36 + row48.
 GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS",
-    "enabled_default": False,
+    "enabled_default": True,
     "rows": frozenset({32}),
 }
 # The production dense adapter owns one physical request group through C8. The
