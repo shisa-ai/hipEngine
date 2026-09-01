@@ -6547,8 +6547,8 @@ int launch_q4_dense_rowtile16_w2(
   return hipGetLastError();
 }
 
-template <typename scalar_t, int ROW_TILE>
-int launch_q4_dense_rowtile16_w2_grouped(
+template <typename scalar_t>
+int launch_q4_dense_rowtile16_w2_grouped_rows6(
     const void* x,
     const void* tiles,
     void* out,
@@ -6556,8 +6556,7 @@ int launch_q4_dense_rowtile16_w2_grouped(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (!x || !tiles || !out || rows < 2 * ROW_TILE ||
-      (rows % ROW_TILE) != 0 ||
+  if (!x || !tiles || !out || rows < 12 || (rows % 6) != 0 ||
       in_features <= 0 || (in_features % QK_K) != 0 ||
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
@@ -6565,9 +6564,9 @@ int launch_q4_dense_rowtile16_w2_grouped(
   const dim3 block(64);
   const dim3 grid(
       static_cast<unsigned int>(out_features / T16_COLS),
-      static_cast<unsigned int>(rows / ROW_TILE));
+      static_cast<unsigned int>(rows / 6));
   hipLaunchKernelGGL(
-      (q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<scalar_t, ROW_TILE>),
+      (q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<scalar_t, 6>),
       grid, block, 0, stream,
       reinterpret_cast<const scalar_t*>(x),
       reinterpret_cast<const uint8_t*>(tiles),
@@ -7647,16 +7646,7 @@ hipengine_gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows6_gemv_bf16_bf16_out(
     const void* x, const void* tiles, void* out,
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
-  return launch_q4_dense_rowtile16_w2_grouped<uint16_t, 6>(
-      x, tiles, out, rows, in_features, out_features, stream);
-}
-
-extern "C" int
-hipengine_gguf_q4_k_t16_dense_rowtile16_w2_grouped_rows8_gemv_bf16_bf16_out(
-    const void* x, const void* tiles, void* out,
-    int64_t rows, int64_t in_features, int64_t out_features,
-    hipStream_t stream) {
-  return launch_q4_dense_rowtile16_w2_grouped<uint16_t, 8>(
+  return launch_q4_dense_rowtile16_w2_grouped_rows6<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
