@@ -1,0 +1,469 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z1_laurent_prefill_operation_differential",
+  "date": "2026-09-01",
+  "status": "measured_with_vulkan_profiler_bound",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586",
+    "backend": "hip_gfx1151",
+    "gpu_max_hw_queues": "2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "profile_prompt": "code_merge_intervals",
+    "profile_prompt_sha256": "18faf7cb4931b8b79b88c94c26228e249b49d3cdb6cf13b490dea07f256f7ff6"
+  },
+  "protocol": {
+    "scope": "canonical prompt C2/C8 one-output warm then measured; operation attribution only",
+    "hipengine": "Z0 exact direct grouped-row tick, cached rocprofv3 kernel/HIP/copy trace",
+    "laurent": "GGML_VK_PERF_LOGGER=1 GGML_VK_PERF_LOGGER_FREQUENCY=1, Vulkan timestamp-query node aggregation",
+    "warning": "rocprofv3 produced no kernel or copy CSV for the RADV process in two attempts. Vulkan dispatch timing therefore uses llama.cpp timestamp queries; direct HSA kernel names, video-memory fetch bytes, and exact occupancy are unavailable."
+  },
+  "source_inspection": {
+    "tree_commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+    "file": "ggml/src/ggml-vulkan/ggml-vulkan.cpp",
+    "file_sha256": "433375a9501fe45bf3252c7cd3d5f5e604fac3436c46be513eec9cc73db729cd",
+    "dense_f16b_definition_lines": "4002-4019",
+    "dense_f16b_dispatch_lines": "9647-9686",
+    "pipeline_instantiation_lines": "4974-4988",
+    "origin_commit": "f97c0e6fecfcfb570c30e7587d2d94baa19ddb4c",
+    "measured_mechanism": "Quantized dense MUL_MAT defaults to an F16 B operand. Source says this halves B-operand bytes and buf_b shared memory while preserving the existing F16 staging boundary; fused q4_K/q5_K/q6_K MUL_MAT node names confirm quantized matmul rather than standalone weight dequantization.",
+    "shader": "ggml/src/ggml-vulkan/vulkan-shaders/mul_mm.comp",
+    "shader_sha256": "9662678fb43c9c42b026d3edde5d5be985bb20ff059690b9d4da837c27d03a8e"
+  },
+  "pipeline_resources": {
+    "filter": "matmul_q4_k_f16",
+    "large": {
+      "pipeline": "matmul_q4_k_f16_f16acc_aligned_l",
+      "sgpr": 108,
+      "vgpr": 120,
+      "spilled_sgpr": 0,
+      "spilled_vgpr": 0,
+      "lds_bytes": 20480,
+      "scratch_bytes": 0,
+      "instructions": 3794
+    },
+    "small": {
+      "pipeline": "matmul_q4_k_f16_f16acc_aligned_s",
+      "sgpr": 108,
+      "vgpr": 108,
+      "spilled_sgpr": 0,
+      "spilled_vgpr": 0,
+      "lds_bytes": 5120,
+      "scratch_bytes": 0,
+      "instructions": 1201
+    },
+    "occupancy": "Exact resident-wave occupancy is not emitted by GGML_VK_PIPELINE_STATS and rocprofv3 cannot see RADV dispatches in this environment. Resource counts are the measured occupancy proxy; no occupancy claim is made."
+  },
+  "weight_movement": {
+    "measured_weight_fetch_bytes": null,
+    "bound": "Both arms read the same 17.1 GB model, but no Vulkan fetch counter was available. The source-proven F16-B mechanism halves activation-B and shared-memory bytes, not quantized weight bytes; do not report it as weight reuse."
+  },
+  "widths": {
+    "2": {
+      "logical_width": 2,
+      "grouped_rows": 72,
+      "hipengine": {
+        "direct_tick_wall_ms": 399.174692,
+        "gpu_event_span_ms": 399.1692810058594,
+        "traced_kernel_ms": 390.713718,
+        "classified_dispatches": 1955,
+        "families": {
+          "q4": {
+            "dispatches": 289,
+            "gpu_ms": 252.426366,
+            "gpu_share": 0.6460647639712512
+          },
+          "q5": {
+            "dispatches": 48,
+            "gpu_ms": 27.946412,
+            "gpu_share": 0.07152656974281103
+          },
+          "q6": {
+            "dispatches": 65,
+            "gpu_ms": 79.043334,
+            "gpu_share": 0.2023049879195693
+          },
+          "gdn": {
+            "dispatches": 240,
+            "gpu_ms": 17.403411,
+            "gpu_share": 0.04454261572663799
+          },
+          "other": {
+            "dispatches": 1313,
+            "gpu_ms": 13.894195,
+            "gpu_share": 0.03556106263973051
+          }
+        },
+        "memory_copy_events": {}
+      },
+      "laurent": {
+        "profile_complete_wall_ms": 395.377776119858,
+        "gpu_node_total_ms": 331.81940000000003,
+        "perf_node_dispatches": 3588,
+        "families": {
+          "other": {
+            "calls": 2145,
+            "gpu_ms": 24.072485999999998
+          },
+          "attention": {
+            "calls": 32,
+            "gpu_ms": 0.568063
+          },
+          "other_matmul": {
+            "calls": 192,
+            "gpu_ms": 22.1481
+          },
+          "q4": {
+            "calls": 576,
+            "gpu_ms": 192.06830899999997
+          },
+          "q5": {
+            "calls": 96,
+            "gpu_ms": 18.41402
+          },
+          "q6": {
+            "calls": 129,
+            "gpu_ms": 69.884857
+          },
+          "norm": {
+            "calls": 418,
+            "gpu_ms": 4.6632880000000005
+          }
+        },
+        "chunk_rows": [
+          64,
+          8
+        ],
+        "final_head": {
+          "name": "MUL_MAT_VEC q6_K m=248320 n=2 k=5120",
+          "calls": 1,
+          "total_ms": 4.566560000000001,
+          "family": "q6"
+        },
+        "top_nodes": [
+          {
+            "name": "MUL_MAT q4_K m=17408 n=64 k=5120",
+            "calls": 128,
+            "total_ms": 84.2765,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT_VEC q4_K m=17408 n=8 k=5120",
+            "calls": 128,
+            "total_ms": 34.7875,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q6_K m=5120 n=64 k=17408",
+            "calls": 32,
+            "total_ms": 31.995099999999997,
+            "family": "q6"
+          },
+          {
+            "name": "MUL_MAT q4_K m=5120 n=64 k=17408",
+            "calls": 32,
+            "total_ms": 20.8868,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT f32 m=48 n=64 k=5120",
+            "calls": 96,
+            "total_ms": 20.7553,
+            "family": "other_matmul"
+          },
+          {
+            "name": "MUL_MAT_VEC q6_K m=5120 n=8 k=17408",
+            "calls": 32,
+            "total_ms": 14.203299999999999,
+            "family": "q6"
+          },
+          {
+            "name": "MUL_MAT q6_K m=10240 n=64 k=5120",
+            "calls": 24,
+            "total_ms": 12.092,
+            "family": "q6"
+          },
+          {
+            "name": "MUL_MAT q5_K m=5120 n=64 k=6144",
+            "calls": 48,
+            "total_ms": 12.0261,
+            "family": "q5"
+          },
+          {
+            "name": "MUL_MAT q4_K m=6144 n=64 k=5120",
+            "calls": 48,
+            "total_ms": 11.5015,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT_VEC q4_K m=5120 n=8 k=17408",
+            "calls": 32,
+            "total_ms": 8.510110000000001,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q4_K m=10240 n=64 k=5120",
+            "calls": 24,
+            "total_ms": 7.42954,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT_VEC q5_K m=5120 n=8 k=6144",
+            "calls": 48,
+            "total_ms": 6.38792,
+            "family": "q5"
+          },
+          {
+            "name": "MUL_MAT q4_K m=12288 n=64 k=5120",
+            "calls": 16,
+            "total_ms": 6.1591000000000005,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT_VEC q6_K m=10240 n=8 k=5120",
+            "calls": 24,
+            "total_ms": 6.05618,
+            "family": "q6"
+          },
+          {
+            "name": "GATED_DELTA_NET",
+            "calls": 96,
+            "total_ms": 5.44241,
+            "family": "other"
+          },
+          {
+            "name": "MUL_MAT_VEC q4_K m=6144 n=8 k=5120",
+            "calls": 48,
+            "total_ms": 4.63378,
+            "family": "q4"
+          }
+        ]
+      },
+      "comparison": {
+        "wall_hipengine_over_laurent": 1.0096032607533079,
+        "gpu_time_hipengine_over_laurent": 1.1774890738757287,
+        "quant_gpu_ms_hipengine": 359.416112,
+        "quant_gpu_ms_laurent": 280.36718599999995,
+        "quant_gpu_time_hipengine_over_laurent": 1.2819478524851338,
+        "dispatch_count_hipengine_over_laurent": 0.5448717948717948
+      }
+    },
+    "8": {
+      "logical_width": 8,
+      "grouped_rows": 288,
+      "hipengine": {
+        "direct_tick_wall_ms": 987.715908,
+        "gpu_event_span_ms": 987.70849609375,
+        "traced_kernel_ms": 975.961944,
+        "classified_dispatches": 1955,
+        "families": {
+          "q4": {
+            "dispatches": 289,
+            "gpu_ms": 624.567661,
+            "gpu_share": 0.6399508350091979
+          },
+          "q5": {
+            "dispatches": 48,
+            "gpu_ms": 43.154438,
+            "gpu_share": 0.04421733681861677
+          },
+          "q6": {
+            "dispatches": 65,
+            "gpu_ms": 164.897735,
+            "gpu_share": 0.16895918535938323
+          },
+          "gdn": {
+            "dispatches": 240,
+            "gpu_ms": 64.171884,
+            "gpu_share": 0.06575244495393973
+          },
+          "other": {
+            "dispatches": 1313,
+            "gpu_ms": 79.170226,
+            "gpu_share": 0.08112019785886242
+          }
+        },
+        "memory_copy_events": {}
+      },
+      "laurent": {
+        "profile_complete_wall_ms": 975.9087560232729,
+        "gpu_node_total_ms": 781.325,
+        "perf_node_dispatches": 3588,
+        "families": {
+          "other": {
+            "calls": 2145,
+            "gpu_ms": 107.61861499999999
+          },
+          "attention": {
+            "calls": 32,
+            "gpu_ms": 1.8447680000000002
+          },
+          "other_matmul": {
+            "calls": 192,
+            "gpu_ms": 25.58056
+          },
+          "q4": {
+            "calls": 576,
+            "gpu_ms": 461.41650000000004
+          },
+          "q5": {
+            "calls": 96,
+            "gpu_ms": 38.92138
+          },
+          "q6": {
+            "calls": 129,
+            "gpu_ms": 133.891447
+          },
+          "norm": {
+            "calls": 418,
+            "gpu_ms": 12.052292000000001
+          }
+        },
+        "chunk_rows": [
+          256,
+          32
+        ],
+        "final_head": {
+          "name": "MUL_MAT_VEC q6_K m=248320 n=8 k=5120",
+          "calls": 1,
+          "total_ms": 5.62533,
+          "family": "q6"
+        },
+        "top_nodes": [
+          {
+            "name": "MUL_MAT q4_K m=17408 n=256 k=5120",
+            "calls": 128,
+            "total_ms": 199.78,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q4_K m=17408 n=32 k=5120",
+            "calls": 128,
+            "total_ms": 77.02669999999999,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q6_K m=5120 n=256 k=17408",
+            "calls": 32,
+            "total_ms": 66.4995,
+            "family": "q6"
+          },
+          {
+            "name": "MUL_MAT q4_K m=5120 n=256 k=17408",
+            "calls": 32,
+            "total_ms": 55.462199999999996,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q4_K m=6144 n=256 k=5120",
+            "calls": 48,
+            "total_ms": 33.2928,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q5_K m=5120 n=256 k=6144",
+            "calls": 48,
+            "total_ms": 29.574,
+            "family": "q5"
+          },
+          {
+            "name": "MUL_MAT q6_K m=10240 n=256 k=5120",
+            "calls": 24,
+            "total_ms": 29.4387,
+            "family": "q6"
+          },
+          {
+            "name": "GATED_DELTA_NET",
+            "calls": 96,
+            "total_ms": 27.747989999999998,
+            "family": "other"
+          },
+          {
+            "name": "MUL_MAT f32 m=48 n=256 k=5120",
+            "calls": 96,
+            "total_ms": 22.7336,
+            "family": "other_matmul"
+          },
+          {
+            "name": "MUL_MAT q4_K m=10240 n=256 k=5120",
+            "calls": 24,
+            "total_ms": 22.3578,
+            "family": "q4"
+          },
+          {
+            "name": "MUL_MAT q4_K m=12288 n=256 k=5120",
+            "calls": 16,
+            "total_ms": 21.329099999999997,
+            "family": "q4"
+          },
+          {
+            "name": "CPY",
+            "calls": 192,
+            "total_ms": 20.8436,
+            "family": "other"
+          },
+          {
+            "name": "GLU",
+            "calls": 128,
+            "total_ms": 19.14354,
+            "family": "other"
+          },
+          {
+            "name": "MUL_MAT q6_K m=5120 n=32 k=17408",
+            "calls": 32,
+            "total_ms": 19.0251,
+            "family": "q6"
+          },
+          {
+            "name": "MUL_MAT q4_K m=5120 n=32 k=17408",
+            "calls": 32,
+            "total_ms": 14.3636,
+            "family": "q4"
+          },
+          {
+            "name": "GET_ROWS",
+            "calls": 193,
+            "total_ms": 11.38879,
+            "family": "other"
+          }
+        ]
+      },
+      "comparison": {
+        "wall_hipengine_over_laurent": 1.0120986228516282,
+        "gpu_time_hipengine_over_laurent": 1.2491113736281316,
+        "quant_gpu_ms_hipengine": 832.6198340000001,
+        "quant_gpu_ms_laurent": 634.229327,
+        "quant_gpu_time_hipengine_over_laurent": 1.3128056344199928,
+        "dispatch_count_hipengine_over_laurent": 0.5448717948717948
+      }
+    }
+  },
+  "findings": [
+    "Laurent is 1.01x/1.01x faster on canonical C2/C8 wall but 1.18x/1.25x faster in summed GPU node time. Its quantized Q4/Q5/Q6 nodes account for the GPU difference: hipEngine/Laurent quant time is 1.28x at C2 and 1.31x at C8.",
+    "Laurent uses more node dispatches (3588 versus 1955 classified hipEngine dispatches) yet less GPU time, so launch-count reduction is not the mechanism.",
+    "Laurent chunks C2 rows72 as 64+8 and C8 rows288 as 256+32. Final head is one fused Q6 matvec over n=2/n=8 at 4.57/5.63 ms.",
+    "The strongest source-backed mechanism is fused quantized matmul with default F16 activation-B staging. Exact cross-backend LDS/register occupancy, weight-fetch bytes, and HSA kernel traces remain bounded unavailable, not inferred."
+  ]
+}

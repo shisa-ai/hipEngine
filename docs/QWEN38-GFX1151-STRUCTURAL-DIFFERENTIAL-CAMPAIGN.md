@@ -289,12 +289,31 @@ Carry C1/C3/C4/C5 as regression controls, not targets.
   internal `prompt_ms` reports 212.057/308.340 tok/s, but those values are not
   compared against hipEngine complete wall. This corrects the earlier
   211.888/305.847 cross-boundary targets without attributing a mechanism.
-- [ ] Compare complete wall, kernel-family time, launch counts, row shapes,
+- [x] Compare complete wall, kernel-family time, launch counts, row shapes,
   weight-byte movement, dequant strategy, LDS/register pressure, occupancy,
   and final-head behavior.
-- [ ] Read the pinned Laurent implementation and cite source file plus commit
+
+  Operation differential: [`2026-09-01-gfx1151-qwen38-z1-laurent-prefill-operation-differential.json`](../benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-operation-differential.json).
+  On the canonical prompt, Laurent is only 1.01x faster in complete wall but
+  1.18x/1.25x faster in summed C2/C8 GPU-node time. Quantized Q4/Q5/Q6 time
+  explains the difference: hipEngine/Laurent is 1.28x at C2 and 1.31x at C8.
+  Laurent has **more** node dispatches (3,588 versus 1,955 classified hipEngine
+  dispatches), chunks rows72 as 64+8 and rows288 as 256+32, and executes the
+  final Q6 head once at 4.57/5.63 ms. Its large/small Q4 F16-B pipelines use
+  VGPR120/108, LDS20/5 KiB, scratch0, with no spills. `rocprofv3` emits no
+  RADV kernel/copy trace here; exact occupancy and weight-fetch bytes are a
+  named instrumentation bound. Do not infer them from the resource proxy.
+- [x] Read the pinned Laurent implementation and cite source file plus commit
   for any mechanism considered for porting. Do not vendor or edit the external
   repository.
+
+  At `LaurentZuijdwijk/llama.cpp@c28d538df`,
+  `ggml/src/ggml-vulkan/ggml-vulkan.cpp:4002-4019,9647-9686` defaults
+  quantized dense `MUL_MAT` to an F16 activation-B operand. The source states
+  that this halves B-operand bytes and `buf_b` shared memory while preserving
+  the existing F16 staging boundary; perf-node names confirm fused Q4/Q5/Q6
+  matmul. This is activation/dequant dataflow, not quantized-weight reuse.
+  The external tree remained clean and read-only.
 - [ ] Produce a mechanism table that separates measured facts from inferred
   causes.
 - [ ] Compute an optimistic complete-wall bound for each mechanism. Continue
