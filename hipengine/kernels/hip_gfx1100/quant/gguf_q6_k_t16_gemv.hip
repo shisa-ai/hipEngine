@@ -592,21 +592,18 @@ void q6_k_t16_wmma_prefill_bf16_kernel(
   }
 }
 
-// Four-wave shared-weight standard-T16 companion. Each wave preserves the
-// exact 48-column x 64-row sequence screened by the tiled producer; the
-// workgroup decodes each 48 x 256 Q6 slab once into LDS for four independent
-// row ranges instead of repeating the standard-T16 decode in four blocks.
+// Parameterized shared-weight standard-T16 companion. Each workgroup decodes
+// one output slab into LDS, then its waves consume independent M16 row tiles.
+// W1 instantiates two waves x one row tile x two output tiles for R20-R32.
+template <int WAVES_PER_BLOCK, int ROW_TILES_PER_WAVE, int OUT_TILES_PER_BLOCK>
 __global__ __launch_bounds__(128, 1)
-void q6_k_t16_wmma_prefill_shared4_bf16_kernel(
+void q6_k_t16_wmma_prefill_shared_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int OUT_TILES_PER_BLOCK = 3;
-  constexpr int ROW_TILES_PER_WAVE = 4;
-  constexpr int WAVES_PER_BLOCK = 4;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
@@ -859,21 +856,18 @@ void q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel(
   }
 }
 
-// Four-wave shared-weight companion to the retained planar-qmicro producer.
-// Each wave preserves the exact 48-column x 64-row K16 WMMA sequence; the
-// workgroup decodes each 48 x 256 Q6 weight slab once and shares it across four
-// independent row ranges instead of repeating the same decode in four blocks.
+// Parameterized shared-weight companion to the planar-qmicro producer. W1's
+// two-wave instantiation shares one decoded 32-column x 256 slab across two
+// independent M16 row tiles without provisioning idle R64 wave ranges.
+template <int WAVES_PER_BLOCK, int ROW_TILES_PER_WAVE, int OUT_TILES_PER_BLOCK>
 __global__ __launch_bounds__(128, 1)
-void q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel(
+void q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int OUT_TILES_PER_BLOCK = 3;
-  constexpr int ROW_TILES_PER_WAVE = 4;
-  constexpr int WAVES_PER_BLOCK = 4;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
@@ -1365,16 +1359,16 @@ int launch_q6_t16_wmma_prefill_shared4(
       (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
   }
-  constexpr int Q6_DENSE_TILE_COLS = 3 * T16_COLS;
-  constexpr int Q6_DENSE_TILE_ROWS = 4 * 4 * 16;
-  const dim3 block(128);
+  constexpr int Q6_DENSE_TILE_COLS = 2 * T16_COLS;
+  constexpr int Q6_DENSE_TILE_ROWS = 2 * 1 * 16;
+  const dim3 block(64);
   const dim3 grid(
       static_cast<unsigned int>(
           (out_features + Q6_DENSE_TILE_COLS - 1) / Q6_DENSE_TILE_COLS),
       static_cast<unsigned int>(
           (rows + Q6_DENSE_TILE_ROWS - 1) / Q6_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      q6_k_t16_wmma_prefill_shared4_bf16_kernel,
+      (q6_k_t16_wmma_prefill_shared_bf16_kernel<2, 1, 2>),
       grid,
       block,
       0,
@@ -1475,16 +1469,16 @@ int launch_q6_t16_qmicro_planar_wmma_prefill_shared4(
       (out_features % T16_COLS) != 0) {
     return hipErrorInvalidValue;
   }
-  constexpr int Q6_DENSE_TILE_COLS = 3 * T16_COLS;
-  constexpr int Q6_DENSE_TILE_ROWS = 4 * 4 * 16;
-  const dim3 block(128);
+  constexpr int Q6_DENSE_TILE_COLS = 2 * T16_COLS;
+  constexpr int Q6_DENSE_TILE_ROWS = 2 * 1 * 16;
+  const dim3 block(64);
   const dim3 grid(
       static_cast<unsigned int>(
           (out_features + Q6_DENSE_TILE_COLS - 1) / Q6_DENSE_TILE_COLS),
       static_cast<unsigned int>(
           (rows + Q6_DENSE_TILE_ROWS - 1) / Q6_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_kernel,
+      (q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<2, 1, 2>),
       grid,
       block,
       0,
