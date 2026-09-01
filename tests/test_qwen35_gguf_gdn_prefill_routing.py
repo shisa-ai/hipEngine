@@ -1620,10 +1620,12 @@ def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch)
     half-sized recurrent-state buffers); with the flag off the strict FP32
     wrappers are the identity fallback.
     """
+    import hipengine.runtime.qwen35_gguf_runner as runner_mod
     from hipengine.runtime.qwen35_gguf_runner import (
         _gdn_decode_order_segments_state_rows_kernel,
         _gdn_decode_order_state_rows_kernel,
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce,
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state,
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy,
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state,
@@ -1637,6 +1639,15 @@ def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch)
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
     )
 
+    monkeypatch.setenv("HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE", "1")
+    assert _gdn_decode_order_segments_state_rows_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy
+    )
+    monkeypatch.setattr(runner_mod, "physical_exact_rowtiles_enabled", lambda: True)
+    assert _gdn_decode_order_segments_state_rows_kernel() is (
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce
+    )
+
     monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
     assert _gdn_decode_order_state_rows_kernel() is (
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_state_rows_no_copy_fp16state
@@ -1644,6 +1655,35 @@ def test_gdn_decode_order_state_rows_kernel_selects_fp16_under_flag(monkeypatch)
     assert _gdn_decode_order_segments_state_rows_kernel() is (
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_fp16state
     )
+
+
+def test_gdn_state_rows_wave_reduce_wrapper_is_c5c8_physical_shape_scoped(
+    monkeypatch,
+) -> None:
+    from hipengine.kernels.hip_gfx1100.linear_attn import gdn as gdn_mod
+
+    calls = []
+    monkeypatch.setattr(
+        gdn_mod,
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy",
+        lambda *args, **kwargs: calls.append(kwargs.get("_symbol")),
+    )
+    base_args = list(range(19))
+    for segments, total_tokens, expect_candidate in (
+        (4, 12, False),
+        (5, 15, True),
+        (6, 24, True),
+        (8, 32, True),
+        (9, 27, False),
+        (6, 30, False),
+    ):
+        args = base_args.copy()
+        args[13] = total_tokens
+        args[14] = segments
+        gdn_mod.qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce(
+            *args
+        )
+        assert bool(calls[-1]) is expect_candidate
 
 
 def test_gdn_decode_order_segments_inplace_kernel_selects_fp16_under_flag(monkeypatch) -> None:

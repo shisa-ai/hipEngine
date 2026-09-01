@@ -184,6 +184,9 @@ _SYMBOL_PREFILL_DECODE_ORDER_STATE_ROWS_NO_COPY_BF16_FP16STATE = (
 _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_BF16 = (
     "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy"
 )
+_SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_WAVE_REDUCE_BF16 = (
+    "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce"
+)
 _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_F32_BF16 = (
     "hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32"
 )
@@ -3575,6 +3578,7 @@ def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_r
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _symbol: str = _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_BF16,
 ) -> None:
     """Launch segment-aware BF16 decode-order GDN with row-state capture.
 
@@ -3589,7 +3593,7 @@ def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_r
         raise ValueError("segments must be positive")
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_BF16)
+    fn = getattr(library, _symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -3636,6 +3640,24 @@ def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_r
         ctypes.c_void_p(stream),
     )
     _check_launch(runtime, err)
+
+
+def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce(
+    *args,
+    **kwargs,
+) -> None:
+    """Launch the exact physical C5-C8 wave-reduced row-state candidate."""
+
+    total_tokens = int(kwargs.get("total_tokens", args[13] if len(args) > 13 else 0))
+    segments = int(kwargs.get("segments", args[14] if len(args) > 14 else 0))
+    if 5 <= segments <= 8 and total_tokens in (3 * segments, 4 * segments):
+        kwargs["_symbol"] = (
+            _SYMBOL_PREFILL_DECODE_ORDER_SEGMENTS_STATE_ROWS_NO_COPY_WAVE_REDUCE_BF16
+        )
+    qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy(
+        *args,
+        **kwargs,
+    )
 
 
 def qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_f32(
@@ -4769,6 +4791,16 @@ def register_qwen35_linear_attn_gdn_kernels(*, replace: bool = True) -> None:
             "decode_order_bf16_segments_state_rows_no_copy",
         ),
         qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "gdn_prefill_recurrent",
+            "gguf_qwen35",
+            "decode_order_bf16_segments_state_rows_no_copy_wave_reduce",
+        ),
+        qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce,
         replace=replace,
     )
     register(

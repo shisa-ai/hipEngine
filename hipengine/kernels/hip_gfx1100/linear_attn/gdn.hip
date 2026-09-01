@@ -4471,7 +4471,7 @@ __global__ void qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_kernel(
   }
 }
 
-template <typename scalar_t, typename state_t = float>
+template <typename scalar_t, typename state_t = float, bool WAVE_REDUCE = false>
 __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel(
     const float* conv_out,
     const scalar_t* gate,
@@ -4569,16 +4569,36 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_
       q_sum += q_value * q_value;
       k_sum += k_value * k_value;
     }
-    q_partial[threadIdx.x] = q_sum;
-    k_partial[threadIdx.x] = k_sum;
-    __syncthreads();
-
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-      if (threadIdx.x < stride) {
-        q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
-        k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+    if constexpr (WAVE_REDUCE) {
+      // Qwen3.8's K128 load gives lanes 0..15 one ordered eight-value
+      // subtotal and lanes 16..31 zero. The first two local128 tree stages
+      // therefore only add zero. A wave32 shuffle tree reproduces the
+      // remaining 16/8/4/2/1 additions exactly and removes seven workgroup
+      // barriers while the final barrier still publishes Q/K and the sums.
+      if (threadIdx.x < 32) {
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          q_sum += __shfl_down(q_sum, offset, 32);
+          k_sum += __shfl_down(k_sum, offset, 32);
+        }
+        if (threadIdx.x == 0) {
+          q_partial[0] = q_sum;
+          k_partial[0] = k_sum;
+        }
       }
       __syncthreads();
+    } else {
+      q_partial[threadIdx.x] = q_sum;
+      k_partial[threadIdx.x] = k_sum;
+      __syncthreads();
+
+      for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+          q_partial[threadIdx.x] += q_partial[threadIdx.x + stride];
+          k_partial[threadIdx.x] += k_partial[threadIdx.x + stride];
+        }
+        __syncthreads();
+      }
     }
 
     const float q_scale = (1.0f / fmaxf(sqrtf(q_partial[0]), 1.0e-6f)) * rsqrtf(static_cast<float>(head_k_dim));
@@ -4672,11 +4692,31 @@ __global__ void qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_
     }
     __syncthreads();
 
-    for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
-      if (threadIdx.x < stride) {
-        norm_partial[threadIdx.x] += norm_partial[threadIdx.x + stride];
+    if constexpr (WAVE_REDUCE) {
+      // Rebuild the parent's exact stride-64 and stride-32 subtrees from LDS,
+      // then finish its 16/8/4/2/1 stages in wave 0.
+      if (threadIdx.x < 32) {
+        float norm_sum =
+            norm_partial[threadIdx.x] + norm_partial[threadIdx.x + 64];
+        const float norm_hi =
+            norm_partial[threadIdx.x + 32] + norm_partial[threadIdx.x + 96];
+        norm_sum += norm_hi;
+#pragma unroll
+        for (int offset = 16; offset > 0; offset >>= 1) {
+          norm_sum += __shfl_down(norm_sum, offset, 32);
+        }
+        if (threadIdx.x == 0) {
+          norm_partial[0] = norm_sum;
+        }
       }
       __syncthreads();
+    } else {
+      for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (threadIdx.x < stride) {
+          norm_partial[threadIdx.x] += norm_partial[threadIdx.x + stride];
+        }
+        __syncthreads();
+      }
     }
 
     if (value_idx < head_v_dim) {
@@ -8176,6 +8216,68 @@ extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_o
   hipLaunchKernelGGL(
       (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<uint16_t, float>),
       dim3(static_cast<unsigned int>(segments), static_cast<unsigned int>(num_v_heads)),
+      dim3(threads),
+      shared_bytes,
+      stream,
+      conv_out,
+      gate,
+      a,
+      b,
+      dt_bias,
+      a_log,
+      norm_weight,
+      recurrent_state_initial,
+      recurrent_state_rows,
+      out,
+      static_cast<float*>(nullptr),
+      cu_seqlens,
+      state_indices,
+      eps,
+      segments,
+      num_k_heads,
+      num_v_heads,
+      head_k_dim,
+      head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_gdn_prefill_recurrent_rmsnorm_gate_bf16_decode_order_segments_state_rows_no_copy_wave_reduce(
+    const float* conv_out,
+    const uint16_t* gate,
+    const uint16_t* a,
+    const uint16_t* b,
+    const float* dt_bias,
+    const float* a_log,
+    const float* norm_weight,
+    const float* recurrent_state_initial,
+    float* recurrent_state_rows,
+    uint16_t* out,
+    const int32_t* cu_seqlens,
+    const int64_t* state_indices,
+    float eps,
+    int64_t total_tokens,
+    int64_t segments,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!valid_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim) ||
+      segments <= 0 || head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (recurrent_state_initial == nullptr || recurrent_state_rows == nullptr ||
+      cu_seqlens == nullptr || state_indices == nullptr) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 128;
+  const size_t shared_bytes =
+      static_cast<size_t>((2 * head_k_dim) + (3 * threads) + head_v_dim) *
+      sizeof(float);
+  hipLaunchKernelGGL(
+      (qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<uint16_t, float, true>),
+      dim3(static_cast<unsigned int>(segments),
+           static_cast<unsigned int>(num_v_heads)),
       dim3(threads),
       shared_bytes,
       stream,
