@@ -1270,9 +1270,12 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       re-rank to an independent owner unless production-numerics widening is
       explicitly admitted. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-exact-rowtile-blocked.json`.
-- [ ] Confirm selected-position attention already removes dense-mask work.
-      Evaluate fully-masked-slice skipping only if a current trace proves such
-      slices still execute.
+- [x] Confirm selected-position attention already removes dense-mask work.
+      The current 100%-attributed p4096 trace contains explicit selected-position
+      sparse-row attention and a separate dense-row owner; it contains no
+      dense-mask or fully-masked-slice kernel. The conditional skip mechanism
+      is therefore inapplicable and is not ported. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json`.
 - [ ] Publish a fresh p512 device-role ledger after P4; no prefill phase may be
       called closed with an unexplained multi-x owner.
 
