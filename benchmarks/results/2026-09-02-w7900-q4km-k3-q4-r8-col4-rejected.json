@@ -1,0 +1,131 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_q4_r8_col4_leaf_screen",
+  "date": "2026-09-02",
+  "status": "rejected_existing_primitive",
+  "performance_claim": false,
+  "decision": "Reject the already-registered exact Q4 R8 col4 primitive as a low-pressure replacement for the R8 two-wave/16-column primitive. Every actual-weight wall median loses, so it cannot rescue the previously rejected grouped-R8 physical route.",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "device": "AMD Radeon Pro W7900",
+    "cpu": "AMD Ryzen 9 5950X",
+    "host_name": "epyc",
+    "gpu_unique_id": "0xe282895b62c2b295",
+    "target_arch": "gfx1100",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "size_bytes": 17106773984
+  },
+  "source": {
+    "commit": "180df7843e7ff4ac818faed0c90935a61f977687",
+    "tracked_clean": true,
+    "product_or_test_code_changed": false,
+    "raw_result": "/tmp/he-k3-q4-r8-col4-screen.json",
+    "raw_result_sha256": "d998a3afd4f2e2ae658dfdfaeca91328bbb9ff890ebd34cd7acd46af1d61546f",
+    "screen_script": "/tmp/he-k3-q4-r8-col4-screen.py",
+    "screen_script_sha256": "51a7b9da0256ab3da0fc7ce28783f391de677da4e0584c6a68127c976d92a960"
+  },
+  "candidate": {
+    "mechanism": "Use one WG32 four-column output owner at R8 to halve per-wave accumulator pressure relative to the WG64 two-wave/16-column owner.",
+    "control": "registered dense_rowtile16_w2_bf16_bf16_out at R8",
+    "candidate": "registered dense_rowtile_col4_bf16_bf16_out at R8",
+    "tradeoff": "The candidate halves accumulator columns but doubles output workgroups and encoded-weight traversals."
+  },
+  "protocol": {
+    "rows": 8,
+    "warmups": 5,
+    "sample_pairs": 30,
+    "launches_per_sample": 3,
+    "order": "alternating control/candidate and candidate/control",
+    "timing": "HIP event and synchronized operation-complete wall",
+    "exact_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python /tmp/he-k3-q4-r8-col4-screen.py"
+  },
+  "measurements": [
+    {
+      "role": "ffn_gate",
+      "shape_k_n": [5120, 17408],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9409815522265772,
+      "event_pair_wins": 2,
+      "wall_speedup": 0.9511406290772597,
+      "wall_pair_wins": 3
+    },
+    {
+      "role": "recurrent_gate",
+      "shape_k_n": [5120, 6144],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9445710301333805,
+      "event_pair_wins": 6,
+      "wall_speedup": 0.9492750158575339,
+      "wall_pair_wins": 6
+    },
+    {
+      "role": "full_q",
+      "shape_k_n": [5120, 12288],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9121961491883152,
+      "event_pair_wins": 6,
+      "wall_speedup": 0.9232187668972784,
+      "wall_pair_wins": 6
+    },
+    {
+      "role": "full_k",
+      "shape_k_n": [5120, 1024],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9746593796872289,
+      "event_pair_wins": 0,
+      "wall_speedup": 0.9799051678272206,
+      "wall_pair_wins": 0
+    },
+    {
+      "role": "full_output",
+      "shape_k_n": [6144, 5120],
+      "bf16_bit_exact": true,
+      "event_speedup": 1.0016254175169887,
+      "event_pair_wins": 6,
+      "wall_speedup": 0.987448064111773,
+      "wall_pair_wins": 7
+    },
+    {
+      "role": "recurrent_qkv",
+      "shape_k_n": [5120, 10240],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.8925189086474503,
+      "event_pair_wins": 6,
+      "wall_speedup": 0.8976626474198611,
+      "wall_pair_wins": 5
+    },
+    {
+      "role": "ffn_down",
+      "shape_k_n": [17408, 5120],
+      "bf16_bit_exact": true,
+      "event_speedup": 0.9403515400806346,
+      "event_pair_wins": 2,
+      "wall_speedup": 0.941276286015064,
+      "wall_pair_wins": 2
+    }
+  ],
+  "summary": {
+    "all_bf16_bit_exact": true,
+    "cells": 7,
+    "candidate_event_median_wins": 1,
+    "candidate_wall_median_wins": 0,
+    "event_speedup_range": [0.8925189086474503, 1.0016254175169887],
+    "wall_speedup_range": [0.8976626474198611, 0.987448064111773],
+    "minimum_event_pair_wins": 0,
+    "minimum_wall_pair_wins": 0
+  },
+  "validation": {
+    "fixture_oracle": "uv run pytest -q tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_dense_rowtiles_match_pack8_production_bits — 7 passed"
+  },
+  "limitations": [
+    "This is a bounded actual-weight leaf rejection, not a complete workload benchmark.",
+    "No runtime route, current scoreboard, or benchmark changelog row changes.",
+    "The col4 primitive remains registered for independently qualified small-row scopes."
+  ]
+}
