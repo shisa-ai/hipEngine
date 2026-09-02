@@ -6,6 +6,7 @@ import pytest
 
 from scripts.specdec2_rocprof_summary import (
     _interval_union_ns,
+    classify_kernel,
     extract_group_telemetry,
     summarize_phase,
 )
@@ -69,6 +70,28 @@ def _child() -> dict:
             }
         ],
     }
+
+
+@pytest.mark.parametrize(
+    ("name", "family"),
+    [
+        (
+            "gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<5, unsigned short>",
+            "q5_t16",
+        ),
+        (
+            "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_kernel<unsigned short>",
+            "q5_t16",
+        ),
+        ("q8_1_d4s4_f32_quantize_bf16_kernel", "q5_activation_quant"),
+        ("q8_1_ds4_quantize_bf16_kmajor_kernel", "q5_activation_quant"),
+    ],
+)
+def test_q5_mmq_operation_kernels_have_distinct_profile_families(
+    name: str,
+    family: str,
+) -> None:
+    assert classify_kernel(name) == family
 
 
 def test_interval_union_does_not_double_count_overlapping_streams_or_window_gaps() -> None:
