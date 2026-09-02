@@ -1433,6 +1433,10 @@ def test_q5_t16_exact_c7_rows_use_grouped_rows6_prefix_and_strict_tail(
         "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6",
         raising=False,
     )
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8",
+        raising=False,
+    )
     monkeypatch.setattr(
         selected_t16_mod,
         "_launch_dense_q5_t16",
@@ -1467,13 +1471,12 @@ def test_q5_t16_exact_c7_rows_use_grouped_rows6_prefix_and_strict_tail(
             x_ptr, 2, out_ptr, 32, 6_144, 5_120
         )
         assert calls == [
-            (grouped, 30, x_ptr, out_ptr),
             (
-                rowtile,
-                2,
-                x_ptr + 30 * 6_144 * 2,
-                out_ptr + 30 * 5_120 * 2,
-            ),
+                selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16,
+                32,
+                x_ptr,
+                out_ptr,
+            )
         ]
 
 

@@ -1,0 +1,376 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_c8_q5_grouped_r8_retention",
+  "date": "2026-09-02",
+  "status": "retained_default",
+  "performance_claim": true,
+  "decision": "Promote exact grouped-Q5 R8 only at physical C8/K3 R32. Explicit HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=0 retains grouped R30 plus strict R2; C5-C7, non-R32 rows, scope misses, and peer backends are unchanged.",
+  "source": {
+    "candidate_commit": "60fb391d9",
+    "tracked_clean": true,
+    "no_jit_compile_during_measurement": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "candidate": {
+    "arithmetic_class": "T0 exact launch ownership",
+    "registry_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q5_k_t16_v1",
+      "t16_gemv_rowtile_grouped_rows8_bf16_bf16_out"
+    ],
+    "scope": "physical exact C8/K3 R32 Q5 ssm_out only",
+    "mechanism": "Map four independent retained R8 four-wave/4-column rowtile blocks to grid.y in one launch.",
+    "strict_fallback": "grouped R30 plus strict R2",
+    "rollback_env": "HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=0"
+  },
+  "leaf": {
+    "protocol": {
+      "layers": [
+        0,
+        32
+      ],
+      "warmups": 5,
+      "sample_pairs": 40,
+      "launches_per_event_sample": 3,
+      "control": "grouped R30 plus strict R2 tail",
+      "candidate": "one exact grouped R8 grid over R32",
+      "order": "alternating",
+      "timing": "HIP event operation-complete"
+    },
+    "summary": {
+      "all_exact": true,
+      "cells": 2,
+      "all_candidate_medians_positive": true,
+      "minimum_speedup": 1.24052182593072,
+      "maximum_speedup": 1.2455841195945816,
+      "minimum_pair_wins": 40
+    },
+    "cases": {
+      "0": {
+        "tensor": "blk.0.ssm_out.weight",
+        "shape_k_n": [
+          6144,
+          5120
+        ],
+        "bf16_bit_exact": true,
+        "control_median_ms": 0.4403943419456482,
+        "candidate_median_ms": 0.35500733057657874,
+        "candidate_speedup": 1.24052182593072,
+        "candidate_pair_wins": 40,
+        "sample_pairs": 40
+      },
+      "32": {
+        "tensor": "blk.32.ssm_out.weight",
+        "shape_k_n": [
+          6144,
+          5120
+        ],
+        "bf16_bit_exact": true,
+        "control_median_ms": 0.4523160060246786,
+        "candidate_median_ms": 0.3631356557210287,
+        "candidate_speedup": 1.2455841195945816,
+        "candidate_pair_wins": 40,
+        "sample_pairs": 40
+      }
+    }
+  },
+  "marker": {
+    "protocol": "Tracked-clean cached-only C8/K3/D12, one train prompt, three target cycles, rocprofv3 kernel+ROCTx trace.",
+    "control": {
+      "complete_wall_seconds": 1.2693708315491676,
+      "target_wall_ms": 520.241173,
+      "device_union_ms": 442.584045,
+      "families": {
+        "q5_r6": {
+          "launches": 144,
+          "wall_ms": 47.81987299999997
+        },
+        "q5_r2": {
+          "launches": 96,
+          "wall_ms": 5.214312
+        }
+      },
+      "accepted_draft_tokens": 64.0,
+      "generated_draft_tokens": 64.0
+    },
+    "candidate": {
+      "complete_wall_seconds": 1.2612002342939377,
+      "target_wall_ms": 514.29074,
+      "device_union_ms": 437.320292,
+      "families": {
+        "q5_r8": {
+          "launches": 96,
+          "wall_ms": 31.385422000000005
+        },
+        "q5_r6": {
+          "launches": 48,
+          "wall_ms": 14.041779000000002
+        }
+      },
+      "accepted_draft_tokens": 64.0,
+      "generated_draft_tokens": 64.0
+    },
+    "delta": {
+      "complete_wall_pct": -0.6436729954837794,
+      "target_wall_pct": -1.14378355824597,
+      "device_union_pct": -1.189322809863158,
+      "q5_launches": [
+        240,
+        144
+      ],
+      "q5_wall_ms": [
+        53.03418499999997,
+        45.42720100000001
+      ],
+      "q5_wall_pct": -14.343548411274664
+    }
+  },
+  "result": {
+    "measurements": {
+      "8": {
+        "candidate_tok_s": 86.99101903855887,
+        "control_tok_s": 85.61100307124798,
+        "delta_pct": 1.6119609837562665,
+        "candidate_wall_seconds": 44.14248783886433,
+        "control_wall_seconds": 44.85404752008617,
+        "generated_tokens_per_arm": 3840
+      }
+    },
+    "pairs": [
+      {
+        "order": "candidate->control",
+        "wins": 10,
+        "cells": 10,
+        "median_delta_pct": 2.1760470497278583,
+        "minimum_delta_pct": 1.8540385821926186,
+        "maximum_delta_pct": 2.4009222040286327
+      },
+      {
+        "order": "control->candidate",
+        "wins": 10,
+        "cells": 10,
+        "median_delta_pct": 1.0327380862927171,
+        "minimum_delta_pct": 0.5164634303590931,
+        "maximum_delta_pct": 1.8027080909477577
+      }
+    ],
+    "categories": {
+      "code|8": [
+        {
+          "candidate_tok_s": 88.05826453324082,
+          "control_tok_s": 86.15504960802848,
+          "delta_pct": 2.2090578948897432
+        },
+        {
+          "candidate_tok_s": 86.91666395683596,
+          "control_tok_s": 85.84679815292046,
+          "delta_pct": 1.2462500954429911
+        }
+      ],
+      "heldout|8": [
+        {
+          "candidate_tok_s": 87.29173133452106,
+          "control_tok_s": 85.44569405418846,
+          "delta_pct": 2.160480174883772
+        },
+        {
+          "candidate_tok_s": 86.09461572786304,
+          "control_tok_s": 85.08117269573258,
+          "delta_pct": 1.1911484057169242
+        }
+      ],
+      "general_en|8": [
+        {
+          "candidate_tok_s": 94.37359137490182,
+          "control_tok_s": 92.38181067881457,
+          "delta_pct": 2.1560312375908053
+        },
+        {
+          "candidate_tok_s": 92.38707841089747,
+          "control_tok_s": 91.91238455669115,
+          "delta_pct": 0.5164634303590931
+        }
+      ],
+      "general_ja|8": [
+        {
+          "candidate_tok_s": 84.0283598509777,
+          "control_tok_s": 82.13693051630707,
+          "delta_pct": 2.302775770632337
+        },
+        {
+          "candidate_tok_s": 82.51845615635617,
+          "control_tok_s": 81.89481204380208,
+          "delta_pct": 0.7615184612921766
+        }
+      ],
+      "mixed_ja_en|8": [
+        {
+          "candidate_tok_s": 85.47848515458996,
+          "control_tok_s": 83.76876221664004,
+          "delta_pct": 2.04100298572909
+        },
+        {
+          "candidate_tok_s": 84.01635105126707,
+          "control_tok_s": 83.38295550470862,
+          "delta_pct": 0.7596223265589064
+        }
+      ]
+    },
+    "rows": 160,
+    "ids_equal": true,
+    "acceptance_equal": true,
+    "all_packets_passed": true
+  },
+  "runs": {
+    "r1-candidate": {
+      "sha256": "2af09fed91483b4cb0a685d59587171203ec7144823a0603da3dc7f843846ebb",
+      "source": {
+        "commit": "60fb391d90dbc1096e95ca7d5b7bca870abb756f",
+        "dirty": false
+      },
+      "passed": true,
+      "summary": {
+        "ar": {
+          "wall_seconds": 21.838075960054994,
+          "generated_tokens": 1920,
+          "tok_s": 87.91983339154778
+        },
+        "mtp": {
+          "wall_seconds": 21.904797417111695,
+          "generated_tokens": 1920,
+          "tok_s": 87.65203181016982
+        },
+        "mtp_vs_ar_ratio": 0.9969540253768985,
+        "mtp_vs_ar_percent": -0.30459746231015217,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "final_active_allocations": 0
+    },
+    "r1-control": {
+      "sha256": "2e538a7b935eee3810b05f1732f9b7002638c6c2e666fe48479a2dcb0a91b57d",
+      "source": {
+        "commit": "60fb391d90dbc1096e95ca7d5b7bca870abb756f",
+        "dirty": false
+      },
+      "passed": true,
+      "summary": {
+        "ar": {
+          "wall_seconds": 22.091546334326267,
+          "generated_tokens": 1920,
+          "tok_s": 86.91107317447793
+        },
+        "mtp": {
+          "wall_seconds": 22.381700940430164,
+          "generated_tokens": 1920,
+          "tok_s": 85.7843648751344
+        },
+        "mtp_vs_ar_ratio": 0.9870360788540533,
+        "mtp_vs_ar_percent": -1.2963921145946689,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "final_active_allocations": 0
+    },
+    "r2-control": {
+      "sha256": "6a750f80c4b3b540d796856b7522ff81f64c8e5e013ebc68e942a5dbbb1db522",
+      "source": {
+        "commit": "60fb391d90dbc1096e95ca7d5b7bca870abb756f",
+        "dirty": false
+      },
+      "passed": true,
+      "summary": {
+        "ar": {
+          "wall_seconds": 22.218035905621946,
+          "generated_tokens": 1920,
+          "tok_s": 86.41627946573676
+        },
+        "mtp": {
+          "wall_seconds": 22.472346579656005,
+          "generated_tokens": 1920,
+          "tok_s": 85.43834054865268
+        },
+        "mtp_vs_ar_ratio": 0.9886833948055836,
+        "mtp_vs_ar_percent": -1.1316605194416351,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "final_active_allocations": 0
+    },
+    "r2-candidate": {
+      "sha256": "e0565ff022ac87c808ea18dea7b7a0012e096afd083380e1df8fc899734fe5e9",
+      "source": {
+        "commit": "60fb391d90dbc1096e95ca7d5b7bca870abb756f",
+        "dirty": false
+      },
+      "passed": true,
+      "summary": {
+        "ar": {
+          "wall_seconds": 22.226733679883182,
+          "generated_tokens": 1920,
+          "tok_s": 86.38246301289605
+        },
+        "mtp": {
+          "wall_seconds": 22.23769042175263,
+          "generated_tokens": 1920,
+          "tok_s": 86.33990147294612
+        },
+        "mtp_vs_ar_ratio": 0.9995072895763163,
+        "mtp_vs_ar_percent": -0.049271042368370654,
+        "exact_cells": 10,
+        "engaged_cells": 10,
+        "budget_conformed_cells": 10,
+        "cells": 10,
+        "mtp_expected": true,
+        "route_expectation_passed": true
+      },
+      "final_active_allocations": 0
+    }
+  },
+  "scoreboard": {
+    "old_tok_s": 85.806,
+    "new_tok_s": 86.99101903855887,
+    "delta_pct": 1.381044494043393,
+    "published_ar_tok_s": 83.939,
+    "mtp_over_published_ar": 1.0363599642425914,
+    "laurent_tok_s": 101.072,
+    "remaining_deficit_pct": -13.931633846605518
+  },
+  "checks": {
+    "leaf_bf16_bit_exact": true,
+    "all_packets_passed": true,
+    "ids_equal": true,
+    "acceptance_equal": true,
+    "rows_compared": 160,
+    "prompt_order_wins": 20,
+    "prompt_order_cells": 20,
+    "all_categories_and_heldout_positive": true,
+    "processes_drained": true
+  },
+  "command": "for spec in 'r1-candidate 1' 'r1-control 0' 'r2-control 0' 'r2-candidate 1'; do set -- $spec; HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=$2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 8 --resident-capacity 8 --expected-mtp-widths 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output /tmp/he-q5-r8-c8-full-gate/$1.json; done"
+}

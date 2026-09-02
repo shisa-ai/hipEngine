@@ -63,13 +63,12 @@ should be removed or collapsed.
   same-build rollback. Remove the environment override after the next stable
   milestone audit; keep the exact padded composition available.
 
-## 2026-09-02 gfx1100 grouped Q5 R8 at exact C8 — open
+## 2026-09-02 gfx1100 grouped Q5 R8 C8 rollback — open
 
-- `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=1` enables the default-off exact
-  physical-R32 sibling; explicit zero retains grouped R30 plus strict R2.
-- Remove the candidate policy/kernel/test if marker ownership or any complete
-  C8 prompt/category/heldout gate regresses. If retained, promote only exact
-  C8/R32 and remove the environment override after a stable milestone.
+- Exact grouped-R8 now owns physical C8/R32 by default; explicit
+  `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=0` retains grouped R30 plus strict R2.
+- Remove the environment override and its selector test after the next stable
+  milestone; keep the grouped-R8 policy/kernel and registered strict fallback.
 
 ## 2026-09-02 gfx1100 periodic-strict fused Q4 R28 rollback — open
 
