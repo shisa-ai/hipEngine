@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b2_f16_cast_correction",
+  "date": "2026-09-02",
+  "status": "corrected_green_pending_full_retention_packet",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "765409ad1",
+    "candidate_worktree": true,
+    "changed_kernel": "hipengine/kernels/hip_gfx1100/fused/gguf_ops.hip"
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Strix Halo Radeon Graphics / 1002:1586",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "standard_q4_k_m"
+  },
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (all 10 prompts; C8 first eight plus C2 mixed-language pair)",
+  "execution": "BF16 registered-owner control versus env-forced input-F16 prefill candidate in one resident process; identical prompt-tail contexts; strict and candidate repeated independently; cache-only JIT",
+  "root_cause": {
+    "broken_expression": "static_cast<uint16_t>(static_cast<half_t>(bf16_bits_to_float(x[idx])))",
+    "effect": "numeric half-to-integer conversion stored integer values instead of IEEE FP16 bit patterns",
+    "repair": "type the destination as half_t* and assign the converted half directly",
+    "kernel_abi": "raw device pointer unchanged at the Python/registry boundary"
+  },
+  "red": {
+    "test": "tests/test_gguf_k_t16_dense_f16_activation_prefill.py::test_device_bf16_to_f16_cast_preserves_ieee_half_bits",
+    "observed_bits": [0, 0, 0, 0, 0, 0, 1, 17, 255, 65535],
+    "expected_bits_before_final_nonoverflow_fixture_adjustment": [54856, 49920, 48384, 32768, 0, 11880, 15872, 19568, 23544, 31744],
+    "result": "failed before repair; passed after repair with the final 60000.0 nonoverflow endpoint fixture"
+  },
+  "pre_correction_full_suite": {
+    "rows": 10,
+    "mean_kl": 14.017762322654955,
+    "p95_kl": 16.477057213694042,
+    "p99_kl": 16.478990420791643,
+    "max_kl": 16.479473722566045,
+    "top1_agreement": 0.0,
+    "strict_repeat_bit_exact": true,
+    "candidate_repeat_bit_exact": true,
+    "max_abs_logit_delta": 29.433462142944336,
+    "quant_ablation": {
+      "q4_only": {"mean_kl": 14.01776602967882, "max_kl": 16.4794796413593, "top1_agreement": 0.0},
+      "q5_only": {"mean_kl": 9.660823685669348, "max_kl": 12.693900407729892, "top1_agreement": 0.0}
+    }
+  },
+  "post_correction_full_suite": {
+    "rows": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "mean_kl": 0.0,
+    "p95_kl": 0.0,
+    "p99_kl": 0.0,
+    "max_kl": 0.0,
+    "top1_agreement": 1.0,
+    "strict_repeat_bit_exact": true,
+    "candidate_repeat_bit_exact": true,
+    "max_abs_logit_delta": 0.0,
+    "passed": true
+  },
+  "limits": {
+    "mean_kl": 0.001,
+    "p95_kl": 0.005,
+    "p99_kl": 0.02,
+    "max_kl": 0.05,
+    "top1_agreement": 0.99,
+    "category_top1_agreement": 0.97
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-b2-run/pf5_gate.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --compiler-version-file /tmp/q38-z0-run-20260901-201730/hipcc-version.txt --output <result.json>",
+  "raw_sources": [
+    {"role": "gate_driver", "path": "/tmp/q38-b2-run/pf5_gate.py", "sha256": "9cb01ac54d833e2f1c832c8db8bf5d761acf463d115b46f4b197c23d81850370", "bytes": 7217},
+    {"role": "pre_correction", "path": "/tmp/q38-b2-run/pf5-rejection.json", "sha256": "c26b36c936c3f522b2ea67ac67090a2c353e6d8d262d9946e8e3b88e0f228bd5", "bytes": 4896},
+    {"role": "pre_correction_quant_ablation", "path": "/tmp/q38-b2-run/pf5-ablation.json", "sha256": "d36d2800d22c7de2892a0ad11a439928231275e1984c7f21a8373d6564adaaef", "bytes": 6927},
+    {"role": "post_correction", "path": "/tmp/q38-b2-run/pf5-corrected.json", "sha256": "2119600f05d2eccc55dab7ae558040e1c44fdd4b25d3ccd6ee2352a4de0b229b", "bytes": 4501}
+  ],
+  "decision": {
+    "prior_screen_retention_eligible": false,
+    "reason": "the prior wall arms used the broken cast and cannot support a retained result despite their timing",
+    "corrected_candidate_retained": false,
+    "next": "run the corrected 90-row prompt/decode transition gate, same-width isolation, fresh same-suite wall, and corrected expected-kernel trace"
+  }
+}

@@ -1518,18 +1518,17 @@ hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_wei
 // the host-side staging used by the sibling numerics contract.
 __global__ void gguf_cast_bf16_to_f16_kernel(
     const uint16_t* __restrict__ x,
-    uint16_t* __restrict__ out,
+    half_t* __restrict__ out,
     int64_t n) {
   const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
   for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < n; idx += stride) {
-    out[idx] = static_cast<uint16_t>(
-        static_cast<half_t>(bf16_bits_to_float(x[idx])));
+    out[idx] = static_cast<half_t>(bf16_bits_to_float(x[idx]));
   }
 }
 
 extern "C" int hipengine_gguf_cast_bf16_to_f16(
     const uint16_t* x,
-    uint16_t* out,
+    half_t* out,
     int64_t n,
     int64_t threads,
     hipStream_t stream) {

@@ -295,6 +295,57 @@ def test_f16_dense_sibling_numerics_vs_bf16_owner(rows: int) -> None:
     assert argmax_agreements, "no numerics cases ran"
 
 
+@pytest.mark.skipif(not _hip_available(), reason="ROCm/HIP runtime unavailable")
+def test_device_bf16_to_f16_cast_preserves_ieee_half_bits() -> None:
+    """The staging kernel must store FP16 bits, not integer-convert a half."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+        build_gguf_ops,
+        gguf_cast_bf16_to_f16,
+    )
+
+    values = np.asarray(
+        [-100.5, -3.5, -1.25, -0.0, 0.0, 0.1, 1.5, 17.75, 255.0, 60_000.0],
+        dtype=np.float32,
+    )
+    bf16 = _float_to_bf16_bits(values)
+    expected = _bf16_bits_to_float(bf16).astype(np.float16).view(np.uint16)
+    observed = np.zeros_like(expected)
+    runtime = get_hip_runtime()
+    build_gguf_ops(load=True)
+    src = malloc(bf16.nbytes, runtime=runtime)
+    dst = malloc(observed.nbytes, runtime=runtime)
+    try:
+        copy_host_to_device(src, host_array_ptr(bf16), runtime=runtime)
+        gguf_cast_bf16_to_f16(
+            src.ptr,
+            dst.ptr,
+            bf16.size,
+            runtime=runtime,
+        )
+        copy_device_to_host(
+            host_array_ptr(observed),
+            dst,
+            observed.nbytes,
+            runtime=runtime,
+        )
+    finally:
+        free(dst, runtime=runtime)
+        free(src, runtime=runtime)
+    assert np.array_equal(observed, expected), (
+        f"FP16 bit mismatch: observed={observed.tolist()} "
+        f"expected={expected.tolist()}"
+    )
+
+
 def test_prefill_f16_staging_defaults_off() -> None:
     from hipengine.runtime.gguf_linear import (
         PREFILL_F16_STAGING_ENV,
