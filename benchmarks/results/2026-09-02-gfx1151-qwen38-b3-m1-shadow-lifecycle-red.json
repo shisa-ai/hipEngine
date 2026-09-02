@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_shadow_lifecycle_red",
+  "date": "2026-09-02",
+  "status": "red_contract_complete",
+  "performance_claim": false,
+  "source_commit": "7936f18f2",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_used": false
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "model_sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "execution_profile": "production candidate; current C1 is registered strict fallback",
+    "policy": "input-independent physical C2 padding for every admitted logical C1; no prompt/token/candidate branch"
+  },
+  "test": {
+    "path": "tests/test_qwen38_m1_shadow_lifecycle.py",
+    "command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py",
+    "expected_result": "12 failed",
+    "observed_result": "12 failed",
+    "failure": "C1ShadowOwnershipError and C1ShadowSessionLifecycle are absent"
+  },
+  "pinned_surfaces": {
+    "physical": [
+      "two distinct target sessions",
+      "two distinct provider checkpoints",
+      "two distinct hidden rows",
+      "two distinct KV owners",
+      "two distinct recurrent-state owners",
+      "both physical lanes compute"
+    ],
+    "public_ownership": [
+      "only the real request may publish",
+      "only the real request owns the public commit"
+    ],
+    "lifecycle": [
+      "cancellation restores both provider checkpoints",
+      "cancellation reclaims both lanes exactly once",
+      "compaction changes slots without changing request/resource ownership",
+      "teardown reclaims every resource once without checkpoint restore",
+      "missing/aliased ownership fails closed"
+    ]
+  },
+  "decision": "RED is ready. Implement the pure request-owned lifecycle contract before changing adapter routing; current C1 remains the fallback."
+}

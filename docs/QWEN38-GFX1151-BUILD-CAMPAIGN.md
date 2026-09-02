@@ -370,12 +370,22 @@ per §1.4; commit each validated unit atomically with its worklog entry.
 
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 
-- [ ] RED-first lifecycle contract before adapter changes: request-owned
+- [x] RED-first lifecycle contract before adapter changes: request-owned
   shadow-row ABI covering second target session, provider checkpoint, hidden
   row, KV/recurrent state, commit owner, cancellation, compaction, and
   teardown — with failing tests pinning each ownership surface. The shadow is
   input-independent physical padding for any admitted C1 request; no
   prompt/token/candidate branch is allowed.
+
+  RED committed 2026-09-02:
+  `tests/test_qwen38_m1_shadow_lifecycle.py` (12 expected failures) requires
+  distinct real/shadow target sessions, provider checkpoints, hidden rows,
+  KV/recurrent owners, physical compute for both lanes, real-only publication
+  and public commit, two-checkpoint cancellation restore, exact-once reclaim,
+  compaction-stable request ownership, teardown, and a constructor with no
+  prompt/token/candidate input. Both expected lifecycle symbols are absent, so
+  all contracts fail before implementation. Compact evidence:
+  [`...b3-m1-shadow-lifecycle-red.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-lifecycle-red.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
