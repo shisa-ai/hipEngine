@@ -1,0 +1,102 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p12_validation_packet",
+  "status": "partial_current_short_packet_long_mtp_and_fivepair_blocked",
+  "performance_claim": false,
+  "host": {
+    "identity": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_clock_policy": "auto"
+  },
+  "source": {
+    "strict_run_head": "ab8d5e5055d0d08f3afd589b7fb922729b7f6045",
+    "production_run_head": "c1fb1b8b5cefc90714798b7c02e3479117d622c8",
+    "runtime_difference_between_heads": false,
+    "difference_note": "Only documentation/worklog files changed between the two run heads.",
+    "harness_commit_after_runs": "398c4c914",
+    "run_worktree_dirty_only_for_harness_profile_option": true
+  },
+  "focused_suite": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 uv run pytest -q tests/test*qwen4*.py",
+    "passed": 268,
+    "failed": 0,
+    "warnings": 3,
+    "warning_classes": ["StarletteDeprecationWarning", "expected CPU-reference exp overflow RuntimeWarning"]
+  },
+  "canonical": {
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "protocol": "12 cases; p512/p1024/p4096; tg128; one warmup; three measured repetitions; chunk512; BF16 KV",
+    "strict": {
+      "manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b",
+      "samples": 36,
+      "all_cases_deterministic": true,
+      "shapes": {
+        "512": {"prefill_tok_s": 61.049240569740114, "decode_tok_s": 13.517109374754838, "max_case_cv": 0.04420643223712159},
+        "1024": {"prefill_tok_s": 60.32205837426109, "decode_tok_s": 13.427150492051068, "max_case_cv": 0.040244955550271855},
+        "4096": {"prefill_tok_s": 52.56094731675672, "decode_tok_s": 9.47169652093471, "max_case_cv": 0.026167381548507267}
+      },
+      "raw_sha256": "91fe9bff94ff5932e52bfaff2b1bcf4014e0390de5923fd94c967f811b17d11b",
+      "post_close_bytes": 0
+    },
+    "production": {
+      "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+      "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b",
+      "fell_back_to_strict": false,
+      "samples": 36,
+      "all_cases_deterministic": true,
+      "shapes": {
+        "512": {"prefill_tok_s": 83.3519851692184, "decode_tok_s": 14.180428822992493, "max_case_cv": 0.004963980267911699},
+        "1024": {"prefill_tok_s": 82.93265847439883, "decode_tok_s": 14.164287956422347, "max_case_cv": 0.007095801323385303},
+        "4096": {"prefill_tok_s": 69.20031792148764, "decode_tok_s": 12.159654770164765, "max_case_cv": 0.0024709500462946985}
+      },
+      "raw_sha256": "f83bf5b7d8f8c76cc639fb1e3bc7d6710da4b2e3c0f4061acd2adb538b10c763",
+      "post_close_bytes": 0
+    }
+  },
+  "reused_binding_gates": {
+    "reason": "The current manifest 37d595... was already gated on 2026-09-02; subsequent default-path runtime changes are T0 verifier primitives not selected by generation.",
+    "artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json",
+    "rows": 450,
+    "mean_kl": 0.0003162396841455167,
+    "p95_kl": 0.0017986799845486944,
+    "top1_rate": 0.9933333333333333,
+    "state_repeat_passed": true,
+    "semantic_task_review_passed": true,
+    "lifecycle_passed": true,
+    "c2_artifact": "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json",
+    "c2_serial_ids_exact": true
+  },
+  "unlocked_long_context": {
+    "artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json",
+    "depths": [4096, 16384, 65536],
+    "correctness_passed": true,
+    "lifecycle_passed": true
+  },
+  "mtp": {
+    "short_exact_rows": 10,
+    "short_total_rows": 10,
+    "short_mtp_over_ar": 0.7407306167361402,
+    "default": "target_ar",
+    "required_4096_gate": false,
+    "blocker": "public provider and draft capacity are 1024 tokens"
+  },
+  "amdahl_declaration": {
+    "W": "current strict and production shape walls are recorded above",
+    "C": "final eligible external comparator pair is not yet available",
+    "O": null,
+    "s": null,
+    "arithmetic_class": "validation-only; no model arithmetic change",
+    "scope": "current short strict/production and unlocked long-context gates",
+    "mechanism": "current-tree focused suite plus explicit-profile canonical packet and reuse audit",
+    "strict_fallback": "named strict profile / target_ar",
+    "overlap_exclusions": ["three-repeat packet is not five-pair closure", "blocked 4K MTP is not marked passed", "historical quality gates reused only for unchanged selected manifest/default arithmetic"]
+  },
+  "decision": {
+    "short_current_packet_passed": true,
+    "final_packet_complete": false,
+    "reason": "Focused tests, strict/production deterministic canonical rows, lifecycle, current-manifest quality/state/task, c2, and unlocked long-context gates pass. Final closure still requires eligible five-pair comparator windows and 4K MTP, which is capacity-blocked.",
+    "next": "Use the current production packet in final comparator pairs; keep 4K MTP and overall section-6 closure blocked."
+  }
+}
