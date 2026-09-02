@@ -12722,8 +12722,14 @@ def _gguf_moe_graph_enabled() -> bool:
     return _env_flag(_GGUF_MOE_GRAPH_ENV, False)
 
 
-def _gguf_c8_q5_raw_mmq_enabled(backend: str) -> bool:
-    return _env_flag(_GGUF_C8_Q5_RAW_MMQ_ENV, True) and bool(
+def _gguf_c8_q5_raw_mmq_enabled(
+    backend: str,
+    *,
+    request_count: int,
+) -> bool:
+    return int(request_count) == 8 and _env_flag(
+        _GGUF_C8_Q5_RAW_MMQ_ENV, True
+    ) and bool(
         backend_package_capability(
             backend,
             "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
@@ -17663,12 +17669,15 @@ class Qwen35GGUFResidentSession:
             library=getattr(self, "_q8_mmq_prefill_library", None),
         )
 
-    def _q5_raw_mmq_target_context(self, scratch):
-        """Expose the staged C8 recurrent-Q5 MMQ workspace to linear dispatch."""
+    def _q5_raw_mmq_target_context(self, scratch, *, request_count: int):
+        """Expose the C8 recurrent-Q5 MMQ workspace to linear dispatch."""
 
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
-        enabled = _gguf_c8_q5_raw_mmq_enabled(self.runner.backend)
+        enabled = _gguf_c8_q5_raw_mmq_enabled(
+            self.runner.backend,
+            request_count=request_count,
+        )
         if enabled and self._q5_raw_mmq_target_library is None:
             self._q5_raw_mmq_target_library = build_gguf_k_mmq_prefill(
                 load=True,
@@ -18768,7 +18777,10 @@ class Qwen35GGUFResidentSession:
             target_verifier_production_q4_rowtile_session(
                 self.target_verifier_production_q4_rowtile
             ),
-            self._q5_raw_mmq_target_context(packed_scratch),
+            self._q5_raw_mmq_target_context(
+                packed_scratch,
+                request_count=len(job_list),
+            ),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
