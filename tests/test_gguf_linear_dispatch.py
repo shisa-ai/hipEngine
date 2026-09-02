@@ -3308,7 +3308,7 @@ _Q5_SOURCE_MMQ_BF16 = KernelKey(
     "hip_gfx1100",
     "linear",
     "gguf_q5_k",
-    "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out",
+    "mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out",
 )
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
@@ -3581,11 +3581,15 @@ def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
     )
     monkeypatch.setattr(
         gguf_linear_module,
-        "gguf_q8_1_ds4_quantize_bf16_kmajor",
-        lambda *args, **kwargs: quantize_calls.append(("ds4", args, kwargs)),
+        "gguf_q8_1_d4s4_f32_quantize_bf16_kmajor",
+        lambda *args, **kwargs: quantize_calls.append(
+            ("d4s4_kmajor", args, kwargs)
+        ),
     )
     library = object()
-    expected_key = _Q5_SOURCE_MMQ_BF16 if source_layout else _Q5_RAW_MMQ_BF16
+    quant_library = object()
+    source_active = source_layout and rows == 32
+    expected_key = _Q5_SOURCE_MMQ_BF16 if source_active else _Q5_RAW_MMQ_BF16
     with (
         target_verifier_rowtile_session(True),
         target_verifier_production_q4_rowtile_session(True),
@@ -3593,6 +3597,7 @@ def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
             workspace_ptr=10_000_000,
             workspace_nbytes=245_760,
             library=library,  # type: ignore[arg-type]
+            quant_library=quant_library,  # type: ignore[arg-type]
             source_layout=source_layout,
         ),
     ):
@@ -3607,12 +3612,17 @@ def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
     common_kwargs = {
         "stream": 7,
         "runtime": "runtime-sentinel",
-        "library": library,
+        "library": library if source_active else quant_library,
     }
     assert key == expected_key
-    expected_quantizer = "ds4" if source_layout else "d4s4"
+    expected_quantizer = "d4s4_kmajor" if source_active else "d4s4"
+    expected_quant_kwargs = {**common_kwargs, "library": quant_library}
     assert quantize_calls == [
-        (expected_quantizer, (100, 10_000_000, rows, 6_144), common_kwargs)
+        (
+            expected_quantizer,
+            (100, 10_000_000, rows, 6_144),
+            expected_quant_kwargs,
+        )
     ]
     assert args == (10_000_000, 10, 200, rows, 6_144, 5_120)
     assert kwargs == common_kwargs
@@ -3620,7 +3630,7 @@ def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
 
 @pytest.mark.parametrize(
     ("source_layout", "workspace_nbytes"),
-    [(False, 245_759), (True, 221_183)],
+    [(False, 245_759), (True, 245_759)],
 )
 def test_q5_raw_mmq_target_session_rejects_undersized_workspace(
     source_layout: bool,

@@ -1682,6 +1682,7 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         # WPF-H1 copies the gfx1100/RDNA3 source geometry and remains excluded
         # until gfx1151 receives an independent resource/correctness gate.
         ("activation_quant", "q8_1_ds4", "bf16_kmajor"),
+        ("activation_quant", "q8_1_d4s4_f32", "bf16_kmajor"),
         (
             "linear",
             "gguf_q5_k",
@@ -1695,12 +1696,12 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
         (
             "linear",
             "gguf_q5_k",
-            "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out",
+            "mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out",
         ),
         (
             "linear",
             "gguf_q5_k",
-            "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out",
+            "mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out",
         ),
         # WPF-H6L's exact K3072/N1024/E256 pair16 rowbatch16 leaf is
         # W7900-only pending independent gfx1151 resource/performance gates.

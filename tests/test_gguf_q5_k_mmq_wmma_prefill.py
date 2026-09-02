@@ -1,8 +1,8 @@
-"""Source-faithful llama.cpp-shaped Q5_K MMQ prefill contracts.
+"""Source-shaped Q5_K MMQ prefill contracts.
 
-The candidate keeps llama.cpp's K-major 144-byte DS4 activation records and
-I128/J128/K256 integer-WMMA ownership while accepting hipEngine's BF16 graph
-boundary.  The retained raw-Q5 exact path remains the correctness oracle.
+The broad tile keeps llama.cpp's K-major DS4 records.  The C8 tile instead
+uses K-major D4S4-FP32 records to preserve the retained raw-Q5 metadata while
+changing only MMQ dataflow.  The retained raw-Q5 path remains the oracle.
 """
 
 from __future__ import annotations
@@ -29,6 +29,7 @@ from tests.test_gguf_k_gemv import make_q5_k_weight
 
 _Q8_BLOCK = 128
 _DS4_BYTES = 144
+_D4S4_F32_BYTES = 160
 _SOURCE = (
     Path(__file__).parents[1]
     / "hipengine"
@@ -106,6 +107,41 @@ def _pack_ds4_kmajor_cpu(x_bf16: np.ndarray) -> np.ndarray:
     return packed
 
 
+def _pack_d4s4_f32_kmajor_cpu(x_bf16: np.ndarray) -> np.ndarray:
+    """Pack precision-preserving records as [K128 block, row, 160 bytes]."""
+
+    x = _bf16_to_f32(np.ascontiguousarray(x_bf16, dtype=np.uint16))
+    rows, hidden = x.shape
+    if hidden % _Q8_BLOCK:
+        raise ValueError("hidden must be a multiple of 128")
+    packed = np.zeros(
+        (hidden // _Q8_BLOCK, rows, _D4S4_F32_BYTES), dtype=np.uint8
+    )
+    for block in range(hidden // _Q8_BLOCK):
+        for row in range(rows):
+            values = x[row, block * 128 : (block + 1) * 128].reshape(4, 32)
+            scales = np.zeros((4,), dtype=np.float32)
+            sums = np.zeros((4,), dtype=np.float32)
+            quants = np.zeros((4, 32), dtype=np.int8)
+            for group, group_values in enumerate(values):
+                amax = np.max(np.abs(group_values)).astype(np.float32)
+                scale = (
+                    np.float32(0.0)
+                    if amax == 0
+                    else np.float32(amax / np.float32(127.0))
+                )
+                scales[group] = scale
+                sums[group] = _wave32_sum(group_values)
+                if scale != 0.0:
+                    quants[group] = np.clip(
+                        _round_away(group_values / scale), -128, 127
+                    ).astype(np.int8)
+            packed[block, row, :16] = scales.view(np.uint8)
+            packed[block, row, 16:32] = sums.view(np.uint8)
+            packed[block, row, 32:] = quants.reshape(128).view(np.uint8)
+    return packed
+
+
 def _activation(rows: int, hidden: int) -> np.ndarray:
     values = np.arange(rows * hidden, dtype=np.float32).reshape(rows, hidden)
     values = ((values * np.float32(1.6180339)) % np.float32(23.0) - 11.0) / 32.0
@@ -122,6 +158,7 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
 
     assert mmq.q8_1_ds4_kmajor_nbytes(512, 9216) == 5_308_416
     assert mmq.q8_1_ds4_kmajor_nbytes(129, 256) == 2 * 129 * 144
+    assert mmq.q8_1_d4s4_f32_kmajor_nbytes(32, 256) == 2 * 32 * 160
     with pytest.raises(ValueError, match="multiple of 128"):
         mmq.q8_1_ds4_kmajor_nbytes(17, 192)
 
@@ -137,34 +174,55 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
     assert not is_registered(
         KernelKey("hip_gfx1151", producer_key.layer, producer_key.quant, producer_key.variant)
     )
+    c8_producer_key = KernelKey(
+        "hip_gfx1100", "activation_quant", "q8_1_d4s4_f32", "bf16_kmajor"
+    )
+    assert resolve(
+        backend=c8_producer_key.backend,
+        layer=c8_producer_key.layer,
+        quant=c8_producer_key.quant,
+        variant=c8_producer_key.variant,
+    ) is mmq.gguf_q8_1_d4s4_f32_quantize_bf16_kmajor
+    assert not is_registered(
+        KernelKey(
+            "hip_gfx1151",
+            c8_producer_key.layer,
+            c8_producer_key.quant,
+            c8_producer_key.variant,
+        )
+    )
 
-    for tile, output_dtype, fn in (
+    for tile, producer_layout, output_dtype, fn in (
         (
             "i128_j128",
+            "ds4",
             "bf16",
             mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out,
         ),
         (
             "i128_j128",
+            "ds4",
             "f32",
             mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out,
         ),
         (
             "i64_j16_j32",
+            "d4s4_f32_kmajor",
             "bf16",
-            mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out,
+            mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out,
         ),
         (
             "i64_j16_j32",
+            "d4s4_f32_kmajor",
             "f32",
-            mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out,
+            mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out,
         ),
     ):
         key = KernelKey(
             "hip_gfx1100",
             "linear",
             "gguf_q5_k",
-            f"mmq_{tile}_k256_q8_1_ds4_bf16_{output_dtype}_out",
+            f"mmq_{tile}_k256_q8_1_{producer_layout}_bf16_{output_dtype}_out",
         )
         assert resolve(
             backend=key.backend,
@@ -191,6 +249,8 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
 def test_q5_source_mmq_wrappers_reject_unsupported_k_before_loading_gpu() -> None:
     with pytest.raises(ValueError, match="multiple of 128"):
         mmq.gguf_q8_1_ds4_quantize_bf16_kmajor(1, 2, 17, 192)
+    with pytest.raises(ValueError, match="multiple of 128"):
+        mmq.gguf_q8_1_d4s4_f32_quantize_bf16_kmajor(1, 2, 17, 192)
     for fn in (
         mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out,
         mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out,
@@ -232,6 +292,39 @@ def test_q5_source_ds4_producer_matches_kmajor_cpu_bytes(rows: int) -> None:
     np.testing.assert_array_equal(actual, expected)
 
 
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [24, 32])
+def test_c8_q5_d4s4_f32_producer_matches_kmajor_cpu_bytes(rows: int) -> None:
+    hidden = 256
+    x_bf16 = _bf16_bits(_activation(rows, hidden))
+    expected = _pack_d4s4_f32_kmajor_cpu(x_bf16)
+    actual = np.empty_like(expected)
+    library = mmq.build_gguf_k_mmq_prefill(load=True)
+    from hipengine.core.hip import get_hip_runtime
+
+    runtime = get_hip_runtime()
+    buffers = []
+    try:
+        x_dev = malloc(x_bf16.nbytes, runtime=runtime)
+        packed_dev = malloc(actual.nbytes, runtime=runtime)
+        buffers.extend((x_dev, packed_dev))
+        copy_host_to_device(x_dev, host_array_ptr(x_bf16), runtime=runtime)
+        mmq.gguf_q8_1_d4s4_f32_quantize_bf16_kmajor(
+            x_dev.ptr,
+            packed_dev.ptr,
+            rows,
+            hidden,
+            library=library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        copy_device_to_host(host_array_ptr(actual), packed_dev, runtime=runtime)
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+    np.testing.assert_array_equal(actual, expected)
+
+
 def _run_candidate(
     *,
     rows: int,
@@ -244,7 +337,11 @@ def _run_candidate(
     qweight = np.ascontiguousarray(
         make_q5_k_weight(out_features, hidden), dtype=np.uint8
     )
-    packed_nbytes = mmq.q8_1_ds4_kmajor_nbytes(rows, hidden)
+    packed_nbytes = (
+        mmq.q8_1_d4s4_f32_kmajor_nbytes(rows, hidden)
+        if consumer == "i64_j32"
+        else mmq.q8_1_ds4_kmajor_nbytes(rows, hidden)
+    )
     out = np.empty(
         (rows, out_features), dtype=np.uint16 if output_dtype == "bf16" else np.float32
     )
@@ -264,7 +361,12 @@ def _run_candidate(
         buffers.extend((x_dev, packed_dev, weight_dev, out_dev))
         copy_host_to_device(x_dev, host_array_ptr(x_bf16), runtime=runtime)
         copy_host_to_device(weight_dev, host_array_ptr(qweight), runtime=runtime)
-        mmq.gguf_q8_1_ds4_quantize_bf16_kmajor(
+        producer = (
+            mmq.gguf_q8_1_d4s4_f32_quantize_bf16_kmajor
+            if consumer == "i64_j32"
+            else mmq.gguf_q8_1_ds4_quantize_bf16_kmajor
+        )
+        producer(
             x_dev.ptr,
             packed_dev.ptr,
             rows,
@@ -280,10 +382,10 @@ def _run_candidate(
                 mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out
             ),
             ("i64_j32", "bf16"): (
-                mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out
+                mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out
             ),
             ("i64_j32", "f32"): (
-                mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out
+                mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out
             ),
         }[(consumer, output_dtype)]
         fn(

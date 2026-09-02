@@ -63,7 +63,7 @@ def main() -> None:
     parser.add_argument(
         "--source-c8-candidate",
         action="store_true",
-        help="Compare adaptive source-layout I64/J16-J32 against retained raw D4S4",
+        help="Compare FP32-metadata K-major I64/J16-J32 against retained raw D4S4",
     )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -81,12 +81,12 @@ def main() -> None:
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
         build_gguf_k_mmq_prefill,
         build_gguf_q5_k_source_mmq_prefill,
-        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out,
+        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out,
         gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out,
         gguf_q8_1_d4s4_f32_quantize_bf16,
-        gguf_q8_1_ds4_quantize_bf16_kmajor,
+        gguf_q8_1_d4s4_f32_quantize_bf16_kmajor,
+        q8_1_d4s4_f32_kmajor_nbytes,
         q8_1_d4s4_f32_nbytes,
-        q8_1_ds4_kmajor_nbytes,
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
@@ -181,7 +181,7 @@ def main() -> None:
                 source_q8_device = None
                 if args.source_c8_candidate:
                     source_q8_device = malloc(
-                        q8_1_ds4_kmajor_nbytes(rows, 6_144), runtime=runtime
+                        q8_1_d4s4_f32_kmajor_nbytes(rows, 6_144), runtime=runtime
                     )
                 control_device = malloc(rows * 5_120 * 2, runtime=runtime)
                 candidate_device = malloc(rows * 5_120 * 2, runtime=runtime)
@@ -232,15 +232,15 @@ def main() -> None:
                 def source_c8_candidate() -> None:
                     assert source_q8_device is not None
                     assert source_library is not None
-                    gguf_q8_1_ds4_quantize_bf16_kmajor(
+                    gguf_q8_1_d4s4_f32_quantize_bf16_kmajor(
                         x_device.ptr,
                         source_q8_device.ptr,
                         rows,
                         6_144,
-                        library=source_library,
+                        library=candidate_library,
                         runtime=runtime,
                     )
-                    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out(
+                    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out(
                         source_q8_device.ptr,
                         raw_device.ptr,
                         candidate_device.ptr,
@@ -346,8 +346,8 @@ def main() -> None:
             "burst": args.burst,
             "warmups": args.warmups,
             "candidate": (
-                "Q8_1 DS4 K-major producer + adaptive raw Q5 I64/J16-J32 "
-                "integer-WMMA BF16 output"
+                "Q8_1 D4S4-FP32 K-major producer + adaptive raw Q5 "
+                "I64/J16-J32 integer-WMMA BF16 output"
                 if args.source_c8_candidate
                 else "Q8_1 D4S4 FP32 producer + raw Q5 MMQ32 BF16 output"
             ),
