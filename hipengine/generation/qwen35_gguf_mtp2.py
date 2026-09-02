@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import os
 import time
 from typing import Any, Callable, Mapping, Sequence
@@ -244,6 +244,185 @@ class _PhysicalAcceptPending:
 
 class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
+
+
+class C1ShadowOwnershipError(RuntimeError):
+    """The physical C2 shadow lease violated request/resource ownership."""
+
+
+@dataclass(slots=True)
+class C1ShadowSessionLifecycle:
+    """Request-owned resource lease for logical-C1 physical-C2 execution.
+
+    The padding policy is intentionally resource-only. Both lanes participate
+    in physical computation, but only ``request_id`` may publish output or own
+    the public request commit. The adapter supplies concrete restore/reclaim
+    callbacks so provider pools, target sessions, and device resources keep
+    their native lifecycle implementations.
+    """
+
+    request_id: int
+    real_slot: int
+    shadow_slot: int
+    target_session: Any
+    shadow_target_session: Any
+    provider_checkpoint: Any
+    shadow_provider_checkpoint: Any
+    hidden_row: Any
+    shadow_hidden_row: Any
+    kv_owner: Any
+    shadow_kv_owner: Any
+    recurrent_owner: Any
+    shadow_recurrent_owner: Any
+    restore_provider_checkpoint: Callable[[str, Any], None]
+    reclaim: Callable[[str, str, Any, str], None]
+    closed: bool = field(default=False, init=False)
+    _restored_lanes: set[str] = field(default_factory=set, init=False)
+    _reclaimed_resources: set[tuple[str, str]] = field(
+        default_factory=set,
+        init=False,
+    )
+    _reclaim_reason: str | None = field(default=None, init=False)
+
+    _SURFACES = (
+        "target_session",
+        "provider_checkpoint",
+        "hidden_row",
+        "kv_owner",
+        "recurrent_owner",
+    )
+
+    def __post_init__(self) -> None:
+        self.request_id = int(self.request_id)
+        if self.request_id < 0:
+            raise C1ShadowOwnershipError("request_id must be non-negative")
+        self._set_slots(self.real_slot, self.shadow_slot)
+        for surface in self._SURFACES:
+            real = getattr(self, surface)
+            shadow = getattr(self, f"shadow_{surface}")
+            if real is None or shadow is None:
+                raise C1ShadowOwnershipError(f"{surface} owners must be present")
+            if real is shadow:
+                raise C1ShadowOwnershipError(
+                    f"real and shadow {surface} owners must be distinct"
+                )
+        if not callable(self.restore_provider_checkpoint):
+            raise C1ShadowOwnershipError(
+                "restore_provider_checkpoint must be callable"
+            )
+        if not callable(self.reclaim):
+            raise C1ShadowOwnershipError("reclaim must be callable")
+
+    @property
+    def shadow_request_id(self) -> int:
+        return -(int(self.request_id) + 1)
+
+    @property
+    def physical_slots(self) -> tuple[int, int]:
+        return int(self.real_slot), int(self.shadow_slot)
+
+    @property
+    def target_sessions(self) -> tuple[Any, Any]:
+        return self.target_session, self.shadow_target_session
+
+    @property
+    def provider_checkpoints(self) -> tuple[Any, Any]:
+        return self.provider_checkpoint, self.shadow_provider_checkpoint
+
+    @property
+    def hidden_rows(self) -> tuple[Any, Any]:
+        return self.hidden_row, self.shadow_hidden_row
+
+    @property
+    def kv_owners(self) -> tuple[Any, Any]:
+        return self.kv_owner, self.shadow_kv_owner
+
+    @property
+    def recurrent_owners(self) -> tuple[Any, Any]:
+        return self.recurrent_owner, self.shadow_recurrent_owner
+
+    @property
+    def compute_mask(self) -> tuple[bool, bool]:
+        return True, True
+
+    @property
+    def publish_mask(self) -> tuple[bool, bool]:
+        return True, False
+
+    @property
+    def request_commit_mask(self) -> tuple[bool, bool]:
+        return True, False
+
+    def _require_open(self) -> None:
+        if self.closed:
+            raise C1ShadowOwnershipError("shadow lifecycle is closed")
+
+    def _set_slots(self, real_slot: int, shadow_slot: int) -> None:
+        real = int(real_slot)
+        shadow = int(shadow_slot)
+        if real < 0 or shadow < 0:
+            raise C1ShadowOwnershipError("physical slots must be non-negative")
+        if real == shadow:
+            raise C1ShadowOwnershipError("physical slots must be distinct")
+        self.real_slot = real
+        self.shadow_slot = shadow
+
+    def assert_publish_owner(self, request_id: int) -> None:
+        self._require_open()
+        requested = int(request_id)
+        if requested == self.shadow_request_id:
+            raise C1ShadowOwnershipError("shadow request cannot publish")
+        if requested != self.request_id:
+            raise C1ShadowOwnershipError("request does not own publication")
+
+    def assert_request_commit_owner(self, request_id: int) -> None:
+        self._require_open()
+        requested = int(request_id)
+        if requested == self.shadow_request_id:
+            raise C1ShadowOwnershipError("shadow request cannot own public commit")
+        if requested != self.request_id:
+            raise C1ShadowOwnershipError("request does not own public commit")
+
+    def compact(self, *, real_slot: int, shadow_slot: int) -> None:
+        self._require_open()
+        self._set_slots(real_slot, shadow_slot)
+
+    def cancel(self, request_id: int) -> None:
+        if self.closed:
+            return
+        requested = int(request_id)
+        if requested != self.request_id:
+            raise C1ShadowOwnershipError("only the real request may cancel shadow")
+        for lane, checkpoint in zip(
+            ("real", "shadow"), self.provider_checkpoints, strict=True
+        ):
+            if lane in self._restored_lanes:
+                continue
+            self.restore_provider_checkpoint(lane, checkpoint)
+            self._restored_lanes.add(lane)
+        self.close(reason="cancelled")
+
+    def close(self, *, reason: str = "teardown") -> None:
+        if self.closed:
+            return
+        parsed_reason = str(reason)
+        if not parsed_reason:
+            raise C1ShadowOwnershipError("reclaim reason must be non-empty")
+        if self._reclaim_reason is None:
+            self._reclaim_reason = parsed_reason
+        elif self._reclaim_reason != parsed_reason:
+            raise C1ShadowOwnershipError("reclaim reason changed during retry")
+        for surface in self._SURFACES:
+            for lane, resource in (
+                ("real", getattr(self, surface)),
+                ("shadow", getattr(self, f"shadow_{surface}")),
+            ):
+                key = (surface, lane)
+                if key in self._reclaimed_resources:
+                    continue
+                self.reclaim(surface, lane, resource, parsed_reason)
+                self._reclaimed_resources.add(key)
+        self.closed = True
 
 
 def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, ...]:
@@ -3843,4 +4022,8 @@ class Qwen35GGUFMTP2Adapter:
             self._disabled_requests.add(rid)
 
 
-__all__ = ["Qwen35GGUFMTP2Adapter"]
+__all__ = [
+    "C1ShadowOwnershipError",
+    "C1ShadowSessionLifecycle",
+    "Qwen35GGUFMTP2Adapter",
+]

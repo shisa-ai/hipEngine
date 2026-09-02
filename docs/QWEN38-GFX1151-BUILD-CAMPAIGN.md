@@ -386,6 +386,14 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   prompt/token/candidate input. Both expected lifecycle symbols are absent, so
   all contracts fail before implementation. Compact evidence:
   [`...b3-m1-shadow-lifecycle-red.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-lifecycle-red.json).
+
+  Lifecycle GREEN (route still unselected):
+  `C1ShadowSessionLifecycle` validates distinct ownership, real-only public
+  publication/commit, two-lane compute masks, checkpoint restore, compaction,
+  and idempotent exact-once reclaim; partial cleanup failures retry without
+  duplicating successful releases. RED file 13/13 GREEN; MTP2 seam 58/58.
+  Compact evidence:
+  [`...b3-m1-shadow-lifecycle-green.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-lifecycle-green.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
