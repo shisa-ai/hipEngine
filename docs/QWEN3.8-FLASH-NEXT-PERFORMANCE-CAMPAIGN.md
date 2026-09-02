@@ -2034,8 +2034,18 @@ external MTP rows.
 
 Goal: make the complete result reproducible, default, and reversible.
 
-- [ ] Refresh all comparator lanes once under P0's exact protocol and fixed host
-      state; do not compare old absolute rows to new binaries.
+- [x] Refresh all comparator lanes once under P0's exact protocol and fixed host
+      state; do not compare old absolute rows to new binaries. The campaign
+      inventory binds source/binary hashes and exact-fixture attempts for
+      upstream Vulkan, Nathan Vulkan, patched/pristine upstream HIP,
+      EngramHalo HIP, and diagnostic hybrid-04. Upstream Vulkan is 12/12
+      repeatable but short-shape variance blocks final freeze; Nathan is 0/12,
+      Engram 4K alternates, hybrid-04 is 2/12 exact, and pristine HIP produced
+      no sample in two 1,800-second starts. This closes refresh-once inventory,
+      not section-6 five-pair target freeze. Temporary binaries are gone; rebuild
+      eligible lanes from pinned sources for final pairs rather than comparing
+      new binaries to these absolute rows. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-comparator-refresh-inventory.json`.
 - [ ] Run the final strict/production packet, task/BF16/control/state/c2/
       lifecycle gates, exact matched p512/p1024/p4096 with tg128, and every
       unlocked long-context/MTP milestone.
