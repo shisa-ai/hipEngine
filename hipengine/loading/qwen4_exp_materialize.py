@@ -340,6 +340,10 @@ def materialize_qwen4_exp_weights(
     if pin_ple_staging and active_runtime is None:
         active_runtime = get_hip_runtime()
     allocations: dict[str, Any] = {}
+    drop_behind = os.environ.get("HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND", "") not in {
+        "", "0", "false", "False"
+    }
+    drop_descriptors: dict[int, int] = {}
     table: Qwen4ExpPLEMMapTable | None = None
     ring: Qwen4ExpPLEStagingRing | None = None
     try:
@@ -351,6 +355,24 @@ def materialize_qwen4_exp_weights(
                 backend=str(backend),
                 allocations=MappingProxyType({"raw": allocation}),
             )
+            if drop_behind:
+                part_index = int(spec.source_ref.part_index)
+                source = getattr(reader, "path", None)
+                fadvise = getattr(os, "posix_fadvise", None)
+                if source is not None and callable(fadvise):
+                    descriptor = drop_descriptors.get(part_index)
+                    if descriptor is None:
+                        descriptor = os.open(os.fspath(source), os.O_RDONLY)
+                        drop_descriptors[part_index] = descriptor
+                    fadvise(
+                        descriptor,
+                        int(spec.source.data_offset),
+                        int(spec.source.nbytes),
+                        os.POSIX_FADV_DONTNEED,
+                    )
+        for descriptor in drop_descriptors.values():
+            os.close(descriptor)
+        drop_descriptors.clear()
         ple_ref = plan.ple_spec.source_ref
         table = Qwen4ExpPLEMMapTable(
             reader_parts[ple_ref.part_index],
@@ -363,6 +385,9 @@ def materialize_qwen4_exp_weights(
             runtime=active_runtime if pin_ple_staging else None,
         )
     except Exception:
+        for descriptor in drop_descriptors.values():
+            os.close(descriptor)
+        drop_descriptors.clear()
         if ring is not None:
             ring.close()
         if table is not None:
