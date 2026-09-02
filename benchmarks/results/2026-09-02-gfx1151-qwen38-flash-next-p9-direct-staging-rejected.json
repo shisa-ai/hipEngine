@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p9_direct_staging_rejected",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "scope": "Dequantize requested IQ4_NL rows one-by-one into the active pinned ring, eliminating the multi-row gather/value arrays and final staging copy",
+  "amdahl": {
+    "W_bound_prefill_s": 111.69814449400292,
+    "C": "not applicable; same-model route rejection",
+    "O_staging_copy_observed_ms": 0.825,
+    "s_complete_prefill": 0.9833076268431459,
+    "arithmetic_class": "T0 exact data movement",
+    "zero_cost_ceiling": "the removed copy is about 0.825 ms per p512 request in telemetry, far below the added per-row Python/dequant overhead",
+    "overlap_exclusions": "complete prefill wall includes gather/dequant and staging copy; do not add telemetry subwindows separately",
+    "strict_fallback": "the vectorized multi-row gather/dequant plus one copy remains the sole production path"
+  },
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "gfx1151",
+    "power_dpm_force_performance_level": "auto"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "workload": "four-category canonical p512; five counterbalanced prefill pairs per category; one complete code-p512 tg128 diagnostic pair",
+  "candidate": "HIPENGINE_QWEN4_EXP_PLE_DIRECT_STAGING=1 (temporary, removed before commit)",
+  "prefill": {
+    "pairs": 20,
+    "pair_wins": 0,
+    "bound_sum_s": 111.69814449400292,
+    "candidate_sum_s": 113.59430298797088,
+    "throughput_ratio_candidate_vs_bound": 0.9833076268431459,
+    "mean_pair_ratio": 0.983307799484209,
+    "median_pair_ratio": 0.9830317231055921,
+    "all_cross_route_logits_exact": true,
+    "raw_sha256": "6cab2e9f0e0b89609f2454a700f89da2bddfc77e72a74f207685e58006dae8a8"
+  },
+  "decode_diagnostic": {
+    "completed_pairs": 1,
+    "bound_s": 7.347970486007398,
+    "candidate_s": 7.451532650011359,
+    "throughput_ratio_candidate_vs_bound": 0.986101897573541,
+    "cross_route_tokens_exact": true,
+    "raw_partial_sha256": "8095147aae9197f3363716242d8f8a662eb8bb63292abb6516c0ee0423353e26",
+    "stopped_reason": "The complete binding prefill gate lost all 20 pairs and the first decode pair also lost, so further GPU time could not change rejection."
+  },
+  "validation": {
+    "red": "staging-ring oracle failed while the redundant gather_rows boundary was still called",
+    "green": "temporary direct route passed exact staging and 19 focused tests",
+    "post_removal_tests": "19 passed",
+    "candidate_removed": true
+  },
+  "decision": "Reject and remove. Eliminating a sub-millisecond copy by dequantizing 16 rows individually loses 1.67% complete p512 prefill and the first decode pair; vectorized multi-row dequantization is worth its tiny final copy."
+}

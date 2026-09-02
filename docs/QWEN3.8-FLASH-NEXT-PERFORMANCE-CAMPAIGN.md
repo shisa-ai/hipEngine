@@ -1685,8 +1685,17 @@ warm GPU-kernel claims.
       not a speed claim: the single telemetry-enabled request is excluded, and a
       future cold/warm paired gate must choose any production policy. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-random-prefetch.json`.
-- [ ] Dequantize directly into the active pinned ring where practical; remove
-      temporary gather/value arrays and redundant copies.
+- [x] Dequantize directly into the active pinned ring where practical; remove
+      temporary gather/value arrays and redundant copies. **Evaluated and
+      rejected.** The exact candidate removes the multi-row gather/value arrays
+      and final copy by dequantizing 16 IQ4_NL rows individually into the active
+      ring, but loses every one of 20 four-category p512 prefill pairs:
+      **111.698→113.594 s aggregate, 0.9833x**. The first exact tg128 pair also
+      loses **7.348→7.452 s (0.9861x)**, so the remaining decode pairs were
+      stopped as incapable of reversing rejection. The temporary flag and route
+      are removed; vectorized multi-row dequantization plus its measured
+      ~0.825-ms/request copy remains production. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-direct-staging-rejected.json`.
 - [ ] For prefill, overlap next-chunk prefetch/dequant with current GPU work
       using the existing two-buffer ownership plus explicit event/thread
       lifetime. Decode remains demand-driven unless a real lookahead exists.
