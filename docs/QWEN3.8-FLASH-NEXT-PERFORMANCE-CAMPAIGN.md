@@ -1301,7 +1301,7 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       tail, and Conv **7.28 ms**. Early strict state layout is the P4 blocker;
       P5 may proceed independently. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-stacked-profile.json`.
-- [ ] For GDN, test exact early-layer column ownership, prepare+recurrence
+- [x] For GDN, test exact early-layer column ownership, prepare+recurrence
       fusion, state residency, and bounded chunking. Engram's chunked kernel is
       a design reference only; it was not active in the fork's published rows.
       A strict-order prepared-QKV/scalar route is exact in output and recurrent
@@ -1316,6 +1316,13 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json`
       and
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json`.
+      The retained register-sharded column-warp route is confined to admitted
+      layers 27–47 and passes its full profile packet; early exact prepared
+      traffic is neutral, production-width four-block columns fail output
+      parity, and operation-complete transposed-state integration regresses
+      **0.07535→0.08535 ms (0.883x)**. Early layers therefore remain strict;
+      further widening is the separate T1/T2 item. Consolidated evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-exact-campaign-closure.json`.
 - [ ] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
       packets; keep every rejected early layer strict.
 - [x] For QSA, compare current key-parallel head-dim-256 flash geometry with the
