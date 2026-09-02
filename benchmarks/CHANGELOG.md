@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P8 single-launch prerequisite] Research transition uses one graph launch/token with **1,708** child dispatches and zero post-launch allocation; the explicit host PLE mmap stage/H2D and token readback are the remaining boundary. Production A/B/key/lifecycle remains open. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-single-launch-boundary-closure.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P3 GR composite closure] Exact up+sigmoid+mean stays retained; down+scaled-SiLU is **0.9926x**, qkv+gate fails its five-pair category gate, and Q8_0 [320,10240] down cannot share exact F32 [4,10240] inject arithmetic without T1/T2. Strict primitive chains remain. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-gr-composite-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next Q4/Q5/Q8 c1 owner closure] Actual-model retained Q4 DP4A+SiLU, exact Q5_1 weighted-down, and exact Q8 F32 output-pack8 owners improve complete decode **1.120x/1.011x/1.107x** with expected kernels and exact registered misses; no WMMA is forced onto M=1. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-quant-owner-closure.json`.
