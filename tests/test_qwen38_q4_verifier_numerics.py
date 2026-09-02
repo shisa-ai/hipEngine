@@ -95,18 +95,19 @@ def test_c8_raw_q5_mmq_is_gfx1100_default_with_opt_out(
     assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=8) is False
 
 
-def test_c8_source_q5_mmq_is_exact_width_opt_in(
+def test_c8_source_q5_mmq_is_exact_width_default_with_rollback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", raising=False)
     monkeypatch.delenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", raising=False)
-    assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is False
-
-    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", "1")
     assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is True
     assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=7) is False
     assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1151", request_count=8) is False
 
+    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", "0")
+    assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ", "1")
     monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
     assert _gguf_c8_q5_source_mmq_enabled("hip_gfx1100", request_count=8) is False
 

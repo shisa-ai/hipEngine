@@ -493,7 +493,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 "FP16 state + shape-scoped Q4/Q5/Q6 verifier rowtiles"
                 + (
                     (
-                        " + raw-Q5 adaptive DS4 MMQ"
+                        " + raw-Q5 K-major D4S4-FP32 MMQ"
                         if bool(args.candidate_q5_source_mmq)
                         else " + raw-Q5 D4S4 MMQ"
                     )

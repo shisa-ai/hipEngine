@@ -151,6 +151,7 @@ def classify_kernel(name: str) -> str:
         token in value
         for token in (
             "q8_1_d4s4_f32_quantize_bf16_kernel",
+            "q8_1_d4s4_f32_quantize_bf16_kmajor_kernel",
             "q8_1_ds4_quantize_bf16_kmajor_kernel",
         )
     ):
