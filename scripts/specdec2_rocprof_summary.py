@@ -147,7 +147,19 @@ def classify_kernel(name: str) -> str:
     value = str(name).lower()
     if any(token in value for token in ("q4_k_t16", "gguf_q4_k", "gguf_q4_t16")):
         return "q4_t16"
-    if "q5_k_t16" in value or "gguf_q5_k" in value:
+    if any(
+        token in value
+        for token in (
+            "q8_1_d4s4_f32_quantize_bf16_kernel",
+            "q8_1_ds4_quantize_bf16_kmajor_kernel",
+        )
+    ):
+        return "q5_activation_quant"
+    if (
+        "q5_k_t16" in value
+        or "gguf_q5_k" in value
+        or ("gguf_k_raw_mmq32" in value and "kernel<5," in value)
+    ):
         return "q5_t16"
     if "q6_k_t16" in value or "gguf_q6_k" in value:
         return "q6_t16"
