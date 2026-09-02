@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 pooled verifier transaction] Reusing a request-owned 119.53-MB snapshot lowers transaction begin/commit **6.568→0.0268 ms**; downstream synchronization remains counted. Exact complete B2 deferred-head verification improves **128.464→127.560 ms (1.0071x)**. Retain internal/default-off pending accepted-prefix replay, trace, and whole-model gates. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-pooled-verifier-transaction.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 deferred-head verifier] Serial-body/deferred-head rows2-8 is bit-exact for tokens, hidden, logits, state, position, and hashes. Head-only B2 is **126.763→126.592 ms (1.00136x)**, but required transaction ownership regresses **127.693→132.354 ms (0.9648x)**. Remove the uncommitted candidate; final-head batching cannot pay for rollback. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 rows2 verifier RED] Reusing prompt `_prefill_chunk` matches two top-1 IDs but fails strict parity: hidden max diff **0.40625**, logit maxima **0.1803/1.3686**, and every GDN/PLE/residual state owner differs. Remove the uncommitted candidate; retain output storage, D2D transactions, and serial oracle groundwork. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rows2-prefill-verifier-rejected.json`.

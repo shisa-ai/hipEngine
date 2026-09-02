@@ -21,8 +21,8 @@ class _State:
         self.snapshot = _Snapshot()
         self.restored = []
 
-    def device_snapshot(self):
-        return self.snapshot
+    def device_snapshot(self, snapshot=None):
+        return self.snapshot if snapshot is None else snapshot
 
     def restore_device_snapshot(self, snapshot) -> None:
         self.restored.append(snapshot)
@@ -52,6 +52,8 @@ def _runner() -> Qwen4ExpGGUFResidentModelRunner:
     runner._ple_hash_states = {1: "before"}
     runner.attention_states = (_Attention(), _Attention())
     runner.index_states = (_Index(), _Index())
+    runner._device_transaction_snapshot = None
+    runner._device_transaction_lease = False
     return runner
 
 
@@ -102,6 +104,22 @@ def test_qwen4_exp_serial_verify_oracle_returns_every_row() -> None:
     assert all(row[1]["capture_target_hidden"] for row in calls)
     with pytest.raises(ValueError, match="rows must be in 1..8"):
         runner.verify_target_block_serial_exact(())
+
+
+def test_qwen4_exp_reusable_device_transaction_leases_one_snapshot() -> None:
+    runner = _runner()
+    first = runner.begin_device_transaction(reuse_snapshot=True)
+    pooled = first.decode_state
+    with pytest.raises(RuntimeError, match="already leased"):
+        runner.begin_device_transaction(reuse_snapshot=True)
+    runner.commit_device_transaction(first)
+    assert not pooled.closed
+
+    second = runner.begin_device_transaction(reuse_snapshot=True)
+    assert second.decode_state is pooled
+    runner.rollback_device_transaction(second)
+    assert not pooled.closed
+    assert not runner._device_transaction_lease
 
 
 def test_qwen4_exp_device_transaction_commit_keeps_current_state() -> None:

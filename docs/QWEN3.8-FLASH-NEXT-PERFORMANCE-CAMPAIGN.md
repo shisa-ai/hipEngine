@@ -1909,8 +1909,15 @@ external MTP rows.
       uncommitted candidate was removed before provider wiring or tracing. A
       viable verifier must capture accepted-prefix state without a full
       pre-execution snapshot; final-head batching alone cannot pay for rollback.
-      Evidence:
-      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`.
+      A retained follow-up removes fresh HIP allocation from that transaction:
+      one request-owned 119.53-MB snapshot lease lowers begin/commit host wall
+      **6.568→0.0268 ms**, with downstream readback owning copy completion. The
+      exact complete B2 candidate then improves **128.464→127.560 ms
+      (1.0071x)**. Keep it internal/default-off until accepted-prefix replay,
+      route tracing, and whole-model category gates pass. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-pooled-verifier-transaction.json`.
       `W=51.711 s`, `C=49.383 s`, and the measured
       target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
       executable Qwen4Exp candidate exists. Strict fallback is serial

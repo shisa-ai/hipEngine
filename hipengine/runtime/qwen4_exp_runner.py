@@ -535,9 +535,17 @@ class Qwen4ExpDecodeState:
         for buffer in self.owned_buffers.values():
             self.runtime.memset(buffer.ptr, 0, buffer.nbytes)
 
-    def device_snapshot(self) -> Qwen4ExpDecodeStateDeviceSnapshot:
+    def device_snapshot(
+        self,
+        snapshot: Qwen4ExpDecodeStateDeviceSnapshot | None = None,
+    ) -> Qwen4ExpDecodeStateDeviceSnapshot:
         self._require_open()
-        snapshot = Qwen4ExpDecodeStateDeviceSnapshot.allocate_like(self)
+        if snapshot is None:
+            snapshot = Qwen4ExpDecodeStateDeviceSnapshot.allocate_like(self)
+        elif snapshot.closed:
+            raise RuntimeError("Qwen4Exp device state snapshot is closed")
+        elif snapshot.nbytes_by_owner != self.nbytes_by_owner:
+            raise ValueError("Qwen4Exp reusable device snapshot shape does not match")
         for name, source in self.owned_buffers.items():
             self.runtime.memcpy(
                 snapshot.buffers[name].ptr,
@@ -4624,6 +4632,7 @@ class Qwen4ExpRunnerDeviceTransaction:
     decode_state: Qwen4ExpDecodeStateDeviceSnapshot
     position: int
     ple_hash_states: Mapping[int, PLEHashState]
+    reusable_snapshot: bool = False
     committed: bool = False
     rolled_back: bool = False
     closed: bool = False
@@ -4635,7 +4644,8 @@ class Qwen4ExpRunnerDeviceTransaction:
     def close(self) -> None:
         if self.closed:
             return
-        self.decode_state.close()
+        if not self.reusable_snapshot:
+            self.decode_state.close()
         self.closed = True
 
 
@@ -4701,6 +4711,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.ple_scratch: Qwen4ExpPLEScratch | None = None
         self.head_scratch: Qwen4ExpGRScratch | None = None
         self._target_verify_output: Qwen4ExpTargetVerifyOutput | None = None
+        self._device_transaction_snapshot: Qwen4ExpDecodeStateDeviceSnapshot | None = None
+        self._device_transaction_lease = False
         self.gdn_prefill_scratch: Qwen4ExpGDNLayerScratch | None = None
         self.qsa_prefill_scratch: Qwen4ExpQSALayerScratch | None = None
         self.ple_prefill_scratch: Qwen4ExpPLEScratch | None = None
@@ -5042,15 +5054,85 @@ class Qwen4ExpGGUFResidentModelRunner:
             ),
         )
 
-    def begin_device_transaction(self) -> Qwen4ExpRunnerDeviceTransaction:
+    def verify_target_block_deferred_head(
+        self,
+        input_token_ids: Sequence[int],
+    ) -> Qwen4ExpTargetVerifyResult:
+        """Run serial target bodies and score their captured rows together."""
+
+        self._require_open()
+        tokens = tuple(int(token) for token in input_token_ids)
+        output = self.target_verify_output(len(tokens))
+        cfg = self.config
+        row_bytes = cfg.residual_width * DType.BF16.itemsize
+        hidden_rows: list[np.ndarray] = []
+        for row, token in enumerate(tokens):
+            result = self.step(
+                token,
+                capture_hidden_seed=True,
+                capture_logits=False,
+                capture_target_hidden=True,
+                deferred_head_output_ptr=output.residual_rows.ptr + row * row_bytes,
+            )
+            assert result.hidden_seeds is not None
+            hidden_rows.append(result.hidden_seeds)
+        head = run_qwen4_exp_gr_read(
+            output.residual_rows.ptr,
+            self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
+            self.resident.weight("root.head_hc_down"),
+            self.resident.weight("root.head_hc_up"),
+            None,
+            output.head_scratch,
+            rows=len(tokens),
+            branches=cfg.residual_branch_count,
+            hidden=cfg.hidden_size,
+            low_rank=cfg.residual_low_rank,
+            runtime=self.runtime,
+        )
+        launch_gguf_linear(
+            self.resident.weight("root.lm_head"),
+            head.mixed.ptr,
+            output.logits_rows.ptr,
+            len(tokens),
+            cfg.hidden_size,
+            cfg.vocab_size,
+            activation_dtype=GGUF_ACTIVATION_F32,
+            output_dtype=GGUF_OUTPUT_F32,
+            runtime=self.runtime,
+        )
+        logits = np.empty((len(tokens), cfg.vocab_size), dtype=np.float32)
+        copy_device_to_host(
+            host_array_ptr(logits), output.logits_rows, logits.nbytes, runtime=self.runtime
+        )
+        return Qwen4ExpTargetVerifyResult(
+            token_ids=tuple(int(token) for token in np.argmax(logits, axis=1)),
+            logits=tuple(row for row in logits),
+            hidden_seeds=np.concatenate(hidden_rows, axis=0),
+        )
+
+    def begin_device_transaction(
+        self, *, reuse_snapshot: bool = False
+    ) -> Qwen4ExpRunnerDeviceTransaction:
         """Capture mutable state and all append-only cursor ownership."""
 
         self._require_open()
         assert self.state is not None
+        if reuse_snapshot:
+            if self._device_transaction_lease:
+                raise RuntimeError("Qwen4Exp reusable device snapshot is already leased")
+            if self._device_transaction_snapshot is None:
+                self._device_transaction_snapshot = self.state.device_snapshot()
+            else:
+                self.state.device_snapshot(self._device_transaction_snapshot)
+            decode_state = self._device_transaction_snapshot
+            self._device_transaction_lease = True
+        else:
+            decode_state = self.state.device_snapshot()
         return Qwen4ExpRunnerDeviceTransaction(
-            decode_state=self.state.device_snapshot(),
+            decode_state=decode_state,
             position=int(self.position),
             ple_hash_states=MappingProxyType(dict(self._ple_hash_states)),
+            reusable_snapshot=bool(reuse_snapshot),
         )
 
     def rollback_device_transaction(
@@ -5072,6 +5154,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.position = position
         transaction.rolled_back = True
         transaction.close()
+        if transaction.reusable_snapshot:
+            self._device_transaction_lease = False
 
     def commit_device_transaction(
         self, transaction: Qwen4ExpRunnerDeviceTransaction
@@ -5082,6 +5166,8 @@ class Qwen4ExpGGUFResidentModelRunner:
         transaction.require_active()
         transaction.committed = True
         transaction.close()
+        if transaction.reusable_snapshot:
+            self._device_transaction_lease = False
 
     def snapshot(self) -> Qwen4ExpRunnerSnapshot:
         """Capture mutable non-append state plus the shared KV/index cursor."""
@@ -5166,6 +5252,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         capture_target_hidden: bool = True,
         token_id_resident: bool = False,
         rope_positions: tuple[int, int, int] | None = None,
+        deferred_head_output_ptr: int | None = None,
     ) -> Qwen4ExpTokenResult:
         self._require_open()
         if self.position >= self.max_sequence_length:
@@ -5365,6 +5452,18 @@ class Qwen4ExpGGUFResidentModelRunner:
             if capture_hidden_seed
             else None
         )
+        if deferred_head_output_ptr is not None:
+            destination = int(deferred_head_output_ptr)
+            if destination <= 0:
+                raise ValueError("deferred Qwen4Exp head output pointer must be positive")
+            self.runtime.memcpy(
+                destination,
+                residual_ptr,
+                cfg.residual_width * DType.BF16.itemsize,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+            self.position += 1
+            return Qwen4ExpTokenResult(-1, None, hidden_seeds=hidden_seeds)
         head_read = run_qwen4_exp_gr_read(
             residual_ptr,
             self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
@@ -5835,6 +5934,10 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self._target_verify_output is not None:
             self._target_verify_output.close()
             self._target_verify_output = None
+        if self._device_transaction_snapshot is not None:
+            self._device_transaction_snapshot.close()
+            self._device_transaction_snapshot = None
+            self._device_transaction_lease = False
         self._q8_mmq_policy = None
         self._q8_mmq_library = None
         self._q8_mmq_buffers = ()

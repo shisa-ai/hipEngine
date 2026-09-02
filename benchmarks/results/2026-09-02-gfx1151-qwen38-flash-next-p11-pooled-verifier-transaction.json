@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_pooled_verifier_transaction",
+  "status": "retained_internal_checkpoint_not_promoted",
+  "performance_claim": false,
+  "source": {"base_head": "b8f5bd910", "tracked_clean": false},
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "gpu_clock_policy": "auto"},
+  "state": {"snapshot_bytes": 119533568, "ownership": ["gdn_matrix", "gdn_conv", "ple_conv", "residual"]},
+  "transaction_ab": {
+    "warmups": 3,
+    "samples": 10,
+    "fresh_median_ms": 6.567560514668003,
+    "pooled_median_ms": 0.02678050077520311,
+    "host_boundary_speedup": 245.23665818635885,
+    "note": "Pooled begin is asynchronous; downstream logits D2H in the complete candidate includes D2D copy completion."
+  },
+  "complete_b2_ab": {
+    "warmups": 3,
+    "samples": 10,
+    "serial_W_median_ms": 128.46436550898943,
+    "pooled_deferred_C_median_ms": 127.56000801164191,
+    "s": 1.0070896632216029,
+    "saved_ms": 0.9043574973475188,
+    "exact": true
+  },
+  "correctness": {
+    "rows_tested": [2, 3, 4, 5, 6, 7, 8],
+    "tokens_hidden_logits_state_position_hashes_bit_exact": true,
+    "reusable_lease_overlap_rejected": true,
+    "double_finalize_rejected": true,
+    "pooled_snapshot_freed_on_runner_close": true
+  },
+  "amdahl_declaration": {
+    "W_ms": 128.46436550898943,
+    "C_ms": 127.56000801164191,
+    "O_ms": 6.567560514668003,
+    "s": 1.0070896632216029,
+    "arithmetic_class": "T0 strict",
+    "scope": "internal Qwen4Exp B2 serial-body/deferred-head verifier with reusable transaction",
+    "mechanism": "request-owned preallocated D2D state snapshot lease plus batched final GR/head",
+    "strict_fallback": "verify_target_block_serial_exact",
+    "overlap_exclusions": ["outer restore transaction is test scaffolding and excluded", "complete candidate includes pooled begin/commit and downstream synchronization", "no provider or full-suite wall claim"]
+  },
+  "decision": {
+    "retained": true,
+    "promoted": false,
+    "reason": "The exact complete B2 boundary improves after removing per-cycle HIP allocation, but accepted-prefix commit/replay, public provider wiring, cached route trace, and full-category whole-model A/B remain required.",
+    "next": "Add exact accepted-prefix replay under the pooled transaction, then wire default-off for category testing."
+  }
+}
