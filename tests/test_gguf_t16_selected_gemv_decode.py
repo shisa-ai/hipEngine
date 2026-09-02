@@ -1359,6 +1359,44 @@ def test_q5_t16_grouped_rows6_matches_repeated_rows6_bits(
     np.testing.assert_array_equal(grouped, repeated)
 
 
+def test_q5_t16_grouped_rows8_matches_repeated_rows8_bits(
+    t16_selected_library,
+) -> None:
+    grouped_fn = getattr(
+        selected_t16_mod,
+        "gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
+        None,
+    )
+    assert callable(grouped_fn)
+    rng = np.random.default_rng(20260902)
+    rows = 16
+    in_features = 512
+    out_features = 32
+    raw = make_q5_k_weight(out_features, in_features)
+    x_bf16 = _f32_to_bf16_u16(
+        rng.normal(0.0, 0.4, size=(rows, in_features)).astype(np.float32)
+    )
+    tiles = repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+    repeated = _run_dense_single_chunked(
+        gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+        ((8, 0), (8, 8)),
+    )
+    grouped = _run_dense_single(
+        grouped_fn,
+        x_bf16,
+        tiles,
+        out_features,
+        np.uint16,
+        t16_selected_library,
+    )
+    np.testing.assert_array_equal(grouped, repeated)
+
+
 def test_q5_t16_dense_decode_defaults_to_grouped_physical_rows6_launches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1437,6 +1475,37 @@ def test_q5_t16_exact_c7_rows_use_grouped_rows6_prefix_and_strict_tail(
                 out_ptr + 30 * 5_120 * 2,
             ),
         ]
+
+
+def test_q5_t16_exact_c8_rows_select_grouped_rows8_with_rollback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+    monkeypatch.setenv("HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8", "1")
+    monkeypatch.setattr(
+        selected_t16_mod,
+        "_launch_dense_q5_t16",
+        lambda symbol, *args, **kwargs: calls.append((str(symbol), int(args[3]))),
+    )
+    with (
+        q5_t16_physical_rowtile_session(True),
+        physical_exact_rowtiles_session(True),
+    ):
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 32, 6_144, 5_120
+        )
+        assert calls == [
+            (selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16, 32)
+        ]
+        calls.clear()
+        monkeypatch.setenv("HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8", "0")
+        gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
+            1, 2, 3, 32, 6_144, 5_120
+        )
+    assert calls == [
+        (selected_t16_mod._Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16, 30),
+        (selected_t16_mod._Q5_DENSE_ROWTILE_BF16, 2),
+    ]
 
 
 def test_q5_t16_grouped_rows6_policy_has_explicit_repeated_rollback(

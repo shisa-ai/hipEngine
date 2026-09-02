@@ -6469,6 +6469,34 @@ int launch_q5_dense_rowtile_grouped_rows6(
 }
 
 template <typename scalar_t>
+int launch_q5_dense_rowtile_grouped_rows8(
+    const void* x,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows < 16 || (rows % 8) != 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  constexpr int kTileCols = 4;
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / kTileCols),
+      static_cast<unsigned int>(rows / 8));
+  hipLaunchKernelGGL(
+      (q5_k_t16_dense_rowtile_grouped_gemv_kernel<scalar_t, 8, kTileCols>),
+      grid, block, 0, stream,
+      reinterpret_cast<const scalar_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<scalar_t*>(out), in_features, out_features);
+  return hipGetLastError();
+}
+
+template <typename scalar_t>
 int launch_q4_dense_rowtile(
     const void* x,
     const void* tiles,
@@ -7712,6 +7740,15 @@ hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out(
     int64_t rows, int64_t in_features, int64_t out_features,
     hipStream_t stream) {
   return launch_q5_dense_rowtile<uint16_t, 8>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_dense_rowtile_grouped_rows8<uint16_t>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
