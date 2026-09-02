@@ -1,3 +1,4 @@
+- [2026-09-02 gfx1151 Qwen3.8 B1 verifier owner transfer retained] One-group D24 explicit K3 C5-C8 MTP 22.476/23.568/24.215/25.983 -> 34.969/38.425/41.615/47.642 tok/s (+56.3/+64.0/+69.5/+72.7%), 40/40 exact, identical IDs, sec-6 gate top-1 100% max KL 6.5e-4; production admission inert; strict oracle unchanged. Profile-scoped default-on at c27abc15d. `benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json`.
 # hipEngine Benchmark Changelog
 
 Reverse-chronological human-readable history for benchmark rollup changes. Keep

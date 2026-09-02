@@ -2,7 +2,7 @@
   "schema": 1,
   "kind": "gfx1151_qwen38_b1_transfer_full_suite",
   "date": "2026-09-02",
-  "status": "measured_pending_gates",
+  "status": "retained_default_on_production_strict_unchanged",
   "performance_claim": false,
   "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
   "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
@@ -200,7 +200,8 @@
   "findings": [
     "Suite-mean MTP: off K3 31.501 -> on K3 31.491 tok/s (-0.03%); on K2 29.999.",
     "Exactness all arms/all widths: False; IDs on==off and repeat-stable: False.",
-    "One-group protocol suite mean: off K3 24.061 -> on K3 39.922 tok/s (+65.92%)."
+    "One-group protocol suite mean: off K3 24.061 -> on K3 39.922 tok/s (+65.92%).",
+    "Default-flip confirmation: one-group default (no env) reproduces the transferred-owner numbers (34.969/38.425/41.615/47.642 at C5-C8); production-admission default C7 spot 34.049 matches the inert arms; strict-profile C7 runs the unchanged GEMV oracle (20.317, 10/10 exact)."
   ],
   "onegroup": {
     "5": {
@@ -272,5 +273,28 @@
     "off_k3": 24.061,
     "on_k3": 39.922,
     "delta_pct": 65.92
+  },
+  "default_flip_confirmation": {
+    "commit": "c27abc15d (profile-scoped default-on for production; strict keeps GEMV oracle)",
+    "onegroup_default_no_env_k3": {
+      "5": 34.969,
+      "6": 38.425,
+      "7": 41.615,
+      "8": 47.642,
+      "exact_cells_per_width": "10/10 x4",
+      "note": "matches the env-on arm within run noise; the transfer is the default production path",
+      "raw": "/tmp/q38-b1-run/og-default-k3.json"
+    },
+    "production_admission_default_c7_spot": {
+      "mtp_tok_s": 34.049,
+      "note": "matches the inert env-off/env-on arms (34.207/34.188); admission-capped R2-R16 path unchanged",
+      "raw": "/tmp/q38-b1-run/suite-default-c7.json"
+    },
+    "strict_profile_c7_spot": {
+      "mtp_tok_s": 20.317,
+      "exact_cells": "10/10",
+      "note": "strict oracle keeps the GEMV verifier chain and manifest; rc=0",
+      "raw": "/tmp/q38-b1-run/suite-strict-c7.json"
+    }
   }
 }
