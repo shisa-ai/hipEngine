@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 
-def test_b5_q6_integer_mmq_profile_is_default_off_with_env_override() -> None:
+def test_b5_q6_integer_mmq_profile_default_and_env_override() -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
 
     resolver = getattr(gguf_linear, "q6_integer_mmq_for", None)
@@ -15,8 +15,10 @@ def test_b5_q6_integer_mmq_profile_is_default_off_with_env_override() -> None:
     env = "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
     with mock.patch.dict(os.environ, {}, clear=False):
         os.environ.pop(env, None)
-        assert resolver("production") is False
+        assert resolver("production") is True
         assert resolver("strict") is False
+        assert resolver(None) is False
+        assert resolver("production", profile_fell_back_to_strict=True) is False
         os.environ[env] = "1"
         assert resolver("production") is True
         assert resolver("strict") is True
@@ -31,13 +33,16 @@ def test_b5_q6_integer_mmq_generator_configures_resident_session() -> None:
     generator.execution_profile = "production"
     generator.execution_profile_fell_back_to_strict = False
     session = SimpleNamespace()
-    with mock.patch.dict(
-        os.environ,
-        {"HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL": "1"},
-        clear=False,
-    ):
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL", None)
         generator._configure_session(session)
     assert session.use_q6_integer_mmq is True
+    generator.execution_profile = "strict"
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL", None)
+        generator._configure_session(session)
+    assert session.use_q6_integer_mmq is False
+    generator.execution_profile = "production"
     with mock.patch.dict(
         os.environ,
         {"HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL": "0"},
