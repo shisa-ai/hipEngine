@@ -265,10 +265,29 @@ per §1.4; commit each validated unit atomically with its worklog entry.
 
 ### B2 — P1: sole-T16 input-F16 Q4/Q5 kernel family (T1)
 
-- [ ] RED full-output numerics first: fixtures at rows72/288 and all
+- [x] RED full-output numerics first: fixtures at rows72/288 and all
   production shapes for input-F16 Q4/Q5 T16 matmul versus the current BF16
   owners (strict oracle `kernels/cpu_reference/` where applicable). Tests fail
   before implementation.
+
+  RED in place 2026-09-02: `tests/test_gguf_k_t16_dense_f16_activation_prefill.py`
+  fails at `test_f16_dense_siblings_exist` (three sibling wrappers missing:
+  `gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out`,
+  `gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out`,
+  `gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out`); the ABI-parity and
+  T1-numerics contracts activate at GREEN.
+
+  Mechanism correction (design recon, 2026-09-02): the Z1 "F16 activation-B"
+  label came from Laurent's Vulkan F32→F16 staging halving. hipEngine
+  activations are already BF16 (16-bit), so encoding alone is byte-neutral.
+  The concrete hipEngine-side mechanism the templates enable:
+  `load_compact_row_half16<half_t>` takes one vectorized 32-byte load while
+  the BF16 path converts per element per use for the WMMA operands — an
+  F16-staged activation operand (cast once in a stage-owned workspace,
+  vector-loaded many times) drops the per-element converts. All dense
+  kernels already template on `scalar_t`, so the sibling is a new
+  instantiation + wrapper, not a rewrite. The 19.8/20.1% C2/C8 wall bound
+  remains an inferred portability transfer; the B2 measurement decides.
 - [ ] Implement the input-F16 siblings as new four-axis variants under
   `hipengine/kernels/hip_gfx1100/quant/` (shared gfx11 bodies, peer-registered
   on gfx1151 per `docs/KERNELS.md`): BF16→F16 activation cast
