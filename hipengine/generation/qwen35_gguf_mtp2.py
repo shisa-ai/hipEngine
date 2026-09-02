@@ -707,9 +707,9 @@ class Qwen35GGUFMTP2Adapter:
                 real_slot=int(real_slot),
                 shadow_slot=int(shadow_slot),
             )
-            if not isinstance(bundle, Mapping):
+            if not isinstance(bundle, dict):
                 raise C1ShadowOwnershipError(
-                    "C1 shadow resource bundle must be a mapping"
+                    "C1 shadow resource bundle must be a mutable mapping"
                 )
             required = (
                 "target_session",
@@ -722,9 +722,39 @@ class Qwen35GGUFMTP2Adapter:
                 raise C1ShadowOwnershipError(
                     "C1 shadow resource bundle missing: " + ", ".join(missing)
                 )
+            shadow_target = bundle["target_session"]
+            clone_target = getattr(shadow_target, "clone_current_state_from", None)
+            if not callable(clone_target):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow target has no arbitrary state-clone ABI"
+                )
+            bundle["target_state_clone_bytes"] = int(
+                clone_target(real_target, stream=0)
+            )
+            shadow_hidden = bundle["hidden_row"]
+            if int(getattr(shadow_hidden, "nbytes", 0)) != int(
+                getattr(real_hidden, "nbytes", -1)
+            ):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow hidden-row size does not match the real owner"
+                )
+            real_target.runtime.memcpy_async(
+                int(shadow_hidden.ptr),
+                int(real_hidden.ptr),
+                int(real_hidden.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            real_target.runtime.device_synchronize()
             state.provider.reset_request(shadow_id)
             shadow_provider_open = True
             executor = state.provider.executor
+            clone_provider = getattr(executor, "clone_request_state", None)
+            if not callable(clone_provider):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow provider has no exact request-state clone ABI"
+                )
+            clone_provider(rid, shadow_id)
             real_checkpoint = executor.capture_request_checkpoint(rid)
             captured.append(real_checkpoint)
             shadow_checkpoint = executor.capture_request_checkpoint(shadow_id)

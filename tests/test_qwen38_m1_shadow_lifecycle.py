@@ -252,13 +252,30 @@ def test_shadow_policy_constructor_has_no_prompt_token_or_candidate_inputs() -> 
 def _adapter_resource_fixture(*, fail_second_checkpoint: bool = False):
     events = []
     resources = _resources()
+    runtime = SimpleNamespace(
+        memcpy_async=lambda dst, src, nbytes, kind, stream: events.append(
+            ("memcpy", dst, src, nbytes, kind, stream)
+        ),
+        device_synchronize=lambda: events.append(("sync",)),
+    )
     real_target = SimpleNamespace(
         name="real_target_session",
         scratch=resources["real_recurrent_owner"],
+        runtime=runtime,
+    )
+    shadow_target = SimpleNamespace(
+        name="shadow_target_session",
+        clone_current_state_from=lambda source, stream: (
+            events.append(("clone_target", source.name, stream)) or 1234
+        ),
     )
     resources["real_target_session"] = real_target
-    resources["shadow_target_session"] = SimpleNamespace(
-        name="shadow_target_session"
+    resources["shadow_target_session"] = shadow_target
+    resources["real_hidden_row"] = SimpleNamespace(
+        name="real_hidden_row", ptr=0x1000, nbytes=16
+    )
+    resources["shadow_hidden_row"] = SimpleNamespace(
+        name="shadow_hidden_row", ptr=0x2000, nbytes=16
     )
     row = type("Row", (), {})()
     row.lease = type("Lease", (), {"session": real_target})()
@@ -295,6 +312,9 @@ def _adapter_resource_fixture(*, fail_second_checkpoint: bool = False):
         return checkpoint
 
     executor = type("Executor", (), {})()
+    executor.clone_request_state = lambda source, destination: events.append(
+        ("clone_provider", source, destination)
+    )
     executor.capture_request_checkpoint = capture
     executor.restore_request_checkpoint = lambda checkpoint: events.append(
         ("restore", checkpoint.name)
@@ -351,6 +371,12 @@ def test_adapter_acquires_and_drops_concrete_shadow_resources() -> None:
     adapter.drop_c1_shadow_lifecycle(42, reason="request_drop")
 
     assert adapter._c1_shadow_states == {}
+    assert [event for event in events if event[0] == "clone_target"] == [
+        ("clone_target", "real_target_session", 0)
+    ]
+    assert [event for event in events if event[0] == "clone_provider"] == [
+        ("clone_provider", 42, -43)
+    ]
     assert [event for event in events if event[0] == "reset"] == [
         ("reset", -43)
     ]
@@ -375,6 +401,22 @@ def test_adapter_cancel_restores_both_provider_checkpoints() -> None:
     assert len([event for event in events if event[0] == "release_checkpoint"]) == 2
     assert [event for event in events if event[0] == "release_request"] == [
         ("release_request", -43)
+    ]
+
+
+def test_adapter_provider_clone_miss_fails_closed_and_aborts_owner() -> None:
+    adapter, _resources_by_name, events = _adapter_resource_fixture()
+    del adapter._states[42].provider.executor.clone_request_state
+
+    with pytest.raises(mtp2.C1ShadowOwnershipError, match="provider.*clone ABI"):
+        adapter.acquire_c1_shadow_lifecycle(42, real_slot=0, shadow_slot=1)
+
+    assert adapter._c1_shadow_states == {}
+    assert [event for event in events if event[0] == "release_request"] == [
+        ("release_request", -43)
+    ]
+    assert [event for event in events if event[0] == "abort"] == [
+        ("abort", "acquire_failed")
     ]
 
 
