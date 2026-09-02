@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p10_structural_depth_census",
+  "status": "diagnostic_profile_retained",
+  "performance_claim": false,
+  "baseline_claim": false,
+  "host": "zbook",
+  "hardware": "gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "kv": "BF16",
+  "clock_policy": "power_dpm_force_performance_level=auto",
+  "finding": "Across natural 4K/16K/64K retrieval, QSA score rows scale exactly as context/4 while selected attention remains fixed at 2048 tokens. Each selected token occupies 2048 physical K+V bytes per layer, and the selected positions cover 1024 4-KiB pages per layer at every depth. Live QSA KV grows from 103615572 to 1613654028 bytes, PLE host-to-device publication remains 3143680 bytes for the complete request, and the MoE graph cache remains 48 captures plus 14688 replays with no eager or rejected route.",
+  "scope": {
+    "mechanism": "opt-in post-prefill structural census",
+    "arithmetic_class": "exact integer census plus descriptive selected-position gap means",
+    "strict_fallback": "omit --depth-profile",
+    "w_c_o_s": "The default route adds no work, copies, overlap, or synchronization. The opt-in route reads already-required selected positions and runtime metadata after prefill.",
+    "overlap_exclusions": ["model arithmetic", "kernel dispatch", "retrieval output", "throughput claims"]
+  },
+  "command": "test \"$(cat /sys/class/drm/card1/device/power_dpm_force_performance_level)\" = auto && HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --target-tokens <4096|16384|65536> --max-tokens 128 --prefill-chunk-size 512 --depth-profile --json-out /tmp/qwen4exp-p10-depth-profile-<depth>.json",
+  "depths": {
+    "4096": {"prefill_seconds_diagnostic": 77.50421927100979, "score_rows": 1024, "selected_tokens": 2048, "selected_position_span": 4096, "selected_contiguous_pairs": 1834, "selected_gap_mean": 2.0004885197850513, "selected_gap_max": 41, "selected_kv_row_bytes_per_layer": 2048, "selected_kv_pages_per_layer": 1024, "live_kv_bytes_all_qsa_layers": 103615572, "allocated_kv_bytes_all_qsa_layers": 106954752, "ple_requested_rows": 70448, "ple_gather_dequant_wall_ns": 7169222025, "ple_h2d_bytes": 3143680, "graph_capture": 48, "graph_replay": 14688},
+    "16384": {"prefill_seconds_diagnostic": 327.7667432979797, "score_rows": 4096, "selected_tokens": 2048, "selected_position_span": 16384, "selected_contiguous_pairs": 1699, "selected_gap_mean": 8.003419638495359, "selected_gap_max": 481, "selected_kv_row_bytes_per_layer": 2048, "selected_kv_pages_per_layer": 1024, "live_kv_bytes_all_qsa_layers": 405676248, "allocated_kv_bytes_all_qsa_layers": 408944640, "ple_requested_rows": 267056, "ple_gather_dequant_wall_ns": 7610136530, "ple_h2d_bytes": 3143680, "graph_capture": 48, "graph_replay": 14688},
+    "65536": {"prefill_seconds_diagnostic": 1399.2189981999982, "score_rows": 16384, "selected_tokens": 2048, "selected_position_span": 65536, "selected_contiguous_pairs": 1723, "selected_gap_mean": 32.01514411333659, "selected_gap_max": 5081, "selected_kv_row_bytes_per_layer": 2048, "selected_kv_pages_per_layer": 1024, "live_kv_bytes_all_qsa_layers": 1613654028, "allocated_kv_bytes_all_qsa_layers": 1616904192, "ple_requested_rows": 1053488, "ple_gather_dequant_wall_ns": 9430135548, "ple_h2d_bytes": 3143680, "graph_capture": 48, "graph_replay": 14688}
+  },
+  "correctness": {"all_retrieval_exact": true, "all_needle_selected_in_12_layers": true, "all_cpu_selected_positions_exact": true, "all_repeat_exact": true, "all_isolation_exact": true, "all_teardown_zero": true},
+  "selected_route_evidence": "The natural retrieval gate exercised the production QSA route at all depths; retained rocprofv3 boundary evidence in 2026-08-31-gfx1151-qwen38-flash-next-p6-context-transition-profile.json proves qsa_sparse_attention_paged_bf16_f32_kernel and score/top-k families on the same selected-2048 route.",
+  "raw_evidence": {
+    "/tmp/qwen4exp-p10-depth-profile-corrected-4096.json": "d4f1d8d7b1ebf11752321fa60a944869a9721a01f81258ea9c1b9483c54fa475",
+    "/tmp/qwen4exp-p10-depth-profile-corrected-16384.json": "4b22559e82d510ef45d4f7d2720bd881109588369f07c28959e7f8fc0d5e5229",
+    "/tmp/qwen4exp-p10-depth-profile-corrected-65536.json": "81817a6f5f7b2cb3e054671e22150d27f830f38a3f12bb9c03ef965e8a7e6fe6"
+  },
+  "decision": "Retain the diagnostic census and close the P10 owner-profile item. Do not infer a performance win. The next independent P10 action is the matched same-weight/BF16-KV comparator audit."
+}

@@ -1756,8 +1756,20 @@ the existing escalation thresholds permit each rung.
       passes repeat/rollback isolation, and tears down to zero. Historical depth
       rows are not used as old→new comparisons. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json`.
-- [ ] Profile QSA score/top-k O(context/4), selected-K/V page locality, sparse
+- [x] Profile QSA score/top-k O(context/4), selected-K/V page locality, sparse
       attention, PLE I/O, graph reuse, and KV bytes separately at each depth.
+      The corrected natural 4K/16K/64K census records 1,024/4,096/16,384 score
+      rows, fixed 2,048-token selected attention, a 2,048-byte physical K+V row,
+      and 1,024 selected 4-KiB pages per layer at every depth. Selected spans are
+      4,096/16,384/65,536 tokens with mean gaps 2.00/8.00/32.02 and maximum gaps
+      41/481/5,081. Live all-QSA-layer KV grows from 103,615,572 to
+      1,613,654,028 bytes. PLE publication remains 3,143,680 H2D bytes, and MoE
+      graph reuse remains 48 captures plus 14,688 replays with zero eager or
+      rejected routes. Every depth passes exact retrieval, CPU-selected-position
+      parity, repeatability, transaction isolation, and zero-allocation teardown.
+      The diagnostic adds no default-route work and makes no throughput claim.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-structural-depth-census.json`.
 - [ ] Compare exact matched same-weight/BF16-KV Engram/Nathan/upstream rows; do
       not compare against their IQ3/IQ4 or quantized-KV headlines.
 - [ ] Optimize persistent compressed-key scoring, top-k, selected attention,
