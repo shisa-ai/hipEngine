@@ -1,0 +1,2967 @@
+{
+  "aligned_family_ledger": {
+    "code-p1024:decode": {
+      "base": {
+        "cast_combine": {
+          "ms": 1.293599,
+          "rows": 569
+        },
+        "copy_fill_kernel": {
+          "ms": 0.607827,
+          "rows": 309
+        },
+        "dense_other": {
+          "ms": 3.039621,
+          "rows": 300
+        },
+        "dense_quant_q8": {
+          "ms": 22.514907,
+          "rows": 454
+        },
+        "elementwise_norm_rope": {
+          "ms": 3.421582,
+          "rows": 2219
+        },
+        "gdn": {
+          "ms": 5.188186,
+          "rows": 72
+        },
+        "layout_copy_rows": {
+          "ms": 1.228637,
+          "rows": 249
+        },
+        "moe_down_q5": {
+          "ms": 3.301119,
+          "rows": 43
+        },
+        "moe_gate_up_q4": {
+          "ms": 4.892152,
+          "rows": 47
+        },
+        "moe_gate_up_q5k": {
+          "ms": 0.123352,
+          "rows": 1
+        },
+        "moe_routing": {
+          "ms": 0.421558,
+          "rows": 48
+        },
+        "qsa_attention": {
+          "ms": 0.214764,
+          "rows": 24
+        },
+        "selection_reduce": {
+          "ms": 0.020601,
+          "rows": 14
+        }
+      },
+      "pr11": {
+        "cast_combine": {
+          "ms": 1.507245,
+          "rows": 617
+        },
+        "copy_fill_kernel": {
+          "ms": 0.605731,
+          "rows": 357
+        },
+        "dense_other": {
+          "ms": 2.981567,
+          "rows": 300
+        },
+        "dense_quant_q8": {
+          "ms": 22.247961,
+          "rows": 454
+        },
+        "elementwise_norm_rope": {
+          "ms": 2.880851,
+          "rows": 2039
+        },
+        "gdn": {
+          "ms": 0.613033,
+          "rows": 72
+        },
+        "layout_copy_rows": {
+          "ms": 1.220615,
+          "rows": 249
+        },
+        "moe_down_q5": {
+          "ms": 3.236125,
+          "rows": 43
+        },
+        "moe_gate_up_q4": {
+          "ms": 4.782389,
+          "rows": 47
+        },
+        "moe_gate_up_q5k": {
+          "ms": 0.124233,
+          "rows": 1
+        },
+        "moe_routing": {
+          "ms": 0.41915,
+          "rows": 48
+        },
+        "qsa_attention": {
+          "ms": 0.213321,
+          "rows": 24
+        },
+        "selection_reduce": {
+          "ms": 0.017073,
+          "rows": 14
+        }
+      }
+    },
+    "code-p1024:prefill": {
+      "base": {
+        "cast_combine": {
+          "ms": 82.469515,
+          "rows": 1365
+        },
+        "copy_fill_kernel": {
+          "ms": 10.572696,
+          "rows": 537
+        },
+        "dense_gemm_library": {
+          "ms": 174.690255,
+          "rows": 262
+        },
+        "dense_other": {
+          "ms": 4.630626,
+          "rows": 335
+        },
+        "dense_quant_q8": {
+          "ms": 454.241034,
+          "rows": 994
+        },
+        "elementwise_norm_rope": {
+          "ms": 451.202917,
+          "rows": 4829
+        },
+        "gdn": {
+          "ms": 219.80661,
+          "rows": 144
+        },
+        "layout_copy_rows": {
+          "ms": 90.523286,
+          "rows": 637
+        },
+        "moe_down_q5": {
+          "ms": 623.505185,
+          "rows": 86
+        },
+        "moe_gate_up_q4": {
+          "ms": 847.562186,
+          "rows": 185
+        },
+        "moe_gate_up_q5k": {
+          "ms": 25.985055,
+          "rows": 4
+        },
+        "moe_routing": {
+          "ms": 58.529929,
+          "rows": 260
+        },
+        "qsa_attention": {
+          "ms": 49.05722,
+          "rows": 36
+        },
+        "selection_reduce": {
+          "ms": 3.52682,
+          "rows": 310
+        }
+      },
+      "pr11": {
+        "cast_combine": {
+          "ms": 92.50354,
+          "rows": 1366
+        },
+        "copy_fill_kernel": {
+          "ms": 13.566869,
+          "rows": 632
+        },
+        "dense_gemm_library": {
+          "ms": 176.817238,
+          "rows": 262
+        },
+        "dense_other": {
+          "ms": 6.041716,
+          "rows": 335
+        },
+        "dense_quant_q8": {
+          "ms": 398.549863,
+          "rows": 994
+        },
+        "elementwise_norm_rope": {
+          "ms": 367.292288,
+          "rows": 4472
+        },
+        "gdn": {
+          "ms": 163.8893,
+          "rows": 144
+        },
+        "layout_copy_rows": {
+          "ms": 41.470578,
+          "rows": 637
+        },
+        "moe_down_q5": {
+          "ms": 636.713934,
+          "rows": 86
+        },
+        "moe_gate_up_q4": {
+          "ms": 732.409728,
+          "rows": 185
+        },
+        "moe_gate_up_q5k": {
+          "ms": 21.185336,
+          "rows": 4
+        },
+        "moe_routing": {
+          "ms": 23.430023,
+          "rows": 213
+        },
+        "qsa_attention": {
+          "ms": 46.401946,
+          "rows": 36
+        },
+        "selection_reduce": {
+          "ms": 1.937676,
+          "rows": 310
+        }
+      }
+    },
+    "code-p4096:decode": {
+      "base": {
+        "cast_combine": {
+          "ms": 2.458315,
+          "rows": 569
+        },
+        "copy_fill_kernel": {
+          "ms": 0.754606,
+          "rows": 294
+        },
+        "dense_other": {
+          "ms": 3.232308,
+          "rows": 300
+        },
+        "dense_quant_q8": {
+          "ms": 22.649872,
+          "rows": 454
+        },
+        "elementwise_norm_rope": {
+          "ms": 3.980906,
+          "rows": 2219
+        },
+        "gdn": {
+          "ms": 0.649864,
+          "rows": 72
+        },
+        "layout_copy_rows": {
+          "ms": 1.59773,
+          "rows": 249
+        },
+        "moe_down_q5": {
+          "ms": 3.31146,
+          "rows": 43
+        },
+        "moe_gate_up_q4": {
+          "ms": 5.094008,
+          "rows": 47
+        },
+        "moe_gate_up_q5k": {
+          "ms": 0.118102,
+          "rows": 1
+        },
+        "moe_routing": {
+          "ms": 0.470691,
+          "rows": 48
+        },
+        "qsa_attention": {
+          "ms": 0.594082,
+          "rows": 24
+        },
+        "selection_reduce": {
+          "ms": 0.028934,
+          "rows": 14
+        }
+      },
+      "pr11": {
+        "cast_combine": {
+          "ms": 3.082661,
+          "rows": 617
+        },
+        "copy_fill_kernel": {
+          "ms": 0.808319,
+          "rows": 342
+        },
+        "dense_other": {
+          "ms": 3.166674,
+          "rows": 300
+        },
+        "dense_quant_q8": {
+          "ms": 22.682451,
+          "rows": 454
+        },
+        "elementwise_norm_rope": {
+          "ms": 3.31442,
+          "rows": 2039
+        },
+        "gdn": {
+          "ms": 0.641005,
+          "rows": 72
+        },
+        "layout_copy_rows": {
+          "ms": 1.586177,
+          "rows": 249
+        },
+        "moe_down_q5": {
+          "ms": 3.277601,
+          "rows": 43
+        },
+        "moe_gate_up_q4": {
+          "ms": 5.097336,
+          "rows": 47
+        },
+        "moe_gate_up_q5k": {
+          "ms": 0.126036,
+          "rows": 1
+        },
+        "moe_routing": {
+          "ms": 0.442187,
+          "rows": 48
+        },
+        "qsa_attention": {
+          "ms": 0.695589,
+          "rows": 24
+        },
+        "selection_reduce": {
+          "ms": 0.017792,
+          "rows": 14
+        }
+      }
+    },
+    "code-p4096:prefill": {
+      "base": {
+        "cast_combine": {
+          "ms": 414.554615,
+          "rows": 2067
+        },
+        "copy_fill_kernel": {
+          "ms": 54.688793,
+          "rows": 764
+        },
+        "dense_gemm_library": {
+          "ms": 628.255719,
+          "rows": 512
+        },
+        "dense_other": {
+          "ms": 21.856035,
+          "rows": 382
+        },
+        "dense_quant_q8": {
+          "ms": 1575.336584,
+          "rows": 1487
+        },
+        "elementwise_norm_rope": {
+          "ms": 1894.949973,
+          "rows": 7181
+        },
+        "gdn": {
+          "ms": 2217.626686,
+          "rows": 216
+        },
+        "layout_copy_rows": {
+          "ms": 469.207613,
+          "rows": 946
+        },
+        "moe_down_q5": {
+          "ms": 1443.607702,
+          "rows": 129
+        },
+        "moe_gate_up_q4": {
+          "ms": 1889.425338,
+          "rows": 277
+        },
+        "moe_gate_up_q5k": {
+          "ms": 35.872203,
+          "rows": 6
+        },
+        "moe_routing": {
+          "ms": 354.184666,
+          "rows": 424
+        },
+        "qsa_attention": {
+          "ms": 531.334389,
+          "rows": 72
+        },
+        "selection_reduce": {
+          "ms": 30.028463,
+          "rows": 441
+        }
+      },
+      "pr11": {
+        "cast_combine": {
+          "ms": 429.545694,
+          "rows": 2021
+        },
+        "copy_fill_kernel": {
+          "ms": 66.988377,
+          "rows": 906
+        },
+        "dense_gemm_library": {
+          "ms": 648.539266,
+          "rows": 512
+        },
+        "dense_other": {
+          "ms": 19.468667,
+          "rows": 382
+        },
+        "dense_quant_q8": {
+          "ms": 1441.28422,
+          "rows": 1487
+        },
+        "elementwise_norm_rope": {
+          "ms": 1568.418777,
+          "rows": 6647
+        },
+        "gdn": {
+          "ms": 733.670821,
+          "rows": 216
+        },
+        "layout_copy_rows": {
+          "ms": 214.066478,
+          "rows": 946
+        },
+        "moe_down_q5": {
+          "ms": 1492.113157,
+          "rows": 129
+        },
+        "moe_gate_up_q4": {
+          "ms": 1707.998246,
+          "rows": 277
+        },
+        "moe_gate_up_q5k": {
+          "ms": 33.363409,
+          "rows": 6
+        },
+        "moe_routing": {
+          "ms": 76.285415,
+          "rows": 330
+        },
+        "qsa_attention": {
+          "ms": 492.802449,
+          "rows": 72
+        },
+        "selection_reduce": {
+          "ms": 9.345277,
+          "rows": 441
+        }
+      }
+    },
+    "code-p512:decode": {
+      "base": {
+        "cast_combine": {
+          "ms": 1.142326,
+          "rows": 569
+        },
+        "copy_fill_kernel": {
+          "ms": 0.557815,
+          "rows": 297
+        },
+        "dense_other": {
+          "ms": 3.056632,
+          "rows": 300
+        },
+        "dense_quant_q8": {
+          "ms": 22.707619,
+          "rows": 454
+        },
+        "elementwise_norm_rope": {
+          "ms": 3.433382,
+          "rows": 2219
+        },
+        "gdn": {
+          "ms": 0.564294,
+          "rows": 72
+        },
+        "layout_copy_rows": {
+          "ms": 1.18892,
+          "rows": 249
+        },
+        "moe_down_q5": {
+          "ms": 3.274632,
+          "rows": 43
+        },
+        "moe_gate_up_q4": {
+          "ms": 4.805831,
+          "rows": 47
+        },
+        "moe_gate_up_q5k": {
+          "ms": 0.123752,
+          "rows": 1
+        },
+        "moe_routing": {
+          "ms": 0.579209,
+          "rows": 60
+        },
+        "qsa_attention": {
+          "ms": 0.165589,
+          "rows": 24
+        },
+        "selection_reduce": {
+          "ms": 0.019677,
+          "rows": 14
+        }
+      },
+      "pr11": {
+        "cast_combine": {
+          "ms": 1.318395,
+          "rows": 617
+        },
+        "copy_fill_kernel": {
+          "ms": 0.57455,
+          "rows": 345
+        },
+        "dense_other": {
+          "ms": 2.985373,
+          "rows": 300
+        },
+        "dense_quant_q8": {
+          "ms": 22.308953,
+          "rows": 454
+        },
+        "elementwise_norm_rope": {
+          "ms": 2.799417,
+          "rows": 2039
+        },
+        "gdn": {
+          "ms": 0.568954,
+          "rows": 72
+        },
+        "layout_copy_rows": {
+          "ms": 1.150373,
+          "rows": 249
+        },
+        "moe_down_q5": {
+          "ms": 3.114574,
+          "rows": 43
+        },
+        "moe_gate_up_q4": {
+          "ms": 4.715259,
+          "rows": 47
+        },
+        "moe_gate_up_q5k": {
+          "ms": 0.121869,
+          "rows": 1
+        },
+        "moe_routing": {
+          "ms": 0.565662,
+          "rows": 60
+        },
+        "qsa_attention": {
+          "ms": 0.156696,
+          "rows": 24
+        },
+        "selection_reduce": {
+          "ms": 0.016671,
+          "rows": 14
+        }
+      }
+    },
+    "code-p512:prefill": {
+      "base": {
+        "cast_combine": {
+          "ms": 29.923417,
+          "rows": 1365
+        },
+        "copy_fill_kernel": {
+          "ms": 2.749575,
+          "rows": 537
+        },
+        "dense_gemm_library": {
+          "ms": 107.353518,
+          "rows": 262
+        },
+        "dense_other": {
+          "ms": 4.003709,
+          "rows": 335
+        },
+        "dense_quant_q8": {
+          "ms": 268.970802,
+          "rows": 994
+        },
+        "elementwise_norm_rope": {
+          "ms": 199.735038,
+          "rows": 4821
+        },
+        "gdn": {
+          "ms": 79.026007,
+          "rows": 144
+        },
+        "layout_copy_rows": {
+          "ms": 37.37639,
+          "rows": 629
+        },
+        "moe_down_q5": {
+          "ms": 501.572971,
+          "rows": 86
+        },
+        "moe_gate_up_q4": {
+          "ms": 698.1337,
+          "rows": 185
+        },
+        "moe_gate_up_q5k": {
+          "ms": 15.394405,
+          "rows": 4
+        },
+        "moe_routing": {
+          "ms": 28.211841,
+          "rows": 260
+        },
+        "qsa_attention": {
+          "ms": 12.815526,
+          "rows": 36
+        },
+        "selection_reduce": {
+          "ms": 1.494244,
+          "rows": 286
+        }
+      },
+      "pr11": {
+        "cast_combine": {
+          "ms": 40.399041,
+          "rows": 1366
+        },
+        "copy_fill_kernel": {
+          "ms": 4.220942,
+          "rows": 632
+        },
+        "dense_gemm_library": {
+          "ms": 107.595611,
+          "rows": 262
+        },
+        "dense_other": {
+          "ms": 3.928793,
+          "rows": 335
+        },
+        "dense_quant_q8": {
+          "ms": 243.084279,
+          "rows": 994
+        },
+        "elementwise_norm_rope": {
+          "ms": 154.89728,
+          "rows": 4464
+        },
+        "gdn": {
+          "ms": 78.54811,
+          "rows": 144
+        },
+        "layout_copy_rows": {
+          "ms": 18.266279,
+          "rows": 629
+        },
+        "moe_down_q5": {
+          "ms": 515.288615,
+          "rows": 86
+        },
+        "moe_gate_up_q4": {
+          "ms": 612.952982,
+          "rows": 185
+        },
+        "moe_gate_up_q5k": {
+          "ms": 15.21062,
+          "rows": 4
+        },
+        "moe_routing": {
+          "ms": 10.344597,
+          "rows": 213
+        },
+        "qsa_attention": {
+          "ms": 12.542932,
+          "rows": 36
+        },
+        "selection_reduce": {
+          "ms": 1.067047,
+          "rows": 286
+        }
+      }
+    }
+  },
+  "amdahl_declaration": {
+    "C": "client CLOCK_MONOTONIC request bounds selecting complete kernel/API request windows; raw kernel sums are diagnostic because overlap is possible",
+    "O": null,
+    "W": "exact code p512/p1024/p4096 prefill and one live-513/1025/4097 cached decode transition per frozen lane",
+    "arithmetic_class": "llama.cpp-family exact generated-token comparison; profiling is diagnostic and does not establish a production candidate",
+    "mechanism": "kernel-name plus launch-geometry activation census and aligned broad-family trace ledger",
+    "overlap_exclusions": [
+      "model load and warmups excluded by explicit request bounds",
+      "kernel sum is not request wall",
+      "HB-3 matched operation-complete timings not yet run",
+      "IQ4_XS, Q8_0 K/V, concurrency, and production changes excluded"
+    ],
+    "s": null,
+    "scope": "UD-Q4_K_XL, BF16 K/V, c=1, gfx1151",
+    "strict_fallback": "HB-base frozen binary; any later hipEngine candidate must register its existing strict fallback"
+  },
+  "baseline_claim": false,
+  "correctness": {
+    "code-p1024": {
+      "decode_output_exact": true,
+      "prefill_output_exact": true
+    },
+    "code-p4096": {
+      "decode_output_exact": true,
+      "prefill_output_exact": true
+    },
+    "code-p512": {
+      "decode_output_exact": true,
+      "prefill_output_exact": true
+    }
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "hb2_exit_met": true,
+    "hb3_active_families": [
+      "M1",
+      "M2",
+      "M5_weighted_sum",
+      "M6",
+      "M8"
+    ],
+    "hb3_inactive_families": [
+      "M3",
+      "M4",
+      "M5_shared_mul_add",
+      "M7"
+    ],
+    "next": "Build matched operation-complete HB-3 microbenchmarks only for measured-active families, with identical shapes, counterbalanced pairs, and explicit W/C/O/s rows.",
+    "promote_candidate": false
+  },
+  "finding": "M1, M2, M5 weighted-sum, M6, and M8 mechanisms are measured active. M3, M4, M5 shared-mul-add, and M7 are inactive on this binding graph/payload. The largest isolated trace delta is the active 32-warp GDN path at p4096; HB-3 must use operation-complete matched microbenchmarks before any candidate admission.",
+  "fixture": {
+    "path": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1"
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_halo_box_hb2_mechanism_census",
+  "lanes": {
+    "base": {
+      "command": [
+        "qwen4exp_llamacpp_exact_profile.py",
+        "--server-bin",
+        "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/llama-server",
+        "--source-root",
+        "/home/lhl/halo-box-strix-llama/hb-base",
+        "--model",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--fixture",
+        "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+        "--case-id",
+        "code-p512",
+        "--case-id",
+        "code-p1024",
+        "--case-id",
+        "code-p4096",
+        "--startup-timeout",
+        "1800",
+        "--request-timeout",
+        "600",
+        "--server-arg=-ngl",
+        "--server-arg=999",
+        "--server-arg=-fa",
+        "--server-arg=on",
+        "--server-arg=-ctk",
+        "--server-arg=bf16",
+        "--server-arg=-ctv",
+        "--server-arg=bf16",
+        "--server-arg=-c",
+        "--server-arg=4352",
+        "--server-arg=-b",
+        "--server-arg=8192",
+        "--server-arg=-ub",
+        "--server-arg=2048",
+        "--server-arg=-t",
+        "--server-arg=4",
+        "--server-arg=-lm",
+        "--server-arg=mmap",
+        "--engine-label",
+        "hb_base_6c84c7d5_loader_patched",
+        "--port",
+        "18131",
+        "--trace-root",
+        "/tmp/qwen4exp-hb2-base-exact-profile/traces",
+        "--server-log",
+        "/tmp/qwen4exp-hb2-base-exact-profile/profile-process.log",
+        "--output",
+        "/tmp/qwen4exp-hb2-base-exact-profile/result.json"
+      ],
+      "lifecycle": {
+        "cache_reuse_exact": true,
+        "cases": 3,
+        "profiler_returncode": -9,
+        "status": "completed",
+        "teardown": "controller sent SIGTERM, then bounded SIGKILL after 120 s; CSV hashes recorded"
+      },
+      "profile_result": {
+        "path": "/tmp/qwen4exp-hb2-base-exact-profile/result.json",
+        "sha256": "54ab5c2b2ff4c157057f31a691c40668353cf6ede227702145d6ce194df71ecb"
+      },
+      "profiler_command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--memory-copy-trace",
+        "--memory-allocation-trace",
+        "--output-format",
+        "csv",
+        "--output-directory",
+        "/tmp/qwen4exp-hb2-base-exact-profile/traces",
+        "--output-file",
+        "llama-exact",
+        "--",
+        "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/llama-server",
+        "-m",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18131",
+        "--parallel",
+        "1",
+        "--no-webui",
+        "-ngl",
+        "999",
+        "-fa",
+        "on",
+        "-ctk",
+        "bf16",
+        "-ctv",
+        "bf16",
+        "-c",
+        "4352",
+        "-b",
+        "8192",
+        "-ub",
+        "2048",
+        "-t",
+        "4",
+        "-lm",
+        "mmap"
+      ],
+      "server_binary": "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/llama-server",
+      "server_binary_sha256": "14c40f2b64299c172219840b2bfbabf2ab888320516fe4b7dbb1d059aeada43c",
+      "source": {
+        "head": "6c84c7d5d8833c6e0df69628f75a0f599797934e",
+        "path": "/home/lhl/halo-box-strix-llama/hb-base",
+        "tracked_clean": false
+      },
+      "source_diff_sha256": "d12ba066d54f08bd18c003760b86bdb1acf174063d664cf8680697fb2ba9ef68",
+      "trace_files": [
+        {
+          "bytes": 1344,
+          "path": "/tmp/qwen4exp-hb2-base-exact-profile/traces/llama-exact_agent_info.csv",
+          "sha256": "0fa6ea61c770ac0d05f60233d18399cb924d321409059b9f3d7dc78a464a6e9c"
+        },
+        {
+          "bytes": 72134409,
+          "path": "/tmp/qwen4exp-hb2-base-exact-profile/traces/llama-exact_hip_api_trace.csv",
+          "sha256": "d8adc1c3a379c0db3ef2386bf323a0c9486b2fad740b7dc3cea299b1c260c771"
+        },
+        {
+          "bytes": 34941281,
+          "path": "/tmp/qwen4exp-hb2-base-exact-profile/traces/llama-exact_kernel_trace.csv",
+          "sha256": "5c710727eed51c8fa8909ce9335382563468c87fa95856b5d6b923e09e6231ad"
+        },
+        {
+          "bytes": 5767,
+          "path": "/tmp/qwen4exp-hb2-base-exact-profile/traces/llama-exact_memory_allocation_trace.csv",
+          "sha256": "b7d2f24e8c1a674255ece7b8dde456f645d1d9e592c298c8d4f7de277aa0d25e"
+        },
+        {
+          "bytes": 8264799,
+          "path": "/tmp/qwen4exp-hb2-base-exact-profile/traces/llama-exact_memory_copy_trace.csv",
+          "sha256": "2e800035a1bfdef202ca74eaf1861f184b62378766b6df11a89ba9c61cf1fe4b"
+        }
+      ],
+      "windows": {
+        "code-p1024:decode": {
+          "families": {
+            "cast_combine": {
+              "ms": 1.293599,
+              "rows": 569
+            },
+            "copy_fill_kernel": {
+              "ms": 0.607827,
+              "rows": 309
+            },
+            "dense_other": {
+              "ms": 3.039621,
+              "rows": 300
+            },
+            "dense_quant_q8": {
+              "ms": 22.514907,
+              "rows": 454
+            },
+            "elementwise_norm_rope": {
+              "ms": 3.421582,
+              "rows": 2219
+            },
+            "gdn": {
+              "ms": 5.188186,
+              "rows": 72
+            },
+            "layout_copy_rows": {
+              "ms": 1.228637,
+              "rows": 249
+            },
+            "moe_down_q5": {
+              "ms": 3.301119,
+              "rows": 43
+            },
+            "moe_gate_up_q4": {
+              "ms": 4.892152,
+              "rows": 47
+            },
+            "moe_gate_up_q5k": {
+              "ms": 0.123352,
+              "rows": 1
+            },
+            "moe_routing": {
+              "ms": 0.421558,
+              "rows": 48
+            },
+            "qsa_attention": {
+              "ms": 0.214764,
+              "rows": 24
+            },
+            "selection_reduce": {
+              "ms": 0.020601,
+              "rows": 14
+            }
+          },
+          "kernel_rows": 4349,
+          "kernel_span_ms": 70.86302,
+          "kernel_sum_ms": 46.267905,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-base-exact-profile/summary-code-p1024-decode.json",
+            "sha256": "6ec7bf364a0343e77b592f9fedd4e7e44d075b48399d35a6f73318782044ed0a"
+          },
+          "request_wall_ms": 112.423581
+        },
+        "code-p1024:prefill": {
+          "families": {
+            "cast_combine": {
+              "ms": 82.469515,
+              "rows": 1365
+            },
+            "copy_fill_kernel": {
+              "ms": 10.572696,
+              "rows": 537
+            },
+            "dense_gemm_library": {
+              "ms": 174.690255,
+              "rows": 262
+            },
+            "dense_other": {
+              "ms": 4.630626,
+              "rows": 335
+            },
+            "dense_quant_q8": {
+              "ms": 454.241034,
+              "rows": 994
+            },
+            "elementwise_norm_rope": {
+              "ms": 451.202917,
+              "rows": 4829
+            },
+            "gdn": {
+              "ms": 219.80661,
+              "rows": 144
+            },
+            "layout_copy_rows": {
+              "ms": 90.523286,
+              "rows": 637
+            },
+            "moe_down_q5": {
+              "ms": 623.505185,
+              "rows": 86
+            },
+            "moe_gate_up_q4": {
+              "ms": 847.562186,
+              "rows": 185
+            },
+            "moe_gate_up_q5k": {
+              "ms": 25.985055,
+              "rows": 4
+            },
+            "moe_routing": {
+              "ms": 58.529929,
+              "rows": 260
+            },
+            "qsa_attention": {
+              "ms": 49.05722,
+              "rows": 36
+            },
+            "selection_reduce": {
+              "ms": 3.52682,
+              "rows": 310
+            }
+          },
+          "kernel_rows": 9984,
+          "kernel_span_ms": 3184.317447,
+          "kernel_sum_ms": 3096.303334,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-base-exact-profile/summary-code-p1024-prefill.json",
+            "sha256": "6ddd9b3eb1329ee241f801ca77dfb8b1d0766888f7fadd8cb6b8d23256ec35f5"
+          },
+          "request_wall_ms": 3212.306076
+        },
+        "code-p4096:decode": {
+          "families": {
+            "cast_combine": {
+              "ms": 2.458315,
+              "rows": 569
+            },
+            "copy_fill_kernel": {
+              "ms": 0.754606,
+              "rows": 294
+            },
+            "dense_other": {
+              "ms": 3.232308,
+              "rows": 300
+            },
+            "dense_quant_q8": {
+              "ms": 22.649872,
+              "rows": 454
+            },
+            "elementwise_norm_rope": {
+              "ms": 3.980906,
+              "rows": 2219
+            },
+            "gdn": {
+              "ms": 0.649864,
+              "rows": 72
+            },
+            "layout_copy_rows": {
+              "ms": 1.59773,
+              "rows": 249
+            },
+            "moe_down_q5": {
+              "ms": 3.31146,
+              "rows": 43
+            },
+            "moe_gate_up_q4": {
+              "ms": 5.094008,
+              "rows": 47
+            },
+            "moe_gate_up_q5k": {
+              "ms": 0.118102,
+              "rows": 1
+            },
+            "moe_routing": {
+              "ms": 0.470691,
+              "rows": 48
+            },
+            "qsa_attention": {
+              "ms": 0.594082,
+              "rows": 24
+            },
+            "selection_reduce": {
+              "ms": 0.028934,
+              "rows": 14
+            }
+          },
+          "kernel_rows": 4334,
+          "kernel_span_ms": 82.94478,
+          "kernel_sum_ms": 44.940878,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-base-exact-profile/summary-code-p4096-decode.json",
+            "sha256": "3f0bd8cb21f197a6c4577533512b932f6e6631e2dd324d118f78fde3fdac7978"
+          },
+          "request_wall_ms": 129.59201
+        },
+        "code-p4096:prefill": {
+          "families": {
+            "cast_combine": {
+              "ms": 414.554615,
+              "rows": 2067
+            },
+            "copy_fill_kernel": {
+              "ms": 54.688793,
+              "rows": 764
+            },
+            "dense_gemm_library": {
+              "ms": 628.255719,
+              "rows": 512
+            },
+            "dense_other": {
+              "ms": 21.856035,
+              "rows": 382
+            },
+            "dense_quant_q8": {
+              "ms": 1575.336584,
+              "rows": 1487
+            },
+            "elementwise_norm_rope": {
+              "ms": 1894.949973,
+              "rows": 7181
+            },
+            "gdn": {
+              "ms": 2217.626686,
+              "rows": 216
+            },
+            "layout_copy_rows": {
+              "ms": 469.207613,
+              "rows": 946
+            },
+            "moe_down_q5": {
+              "ms": 1443.607702,
+              "rows": 129
+            },
+            "moe_gate_up_q4": {
+              "ms": 1889.425338,
+              "rows": 277
+            },
+            "moe_gate_up_q5k": {
+              "ms": 35.872203,
+              "rows": 6
+            },
+            "moe_routing": {
+              "ms": 354.184666,
+              "rows": 424
+            },
+            "qsa_attention": {
+              "ms": 531.334389,
+              "rows": 72
+            },
+            "selection_reduce": {
+              "ms": 30.028463,
+              "rows": 441
+            }
+          },
+          "kernel_rows": 14904,
+          "kernel_span_ms": 13693.284573,
+          "kernel_sum_ms": 11560.928779,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-base-exact-profile/summary-code-p4096-prefill.json",
+            "sha256": "95f76c7b6125f6fb255a63b06e526fd81b164148378d6407fcf6e2c71b21eae8"
+          },
+          "request_wall_ms": 13723.193772
+        },
+        "code-p512:decode": {
+          "families": {
+            "cast_combine": {
+              "ms": 1.142326,
+              "rows": 569
+            },
+            "copy_fill_kernel": {
+              "ms": 0.557815,
+              "rows": 297
+            },
+            "dense_other": {
+              "ms": 3.056632,
+              "rows": 300
+            },
+            "dense_quant_q8": {
+              "ms": 22.707619,
+              "rows": 454
+            },
+            "elementwise_norm_rope": {
+              "ms": 3.433382,
+              "rows": 2219
+            },
+            "gdn": {
+              "ms": 0.564294,
+              "rows": 72
+            },
+            "layout_copy_rows": {
+              "ms": 1.18892,
+              "rows": 249
+            },
+            "moe_down_q5": {
+              "ms": 3.274632,
+              "rows": 43
+            },
+            "moe_gate_up_q4": {
+              "ms": 4.805831,
+              "rows": 47
+            },
+            "moe_gate_up_q5k": {
+              "ms": 0.123752,
+              "rows": 1
+            },
+            "moe_routing": {
+              "ms": 0.579209,
+              "rows": 60
+            },
+            "qsa_attention": {
+              "ms": 0.165589,
+              "rows": 24
+            },
+            "selection_reduce": {
+              "ms": 0.019677,
+              "rows": 14
+            }
+          },
+          "kernel_rows": 4349,
+          "kernel_span_ms": 65.21588,
+          "kernel_sum_ms": 41.619678,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-base-exact-profile/summary-code-p512-decode.json",
+            "sha256": "1e14ddb51ff6c84931b33855ea5b0ef98a8c7ef2c35735f18d75fedf9256e367"
+          },
+          "request_wall_ms": 105.175081
+        },
+        "code-p512:prefill": {
+          "families": {
+            "cast_combine": {
+              "ms": 29.923417,
+              "rows": 1365
+            },
+            "copy_fill_kernel": {
+              "ms": 2.749575,
+              "rows": 537
+            },
+            "dense_gemm_library": {
+              "ms": 107.353518,
+              "rows": 262
+            },
+            "dense_other": {
+              "ms": 4.003709,
+              "rows": 335
+            },
+            "dense_quant_q8": {
+              "ms": 268.970802,
+              "rows": 994
+            },
+            "elementwise_norm_rope": {
+              "ms": 199.735038,
+              "rows": 4821
+            },
+            "gdn": {
+              "ms": 79.026007,
+              "rows": 144
+            },
+            "layout_copy_rows": {
+              "ms": 37.37639,
+              "rows": 629
+            },
+            "moe_down_q5": {
+              "ms": 501.572971,
+              "rows": 86
+            },
+            "moe_gate_up_q4": {
+              "ms": 698.1337,
+              "rows": 185
+            },
+            "moe_gate_up_q5k": {
+              "ms": 15.394405,
+              "rows": 4
+            },
+            "moe_routing": {
+              "ms": 28.211841,
+              "rows": 260
+            },
+            "qsa_attention": {
+              "ms": 12.815526,
+              "rows": 36
+            },
+            "selection_reduce": {
+              "ms": 1.494244,
+              "rows": 286
+            }
+          },
+          "kernel_rows": 9944,
+          "kernel_span_ms": 2068.489204,
+          "kernel_sum_ms": 1986.761143,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-base-exact-profile/summary-code-p512-prefill.json",
+            "sha256": "378106a2f5f52a1c849d83b0044c13ec08b21399960bfabbe3c4aca78d876fc0"
+          },
+          "request_wall_ms": 2209.302169
+        }
+      }
+    },
+    "pr11": {
+      "command": [
+        "qwen4exp_llamacpp_exact_profile.py",
+        "--server-bin",
+        "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+        "--source-root",
+        "/home/lhl/halo-box-strix-llama/hb-pr11",
+        "--model",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--fixture",
+        "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+        "--case-id",
+        "code-p512",
+        "--case-id",
+        "code-p1024",
+        "--case-id",
+        "code-p4096",
+        "--startup-timeout",
+        "1800",
+        "--request-timeout",
+        "600",
+        "--server-arg=-ngl",
+        "--server-arg=999",
+        "--server-arg=-fa",
+        "--server-arg=on",
+        "--server-arg=-ctk",
+        "--server-arg=bf16",
+        "--server-arg=-ctv",
+        "--server-arg=bf16",
+        "--server-arg=-c",
+        "--server-arg=4352",
+        "--server-arg=-b",
+        "--server-arg=8192",
+        "--server-arg=-ub",
+        "--server-arg=2048",
+        "--server-arg=-t",
+        "--server-arg=4",
+        "--server-arg=-lm",
+        "--server-arg=mmap",
+        "--engine-label",
+        "hb_pr11_a7ad7b7f_loader_patched",
+        "--port",
+        "18132",
+        "--trace-root",
+        "/tmp/qwen4exp-hb2-pr11-exact-profile/traces",
+        "--server-log",
+        "/tmp/qwen4exp-hb2-pr11-exact-profile/profile-process.log",
+        "--output",
+        "/tmp/qwen4exp-hb2-pr11-exact-profile/result.json"
+      ],
+      "lifecycle": {
+        "cache_reuse_exact": true,
+        "cases": 3,
+        "profiler_returncode": -9,
+        "status": "completed",
+        "teardown": "controller sent SIGTERM, then bounded SIGKILL after 120 s; CSV hashes recorded"
+      },
+      "profile_result": {
+        "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/result.json",
+        "sha256": "a73913c4c63c3e1540cd5a645b6ac18554156e41e186ef8c4fb99d6a50204890"
+      },
+      "profiler_command": [
+        "rocprofv3",
+        "--kernel-trace",
+        "--hip-trace",
+        "--memory-copy-trace",
+        "--memory-allocation-trace",
+        "--output-format",
+        "csv",
+        "--output-directory",
+        "/tmp/qwen4exp-hb2-pr11-exact-profile/traces",
+        "--output-file",
+        "llama-exact",
+        "--",
+        "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+        "-m",
+        "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "18132",
+        "--parallel",
+        "1",
+        "--no-webui",
+        "-ngl",
+        "999",
+        "-fa",
+        "on",
+        "-ctk",
+        "bf16",
+        "-ctv",
+        "bf16",
+        "-c",
+        "4352",
+        "-b",
+        "8192",
+        "-ub",
+        "2048",
+        "-t",
+        "4",
+        "-lm",
+        "mmap"
+      ],
+      "server_binary": "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+      "server_binary_sha256": "22f1f8e634ff0cc4ae83b7323c15508c82f9e02b62d4c31704ed33f22b414c58",
+      "source": {
+        "head": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+        "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+        "tracked_clean": false
+      },
+      "source_diff_sha256": "7cd3766b1fca2f85262ed30414ebc23316e83d88c0eb00341e2b501b0e343213",
+      "trace_files": [
+        {
+          "bytes": 1344,
+          "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/traces/llama-exact_agent_info.csv",
+          "sha256": "0fa6ea61c770ac0d05f60233d18399cb924d321409059b9f3d7dc78a464a6e9c"
+        },
+        {
+          "bytes": 70791629,
+          "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/traces/llama-exact_hip_api_trace.csv",
+          "sha256": "987abe8a475f7af43022480258fecd9b28cb99ec1aaa56e243ded7733fb393b1"
+        },
+        {
+          "bytes": 31260125,
+          "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/traces/llama-exact_kernel_trace.csv",
+          "sha256": "aab3b097df539af0cdad0b95a6359275107fe8584b7c309625bcbea571772687"
+        },
+        {
+          "bytes": 5767,
+          "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/traces/llama-exact_memory_allocation_trace.csv",
+          "sha256": "f7a5d172baa11bdb1f48fac3f22d3b79600deb9ca0320a72cb99bed97d992738"
+        },
+        {
+          "bytes": 8265226,
+          "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/traces/llama-exact_memory_copy_trace.csv",
+          "sha256": "e54f2b538f3f22997c5f5b1386f01898ac54388ffd878cf669617382c26179a4"
+        }
+      ],
+      "windows": {
+        "code-p1024:decode": {
+          "families": {
+            "cast_combine": {
+              "ms": 1.507245,
+              "rows": 617
+            },
+            "copy_fill_kernel": {
+              "ms": 0.605731,
+              "rows": 357
+            },
+            "dense_other": {
+              "ms": 2.981567,
+              "rows": 300
+            },
+            "dense_quant_q8": {
+              "ms": 22.247961,
+              "rows": 454
+            },
+            "elementwise_norm_rope": {
+              "ms": 2.880851,
+              "rows": 2039
+            },
+            "gdn": {
+              "ms": 0.613033,
+              "rows": 72
+            },
+            "layout_copy_rows": {
+              "ms": 1.220615,
+              "rows": 249
+            },
+            "moe_down_q5": {
+              "ms": 3.236125,
+              "rows": 43
+            },
+            "moe_gate_up_q4": {
+              "ms": 4.782389,
+              "rows": 47
+            },
+            "moe_gate_up_q5k": {
+              "ms": 0.124233,
+              "rows": 1
+            },
+            "moe_routing": {
+              "ms": 0.41915,
+              "rows": 48
+            },
+            "qsa_attention": {
+              "ms": 0.213321,
+              "rows": 24
+            },
+            "selection_reduce": {
+              "ms": 0.017073,
+              "rows": 14
+            }
+          },
+          "kernel_rows": 4265,
+          "kernel_span_ms": 61.936437,
+          "kernel_sum_ms": 40.849294,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/summary-code-p1024-decode.json",
+            "sha256": "36f205a949b18b9c2dace1a9364ee74118c64dff12c2c857f9d09892fd02ca4d"
+          },
+          "request_wall_ms": 98.251692
+        },
+        "code-p1024:prefill": {
+          "families": {
+            "cast_combine": {
+              "ms": 92.50354,
+              "rows": 1366
+            },
+            "copy_fill_kernel": {
+              "ms": 13.566869,
+              "rows": 632
+            },
+            "dense_gemm_library": {
+              "ms": 176.817238,
+              "rows": 262
+            },
+            "dense_other": {
+              "ms": 6.041716,
+              "rows": 335
+            },
+            "dense_quant_q8": {
+              "ms": 398.549863,
+              "rows": 994
+            },
+            "elementwise_norm_rope": {
+              "ms": 367.292288,
+              "rows": 4472
+            },
+            "gdn": {
+              "ms": 163.8893,
+              "rows": 144
+            },
+            "layout_copy_rows": {
+              "ms": 41.470578,
+              "rows": 637
+            },
+            "moe_down_q5": {
+              "ms": 636.713934,
+              "rows": 86
+            },
+            "moe_gate_up_q4": {
+              "ms": 732.409728,
+              "rows": 185
+            },
+            "moe_gate_up_q5k": {
+              "ms": 21.185336,
+              "rows": 4
+            },
+            "moe_routing": {
+              "ms": 23.430023,
+              "rows": 213
+            },
+            "qsa_attention": {
+              "ms": 46.401946,
+              "rows": 36
+            },
+            "selection_reduce": {
+              "ms": 1.937676,
+              "rows": 310
+            }
+          },
+          "kernel_rows": 9676,
+          "kernel_span_ms": 2806.153247,
+          "kernel_sum_ms": 2722.210035,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/summary-code-p1024-prefill.json",
+            "sha256": "829e6cd81b5428ef0aed3cf3ae1443d764faab01c83757bd3b1167df5335c4d5"
+          },
+          "request_wall_ms": 2831.88233
+        },
+        "code-p4096:decode": {
+          "families": {
+            "cast_combine": {
+              "ms": 3.082661,
+              "rows": 617
+            },
+            "copy_fill_kernel": {
+              "ms": 0.808319,
+              "rows": 342
+            },
+            "dense_other": {
+              "ms": 3.166674,
+              "rows": 300
+            },
+            "dense_quant_q8": {
+              "ms": 22.682451,
+              "rows": 454
+            },
+            "elementwise_norm_rope": {
+              "ms": 3.31442,
+              "rows": 2039
+            },
+            "gdn": {
+              "ms": 0.641005,
+              "rows": 72
+            },
+            "layout_copy_rows": {
+              "ms": 1.586177,
+              "rows": 249
+            },
+            "moe_down_q5": {
+              "ms": 3.277601,
+              "rows": 43
+            },
+            "moe_gate_up_q4": {
+              "ms": 5.097336,
+              "rows": 47
+            },
+            "moe_gate_up_q5k": {
+              "ms": 0.126036,
+              "rows": 1
+            },
+            "moe_routing": {
+              "ms": 0.442187,
+              "rows": 48
+            },
+            "qsa_attention": {
+              "ms": 0.695589,
+              "rows": 24
+            },
+            "selection_reduce": {
+              "ms": 0.017792,
+              "rows": 14
+            }
+          },
+          "kernel_rows": 4250,
+          "kernel_span_ms": 79.248788,
+          "kernel_sum_ms": 44.938248,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/summary-code-p4096-decode.json",
+            "sha256": "375c15ca4549d0e4acd7c04ba26bf292cafa4a5d5fb3ddf9a0052a4b6e7baa6f"
+          },
+          "request_wall_ms": 111.36431
+        },
+        "code-p4096:prefill": {
+          "families": {
+            "cast_combine": {
+              "ms": 429.545694,
+              "rows": 2021
+            },
+            "copy_fill_kernel": {
+              "ms": 66.988377,
+              "rows": 906
+            },
+            "dense_gemm_library": {
+              "ms": 648.539266,
+              "rows": 512
+            },
+            "dense_other": {
+              "ms": 19.468667,
+              "rows": 382
+            },
+            "dense_quant_q8": {
+              "ms": 1441.28422,
+              "rows": 1487
+            },
+            "elementwise_norm_rope": {
+              "ms": 1568.418777,
+              "rows": 6647
+            },
+            "gdn": {
+              "ms": 733.670821,
+              "rows": 216
+            },
+            "layout_copy_rows": {
+              "ms": 214.066478,
+              "rows": 946
+            },
+            "moe_down_q5": {
+              "ms": 1492.113157,
+              "rows": 129
+            },
+            "moe_gate_up_q4": {
+              "ms": 1707.998246,
+              "rows": 277
+            },
+            "moe_gate_up_q5k": {
+              "ms": 33.363409,
+              "rows": 6
+            },
+            "moe_routing": {
+              "ms": 76.285415,
+              "rows": 330
+            },
+            "qsa_attention": {
+              "ms": 492.802449,
+              "rows": 72
+            },
+            "selection_reduce": {
+              "ms": 9.345277,
+              "rows": 441
+            }
+          },
+          "kernel_rows": 14372,
+          "kernel_span_ms": 11031.617702,
+          "kernel_sum_ms": 8933.890253,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/summary-code-p4096-prefill.json",
+            "sha256": "d5b44ebfb79c9310a865ecfc049d23da2e23e37003281184ee8ebb79b40c9049"
+          },
+          "request_wall_ms": 11063.100598
+        },
+        "code-p512:decode": {
+          "families": {
+            "cast_combine": {
+              "ms": 1.318395,
+              "rows": 617
+            },
+            "copy_fill_kernel": {
+              "ms": 0.57455,
+              "rows": 345
+            },
+            "dense_other": {
+              "ms": 2.985373,
+              "rows": 300
+            },
+            "dense_quant_q8": {
+              "ms": 22.308953,
+              "rows": 454
+            },
+            "elementwise_norm_rope": {
+              "ms": 2.799417,
+              "rows": 2039
+            },
+            "gdn": {
+              "ms": 0.568954,
+              "rows": 72
+            },
+            "layout_copy_rows": {
+              "ms": 1.150373,
+              "rows": 249
+            },
+            "moe_down_q5": {
+              "ms": 3.114574,
+              "rows": 43
+            },
+            "moe_gate_up_q4": {
+              "ms": 4.715259,
+              "rows": 47
+            },
+            "moe_gate_up_q5k": {
+              "ms": 0.121869,
+              "rows": 1
+            },
+            "moe_routing": {
+              "ms": 0.565662,
+              "rows": 60
+            },
+            "qsa_attention": {
+              "ms": 0.156696,
+              "rows": 24
+            },
+            "selection_reduce": {
+              "ms": 0.016671,
+              "rows": 14
+            }
+          },
+          "kernel_rows": 4265,
+          "kernel_span_ms": 62.532687,
+          "kernel_sum_ms": 40.396746,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/summary-code-p512-decode.json",
+            "sha256": "c32edd807db0e151f730224d6c26e2880692863846341756df0fa3120bba5f59"
+          },
+          "request_wall_ms": 108.17088
+        },
+        "code-p512:prefill": {
+          "families": {
+            "cast_combine": {
+              "ms": 40.399041,
+              "rows": 1366
+            },
+            "copy_fill_kernel": {
+              "ms": 4.220942,
+              "rows": 632
+            },
+            "dense_gemm_library": {
+              "ms": 107.595611,
+              "rows": 262
+            },
+            "dense_other": {
+              "ms": 3.928793,
+              "rows": 335
+            },
+            "dense_quant_q8": {
+              "ms": 243.084279,
+              "rows": 994
+            },
+            "elementwise_norm_rope": {
+              "ms": 154.89728,
+              "rows": 4464
+            },
+            "gdn": {
+              "ms": 78.54811,
+              "rows": 144
+            },
+            "layout_copy_rows": {
+              "ms": 18.266279,
+              "rows": 629
+            },
+            "moe_down_q5": {
+              "ms": 515.288615,
+              "rows": 86
+            },
+            "moe_gate_up_q4": {
+              "ms": 612.952982,
+              "rows": 185
+            },
+            "moe_gate_up_q5k": {
+              "ms": 15.21062,
+              "rows": 4
+            },
+            "moe_routing": {
+              "ms": 10.344597,
+              "rows": 213
+            },
+            "qsa_attention": {
+              "ms": 12.542932,
+              "rows": 36
+            },
+            "selection_reduce": {
+              "ms": 1.067047,
+              "rows": 286
+            }
+          },
+          "kernel_rows": 9636,
+          "kernel_span_ms": 1896.647069,
+          "kernel_sum_ms": 1818.347128,
+          "raw_summary": {
+            "path": "/tmp/qwen4exp-hb2-pr11-exact-profile/summary-code-p512-prefill.json",
+            "sha256": "02912928c0165cb9262ac6453d84bf3c915de5065eae9f51d7c444b6081ec2e2"
+          },
+          "request_wall_ms": 2008.869752
+        }
+      }
+    }
+  },
+  "mechanisms": {
+    "M1": {
+      "active": "yes_partial",
+      "evidence": "mul_mat_q launch geometry changes for Q4_K and Q5_K from workgroup 32x8/grid-X 160 to 32x4/grid-X 320 at p512 (same total threads), and Q8_0 selected from 32x8/grid-X 96 to 32x4/grid-X 160; Q5_1 geometry is unchanged",
+      "measurements": {
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 1907.252425,
+            "rows": 630,
+            "symbols": [
+              {
+                "ms": 834.546211,
+                "name": "mul_mat_q<(ggml_type)12, 128, false>",
+                "rows": 92
+              },
+              {
+                "ms": 616.515051,
+                "name": "mul_mat_q<(ggml_type)7, 128, false>",
+                "rows": 43
+              },
+              {
+                "ms": 374.119718,
+                "name": "mul_mat_q<(ggml_type)8, 128, false>",
+                "rows": 398
+              },
+              {
+                "ms": 56.455403,
+                "name": "mul_mat_q<(ggml_type)8, 128, true>",
+                "rows": 95
+              },
+              {
+                "ms": 25.616042,
+                "name": "mul_mat_q<(ggml_type)13, 128, false>",
+                "rows": 2
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 1743.441806,
+            "rows": 630,
+            "symbols": [
+              {
+                "ms": 718.596854,
+                "name": "mul_mat_q<(ggml_type)12, 128, false>",
+                "rows": 92
+              },
+              {
+                "ms": 629.459261,
+                "name": "mul_mat_q<(ggml_type)7, 128, false>",
+                "rows": 43
+              },
+              {
+                "ms": 337.38273,
+                "name": "mul_mat_q<(ggml_type)8, 128, false>",
+                "rows": 398
+              },
+              {
+                "ms": 37.191568,
+                "name": "mul_mat_q<(ggml_type)8, 128, true>",
+                "rows": 95
+              },
+              {
+                "ms": 20.811393,
+                "name": "mul_mat_q<(ggml_type)13, 128, false>",
+                "rows": 2
+              }
+            ]
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 4896.552371,
+            "rows": 1260,
+            "symbols": [
+              {
+                "ms": 1875.705837,
+                "name": "mul_mat_q<(ggml_type)12, 128, false>",
+                "rows": 184
+              },
+              {
+                "ms": 1434.497497,
+                "name": "mul_mat_q<(ggml_type)7, 128, false>",
+                "rows": 86
+              },
+              {
+                "ms": 1332.021012,
+                "name": "mul_mat_q<(ggml_type)8, 128, false>",
+                "rows": 796
+              },
+              {
+                "ms": 218.792414,
+                "name": "mul_mat_q<(ggml_type)8, 128, true>",
+                "rows": 190
+              },
+              {
+                "ms": 35.535611,
+                "name": "mul_mat_q<(ggml_type)13, 128, false>",
+                "rows": 4
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 4627.001805,
+            "rows": 1260,
+            "symbols": [
+              {
+                "ms": 1694.278063,
+                "name": "mul_mat_q<(ggml_type)12, 128, false>",
+                "rows": 184
+              },
+              {
+                "ms": 1483.049646,
+                "name": "mul_mat_q<(ggml_type)7, 128, false>",
+                "rows": 86
+              },
+              {
+                "ms": 1275.473176,
+                "name": "mul_mat_q<(ggml_type)8, 128, false>",
+                "rows": 796
+              },
+              {
+                "ms": 141.212817,
+                "name": "mul_mat_q<(ggml_type)8, 128, true>",
+                "rows": 190
+              },
+              {
+                "ms": 32.988103,
+                "name": "mul_mat_q<(ggml_type)13, 128, false>",
+                "rows": 4
+              }
+            ]
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 1438.194466,
+            "rows": 630,
+            "symbols": [
+              {
+                "ms": 684.135434,
+                "name": "mul_mat_q<(ggml_type)12, 128, false>",
+                "rows": 92
+              },
+              {
+                "ms": 494.094155,
+                "name": "mul_mat_q<(ggml_type)7, 128, false>",
+                "rows": 43
+              },
+              {
+                "ms": 208.983812,
+                "name": "mul_mat_q<(ggml_type)8, 128, false>",
+                "rows": 398
+              },
+              {
+                "ms": 35.971383,
+                "name": "mul_mat_q<(ggml_type)8, 128, true>",
+                "rows": 95
+              },
+              {
+                "ms": 15.009682,
+                "name": "mul_mat_q<(ggml_type)13, 128, false>",
+                "rows": 2
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 1342.073692,
+            "rows": 630,
+            "symbols": [
+              {
+                "ms": 599.85962,
+                "name": "mul_mat_q<(ggml_type)12, 128, false>",
+                "rows": 92
+              },
+              {
+                "ms": 508.224944,
+                "name": "mul_mat_q<(ggml_type)7, 128, false>",
+                "rows": 43
+              },
+              {
+                "ms": 192.304327,
+                "name": "mul_mat_q<(ggml_type)8, 128, false>",
+                "rows": 398
+              },
+              {
+                "ms": 26.84568,
+                "name": "mul_mat_q<(ggml_type)8, 128, true>",
+                "rows": 95
+              },
+              {
+                "ms": 14.839121,
+                "name": "mul_mat_q<(ggml_type)13, 128, false>",
+                "rows": 2
+              }
+            ]
+          }
+        }
+      }
+    },
+    "M2": {
+      "active": "yes_prefill_only",
+      "evidence": "HB-PR11 dispatches mm_ids_helper_top10_parallel for prompt chunks; decode remains below the n_tokens>=64 gate",
+      "measurements": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 45.234666,
+            "rows": 141,
+            "symbols": [
+              {
+                "ms": 45.234666,
+                "name": "mm_ids_helper<0>",
+                "rows": 141
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 9.833716,
+            "rows": 94,
+            "symbols": [
+              {
+                "ms": 9.833716,
+                "name": "mm_ids_helper_top10_parallel",
+                "rows": 94
+              }
+            ]
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 323.592346,
+            "rows": 282,
+            "symbols": [
+              {
+                "ms": 323.592346,
+                "name": "mm_ids_helper<0>",
+                "rows": 282
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 44.753325,
+            "rows": 188,
+            "symbols": [
+              {
+                "ms": 44.753325,
+                "name": "mm_ids_helper_top10_parallel",
+                "rows": 188
+              }
+            ]
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 22.729781,
+            "rows": 141,
+            "symbols": [
+              {
+                "ms": 22.729781,
+                "name": "mm_ids_helper<0>",
+                "rows": 141
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 4.801988,
+            "rows": 94,
+            "symbols": [
+              {
+                "ms": 4.801988,
+                "name": "mm_ids_helper_top10_parallel",
+                "rows": 94
+              }
+            ]
+          }
+        }
+      }
+    },
+    "M3": {
+      "active": "no",
+      "evidence": "zero routed-compact builder or MMQ symbols in every selected window",
+      "measurements": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        }
+      }
+    },
+    "M4": {
+      "active": "no",
+      "evidence": "zero J48/J64/routed-compact specialization symbols; binding expert payload is Q4_K/Q5_1 rather than the gated quant types",
+      "measurements": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        }
+      }
+    },
+    "M5": {
+      "active": "partial",
+      "evidence": "weighted_expert_sum_rows_f32<10,2560> is active in prefill and decode; shared_mul_add_f32 is absent in every selected window",
+      "shared_mul_add": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        }
+      },
+      "weighted_sum": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.238849,
+            "rows": 48,
+            "symbols": [
+              {
+                "ms": 0.238849,
+                "name": "weighted_expert_sum_rows_f32<10, 2560>",
+                "rows": 48
+              }
+            ]
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 35.181704,
+            "rows": 95,
+            "symbols": [
+              {
+                "ms": 35.181704,
+                "name": "weighted_expert_sum_rows_f32<10, 2560>",
+                "rows": 95
+              }
+            ]
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.257763,
+            "rows": 48,
+            "symbols": [
+              {
+                "ms": 0.257763,
+                "name": "weighted_expert_sum_rows_f32<10, 2560>",
+                "rows": 48
+              }
+            ]
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 155.194196,
+            "rows": 142,
+            "symbols": [
+              {
+                "ms": 155.194196,
+                "name": "weighted_expert_sum_rows_f32<10, 2560>",
+                "rows": 142
+              }
+            ]
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.236001,
+            "rows": 48,
+            "symbols": [
+              {
+                "ms": 0.236001,
+                "name": "weighted_expert_sum_rows_f32<10, 2560>",
+                "rows": 48
+              }
+            ]
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 17.623987,
+            "rows": 95,
+            "symbols": [
+              {
+                "ms": 17.623987,
+                "name": "weighted_expert_sum_rows_f32<10, 2560>",
+                "rows": 95
+              }
+            ]
+          }
+        }
+      }
+    },
+    "M6": {
+      "active": "yes",
+      "evidence": "same GDN symbol changes from 4 to 32 workgroup warps; p4096 core kernel sum falls 2139.377 to 647.976 ms while p512 is near-neutral; decode geometry also changes but wall is near-neutral",
+      "measurements": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 5.085515,
+            "rows": 36,
+            "symbols": [
+              {
+                "ms": 5.085515,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 36
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 0.512405,
+            "rows": 36,
+            "symbols": [
+              {
+                "ms": 0.512405,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 36
+              }
+            ]
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 199.490435,
+            "rows": 72,
+            "symbols": [
+              {
+                "ms": 199.490435,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 72
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 141.542833,
+            "rows": 72,
+            "symbols": [
+              {
+                "ms": 141.542833,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 72
+              }
+            ]
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.533763,
+            "rows": 36,
+            "symbols": [
+              {
+                "ms": 0.533763,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 36
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 0.539092,
+            "rows": 36,
+            "symbols": [
+              {
+                "ms": 0.539092,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 36
+              }
+            ]
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 2139.376903,
+            "rows": 108,
+            "symbols": [
+              {
+                "ms": 2139.376903,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 108
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 647.975928,
+            "rows": 108,
+            "symbols": [
+              {
+                "ms": 647.975928,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 108
+              }
+            ]
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.464747,
+            "rows": 36,
+            "symbols": [
+              {
+                "ms": 0.464747,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 36
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 0.467883,
+            "rows": 36,
+            "symbols": [
+              {
+                "ms": 0.467883,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 36
+              }
+            ]
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 70.804362,
+            "rows": 72,
+            "symbols": [
+              {
+                "ms": 70.804362,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 72
+              }
+            ]
+          },
+          "pr11": {
+            "ms": 68.917893,
+            "rows": 72,
+            "symbols": [
+              {
+                "ms": 68.917893,
+                "name": "gated_delta_net_cuda<128, false, false>",
+                "rows": 72
+              }
+            ]
+          }
+        }
+      }
+    },
+    "M7": {
+      "active": "no_by_contract",
+      "evidence": "BF16 K/V excludes the Q8_0-KV-only optimization; zero Q8-KV/GQA-opt symbols are present",
+      "measurements": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          }
+        }
+      }
+    },
+    "M8": {
+      "active": "yes_partial",
+      "evidence": "HB-PR11 selected windows contain transposed concat, contiguous binary, dual L2 norm, four-column Q8 matvec, 128-wide RMS norm, and four-row sum specializations",
+      "measurements": {
+        "code-p1024:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.68295,
+            "rows": 546,
+            "symbols": [
+              {
+                "ms": 0.463179,
+                "name": "binary_contiguous_f32<&",
+                "rows": 438
+              },
+              {
+                "ms": 0.130803,
+                "name": "rms_norm_f32<128, true, false>",
+                "rows": 60
+              },
+              {
+                "ms": 0.074701,
+                "name": "l2_norm_dual_f32_s128",
+                "rows": 36
+              },
+              {
+                "ms": 0.014267,
+                "name": "sum_rows_4_f32",
+                "rows": 12
+              }
+            ]
+          }
+        },
+        "code-p1024:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 125.189571,
+            "rows": 1039,
+            "symbols": [
+              {
+                "ms": 66.471293,
+                "name": "binary_contiguous_f32<&",
+                "rows": 297
+              },
+              {
+                "ms": 21.245959,
+                "name": "concat_transposed_src1_dim0<unsigned int>",
+                "rows": 37
+              },
+              {
+                "ms": 19.917864,
+                "name": "mul_mat_vec_four_columns_rdna3_5<(ggml_type)8>",
+                "rows": 489
+              },
+              {
+                "ms": 11.483976,
+                "name": "rms_norm_f32<128, true, false>",
+                "rows": 120
+              },
+              {
+                "ms": 5.953703,
+                "name": "l2_norm_dual_f32_s128",
+                "rows": 72
+              },
+              {
+                "ms": 0.116776,
+                "name": "sum_rows_4_f32",
+                "rows": 24
+              }
+            ]
+          }
+        },
+        "code-p4096:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.76797,
+            "rows": 546,
+            "symbols": [
+              {
+                "ms": 0.489572,
+                "name": "binary_contiguous_f32<&",
+                "rows": 438
+              },
+              {
+                "ms": 0.190194,
+                "name": "rms_norm_f32<128, true, false>",
+                "rows": 60
+              },
+              {
+                "ms": 0.073458,
+                "name": "l2_norm_dual_f32_s128",
+                "rows": 36
+              },
+              {
+                "ms": 0.014746,
+                "name": "sum_rows_4_f32",
+                "rows": 12
+              }
+            ]
+          }
+        },
+        "code-p4096:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 453.244066,
+            "rows": 1340,
+            "symbols": [
+              {
+                "ms": 261.776905,
+                "name": "binary_contiguous_f32<&",
+                "rows": 453
+              },
+              {
+                "ms": 91.823008,
+                "name": "concat_transposed_src1_dim0<unsigned int>",
+                "rows": 74
+              },
+              {
+                "ms": 50.971655,
+                "name": "rms_norm_f32<128, true, false>",
+                "rows": 180
+              },
+              {
+                "ms": 24.923632,
+                "name": "l2_norm_dual_f32_s128",
+                "rows": 108
+              },
+              {
+                "ms": 20.489265,
+                "name": "mul_mat_vec_four_columns_rdna3_5<(ggml_type)8>",
+                "rows": 489
+              },
+              {
+                "ms": 3.259601,
+                "name": "sum_rows_4_f32",
+                "rows": 36
+              }
+            ]
+          }
+        },
+        "code-p512:decode": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 0.672392,
+            "rows": 546,
+            "symbols": [
+              {
+                "ms": 0.465517,
+                "name": "binary_contiguous_f32<&",
+                "rows": 438
+              },
+              {
+                "ms": 0.11991,
+                "name": "rms_norm_f32<128, true, false>",
+                "rows": 60
+              },
+              {
+                "ms": 0.0733,
+                "name": "l2_norm_dual_f32_s128",
+                "rows": 36
+              },
+              {
+                "ms": 0.013665,
+                "name": "sum_rows_4_f32",
+                "rows": 12
+              }
+            ]
+          }
+        },
+        "code-p512:prefill": {
+          "base": {
+            "ms": 0.0,
+            "rows": 0,
+            "symbols": []
+          },
+          "pr11": {
+            "ms": 58.511892,
+            "rows": 1039,
+            "symbols": [
+              {
+                "ms": 21.713376,
+                "name": "binary_contiguous_f32<&",
+                "rows": 297
+              },
+              {
+                "ms": 19.720273,
+                "name": "mul_mat_vec_four_columns_rdna3_5<(ggml_type)8>",
+                "rows": 489
+              },
+              {
+                "ms": 9.067597,
+                "name": "concat_transposed_src1_dim0<unsigned int>",
+                "rows": 37
+              },
+              {
+                "ms": 5.296589,
+                "name": "rms_norm_f32<128, true, false>",
+                "rows": 120
+              },
+              {
+                "ms": 2.673503,
+                "name": "l2_norm_dual_f32_s128",
+                "rows": 72
+              },
+              {
+                "ms": 0.040554,
+                "name": "sum_rows_4_f32",
+                "rows": 24
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "kv": "BF16",
+    "new_weight_quant_downloaded": false,
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "tensor_bytes": 111323630080
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "scope": "Frozen loader-patched HB-base and HB-PR11, exact code p512/p1024/p4096 prefill and live-513/1025/4097 cached decode, UD-Q4_K_XL with BF16 K/V on zbook gfx1151",
+  "status": "accepted_diagnostic_profile_and_activation_census"
+}

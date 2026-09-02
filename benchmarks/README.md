@@ -238,6 +238,14 @@ closure target.
 [`canonical AR screening`](results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json),
 [`entitled Vulkan refresh`](results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json).
 
+Frozen halo-box HB-base/PR11 exact profiles confirm that the PR activates its
+Q4/Q8 MMQ retunes, prompt top-10 compaction, weighted top-10 sum, 32-warp GDN,
+and selected elementwise/recurrent specializations on the binding Q4 payload.
+Routed-compact/J48/J64, shared-mul-add, and Q8-KV attention paths are inactive.
+The largest isolated trace change is p4096 GDN core kernel sum
+**2,139.377→647.976 ms**; it is diagnostic pending HB-3 operation-complete
+matched pairs. [`halo-box HB-2 census`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json).
+
 The frozen p508 role/API profile still puts hipEngine versus llama HIP device
 kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90
 ms/output (1.25×)**. The main p508 owners are MoE **3.161 s** (layers 0–26:

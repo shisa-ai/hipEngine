@@ -157,7 +157,11 @@ def llama_family(name: str) -> str:
         return "moe_gate_up_q4"
     if "mul_mat_vec_q" in lowered and q5:
         return "moe_down_q5"
-    if ("mul_mat_q" in lowered or "mul_mat_vec_q" in lowered) and q8:
+    if (
+        "mul_mat_q" in lowered
+        or "mul_mat_vec_q" in lowered
+        or "mul_mat_vec_four_columns" in lowered
+    ) and q8:
         return "dense_quant_q8"
     if any(part in lowered for part in ("cijk_", "rocblas", "gemm")):
         return "dense_gemm_library"
@@ -180,13 +184,15 @@ def llama_family(name: str) -> str:
         )
     ):
         return "layout_copy_rows"
-    if any(part in lowered for part in ("reduce_rows", "soft_max", "op_clamp")):
+    if "weighted_expert_sum" in lowered:
+        return "cast_combine"
+    if any(part in lowered for part in ("reduce_rows", "sum_rows", "soft_max", "op_clamp")):
         return "selection_reduce"
     if "argmax" in lowered:
         return "output_selection"
     if any(part in lowered for part in ("quantize", "convert")):
         return "cast_combine"
-    if any(part in lowered for part in ("rope", "rms_norm", "norm", "unary", "bin_bcast", "scale_f32", "repeat")):
+    if any(part in lowered for part in ("rope", "rms_norm", "norm", "unary", "bin_bcast", "binary_contiguous", "scale_f32", "repeat")):
         return "elementwise_norm_rope"
     return "other"
 
