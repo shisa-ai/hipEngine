@@ -396,3 +396,157 @@ def test_adapter_acquire_failure_releases_provider_and_owner_resources() -> None
     assert [event for event in events if event[0] == "abort"] == [
         ("abort", "acquire_failed")
     ]
+
+
+def _resident_owner_fixture(monkeypatch):
+    import hipengine.generation.qwen35_gguf as generation
+
+    events = []
+    real_allocation = SimpleNamespace(block_ids=(1, 2), request_id=42)
+    real_session = SimpleNamespace(name="real", scratch=SimpleNamespace(name="real_scratch"))
+    row = SimpleNamespace(
+        lease=SimpleNamespace(session=real_session),
+        kv_allocation=real_allocation,
+    )
+    shadow_session = SimpleNamespace(
+        name="shadow",
+        scratch=SimpleNamespace(name="shadow_scratch"),
+        runtime="rt",
+        device_kv_allocation=None,
+    )
+
+    def bind(pool, allocation):
+        events.append(("bind", allocation.request_id))
+        shadow_session.device_kv_allocation = allocation
+
+    def unbind():
+        events.append(("unbind",))
+        allocation = shadow_session.device_kv_allocation
+        shadow_session.device_kv_allocation = None
+        return allocation
+
+    shadow_session.bind_device_kv_allocation = bind
+    shadow_session.unbind_device_kv_allocation = unbind
+    shadow_session.invalidate_device_kv_graphs = lambda: events.append(
+        ("invalidate",)
+    )
+    shadow_session.reset = lambda: events.append(("reset",))
+    shadow_lease = SimpleNamespace(session=shadow_session, pool_key="pool")
+
+    class Pool:
+        def allocate(self, request_id, pages, *, now_seconds):
+            del now_seconds
+            events.append(("allocate", request_id, pages))
+            return SimpleNamespace(
+                block_ids=tuple(range(10, 10 + pages)),
+                request_id=request_id,
+            )
+
+        def release(self, request_id, *, now_seconds):
+            del now_seconds
+            events.append(("release_kv", request_id))
+
+    hidden_buffers = []
+
+    def fake_malloc(nbytes, *, runtime):
+        events.append(("malloc", nbytes, runtime))
+        buffer = SimpleNamespace(name="shadow_hidden", ptr=0x5000, nbytes=nbytes)
+        hidden_buffers.append(buffer)
+        return buffer
+
+    monkeypatch.setattr(generation, "malloc", fake_malloc)
+    monkeypatch.setattr(
+        generation,
+        "free",
+        lambda buffer, *, runtime: events.append(
+            ("free", buffer.name, runtime)
+        ),
+    )
+    owner = object.__new__(generation.Qwen35GGUFResidentModelRunner)
+    owner._rows = {42: row}
+    owner._available = [shadow_lease]
+    owner._kv_pool = Pool()
+    owner._shared_runner = SimpleNamespace(hidden_size=8)
+    owner._c1_shadow_resource_bundles = {}
+    return owner, row, shadow_lease, events, hidden_buffers
+
+
+def test_resident_owner_reserves_and_reclaims_shadow_pool_bundle(monkeypatch) -> None:
+    owner, row, shadow_lease, events, hidden_buffers = _resident_owner_fixture(
+        monkeypatch
+    )
+
+    bundle = owner.acquire_c1_shadow_resources(
+        request_id=42,
+        shadow_request_id=-43,
+        real_slot=0,
+        shadow_slot=1,
+    )
+
+    assert owner._available == []
+    assert bundle["target_session"] is shadow_lease.session
+    assert bundle["kv_owner"].request_id == -43
+    assert bundle["recurrent_owner"] is shadow_lease.session.scratch
+    assert bundle["hidden_row"] is hidden_buffers[0]
+    assert row.kv_allocation.request_id == 42
+    for surface in ("target_session", "hidden_row", "kv_owner", "recurrent_owner"):
+        for lane in ("real", "shadow"):
+            owner.reclaim_c1_shadow_resource(
+                bundle,
+                surface=surface,
+                lane=lane,
+                resource=object(),
+                reason="request_drop",
+            )
+
+    assert owner._available == [shadow_lease]
+    assert owner._c1_shadow_resource_bundles == {}
+    assert events == [
+        ("allocate", -43, 2),
+        ("bind", -43),
+        ("malloc", 16, "rt"),
+        ("free", "shadow_hidden", "rt"),
+        ("invalidate",),
+        ("unbind",),
+        ("release_kv", -43),
+        ("reset",),
+    ]
+
+
+def test_resident_owner_abort_returns_shadow_bundle(monkeypatch) -> None:
+    owner, _row, shadow_lease, events, _hidden = _resident_owner_fixture(
+        monkeypatch
+    )
+    bundle = owner.acquire_c1_shadow_resources(
+        request_id=42,
+        shadow_request_id=-43,
+        real_slot=0,
+        shadow_slot=1,
+    )
+
+    owner.abort_c1_shadow_resources(bundle, reason="acquire_failed")
+    owner.abort_c1_shadow_resources(bundle, reason="acquire_failed")
+
+    assert owner._available == [shadow_lease]
+    assert owner._c1_shadow_resource_bundles == {}
+    assert events.count(("release_kv", -43)) == 1
+    assert events.count(("free", "shadow_hidden", "rt")) == 1
+
+
+def test_resident_owner_shadow_capacity_failure_is_side_effect_free(monkeypatch) -> None:
+    owner, row, _shadow_lease, events, _hidden = _resident_owner_fixture(
+        monkeypatch
+    )
+    owner._available = []
+
+    with pytest.raises(RuntimeError, match="additional resident session"):
+        owner.acquire_c1_shadow_resources(
+            request_id=42,
+            shadow_request_id=-43,
+            real_slot=0,
+            shadow_slot=1,
+        )
+
+    assert events == []
+    assert owner._c1_shadow_resource_bundles == {}
+    assert row.kv_allocation.request_id == 42
