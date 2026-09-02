@@ -1,0 +1,148 @@
+{
+  "kind": "gfx1151_qwen38_b2_sibling_screen",
+  "results": [
+    {
+      "family": "q4_plain",
+      "shape": [
+        5120,
+        6144
+      ],
+      "rows": 72,
+      "owner_ms": 0.5773,
+      "sibling_ms": 0.3981,
+      "ratio_sibling_over_owner": 0.6897
+    },
+    {
+      "family": "q4_plain",
+      "shape": [
+        5120,
+        6144
+      ],
+      "rows": 288,
+      "owner_ms": 1.2148,
+      "sibling_ms": 0.937,
+      "ratio_sibling_over_owner": 0.7713
+    },
+    {
+      "family": "q4_plain",
+      "shape": [
+        5120,
+        17408
+      ],
+      "rows": 72,
+      "owner_ms": 1.5917,
+      "sibling_ms": 1.4099,
+      "ratio_sibling_over_owner": 0.8858
+    },
+    {
+      "family": "q4_plain",
+      "shape": [
+        5120,
+        17408
+      ],
+      "rows": 288,
+      "owner_ms": 4.5388,
+      "sibling_ms": 3.7063,
+      "ratio_sibling_over_owner": 0.8166
+    },
+    {
+      "family": "q4_plain",
+      "shape": [
+        17408,
+        5120
+      ],
+      "rows": 72,
+      "owner_ms": 2.2924,
+      "sibling_ms": 1.6336,
+      "ratio_sibling_over_owner": 0.7126
+    },
+    {
+      "family": "q4_plain",
+      "shape": [
+        17408,
+        5120
+      ],
+      "rows": 288,
+      "owner_ms": 4.7804,
+      "sibling_ms": 3.8694,
+      "ratio_sibling_over_owner": 0.8094
+    },
+    {
+      "family": "q4_shared_b",
+      "shape": [
+        5120,
+        6144
+      ],
+      "rows": 72,
+      "owner_ms": 0.6321,
+      "sibling_ms": 0.464,
+      "ratio_sibling_over_owner": 0.7341
+    },
+    {
+      "family": "q4_shared_b",
+      "shape": [
+        5120,
+        6144
+      ],
+      "rows": 288,
+      "owner_ms": 1.1811,
+      "sibling_ms": 0.9572,
+      "ratio_sibling_over_owner": 0.8104
+    },
+    {
+      "family": "q4_shared_b",
+      "shape": [
+        5120,
+        17408
+      ],
+      "rows": 72,
+      "owner_ms": 1.6909,
+      "sibling_ms": 1.1925,
+      "ratio_sibling_over_owner": 0.7053
+    },
+    {
+      "family": "q4_shared_b",
+      "shape": [
+        5120,
+        17408
+      ],
+      "rows": 288,
+      "owner_ms": 3.155,
+      "sibling_ms": 2.5406,
+      "ratio_sibling_over_owner": 0.8052
+    },
+    {
+      "family": "q5",
+      "shape": [
+        6144,
+        5120
+      ],
+      "rows": 72,
+      "owner_ms": 0.5928,
+      "sibling_ms": 0.4924,
+      "ratio_sibling_over_owner": 0.8307
+    },
+    {
+      "family": "q5",
+      "shape": [
+        6144,
+        5120
+      ],
+      "rows": 288,
+      "owner_ms": 1.3318,
+      "sibling_ms": 1.0756,
+      "ratio_sibling_over_owner": 0.8076
+    }
+  ],
+  "date": "2026-09-02",
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "performance_claim": false,
+  "protocol": "kernel-level A/B screen, synthetic deterministic weights, warm JIT, 10 warmup + 60 timed iterations per arm, device-synchronized; no throughput claim",
+  "summary": {
+    "ratio_range": "0.6897-0.8858 (sibling over owner) across all 12 cells",
+    "q4_plain": "0.69-0.89x",
+    "q4_shared_b": "0.71-0.81x",
+    "q5": "0.81-0.83x",
+    "decision": "Mechanism confirmed at kernel level; proceed to device cast workspace + serving integration under the B2 item-3 gates"
+  }
+}

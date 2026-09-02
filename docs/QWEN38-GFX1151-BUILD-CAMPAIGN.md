@@ -316,6 +316,16 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   category/shape/transition, deterministic repeat, isolation, BF16-relative
   and task gates as applicable). Retain per §1.4.
 
+  Kernel-level screen (2026-09-02,
+  [`...b2-sibling-screen.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-sibling-screen.json),
+  physical gfx1151, warm JIT, 60 timed iterations/arm): the F16 siblings
+  run at **0.69–0.89× their BF16 owners across all 12 cells** (Q4 plain
+  0.69–0.89, Q4 shared-B 0.71–0.81, Q5 0.81–0.83) — the vectorized-load
+  mechanism is measurably real and the integration proceeds. Remaining for
+  this item: device BF16→F16 cast workspace + serving integration (env-gated
+  like RF-B1A), rocprof confirmation of the expected kernel names, then the
+  complete C2/C8 same-suite prefill gates and the retention decision.
+
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 
 - [ ] RED-first lifecycle contract before adapter changes: request-owned
