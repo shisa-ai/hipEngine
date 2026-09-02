@@ -1,6 +1,6 @@
 # Qwen3.8-27B gfx1151 Build Campaign
 
-Status: **open 2026-09-02**
+Status: **closed 2026-09-03**
 
 This is the implementation successor to the analysis campaigns. It builds the
 mechanisms the prior work identified but did not implement:
@@ -73,11 +73,11 @@ GEMMs on the same T16 tensors at ~230-260 ms — a 3-9x per-family gap (Q6
 
 | Step | Mechanism | Class | Measured/derived bound | Status |
 | --- | --- | --- | ---: | --- |
-| B1 | A+B verifier owner transfer + Q6 lm-head one-sweep | T0 registry / T2 | ~35-40% C8 cycle (derived from measured F3 + M3); parity plausible | blocked only by the refuted B0 premise |
+| B1 | A+B verifier owner transfer + Q6 lm-head one-sweep | T0 registry / T2 | +56.3% to +72.7% C5-C8 MTP | A retained; lm-head redesign bounded |
 | B2 | P1 sole-T16 input-F16 Q4/Q5 family | T1 | 18.13%/17.35% C2/C8 complete wall (measured) | retained production default; strict BF16 fallback |
-| B3 | M1 C1 request-owned shadow-session lifecycle | T2 | 41.76% C1 complete-suite (measured screen) | blocked on missing lifecycle ABI — build it |
+| B3 | M1 C1 request-owned shadow-session lifecycle | T2 | 41.76% C1 complete-suite (measured screen) | prerequisites built; physical/public lane split blocked |
 | B4 | M2 C2 draft depth K3→K2/K1 | T3 | K2/K1 +3.36%/+48.91% wall vs K3 (measured) | rejected; K3 retained |
-| B5 | E integer MMQ M=17-48 | T2 | resident planar-Q6 −7.85/−7.83 ms/pass at R20/R28 | selective Q6 implementation open |
+| B5 | E integer MMQ M=17-48 | T2 | +1.75% to +2.08% C5-C8 complete MTP | planar Q6 retained production default |
 
 ### 1.4 Authorization and policy deltas from the structural campaign
 
@@ -506,7 +506,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
 
 ### B5 — E: integer MMQ for M=17-48 (T2, conditional)
 
-- [~] Only after B1's measured target-pass result: extend/screen the gfx1151
+- [x] Only after B1's measured target-pass result: extend/screen the gfx1151
   `mmq128x32`/`mmq64x64` bodies below rows512 on the three Q6 shapes,
   `ssm_out`, and the two binding Q4 shapes, **against the new A owners**, not
   `selected-wmma`. Proceed to registration and full gates only if the screen
@@ -527,12 +527,35 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   Evidence:
   [`...b5-integer-mmq-screen.json`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-integer-mmq-screen.json).
 
-  RED committed before integration: `tests/test_qwen38_b5_q6_integer_mmq.py`
-  pins a gfx1151-only four-axis key, exact R17-48/two-shape dispatch bounds,
-  default-off/env semantics, bounded/restored session workspace, resident
-  owner reuse, and composite pack→MMQ launch. Next: implement the selective
-  route with A as strict/default fallback, then run profiler and complete T2
-  gates before any production default change.
+  RED/implementation retained: `tests/test_qwen38_b5_q6_integer_mmq.py`
+  pins the gfx1151-only four-axis key, exact R17-48/two-shape dispatch bounds,
+  profile/env semantics, bounded/restored session workspace, resident-owner
+  reuse, packed-target context, and composite pack→MMQ launch. The dense
+  specialization is BF16-bit exact to its selected parent and passes the CPU
+  reference outer gate. It adds no resident weight bytes and aliases the
+  session-owned 34 MiB B2 staging allocation for transient Q8_1.
+
+  Complete retention packet (2026-09-03, clean `4fc772269`, physical
+  `gfx1151`, production profile): C5-C8 one-group D24 MTP improves
+  **36.519→37.280 (+2.08%)**, **40.271→41.048 (+1.93%)**,
+  **43.728→44.492 (+1.75%)**, and **49.979→50.893 (+1.83%)**. Every category
+  improves 1.51-2.15%; all 40 AR and 40 MTP ID cells are identical;
+  acceptance is exactly unchanged. C8 reaches 1.0057× own AR. The full
+  canonical+heldout T2 gate passes 216 full-vocabulary rows with three exact
+  candidate repeats: mean/p95/p99/max KL
+  **8.58e-5/4.91e-4/9.68e-4/0.002231**, 100% top-1 in every scope, no review
+  rows, and exact C5-neighbor/C8-permutation isolation. Corrected profiling
+  records 600 dense integer launches (418.224 ms) plus 600 Q8 packs (4.013
+  ms). Teardown returns to zero.
+
+  The remaining shapes are closed: both Q4 bodies lose all pairs; the existing
+  Q5 source body is 59.01%/61.50% slower than current A at R20/R28; standard
+  Q6 QKV MMQ does not win both rows, while its faster planar form conflicts
+  with the retained sole-resident standard layout (planar c1 was already 8.72%
+  slower). Production now defaults the two already-planar Q6 shapes to integer
+  MMQ; strict/profile fallback, peers, Q4/Q5, standard Q6, and every row/shape
+  miss keep A. Evidence:
+  [`...b5-planar-q6-integer-mmq-retained.json`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json).
 
 ## 3. Dead ends (measured; do not spend on them)
 

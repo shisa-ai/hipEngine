@@ -198,7 +198,7 @@ _PREFILL_F16_STAGING_QUANTS = frozenset(
 _PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
 PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
 
-# B5: default-off changed-arithmetic planar-Q6 integer MMQ. The registered
+# B5: production-default changed-arithmetic planar-Q6 integer MMQ. The registered
 # gfx1151 variant is selected only inside a caller-owned workspace context and
 # the backend package's exact row/shape policy. A remains the strict fallback.
 Q6_INTEGER_MMQ_PREFILL_ENV = "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
@@ -209,12 +209,17 @@ def q6_integer_mmq_for(
     *,
     profile_fell_back_to_strict: bool = False,
 ) -> bool:
-    """Resolve the default-off B5 route with an explicit env override."""
+    """Resolve the retained production default with an explicit env override."""
 
     override = os.environ.get(Q6_INTEGER_MMQ_PREFILL_ENV, "").strip().lower()
     if override:
         return override in {"1", "true", "yes", "on"}
-    return False
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
 
 
 @dataclass(frozen=True)
