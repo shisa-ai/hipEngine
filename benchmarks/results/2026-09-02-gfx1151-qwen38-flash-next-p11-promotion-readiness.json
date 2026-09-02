@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_promotion_readiness",
+  "status": "blocked_below_true_ar_and_incomplete_long_context",
+  "performance_claim": false,
+  "source_artifacts": [
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-depth-budget-admission.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-head-admission.json"
+  ],
+  "amdahl_declaration": {
+    "W_seconds": 22.82073687799857,
+    "C_seconds": 16.90401850201306,
+    "O_ms_per_serial_target_row": 87.65228492640225,
+    "s": 0.7407306167361402,
+    "arithmetic_class": "promotion audit; no implementation change",
+    "scope": "Qwen4Exp full ten-prompt category+heldout B2/tg16 plus required long-context readiness",
+    "mechanism": "evaluate all binding promotion prerequisites without importing isolated microbench ratios",
+    "strict_fallback": "target_ar",
+    "overlap_exclusions": [
+      "internal pooled B2 1.0071x is not a public/full-suite result",
+      "invalid 9/10 external rows are excluded",
+      "1K and 4K contexts are not relabeled as equivalent"
+    ]
+  },
+  "short_suite": {
+    "true_ar_seconds": 16.90401850201306,
+    "serial_mtp_seconds": 22.82073687799857,
+    "mtp_over_ar": 0.7407306167361402,
+    "exact_rows": 10,
+    "total_rows": 10,
+    "accepted_draft_tokens": 117,
+    "category_mtp_over_ar": {
+      "code": 0.7581286262346031,
+      "general_en": 0.7354423384383374,
+      "general_ja": 0.74624258250315,
+      "mixed_ja_en": 0.7110714031404313
+    },
+    "every_category_nonregressive": false
+  },
+  "candidate_summary": {
+    "compact_output": "rejected category regression",
+    "one_packet_per_cycle": "rejected category regression",
+    "target_hidden_d2d": "rejected category regression",
+    "prompt_prefill_verifier": "rejected hidden/logit/state RED",
+    "pooled_deferred_head_internal": "exact 1.0071x B2, public full-suite 0.8726x serial",
+    "acceptance_kernel": "blocked at 0.020% zero-cost wall ceiling",
+    "compact_head": "blocked; free-head ceiling only 0.964x AR",
+    "confidence_policy": "blocked missing calibrated telemetry and disjoint fit data"
+  },
+  "long_context": {
+    "required_tokens": 4096,
+    "provider_capacity_tokens": 1024,
+    "complete_gate": false
+  },
+  "decision": {
+    "promote": false,
+    "default": "target_ar",
+    "reason": "Serial MTP is 0.7407x true AR and every category regresses. No candidate passes public complete-wall gates, and required 4K MTP is unavailable. Isolated internal/microbench wins cannot satisfy promotion.",
+    "unblock": "Produce an exact operation-complete verifier that exceeds serial and true AR on the same full suite, extend provider/draft capacity to 4K+, and pass every long-context/category gate before reconsidering automatic promotion."
+  }
+}

@@ -2018,8 +2018,17 @@ external MTP rows.
       refreshed Engram row is 1.128x but only 9/10 exact and is therefore not a
       valid target or promotion precedent. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exact-greedy-policy.json`.
-- [ ] Promote at >=1.0x AR with every binding category non-regressive; continue
+- [~] Promote at >=1.0x AR with every binding category non-regressive; continue
       toward >=1.5x and the best correctness-valid same-config competitor.
+      Promotion is blocked: the current same-command full-suite row is exact
+      **10/10** but serial MTP is **22.821 s** versus true AR **16.904 s
+      (0.7407x)**. Every category regresses (**0.7581x code, 0.7354x English,
+      0.7462x Japanese, 0.7111x mixed**). The exact pooled B2 internal 1.0071x
+      does not transfer publicly; deferred full-suite verification is 0.8726x
+      serial. Required 4K MTP is unavailable at the 1K provider cap. Keep
+      `target_ar` default and do not promote from isolated or invalid external
+      rows. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-promotion-readiness.json`.
 
 ### Phase P12 — final refresh, cleanup, and rollup
 

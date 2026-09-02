@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 promotion readiness] Keep target AR default: exact 10/10 serial MTP is **22.821 vs 16.904 s (0.7407x AR)** and every category is **0.7111x-0.7581x**. No public candidate passes; internal 1.0071x B2 does not transfer, and required 4K MTP is blocked by 1K capacity. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-promotion-readiness.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 depth-budget admission] Do not fit budgets: public draft/provider capacity is **1K**, the six-category long-context suite is **4K**, supported budgets stop at 4 rather than hypothesis B6, and exact deferred verification is **0.8726x serial** while serial MTP is **0.7407x AR**. Extend capacity/verifier first; do not tune fixed <=1K prompts. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-depth-budget-admission.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 acceptance-kernel admission] Host acceptance plus cursor repair is only **1.306 ms across 18 cycles / 0.020%** of four-category wall, while the prerequisite verifier adds **3,331 ms** on the full suite. Block device acceptance kernels until an operation-complete verifier beats serial MTP. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json`.
