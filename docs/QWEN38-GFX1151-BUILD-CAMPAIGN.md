@@ -423,6 +423,15 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   `clone_current_state_from`; it pins K/V + recurrent bytes and position.
   Evidence:
   [`...b3-m1-arbitrary-state-clone-red.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-arbitrary-state-clone-red.json).
+
+  Clone primitive GREEN (route still unselected):
+  `clone_current_state_from` requires disjoint KV page IDs, zips arbitrary
+  source/destination page segments, copies every full-attention
+  storage/mirror/scale plane plus all Conv/GDN state pairs, then publishes the
+  destination cursor. The row-300 fixture copies 256+44 K/V rows (4,800 B) +
+  192 B recurrent state exactly; KV binding 12/12 and ownership/seam 77/77.
+  Evidence:
+  [`...b3-m1-arbitrary-state-clone-green.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-arbitrary-state-clone-green.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.

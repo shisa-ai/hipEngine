@@ -15693,6 +15693,204 @@ class Qwen35GGUFResidentSession:
             runtime.device_synchronize()
         return copied_bytes
 
+    def clone_current_state_from(
+        self,
+        source: "Qwen35GGUFResidentSession",
+        *,
+        position: int | None = None,
+        stream: int = 0,
+    ) -> int:
+        """Clone exact current state into independent KV at any boundary.
+
+        Unlike prefix-cache cloning, this B3 ownership primitive copies every
+        live full-attention K/V plane between disjoint page allocations. It
+        then copies Conv/GDN state and publishes the destination cursor only
+        after all D2D work has been enqueued.
+        """
+
+        if source is self:
+            raise ValueError("GGUF current-state source and destination must differ")
+        if self.scratch is None or source.scratch is None:
+            raise RuntimeError("GGUF current-state clone requires live sessions")
+        boundary = int(source.position if position is None else position)
+        if boundary != int(source.position):
+            raise ValueError(
+                "GGUF current-state clone position must equal the source boundary"
+            )
+        if boundary <= 0:
+            raise ValueError("GGUF current-state clone boundary must be positive")
+        if boundary >= int(self.scratch.max_positions):
+            raise ValueError("GGUF current-state clone exceeds destination capacity")
+        runtime = self.runtime or get_hip_runtime()
+        source_runtime = source.runtime or get_hip_runtime()
+        if self.runner is not source.runner or runtime is not source_runtime:
+            raise ValueError(
+                "GGUF current-state clone requires one runner and HIP runtime"
+            )
+        if self.kv_storage_dtype != source.kv_storage_dtype:
+            raise ValueError("GGUF current-state clone requires matching KV dtype")
+        if self.kv_storage_layout != source.kv_storage_layout:
+            raise ValueError("GGUF current-state clone requires matching KV layout")
+        if int(self.position) != 0:
+            raise ValueError("GGUF current-state clone destination must be reset")
+        if bool(getattr(source, "_packed_decode_state_dirty", False)):
+            raise RuntimeError("GGUF current-state clone source has unflushed state")
+        if bool(getattr(self, "_packed_decode_state_dirty", False)):
+            raise RuntimeError("GGUF current-state clone destination has unflushed state")
+        if self._device_kv_graph_handles or any(
+            not bool(getattr(graph, "closed", False))
+            for graph in tuple(self._decode_graphs)
+        ):
+            raise RuntimeError(
+                "GGUF current-state clone destination still owns live graphs"
+            )
+        source_allocation = source._device_kv_allocation
+        destination_allocation = self._device_kv_allocation
+        if source_allocation is None or destination_allocation is None:
+            raise RuntimeError("GGUF current-state clone requires bound device KV")
+        source_blocks = tuple(int(value) for value in source_allocation.block_ids)
+        destination_blocks = tuple(
+            int(value) for value in destination_allocation.block_ids
+        )
+        if not set(source_blocks).isdisjoint(destination_blocks):
+            raise ValueError(
+                "GGUF current-state clone requires disjoint KV page ownership"
+            )
+        source_segments = list(
+            _gguf_device_kv_copy_segments(
+                source,
+                start_position=0,
+                rows=boundary,
+            )
+        )
+        destination_segments = list(
+            _gguf_device_kv_copy_segments(
+                self,
+                start_position=0,
+                rows=boundary,
+            )
+        )
+        segment_pairs: list[tuple[int, int, int]] = []
+        source_index = destination_index = 0
+        source_offset = destination_offset = 0
+        while source_index < len(source_segments) and destination_index < len(
+            destination_segments
+        ):
+            _source_logical, source_physical, source_rows = source_segments[
+                source_index
+            ]
+            _destination_logical, destination_physical, destination_rows = (
+                destination_segments[destination_index]
+            )
+            take = min(
+                int(source_rows) - source_offset,
+                int(destination_rows) - destination_offset,
+            )
+            segment_pairs.append(
+                (
+                    int(source_physical) + source_offset,
+                    int(destination_physical) + destination_offset,
+                    take,
+                )
+            )
+            source_offset += take
+            destination_offset += take
+            if source_offset == int(source_rows):
+                source_index += 1
+                source_offset = 0
+            if destination_offset == int(destination_rows):
+                destination_index += 1
+                destination_offset = 0
+        if (
+            source_index != len(source_segments)
+            or destination_index != len(destination_segments)
+        ):
+            raise RuntimeError("GGUF current-state clone segment coverage mismatch")
+
+        copied_bytes = 0
+        config = self.runner.weights.config
+        for layer_id, layer_type in enumerate(config.layer_types):
+            if layer_type != FULL_ATTENTION:
+                continue
+            row_nbytes = sum(
+                int(nbytes)
+                for _source, _destination, nbytes in self._packed_kv_copy_planes(
+                    source.scratch,
+                    self.scratch,
+                    layer_id,
+                )
+            )
+            for source_start, destination_start, rows in segment_pairs:
+                self._copy_packed_kv_rows(
+                    source.scratch,
+                    self.scratch,
+                    layer_id,
+                    source_start=source_start,
+                    destination_start=destination_start,
+                    rows=rows,
+                    runtime=runtime,
+                    stream=int(stream),
+                )
+                copied_bytes += rows * row_nbytes
+
+        source_conv = tuple(source.scratch.layer_conv_states)
+        source_recurrent = tuple(source.scratch.layer_recurrent_states)
+        destination_conv = tuple(self.scratch.layer_conv_states)
+        destination_recurrent = tuple(self.scratch.layer_recurrent_states)
+        if not (
+            len(source_conv)
+            == len(source_recurrent)
+            == len(destination_conv)
+            == len(destination_recurrent)
+        ):
+            raise ValueError("GGUF current-state linear-state layer count mismatch")
+        for layer_id, (src_conv, src_recurrent, dst_conv, dst_recurrent) in enumerate(
+            zip(
+                source_conv,
+                source_recurrent,
+                destination_conv,
+                destination_recurrent,
+                strict=True,
+            )
+        ):
+            source_missing = src_conv is None or src_recurrent is None
+            destination_missing = dst_conv is None or dst_recurrent is None
+            if source_missing != destination_missing:
+                raise ValueError(
+                    f"GGUF current-state linear-state layout mismatch at layer {layer_id}"
+                )
+            if source_missing:
+                if not (
+                    src_conv is None
+                    and src_recurrent is None
+                    and dst_conv is None
+                    and dst_recurrent is None
+                ):
+                    raise ValueError(
+                        f"GGUF current-state partial linear state at layer {layer_id}"
+                    )
+                continue
+            assert src_conv is not None and src_recurrent is not None
+            assert dst_conv is not None and dst_recurrent is not None
+            for destination, origin, label in (
+                (dst_conv, src_conv, "Conv"),
+                (dst_recurrent, src_recurrent, "recurrent"),
+            ):
+                if int(destination.nbytes) != int(origin.nbytes):
+                    raise ValueError(
+                        f"GGUF current-state {label} size mismatch at layer {layer_id}"
+                    )
+                runtime.memcpy_async(
+                    destination.ptr,
+                    origin.ptr,
+                    origin.nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                    int(stream),
+                )
+                copied_bytes += int(origin.nbytes)
+        self._commit_prefix_state_clone(boundary, stream=int(stream))
+        return copied_bytes
+
     def clone_prefix_state_from(
         self,
         source: "Qwen35GGUFResidentSession",
