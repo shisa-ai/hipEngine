@@ -1913,17 +1913,19 @@ external MTP rows.
       one request-owned 119.53-MB snapshot lease lowers begin/commit host wall
       **6.568→0.0268 ms**, with downstream readback owning copy completion. The
       exact complete B2 candidate then improves **128.464→127.560 ms
-      (1.0071x)**. Keep it internal/default-off until accepted-prefix replay,
-      route tracing, and whole-model category gates pass. Evidence:
+      (1.0071x)**. Accepted-prefix replay now passes the complete rejection grid,
+      and cached B2 tracing proves GDN decode, QSA, router, and rows=2 final-head
+      execution. Keep it internal/default-off until provider wiring and
+      whole-model category gates pass. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`
       and
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-pooled-verifier-transaction.json`.
-      `W=51.711 s`, `C=49.383 s`, and the measured
-      target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
-      executable Qwen4Exp candidate exists. Strict fallback is serial
-      `target.step`. Device-output cleanup remains independent. Evidence:
+      `W=51.711 s`, `C=49.383 s`, and the measured target-step owner is
+      `O=87.652 ms/row`; internal B2 `s=1.0071`, but public/full-suite `s`
+      remains unknown. Strict fallback is serial `target.step`. Device-output
+      cleanup remains independent. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
-- [~] Add a rejection-depth RED sweep before any budget work. Force a rejection
+- [x] Add a rejection-depth RED sweep before any budget work. Force a rejection
       at every draft depth `d` in `[1, n_max]`, at the first, middle, and last
       position of a verify batch, and with a batch shorter than the ring depth;
       require post-rollback GDN conv state, SSM state, and the next-token logits
@@ -1931,11 +1933,15 @@ external MTP rows.
       grid that localizes the Pat1entZ3r0 EXP-016 class: unwritten ring banks
       beyond the written group, and a spec ring one entry too shallow for a
       verify batch that carries the previously sampled token plus `n_max`
-      drafts. Passing at `n_max` only is not passing. The current public provider
-      cannot express this target rollback-ring class: it commits only serial
-      truth via `target.step` and trims only the independent draft cursor. The
-      grid is blocked until the rows<=8 verifier/device-state transaction ABI
-      exists; do not claim current 10/10 exact serial output as a batch-ring gate.
+      drafts. Passing at `n_max` only is not passing. The pooled verifier
+      transaction passes **12/12** real B2/B3/B4 cases: rejection at every
+      depth, full acceptance, and shorter widths. Committed tokens, hidden,
+      logits, GDN matrix/conv, PLE conv, residual, position, and PLE hashes are
+      bit-exact to serial; the following token, full logits, and hidden row are
+      also bit-exact. Rejections before the last row rollback and replay only
+      the consumed prefix; last-row rejection/full acceptance commit directly.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rejection-depth-grid.json`.
 - [~] Falsify EXP-016 as the explanation for the measured external MTP failures
       with one build. The failure identities are already known per lane
       (EngramHalo 9/10 failing `general_ja_plan`; Nathan 8/10 with AR and MTP

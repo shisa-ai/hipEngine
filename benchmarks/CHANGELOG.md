@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 rejection-depth RED] Real pooled B2/B3/B4 passes **12/12** rejection/full-accept cases: committed tokens/hidden/logits, all GDN/PLE/residual state, cursors/hashes, and the following token/logits/hidden are bit-exact to serial. Shorter prefixes replay only consumed rows. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rejection-depth-grid.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 pooled verifier transaction] Reusing a request-owned 119.53-MB snapshot lowers transaction begin/commit **6.568→0.0268 ms**; downstream synchronization remains counted. Exact complete B2 deferred-head verification improves **128.464→127.560 ms (1.0071x)**. Retain internal/default-off pending accepted-prefix replay, trace, and whole-model gates. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-pooled-verifier-transaction.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 deferred-head verifier] Serial-body/deferred-head rows2-8 is bit-exact for tokens, hidden, logits, state, position, and hashes. Head-only B2 is **126.763→126.592 ms (1.00136x)**, but required transaction ownership regresses **127.693→132.354 ms (0.9648x)**. Remove the uncommitted candidate; final-head batching cannot pay for rollback. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`.
