@@ -1916,7 +1916,14 @@ external MTP rows.
       (1.0071x)**. Accepted-prefix replay now passes the complete rejection grid,
       and cached B2 tracing proves GDN decode, QSA, router, and rows=2 final-head
       execution. Keep it internal/default-off until provider wiring and
-      whole-model category gates pass. Evidence:
+      whole-model category gates pass. Default-off provider wiring then passes
+      **10/10 exact IDs** with unchanged acceptance, but full-suite tg16 is
+      **26.152 s** deferred versus **22.821 s** serial MTP (**0.8726x**) and
+      **16.904 s** true AR (**0.6464x**); every category regresses. Full-width
+      target execution plus early-mismatch replay overwhelms pooled/head savings.
+      The uncommitted provider branch was removed. A viable verifier must batch
+      operation-complete target bodies or avoid rejected-suffix work. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json`,
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`
       and
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-pooled-verifier-transaction.json`.
