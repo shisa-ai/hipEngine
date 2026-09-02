@@ -2061,8 +2061,16 @@ Goal: make the complete result reproducible, default, and reversible.
       is still blocked by five-pair eligible comparator windows and 4K MTP at
       the provider's 1K capacity; neither is relabeled as passed. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`.
-- [ ] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
+- [~] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
       reports, benchmark README/changelog updates, and the model checkpoint.
+      Current P12 packet, compact report, and README/changelog rollup are current;
+      report SHA-256 is `7130500d…`. Strict/production raw result hashes are
+      recorded without committing 148-KB raw files. Final-freeze comparator raw
+      hashes and the final model checkpoint remain blocked with their five-pair
+      and 4K-MTP inputs; do not publish a closure checkpoint early. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md`.
 - [ ] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
       `docs/PLAN.md` if architecture moved.
 - [ ] Remove superseded experiment flags, dead selectors, duplicate fallback

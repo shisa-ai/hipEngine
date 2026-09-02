@@ -212,7 +212,7 @@ prefix:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
-| hipEngine production | **82.51 / 13.82** | **81.22 / 13.79** | **67.93 / 10.40** | 12/12 exact |
+| hipEngine production (`37d59564…`, 2026-09-02 current snapshot) | **83.35 / 14.18** | **82.93 / 14.16** | **69.20 / 12.16** | 12/12 deterministic |
 | Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; noisy p512/p1024 rows |
 | Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
 | EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; p4096 fails |
@@ -223,12 +223,15 @@ Nathan produced 16 different outputs from 16 identical-prompt requests;
 apepojken varies on four canonical cases; EngramHalo varies on one p4096 case.
 Their affected rates remain diagnostics rather than correctness-valid targets.
 Pristine upstream HIP did not finish loading in two 1,800-second attempts, so the
-measured patched-upstream lane is explicitly non-stock. This is a three-repeat
-screen, not section-6 closure: several rows exceed 2% CV, and five paired runs,
-cold-PLE isolation, and category heldouts remain open. The Vulkan rows were
+measured patched-upstream lane is explicitly non-stock. This is not section-6 closure: comparator rows are not paired with the current
+hipEngine snapshot in one thermal window, and five paired runs plus 4K MTP
+remain open. Current production's maximum per-case CV is 0.71%; current strict
+is deterministic but exceeds 2% CV in several rows. The Vulkan rows were
 refreshed with their entitled graphics queue, repack, and fit-off configuration;
 upstream p512 prefill/decode and p1024 prefill remain too noisy to freeze the
 closure target.
+[`current P12 packet`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json),
+[`generated report`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md),
 [`canonical AR screening`](results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json),
 [`entitled Vulkan refresh`](results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json).
 
@@ -350,10 +353,11 @@ outputs, and lifecycle exact. Resident-token chaining and normal-AR hidden-copy
 elision then reduce the ledger from **28 to 26 blocking copies/token** while
 preserving 12 async copies. The p508+128-step wall ratio is neutral at
 **1.00343x (95% CI 0.98776–1.01909)**; this is a transfer-boundary retention,
-not a wall-speed claim. The fresh canonical p512/p1024/p4096 snapshot is
-**83.70/83.16/69.10 pp/s** and **14.40/14.42/10.42 tg/s**, all 36 measured
-samples deterministic. Versus the same-host campaign start, pp improves
-**1.44%/2.38%/1.72%** and tg improves **4.17%/4.60%/0.20%**.
+not a wall-speed claim. The current P12 canonical p512/p1024/p4096 production snapshot is
+**83.35/82.93/69.20 pp/s** and **14.18/14.16/12.16 tg/s**, all 36 measured
+samples deterministic with zero teardown. Named strict is
+**61.05/60.32/52.56 pp/s** and **13.52/13.43/9.47 tg/s**; its three-repeat
+variance prevents a closure-rate claim.
 [`P3 Q8-gate rejection`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-rejected.json).
 [`P3 fused GR`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-sigmoid-mean.json).
 [`P3 F32 router tile4`](results/2026-08-31-gfx1151-qwen38-flash-next-p3-router-f32-tile4.json).
