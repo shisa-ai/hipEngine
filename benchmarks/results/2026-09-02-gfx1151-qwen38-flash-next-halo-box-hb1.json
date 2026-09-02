@@ -1,0 +1,891 @@
+{
+  "amdahl_declaration": {
+    "C": "complete request surfaces; llama.cpp prompt_ms and normalized predicted_ms versus synchronized hipEngine prefill/step boundaries are reported separately by engine",
+    "O": null,
+    "W": "12 canonical cases at p512/p1024/p4096 with 128 post-first-output transitions",
+    "arithmetic_class": "cross-engine production comparison; production arithmetic may differ, control/output determinism remains exact per lane",
+    "mechanism": "whole-engine aggregate screen; HB-2 profiles mechanisms",
+    "overlap_exclusions": [
+      "arm A is not retained",
+      "IQ4_XS and Q8_0-KV are excluded",
+      "no isolated microbenchmark is promoted",
+      "different timing boundaries are not merged into one wall ratio"
+    ],
+    "s": null,
+    "scope": "c=1 UD-Q4_K_XL BF16 K/V only",
+    "strict_fallback": "unchanged hipEngine strict profile and unfused registry paths"
+  },
+  "baseline_claim": false,
+  "comparisons": {
+    "hb_pr11_over_hb_base": {
+      "a": {
+        "1024": {
+          "decode_ratio": 1.012681,
+          "prefill_ratio": 1.058705
+        },
+        "4096": {
+          "decode_ratio": 1.010512,
+          "prefill_ratio": 1.188649
+        },
+        "512": {
+          "decode_ratio": 1.010235,
+          "prefill_ratio": 1.002758
+        }
+      },
+      "b": {
+        "1024": {
+          "decode_ratio": 1.0238,
+          "prefill_ratio": 1.114204
+        },
+        "4096": {
+          "decode_ratio": 1.022505,
+          "prefill_ratio": 1.174351
+        },
+        "512": {
+          "decode_ratio": 1.026143,
+          "prefill_ratio": 1.101178
+        }
+      }
+    },
+    "hb_pr11_over_hipengine": {
+      "a": {
+        "1024": {
+          "decode_ratio": 1.200637,
+          "prefill_ratio": 4.068211
+        },
+        "4096": {
+          "decode_ratio": 1.234475,
+          "prefill_ratio": 5.135182
+        },
+        "512": {
+          "decode_ratio": 1.25141,
+          "prefill_ratio": 2.998937
+        }
+      },
+      "b": {
+        "1024": {
+          "decode_ratio": 1.211344,
+          "prefill_ratio": 4.142981
+        },
+        "4096": {
+          "decode_ratio": 1.250868,
+          "prefill_ratio": 5.118621
+        },
+        "512": {
+          "decode_ratio": 1.266126,
+          "prefill_ratio": 2.957392
+        }
+      }
+    },
+    "hb_pr11_over_patched_upstream": {
+      "a": {
+        "1024": {
+          "decode_ratio": 0.964377,
+          "prefill_ratio": 1.076738
+        },
+        "4096": {
+          "decode_ratio": 0.953176,
+          "prefill_ratio": 1.164224
+        },
+        "512": {
+          "decode_ratio": 0.975847,
+          "prefill_ratio": 1.029759
+        }
+      },
+      "b": {
+        "1024": {
+          "decode_ratio": 1.017458,
+          "prefill_ratio": 1.120631
+        },
+        "4096": {
+          "decode_ratio": 1.02275,
+          "prefill_ratio": 1.248383
+        },
+        "512": {
+          "decode_ratio": 1.021385,
+          "prefill_ratio": 1.045176
+        }
+      }
+    },
+    "patched_upstream_over_hipengine": {
+      "a": {
+        "1024": {
+          "decode_ratio": 1.244987,
+          "prefill_ratio": 3.778272
+        },
+        "4096": {
+          "decode_ratio": 1.295118,
+          "prefill_ratio": 4.410819
+        },
+        "512": {
+          "decode_ratio": 1.282384,
+          "prefill_ratio": 2.912271
+        }
+      },
+      "b": {
+        "1024": {
+          "decode_ratio": 1.190559,
+          "prefill_ratio": 3.697009
+        },
+        "4096": {
+          "decode_ratio": 1.223044,
+          "prefill_ratio": 4.100199
+        },
+        "512": {
+          "decode_ratio": 1.239617,
+          "prefill_ratio": 2.829563
+        }
+      }
+    }
+  },
+  "correctness": {
+    "all_lanes_cross_arm_deterministic": true,
+    "hipengine_production_gate": "Existing named production profile gate remains binding; HB-1 confirms deterministic outputs within each arm but does not require cross-engine generated-ID equality.",
+    "llamacpp_family_retained_output_matches": {
+      "hb_pr11": {
+        "case_count": 12,
+        "matching_cases": 12
+      },
+      "patched_upstream": {
+        "case_count": 12,
+        "matching_cases": 12
+      }
+    }
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "hb1_binding_exit_met": true,
+    "next": "HB-2 profiles frozen HB-base and HB-PR11 binaries and measures mechanism activation before any HB-3 microbenchmark candidate is admitted.",
+    "promote_kernel_or_runtime_change": false
+  },
+  "finding": "HB-PR11 is repeat-exact and improves retained-arm prefill over HB-base at every shape; the gain is strongest and stable at p4096. Decode changes are small. HB-base short-shape arm drift makes p512/p1024 cross-lane magnitude provisional, so no implementation promotion follows from HB-1.",
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_halo_box_hb1_c1_canonical_comparison",
+  "lanes": {
+    "hb_base": {
+      "arms": {
+        "a": {
+          "all_cases_deterministic": true,
+          "command": [
+            "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/llama-server",
+            "-m",
+            "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "18130",
+            "--parallel",
+            "1",
+            "--no-webui",
+            "-ngl",
+            "999",
+            "-fa",
+            "on",
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-c",
+            "4352",
+            "-b",
+            "8192",
+            "-ub",
+            "2048",
+            "-t",
+            "4",
+            "-lm",
+            "mmap"
+          ],
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "server_log": "/tmp/qwen4exp-hb1-base-arm-a.server.log",
+            "server_log_sha256": "9526271aff822000de205ff4127c66174267c4a3513aa31f103b6538b9fb51f2",
+            "server_returncode": 0
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-base-arm-a.json",
+            "sha256": "bbbc15624ada945723338d6975f7a4c93125f7606319a0e3a61e61784d8a8e65"
+          },
+          "role": "stabilization_diagnostic",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.005146,
+              "decode_tok_s": 16.949613,
+              "prefill_cv": 0.040396,
+              "prefill_tok_s": 321.565968
+            },
+            "4096": {
+              "decode_cv": 0.007508,
+              "decode_tok_s": 14.960408,
+              "prefill_cv": 0.023439,
+              "prefill_tok_s": 300.532945
+            },
+            "512": {
+              "decode_cv": 0.011763,
+              "decode_tok_s": 17.775187,
+              "prefill_cv": 0.03351,
+              "prefill_tok_s": 251.921093
+            }
+          }
+        },
+        "b": {
+          "all_cases_deterministic": true,
+          "command": [
+            "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/llama-server",
+            "-m",
+            "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "18131",
+            "--parallel",
+            "1",
+            "--no-webui",
+            "-ngl",
+            "999",
+            "-fa",
+            "on",
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-c",
+            "4352",
+            "-b",
+            "8192",
+            "-ub",
+            "2048",
+            "-t",
+            "4",
+            "-lm",
+            "mmap"
+          ],
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "server_log": "/tmp/qwen4exp-hb1-base-arm-b.server.log",
+            "server_log_sha256": "d672e4ab093ba36c61788271fce97a6791d5d9e94798a676e56fd39ebb1deba4",
+            "server_returncode": 0
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-base-arm-b.json",
+            "sha256": "e983b63f4458aba020bccb96938b4fd14f9f0ad37fded030ed1c99973993c87e"
+          },
+          "role": "retained",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.005744,
+              "decode_tok_s": 16.88189,
+              "prefill_cv": 0.027984,
+              "prefill_tok_s": 308.278041
+            },
+            "4096": {
+              "decode_cv": 0.002442,
+              "decode_tok_s": 14.896836,
+              "prefill_cv": 0.016044,
+              "prefill_tok_s": 301.621038
+            },
+            "512": {
+              "decode_cv": 0.012641,
+              "decode_tok_s": 17.663037,
+              "prefill_cv": 0.085511,
+              "prefill_tok_s": 223.893088
+            }
+          }
+        }
+      },
+      "cross_arm_output_exact": true,
+      "engine": "hb_base_6c84c7d5_loader_patched_arm_b",
+      "loader_patches": [
+        {
+          "name": "llama-cpp-25992-rocm-host-buffer.patch",
+          "sha256": "aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de"
+        },
+        {
+          "name": "llama-cpp-qwen38-per-buffer-mmap.patch",
+          "sha256": "971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133"
+        }
+      ],
+      "profile": null,
+      "retained_shapes": {
+        "1024": {
+          "decode_cv": 0.005744,
+          "decode_tok_s": 16.88189,
+          "prefill_cv": 0.027984,
+          "prefill_tok_s": 308.278041
+        },
+        "4096": {
+          "decode_cv": 0.002442,
+          "decode_tok_s": 14.896836,
+          "prefill_cv": 0.016044,
+          "prefill_tok_s": 301.621038
+        },
+        "512": {
+          "decode_cv": 0.012641,
+          "decode_tok_s": 17.663037,
+          "prefill_cv": 0.085511,
+          "prefill_tok_s": 223.893088
+        }
+      },
+      "server_binary": "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/llama-server",
+      "server_binary_sha256": "14c40f2b64299c172219840b2bfbabf2ab888320516fe4b7dbb1d059aeada43c",
+      "source": {
+        "head": "6c84c7d5d8833c6e0df69628f75a0f599797934e",
+        "path": "/home/lhl/halo-box-strix-llama/hb-base",
+        "tracked_clean": false
+      },
+      "surface": "llamacpp_completion_server"
+    },
+    "hb_pr11": {
+      "arms": {
+        "a": {
+          "all_cases_deterministic": true,
+          "command": [
+            "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+            "-m",
+            "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "18132",
+            "--parallel",
+            "1",
+            "--no-webui",
+            "-ngl",
+            "999",
+            "-fa",
+            "on",
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-c",
+            "4352",
+            "-b",
+            "8192",
+            "-ub",
+            "2048",
+            "-t",
+            "4",
+            "-lm",
+            "mmap"
+          ],
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "server_log": "/tmp/qwen4exp-hb1-pr11-arm-a.server.log",
+            "server_log_sha256": "2eba77df5a92a7b0e7472611b18bfae0ecf5771fd3d06ee5d0fa202f89e72fb4",
+            "server_returncode": 0
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-pr11-arm-a.json",
+            "sha256": "cbe098c5658b7b6e382202b0d1cef84e7e0cfa94d286de482c82d526639e501e"
+          },
+          "role": "stabilization_diagnostic",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.005245,
+              "decode_tok_s": 17.164559,
+              "prefill_cv": 0.050261,
+              "prefill_tok_s": 340.443546
+            },
+            "4096": {
+              "decode_cv": 0.003744,
+              "decode_tok_s": 15.117677,
+              "prefill_cv": 0.011533,
+              "prefill_tok_s": 357.228288
+            },
+            "512": {
+              "decode_cv": 0.013835,
+              "decode_tok_s": 17.957121,
+              "prefill_cv": 0.021186,
+              "prefill_tok_s": 252.615946
+            }
+          }
+        },
+        "b": {
+          "all_cases_deterministic": true,
+          "command": [
+            "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+            "-m",
+            "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "18133",
+            "--parallel",
+            "1",
+            "--no-webui",
+            "-ngl",
+            "999",
+            "-fa",
+            "on",
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-c",
+            "4352",
+            "-b",
+            "8192",
+            "-ub",
+            "2048",
+            "-t",
+            "4",
+            "-lm",
+            "mmap"
+          ],
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "server_log": "/tmp/qwen4exp-hb1-pr11-arm-b.server.log",
+            "server_log_sha256": "6475067aeb52c0a1300ae145dd4f0681fd2947acf9fd08b9e4c0f0181077f775",
+            "server_returncode": 0
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-pr11-arm-b.json",
+            "sha256": "2f1993f7954f0ae3a3948b3af809d4f4a9ffd1a632ec940986b8db20449ad708"
+          },
+          "role": "retained",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.011665,
+              "decode_tok_s": 17.28368,
+              "prefill_cv": 0.02587,
+              "prefill_tok_s": 343.484625
+            },
+            "4096": {
+              "decode_cv": 0.010782,
+              "decode_tok_s": 15.232083,
+              "prefill_cv": 0.022063,
+              "prefill_tok_s": 354.209105
+            },
+            "512": {
+              "decode_cv": 0.013362,
+              "decode_tok_s": 18.124806,
+              "prefill_cv": 0.044438,
+              "prefill_tok_s": 246.546206
+            }
+          }
+        }
+      },
+      "cross_arm_output_exact": true,
+      "engine": "hb_pr11_a7ad7b7f_loader_patched_arm_b",
+      "loader_patches": [
+        {
+          "name": "llama-cpp-25992-rocm-host-buffer.patch",
+          "sha256": "aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de"
+        },
+        {
+          "name": "llama-cpp-qwen38-per-buffer-mmap.patch",
+          "sha256": "971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133"
+        }
+      ],
+      "profile": null,
+      "retained_shapes": {
+        "1024": {
+          "decode_cv": 0.011665,
+          "decode_tok_s": 17.28368,
+          "prefill_cv": 0.02587,
+          "prefill_tok_s": 343.484625
+        },
+        "4096": {
+          "decode_cv": 0.010782,
+          "decode_tok_s": 15.232083,
+          "prefill_cv": 0.022063,
+          "prefill_tok_s": 354.209105
+        },
+        "512": {
+          "decode_cv": 0.013362,
+          "decode_tok_s": 18.124806,
+          "prefill_cv": 0.044438,
+          "prefill_tok_s": 246.546206
+        }
+      },
+      "server_binary": "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+      "server_binary_sha256": "22f1f8e634ff0cc4ae83b7323c15508c82f9e02b62d4c31704ed33f22b414c58",
+      "source": {
+        "head": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+        "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+        "tracked_clean": false
+      },
+      "surface": "llamacpp_completion_server"
+    },
+    "hipengine": {
+      "arms": {
+        "a": {
+          "all_cases_deterministic": true,
+          "command": null,
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "memory_after_close": {
+              "active_allocations": 0,
+              "current_allocated_bytes": 0,
+              "peak_allocated_bytes": 83545265060,
+              "peak_allocations": 1645,
+              "total_allocated_bytes": 83555750820,
+              "total_freed_bytes": 83555750820
+            },
+            "memory_before_close": {
+              "active_allocations": 1645,
+              "current_allocated_bytes": 83545265060,
+              "peak_allocated_bytes": 83545265060,
+              "peak_allocations": 1645,
+              "total_allocated_bytes": 83555750820,
+              "total_freed_bytes": 10485760
+            }
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-hipengine-arm-a.json",
+            "sha256": "8f908ce6ab6523dd2f920c0639de062c4c6d68daeb2eadfefd99fee5f1c2fce4"
+          },
+          "role": "stabilization_diagnostic",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.011489,
+              "decode_tok_s": 14.296207,
+              "prefill_cv": 0.010972,
+              "prefill_tok_s": 83.683856
+            },
+            "4096": {
+              "decode_cv": 0.002206,
+              "decode_tok_s": 12.246235,
+              "prefill_cv": 0.005926,
+              "prefill_tok_s": 69.564875
+            },
+            "512": {
+              "decode_cv": 0.012398,
+              "decode_tok_s": 14.349514,
+              "prefill_cv": 0.014756,
+              "prefill_tok_s": 84.235166
+            }
+          }
+        },
+        "b": {
+          "all_cases_deterministic": true,
+          "command": null,
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "memory_after_close": {
+              "active_allocations": 0,
+              "current_allocated_bytes": 0,
+              "peak_allocated_bytes": 83545265060,
+              "peak_allocations": 1645,
+              "total_allocated_bytes": 83555750820,
+              "total_freed_bytes": 83555750820
+            },
+            "memory_before_close": {
+              "active_allocations": 1645,
+              "current_allocated_bytes": 83545265060,
+              "peak_allocated_bytes": 83545265060,
+              "peak_allocations": 1645,
+              "total_allocated_bytes": 83555750820,
+              "total_freed_bytes": 10485760
+            }
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-hipengine-arm-b.json",
+            "sha256": "39450370c0264cb1d78850d6ad6f4da345a332d951d9206bec9dc987894987b1"
+          },
+          "role": "retained",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.005308,
+              "decode_tok_s": 14.268179,
+              "prefill_cv": 0.004067,
+              "prefill_tok_s": 82.907594
+            },
+            "4096": {
+              "decode_cv": 0.00127,
+              "decode_tok_s": 12.177214,
+              "prefill_cv": 0.003693,
+              "prefill_tok_s": 69.200104
+            },
+            "512": {
+              "decode_cv": 0.004715,
+              "decode_tok_s": 14.315168,
+              "prefill_cv": 0.002865,
+              "prefill_tok_s": 83.366093
+            }
+          }
+        }
+      },
+      "cross_arm_output_exact": true,
+      "engine": "hipengine_production",
+      "profile": {
+        "fell_back_to_strict": false,
+        "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+        "requested": "production",
+        "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b"
+      },
+      "retained_shapes": {
+        "1024": {
+          "decode_cv": 0.005308,
+          "decode_tok_s": 14.268179,
+          "prefill_cv": 0.004067,
+          "prefill_tok_s": 82.907594
+        },
+        "4096": {
+          "decode_cv": 0.00127,
+          "decode_tok_s": 12.177214,
+          "prefill_cv": 0.003693,
+          "prefill_tok_s": 69.200104
+        },
+        "512": {
+          "decode_cv": 0.004715,
+          "decode_tok_s": 14.315168,
+          "prefill_cv": 0.002865,
+          "prefill_tok_s": 83.366093
+        }
+      },
+      "server_binary": null,
+      "server_binary_sha256": null,
+      "source": {
+        "head": "0436e138b5fe6a43b1b1bae5df6c33fff2110148",
+        "path": "/home/lhl/hipEngine",
+        "tracked_clean": true
+      },
+      "surface": "synchronized_direct_runner"
+    },
+    "patched_upstream": {
+      "arms": {
+        "a": {
+          "all_cases_deterministic": true,
+          "command": [
+            "/home/lhl/halo-box-strix-llama/upstream-f1793c1c4/build-hip-patched/bin/llama-server",
+            "-m",
+            "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "18134",
+            "--parallel",
+            "1",
+            "--no-webui",
+            "-ngl",
+            "999",
+            "-fa",
+            "on",
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-c",
+            "4352",
+            "-b",
+            "8192",
+            "-ub",
+            "2048",
+            "-t",
+            "4",
+            "-lm",
+            "mmap"
+          ],
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "server_log": "/tmp/qwen4exp-hb1-upstream-arm-a.server.log",
+            "server_log_sha256": "c1a49273251d29f7eb014a301201412b4534167a12d60c9819427478720d28a2",
+            "server_returncode": 0
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-upstream-arm-a.json",
+            "sha256": "6e7b8ab94186e8bf0081befbf61da609795ec25c694767d582f6f304712beb43"
+          },
+          "role": "stabilization_diagnostic",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.03352,
+              "decode_tok_s": 17.798598,
+              "prefill_cv": 0.043174,
+              "prefill_tok_s": 316.180344
+            },
+            "4096": {
+              "decode_cv": 0.021463,
+              "decode_tok_s": 15.860324,
+              "prefill_cv": 0.024358,
+              "prefill_tok_s": 306.838086
+            },
+            "512": {
+              "decode_cv": 0.03947,
+              "decode_tok_s": 18.401583,
+              "prefill_cv": 0.054647,
+              "prefill_tok_s": 245.315606
+            }
+          }
+        },
+        "b": {
+          "all_cases_deterministic": true,
+          "command": [
+            "/home/lhl/halo-box-strix-llama/upstream-f1793c1c4/build-hip-patched/bin/llama-server",
+            "-m",
+            "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "18135",
+            "--parallel",
+            "1",
+            "--no-webui",
+            "-ngl",
+            "999",
+            "-fa",
+            "on",
+            "-ctk",
+            "bf16",
+            "-ctv",
+            "bf16",
+            "-c",
+            "4352",
+            "-b",
+            "8192",
+            "-ub",
+            "2048",
+            "-t",
+            "4",
+            "-lm",
+            "mmap"
+          ],
+          "lifecycle": {
+            "clean": true,
+            "measured_samples": 36,
+            "server_log": "/tmp/qwen4exp-hb1-upstream-arm-b.server.log",
+            "server_log_sha256": "da10b3e91265075d48e93a39024665f972ed9bd3ab4d397a0a01128ef563a787",
+            "server_returncode": 0
+          },
+          "raw_result": {
+            "path": "/tmp/qwen4exp-hb1-upstream-arm-b.json",
+            "sha256": "aeaea1469e9e3695ef00cadaf34a8b5636c2cda9a6ba8acef9d631db9e861b35"
+          },
+          "role": "retained",
+          "shapes": {
+            "1024": {
+              "decode_cv": 0.005802,
+              "decode_tok_s": 16.987112,
+              "prefill_cv": 0.025263,
+              "prefill_tok_s": 306.510115
+            },
+            "4096": {
+              "decode_cv": 0.002623,
+              "decode_tok_s": 14.893264,
+              "prefill_cv": 0.011632,
+              "prefill_tok_s": 283.73423
+            },
+            "512": {
+              "decode_cv": 0.014325,
+              "decode_tok_s": 17.745326,
+              "prefill_cv": 0.025569,
+              "prefill_tok_s": 235.889641
+            }
+          }
+        }
+      },
+      "cross_arm_output_exact": true,
+      "engine": "upstream_f1793c1c4_loader_patched_arm_b",
+      "loader_patches": [
+        {
+          "name": "llama-cpp-25992-rocm-host-buffer.patch",
+          "sha256": "aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de"
+        },
+        {
+          "name": "llama-cpp-qwen38-per-buffer-mmap.patch",
+          "sha256": "971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133"
+        }
+      ],
+      "profile": null,
+      "retained_shapes": {
+        "1024": {
+          "decode_cv": 0.005802,
+          "decode_tok_s": 16.987112,
+          "prefill_cv": 0.025263,
+          "prefill_tok_s": 306.510115
+        },
+        "4096": {
+          "decode_cv": 0.002623,
+          "decode_tok_s": 14.893264,
+          "prefill_cv": 0.011632,
+          "prefill_tok_s": 283.73423
+        },
+        "512": {
+          "decode_cv": 0.014325,
+          "decode_tok_s": 17.745326,
+          "prefill_cv": 0.025569,
+          "prefill_tok_s": 235.889641
+        }
+      },
+      "server_binary": "/home/lhl/halo-box-strix-llama/upstream-f1793c1c4/build-hip-patched/bin/llama-server",
+      "server_binary_sha256": "447dddd873bbaec9427e290653abd48c5f49db735ce83f7e4b8af8586664cc61",
+      "source": {
+        "head": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+        "path": "/home/lhl/halo-box-strix-llama/upstream-f1793c1c4",
+        "tracked_clean": false
+      },
+      "surface": "llamacpp_completion_server"
+    }
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "kv": "BF16",
+    "new_weight_quant_downloaded": false,
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "tensor_bytes": 111323630080
+  },
+  "performance_claim": true,
+  "pr_shape_reproduction": {
+    "iq4_xs_downloaded": false,
+    "reason": "The approved loop explicitly forbids downloading IQ4_XS and limits HB-0 through HB-3 to the existing pinned UD-Q4_K_XL plus BF16 K/V configuration.",
+    "status": "not_run_scope_excluded"
+  },
+  "protocol": {
+    "case_schedule": "fixture order for repetition 0; deterministic counterbalanced order for repetitions 1 and 2",
+    "cases_per_arm": 12,
+    "concurrency": 1,
+    "decode_transitions": 128,
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "kv": "BF16",
+    "lane_order": [
+      "hb_base_a",
+      "hb_base_b",
+      "hb_pr11_a",
+      "hb_pr11_b",
+      "hipengine_a",
+      "hipengine_b",
+      "patched_upstream_a",
+      "patched_upstream_b"
+    ],
+    "measured_repetitions_per_case": 3,
+    "measured_samples_per_arm": 36,
+    "retention": "arm A is stabilization/trajectory diagnostic; arm B is retained for section 3.1/3.2",
+    "warmups_per_case": 1,
+    "weight_quant": "UD-Q4_K_XL"
+  },
+  "repeatability_classification": {
+    "comparison_policy": "Retain arm B. Treat short-shape HB-base/PR11 magnitude as provisional because the fixed lane order does not remove trajectory drift; p4096 direction reproduces in both corresponding arms.",
+    "hb_base": "state/trajectory-sensitive prefill at p512 (-11.13% B/A) and p1024 (-4.13% B/A); p4096 and decode near-stable",
+    "hb_pr11": "repeat-arm stable within 2.40% prefill and 0.93% decode",
+    "hipengine": "repeat-arm stable within 1.03% prefill and 0.56% decode",
+    "patched_upstream": "computed from recorded arm deltas; see lane summaries"
+  },
+  "schema": 1,
+  "scope": "Same-host c=1 canonical p512/p1024/p4096 plus tg128 on pinned UD-Q4_K_XL and BF16 K/V; first arm is stabilization/diagnostic and second arm is retained",
+  "status": "accepted_binding_q4_c1_with_short_shape_drift_caveat"
+}

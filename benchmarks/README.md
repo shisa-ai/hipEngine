@@ -212,9 +212,11 @@ prefix:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
-| hipEngine production (`37d59564…`, 2026-09-02 current snapshot) | **83.35 / 14.18** | **82.93 / 14.16** | **69.20 / 12.16** | 12/12 deterministic |
+| hipEngine production (`37d59564…`, HB-1 retained arm) | **83.37 / 14.32** | **82.91 / 14.27** | **69.20 / 12.18** | 12/12 deterministic; cross-arm exact |
 | Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; noisy p512/p1024 rows |
-| Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
+| Patched-upstream HIP `f1793c1c4` | 235.89 / 17.75 | 306.51 / 16.99 | 283.73 / 14.89 | 12/12 deterministic; cross-arm exact; non-stock loader |
+| Halo-box base `6c84c7d5` + loader patches | 223.89 / 17.66 | 308.28 / 16.88 | 301.62 / 14.90 | 12/12 deterministic; cross-arm exact; short-shape drift |
+| Halo-box PR11 `a7ad7b7f` + loader patches | **246.55 / 18.12** | **343.48 / 17.28** | **354.21 / 15.23** | 12/12 deterministic; cross-arm exact |
 | EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; p4096 fails |
 | Nathan Vulkan `ad914eb`, queue/repack/fit-off | 360.23 / 24.34 | 357.61 / 21.10 | 351.85 / 19.01 | diagnostic: 0/12 exact |
 | apepojken Vulkan `843d575` | 291.73 / 23.21 | 375.23 / 22.42 | 397.43 / 22.25 | diagnostic: 8/12 exact |
@@ -230,6 +232,7 @@ is deterministic but exceeds 2% CV in several rows. The Vulkan rows were
 refreshed with their entitled graphics queue, repack, and fit-off configuration;
 upstream p512 prefill/decode and p1024 prefill remain too noisy to freeze the
 closure target.
+[`halo-box HB-1 comparison`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json),
 [`current P12 packet`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json),
 [`generated report`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md),
 [`canonical AR screening`](results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json),
