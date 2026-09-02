@@ -333,7 +333,6 @@ from hipengine.runtime.gguf_linear import (
     native_batch_decode_session,
     prefill_f16_staging_enabled,
     prefill_f16_staging_session,
-    prefill_f16_staging_workspace,
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
@@ -17668,11 +17667,9 @@ class Qwen35GGUFResidentSession:
         )
         return q6_t16_f16_rocblas_prefill_session(owner)
 
-    def _prefill_f16_staging_context(self):
-        """Bind the B2 F16 cast workspace to this resident session."""
+    def _ensure_prefill_f16_staging_buffer(self):
+        """Return this resident session's shared bounded staging allocation."""
 
-        if not prefill_f16_staging_enabled(self.use_prefill_f16_staging):
-            return prefill_f16_staging_session(False)
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")
         config = self.runner.weights.config
@@ -17693,7 +17690,15 @@ class Qwen35GGUFResidentSession:
             self._prefill_f16_staging_buf = buffer
             self._buffers = (*self._buffers, buffer)
         if int(buffer.nbytes) < required_nbytes:
-            raise RuntimeError("resident F16 staging workspace is undersized")
+            raise RuntimeError("resident staging workspace is undersized")
+        return buffer
+
+    def _prefill_f16_staging_context(self):
+        """Bind the B2 F16 cast workspace to this resident session."""
+
+        if not prefill_f16_staging_enabled(self.use_prefill_f16_staging):
+            return prefill_f16_staging_session(False)
+        buffer = self._ensure_prefill_f16_staging_buffer()
         return prefill_f16_staging_session(
             True,
             workspace_ptr=int(buffer.ptr),
@@ -17701,15 +17706,11 @@ class Qwen35GGUFResidentSession:
         )
 
     def _q6_integer_mmq_context(self):
-        """Alias the active resident F16 workspace for the bounded B5 route."""
+        """Alias the resident staging allocation for the bounded B5 route."""
 
         if not bool(self.use_q6_integer_mmq):
             return q6_dense_integer_mmq_session(False)
-        owner = prefill_f16_staging_workspace()
-        if owner is None:
-            # B5 never creates global or fallback storage. If its enclosing
-            # resident owner did not bind the shared workspace, keep A.
-            return q6_dense_integer_mmq_session(False)
+        buffer = self._ensure_prefill_f16_staging_buffer()
         if self._q6_integer_mmq_library is None:
             self._q6_integer_mmq_library = build_gguf_q4_k_q8_1_selected_prefill(
                 load=True,
@@ -17718,8 +17719,8 @@ class Qwen35GGUFResidentSession:
             )
         return q6_dense_integer_mmq_session(
             True,
-            workspace_ptr=int(owner.ptr),
-            workspace_nbytes=int(owner.nbytes),
+            workspace_ptr=int(buffer.ptr),
+            workspace_nbytes=int(buffer.nbytes),
             library=self._q6_integer_mmq_library,
         )
 
@@ -18852,6 +18853,7 @@ class Qwen35GGUFResidentSession:
             target_verifier_production_q4_rowtile_session(
                 self.target_verifier_production_q4_rowtile
             ),
+            self._q6_integer_mmq_context(),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()
