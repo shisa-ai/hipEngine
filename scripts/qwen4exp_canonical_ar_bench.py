@@ -721,6 +721,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
             "case_ids": [str(row["id"]) for row in cases],
             "ple_cache_mode": str(args.ple_cache_mode),
             "ple_cache_scope": "per_layer_token_embd.weight file range only",
+            "ple_telemetry": bool(args.ple_telemetry),
             "warmups_per_case": int(args.warmups),
             "measured_repetitions": int(args.repetitions),
             "decode_transitions": transitions,
@@ -751,19 +752,22 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
                     artifact["ple_cache_advice"].append(
                         {"phase": "warmup", "case_id": str(case["id"]), **ple_table.advise_cache("cold")}
                     )
+                if args.ple_telemetry:
+                    ple_table.enable_telemetry()
                 row = _hipengine_case_sample(
                     generator.runner,
                     case=case,
                     repetition=warmup,
                     transitions=transitions,
                 )
-                artifact["warmups"].append(
-                    {
-                        "case_id": row["case_id"],
-                        "repetition": warmup,
-                        "output_token_ids_sha256": row["output_token_ids_sha256"],
-                    }
-                )
+                warmup_row = {
+                    "case_id": row["case_id"],
+                    "repetition": warmup,
+                    "output_token_ids_sha256": row["output_token_ids_sha256"],
+                }
+                if args.ple_telemetry:
+                    warmup_row["ple_telemetry"] = ple_table.telemetry()
+                artifact["warmups"].append(warmup_row)
                 print(
                     f"[warmup] hipengine {row['case_id']} "
                     f"pp={row['prefill_tok_s']:.3f} tg={row['decode_tok_s']:.3f}",
@@ -775,12 +779,16 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
                     artifact["ple_cache_advice"].append(
                         {"phase": "measure", "case_id": str(case["id"]), "repetition": repetition, **ple_table.advise_cache("cold")}
                     )
+                if args.ple_telemetry:
+                    ple_table.enable_telemetry()
                 row = _hipengine_case_sample(
                     generator.runner,
                     case=case,
                     repetition=repetition,
                     transitions=transitions,
                 )
+                if args.ple_telemetry:
+                    row["ple_telemetry"] = ple_table.telemetry()
                 artifact["samples"].append(row)
                 artifact["summary"] = summarize_samples(artifact["samples"])
                 _write_json(args.output, artifact)
@@ -896,6 +904,10 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument(
         "--ple-cache-mode", choices=("warm", "cold"), default="warm",
         help="File-scoped PLE cache protocol; cold evicts only the PLE tensor range before each request",
+    )
+    hip_parser.add_argument(
+        "--ple-telemetry", action="store_true",
+        help="Record opt-in PLE row/page locality, fault proxies, and staging/H2D wall per request",
     )
     hip_parser.add_argument("--warmups", type=int, default=1)
     hip_parser.add_argument("--repetitions", type=int, default=3)

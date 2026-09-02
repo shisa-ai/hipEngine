@@ -156,6 +156,39 @@ def test_qwen4_exp_ple_mmap_gathers_only_requested_iq4_nl_rows() -> None:
         table.gather_rows([0])
 
 
+def test_qwen4_exp_ple_telemetry_is_opt_in_and_reports_locality() -> None:
+    raw = _iq4_nl_rows((1.0, 2.0, 3.0))
+    table = Qwen4ExpPLEMMapTable(
+        SimpleNamespace(tensor_data=lambda name: raw),
+        _ple_tensor(3),
+        semantic_rows=3,
+    )
+    ring = Qwen4ExpPLEStagingRing.create(table, row_capacity=3)
+
+    assert table.telemetry() is None
+    table.enable_telemetry()
+    ring.stage([2, 0, 2])
+    ring.record_h2d(nbytes=1920, wall_ns=1234)
+    snapshot = table.telemetry()
+
+    assert snapshot is not None
+    assert snapshot["calls"] == 1
+    assert snapshot["requested_rows"] == 3
+    assert snapshot["unique_rows"] == 2
+    assert snapshot["requested_source_bytes"] == 270
+    assert snapshot["unique_pages"] >= 1
+    assert snapshot["page_range_count"] >= 1
+    assert snapshot["page_ranges_sample"]
+    assert snapshot["gather_dequant_wall_ns"] > 0
+    assert snapshot["staging_copy_wall_ns"] > 0
+    assert snapshot["h2d_wall_ns"] == 1234
+    assert snapshot["h2d_bytes"] == 1920
+    assert snapshot["cache_mode"] == "unadvised"
+
+    ring.close()
+    table.close()
+
+
 def test_qwen4_exp_ple_cache_advice_is_file_scoped(
     monkeypatch: pytest.MonkeyPatch, tmp_path,
 ) -> None:
@@ -202,6 +235,9 @@ def test_qwen4_exp_ple_cache_advice_is_file_scoped(
     assert len(mapping.advice) == 2
     assert len(calls) == 2
     assert calls[0][0:2] == (0, 270)
+    table.enable_telemetry()
+    assert table.telemetry()["cache_mode"] == "warm"
+    assert table.telemetry()["prefetch_ranges"] == [{"offset": 0, "nbytes": 270}]
 
 
 class _FakeRuntime:
