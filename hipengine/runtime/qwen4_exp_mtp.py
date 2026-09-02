@@ -11,7 +11,6 @@ hidden row for intra-cycle chaining.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from types import MappingProxyType
 import time
 from typing import Mapping, Sequence
@@ -583,13 +582,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
         target_hidden_seed: np.ndarray | None,
         draft_n_max: int,
         target_hidden_seed_ptr: int | None = None,
-        compact_output: bool | None = None,
+        compact_output: bool = False,
     ) -> tuple[Qwen4ExpMTPDraftResult, ...]:
         count = int(draft_n_max)
-        if compact_output is None:
-            compact_output = os.environ.get(
-                "HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT", "0"
-            ) not in {"", "0", "false", "False"}
         if count <= 0 or count > 4:
             raise ValueError("Qwen4Exp MTP draft_n_max must be in 1..4")
         if self.position + count > self.max_sequence_length:

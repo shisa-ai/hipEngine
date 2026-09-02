@@ -18,19 +18,18 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-02 Qwen4Exp P11 compact draft output
+## 2026-09-02 Qwen4Exp P11 compact draft output — selector closed
 
-- `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1` selects a default-off T0 MTP draft
-  path that keeps hidden chaining resident and replaces full-logit/full-hidden
-  readback with device argmax plus one int64 token read per draft. Keep the
-  full-output route as default while the candidate is incomplete. The
-  one-packet-per-cycle follow-up improves warmed four-category wall only 1.0103x,
-  two categories regress, and packet D2H still synchronizes preceding proposal
-  work. Resident target-hidden D2D still yields only 1.0091x aggregate and two
-  category regressions because packet D2H remains a synchronization owner.
-  Remove the flag and candidate if target-verifier/device-transaction work does
-  not eliminate that synchronization and category loss; otherwise promote the
-  completed route and retain full output only as an explicit debug facility.
+- The public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector and resident-hidden
+  provider branch were removed after target-verifier/device-transaction work
+  failed to eliminate category loss. One-packet output reached only 1.0103x
+  aggregate with two category regressions; resident target-hidden D2D reached
+  1.0091x with the same failure. The public route is again unambiguous full
+  output plus serial exact target verification. The explicit runner-level
+  `compact_output=True` argument remains only as a focused oracle/profiling leaf
+  for the recorded rejected mechanisms; it is not selected by public generation.
+  Remove that leaf too when the P11 replay window expires or a replacement
+  device-owned proposal boundary supersedes its tests.
 
 ## 2026-09-02 Qwen4Exp P9 load drop-behind
 
