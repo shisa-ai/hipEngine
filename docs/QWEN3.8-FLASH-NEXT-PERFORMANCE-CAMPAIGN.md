@@ -1923,9 +1923,18 @@ external MTP rows.
       raise the budget while marginal accepted tokens per cycle still increase -
       rather than freezing a constant; a constant tuned on a fixed prompt set is
       not retainable.
-- [ ] Evaluate confidence thresholds as explicit provider policies over the
+- [~] Evaluate confidence thresholds as explicit provider policies over the
       full suite. No fixed prompt, token, or candidate-specific policy is
-      retainable. Deprioritize the `ngram-mod` combination: externally it is
+      retainable. Readiness is blocked: compact output exposes device argmax ID
+      and value, but no top-1 probability, runner-up margin, log-sum-exp, or
+      calibration metadata. The retained ten-row artifact calls its input
+      category+heldout but provides no machine-readable fit/heldout partition,
+      and there is no independent policy-fit corpus. A sweep now would restore
+      full-logit host output or fit the fixed evaluation prompts. Add a compact
+      calibrated confidence packet, immutable disjoint fit/heldout manifests,
+      and the rejection-depth gate first. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-confidence-policy-readiness.json`.
+      Deprioritize the `ngram-mod` combination: externally it is
       -12% on code when combined with an MTP draft head (low-quality drafts
       dilute the head), plain n-gram speculation is 0 to -33%, and two of its
       four types hang the server on this hybrid-recurrent architecture. Run it
