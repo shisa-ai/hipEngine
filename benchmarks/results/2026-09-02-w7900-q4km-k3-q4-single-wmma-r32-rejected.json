@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_q4_single_wmma_r32_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove singleton standard-Q4 WMMA ownership at physical C8/K3 R32. Both the existing R64-capacity primitive and a new two-row-tile R32 specialization lose every actual Q4 role to the retained exact grouped-R8 rowtile owner.",
+  "source": {"base_commit": "87d2f4a26", "candidate_removed": true},
+  "hardware": {"physical_host": "epyc", "gpu": "AMD Radeon Pro W7900", "target_arch": "gfx1100", "compute_units": 96, "rocm": "7.2.4"},
+  "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "quant": "Q4_K_M", "kv": "BF16", "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"},
+  "protocol": {"rows": 32, "warmups": 5, "sample_pairs": 30, "launches_per_sample": 3, "order": "alternating", "timing": "HIP event plus operation-complete wall", "control": "exact grouped-R8 two-wave rowtile", "candidates": ["existing four-row-tile/R64-capacity dense WMMA", "new two-row-tile/R32-capacity dense WMMA"]},
+  "existing_r64_capacity": {"positive_roles": 0, "wall_speedup_range": [0.12612241637110358, 0.8071121436628652], "verdict": "Computes two inactive 16-row tiles and loses all roles."},
+  "r32_capacity": {
+    "positive_roles": 0,
+    "all_bf16_different_from_strict": true,
+    "roles": {
+      "ffn_gate": {"control_wall_ms": 0.4148540707925955, "candidate_wall_ms": 0.43260445818305016, "speedup": 0.9589685518614238, "pair_wins": 4},
+      "recurrent_gate": {"control_wall_ms": 0.147305428981781, "candidate_wall_ms": 0.325134489685297, "speedup": 0.4530599910343573, "pair_wins": 0},
+      "full_q": {"control_wall_ms": 0.29184607168038684, "candidate_wall_ms": 0.3480282612144947, "speedup": 0.8385700364158588, "pair_wins": 0},
+      "full_k": {"control_wall_ms": 0.03923056647181511, "candidate_wall_ms": 0.23717014119029045, "speedup": 0.16541106850520007, "pair_wins": 0},
+      "full_output": {"control_wall_ms": 0.15159711862603822, "candidate_wall_ms": 0.3933835153778394, "speedup": 0.3853672375682324, "pair_wins": 0},
+      "recurrent_qkv": {"control_wall_ms": 0.2433831493059794, "candidate_wall_ms": 0.35258646433552104, "speedup": 0.6902793326586019, "pair_wins": 0},
+      "ffn_down": {"control_wall_ms": 0.382778545220693, "candidate_wall_ms": 1.142603966097037, "speedup": 0.3350054407111913, "pair_wins": 0}
+    },
+    "wall_speedup_range": [0.16541106850520007, 0.9589685518614238],
+    "verdict": "R32 capacity removes inactive-row work but remains slower at every role; no model-level T2 gate is justified."
+  },
+  "validation": {"lineage_checked": true, "hip_runtime_alive": true, "final_source_equals_base": true}
+}
