@@ -1901,6 +1901,16 @@ external MTP rows.
       arithmetic is not the verifier. Accepted-prefix row commit and a
       verifier-specific arithmetic candidate remain next. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rows2-prefill-verifier-rejected.json`.
+      A verifier-specific follow-up preserves serial body/state order and batches
+      only final GR/head scoring. Rows2-8 pass bit-exact tokens, hidden, logits,
+      GDN/PLE/residual state, position, and hashes. Head-only B2 is effectively
+      neutral (**126.763→126.592 ms, 1.00136x**); including the required D2D
+      begin/commit transaction regresses **127.693→132.354 ms (0.9648x)**. The
+      uncommitted candidate was removed before provider wiring or tracing. A
+      viable verifier must capture accepted-prefix state without a full
+      pre-execution snapshot; final-head batching alone cannot pay for rollback.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-deferred-head-verifier-rejected.json`.
       `W=51.711 s`, `C=49.383 s`, and the measured
       target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
       executable Qwen4Exp candidate exists. Strict fallback is serial
