@@ -437,6 +437,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
         KernelKey(
             "hip_gfx1151",
             "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
             "gguf_q4_k_t16_v1",
             "t16_wmma_prefill_single_wave_bf16_bf16_out",
         ),

@@ -4608,6 +4608,23 @@ profile, `0` restores the GEMV owners everywhere), mirroring the
 projected; revisit only if a future verifier owner family supersedes the
 prefill bands.
 
+## RF-B5A — selective planar-Q6 integer-MMQ route (2026-09-03)
+
+`HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` is the default-off experiment switch
+for B5's changed-arithmetic dense planar-Q6 route at rows 17-48. The generic
+linear dispatcher reads the gfx1151 package's exact quant/shape/row policy and
+selects the registered `t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out`
+variant only while a resident owner has bound a workspace. The composite
+reuses the active session's bounded B2 staging allocation for transient Q8_1
+bytes; it never creates global storage or a second resident weight layout.
+Current A owners remain the default and strict fallback. The first actual-weight
+screen projects 7.85/7.83 ms less target-pass time at R20/R28 across the
+already-planar Q6 down and narrow-V roles; complete production quality and wall
+gates are still pending. Removal condition: delete the switch and candidate
+route if the complete B5 gate is negative; if retained, default it only for the
+qualified production profile and remove the env override after the rollback
+window while preserving the registered strict fallback.
+
 ## RF-B2A — prefill F16-staging route switch (2026-09-02)
 
 `HIPENGINE_GGUF_PREFILL_F16_STAGING` (default off) plus

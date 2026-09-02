@@ -24,6 +24,29 @@ def test_b5_q6_integer_mmq_profile_is_default_off_with_env_override() -> None:
         assert resolver("production") is False
 
 
+def test_b5_q6_integer_mmq_generator_configures_resident_session() -> None:
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+
+    generator = object.__new__(Qwen35GGUFBringupGenerator)
+    generator.execution_profile = "production"
+    generator.execution_profile_fell_back_to_strict = False
+    session = SimpleNamespace()
+    with mock.patch.dict(
+        os.environ,
+        {"HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL": "1"},
+        clear=False,
+    ):
+        generator._configure_session(session)
+    assert session.use_q6_integer_mmq is True
+    with mock.patch.dict(
+        os.environ,
+        {"HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL": "0"},
+        clear=False,
+    ):
+        generator._configure_session(session)
+    assert session.use_q6_integer_mmq is False
+
+
 def test_b5_q6_integer_mmq_workspace_is_bounded_and_restored() -> None:
     from hipengine.kernels.hip_gfx1100.quant import (
         gguf_q4_k_q8_1_selected_prefill as candidate,
@@ -224,3 +247,136 @@ def test_b5_q6_integer_mmq_composite_launch_uses_owner_workspace(monkeypatch) ->
     assert [call[0] for call in calls] == ["pack", "mmq"]
     assert calls[0][1][1] == 0xA000
     assert calls[1][1][:3] == (0xA000, 0x2000, 0x3000)
+
+
+def test_b5_dense_specialization_matches_selected_parent_on_gpu() -> None:
+    import ctypes
+
+    import numpy as np
+    import pytest
+
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.core.memory import (
+        copy_device_to_host,
+        copy_host_to_device,
+        free,
+        host_array_ptr,
+        malloc,
+    )
+    from hipengine.kernels.hip_gfx1100.quant import (
+        gguf_q4_k_q8_1_selected_prefill as candidate,
+    )
+    from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro_planar
+    from tests.test_gguf_k_t16_selected_wmma_prefill import (
+        _build_compact_t16_fixture,
+    )
+
+    fixture = _build_compact_t16_fixture(
+        quant="gguf_q6_k_t16_v1",
+        counts=[17],
+        in_features=512,
+        out_features=64,
+        dtype="bf16",
+        seed=2026,
+    )
+    tiles = np.ascontiguousarray(
+        repack_gguf_q6_k_tile16_qmicro_planar(fixture.qweight).tiles
+    )
+    metadata = (
+        fixture.x_host,
+        np.asarray([0, 17], dtype=np.int64),
+        np.asarray([0, 64], dtype=np.int64),
+        np.asarray([0], dtype=np.int64),
+        tiles,
+    )
+    runtime = get_hip_runtime()
+    library = candidate.build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    buffers = []
+    try:
+        for values in metadata:
+            buffer = malloc(values.nbytes, runtime=runtime)
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(np.ascontiguousarray(values)),
+                runtime=runtime,
+            )
+            buffers.append(buffer)
+        q8 = malloc(candidate.q6_dense_integer_mmq_nbytes(17, 512), runtime=runtime)
+        selected = malloc(17 * 64 * 2, runtime=runtime)
+        dense = malloc(17 * 64 * 2, runtime=runtime)
+        buffers.extend((q8, selected, dense))
+        candidate.gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+            buffers[0].ptr,
+            q8.ptr,
+            17,
+            512,
+            residual_passes=1,
+            q6_half_sums=True,
+            library=library,
+            runtime=runtime,
+        )
+        candidate.gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(
+            q8.ptr,
+            buffers[1].ptr,
+            buffers[2].ptr,
+            buffers[3].ptr,
+            buffers[4].ptr,
+            selected.ptr,
+            17,
+            512,
+            64,
+            1,
+            64,
+            residual_passes=1,
+            rowvec=True,
+            tile_rows=64,
+            qmicro=True,
+            compact_activation=True,
+            half_row_activation=True,
+            skip_padded_activation=True,
+            qmicro_planar=True,
+            integer_wmma=True,
+            wmma_hoist_activation=True,
+            wmma_prefetch_weight=True,
+            wmma_prefetch_activation=True,
+            precomputed_activation_sums=True,
+            library=library,
+            runtime=runtime,
+        )
+        with candidate.q6_dense_integer_mmq_session(
+            True,
+            workspace_ptr=q8.ptr,
+            workspace_nbytes=q8.nbytes,
+            library=library,
+        ):
+            candidate.gguf_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64_bf16_bf16_out(
+                buffers[0].ptr,
+                buffers[4].ptr,
+                dense.ptr,
+                17,
+                512,
+                64,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        selected_host = np.empty((17, 64), dtype=np.uint16)
+        dense_host = np.empty_like(selected_host)
+        copy_device_to_host(host_array_ptr(selected_host), selected, runtime=runtime)
+        copy_device_to_host(host_array_ptr(dense_host), dense, runtime=runtime)
+        runtime.device_synchronize()
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+    assert np.array_equal(dense_host, selected_host)
+    actual = (dense_host.astype(np.uint32) << 16).view(np.float32)
+    assert np.isfinite(actual).all()
+    reference = np.asarray(fixture.reference, dtype=np.float32)
+    relative_l2 = float(np.linalg.norm(actual - reference) / np.linalg.norm(reference))
+    assert relative_l2 <= 1.0e-2

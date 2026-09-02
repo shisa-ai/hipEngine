@@ -38,6 +38,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    gguf_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
@@ -1974,6 +1977,18 @@ GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
         "t16_gemv_rowtile16_col8_bf16_bf16_out"
     ),
 }
+# B5 changed-arithmetic candidate. Generic dispatch reads this backend-owned
+# map only while a caller-owned integer-MMQ workspace context is active.
+# Standard Q6 QKV and all Q4/Q5 shapes remain on their current owners.
+GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
+    "gguf_q6_k_t16_qmicro_planar_v1": {
+        "min_rows": 17,
+        "max_rows": 48,
+        "shapes": frozenset({(17_408, 5_120), (5_120, 1_024)}),
+        "variant": "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+    }
+}
+
 # W1 candidate: C8/R32 packed verification emits mixed physical R20/R24/R32
 # subshapes, so all three must share the candidate transaction. This table is
 # inert unless the explicit outer logical-width context is active.
@@ -3269,6 +3284,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             _GFX1151_OVERRIDES.get((key.layer, key.quant, key.variant), source_fn),
             replace=replace,
         )
+    q6_integer_mmq_key = KernelKey(
+        BACKEND,
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+    )
+    if replace or not is_registered(q6_integer_mmq_key):
+        register(
+            q6_integer_mmq_key,
+            gguf_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64_bf16_bf16_out,
+            replace=replace,
+        )
     for variant, fn in (
         (
             "t16_wmma_prefill_single_wave_bf16_bf16_out",
@@ -3442,6 +3469,7 @@ __all__ = [
     "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
+    "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
     "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",

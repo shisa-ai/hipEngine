@@ -194,7 +194,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     register_gguf_q4_k_selected_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    build_gguf_q4_k_q8_1_selected_prefill,
     gguf_q8_1_mmq_ds4_pack_bf16,
+    q6_dense_integer_mmq_session,
     register_gguf_q4_k_q8_1_selected_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_t16_selected_prefill import (
@@ -331,6 +333,7 @@ from hipengine.runtime.gguf_linear import (
     native_batch_decode_session,
     prefill_f16_staging_enabled,
     prefill_f16_staging_session,
+    prefill_f16_staging_workspace,
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
@@ -14094,6 +14097,7 @@ class Qwen35GGUFResidentSession:
     use_gemv_decode: bool | None = None
     use_q6_f16_rocblas_prefill: bool | None = None
     use_prefill_f16_staging: bool = False
+    use_q6_integer_mmq: bool = False
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
     prefill_flight_recorder_path: str | Path | None = None
@@ -14265,6 +14269,7 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
     _prefill_f16_staging_buf: object | None = field(default=None, init=False)
+    _q6_integer_mmq_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
@@ -17695,6 +17700,29 @@ class Qwen35GGUFResidentSession:
             workspace_nbytes=int(buffer.nbytes),
         )
 
+    def _q6_integer_mmq_context(self):
+        """Alias the active resident F16 workspace for the bounded B5 route."""
+
+        if not bool(self.use_q6_integer_mmq):
+            return q6_dense_integer_mmq_session(False)
+        owner = prefill_f16_staging_workspace()
+        if owner is None:
+            # B5 never creates global or fallback storage. If its enclosing
+            # resident owner did not bind the shared workspace, keep A.
+            return q6_dense_integer_mmq_session(False)
+        if self._q6_integer_mmq_library is None:
+            self._q6_integer_mmq_library = build_gguf_q4_k_q8_1_selected_prefill(
+                load=True,
+                compiler_version=getattr(self, "compiler_version", None),
+                require_cached=bool(getattr(self, "require_cached_build", False)),
+            )
+        return q6_dense_integer_mmq_session(
+            True,
+            workspace_ptr=int(owner.ptr),
+            workspace_nbytes=int(owner.nbytes),
+            library=self._q6_integer_mmq_library,
+        )
+
     def _q8_mmq_prefill_context(self):
         """Return the bounded Q8 MMQ context selected by the generator plugin."""
 
@@ -17859,6 +17887,7 @@ class Qwen35GGUFResidentSession:
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
                 self._prefill_f16_staging_context(),
+                self._q6_integer_mmq_context(),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
@@ -20757,7 +20786,10 @@ class Qwen35GGUFResidentSession:
                     " state before reusing the packed workspace slots"
                 )
         try:
-            with self._prefill_f16_staging_context():
+            with (
+                self._prefill_f16_staging_context(),
+                self._q6_integer_mmq_context(),
+            ):
                 return self._prefill_batch_native_impl(
                     prompt_token_ids,
                     sessions=sessions,
@@ -26913,6 +26945,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._q6_integer_mmq_library = None
         self._verify_linear_state_src_conv_table_buf = None
         self._verify_linear_state_src_recurrent_table_buf = None
         self._verify_linear_state_dst_conv_table_buf = None
@@ -27028,6 +27061,7 @@ class Qwen35GGUFResidentSession:
                 free(buffer, runtime=runtime)
         self._buffers = ()
         self._prefill_f16_staging_buf = None
+        self._q6_integer_mmq_library = None
         self._native_spec_selected_hidden_bf16 = None
         for buffer in reversed(self._linear_state_snapshot_backups):
             if buffer is not None:

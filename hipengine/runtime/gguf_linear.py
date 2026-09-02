@@ -52,6 +52,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    q6_dense_integer_mmq_workspace,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
@@ -194,6 +197,24 @@ _PREFILL_F16_STAGING_QUANTS = frozenset(
 )
 _PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
 PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
+
+# B5: default-off changed-arithmetic planar-Q6 integer MMQ. The registered
+# gfx1151 variant is selected only inside a caller-owned workspace context and
+# the backend package's exact row/shape policy. A remains the strict fallback.
+Q6_INTEGER_MMQ_PREFILL_ENV = "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
+
+
+def q6_integer_mmq_for(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Resolve the default-off B5 route with an explicit env override."""
+
+    override = os.environ.get(Q6_INTEGER_MMQ_PREFILL_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    return False
 
 
 @dataclass(frozen=True)
@@ -2910,6 +2931,12 @@ def launch_gguf_linear(
             is None
             else id(q6_f16_session)
         ),
+        (
+            None
+            if (q6_integer_workspace := q6_dense_integer_mmq_workspace())
+            is None
+            else id(q6_integer_workspace)
+        ),
         raw_weight_ptr,
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
@@ -2956,6 +2983,12 @@ def launch_gguf_linear(
             use_wmma=use_wmma,
         )
         dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        dispatch = _q6_integer_mmq_prefill_dispatch(
             dispatch,
             rows=rows,
             in_features=in_features,
@@ -6625,6 +6658,46 @@ def _native_batch_decode_dispatch(
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
 
 
+def _q6_integer_mmq_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select the backend-declared dense integer route inside its owner context."""
+
+    if q6_dense_integer_mmq_workspace() is None or dispatch.abi != "t16":
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return dispatch
+    entry = policy.get(dispatch.key.quant)
+    if not isinstance(entry, Mapping):
+        return dispatch
+    try:
+        admitted = (
+            int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"])
+            and (int(in_features), int(out_features)) in entry["shapes"]
+        )
+        variant = str(entry["variant"])
+    except (KeyError, TypeError, ValueError):
+        return dispatch
+    if not admitted:
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        variant,
+    )
+    return GGUFLinearDispatch(key, dispatch.abi) if is_registered(key) else dispatch
+
+
 _T16_F16_ROCBLAS_ROUTE_BY_QUANT = MappingProxyType(
     {
         "gguf_q4_k_t16_v1": (
@@ -7057,6 +7130,7 @@ __all__ = [
     "prefill_f16_staging_for",
     "prefill_f16_staging_session",
     "prefill_f16_staging_workspace",
+    "q6_integer_mmq_for",
     "target_verifier_rowtile_session",
     "target_verifier_production_q4_rowtile_session",
     "target_verifier_wide_q6_shared4_session",
