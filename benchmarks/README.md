@@ -80,8 +80,8 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **28.121 tok/s** | **1.540x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **30.499 tok/s** | **1.295x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2/C3 MTP-3 explicit diagnostic | **29.976/30.541 tok/s** | **1.575x/1.279x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C5-C8 MTP-3 explicit diagnostic (one-group) | **37.280/41.048/44.492/50.893 tok/s** | **0.981x/0.953x/0.964x/1.006x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
@@ -99,10 +99,13 @@ W7900 Qwen3.6 automatic MTP is exact-scope only: 35B MoE K2 and 27B dense K3;
 other keys use K0. [`Audit`](results/2026-08-27-w7900-dual-model-mtp2-cross-audit.json).
 
 Strix Halo Qwen3.8 `Q4_K_M` keeps strict C1/K3 automatic at **18.191 tok/s
-(1.6445x AR)**. The reviewed all-ten complete-wall explicit-K3 row at current
-head is **15.753/28.441/30.541/35.474/27.980/32.807/33.106/35.423 tok/s**
-for C1-C8, or 1.418x/1.572x/1.279x/1.177x/0.782x/0.813x/0.753x/0.751x own AR;
-80/80 generated-ID/route/budget cells pass. The earlier M3/M4 15.646/35.618
+(1.6445x AR)**. The 2026-08-31 reviewed all-ten complete-wall explicit-K3
+matrix (pre-B1 head `b768516f2`) measured **15.753/28.441/30.541/35.474/
+27.980/32.807/33.106/35.423 tok/s** for C1-C8, or
+1.418x/1.572x/1.279x/1.177x/0.782x/0.813x/0.753x/0.751x own AR; 80/80
+generated-ID/route/budget cells pass. At the current head the B4 depth screen
+keeps C2 at K3 with **29.976 tok/s (1.575x AR)** and rejects K2/K1 on the
+complete wall. The earlier M3/M4 15.646/35.618
 headlines are six-non-heldout arithmetic means, not this survey metric. C2-C8
 remain automatic K0 pending width-specific production gates; width-4 streaming
 is an explicit T3 diagnostic because acceptance changed. Direct resident state
@@ -434,7 +437,8 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 24.042 | **29.564** | **1.2297x** | Exact prompt streaming, proposal-head reuse, and standard-Q6/Q5 true-R12 improve MTP 38.27% from E0; exact 471/597 acceptance and every category positive. This beats the frozen external row by 7.45%; automatic C3 remains K0 pending complete production/serving gates. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C4 K3 D24, explicit diagnostic | 30.120 | **27.450** | **0.9114x** | Exact Q6 R8+R8 improves MTP 34.66%, preserves 628/796 acceptance, and beats the frozen external row by 1.61%. Overall and three categories remain below AR, so automatic C4 stays K0. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C6/C8 K1 D24, explicit diagnostic | 39.908 / 47.240 | **37.074 / 43.421** | **0.9290x / 0.9192x** | Direct verifier state plus exact R12 pair/R16 down+narrow owners improve clean C6/C8 MTP 4.56%/3.78%. All 40 cells pass. The 1.15x target remains blocked on a multi-family packed-verifier dataflow; automatic C6/C8 stays K0. [`artifact`](results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C6/C8 K1 D24, explicit diagnostic | 39.908 / 47.240 | **37.074 / 43.421** | **0.9290x / 0.9192x** | Direct verifier state plus exact R12 pair/R16 down+narrow owners improve clean C6/C8 MTP 4.56%/3.78%. All 40 cells pass. Superseded as best explicit route at both widths by the one-group K3 row below. Automatic C6/C8 stays K0. [`artifact`](results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C2, C5-C8 K3 D24 one-group, explicit diagnostic | 19.035 · 37.995/43.093/46.153/50.605 | **29.976 · 37.280/41.048/44.492/50.893** | **1.575x · 0.981x/0.953x/0.964x/1.006x** | Current-head rows after the B1 owner transfer and B5 planar-Q6 MMQ retentions: C2 keeps K3 (K2/K1 rejected on complete wall); C5-C8 improve with every category positive, 80/80 task IDs and acceptance unchanged, and C8 becomes the first width where explicit MTP reaches own AR. C2 measured at `e0319a98e` (B5 rows17-48 scope does not engage at C2); C5-C8 at `4fc772269`, default confirmed at `6d6fb3ed3`. Automatic C2-C8 remains K0. [`B4 screen`](results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json) · [`B5 packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

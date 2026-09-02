@@ -232,8 +232,8 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 explicit diagnostic | **28.121 tok/s** | **1.540x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C3 MTP-3 explicit diagnostic | **30.499 tok/s** | **1.295x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2/C3 MTP-3 explicit diagnostic | **29.976/30.541 tok/s** | **1.575x/1.279x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C5-C8 MTP-3 explicit diagnostic (one-group) | **37.280/41.048/44.492/50.893 tok/s** | **0.981x/0.953x/0.964x/1.006x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
 ### RTX PRO 6000 Blackwell (`sm_120a`)
