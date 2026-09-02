@@ -1,7 +1,9 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
-Status: **HB-0 and HB-1 complete 2026-09-02 on the approved
-UD-Q4_K_XL/BF16 c=1 scope.** HB-PR11 improves retained-arm prefill over HB-base
+Status: **HB-0 through HB-2 complete 2026-09-02 on the approved
+UD-Q4_K_XL/BF16 c=1 scope.** Frozen traces confirm M1, M2, M5 weighted-sum,
+M6, and M8 activation; M3, M4, M5 shared-mul-add, and M7 are inactive on this
+payload/graph. HB-PR11 improves retained-arm prefill over HB-base
 by 10.12%/11.42%/17.44% at p512/p1024/p4096; short-shape magnitude remains
 provisional because HB-base drifted between arms. The IQ4_XS PR-shape diagnostic
 was not run because this campaign scope forbids that download. Values attributed
@@ -205,14 +207,14 @@ that is a match-ledger result, not a failure.
 
 | # | halo-box mechanism | Active on Q4_K_XL? (measured) | hipEngine owner (current role) | Matched shape / microbench | HB-base vs HB-PR11 | hipEngine vs HB-PR11 | Disposition |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| M1 | MMQ tile retune Q4_K/Q5_K/Q6_K/Q8_0 256→128 | TBD | Selected Q4 gate/up, selected Q5_1 down, dense Q8, dense projection compute | TBD per shape | TBD | TBD | TBD |
-| M2 | Parallel top-10 `mm_ids` compaction | TBD | MoE routing (99/180/634 ms deltas) | top-10/512-expert id build at chunk 512/1024/2048 | TBD | TBD | TBD |
-| M3 | Routed-compact descriptor MMQ (Q6_K J32 / Q8_0 J48) | TBD (expected no) | Routed MoE operation owner | TBD | TBD | TBD | TBD |
-| M4 | J48/J64 MoE-id dispatch (Q8_0/IQ2_XS/IQ3_XXS/IQ4_XS) | TBD (expected no; yes on IQ4_XS arm) | Routed MoE operation owner | TBD | TBD | TBD | TBD |
-| M5 | Fused weighted top-10 sum + shared mul-add-residual | TBD | Elementwise/materialization; GR read/tail | 10×2560 weighted combine per token-batch | TBD | TBD | TBD |
-| M6 | 32-warp GDN + tile-16 state-in-register prefill | TBD | GDN mixer (655 ms/1.233 s/4.983 s; 2.670 ms live-513) | S_v=128, H=32 prefill; H∈{32,48,64} decode | TBD | TBD | TBD |
-| M7 | Q8_0-KV decode FA GQA opt | TBD (BF16 baseline: no) | QSA/FA decode owners | Q8_0-KV diagnostic arm only | TBD | TBD | TBD |
-| M8 | Elementwise/recurrent specializations (concat/mul/quantize/norm/sumrows) | TBD | Elementwise/materialization; GR read/tail | TBD per kernel | TBD | TBD | TBD |
+| M1 | MMQ tile retune Q4_K/Q5_K/Q6_K/Q8_0 256→128 | **Yes, partial** — Q4_K/Q8_0/Q5_K launch geometry changed; Q5_1 did not | Selected Q4 gate/up, selected Q5_1 down, dense Q8, dense projection compute | TBD per shape | TBD | TBD | HB-3: match changed quant/geometry rows only |
+| M2 | Parallel top-10 `mm_ids` compaction | **Yes, prefill only** — 94/94/188 launches at p512/p1024/p4096; decode stays below the 64-token gate | MoE routing (99/180/634 ms deltas) | top-10/512-expert id build at chunk 512/1024/2048 | TBD | TBD | HB-3 active |
+| M3 | Routed-compact descriptor MMQ (Q6_K J32 / Q8_0 J48) | **No** — zero builder or routed-compact MMQ symbols in all six PR11 windows | Routed MoE operation owner | n/a on binding payload | n/a | n/a | Inactive; no HB-3 row |
+| M4 | J48/J64 MoE-id dispatch (Q8_0/IQ2_XS/IQ3_XXS/IQ4_XS) | **No** — zero J48/J64 specialization symbols; expert payload is Q4_K/Q5_1 | Routed MoE operation owner | n/a on binding payload | n/a | n/a | Inactive; IQ4_XS remains excluded |
+| M5 | Fused weighted top-10 sum + shared mul-add-residual | **Partial** — weighted `10×2560` kernel active; `shared_mul_add_f32` absent | Elementwise/materialization; GR read/tail | 10×2560 weighted combine per token-batch | TBD | TBD | HB-3: weighted sum only |
+| M6 | 32-warp GDN + tile-16 state-in-register prefill | **Yes** — workgroup Y changes 4→32; core p4096 prefill kernel sum 2,139.377→647.976 ms | GDN mixer (655 ms/1.233 s/4.983 s; 2.670 ms live-513) | S_v=128, H=32 prefill; H∈{32,48,64} decode | TBD | TBD | HB-3 active; decode near-neutral in trace |
+| M7 | Q8_0-KV decode FA GQA opt | **No by contract** — BF16 K/V; zero Q8-KV/GQA-opt symbols | QSA/FA decode owners | n/a under BF16 K/V | n/a | n/a | Inactive; Q8_0 K/V excluded |
+| M8 | Elementwise/recurrent specializations (concat/mul/quantize/norm/sumrows) | **Yes, partial** — transposed concat, contiguous binary, dual L2 norm, four-column Q8 matvec, RMS128, and sum-4 symbols present | Elementwise/materialization; GR read/tail | TBD per active kernel | TBD | TBD | HB-3: split into operation-complete families |
 
 Every confirmed hipEngine-side deficit becomes a main-campaign candidate with
 a full `W/C/O/s` row, an exclusive owner, a RED oracle, and a registered
@@ -226,7 +228,7 @@ and 5.2. Source ports cite halo-box path + commit `a7ad7b7f` and run
 | --- | --- | --- |
 | HB-0 | **Done** — checked out `6c84c7d5` and `a7ad7b7f`, preserved pristine HIP Release binaries, and froze separately labeled loader-patched binaries. Pristine HB-base produced zero samples at the 1,800-second startup timeout; the two documented patches reduced startup to 24.09/21.49 seconds. Both patched lanes completed all four exact p512 categories with matching output hashes. | Identity/smoke artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb0.json`. |
 | HB-1 | **Done** — completed two exact 36-sample arms for each of HB-base, HB-PR11, current hipEngine, and freshly rebuilt patched upstream. Retained arm B shows HB-PR11/base prefill gains of 1.1012x/1.1142x/1.1744x and decode gains of 1.0261x/1.0238x/1.0225x at p512/p1024/p4096. Every lane is cross-arm output-exact. HB-base p512/p1024 prefill drift makes those magnitudes provisional; p4096 direction reproduces. Section 3.4 is explicitly not run because IQ4_XS is excluded by the approved scope. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json`; proceed to frozen-binary HB-2 profiling. |
-| HB-2 | Role-resolved profiling of HB-base and HB-PR11 on UD-Q4_K_XL; kernel-name census confirms/denies each section 1.1 activation prediction; aligned family ledger regenerated against HB-PR11. | "Active on Q4_K_XL?" column fully measured; family ledger artifact committed. |
+| HB-2 | **Done** — profiled frozen HB-base and HB-PR11 over exact p512/p1024/p4096 prefill and live-513/1025/4097 decode. All six pairs are output-exact across lanes and cached decode evaluates one appended token. Kernel-name and launch-geometry census confirms M1, M2, M5 weighted-sum, M6, and M8; denies M3, M4, M5 shared-mul-add, and M7 on this binding graph/payload. The aligned broad-family ledger is diagnostic because kernel sums can overlap. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json`; HB-3 admits only measured-active subfamilies. |
 | HB-3 | Microbenchmark match ledger. For every active family, pair the HB-PR11 kernel/config against the hipEngine owner at identical shapes with counterbalanced pairs; record per-family ratios and rank by absolute delta against the main campaign's Amdahl owners. | Section 5 table complete; candidate list handed to the main campaign impact queue. |
 | HB-4 | IQ4_XS diagnostic arm. Download/pin UD-IQ4_XS as a separate artifact (hashes recorded); exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
 | HB-5 | Concurrency extension. Fill c=2..8 in sections 3.1–3.3 for every lane that supports it; record `unsupported` honestly; keep thermal windows shared across lanes. | Topline matrix complete or explicitly partial; artifact committed. |

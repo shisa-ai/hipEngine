@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next halo-box HB-2] Frozen exact p512/p1024/p4096 plus live-decode traces confirm M1, M2, M5 weighted-sum, M6, and M8 activation; M3, M4, M5 shared-mul-add, and M7 are inactive on UD-Q4_K_XL/BF16. The largest isolated delta is GDN p4096 core kernel sum **2,139.377→647.976 ms**; no candidate is promoted before matched HB-3 measurement. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next halo-box HB-1] Two exact 36-sample arms per lane retain HB-PR11/base prefill gains of **1.1012x/1.1142x/1.1744x** and decode gains of **1.0261x/1.0238x/1.0225x** at p512/p1024/p4096; all four lanes are cross-arm output-exact. HB-base short-shape drift makes p512/p1024 magnitude provisional; p4096 direction reproduces. IQ4_XS remained excluded. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next halo-box HB-0] Built and froze halo-box base `6c84c7d5` and PR11 `a7ad7b7f` HIP lanes. Pristine HB-base timed out at **1,800 s / zero samples**; documented loader patches yielded **24.09/21.49 s** startup and complete four-category p512 smoke with matching output hashes. One-repeat smoke suggests PR11/base **1.0784x prefill / 1.0046x decode**, non-claim pending HB-1. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb0.json`.

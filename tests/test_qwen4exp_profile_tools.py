@@ -138,6 +138,11 @@ def test_qwen4exp_trace_family_classifies_complete_qwen4exp_owners() -> None:
     assert module.llama_family("k_get_rows_float_vec<float>") == "layout_copy_rows"
     assert module.llama_family("reduce_rows_f32<false>") == "selection_reduce"
     assert module.llama_family("soft_max_f32<true, 512, 512, float>") == "selection_reduce"
+    assert module.llama_family("sum_rows_4_f32") == "selection_reduce"
+    assert module.llama_family("weighted_expert_sum_rows_f32<10, 2560>") == "cast_combine"
+    assert module.llama_family("binary_contiguous_f32<op_add>") == "elementwise_norm_rope"
+    assert module.llama_family("l2_norm_dual_f32_s128") == "elementwise_norm_rope"
+    assert module.llama_family("mul_mat_vec_four_columns_rdna3_5<(ggml_type)8>") == "dense_quant_q8"
     assert module.llama_family("mul_mat_f<__hip_bfloat162>") == "dense_other"
 
 
