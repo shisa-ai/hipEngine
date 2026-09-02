@@ -215,7 +215,12 @@ def test_q5_source_ds4_producer_matches_kmajor_cpu_bytes(rows: int) -> None:
 
 
 def _run_candidate(
-    *, rows: int, hidden: int, out_features: int, output_dtype: str
+    *,
+    rows: int,
+    hidden: int,
+    out_features: int,
+    output_dtype: str,
+    consumer: str = "i128_j128",
 ) -> tuple[np.ndarray, np.ndarray]:
     x_bf16 = _bf16_bits(_activation(rows, hidden))
     qweight = np.ascontiguousarray(
@@ -249,11 +254,20 @@ def _run_candidate(
             library=producer_library,
             runtime=runtime,
         )
-        fn = (
-            mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out
-            if output_dtype == "bf16"
-            else mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out
-        )
+        fn = {
+            ("i128_j128", "bf16"): (
+                mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out
+            ),
+            ("i128_j128", "f32"): (
+                mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out
+            ),
+            ("i64_j32", "bf16"): (
+                mmq.gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out
+            ),
+            ("i64_j32", "f32"): (
+                mmq.gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out
+            ),
+        }[(consumer, output_dtype)]
         fn(
             packed_dev.ptr,
             weight_dev.ptr,
@@ -289,6 +303,23 @@ def test_q5_source_mmq_tails_are_finite_and_pass_exact_path_quality(
         hidden=256,
         out_features=out_features,
         output_dtype=output_dtype,
+    )
+    assert np.all(np.isfinite(actual))
+    result = evaluate_logits(reference, actual)
+    assert result.kl_mean <= 0.05, result
+    assert result.top1_agreement >= 0.90, result
+    assert result.passed, result
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [24, 32])
+def test_c8_q5_i64_j32_source_mmq_passes_production_outer_floor(rows: int) -> None:
+    actual, reference = _run_candidate(
+        rows=rows,
+        hidden=256,
+        out_features=128,
+        output_dtype="bf16",
+        consumer="i64_j32",
     )
     assert np.all(np.isfinite(actual))
     result = evaluate_logits(reference, actual)
