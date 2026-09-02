@@ -10,7 +10,16 @@ if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata,_host_metadata
 
 def build_parser():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);p.add_argument('--prompt-file',type=Path,required=True);p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--dynamic-ple',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--model-root',type=Path,required=True);source=p.add_mutually_exclusive_group(required=True);source.add_argument('--prompt-file',type=Path);source.add_argument('--fixture',type=Path);p.add_argument('--case-id');p.add_argument('--profile',choices=('strict','production'),default='strict');p.add_argument('--named-production-baseline',action='store_true');p.add_argument('--timing-order',choices=('production-first','graph-first'),default='production-first');p.add_argument('--layer',type=int,default=-1);p.add_argument('--segment-length',type=int,default=1);p.add_argument('--advance-position',action='store_true');p.add_argument('--include-root-head',action='store_true');p.add_argument('--dynamic-ple',action='store_true');p.add_argument('--omit-ple',action='store_true');p.add_argument('--replays',type=int,default=4);p.add_argument('--samples',type=int,default=30);p.add_argument('--max-sequence-length',type=int,default=64);p.add_argument('--prefill-chunk-size',type=int,default=64);p.add_argument('--output',type=Path,required=True);return p
+
+def _prompt_ids(args,generator):
+ if args.fixture is None:
+  if args.case_id is not None:raise ValueError('--case-id requires --fixture')
+  return [int(item) for item in generator.tokenizer.encode(args.prompt_file.read_text())[:8]]
+ if args.case_id is None:raise ValueError('--fixture requires --case-id')
+ payload=json.loads(args.fixture.read_text());matches=[row for row in payload.get('cases',()) if row.get('id')==args.case_id]
+ if len(matches)!=1:raise ValueError(f'fixture case {args.case_id!r} must match exactly once')
+ return [int(item) for item in matches[0]['prompt_token_ids']]
 def _first_mismatch(rows):
  for row in rows:
   if not row['state_exact']:
@@ -25,13 +34,18 @@ def _make_generator(args):
  from hipengine.loading.gguf import discover_gguf_files,load_gguf_index
  from hipengine.models import resolve_model
  index=load_gguf_index(discover_gguf_files(args.model_root)[0]);plugin=resolve_model(index.architecture or '')
- resolved=resolve_runtime_profile(model=QWEN4_EXP_MODEL,backend=QWEN4_EXP_BACKEND,quant=QWEN4_EXP_QUANTS[1],profile=ExecutionProfile.STRICT)
+ profile=ExecutionProfile.PRODUCTION if getattr(args,'profile','strict')=='production' else ExecutionProfile.STRICT
+ resolved=resolve_runtime_profile(model=QWEN4_EXP_MODEL,backend=QWEN4_EXP_BACKEND,quant=QWEN4_EXP_QUANTS[1],profile=profile)
  return resolved.construct_generator(lambda:Qwen4ExpGGUFTextGenerator(model_path=args.model_root,weight_index=index,model_plugin=plugin,backend=QWEN4_EXP_BACKEND,max_sequence_length=args.max_sequence_length,prefill_chunk_size=args.prefill_chunk_size)),resolved
 
 def run(args,*,command:Sequence[str])->dict[str,Any]:
- if not args.model_root.is_dir() or not args.prompt_file.is_file():raise ValueError('model root and prompt file must exist')
+ if not args.model_root.is_dir():raise ValueError('model root must exist')
+ if args.prompt_file is not None and not args.prompt_file.is_file():raise ValueError('prompt file must exist')
+ if args.fixture is not None and not args.fixture.is_file():raise ValueError('fixture must exist')
+ if args.named_production_baseline and args.profile!='production':raise ValueError('--named-production-baseline requires --profile production')
  if args.replays<4 or args.samples<3 or args.segment_length<=0:raise ValueError('at least four replays, three samples, and one segment layer required')
- os.environ['HIPENGINE_QWEN4_EXP_MOE_GRAPH']='0';os.environ.setdefault('HIPENGINE_HIP_ARCH','gfx1151')
+ if args.profile=='strict':os.environ['HIPENGINE_QWEN4_EXP_MOE_GRAPH']='0'
+ os.environ.setdefault('HIPENGINE_HIP_ARCH','gfx1151')
  from hipengine.core.hip import HipMemcpyKind
  from hipengine.core.memory import host_array_ptr,memory_stats,reset_memory_stats
  from hipengine.generation.qwen4_exp_profiles import register_qwen4_exp_gfx1151_profiles
@@ -51,7 +65,7 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
  register_gfx1151_kernels(replace=True);register_qwen4_exp_gfx1151_profiles();reset_memory_stats();generator=None;graph=exec_=stream=0
  try:
   generator,resolved=_make_generator(args);runner=generator.runner;rt=runner.runtime;cfg=runner.config
-  ids=generator.tokenizer.encode(args.prompt_file.read_text())[:8]
+  ids=_prompt_ids(args,generator)
   if not ids:raise ValueError('prompt tokenization is empty')
   runner.prefill(ids,capture_logits=False,capture_target_hidden=False)
   layer=int(args.layer)
@@ -135,6 +149,13 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
   def output_bytes():
    out=np.empty(final_buffer.nbytes,np.uint8);rt.memcpy(int(out.ctypes.data),final_buffer.ptr,out.nbytes,HipMemcpyKind.DEVICE_TO_HOST);return out
   base=snapshot_state();initial_token=read_token() if args.include_root_head else None
+  production_ms=[];production_tokens=[]
+  if args.named_production_baseline and not (args.include_root_head and args.dynamic_ple and args.advance_position):raise ValueError('named production baseline requires the advancing full transition')
+  def measure_production():
+   restore_state(base);prepare_fixed_qsa_control();runner.position=position;runner._ple_hash_states=dict(base_ple_states);token=int(initial_token);walls=[];tokens=[]
+   for _ in range(args.samples):
+    rt.device_synchronize();start=time.perf_counter();result=runner.step(token,capture_logits=False,capture_target_hidden=False);rt.device_synchronize();walls.append((time.perf_counter()-start)*1e3);token=int(result.token_id);tokens.append(token)
+   restore_state(base);prepare_fixed_qsa_control();runner.position=position;runner._ple_hash_states=dict(base_ple_states);return walls,tokens
   warm_ple_states=dict(base_ple_states);prepare_fixed_qsa_control()
   if args.dynamic_ple: warm_ple_states,_=stage_ple_input(position,warm_ple_states,int(initial_token))
   launch(0,position);rt.device_synchronize() # warm all dispatch/JIT paths
@@ -172,27 +193,36 @@ def run(args,*,command:Sequence[str])->dict[str,Any]:
    resume_state=state_hashes(snapshot_state());resume_ref=refs[2];resume_exact=all(resume_state[name]==digest for name,digest in resume_ref[0].items()) and hashlib.sha256(output_bytes()).hexdigest()==resume_ref[1] and token==resume_ref[3]
    transition_lifecycle={'reset_base_exact':reset_base_exact,'reset_replay_exact':reset_exact,'forced_eager_then_graph_resume_exact':resume_exact};lifecycle_gate=all(transition_lifecycle.values())
   restore_state(base);prepare_fixed_qsa_control();eager_ms=[];eager_ple_states=dict(base_ple_states);eager_token=initial_token
-  for sample in range(args.samples):
-   current_position=position+sample if args.advance_position else position
-   if not args.advance_position:
-    for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position
-   rt.device_synchronize();start=time.perf_counter()
-   if args.dynamic_ple:eager_ple_states,_=stage_ple_input(current_position,eager_ple_states,int(eager_token))
-   launch(0,current_position);rt.device_synchronize()
-   if args.include_root_head:eager_token=read_token()
-   eager_ms.append((time.perf_counter()-start)*1e3)
-  restore_state(base);prepare_fixed_qsa_control();graph_ms=[];timed_ple_states=dict(base_ple_states);timed_token=initial_token
-  for sample in range(args.samples):
-   current_position=position+sample if args.advance_position else position
-   rt.device_synchronize();start=time.perf_counter()
-   if args.dynamic_ple:timed_ple_states,_=stage_ple_input(current_position,timed_ple_states,int(timed_token))
-   rt.graph_launch(exec_,0);rt.device_synchronize()
-   if args.include_root_head:timed_token=read_token()
-   graph_ms.append((time.perf_counter()-start)*1e3)
-   if args.advance_position:
-    for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position+sample+1
-  eager_median=statistics.median(eager_ms);graph_median=statistics.median(graph_ms);mismatch=_first_mismatch(rows);correct=bool(capture_nonexecuting and mismatch is None and lifecycle_gate)
-  payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':'strict','manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'root_head_included':bool(args.include_root_head),'ple_input_dynamic':bool(args.dynamic_ple),'ple_publication':'host_hash_mmap_stage_h2d' if args.dynamic_ple else 'static_device_buffer','ple_table':{'semantic_rows':runner.resident.ple_table.semantic_rows,'row_width':runner.resident.ple_table.row_width,'ggml_type':runner.resident.ple_table.tensor.ggml_type_name,'nbytes':runner.resident.ple_table.tensor.nbytes,'rows_per_token':len(cfg.ple_head_offsets)} if args.dynamic_ple else None,'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'transition_lifecycle':transition_lifecycle,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median,'eager_ms':eager_ms,'graph_ms':graph_ms}}
+  if not args.named_production_baseline:
+   for sample in range(args.samples):
+    current_position=position+sample if args.advance_position else position
+    if not args.advance_position:
+     for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position
+    rt.device_synchronize();start=time.perf_counter()
+    if args.dynamic_ple:eager_ple_states,_=stage_ple_input(current_position,eager_ple_states,int(eager_token))
+    launch(0,current_position);rt.device_synchronize()
+    if args.include_root_head:eager_token=read_token()
+    eager_ms.append((time.perf_counter()-start)*1e3)
+  def measure_graph():
+   restore_state(base);prepare_fixed_qsa_control();walls=[];tokens=[];states=dict(base_ple_states);token=initial_token
+   for sample in range(args.samples):
+    current_position=position+sample if args.advance_position else position;rt.device_synchronize();start=time.perf_counter()
+    if args.dynamic_ple:states,_=stage_ple_input(current_position,states,int(token))
+    rt.graph_launch(exec_,0);rt.device_synchronize()
+    if args.include_root_head:token=read_token();tokens.append(token)
+    walls.append((time.perf_counter()-start)*1e3)
+    if args.advance_position:
+     for qsa_index in qsa_indices:runner.index_states[qsa_index].count=position+sample+1
+   return walls,tokens
+  discarded_warm=None
+  if args.named_production_baseline:
+   warm_production_ms,warm_production_tokens=measure_production();warm_graph_ms,warm_graph_tokens=measure_graph();discarded_warm={'production_median_ms':statistics.median(warm_production_ms),'graph_median_ms':statistics.median(warm_graph_ms),'tokens_exact':warm_production_tokens==warm_graph_tokens}
+   if args.timing_order=='production-first':production_ms,production_tokens=measure_production();graph_ms,graph_tokens=measure_graph()
+   else:graph_ms,graph_tokens=measure_graph();production_ms,production_tokens=measure_production()
+  else:graph_ms,graph_tokens=measure_graph()
+  eager_median=statistics.median(eager_ms) if eager_ms else None;graph_median=statistics.median(graph_ms);mismatch=_first_mismatch(rows);production_exact=not production_tokens or production_tokens==graph_tokens;correct=bool(capture_nonexecuting and mismatch is None and lifecycle_gate and production_exact and (discarded_warm is None or discarded_warm['tokens_exact']))
+  production_timing={'samples':args.samples,'timing_order':args.timing_order,'discarded_warm':discarded_warm,'median_ms':statistics.median(production_ms),'ms':production_ms,'tokens':production_tokens,'graph_tokens_exact':production_exact,'graph_speedup':statistics.median(production_ms)/graph_median} if production_ms else None
+  payload={'schema':1,'kind':'qwen4exp_stateful_layer_graph_probe','status':'passed' if correct else 'reproduced_corruption','command':list(command),'source':_git_metadata(ROOT),'host':_host_metadata(),'profile':{'name':args.profile,'manifest_sha256':resolved.manifest_sha256},'model':str(args.model_root),'layers':list(layers),'layer_kinds':list(layer_kinds),'gdn_state_indices':[runner.gdn_bindings[item].gdn_state_index for item in layers if cfg.layer_types[item]=='gdn'],'qsa_state_indices':list(qsa_indices),'ple_layers':[item for item in layers if item in cfg.ple_layers and not args.omit_ple],'root_head_included':bool(args.include_root_head),'ple_input_dynamic':bool(args.dynamic_ple),'ple_publication':'host_hash_mmap_stage_h2d' if args.dynamic_ple else 'static_device_buffer','ple_table':{'semantic_rows':runner.resident.ple_table.semantic_rows,'row_width':runner.resident.ple_table.row_width,'ggml_type':runner.resident.ple_table.tensor.ggml_type_name,'nbytes':runner.resident.ple_table.tensor.nbytes,'rows_per_token':len(cfg.ple_head_offsets)} if args.dynamic_ple else None,'advancing_position':bool(args.advance_position),'start_position':position,'fixed_position':None if args.advance_position else position,'attention_context_limit':context_limit if args.advance_position else None,'host_cursor_replay_safe':not qsa_indices or bool(args.advance_position),'prompt_tokens':len(ids),'capture_nonexecuting':capture_nonexecuting,'transition_lifecycle':transition_lifecycle,'rows':rows,'first_mismatch':mismatch,'timing':{'samples':args.samples,'eager_median_ms':eager_median,'graph_median_ms':graph_median,'speedup':eager_median/graph_median if eager_median is not None else None,'eager_ms':eager_ms,'graph_ms':graph_ms,'graph_tokens':graph_tokens},'named_production_timing':production_timing}
  finally:
   if exec_ and generator:generator.runner.runtime.graph_exec_destroy(exec_)
   if graph and generator:generator.runner.runtime.graph_destroy(graph)

@@ -1615,11 +1615,19 @@ request-owned transition submission.
       host full-logit D2H is not measurable. Evidence:
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json`
       and the canonical impact profile.
-- [ ] Add a named-production graph arm to the same-residency harness and run a
-      counterbalanced p512/p1024/p4096 tg128 feasibility A/B. Do not import a
-      graph time from the strict probe. Only if the resulting `W/C/O/s` row
-      passes section 5.1 should a request-owned transition cache enter the
-      production runner and complete lifecycle packet.
+- [x] Add a named-production graph arm to the same-residency harness and run a
+      counterbalanced p512/p1024/p4096 tg128 feasibility A/B. **Evaluated and
+      rejected; default remains eager.** After discarding one complete
+      production and graph trajectory per pair to remove PLE first-touch bias,
+      the production-manifest arm wins all five exact pairs at p512
+      (**57.312→55.907 ms, `O=1.404 ms`, `s=1.0251`, 8.6% of the measured
+      comparator gap**) and p1024 (**58.962→57.868 ms, `O=1.094 ms`,
+      `s=1.0189`, 9.1%**). The p4096 arm cannot execute: full-transition capture
+      rejects crossing QSA's dense-equivalent limit before timing, exactly where
+      sparse selection becomes active. Thus no p4096 `W/C/O/s` exists, no graph
+      result is imported from the strict probe, and no production cache is
+      admitted. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-production-feasibility-rejected.json`.
 - [~] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
       graph key. The strict research probe reuses one graph exec over stable
@@ -1628,7 +1636,8 @@ request-owned transition submission.
       `e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca`,
       and performs zero device allocations after first launch. It does not have
       a request-owned production graph cache or composite key, so this remains
-      partial pending a paying named-production A/B. Evidence:
+      partial pending a context-bucket-safe sparse-QSA mechanism; the named-
+      production A/B above rejected admission at p4096. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-pointer-key-audit.json`.
 - [ ] Gate GDN, QSA K/V/index append, PLE history, sampler output, snapshot,
       rollback, reset, cancellation, c2 isolation, teardown, and at least three
