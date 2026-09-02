@@ -52,6 +52,8 @@ def test_qwen4_exp_decode_state_snapshot_restore_reset_and_close() -> None:
         values[name] = value
         copy_host_to_device(buffer, host_array_ptr(value), runtime=runtime)
     snapshot = state.snapshot()
+    device_snapshot = state.device_snapshot()
+    assert device_snapshot.nbytes_by_owner == expected_sizes
     state.zero()
     for buffer in state.owned_buffers.values():
         actual = np.empty(buffer.nbytes, dtype=np.uint8)
@@ -62,6 +64,16 @@ def test_qwen4_exp_decode_state_snapshot_restore_reset_and_close() -> None:
         actual = np.empty(buffer.nbytes, dtype=np.uint8)
         copy_device_to_host(host_array_ptr(actual), buffer, runtime=runtime)
         np.testing.assert_array_equal(actual, values[name])
+
+    state.zero()
+    state.restore_device_snapshot(device_snapshot)
+    for name, buffer in state.owned_buffers.items():
+        actual = np.empty(buffer.nbytes, dtype=np.uint8)
+        copy_device_to_host(host_array_ptr(actual), buffer, runtime=runtime)
+        np.testing.assert_array_equal(actual, values[name])
+    device_snapshot.close()
+    device_snapshot.close()
+    assert device_snapshot.closed
 
     state.close()
     state.close()

@@ -1886,7 +1886,10 @@ external MTP rows.
       `Qwen4ExpTargetVerifyOutput` lazily owns bounded rows<=8 residual,
       per-row-logit/token, and head-scratch storage; rows 0/9 reject before
       allocation, HIP allocation/lifecycle passes, and serial dispatch is
-      unchanged. Device state transactions remain next. `W=51.711 s`, `C=49.383 s`, and the measured
+      unchanged. A second subunit adds exact D2D snapshot/restore ownership for
+      GDN matrix/conv, PLE conv, and residual state with idempotent cleanup.
+      QSA KV/index cursors plus host PLE-hash transaction ownership remain next.
+      `W=51.711 s`, `C=49.383 s`, and the measured
       target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
       executable Qwen4Exp candidate exists. Strict fallback is serial
       `target.step`. Device-output cleanup remains independent. Evidence:

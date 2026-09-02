@@ -423,6 +423,41 @@ class Qwen4ExpDecodeStateSnapshot:
 
 
 @dataclass
+class Qwen4ExpDecodeStateDeviceSnapshot:
+    buffers: Mapping[str, DeviceBuffer]
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate_like(
+        cls, state: "Qwen4ExpDecodeState"
+    ) -> "Qwen4ExpDecodeStateDeviceSnapshot":
+        state._require_open()
+        buffers: dict[str, DeviceBuffer] = {}
+        try:
+            for name, source in state.owned_buffers.items():
+                buffers[name] = malloc(source.nbytes, runtime=state.runtime)
+        except Exception:
+            for buffer in reversed(tuple(buffers.values())):
+                free(buffer, runtime=state.runtime)
+            raise
+        return cls(MappingProxyType(buffers), state.runtime)
+
+    @property
+    def nbytes_by_owner(self) -> Mapping[str, int]:
+        return MappingProxyType({
+            name: buffer.nbytes for name, buffer in self.buffers.items()
+        })
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        for buffer in reversed(tuple(self.buffers.values())):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
+@dataclass
 class Qwen4ExpDecodeState:
     gdn_matrix: DeviceBuffer
     gdn_conv: DeviceBuffer
@@ -499,6 +534,39 @@ class Qwen4ExpDecodeState:
         self._require_open()
         for buffer in self.owned_buffers.values():
             self.runtime.memset(buffer.ptr, 0, buffer.nbytes)
+
+    def device_snapshot(self) -> Qwen4ExpDecodeStateDeviceSnapshot:
+        self._require_open()
+        snapshot = Qwen4ExpDecodeStateDeviceSnapshot.allocate_like(self)
+        for name, source in self.owned_buffers.items():
+            self.runtime.memcpy(
+                snapshot.buffers[name].ptr,
+                source.ptr,
+                source.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        return snapshot
+
+    def restore_device_snapshot(
+        self, snapshot: Qwen4ExpDecodeStateDeviceSnapshot
+    ) -> None:
+        self._require_open()
+        if snapshot.closed:
+            raise RuntimeError("Qwen4Exp device state snapshot is closed")
+        if set(snapshot.buffers) != set(self.owned_buffers):
+            raise ValueError("Qwen4Exp device state snapshot owner set does not match")
+        for name, destination in self.owned_buffers.items():
+            source = snapshot.buffers[name]
+            if source.nbytes != destination.nbytes:
+                raise ValueError(
+                    f"Qwen4Exp device state snapshot size mismatch for {name}"
+                )
+            self.runtime.memcpy(
+                destination.ptr,
+                source.ptr,
+                destination.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
 
     def snapshot(self) -> Qwen4ExpDecodeStateSnapshot:
         self._require_open()
@@ -5695,6 +5763,7 @@ __all__ = [
     "bind_qwen4_exp_gdn_layer",
     "bind_qwen4_exp_qsa_layer",
     "Qwen4ExpDecodeStateSnapshot",
+    "Qwen4ExpDecodeStateDeviceSnapshot",
     "Qwen4ExpDenseAttentionState",
     "Qwen4ExpGDNLayerDeviceWeights",
     "Qwen4ExpGDNLayerScratch",
