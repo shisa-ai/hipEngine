@@ -1239,7 +1239,7 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       not add transcendental work to the register-heavy down publication.
       Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
-- [~] Evaluate output-projection+GR-write composites for attention and MoE
+- [x] Evaluate output-projection+GR-write composites for attention and MoE
       boundaries, including the exact inject ordering. Start with the 36-layer
       Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact
       coltile gate arithmetic while sharing input/activation quantization, or
@@ -1255,10 +1255,17 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       **1.0113–1.0504**), Japanese/mixed match, but code remains noisy with
       bound/candidate CV **2.19%/2.30%** and interval **0.9862–1.0271**. All
       logits and repeats are exact and teardown is zero, but section 6 forbids
-      averaging categories; keep the route default-off. GR down+inject remains
-      the untested secondary operation-complete target, so this composite item
-      stays partial. Evidence:
-      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
+      averaging categories; keep the route default-off. The secondary GR
+      down+inject boundary has a static heterogeneous-arithmetic blocker: both
+      attention/FFN down
+      weights are Q8_0 **[320,10240]**, while inject is F32 **[4,10240]**.
+      Exact inject must preserve its original-F32 K/FMA/reduction tree; reusing
+      Q8 activation is T1/T2, while a T0 single launch still performs both
+      traversals and removes only the tiny four-output boundary. Do not add a
+      nominal pair kernel without a new mixed-Q8/F32 RED and operation-complete
+      win. This closes the evaluated composite ladder with strict chains intact.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-gr-composite-closure.json`.
 - [~] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic. The first default-off extension adds the
@@ -1414,8 +1421,14 @@ graph scope.
 Goal: reduce the **48.63 vs 38.90 ms/token** device gap and the remaining
 direct-launch surface before graph capture hides it.
 
-- [ ] Stack GR down+inject, down+scaled-SiLU, up+sigmoid+gated-mean, and GR-write
-      composites one at a time with exact/T1/T2 declarations.
+- [x] Stack GR down+inject, down+scaled-SiLU, up+sigmoid+gated-mean, and GR-write
+      composites one at a time with exact/T1/T2 declarations. Exact up+sigmoid+
+      gated-mean row-scoped owners are retained; down+scaled-SiLU is rejected at
+      **0.9926x** on binding rows508; qkv+gate is rejected by the five-pair
+      category gate; and Q8-down/F32-inject is blocked from nominal T0 fusion by
+      incompatible arithmetic trees. Primitive projection/epilogue/GR-write
+      chains remain strict fallbacks. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-gr-composite-closure.json`.
 - [x] Re-rank dense Q8, selected Q4 gate/up, selected Q5_1/Q8 down, shared
       expert, router, QSA, and lm-head kernels after P5. At live 2,052, profiled
       per-step owners are sparse QSA attention **35.88 ms**, dense Q8
