@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 rows2 verifier RED] Reusing prompt `_prefill_chunk` matches two top-1 IDs but fails strict parity: hidden max diff **0.40625**, logit maxima **0.1803/1.3686**, and every GDN/PLE/residual state owner differs. Remove the uncommitted candidate; retain output storage, D2D transactions, and serial oracle groundwork. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rows2-prefill-verifier-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 compact-head admission] Do not build 8K/16K/32K draft maps yet: the **3.153-ms** full head's free-head ceiling is only **0.97% wall / 0.964x AR**, output rungs failed category promotion, verifier progress is blocked, and no disjoint map-fit manifest exists. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-head-admission.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 confidence readiness] Threshold work is blocked before execution: compact output has no calibrated probability/margin/log-sum-exp, and retained evaluation evidence has no machine-readable disjoint fit/heldout partition. Fitting fixed prompts or restoring full-logit D2H is rejected under anti-gaming/device-residency rules. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-confidence-policy-readiness.json`.

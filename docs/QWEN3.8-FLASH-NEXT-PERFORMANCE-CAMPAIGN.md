@@ -1892,8 +1892,16 @@ external MTP rows.
       that snapshot, every QSA KV/index cursor, runner position, and a copied
       host PLE-hash map; double finalization rejects. A fourth subunit adds the
       explicit rows1-8 serial oracle, returning every token, full-logit row, and
-      target-hidden row through unchanged `step` arithmetic. Accepted-prefix row
-      commit and multirow dispatch remain next. `W=51.711 s`, `C=49.383 s`, and the measured
+      target-hidden row through unchanged `step` arithmetic. The first rows=2
+      bulk candidate reused prompt `_prefill_chunk` plus rows-capable head
+      output. It matched top-1 IDs but failed RED: hidden max absolute difference
+      **0.40625**, logit-row maxima **0.1803/1.3686**, and GDN matrix/conv, PLE
+      conv, and residual state all differed. Position and PLE hashes matched.
+      The uncommitted candidate was removed before timing/tracing; prompt-prefill
+      arithmetic is not the verifier. Accepted-prefix row commit and a
+      verifier-specific arithmetic candidate remain next. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rows2-prefill-verifier-rejected.json`.
+      `W=51.711 s`, `C=49.383 s`, and the measured
       target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
       executable Qwen4Exp candidate exists. Strict fallback is serial
       `target.step`. Device-output cleanup remains independent. Evidence:
