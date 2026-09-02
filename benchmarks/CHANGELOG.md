@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 16K owner profile] Exact live-16K decode is **82.617 ms/token** clean; marker-scoped ordered attention is **19.642 ms**, complete QSA is **20.834 ms** versus retained 4K **20.913 ms**, and score/top-k is only **1.116 ms (1.35%)**. No 16K score/top-k or graph candidate opens; 64K timing remains pending. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-16k-owner-profile.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 matched comparator audit] The shared same-weight/BF16-KV fixture stops at 4K: refreshed upstream is repeat-exact at **266.58/18.98 pp/tok/s**, while EngramHalo 4K and every Nathan case fail repeatability; no eligible 16K/64K external row exists, and unlike protocols/quantized-KV headlines remain excluded. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-matched-comparator-audit.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 structural depth census] Natural 4K/16K/64K confirms context/4 score rows, fixed 2,048-token selected attention, 2,048-byte K+V rows, 1,024 selected 4-KiB pages/layer, fixed 3,143,680-byte PLE publication, and 48/14,688 graph capture/replay counts; all correctness/control/lifecycle gates pass. Diagnostic only; no throughput claim. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-structural-depth-census.json`.
