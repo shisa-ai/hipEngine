@@ -4652,6 +4652,13 @@ class Qwen4ExpTokenResult:
         return self.hidden_seeds[-1]
 
 
+@dataclass(frozen=True)
+class Qwen4ExpTargetVerifyResult:
+    token_ids: tuple[int, ...]
+    logits: tuple[np.ndarray, ...] | None
+    hidden_seeds: np.ndarray | None
+
+
 class Qwen4ExpGGUFResidentModelRunner:
     """Strict c1 text runner for the complete 48-layer Qwen4Exp target."""
 
@@ -4992,6 +4999,48 @@ class Qwen4ExpGGUFResidentModelRunner:
     @property
     def prefill_rope_positions(self) -> DeviceBuffer:
         return self._prefill_buffers[4]
+
+    def verify_target_block_serial_exact(
+        self,
+        input_token_ids: Sequence[int],
+        *,
+        capture_logits: bool = True,
+        capture_hidden_seeds: bool = True,
+    ) -> Qwen4ExpTargetVerifyResult:
+        """Execute the rows<=8 verifier oracle through serial target steps."""
+
+        self._require_open()
+        tokens = tuple(int(token) for token in input_token_ids)
+        if not 1 <= len(tokens) <= 8:
+            raise ValueError("Qwen4Exp target verify rows must be in 1..8")
+        results = [
+            self.step(
+                token,
+                capture_hidden_seed=capture_hidden_seeds,
+                capture_logits=capture_logits,
+                capture_target_hidden=True,
+            )
+            for token in tokens
+        ]
+        return Qwen4ExpTargetVerifyResult(
+            token_ids=tuple(int(result.token_id) for result in results),
+            logits=(
+                tuple(np.asarray(result.logits, dtype=np.float32) for result in results)
+                if capture_logits
+                else None
+            ),
+            hidden_seeds=(
+                np.concatenate(
+                    [
+                        np.asarray(result.hidden_seeds, dtype=np.float32)
+                        for result in results
+                    ],
+                    axis=0,
+                )
+                if capture_hidden_seeds
+                else None
+            ),
+        )
 
     def begin_device_transaction(self) -> Qwen4ExpRunnerDeviceTransaction:
         """Capture mutable state and all append-only cursor ownership."""
@@ -5847,6 +5896,7 @@ __all__ = [
     "Qwen4ExpRunnerDeviceTransaction",
     "Qwen4ExpTokenResult",
     "Qwen4ExpTargetVerifyOutput",
+    "Qwen4ExpTargetVerifyResult",
     "Qwen4ExpQSALayerDeviceWeights",
     "Qwen4ExpQSALayerScratch",
     "Qwen4ExpQSAMixerDeviceWeights",
