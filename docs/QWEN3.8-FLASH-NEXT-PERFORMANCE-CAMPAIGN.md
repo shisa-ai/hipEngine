@@ -1965,9 +1965,17 @@ external MTP rows.
       then build it in a disposable clone rather than reconstructing it from
       prose. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exp016-readiness.json`.
-- [ ] Move acceptance, first-mismatch selection, commit, rollback, and cursor
+- [~] Move acceptance, first-mismatch selection, commit, rollback, and cursor
       repair to device-owned transactional kernels/graphs with exact recovery
-      and cancellation tests.
+      and cancellation tests. Admission is blocked by current ownership: the
+      four-category B2/tg8 census assigns only **0.150 ms** to host acceptance
+      and **1.156 ms** to draft cursor repair across 18 cycles, **1.306 ms total
+      / 0.020%** of 6,590.224-ms wall. The prerequisite pooled verifier adds
+      **3,331.227 ms** on the ten-prompt suite, 2,550x this owner. Building an
+      acceptance kernel cannot repair verifier economics. First produce an exact
+      operation-complete target-body verifier that beats serial MTP, then
+      re-profile this boundary. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json`.
 - [ ] Sweep budget against context depth, not budget alone, on the full
       category+heldout suite against a true no-MTP AR denominator from the same
       command. Record acceptance, visible tokens/cycle, target rows, phase wall,

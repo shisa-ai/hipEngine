@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 acceptance-kernel admission] Host acceptance plus cursor repair is only **1.306 ms across 18 cycles / 0.020%** of four-category wall, while the prerequisite verifier adds **3,331 ms** on the full suite. Block device acceptance kernels until an operation-complete verifier beats serial MTP. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 public deferred verifier] Full ten-prompt tg16 is exact with unchanged acceptance, but deferred verification is **26.152 s** versus serial MTP **22.821 s (0.8726x)** and true AR **16.904 s (0.6464x)**; every category regresses. Remove uncommitted provider wiring; full-width execution plus mismatch replay overwhelms pooled/head savings. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 rejection-depth RED] Real pooled B2/B3/B4 passes **12/12** rejection/full-accept cases: committed tokens/hidden/logits, all GDN/PLE/residual state, cursors/hashes, and the following token/logits/hidden are bit-exact to serial. Shorter prefixes replay only consumed rows. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-rejection-depth-grid.json`.
