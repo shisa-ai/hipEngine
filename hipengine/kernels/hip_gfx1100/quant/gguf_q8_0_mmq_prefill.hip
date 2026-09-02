@@ -228,9 +228,9 @@ __global__ void q8_0_mmq128_quantize_f32_residual_d4_kernel(
   }
 }
 
-template <bool need_output_check, int activation_passes, typename output_t, bool collect_risks>
+template <int MMQ_M_T, int MMQ_N_T, bool need_output_check, int activation_passes, typename output_t, bool collect_risks>
 __launch_bounds__(256, 2)
-__global__ void q8_0_raw_mmq128_q8_1_d4_kernel(
+__global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
     const block_q8_1_mmq_d4* __restrict__ x_d4,
     const uint8_t* __restrict__ qweight,
     output_t* __restrict__ out,
@@ -241,52 +241,72 @@ __global__ void q8_0_raw_mmq128_q8_1_d4_kernel(
     int rows,
     int hidden,
     int out_features) {
+  // Tile-generalized variant of the retained 128x128 MMQ kernel. The
+  // per-element arithmetic is unchanged: identical integer WMMA fragments in
+  // identical (k_iter, k_half, activation_pass, subblock) order, so any
+  // (MMQ_M_T, MMQ_N_T) instantiation publishes bit-identical outputs. Only
+  // the cooperative load mapping and block/thread geometry adapt: WAVES
+  // output rows per wave in the load phase generalize the 8-wave layout, and
+  // the compute-phase ownership formulas ((wave/2)*32 rows, (wave&1)*16
+  // token offset) cover both 128x128/256-thread and 64x64/128-thread tiles.
+  // Occupancy direction informed by halo-box PR11 a7ad7b7f
+  // mmq-config-rdna3-5.cuh (gfx1151 tile shrink for residency).
+  constexpr int WAVES = MMQ_M_T / 16;
+  constexpr int THREADS = WAVES * 32;
+  constexpr int IDS_I32 = MMQ_N_T;
+  constexpr int ACTIVATION_I32 = MMQ_N_T * MMQ_D4_STRIDE_I32;
+  constexpr int WEIGHT_I32 = MMQ_M_T * MMQ_WEIGHT_STRIDE_I32;
+  constexpr int SHARED_BYTES = (IDS_I32 + ACTIVATION_I32 + WEIGHT_I32) * sizeof(int);
+  (void)SHARED_BYTES;
   const int lane = static_cast<int>(threadIdx.x);
   const int wave = static_cast<int>(threadIdx.y);
   const int tid = wave * 32 + lane;
   const int lane16 = lane & 15;
   const int half_wave = lane >> 4;
-  const int out_start = static_cast<int>(blockIdx.x) * MMQ_M;
-  const int token_start = static_cast<int>(blockIdx.y) * MMQ_N;
+  const int out_start = static_cast<int>(blockIdx.x) * MMQ_M_T;
+  const int token_start = static_cast<int>(blockIdx.y) * MMQ_N_T;
   const int blocks_per_row = hidden / Q8_QK;
   const int row_bytes = blocks_per_row * Q8_BLOCK_BYTES;
   const int k_iters = hidden / MMQ_K;
 
   extern __shared__ int shared[];
   int* ids = shared;
-  int* activation_tile = ids + MMQ_IDS_I32;
-  int* weight_tile = activation_tile + MMQ_ACTIVATION_I32;
-  if (tid < MMQ_N) ids[tid] = tid;
+  int* activation_tile = ids + IDS_I32;
+  int* weight_tile = activation_tile + ACTIVATION_I32;
+  if (tid < MMQ_N_T) ids[tid] = tid;
   __syncthreads();
 
-  float acc[64];
+  float acc[MMQ_N_T / 2];
 #pragma unroll
-  for (int i = 0; i < 64; ++i) acc[i] = 0.0f;
+  for (int i = 0; i < MMQ_N_T / 2; ++i) acc[i] = 0.0f;
 
   for (int k_iter = 0; k_iter < k_iters; ++k_iter) {
-    // Exact llama.cpp load_tiles_q8_0 mapping for RDNA3 wave32: each wave
-    // owns one output row per iteration, and each lane loads two packed int32
-    // fragments from the first/second K128 halves.
+    // Exact llama.cpp load_tiles_q8_0 mapping for RDNA3 wave32 generalized to
+    // WAVES waves: each wave owns rows i0 + rep*WAVES + wave, and each lane
+    // loads two packed int32 fragments from the first/second K128 halves.
 #pragma unroll
-    for (int i0 = 0; i0 < MMQ_M; i0 += 8) {
-      const int row_local = i0 + wave;
-      const int output_row = need_output_check
-          ? min(out_start + row_local, out_features - 1)
-          : out_start + row_local;
-      const int block0 = k_iter * MMQ_Q8_BLOCKS + lane / 8;
-      const int qword = lane & 7;
-      const uint8_t* raw_row = qweight + static_cast<int64_t>(output_row) * row_bytes;
-      weight_tile[row_local * MMQ_WEIGHT_STRIDE_I32 + lane] =
-          *reinterpret_cast<const int*>(raw_row + block0 * Q8_BLOCK_BYTES + 2 + qword * 4);
-      weight_tile[row_local * MMQ_WEIGHT_STRIDE_I32 + MMQ_QS_I32 / 2 + lane] =
-          *reinterpret_cast<const int*>(
-              raw_row + (block0 + 4) * Q8_BLOCK_BYTES + 2 + qword * 4);
+    for (int i0 = 0; i0 < MMQ_M_T; i0 += 8) {
+#pragma unroll
+      for (int rep = 0; rep < 8 / WAVES; ++rep) {
+        const int row_local = i0 + rep * WAVES + wave;
+        const int output_row = need_output_check
+            ? min(out_start + row_local, out_features - 1)
+            : out_start + row_local;
+        const int block0 = k_iter * MMQ_Q8_BLOCKS + lane / 8;
+        const int qword = lane & 7;
+        const uint8_t* raw_row = qweight + static_cast<int64_t>(output_row) * row_bytes;
+        weight_tile[row_local * MMQ_WEIGHT_STRIDE_I32 + lane] =
+            *reinterpret_cast<const int*>(raw_row + block0 * Q8_BLOCK_BYTES + 2 + qword * 4);
+        weight_tile[row_local * MMQ_WEIGHT_STRIDE_I32 + MMQ_QS_I32 / 2 + lane] =
+            *reinterpret_cast<const int*>(
+                raw_row + (block0 + 4) * Q8_BLOCK_BYTES + 2 + qword * 4);
+      }
     }
 
     // Eight FP16 block scales per output row become FP32 entries in the padded
-    // shared row. Four rows per wave are covered at once.
+    // shared row. WAVES*4 rows are covered at once.
 #pragma unroll
-    for (int i0 = 0; i0 < MMQ_M; i0 += 32) {
+    for (int i0 = 0; i0 < MMQ_M_T; i0 += WAVES * 4) {
       const int row_local = i0 + wave * 4 + lane / 8;
       const int local_block = lane & 7;
       const int output_row = need_output_check
@@ -307,7 +327,7 @@ __global__ void q8_0_raw_mmq128_q8_1_d4_kernel(
       for (int activation_pass = 0; activation_pass < activation_passes; ++activation_pass) {
         const int64_t plane_offset =
             static_cast<int64_t>(activation_pass) * (hidden / 128) * rows;
-        for (int linear = tid; linear < MMQ_ACTIVATION_I32; linear += 256) {
+        for (int linear = tid; linear < ACTIVATION_I32; linear += THREADS) {
           const int token_local = linear / MMQ_D4_STRIDE_I32;
           const int elem = linear - token_local * MMQ_D4_STRIDE_I32;
           const int token = min(token_start + token_local, rows - 1);
@@ -335,7 +355,7 @@ __global__ void q8_0_raw_mmq128_q8_1_d4_kernel(
           }
 
 #pragma unroll
-          for (int token_group = 0; token_group < MMQ_N; token_group += 32) {
+          for (int token_group = 0; token_group < MMQ_N_T; token_group += 32) {
             const int token_local = token_wave_offset + token_group + lane16;
             const int* activation_fragment =
                 activation_tile + token_local * MMQ_D4_STRIDE_I32 + 4 + subblock * 8;
@@ -371,7 +391,7 @@ __global__ void q8_0_raw_mmq128_q8_1_d4_kernel(
   }
 
 #pragma unroll
-  for (int token_group = 0; token_group < MMQ_N; token_group += 32) {
+  for (int token_group = 0; token_group < MMQ_N_T; token_group += 32) {
     const int token_local = (wave & 1) * 16 + token_group + lane16;
     const int token = token_start + token_local;
     if (token >= rows) continue;
@@ -490,6 +510,58 @@ int launch_quantize(
   return static_cast<int>(hipGetLastError());
 }
 
+template <int MMQ_M_T, int MMQ_N_T, int activation_passes, typename output_t, bool collect_risks = false>
+int launch_mmq_tile(
+    const block_q8_1_mmq_d4* x_d4,
+    const uint8_t* qweight,
+    output_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream,
+    int* risk_count = nullptr,
+    int* risk_indices = nullptr,
+    int64_t max_risks = 0,
+    float risk_threshold = 0.0f) {
+  constexpr int WAVES = MMQ_M_T / 16;
+  constexpr int SHARED_BYTES =
+      (MMQ_N_T + MMQ_N_T * MMQ_D4_STRIDE_I32 + MMQ_M_T * MMQ_WEIGHT_STRIDE_I32) *
+      static_cast<int>(sizeof(int));
+  if (x_d4 == nullptr || qweight == nullptr || out == nullptr ||
+      rows <= 0 || hidden <= 0 || out_features <= 0 ||
+      (hidden % MMQ_K) != 0 || (out_features % 16) != 0 ||
+      (collect_risks &&
+       (risk_count == nullptr || risk_indices == nullptr || max_risks <= 0 ||
+        max_risks > INT32_MAX || risk_threshold < 0.0f))) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32, WAVES, 1);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + MMQ_M_T - 1) / MMQ_M_T),
+      static_cast<unsigned int>((rows + MMQ_N_T - 1) / MMQ_N_T),
+      1);
+  if ((out_features % MMQ_M_T) == 0) {
+    hipLaunchKernelGGL(
+        (q8_0_raw_mmq_tile_q8_1_d4_kernel<
+            MMQ_M_T, MMQ_N_T, false, activation_passes, output_t, collect_risks>),
+        grid, block, SHARED_BYTES, stream,
+        x_d4, qweight, out, risk_count, risk_indices,
+        static_cast<int>(max_risks), risk_threshold,
+        static_cast<int>(rows), static_cast<int>(hidden),
+        static_cast<int>(out_features));
+  } else {
+    hipLaunchKernelGGL(
+        (q8_0_raw_mmq_tile_q8_1_d4_kernel<
+            MMQ_M_T, MMQ_N_T, true, activation_passes, output_t, collect_risks>),
+        grid, block, SHARED_BYTES, stream,
+        x_d4, qweight, out, risk_count, risk_indices,
+        static_cast<int>(max_risks), risk_threshold,
+        static_cast<int>(rows), static_cast<int>(hidden),
+        static_cast<int>(out_features));
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
 template <int activation_passes, typename output_t, bool collect_risks = false>
 int launch_mmq(
     const block_q8_1_mmq_d4* x_d4,
@@ -503,39 +575,9 @@ int launch_mmq(
     int* risk_indices = nullptr,
     int64_t max_risks = 0,
     float risk_threshold = 0.0f) {
-  if (x_d4 == nullptr || qweight == nullptr || out == nullptr ||
-      rows <= 0 || hidden <= 0 || out_features <= 0 ||
-      (hidden % MMQ_K) != 0 || (out_features % 16) != 0 ||
-      (collect_risks &&
-       (risk_count == nullptr || risk_indices == nullptr || max_risks <= 0 ||
-        max_risks > INT32_MAX || risk_threshold < 0.0f))) {
-    return static_cast<int>(hipErrorInvalidValue);
-  }
-  const dim3 block(32, 8, 1);
-  const dim3 grid(
-      static_cast<unsigned int>((out_features + MMQ_M - 1) / MMQ_M),
-      static_cast<unsigned int>((rows + MMQ_N - 1) / MMQ_N),
-      1);
-  if ((out_features % MMQ_M) == 0) {
-    hipLaunchKernelGGL(
-        (q8_0_raw_mmq128_q8_1_d4_kernel<
-            false, activation_passes, output_t, collect_risks>),
-        grid, block, MMQ_SHARED_BYTES, stream,
-        x_d4, qweight, out, risk_count, risk_indices,
-        static_cast<int>(max_risks), risk_threshold,
-        static_cast<int>(rows), static_cast<int>(hidden),
-        static_cast<int>(out_features));
-  } else {
-    hipLaunchKernelGGL(
-        (q8_0_raw_mmq128_q8_1_d4_kernel<
-            true, activation_passes, output_t, collect_risks>),
-        grid, block, MMQ_SHARED_BYTES, stream,
-        x_d4, qweight, out, risk_count, risk_indices,
-        static_cast<int>(max_risks), risk_threshold,
-        static_cast<int>(rows), static_cast<int>(hidden),
-        static_cast<int>(out_features));
-  }
-  return static_cast<int>(hipGetLastError());
+  return launch_mmq_tile<MMQ_M, MMQ_N, activation_passes, output_t, collect_risks>(
+      x_d4, qweight, out, rows, hidden, out_features, stream,
+      risk_count, risk_indices, max_risks, risk_threshold);
 }
 
 __launch_bounds__(128, 2)
@@ -786,6 +828,13 @@ extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
       qweight, out, rows, hidden, out_features, stream,
       risk_count, risk_indices, max_risks, risk_threshold);
 }
+
+// PF-1d occupancy retile: 64x64 output/token tiles, 128 threads, 28,928 B
+// shared — two resident blocks per gfx1151 CU (64 KB LDS) instead of one.
+// Bit-identical to the 128x128 chain (same per-element fragment order).
+// PF-1d occupancy retile B: 32x128 output/token tiles, 64 threads, 28,672 B
+// shared — two resident blocks per gfx1151 CU while keeping the 128-token
+// tile (weight global traffic unchanged vs the 128x128 reference).
 
 extern "C" int hipengine_gguf_q8_0_mmq128_sparse_exact_correct_f32(
     const float* x,

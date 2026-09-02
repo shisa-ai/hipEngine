@@ -102,6 +102,9 @@ PF1_MMQ_SHAPES = tuple(sorted(QWEN4EXP_Q8_MMQ_PREFILL_POLICY.min_rows))
 # (K % 256 == 0, not admitted to MMQ).
 PF1_COLTILE_SHAPES = ((2560, 96), (2560, 512), (2560, 2048), (2560, 2560))
 
+# PF-1d candidate retiles are added here and must stay bit-identical to the
+# reference chain (measured losers m64x64/m32n128 were removed after rejection;
+# see the PF-1d worklog entry).
 MMQ_CHAIN_VARIANTS = {
     "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out": (
         gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out
@@ -132,6 +135,67 @@ def test_pf1_mmq_policy_gates_production_shapes(hidden: int, out_features: int) 
     assert _policy_gate(hidden, out_features, 64)
     assert not _policy_gate(hidden, out_features, 32)
     assert not _policy_gate(hidden, out_features, 4096)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("hidden,out_features", PF1_MMQ_SHAPES)
+@pytest.mark.parametrize("variant_name", sorted(MMQ_CHAIN_VARIANTS))
+def _run_mmq_chain_factory(runtime, mmq_library, bufs, x_dev, weight_dev,
+                            hidden, out_features, rows, chain):
+    """Build a run() closure for one MMQ chain variant at one shape."""
+
+    d4_dev = malloc(q8_mmq_d4x3_nbytes(rows, hidden), runtime=runtime)
+    bufs.append(d4_dev)
+    chain_dev = malloc(rows * out_features * 4, runtime=runtime)
+    bufs.append(chain_dev)
+    count_dev = malloc(4, runtime=runtime)
+    bufs.append(count_dev)
+    indices_dev = malloc(rows * out_features * 4, runtime=runtime)
+    bufs.append(indices_dev)
+
+    def run() -> np.ndarray:
+        gguf_q8_0_mmq128_quantize_f32_d4x3(
+            x_dev.ptr,
+            d4_dev.ptr,
+            rows,
+            hidden,
+            library=mmq_library,
+            runtime=runtime,
+        )
+        runtime.memset(count_dev.ptr, 0, count_dev.nbytes)
+        chain(
+            d4_dev.ptr,
+            weight_dev.ptr,
+            chain_dev.ptr,
+            count_dev.ptr,
+            indices_dev.ptr,
+            rows * out_features,
+            QWEN4EXP_Q8_MMQ_PREFILL_POLICY.risk_threshold,
+            rows,
+            hidden,
+            out_features,
+            library=mmq_library,
+            runtime=runtime,
+        )
+        gguf_q8_0_mmq128_sparse_exact_correct_f32(
+            x_dev.ptr,
+            weight_dev.ptr,
+            chain_dev.ptr,
+            count_dev.ptr,
+            indices_dev.ptr,
+            rows * out_features,
+            rows,
+            hidden,
+            out_features,
+            library=mmq_library,
+            runtime=runtime,
+        )
+        runtime.device_synchronize()
+        out = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(out), chain_dev, runtime=runtime)
+        return out
+
+    return run
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -173,10 +237,6 @@ def test_pf1_mmq_chain_production_shapes(
         weight_dev = alloc(qweight.nbytes)
         x_dev = alloc(x.nbytes)
         exact_dev = alloc(rows * out_features * 4)
-        chain_dev = alloc(rows * out_features * 4)
-        d4_dev = alloc(q8_mmq_d4x3_nbytes(rows, hidden))
-        count_dev = alloc(4)
-        indices_dev = alloc(rows * out_features * 4)
         copy_host_to_device(weight_dev, host_array_ptr(qweight), runtime=runtime)
         copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
 
@@ -190,53 +250,15 @@ def test_pf1_mmq_chain_production_shapes(
             library=build_gguf_k_gemv(load=True),
             runtime=runtime,
         )
-
-        def run_chain() -> np.ndarray:
-            gguf_q8_0_mmq128_quantize_f32_d4x3(
-                x_dev.ptr,
-                d4_dev.ptr,
-                rows,
-                hidden,
-                library=mmq_library,
-                runtime=runtime,
-            )
-            runtime.memset(count_dev.ptr, 0, count_dev.nbytes)
-            chain(
-                d4_dev.ptr,
-                weight_dev.ptr,
-                chain_dev.ptr,
-                count_dev.ptr,
-                indices_dev.ptr,
-                rows * out_features,
-                QWEN4EXP_Q8_MMQ_PREFILL_POLICY.risk_threshold,
-                rows,
-                hidden,
-                out_features,
-                library=mmq_library,
-                runtime=runtime,
-            )
-            gguf_q8_0_mmq128_sparse_exact_correct_f32(
-                x_dev.ptr,
-                weight_dev.ptr,
-                chain_dev.ptr,
-                count_dev.ptr,
-                indices_dev.ptr,
-                rows * out_features,
-                rows,
-                hidden,
-                out_features,
-                library=mmq_library,
-                runtime=runtime,
-            )
-            runtime.device_synchronize()
-            out = np.empty((rows, out_features), dtype=np.float32)
-            copy_device_to_host(host_array_ptr(out), chain_dev, runtime=runtime)
-            return out
-
         exact = np.empty((rows, out_features), dtype=np.float32)
         copy_device_to_host(host_array_ptr(exact), exact_dev, runtime=runtime)
-        first = run_chain()
-        second = run_chain()
+
+        run = _run_mmq_chain_factory(
+            runtime, mmq_library, bufs, x_dev, weight_dev,
+            hidden, out_features, rows, chain,
+        )
+        first = run()
+        second = run()
     finally:
         for buf in reversed(bufs):
             free(buf, runtime=runtime)
@@ -247,6 +269,58 @@ def test_pf1_mmq_chain_production_shapes(
     assert float(diff.max()) < 2e-3, (hidden, out_features, float(diff.max()))
     assert float((diff / scale).mean()) < 1e-4
     np.testing.assert_array_equal(first.argmax(1), exact.argmax(1))
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("hidden,out_features", PF1_MMQ_SHAPES)
+def test_pf1_mmq_chain_variants_bit_identical(hidden: int, out_features: int) -> None:
+    """All MMQ chain variants publish identical F32 bits at every shape.
+
+    PF-1d retiles (m64n64 occupancy variant) must preserve the per-element
+    integer-dot and float-accumulation order, so their guarded chains are
+    bit-identical to the 128x128 reference chain, including the risk-repair
+    pass (identical bits queue identical repairs).
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    rows = 512
+    rng = np.random.default_rng(2026_09_05)
+    qweight = np.ascontiguousarray(
+        make_q8_0_weight_large(out_features, hidden), dtype=np.uint8
+    )
+    x = (rng.standard_normal((rows, hidden)) * 0.5).astype(np.float32)
+
+    runtime = get_hip_runtime()
+    mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
+    bufs: list = []
+
+    def alloc(nbytes: int):
+        buf = malloc(nbytes, runtime=runtime)
+        bufs.append(buf)
+        return buf
+
+    try:
+        weight_dev = alloc(qweight.nbytes)
+        x_dev = alloc(x.nbytes)
+        copy_host_to_device(weight_dev, host_array_ptr(qweight), runtime=runtime)
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+
+        outputs: dict[str, np.ndarray] = {}
+        for name, chain in MMQ_CHAIN_VARIANTS.items():
+            run = _run_mmq_chain_factory(
+                runtime, mmq_library, bufs, x_dev, weight_dev,
+                hidden, out_features, rows, chain,
+            )
+            outputs[name] = run()
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    reference_name = "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+    reference = outputs[reference_name]
+    for name, out in outputs.items():
+        np.testing.assert_array_equal(out, reference, err_msg=f"{name} vs {reference_name}")
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
