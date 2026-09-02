@@ -76,7 +76,7 @@ GEMMs on the same T16 tensors at ~230-260 ms — a 3-9x per-family gap (Q6
 | B1 | A+B verifier owner transfer + Q6 lm-head one-sweep | T0 registry / T2 | ~35-40% C8 cycle (derived from measured F3 + M3); parity plausible | blocked only by the refuted B0 premise |
 | B2 | P1 sole-T16 input-F16 Q4/Q5 family | T1 | 18.13%/17.35% C2/C8 complete wall (measured) | retained production default; strict BF16 fallback |
 | B3 | M1 C1 request-owned shadow-session lifecycle | T2 | 41.76% C1 complete-suite (measured screen) | blocked on missing lifecycle ABI — build it |
-| B4 | M2 C2 draft depth K3→K2/K1 | T3 | 17.79% C2 (derived) | **authorized 2026-09-02**, incl. automatic promotion via full packet |
+| B4 | M2 C2 draft depth K3→K2/K1 | T3 | K2/K1 +3.36%/+48.91% wall vs K3 (measured) | rejected; K3 retained |
 | B5 | E integer MMQ M=17-48 | T2 | stock HIP 56.222 tok/s existence anchor | conditional on B1's measured pass |
 
 ### 1.4 Authorization and policy deltas from the structural campaign
@@ -483,15 +483,26 @@ per §1.4; commit each validated unit atomically with its worklog entry.
 
 ### B4 — M2: C2 draft-depth K3→K2/K1 (T3, authorized)
 
-- [ ] Screen K2 and K1 at C2 under an explicit experiment configuration on
+- [x] Screen K2 and K1 at C2 under an explicit experiment configuration on
   the full suite: complete wall, acceptance, cycle count, proposal/target
   trade, versus K3 current-head. True same-protocol AR control included.
-- [ ] If complete wall improves: assemble the complete T3
+- [x] If complete wall improves: assemble the complete T3
   route/economics/lifecycle packet (per §1.4 authorization) —
   category/heldout splits, deterministic repeats, isolation, lifecycle,
   economics — and promote (including automatic default) only if every gate
   passes and same-suite wall is non-regressive. Otherwise record the measured
   blocker with the artifact.
+
+  Full ten-prompt C2/D24 screen (2026-09-03, clean `e0319a98e`, physical
+  `gfx1151`, true same-arm AR controls): K3/K2/K1 MTP is
+  **29.976/29.003/20.130 tok/s**. K2 regresses complete MTP wall **3.36%**
+  despite 90.68% acceptance (166 cycles versus K3's 142); K1 regresses
+  **48.91%** despite 95.65% acceptance (230 cycles). K3 acceptance is 78.89%
+  and wins every complete-suite comparison; K2 loses code/general_en/mixed
+  categories and K1 loses all four. All 30 cells are exact, engaged, and
+  budget-conformed; AR controls are within 0.06%. K2/K1 are rejected, no T3
+  promotion packet opens, and automatic policy is unchanged. Evidence:
+  [`...b4-c2-depth-screen.json`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json).
 
 ### B5 — E: integer MMQ for M=17-48 (T2, conditional)
 
