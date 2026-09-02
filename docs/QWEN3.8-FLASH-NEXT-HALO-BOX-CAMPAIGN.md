@@ -338,6 +338,22 @@ Reading rules and caveats, binding on any use of these rows:
 | PF-4 | **Approved at HB-3 review** — MoE routing + materialization: port M2 parallel top-10 compaction (prefill arm) and the M5 fused weighted top-10 expert sum; fold the active M8 elementwise specializations where the boundaries match hipEngine owners. | Same admission gates as PF-1; routing+materialization combined role reduction measured; whole-model A/B. |
 | PF-5 | **Approved at HB-3 review** — GDN port of M6: 32 warps/block for S_v=128 and the token-tile-16 state-in-register prefill kernel, adapted to the hipEngine GDN owner's state layout and prepare/post boundary (HB-3 documented the mismatch). | Same admission gates as PF-1; exact-parity RED vs strict fallback; p4096 GDN role reduction against the 3.3x PR11 kernel-level evidence; whole-model A/B. |
 
+### 6.1 PF-1 execution checklist
+
+Sub-units of the PF-1 row. Status markers: **Done**, **Blocked** (with named
+prerequisite), or open. The dense-family re-rank from the
+[`dense-other subowner audit`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json)
+orders the work; layer-2 Q5_K WMMA stays rejected on the production-numerics
+gate and is out of PF-1.
+
+| Sub-unit | Scope | Exit condition | Status |
+| --- | --- | --- | --- |
+| PF-1a | Scope and lineage: map the `dense_projection_compute` and `dense_quant_q8` role families to exact in-tree kernels and registry keys; run `scripts/check_lineage.py`; record the halo-box `a7ad7b7f` source files and tile geometry to port. | Mapping table committed to this doc's PF-1 worklog entry; lineage check green; no code change. | Open |
+| PF-1b | RED oracle: exact-token fixtures plus strict-parity tests for the dense F32 projection (`gguf_k_prefill_out_coltile_rowbatch<float,float,8,8,4>` family) and the dense Q8 activation-quantize + selected Q8_0 down path, green on the current path before any edit. | New tests pass on current kernels; HIP-availability guarded; oracle identity recorded. | Open |
+| PF-1c | Dense F32 projection schedule: rebalanced tile/row-batch geometry for the 48 attention-gate roles behind a registry variant; exact same-output contract (no reassociation) unless a production-profile gate is later declared and passed. | Exact-parity RED green on the variant; rocprofv3 expected-kernel trace; kernel-family device-time reduction measured in isolation. | Open |
+| PF-1d | Dense Q8 quantize + Q8_0 down MMQ geometry: port the RDNA3.5 128-wide tile shape from `a7ad7b7f` (M1) and the M8 quantize specializations behind registry variants with strict fallbacks. | Same gates as PF-1c per variant. | Open |
+| PF-1e | Closure: same-session whole-model A/B (p512/p1024 primary, p4096 recorded) against the frozen production denominator; artifact under `benchmarks/results/`, rollup + changelog, HB-6 admit/defer/reject decision, campaign doc rows advanced. | All gates recorded; retained-or-blocked decision committed. | Open |
+
 ## 7. Standing risks
 
 - **Baseline drift:** halo-box base `6c84c7d5` is older than pinned upstream
