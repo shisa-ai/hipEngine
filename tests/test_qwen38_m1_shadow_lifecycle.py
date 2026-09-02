@@ -209,6 +209,31 @@ def test_shadow_teardown_reclaims_without_restoring_committed_checkpoints() -> N
     assert {event[3] for event in reclaim_events} == {"teardown"}
 
 
+def test_shadow_reclaim_failure_retries_without_duplicate_success() -> None:
+    lease, _resources_by_name, events = _lease()
+    original_reclaim = lease.reclaim
+    failed = False
+
+    def flaky_reclaim(surface, lane, resource, reason):
+        nonlocal failed
+        if resource.name == "shadow_kv_owner" and not failed:
+            failed = True
+            raise RuntimeError("injected reclaim failure")
+        original_reclaim(surface, lane, resource, reason)
+
+    lease.reclaim = flaky_reclaim
+    with pytest.raises(RuntimeError, match="injected"):
+        lease.close(reason="teardown")
+    assert lease.closed is False
+
+    lease.close(reason="teardown")
+
+    assert lease.closed is True
+    reclaim_events = [event for event in events if event[0] == "reclaim"]
+    assert len(reclaim_events) == 10
+    assert len({event[2] for event in reclaim_events}) == 10
+
+
 def test_shadow_policy_constructor_has_no_prompt_token_or_candidate_inputs() -> None:
     _error, lifecycle = _api()
     parameters = inspect.signature(lifecycle).parameters
