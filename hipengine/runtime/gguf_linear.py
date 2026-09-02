@@ -1031,7 +1031,7 @@ def q5_raw_mmq_target_session(
     library: ctypes.CDLL | None = None,
     enabled: bool = True,
 ) -> Iterator[None]:
-    """Expose bounded Q8_1 storage for the opt-in C8 recurrent-Q5 owner."""
+    """Expose bounded Q8_1 storage for the C8 recurrent-Q5 owner."""
 
     selected = None
     if enabled:
@@ -6287,7 +6287,7 @@ def _q5_raw_mmq_target_dispatch(
     in_features: int,
     out_features: int,
 ) -> GGUFLinearDispatch:
-    """Select the opt-in operation-complete raw-Q5 MMQ target owner."""
+    """Select the operation-complete raw-Q5 MMQ target owner."""
 
     session = _q5_raw_mmq_target_session.get()
     if session is None or not (

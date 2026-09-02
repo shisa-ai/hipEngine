@@ -76,15 +76,15 @@ should be removed or collapsed.
 
 ## 2026-09-02 gfx1100 C8 raw-Q5 MMQ — closed
 
-- The gfx1100-only physical R24/R32 `ssm_out` route is now the production
-  default. It retains raw sidecars beside exact T16 residents, quantizes each
-  layer input into bounded scratch, and launches the registered
+- The gfx1100-only eight-request physical R24/R32 `ssm_out` route is now the
+  production default. It retains raw sidecars beside exact T16 residents,
+  quantizes each layer input into bounded scratch, and launches the registered
   operation-complete raw Q5 MMQ. The all-48 actual-weight screen, marker gate,
   counterbalanced ten-prompt task gate, and strict-teacher R24/R32 numerics all
-  passed; task throughput improves 87.149→89.344 tok/s (+2.52%).
-- `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0` remains same-build rollback. Peer backends,
-  shape misses, missing sidecars, and workspace misses retain exact grouped
-  T16 ownership. Remove the environment opt-out after the next stable milestone
+  passed; the promoted-default task gate improves 87.186→89.377 tok/s (+2.51%).
+- `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0` remains same-build rollback. Request counts
+  other than eight, peer backends, shape misses, missing sidecars, and workspace
+  misses retain exact grouped T16 ownership. Remove the environment opt-out after the next stable milestone
   audit; preserve the registered strict fallback.
 
 ## 2026-09-02 gfx1100 grouped Q5 R8 C8 rollback — open

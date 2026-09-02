@@ -118,10 +118,10 @@ standardized complete-wall server protocol.
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | **68.513** | **76.623** | **81.641** | 87.508 |
+| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | **68.513** | **76.623** | **81.641** | 89.377 |
 | llama.cpp current HIP | 32.553 | 41.042 | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP | 32.733 | 40.808 | 45.947 | 51.054 | 61.013 | 74.628 | **78.281** | **101.072** |
-| hipEngine K3 / published AR | 1.5150x | 1.3658x | 1.0439x | 0.8769x | 0.9651x | 0.9945x | 1.0047x | 1.0425x |
+| hipEngine K3 / published AR | 1.5150x | 1.3658x | 1.0439x | 0.8769x | 0.9651x | 0.9945x | 1.0047x | 1.0648x |
 
 **Prefill**
 
@@ -138,7 +138,7 @@ current hipEngine prefill C1-C3 and K3 cells roll forward later retained exact
 same-build gates. All named source gates pass their trajectory, ownership,
 category/heldout, provenance, and clean-drain contracts. hipEngine uses BF16 KV;
 the peers use F16 KV. K3 is forced and measures an engine path, not the
-capacity-8 automatic product route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C7 retention`](results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json); [`exact C8 row32 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json); [`latest C8 Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-grouped-r8-retained.json); [`accepted-tail K/V-only retention`](results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json). The remaining C8 peer gap is organized by the [`current profile`](results/2026-09-02-w7900-q4km-k3-c8-current-profile.json) and [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
+capacity-8 automatic product route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C7 retention`](results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json); [`exact C8 row32 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json); [`latest C8 Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json); [`accepted-tail K/V-only retention`](results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json). The remaining C8 peer gap is organized by the [`current profile`](results/2026-09-02-w7900-q4km-k3-c8-current-profile.json) and [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
 On Strix Halo, Qwen3.8 `Q4_K_M` automatic MTP retains strict C1/B3 at
 **15.609 vs 9.807 tok/s (1.5916x)** and production C2/K3 at **17.031 tok/s
@@ -164,13 +164,13 @@ See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), the
 Retained C1-C8 optimization history remains in the result artifacts and
 [`CHANGELOG.md`](CHANGELOG.md), not in this current-row scoreboard.
 
-The direct prewarmed C8/K3 peer census changes no topline row. On one
-matched-output cell, current and Laurent llama.cpp have identical 152/128
-generated/accepted drafts, while recurrent Q5 projection wall is
-**131.651→32.018 ms** across eight target rounds. Laurent commit `25748619`
-selects batch-wide MMQ instead of MMVQ; this ranks a Q5 matrix-tile analogue
-first for the hipEngine C8 campaign with estimated **11.392 ms/cycle** upside.
-[`Peer/role census`](results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json).
+The direct prewarmed C8/K3 peer census ranks batch-wide Q5 MMQ first with an
+estimated **11.392 ms/cycle** upside. The first retained hipEngine raw-Q5 owner
+realizes **2.496 ms/cycle** of that estimate and raises the current C8 row
+**87.508→89.377 tok/s (+2.14%)**; source-layout Q5 work remains first because
+current/Laurent peers are still **5.99%/13.08%** ahead.
+[`Peer/role census`](results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json);
+[`raw-Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json).
 
 ## Evidence status
 
