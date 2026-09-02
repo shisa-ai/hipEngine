@@ -1,5 +1,7 @@
 from __future__ import annotations
 import importlib.util
+import json
+from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +15,20 @@ def test_first_mismatch_localizes_owner_and_replay():
  rows=[{'replay':1,'output_exact':True,'state_exact':True,'state_owners':{'gdn_conv':True,'gdn_matrix':True}},{'replay':2,'output_exact':True,'state_exact':False,'state_owners':{'gdn_conv':True,'gdn_matrix':False}}]
  assert _load()._first_mismatch(rows)=={'replay':2,'kind':'state','owner':'gdn_matrix'}
  assert _load()._first_mismatch([{'replay':1,'state_exact':True,'output_exact':True,'token_exact':False,'state_owners':{}}])=={'replay':1,'kind':'token','owner':'root.token_id'}
+
+def test_prompt_ids_load_exact_fixture_case(tmp_path):
+ fixture=tmp_path/'fixture.json';fixture.write_text(json.dumps({'cases':[{'id':'code-p512','prompt_token_ids':[3,5,8]},{'id':'code-p1024','prompt_token_ids':[13]}]}))
+ args=Namespace(fixture=fixture,case_id='code-p512',prompt_file=None)
+ generator=SimpleNamespace(tokenizer=SimpleNamespace(encode=lambda _text:[1]))
+ assert _load()._prompt_ids(args,generator)==[3,5,8]
+
+def test_prompt_ids_require_fixture_case_id(tmp_path):
+ fixture=tmp_path/'fixture.json';fixture.write_text(json.dumps({'cases':[]}));args=Namespace(fixture=fixture,case_id=None,prompt_file=None)
+ with pytest.raises(ValueError,match='requires --case-id'):_load()._prompt_ids(args,SimpleNamespace())
+
+def test_parser_accepts_named_production_fixture_arm(tmp_path):
+ args=_load().build_parser().parse_args(['--model-root',str(tmp_path),'--fixture',str(tmp_path/'fixture.json'),'--case-id','code-p512','--profile','production','--named-production-baseline','--timing-order','graph-first','--output',str(tmp_path/'result.json')])
+ assert args.profile=='production';assert args.named_production_baseline is True;assert args.timing_order=='graph-first';assert args.prompt_file is None
 
 @pytest.mark.parametrize(('prepared','expected'),((False,[7]),(True,[])))
 def test_qsa_position_prepared_skips_legacy_stream_upload(monkeypatch,prepared,expected):

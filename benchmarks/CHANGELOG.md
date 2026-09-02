@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P8 production feasibility rejected] Warm same-residency production graph wins five/five exact pairs at p512 (**57.312→55.907 ms, 1.0251x**) and p1024 (**58.962→57.868 ms, 1.0189x**), but cannot cross the p4096 sparse-QSA boundary; no production cache is admitted. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-production-feasibility-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P8 pointer/key audit] Strict research capture reuses stable resident allocations, updates token/PLE staging in place, and allocates nothing after first launch, but no request-owned production cache or composite manifest/shape/context/fallback key exists; item remains partial pending named-production economics. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-pointer-key-audit.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P8 single-launch prerequisite] Research transition uses one graph launch/token with **1,708** child dispatches and zero post-launch allocation; the explicit host PLE mmap stage/H2D and token readback are the remaining boundary. Production A/B/key/lifecycle remains open. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-single-launch-boundary-closure.json`.
