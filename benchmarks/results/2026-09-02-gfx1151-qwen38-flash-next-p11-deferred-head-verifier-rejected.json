@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_deferred_head_verifier",
+  "status": "rejected_complete_boundary_regression",
+  "performance_claim": false,
+  "source": {
+    "head_before_candidate": "12d6d9993",
+    "candidate_committed": false,
+    "candidate_removed": true
+  },
+  "host": {"identity": "zbook", "gpu": "AMD Radeon 8060S Graphics", "arch": "gfx1151", "gpu_clock_policy": "auto"},
+  "candidate": {
+    "arithmetic_class": "T0 strict",
+    "scope": "Qwen4Exp target verifier rows 2 through 8",
+    "mechanism": "unchanged serial target body/state order with deferred rows<=8 GR/lm-head scoring",
+    "strict_fallback": "verify_target_block_serial_exact / serial target.step",
+    "overlap_exclusions": [
+      "head-only timing excludes required transaction capture",
+      "complete candidate includes begin plus commit but excludes test-only outer restore snapshot",
+      "no provider or whole-model path was wired"
+    ]
+  },
+  "correctness": {
+    "rows_tested": [2, 3, 4, 5, 6, 7, 8],
+    "all_passed": true,
+    "tokens_exact": true,
+    "hidden_exact": true,
+    "logits_exact": true,
+    "state_exact": {"gdn_matrix": true, "gdn_conv": true, "ple_conv": true, "residual": true},
+    "position_exact": true,
+    "ple_hash_exact": true,
+    "max_hidden_abs": 0.0,
+    "max_logit_abs": 0.0
+  },
+  "head_only_b2": {
+    "warmups": 3,
+    "samples": 10,
+    "serial_median_ms": 126.76346000807825,
+    "deferred_median_ms": 126.59190698468592,
+    "speedup": 1.00135516580387,
+    "exact": true
+  },
+  "complete_b2": {
+    "warmups": 3,
+    "samples": 10,
+    "serial_W_median_ms": 127.69269500859082,
+    "candidate_C_median_ms": 132.35359100508504,
+    "s": 0.9647845142613838,
+    "delta_ms": 4.660895996494219,
+    "exact": true
+  },
+  "campaign_reference": {
+    "mtp_W_seconds": 51.711070590004965,
+    "true_ar_C_seconds": 49.383127938017424,
+    "serial_target_O_ms_per_row": 87.65228492640225
+  },
+  "decision": {
+    "promoted": false,
+    "rocprof_run": false,
+    "whole_model_ab_run": false,
+    "reason": "Batched final-head scoring saves only 0.172 ms at B2 before transactions. Required D2D state snapshot/commit changes the candidate to a 4.661-ms / 3.52% regression. Correctness passes, but the complete owner loses before provider wiring or trace.",
+    "next": "A viable verifier must capture accepted-prefix state during the serial body or avoid full pre-execution snapshots; batching the final head alone cannot pay for rollback ownership."
+  }
+}
