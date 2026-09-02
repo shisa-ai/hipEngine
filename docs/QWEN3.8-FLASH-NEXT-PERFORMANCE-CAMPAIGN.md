@@ -1881,7 +1881,7 @@ external MTP rows.
       executable Qwen4Exp candidate exists. Strict fallback is serial
       `target.step`. Device-output cleanup remains independent. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
-- [ ] Add a rejection-depth RED sweep before any budget work. Force a rejection
+- [~] Add a rejection-depth RED sweep before any budget work. Force a rejection
       at every draft depth `d` in `[1, n_max]`, at the first, middle, and last
       position of a verify batch, and with a batch shorter than the ring depth;
       require post-rollback GDN conv state, SSM state, and the next-token logits
@@ -1889,8 +1889,12 @@ external MTP rows.
       grid that localizes the Pat1entZ3r0 EXP-016 class: unwritten ring banks
       beyond the written group, and a spec ring one entry too shallow for a
       verify batch that carries the previously sampled token plus `n_max`
-      drafts. Passing at `n_max` only is not passing.
-- [ ] Falsify EXP-016 as the explanation for the measured external MTP failures
+      drafts. Passing at `n_max` only is not passing. The current public provider
+      cannot express this target rollback-ring class: it commits only serial
+      truth via `target.step` and trims only the independent draft cursor. The
+      grid is blocked until the rows<=8 verifier/device-state transaction ABI
+      exists; do not claim current 10/10 exact serial output as a batch-ring gate.
+- [~] Falsify EXP-016 as the explanation for the measured external MTP failures
       with one build. The failure identities are already known per lane
       (EngramHalo 9/10 failing `general_ja_plan`; Nathan 8/10 with AR and MTP
       each self-repeating 9/10; apepojken 9/10). Rebuild one lane on
@@ -1898,6 +1902,14 @@ external MTP rows.
       probe: if those specific prompts move, the mechanism is confirmed and the
       hipEngine audit above is urgent; if the same prompts fail, the hypothesis
       is closed for the cost of one build. Either result is worth recording.
+      Blocked on immutable source: `patches/hybrid-03-mtp/0006`, program commit
+      `413c33c`, and parent `32af70900` are absent from all local comparator
+      object databases, and the cited repository returns HTTP 404. Three local
+      comparator trees are clean and remain untouched; the modified
+      `EngramHalo.cpp-patched` tree is excluded. Obtain the exact patch/commit,
+      then build it in a disposable clone rather than reconstructing it from
+      prose. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exp016-readiness.json`.
 - [ ] Move acceptance, first-mismatch selection, commit, rollback, and cursor
       repair to device-owned transactional kernels/graphs with exact recovery
       and cancellation tests.
