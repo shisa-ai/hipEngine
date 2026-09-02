@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p2_exact_geometry_closure",
+  "status": "closed_exhausted_t0_schedule_family",
+  "performance_claim": false,
+  "host": "zbook/gfx1151",
+  "scope": "Early-MoE exact Q4_K grouped gate/up scheduling over production p508 and all resident layer weights",
+  "amdahl": {
+    "W": "current p512 named-production complete wall",
+    "C": "refreshed comparator wall; unchanged by this closure audit",
+    "O": "1.265 s fresh p512 selected-Q4 gate/up owner",
+    "s": "no retained speedup; every tested T0 schedule was neutral or negative",
+    "overlap_exclusions": "Q5 down, dense/GR/GDN/QSA, routing tail, and submission",
+    "arithmetic_class": "T0 exact",
+    "strict_fallback": "Q4 row8/output4/expertgrid64 grouped owner"
+  },
+  "measured_ladder": {
+    "expert_workers_64_to_128": {
+      "q4_only_ratio_mean": 1.0025571178513584,
+      "q4_only_95ci": [0.9980878434366331, 1.0070263922660836],
+      "whole_kernel_sum_delta_ms": 47.285262,
+      "decision": "rejected_neutral_removed",
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p2-expertgrid128-rejected.json"
+    },
+    "output4_to_output8": {
+      "q4_only_ratio_mean": 0.9967548613658741,
+      "q4_only_95ci": [0.9921844773816503, 1.001325245350098],
+      "decision": "rejected_neutral_removed",
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p2-wider-output-tiles-rejected.json"
+    },
+    "one_team_to_two_teams": {
+      "ratio_mean": 0.9977692896924523,
+      "ratio_95ci": [0.9927086027315803, 1.0028299766533242],
+      "decision": "rejected_neutral_removed",
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p2-q4-team2-rejected.json"
+    }
+  },
+  "static_lds_audit": {
+    "source": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
+    "kernel": "gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8,4,true>",
+    "threads": 128,
+    "wave_size": 32,
+    "metadata_store": "contiguous unique float indices across threads",
+    "metadata_read": "each wave reads one shared subblock index, an LDS broadcast",
+    "reduction_lds": "one float per wave in wave_sums[8]",
+    "padding_decision": "No strided multi-lane LDS access exists for padding to repair; adding padding cannot change the broadcast or one-float-per-wave access pattern."
+  },
+  "actual_weight_coverage": "The paired public p508 screens traverse the production model's actual early-layer Q4 tensor objects rather than a synthetic single-weight leaf; they do not claim exhaustive expert-ID coverage.",
+  "lineage_check": {
+    "command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+    "passed": false,
+    "reason": "unrelated manifest peer /home/lhl/amd-gpu-tuning/reference/atlas is absent",
+    "impact": "No kernel was ported or changed in this closure audit."
+  },
+  "decision": "Close the open T0 wave/workgroup/row-output/LDS scheduling sweep as exhausted. A future Q4 attempt requires materially new concurrent data reuse or independently gated T1/T2 arithmetic; do not repeat worker-count, serial-width, team-count, or LDS-padding variants."
+}
