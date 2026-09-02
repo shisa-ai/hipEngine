@@ -580,8 +580,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self,
         *,
         start_token: int,
-        target_hidden_seed: np.ndarray,
+        target_hidden_seed: np.ndarray | None,
         draft_n_max: int,
+        target_hidden_seed_ptr: int | None = None,
         compact_output: bool | None = None,
     ) -> tuple[Qwen4ExpMTPDraftResult, ...]:
         count = int(draft_n_max)
@@ -596,9 +597,21 @@ class Qwen4ExpGGUFMTPDraftRunner:
         results: list[Qwen4ExpMTPDraftResult] = []
         stage_totals: dict[str, float] = {}
         token = int(start_token)
-        hidden: np.ndarray | None = np.ascontiguousarray(
-            target_hidden_seed, dtype=np.float32
+        hidden = (
+            None
+            if target_hidden_seed is None
+            else np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
         )
+        target_hidden_resident = bool(compact_output and target_hidden_seed_ptr)
+        if target_hidden_resident:
+            self.runtime.memcpy(
+                self.last_hidden.ptr,
+                int(target_hidden_seed_ptr),
+                self.last_hidden.nbytes,
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+            )
+        elif hidden is None:
+            raise ValueError("Qwen4Exp MTP target hidden seed or device pointer is required")
         for depth in range(count):
             result = self.forward(
                 token,
@@ -607,7 +620,8 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 capture_hidden_seed=not compact_output,
                 capture_token_id=not compact_output,
                 token_id_resident=compact_output and depth > 0,
-                hidden_seed_resident=compact_output and depth > 0,
+                hidden_seed_resident=compact_output
+                and (depth > 0 or target_hidden_resident),
             )
             results.append(result)
             if compact_output:
