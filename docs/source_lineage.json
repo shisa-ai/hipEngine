@@ -1,532 +1,532 @@
 {
- "schema": 1,
- "description": "External source-lineage files hipEngine ports from or audits before a port.",
- "evidence_paths": [
-  "/home/lhl/amd-gpu-tuning/WORKLOG.md",
-  "/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md",
-  "/home/lhl/amd-gpu-tuning/docs/PARO.md",
-  "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md",
-  "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md",
-  "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md",
-  "/home/lhl/amd-gpu-tuning/PLAN-DFLASH.md",
-  "/home/lhl/amd-gpu-tuning/PLAN-MTP.md",
-  "/home/lhl/amd-gpu-tuning/MTP-DFLASH.md",
-  "/home/lhl/amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md",
-  "/home/lhl/amd-gpu-tuning/docs/SPECULATIVE-DECODE.md",
-  "/home/lhl/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md"
- ],
- "repositories": {
-  "nano-vllm-amd": {
-   "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
-   "baseline_ref": "22405a9",
-   "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
-  },
-  "amd-gpu-tuning": {
-   "path": "/home/lhl/amd-gpu-tuning",
-   "baseline_ref": "82f65a3",
-   "baseline_note": "Current parent workspace head when DFlash/gfx1151 benchmark-contract lineage was registered."
-  },
-  "atlas": {
-   "path": "/home/lhl/amd-gpu-tuning/reference/atlas",
-   "baseline_ref": "71d8ffd",
-   "baseline_note": "Atlas reference head when scalar register-resident GDN prefill lineage was registered."
-  },
-  "vllm": {
-   "path": "/home/lhl/amd-gpu-tuning/reference/vllm",
-   "baseline_ref": "28ee78a",
-   "baseline_note": "vLLM reference head when the FLA chunkwise/WY GDN algebra lineage was registered."
-  },
-  "poolside-llama-laguna": {
-   "path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna",
-   "baseline_ref": "04b2b72cb54048ead292884adbe11f284e3ec950",
-   "baseline_note": "Pinned Poolside Laguna target and DFlash oracle source used for hipEngine Laguna bring-up."
-  },
-  "llama.cpp-hip": {
-   "path": "/home/lhl/llama.cpp/llama.cpp-hip",
-   "baseline_ref": "1ebf790cda38d827559548f67b0469189690cc8c",
-   "baseline_note": "Pinned clean HIP tree used for the UD-Q3_K_M raw-Q8 MMQ128 port and numerical-boundary audit."
-  },
-  "dflash": {
-   "path": "/home/lhl/dflash",
-   "baseline_ref": "07ebd93db9f472af339b644bb70221ad8428328a",
-   "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered."
-  },
-  "halo-box": {
-   "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
-   "baseline_ref": "a7ad7b7f508746870e03d0da60cca420295a04b9",
-   "baseline_note": "Frozen halo-box PR11 tree (base 6c84c7d5) used as the PF dense/MMQ tile-geometry reference for the Qwen3.8-Flash-Next prefill campaign."
-  }
- },
- "files": [
-  {
-   "repo": "atlas",
-   "path": "kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu",
-   "kind": "kernel",
-   "family": "Qwen3.6 scalar-column register-resident GDN prefill",
-   "baseline_ref": "37513bf"
-  },
-  {
-   "repo": "atlas",
-   "path": "kernels/gb10/common/gated_delta_rule_wy.cu",
-   "kind": "kernel",
-   "family": "GDN small-K two-pass Woodbury-Young algebra",
-   "baseline_ref": "8d187c7"
-  },
-  {
-   "repo": "atlas",
-   "path": "kernels/gb10/common/gated_delta_rule_wy64_prefill.cu",
-   "kind": "kernel",
-   "family": "GDN C32 persistent Woodbury-Young prefill prototype",
-   "baseline_ref": "37513bf"
-  },
-  {
-   "repo": "vllm",
-   "path": "vllm/model_executor/layers/fla/ops/chunk.py",
-   "kind": "kernel",
-   "family": "FLA chunkwise Gated Delta Rule composition",
-   "baseline_ref": "ed582b6"
-  },
-  {
-   "repo": "vllm",
-   "path": "vllm/model_executor/layers/fla/ops/chunk_scaled_dot_kkt.py",
-   "kind": "kernel",
-   "family": "FLA gated KKT coefficient construction",
-   "baseline_ref": "adb6d96"
-  },
-  {
-   "repo": "vllm",
-   "path": "vllm/model_executor/layers/fla/ops/wy_fast.py",
-   "kind": "kernel",
-   "family": "FLA Woodbury-Young representation",
-   "baseline_ref": "cb10b7e"
-  },
-  {
-   "repo": "poolside-llama-laguna",
-   "path": "src/models/laguna.cpp",
-   "kind": "dispatch",
-   "family": "Poolside Laguna target architecture and graph contract"
-  },
-  {
-   "repo": "poolside-llama-laguna",
-   "path": "src/models/dflash.cpp",
-   "kind": "dispatch",
-   "family": "Poolside Laguna DFlash draft architecture and graph contract"
-  },
-  {
-   "repo": "poolside-llama-laguna",
-   "path": "conversion/laguna.py",
-   "kind": "layout",
-   "family": "Poolside Laguna HF to GGUF metadata and tensor conversion"
-  },
-  {
-   "repo": "poolside-llama-laguna",
-   "path": "models/templates/poolside-Laguna-S-2.1.jinja",
-   "kind": "template",
-   "family": "Poolside Laguna S 2.1 chat, reasoning, and tool protocol"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "csrc/amd/qwen35_expert.hip",
-   "kind": "kernel",
-   "family": "qwen35 monolithic HIP kernels"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "csrc/amd/extension.cpp",
-   "kind": "binding",
-   "family": "qwen35 PyBind/TORCH_LIBRARY exports"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "csrc/amd/smoke.hip",
-   "kind": "kernel",
-   "family": "smoke_add build smoke"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/paroquant_kernels.py",
-   "kind": "kernel",
-   "family": "PARO embedded HIP kernels and wrappers"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/paroquant_fusedw4.py",
-   "kind": "kernel",
-   "family": "PARO fused W4 prefill WMMA"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/paroquant.py",
-   "kind": "dispatch",
-   "family": "PARO native dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/expert.py",
-   "kind": "dispatch",
-   "family": "Qwen3.5 expert/MoE dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/paroquant_weights.py",
-   "kind": "layout",
-   "family": "PARO weight layout and packing"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/wmma.py",
-   "kind": "dispatch",
-   "family": "WMMA grouped MoE dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/mtp.py",
-   "kind": "dispatch",
-   "family": "MTP dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/full_attention.py",
-   "kind": "dispatch",
-   "family": "Full-attention dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/weights.py",
-   "kind": "layout",
-   "family": "Qwen3.5 native weight loading/layout"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/linear_attention.py",
-   "kind": "dispatch",
-   "family": "Linear-attention/GDN dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/__init__.py",
-   "kind": "dispatch",
-   "family": "Qwen3.5 native package exports"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/rmsnorm.py",
-   "kind": "dispatch",
-   "family": "RMSNorm dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/linear.py",
-   "kind": "dispatch",
-   "family": "Linear projection dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/spec.py",
-   "kind": "dispatch",
-   "family": "Qwen3.5 model spec"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/router.py",
-   "kind": "dispatch",
-   "family": "Router dispatch"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/mtp.py",
-   "kind": "dispatch",
-   "family": "DFlash/MTP: target-attached MTP proposal provider",
-   "baseline_ref": "e7651e8"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/weights.py",
-   "kind": "layout",
-   "family": "DFlash/MTP: Qwen3.5/Qwen3.6 native weights and MTP BF16 loader",
-   "baseline_ref": "7b20f47"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/spec.py",
-   "kind": "dispatch",
-   "family": "DFlash/MTP: model spec/config parsing for Qwen3.5/Qwen3.6 PARO",
-   "baseline_ref": "5bfaa85"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/linear_attention.py",
-   "kind": "dispatch",
-   "family": "DFlash R2: Python wrappers for tree Conv/GDN t-loop kernels",
-   "baseline_ref": "69eb9d8"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "csrc/amd/qwen35_expert.hip",
-   "kind": "kernel",
-   "family": "DFlash R1: single-launch tree Conv/GDN t-loop kernels",
-   "baseline_ref": "b95eaa5"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "csrc/amd/extension.cpp",
-   "kind": "binding",
-   "family": "DFlash R1: tree Conv/GDN t-loop extension bindings",
-   "baseline_ref": "b95eaa5"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "csrc/amd/smoke.hip",
-   "kind": "kernel",
-   "family": "DFlash R1: tree Conv/GDN t-loop smoke fixtures",
-   "baseline_ref": "b95eaa5"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "nanovllm/native/qwen35/paroquant.py",
-   "kind": "dispatch",
-   "family": "DFlash: pack8 small-row and dual-pack8 threshold policy",
-   "baseline_ref": "5d8f496"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "scripts/bench_qwen35_dflash_acceptance.py",
-   "kind": "benchmark",
-   "family": "DFlash benchmark-only: Qwen3.6 W8A8 acceptance harness",
-   "baseline_ref": "bd8360e"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "scripts/eval_qwen35_dflash_acceptance_suite.py",
-   "kind": "benchmark",
-   "family": "DFlash benchmark-only: prompt-suite acceptance comparison",
-   "baseline_ref": "874b5ae"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "scripts/inspect_qwen35_mtp.py",
-   "kind": "benchmark",
-   "family": "MTP benchmark-only: artifact/tensor inspector",
-   "baseline_ref": "6ad5aea"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "scripts/make_qwen35_mtp_real_prompts.py",
-   "kind": "benchmark",
-   "family": "MTP benchmark-only: stable real-prompt fixture builder",
-   "baseline_ref": "4bb2573"
-  },
-  {
-   "repo": "nano-vllm-amd",
-   "path": "scripts/sweep_qwen35_mtp_real_acceptance.py",
-   "kind": "benchmark",
-   "family": "MTP benchmark-only: real-prompt acceptance sweep",
-   "baseline_ref": "4bb2573"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "scripts/bench_dense27_dflash_smoke.py",
-   "kind": "benchmark",
-   "family": "DFlash benchmark-only: dense27 smoke and serial/bulk verifier prototype",
-   "baseline_ref": "3d509f4"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "scripts/sweep_dense27_dflash_prediction.py",
-   "kind": "benchmark",
-   "family": "DFlash benchmark-only: dense27 chain/DDTree prediction sweep",
-   "baseline_ref": "c09e4df"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "PLAN-DFLASH.md",
-   "kind": "doc",
-   "family": "DFlash design/evidence log",
-   "baseline_ref": "3d509f4"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "PLAN-MTP.md",
-   "kind": "doc",
-   "family": "MTP design/evidence log",
-   "baseline_ref": "ab62086"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "MTP-DFLASH.md",
-   "kind": "doc",
-   "family": "MTP/DFlash shared-verifier notes",
-   "baseline_ref": "63a9164"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "docs/DFLASH-FRESH-EYES.md",
-   "kind": "doc",
-   "family": "DFlash reference-implementation audit",
-   "baseline_ref": "8fd89b4"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "docs/SPECULATIVE-DECODE.md",
-   "kind": "doc",
-   "family": "Speculative decode evidence and HumanEval/code prompt notes",
-   "baseline_ref": "2cd030f"
-  },
-  {
-   "repo": "amd-gpu-tuning",
-   "path": "docs/ROOFLINE-gfx1151.md",
-   "kind": "doc",
-   "family": "gfx1151 roofline for DFlash verifier economics",
-   "baseline_ref": "82f65a3"
-  },
-  {
-   "repo": "llama.cpp-hip",
-   "path": "ggml/src/ggml-cuda/mmq.cuh",
-   "kind": "kernel",
-   "family": "UD-Q3_K_M raw-Q8 MMQ128 weight staging and tiled dataflow"
-  },
-  {
-   "repo": "llama.cpp-hip",
-   "path": "ggml/src/ggml-cuda/mma.cuh",
-   "kind": "kernel",
-   "family": "UD-Q3_K_M raw-Q8 MMQ128 RDNA3 integer-WMMA fragments"
-  },
-  {
-   "repo": "llama.cpp-hip",
-   "path": "ggml/src/ggml-cuda/quantize.cu",
-   "kind": "kernel",
-   "family": "UD-Q3_K_M D4 Q8_1 activation-quantization layout"
-  },
-  {
-   "repo": "llama.cpp-hip",
-   "path": "ggml/src/ggml-common.h",
-   "kind": "kernel",
-   "family": "IQ2_XS block contract and compressed grid tables"
-  },
-  {
-   "repo": "llama.cpp-hip",
-   "path": "ggml/src/ggml-quants.c",
-   "kind": "kernel",
-   "family": "IQ2_XS scalar dequantization reference"
-  },
-  {
-   "repo": "llama.cpp-hip",
-   "path": "ggml/src/ggml-cuda/convert.cu",
-   "kind": "kernel",
-   "family": "IQ2_XS GPU block dequantization schedule"
-  },
-  {
-   "repo": "dflash",
-   "path": "dflash/model.py",
-   "kind": "source",
-   "family": "DFlash2DraftModel / GroupedDynamicCausalConv / CandidateSelector / dflash_generate reference math",
-   "baseline_ref": "07ebd93"
-  },
-  {
-   "repo": "dflash",
-   "path": "dflash/model_mlx.py",
-   "kind": "source",
-   "family": "DFlash2 quantized-target MLX variant (comparator lane for GGUF target)",
-   "baseline_ref": "07ebd93"
-  },
-  {
-   "repo": "halo-box",
-   "path": "ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh",
-   "kind": "kernel",
-   "family": "RDNA3.5 MMQ tile table (nthreads/occupancy/I/J) retuned 256-wide to 128-wide for Q4_K/Q5_K/Q6_K/Q8_0; PF-1 dense Q8_0 tile-geometry reference",
-   "baseline_ref": "a7ad7b7f"
-  },
-  {
-   "repo": "halo-box",
-   "path": "ggml/src/ggml-cuda/mmq-q8.cu",
-   "kind": "kernel",
-   "family": "Q8_0 MMQ dispatch specialization added by PR11; PF-1d reference",
-   "baseline_ref": "a7ad7b7f"
-  },
-  {
-   "repo": "halo-box",
-   "path": "ggml/src/ggml-cuda/mmq.cu",
-   "kind": "kernel",
-   "family": "MMQ core incl. routed-compact descriptors and J48 dispatch (M2/M3/M4); PF-1d/PF-3 reference",
-   "baseline_ref": "a7ad7b7f"
-  },
-  {
-   "repo": "halo-box",
-   "path": "ggml/src/ggml-cuda/mmq.cuh",
-   "kind": "kernel",
-   "family": "MMQ config CASE macro and SRAM layout plumbing; PF-1d reference",
-   "baseline_ref": "a7ad7b7f"
-  },
-  {
-   "repo": "halo-box",
-   "path": "ggml/src/ggml-cuda/quantize.cu",
-   "kind": "kernel",
-   "family": "M8 gfx1151 quantize specializations; PF-1d activation-quantize reference",
-   "baseline_ref": "a7ad7b7f"
-  }
- ],
- "external_artifacts": [
-  {
-   "name": "poolside/Laguna-S-2.1-GGUF laguna-s-2.1-Q4_K_M.gguf",
-   "kind": "gguf_target_model",
-   "source_revision": "Poolside GGUF file matched by Hugging Face LFS SHA-256",
-   "local_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
-   "bytes": 75173103200,
-   "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
-   "tokenizer_reference_revision": "179ee67cf0fff5391c67fe1a392ea849fa6d643f",
-   "note": "Completed Laguna target artifact; benchmark rows must record this exact hash and Q4_K_M quant."
-  },
-  {
-   "name": "Poolside Laguna gfx1151 llama-server oracle",
-   "kind": "oracle_runtime_binary",
-   "source_revision": "04b2b72cb54048ead292884adbe11f284e3ec950",
-   "local_path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna/build-hip-gfx1151/bin/llama-server",
-   "bytes": 15976,
-   "sha256": "1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419",
-   "build_config": "Release; GGML_HIP=ON; AMDGPU_TARGETS=gfx1151; GNU 16.1.1; CXXFLAGS=-include cmath",
-   "note": "Target-only correctness oracle. Accepted gfx1151 execution uses --no-mmap, --no-repack, -fa off, --cache-ram 0, exact prompt token IDs, and one request per fresh process."
-  },
-  {
-   "name": "poolside/Laguna-S-2.1-DFlash",
-   "kind": "hf_drafter_model",
-   "snapshot_revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
-   "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
-   "code_files": {
-    "model.safetensors_lfs_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
-   },
-   "note": "Matched six-layer Laguna DFlash drafter; target embedding and LM head remain target-owned."
-  },
-  {
-   "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
-   "kind": "hf_drafter_model",
-   "snapshot_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719",
-   "local_snapshot_path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
-   "code_files": {
-    "config.json_blob": "64b63098ee9f2c9e1a2c0bf5ec1a4e32eb489703",
-    "dflash.py_blob": "74d3ee2a48fbb1e65e25e19ab6cd89e2b28cd120",
-    "model.safetensors_lfs_sha256": "6db5c712b4f3d924026162ad1aedf7fd1fef32437690451137f967d9b7160144"
-   },
-   "note": "DFlash drafter artifact; validate metadata in task DFlash 04 before materializing tensors."
-  },
-  {
-   "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
-   "kind": "hf_target_model",
-   "snapshot_revisions_observed": [
-    "501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
-    "176e57c1a5d823bd0f41605420d04e3441465bb4"
-   ],
-   "local_snapshot_root": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots",
-   "note": "Packed PARO target; benchmark rows must record exact snapshot path/revision."
-  },
-  {
-   "name": "z-lab/Qwen3.8-27B-DFlash2",
-   "kind": "hf_drafter_model",
-   "snapshot_revision": "50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
-   "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
-   "code_files": {
-    "model.safetensors_lfs_sha256": "67fc76d68dc5a9415511a4f394ef744d67510cd20e93b37cc2cc7d28e4bab65c"
-   },
-   "note": "Qwen3.8-27B DFlash2 drafter artifact; DFlash2DraftModel, block_size 8, taps at [5,19,33,47,61], target-shared output head. GGUF target pair validated by scripts/dflash_validate_artifacts.py --target-kind gguf."
-  }
- ]
+  "schema": 1,
+  "description": "External source-lineage files hipEngine ports from or audits before a port.",
+  "evidence_paths": [
+    "/home/lhl/amd-gpu-tuning/WORKLOG.md",
+    "/home/lhl/amd-gpu-tuning/docs/OPTIMAL.md",
+    "/home/lhl/amd-gpu-tuning/docs/PARO.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-PAROQUANT2.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-MOE2.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-DFLASH.md",
+    "/home/lhl/amd-gpu-tuning/PLAN-MTP.md",
+    "/home/lhl/amd-gpu-tuning/MTP-DFLASH.md",
+    "/home/lhl/amd-gpu-tuning/docs/DFLASH-FRESH-EYES.md",
+    "/home/lhl/amd-gpu-tuning/docs/SPECULATIVE-DECODE.md",
+    "/home/lhl/amd-gpu-tuning/docs/ROOFLINE-gfx1151.md"
+  ],
+  "repositories": {
+    "nano-vllm-amd": {
+      "path": "/home/lhl/amd-gpu-tuning/nano-vllm-amd",
+      "baseline_ref": "22405a9",
+      "baseline_note": "Last manual KERNELS.md catalog audit before adding scripts/check_lineage.py."
+    },
+    "amd-gpu-tuning": {
+      "path": "/home/lhl/amd-gpu-tuning",
+      "baseline_ref": "82f65a3",
+      "baseline_note": "Current parent workspace head when DFlash/gfx1151 benchmark-contract lineage was registered."
+    },
+    "atlas": {
+      "path": "/home/lhl/amd-gpu-tuning/reference/atlas",
+      "baseline_ref": "71d8ffd",
+      "baseline_note": "Atlas reference head when scalar register-resident GDN prefill lineage was registered."
+    },
+    "vllm": {
+      "path": "/home/lhl/amd-gpu-tuning/reference/vllm",
+      "baseline_ref": "28ee78a",
+      "baseline_note": "vLLM reference head when the FLA chunkwise/WY GDN algebra lineage was registered."
+    },
+    "poolside-llama-laguna": {
+      "path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna",
+      "baseline_ref": "04b2b72cb54048ead292884adbe11f284e3ec950",
+      "baseline_note": "Pinned Poolside Laguna target and DFlash oracle source used for hipEngine Laguna bring-up."
+    },
+    "llama.cpp-hip": {
+      "path": "/home/lhl/llama.cpp/llama.cpp-hip",
+      "baseline_ref": "1ebf790cda38d827559548f67b0469189690cc8c",
+      "baseline_note": "Pinned clean HIP tree used for the UD-Q3_K_M raw-Q8 MMQ128 port and numerical-boundary audit."
+    },
+    "dflash": {
+      "path": "/home/lhl/dflash",
+      "baseline_ref": "07ebd93db9f472af339b644bb70221ad8428328a",
+      "baseline_note": "z-lab/dflash reference implementation head (DFlash/DFlash2) when Qwen3.8-27B DFlash2 GGUF bring-up lineage was registered."
+    },
+    "halo-box": {
+      "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+      "baseline_ref": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+      "baseline_note": "Frozen halo-box PR11 tree (base 6c84c7d5) used as the PF dense/MMQ tile-geometry reference for the Qwen3.8-Flash-Next prefill campaign."
+    }
+  },
+  "files": [
+    {
+      "repo": "atlas",
+      "path": "kernels/gb10/qwen3.6-35b-a3b/nvfp4/gated_delta_rule.cu",
+      "kind": "kernel",
+      "family": "Qwen3.6 scalar-column register-resident GDN prefill",
+      "baseline_ref": "37513bf"
+    },
+    {
+      "repo": "atlas",
+      "path": "kernels/gb10/common/gated_delta_rule_wy.cu",
+      "kind": "kernel",
+      "family": "GDN small-K two-pass Woodbury-Young algebra",
+      "baseline_ref": "8d187c7"
+    },
+    {
+      "repo": "atlas",
+      "path": "kernels/gb10/common/gated_delta_rule_wy64_prefill.cu",
+      "kind": "kernel",
+      "family": "GDN C32 persistent Woodbury-Young prefill prototype",
+      "baseline_ref": "37513bf"
+    },
+    {
+      "repo": "vllm",
+      "path": "vllm/model_executor/layers/fla/ops/chunk.py",
+      "kind": "kernel",
+      "family": "FLA chunkwise Gated Delta Rule composition",
+      "baseline_ref": "ed582b6"
+    },
+    {
+      "repo": "vllm",
+      "path": "vllm/model_executor/layers/fla/ops/chunk_scaled_dot_kkt.py",
+      "kind": "kernel",
+      "family": "FLA gated KKT coefficient construction",
+      "baseline_ref": "adb6d96"
+    },
+    {
+      "repo": "vllm",
+      "path": "vllm/model_executor/layers/fla/ops/wy_fast.py",
+      "kind": "kernel",
+      "family": "FLA Woodbury-Young representation",
+      "baseline_ref": "cb10b7e"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "src/models/laguna.cpp",
+      "kind": "dispatch",
+      "family": "Poolside Laguna target architecture and graph contract"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "src/models/dflash.cpp",
+      "kind": "dispatch",
+      "family": "Poolside Laguna DFlash draft architecture and graph contract"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "conversion/laguna.py",
+      "kind": "layout",
+      "family": "Poolside Laguna HF to GGUF metadata and tensor conversion"
+    },
+    {
+      "repo": "poolside-llama-laguna",
+      "path": "models/templates/poolside-Laguna-S-2.1.jinja",
+      "kind": "template",
+      "family": "Poolside Laguna S 2.1 chat, reasoning, and tool protocol"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/qwen35_expert.hip",
+      "kind": "kernel",
+      "family": "qwen35 monolithic HIP kernels"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/extension.cpp",
+      "kind": "binding",
+      "family": "qwen35 PyBind/TORCH_LIBRARY exports"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/smoke.hip",
+      "kind": "kernel",
+      "family": "smoke_add build smoke"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant_kernels.py",
+      "kind": "kernel",
+      "family": "PARO embedded HIP kernels and wrappers"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant_fusedw4.py",
+      "kind": "kernel",
+      "family": "PARO fused W4 prefill WMMA"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant.py",
+      "kind": "dispatch",
+      "family": "PARO native dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/expert.py",
+      "kind": "dispatch",
+      "family": "Qwen3.5 expert/MoE dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant_weights.py",
+      "kind": "layout",
+      "family": "PARO weight layout and packing"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/wmma.py",
+      "kind": "dispatch",
+      "family": "WMMA grouped MoE dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/mtp.py",
+      "kind": "dispatch",
+      "family": "MTP dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/full_attention.py",
+      "kind": "dispatch",
+      "family": "Full-attention dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/weights.py",
+      "kind": "layout",
+      "family": "Qwen3.5 native weight loading/layout"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/linear_attention.py",
+      "kind": "dispatch",
+      "family": "Linear-attention/GDN dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/__init__.py",
+      "kind": "dispatch",
+      "family": "Qwen3.5 native package exports"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/rmsnorm.py",
+      "kind": "dispatch",
+      "family": "RMSNorm dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/linear.py",
+      "kind": "dispatch",
+      "family": "Linear projection dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/spec.py",
+      "kind": "dispatch",
+      "family": "Qwen3.5 model spec"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/router.py",
+      "kind": "dispatch",
+      "family": "Router dispatch"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/mtp.py",
+      "kind": "dispatch",
+      "family": "DFlash/MTP: target-attached MTP proposal provider",
+      "baseline_ref": "e7651e8"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/weights.py",
+      "kind": "layout",
+      "family": "DFlash/MTP: Qwen3.5/Qwen3.6 native weights and MTP BF16 loader",
+      "baseline_ref": "7b20f47"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/spec.py",
+      "kind": "dispatch",
+      "family": "DFlash/MTP: model spec/config parsing for Qwen3.5/Qwen3.6 PARO",
+      "baseline_ref": "5bfaa85"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/linear_attention.py",
+      "kind": "dispatch",
+      "family": "DFlash R2: Python wrappers for tree Conv/GDN t-loop kernels",
+      "baseline_ref": "69eb9d8"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/qwen35_expert.hip",
+      "kind": "kernel",
+      "family": "DFlash R1: single-launch tree Conv/GDN t-loop kernels",
+      "baseline_ref": "b95eaa5"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/extension.cpp",
+      "kind": "binding",
+      "family": "DFlash R1: tree Conv/GDN t-loop extension bindings",
+      "baseline_ref": "b95eaa5"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "csrc/amd/smoke.hip",
+      "kind": "kernel",
+      "family": "DFlash R1: tree Conv/GDN t-loop smoke fixtures",
+      "baseline_ref": "b95eaa5"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "nanovllm/native/qwen35/paroquant.py",
+      "kind": "dispatch",
+      "family": "DFlash: pack8 small-row and dual-pack8 threshold policy",
+      "baseline_ref": "5d8f496"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/bench_qwen35_dflash_acceptance.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: Qwen3.6 W8A8 acceptance harness",
+      "baseline_ref": "bd8360e"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/eval_qwen35_dflash_acceptance_suite.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: prompt-suite acceptance comparison",
+      "baseline_ref": "874b5ae"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/inspect_qwen35_mtp.py",
+      "kind": "benchmark",
+      "family": "MTP benchmark-only: artifact/tensor inspector",
+      "baseline_ref": "6ad5aea"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/make_qwen35_mtp_real_prompts.py",
+      "kind": "benchmark",
+      "family": "MTP benchmark-only: stable real-prompt fixture builder",
+      "baseline_ref": "4bb2573"
+    },
+    {
+      "repo": "nano-vllm-amd",
+      "path": "scripts/sweep_qwen35_mtp_real_acceptance.py",
+      "kind": "benchmark",
+      "family": "MTP benchmark-only: real-prompt acceptance sweep",
+      "baseline_ref": "4bb2573"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "scripts/bench_dense27_dflash_smoke.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: dense27 smoke and serial/bulk verifier prototype",
+      "baseline_ref": "3d509f4"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "scripts/sweep_dense27_dflash_prediction.py",
+      "kind": "benchmark",
+      "family": "DFlash benchmark-only: dense27 chain/DDTree prediction sweep",
+      "baseline_ref": "c09e4df"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "PLAN-DFLASH.md",
+      "kind": "doc",
+      "family": "DFlash design/evidence log",
+      "baseline_ref": "3d509f4"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "PLAN-MTP.md",
+      "kind": "doc",
+      "family": "MTP design/evidence log",
+      "baseline_ref": "ab62086"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "MTP-DFLASH.md",
+      "kind": "doc",
+      "family": "MTP/DFlash shared-verifier notes",
+      "baseline_ref": "63a9164"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "docs/DFLASH-FRESH-EYES.md",
+      "kind": "doc",
+      "family": "DFlash reference-implementation audit",
+      "baseline_ref": "8fd89b4"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "docs/SPECULATIVE-DECODE.md",
+      "kind": "doc",
+      "family": "Speculative decode evidence and HumanEval/code prompt notes",
+      "baseline_ref": "2cd030f"
+    },
+    {
+      "repo": "amd-gpu-tuning",
+      "path": "docs/ROOFLINE-gfx1151.md",
+      "kind": "doc",
+      "family": "gfx1151 roofline for DFlash verifier economics",
+      "baseline_ref": "82f65a3"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/mmq.cuh",
+      "kind": "kernel",
+      "family": "UD-Q3_K_M raw-Q8 MMQ128 weight staging and tiled dataflow"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/mma.cuh",
+      "kind": "kernel",
+      "family": "UD-Q3_K_M raw-Q8 MMQ128 RDNA3 integer-WMMA fragments"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/quantize.cu",
+      "kind": "kernel",
+      "family": "UD-Q3_K_M D4 Q8_1 activation-quantization layout"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-common.h",
+      "kind": "kernel",
+      "family": "IQ2_XS block contract and compressed grid tables"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-quants.c",
+      "kind": "kernel",
+      "family": "IQ2_XS scalar dequantization reference"
+    },
+    {
+      "repo": "llama.cpp-hip",
+      "path": "ggml/src/ggml-cuda/convert.cu",
+      "kind": "kernel",
+      "family": "IQ2_XS GPU block dequantization schedule"
+    },
+    {
+      "repo": "dflash",
+      "path": "dflash/model.py",
+      "kind": "source",
+      "family": "DFlash2DraftModel / GroupedDynamicCausalConv / CandidateSelector / dflash_generate reference math",
+      "baseline_ref": "07ebd93"
+    },
+    {
+      "repo": "dflash",
+      "path": "dflash/model_mlx.py",
+      "kind": "source",
+      "family": "DFlash2 quantized-target MLX variant (comparator lane for GGUF target)",
+      "baseline_ref": "07ebd93"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq-config-rdna3-5.cuh",
+      "kind": "kernel",
+      "family": "RDNA3.5 MMQ tile table (nthreads/occupancy/I/J) retuned 256-wide to 128-wide for Q4_K/Q5_K/Q6_K/Q8_0; PF-1 dense Q8_0 tile-geometry reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq-q8.cu",
+      "kind": "kernel",
+      "family": "Q8_0 MMQ dispatch specialization added by PR11; PF-1d reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq.cu",
+      "kind": "kernel",
+      "family": "MMQ core incl. routed-compact descriptors and J48 dispatch (M2/M3/M4); PF-1d/PF-3 reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/mmq.cuh",
+      "kind": "kernel",
+      "family": "MMQ config CASE macro and SRAM layout plumbing; PF-1d reference",
+      "baseline_ref": "a7ad7b7f"
+    },
+    {
+      "repo": "halo-box",
+      "path": "ggml/src/ggml-cuda/quantize.cu",
+      "kind": "kernel",
+      "family": "M8 gfx1151 quantize specializations; PF-1d activation-quantize reference",
+      "baseline_ref": "a7ad7b7f"
+    }
+  ],
+  "external_artifacts": [
+    {
+      "name": "poolside/Laguna-S-2.1-GGUF laguna-s-2.1-Q4_K_M.gguf",
+      "kind": "gguf_target_model",
+      "source_revision": "Poolside GGUF file matched by Hugging Face LFS SHA-256",
+      "local_path": "/home/lhl/models/gguf/laguna-s-2.1-Q4_K_M.gguf",
+      "bytes": 75173103200,
+      "sha256": "7da520c5f44bc3c79d4eeebfd1151ba7114c5d7568e72a995638417093c5753f",
+      "tokenizer_reference_revision": "179ee67cf0fff5391c67fe1a392ea849fa6d643f",
+      "note": "Completed Laguna target artifact; benchmark rows must record this exact hash and Q4_K_M quant."
+    },
+    {
+      "name": "Poolside Laguna gfx1151 llama-server oracle",
+      "kind": "oracle_runtime_binary",
+      "source_revision": "04b2b72cb54048ead292884adbe11f284e3ec950",
+      "local_path": "/home/lhl/models/hipengine_sources/poolside-llama.cpp-laguna/build-hip-gfx1151/bin/llama-server",
+      "bytes": 15976,
+      "sha256": "1a3b09cfb9a8034d44239224ac362afce4555b85da376a3a7e1f4ecaffee0419",
+      "build_config": "Release; GGML_HIP=ON; AMDGPU_TARGETS=gfx1151; GNU 16.1.1; CXXFLAGS=-include cmath",
+      "note": "Target-only correctness oracle. Accepted gfx1151 execution uses --no-mmap, --no-repack, -fa off, --cache-ram 0, exact prompt token IDs, and one request per fresh process."
+    },
+    {
+      "name": "poolside/Laguna-S-2.1-DFlash",
+      "kind": "hf_drafter_model",
+      "snapshot_revision": "b0486d1586daa0d56435c508108171fc1c8daff9",
+      "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--poolside--Laguna-S-2.1-DFlash/snapshots/b0486d1586daa0d56435c508108171fc1c8daff9",
+      "code_files": {
+        "model.safetensors_lfs_sha256": "f24f08781c697c19952c02fb2e7e9bdf2071b79a711c2a44b836a74b9b62a1f4"
+      },
+      "note": "Matched six-layer Laguna DFlash drafter; target embedding and LM head remain target-owned."
+    },
+    {
+      "name": "z-lab/Qwen3.6-35B-A3B-DFlash",
+      "kind": "hf_drafter_model",
+      "snapshot_revision": "42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "local_snapshot_path": "/models/huggingface/hub/models--z-lab--Qwen3.6-35B-A3B-DFlash/snapshots/42d3b34d588423cdae7ba8f53a8cf7789346a719",
+      "code_files": {
+        "config.json_blob": "64b63098ee9f2c9e1a2c0bf5ec1a4e32eb489703",
+        "dflash.py_blob": "74d3ee2a48fbb1e65e25e19ab6cd89e2b28cd120",
+        "model.safetensors_lfs_sha256": "6db5c712b4f3d924026162ad1aedf7fd1fef32437690451137f967d9b7160144"
+      },
+      "note": "DFlash drafter artifact; validate metadata in task DFlash 04 before materializing tensors."
+    },
+    {
+      "name": "shisa-ai/Qwen3.6-35B-A3B-PARO-full4096-e5-packed",
+      "kind": "hf_target_model",
+      "snapshot_revisions_observed": [
+        "501ef8635e5cfb5a7497d232358ca8d1afc0c66e",
+        "176e57c1a5d823bd0f41605420d04e3441465bb4"
+      ],
+      "local_snapshot_root": "/models/huggingface/hub/models--shisa-ai--Qwen3.6-35B-A3B-PARO-full4096-e5-packed/snapshots",
+      "note": "Packed PARO target; benchmark rows must record exact snapshot path/revision."
+    },
+    {
+      "name": "z-lab/Qwen3.8-27B-DFlash2",
+      "kind": "hf_drafter_model",
+      "snapshot_revision": "50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+      "local_snapshot_path": "/home/lhl/.cache/huggingface/hub/models--z-lab--Qwen3.8-27B-DFlash2/snapshots/50307d4c4cde6860d4eee73e2547cd786fe8e8a4",
+      "code_files": {
+        "model.safetensors_lfs_sha256": "67fc76d68dc5a9415511a4f394ef744d67510cd20e93b37cc2cc7d28e4bab65c"
+      },
+      "note": "Qwen3.8-27B DFlash2 drafter artifact; DFlash2DraftModel, block_size 8, taps at [5,19,33,47,61], target-shared output head. GGUF target pair validated by scripts/dflash_validate_artifacts.py --target-kind gguf."
+    }
+  ]
 }
