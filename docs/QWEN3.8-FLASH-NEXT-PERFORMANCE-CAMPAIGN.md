@@ -1620,9 +1620,16 @@ request-owned transition submission.
       graph time from the strict probe. Only if the resulting `W/C/O/s` row
       passes section 5.1 should a request-owned transition cache enter the
       production runner and complete lifecycle packet.
-- [ ] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
+- [~] Keep token/PLE input buffers and every weight/state/scratch pointer stable;
       include profile-manifest hash, shape, context bucket, and fallback in the
-      graph key.
+      graph key. The strict research probe reuses one graph exec over stable
+      resident weight/state/scratch allocations, updates token/PLE staging in
+      place, records manifest
+      `e93c8fa47bf2804a781bade0939c617563531ce5436e3281c2ab869209875dca`,
+      and performs zero device allocations after first launch. It does not have
+      a request-owned production graph cache or composite key, so this remains
+      partial pending a paying named-production A/B. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-pointer-key-audit.json`.
 - [ ] Gate GDN, QSA K/V/index append, PLE history, sampler output, snapshot,
       rollback, reset, cancellation, c2 isolation, teardown, and at least three
       consecutive replays at every rung.
