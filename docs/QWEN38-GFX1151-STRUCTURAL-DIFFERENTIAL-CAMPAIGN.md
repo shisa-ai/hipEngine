@@ -492,8 +492,11 @@ before it enters here.
   The large `accept_ms` marker primarily synchronizes queued target kernels:
   traced target kernels cover 96.21% of target-pass host windows. The remaining
   host-minus-kernel ceiling is 14.47 ms/cycle, or only 2.18% of complete C8
-  wall, far below the 28.5% entry threshold. M3 is rejected for C8; C5/C7
-  confirmation remains before closing the shared wide mechanism.
+  wall, far below the 28.5% entry threshold. C5/C7 confirmation
+  ([artifact](../benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-wide-accept-boundary-closure.json))
+  leaves only 1.31%/1.29% complete-wall ceilings versus 18.1%/35.2% entry.
+  M3 is rejected for every primary wide cell: the apparent 63.9-65.2% accept
+  boundary is queued target execution, not removable T0 host dataflow.
 
 Exit: an approved, bounded candidate plan with tests and fallback registered
 before implementation begins.
