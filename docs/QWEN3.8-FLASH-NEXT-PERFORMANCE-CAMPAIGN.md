@@ -1323,8 +1323,15 @@ Goal: close the remaining **634.94 vs 92.34 ms** GDN and
       **0.07535→0.08535 ms (0.883x)**. Early layers therefore remain strict;
       further widening is the separate T1/T2 item. Consolidated evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-exact-campaign-closure.json`.
-- [ ] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
-      packets; keep every rejected early layer strict.
+- [x] Evaluate T1/T2 GDN suffix widening only with fresh all-category boundary
+      packets; keep every rejected early layer strict. The calibrated ladder
+      rejects all-layer widening at mean KL **0.0068** and admits suffix 27–47
+      at **0.00099**. Its complete 450-row/three-repeat packet passes every
+      category/shape/transition, deterministic state, 18-prompt task, physical
+      c2, lifecycle, manifest, selected-kernel, and same-session p508/p1012
+      gate; whole-model deltas are **-17.09%/-15.67%**. Layers 0–26 and shape
+      misses retain `qwen4exp_sigmoid_strict_prefill`. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-suffix-boundary-closure.json`.
 - [x] For QSA, compare current key-parallel head-dim-256 flash geometry with the
       selected llama kernel family, including key tiles, online-softmax merge,
       grid sufficiency, and register/LDS pressure. The non-flash multirow dense
