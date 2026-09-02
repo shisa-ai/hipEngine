@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next halo-box HB-0] Built and froze halo-box base `6c84c7d5` and PR11 `a7ad7b7f` HIP lanes. Pristine HB-base timed out at **1,800 s / zero samples**; documented loader patches yielded **24.09/21.49 s** startup and complete four-category p512 smoke with matching output hashes. One-repeat smoke suggests PR11/base **1.0784x prefill / 1.0046x decode**, non-claim pending HB-1. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb0.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next campaign blocked closure] Punchlist closes **69→17** items after all independent families are retained/rejected/blocked. Current production is deterministic and lifecycle-clean, but section 6 remains open: comparator five-pair variance, HIP/Vulkan parity, matched 16K/64K rows, 4K MTP, Q8-KV prerequisites, and EXP-016 source block closure. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-campaign-blocked-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P7 four-column GDN decode] Parent-exact four-wave CTA packing cuts transposed recurrence blocks **6,144→1,536** but loses the leaf **0.04817→0.04856 ms (0.9919x)** and complete prepare+recurrence+norm-gate **0.06534→0.06571 ms (0.9944x)**. Remove candidate; CTA reduction without state reuse does not pay. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p7-gdn-col4-rejected.json`.
