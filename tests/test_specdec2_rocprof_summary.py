@@ -84,6 +84,7 @@ def _child() -> dict:
             "q5_t16",
         ),
         ("q8_1_d4s4_f32_quantize_bf16_kernel", "q5_activation_quant"),
+        ("q8_1_d4s4_f32_quantize_bf16_kmajor_kernel", "q5_activation_quant"),
         ("q8_1_ds4_quantize_bf16_kmajor_kernel", "q5_activation_quant"),
     ],
 )

@@ -12748,7 +12748,7 @@ def _gguf_c8_q5_source_mmq_enabled(
     return _gguf_c8_q5_raw_mmq_enabled(
         backend,
         request_count=request_count,
-    ) and _env_flag(_GGUF_C8_Q5_SOURCE_MMQ_ENV, False)
+    ) and _env_flag(_GGUF_C8_Q5_SOURCE_MMQ_ENV, True)
 
 
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
