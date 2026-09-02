@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_structural_differential_closeout",
+  "date": "2026-09-02",
+  "status": "closed_with_measured_blockers",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "runtime_profile": "production af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+  "retained_candidates": [],
+  "performance_claims": [],
+  "automatic_policy_changes": [],
+  "candidate_dispositions": {
+    "P1_F16_ACTIVATION_B": {
+      "disposition": "blocked_missing_kernel",
+      "evidence": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-p1-activation-f16-blocker.json",
+      "reason": "The measured Laurent mechanism needs sole-T16 input-F16 Q4/Q5 variants. Existing in-tree f16_rocblas_t16 variants transform weights, not activation B, and cannot substitute. No variant is selected."
+    },
+    "M1_C1_ACCEPT_ROUTE_PARITY": {
+      "disposition": "blocked_exact_ownership_surface",
+      "evidence": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m1-c1-shadow-screen.json",
+      "reason": "The 41.76% shadow-row bound clears entry, but the physical MTP adapter has no request-owned shadow-row ABI. A C2 route requires a real second target session, provider checkpoint, root-hidden row, KV/recurrent state, commit owner, cancellation/compaction behavior, and teardown. Fabricating these surfaces would violate the exact ownership contract before a RED lifecycle implementation exists."
+    },
+    "M2_C2_DRAFT_DEPTH": {
+      "disposition": "blocked_t3_not_authorized",
+      "evidence": "benchmarks/results/2026-09-02-gfx1151-qwen38-z3-candidate-declarations.json",
+      "reason": "Changing K3 to K2/K1 is a speculative decision-policy change. It remains an explicit T3 experiment and cannot become an ordinary production default in this campaign."
+    },
+    "M3_ACCEPT_BOUNDARY_DATAFLOW": {
+      "disposition": "rejected_measured_bound",
+      "evidence": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-wide-accept-boundary-closure.json",
+      "reason": "The apparent accept boundary is queued target execution. Host-minus-kernel ceilings are 1.31% C5, 1.29% C7, and 2.18% C8, below entry thresholds."
+    }
+  },
+  "primary_cells": {
+    "prefill_C2_C8": "P1 blocker: no matching sole-T16 input-F16 kernel; external parity and operation differential remain durable.",
+    "mtp_C1": "M1 blocker: bounded shadow-row mechanism lacks an exact request/state lifecycle ABI.",
+    "mtp_C2": "M2 blocker: the only remaining bounded depth mechanism is unauthorized T3 policy.",
+    "mtp_C5_C7_C8": "M3 rejected by measured residual bounds; target-only budgets are zero, leaving target execution as the named blocker.",
+    "mtp_C6": "Near-parity control retained unchanged."
+  },
+  "z4_obligations": {
+    "strict_contract": "No strict candidate was implemented or retained; strict fallbacks remain registered.",
+    "production_gate": "No T1/T2 candidate was implemented or retained; no production gate is claimed passed.",
+    "t3_policy": "M2 remains explicit and unauthorized; automatic/default promotion is forbidden by the RED gate.",
+    "performance_protocol": "No performance claim was emitted. All screens/bounds used the full suite where required or were explicitly single-prompt diagnostics.",
+    "same_suite_retention": "No candidate was retained, so no subwindow result was promoted.",
+    "automatic_serving": "No automatic K0 or serving policy changed.",
+    "rollup": "No retained performance claim exists; benchmarks/README.md and benchmarks/CHANGELOG.md require no update."
+  },
+  "validation": {
+    "configured_guard": "python3 scripts/worklog.py check && uv run pytest -q tests/test_mtp_cycle_accounting.py tests/test_qwen38_gguf_profiles.py tests/test_qwen38_q4_verifier_numerics.py tests/test_speculative_mtp_serving_capability.py",
+    "candidate_red_gate": "python3 scripts/qwen38_z3_candidate_gate.py benchmarks/results/2026-09-02-gfx1151-qwen38-z3-red-baseline.json --output /tmp/qwen38-z3-red-result.json (expected exit 1)"
+  },
+  "campaign_result": "No validated performance improvement retained. The campaign closes after the activation-F16 and C1-shadow pivots both hit concrete implementation/safety blockers, M3 failed its measured wide bound, and M2 remained unauthorized T3."
+}

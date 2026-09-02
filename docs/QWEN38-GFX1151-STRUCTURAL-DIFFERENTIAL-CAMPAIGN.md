@@ -1,8 +1,13 @@
 # Qwen3.8-27B gfx1151 Structural Differential Campaign
 
-Status: **opened 2026-09-02; review of the W/Y closures folded in the same
-day (section 7) with pre-sized mechanism candidates; Z0 baseline refresh
-recorded with a C5 correctness failure, operation attribution partial**
+Status: **closed 2026-09-02 with measured blockers; no performance candidate
+retained and no automatic serving policy changed**
+
+Closeout: [`2026-09-02-gfx1151-qwen38-structural-differential-closeout.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-structural-differential-closeout.json).
+P1 activation-F16 and M1 C1 shadow-row pivots hit concrete missing-kernel and
+exact-lifecycle blockers; M2 remains unauthorized T3; M3 failed its measured
+wide-cell bound. The Z4 rows below record no-retention obligations, not claimed
+candidate passes.
 Successor to the closed
 [`scaling campaign`](QWEN38-GFX1151-SCALING-CAMPAIGN.md) and the
 [`external implementation survey`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md).
@@ -518,23 +523,29 @@ before implementation begins.
 Implement one mechanism at a time. Do not combine a prefill dataflow, MTP
 verifier dataflow, and proposal change in one retention decision.
 
-- [ ] Strict candidates meet their declared exact or parent-parity contract.
-- [ ] Production T1/T2 candidates meet the complete production gate from
+- [x] Strict candidates meet their declared exact or parent-parity contract.
+  No strict candidate was implemented or retained; registered strict fallbacks
+  remain unchanged.
+- [x] Production T1/T2 candidates meet the complete production gate from
   [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md), including strict-teacher
   numerical quality, determinism, isolation, category/heldout, task, and
-  applicable BF16-relative checks.
-- [ ] T3 candidates remain explicit experiments until separately authorized;
-  they do not become ordinary production defaults through this campaign.
-- [ ] Performance claims use the full category suite plus heldouts and a true
-  same-protocol AR control where speculative speed is claimed.
-- [ ] A retained candidate must be non-regressive on the complete same-suite
-  wall, not only on a target subwindow.
-- [ ] Automatic serving promotion requires the complete route/economics and
+  applicable BF16-relative checks. No T1/T2 candidate was implemented or
+  retained, and no production gate is claimed passed.
+- [x] T3 candidates remain explicit experiments until separately authorized;
+  they do not become ordinary production defaults through this campaign. M2
+  remains explicit and unauthorized.
+- [x] Performance claims use the full category suite plus heldouts and a true
+  same-protocol AR control where speculative speed is claimed. No performance
+  claim is emitted by this campaign.
+- [x] A retained candidate must be non-regressive on the complete same-suite
+  wall, not only on a target subwindow. No candidate is retained.
+- [x] Automatic serving promotion requires the complete route/economics and
   lifecycle packet. Explicit diagnostic wins do not change automatic K0 policy
-  by themselves.
-- [ ] Every retained perf claim updates the compact artifact,
+  by themselves. Automatic K0/serving policy is unchanged.
+- [x] Every retained perf claim updates the compact artifact,
   `benchmarks/README.md`, `benchmarks/CHANGELOG.md`, and the immutable worklog
-  entry with exact commands and host identity.
+  entry with exact commands and host identity. No retained performance claim
+  exists, so the benchmark rollup requires no update.
 
 Exit: each candidate is promoted, retained default-off with a concrete
 blocker, or rejected with a compact artifact.
