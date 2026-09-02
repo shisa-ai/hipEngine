@@ -1696,9 +1696,18 @@ warm GPU-kernel claims.
       are removed; vectorized multi-row dequantization plus its measured
       ~0.825-ms/request copy remains production. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-direct-staging-rejected.json`.
-- [ ] For prefill, overlap next-chunk prefetch/dequant with current GPU work
+- [x] For prefill, overlap next-chunk prefetch/dequant with current GPU work
       using the existing two-buffer ownership plus explicit event/thread
       lifetime. Decode remains demand-driven unless a real lookahead exists.
+      **Evaluated and rejected.** Because the complete prompt is known, exact PLE
+      hash rows can be precomputed safely; a one-worker candidate stages chunk
+      N+1 into the inactive pinned buffer while chunk N submits GPU work and
+      joins before reuse/H2D. Exact screens are neutral: p1024
+      **11.223→11.240 s (0.9985x)** and p4096 **54.487→54.396 s (1.0017x)**.
+      The latter is below the 1% complete-wall floor and cannot justify new
+      thread/future lifecycle. Candidate and flag removed; decode remains
+      demand-driven. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-prefill-overlap-rejected.json`.
 - [x] Add a safe isolated cold-cache protocol and a warm steady protocol. Do
       not use one process's warming repetitions as independent samples. The
       retained driver applies one initial file-scoped `WILLNEED` for warm steady;

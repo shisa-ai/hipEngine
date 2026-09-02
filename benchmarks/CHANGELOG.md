@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 prefill overlap rejected] Exact one-chunk-ahead two-buffer/thread PLE staging is neutral at p1024 (**11.223→11.240 s, 0.9985x**) and p4096 (**54.487→54.396 s, 1.0017x**); below the 1% floor, so candidate and flag removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-prefill-overlap-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 economics matrix] Completed warm/cold × off/auto/on p512/p1024/p4096+tg128 screen with exact hashes and memory/I/O/fault fields: warm auto is **0.9962x** off, cold auto **1.1603x**, with cold reads/major faults **55.15 GB/29,271→55.81 MB/11**. One repetition/configuration; warm/off remains default. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-economics-matrix.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 cache protocol closure] Closed the existing isolated cold-remap/DONTNEED and warm-steady protocol prerequisite: tensor-scoped only, no global drop_caches, separate samples, deterministic equal outputs, and zero teardown. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-cache-protocol-closure.json`.
