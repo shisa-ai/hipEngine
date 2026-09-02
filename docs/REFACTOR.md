@@ -4618,13 +4618,12 @@ into a bounded session-owned workspace (`gguf_cast_bf16_to_f16`) and
 dispatched to
 the registered `t16_wmma_prefill_fp16_in_bf16_out` siblings (kernel-level
 0.69-0.89x their BF16 owners; see the B2 sibling screen). The BF16 owners
-remain the selected strict fallback; the route is a blunt diagnostic switch
-(prefill and verify launches share the family variant) until the B2 item-3
-gates decide a profile-scoped default. The first serving screen exposed and
-closed lifecycle debt: the module-global workspace was replaced by one lazy,
-bounded 34 MiB resident-session allocation carried through the active prefill
-context and reclaimed by the session's `_buffers` teardown. Missing or
-undersized ownership fails closed to the BF16 owner. Removal condition: after
-the complete C2/C8 gates, either promote to a profile-scoped default and keep
-the env as a bisection override, or record the measured blocker and delete the
-route.
+remain the selected strict fallback. After the complete B2 gate, resolved
+Qwen3.8 production sessions default on; strict, fallback, no-profile, and env
+`0` keep BF16, while env `1` forces F16 for diagnostics. The first serving
+screen exposed and closed lifecycle debt: the module-global workspace was
+replaced by one lazy, bounded 34 MiB resident-session allocation carried
+through the active prefill context and reclaimed by the session's `_buffers`
+teardown. Missing or undersized ownership fails closed to BF16. Removal
+condition: retire the env override after the normal rollback/bisection window;
+keep the profile policy and registered strict fallback.

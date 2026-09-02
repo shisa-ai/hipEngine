@@ -136,11 +136,14 @@ only) and strict C1/K3 automatic is unchanged.
 [`Scaling review`](../docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md)
 
 The same-host standard-`Q4_K_M` comparison has hipEngine leading AR C3-C8 and
-explicit K3 MTP C3-C4; external engines lead prefill C1-C8, AR C1-C2, and MTP
-C1-C2/C5-C8. A current matched-wall Laurent refresh narrows the prefill gaps:
-hipEngine/Laurent is **178.660/196.824 prompt tok/s at C2 (-9.23%)** and
-**283.540/297.325 at C8 (-4.64%)**. Laurent's higher internal `prompt_ms`
-rates are diagnostic and are not mixed with hipEngine complete wall.
+explicit K3 MTP C3-C4. The retained B2 input-F16 production-prefill route now
+measures **209.391 prompt tok/s at C2** and **334.704 at C8**, up
+**16.95%/17.68%** from its matched BF16 controls and **6.38%/12.57%** above
+the prior same-host Laurent 196.824/297.325 rows. Complete C2/C8 wall falls
+18.13%/17.35%; all 90 profile-gate logits are bit-identical and automatic D24
+serving stays K0. Laurent's higher internal `prompt_ms` rates remain diagnostic
+and are not mixed with hipEngine complete wall.
+[`B2 retained`](results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json) ·
 [`Matched C2/C8 parity`](results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json) ·
 [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
 [`Preserved external matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
