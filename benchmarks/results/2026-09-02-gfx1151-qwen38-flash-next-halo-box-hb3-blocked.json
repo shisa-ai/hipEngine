@@ -1,0 +1,281 @@
+{
+  "baseline_claim": false,
+  "commands": {
+    "base_gdn_catalog_probe": "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/test-backend-ops test -b ROCm0 -o GATED_DELTA_NET -p 'head_count=32.*head_size=128' --output csv",
+    "base_weighted_catalog_probe": "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/test-backend-ops test -b ROCm0 -o WEIGHTED_EXPERT_SUM -p 'n_embd=2560,n_expert_used=10,n_tokens=32' --output csv",
+    "build_harnesses": "for lane in hb-base hb-pr11; do cmake --build /home/lhl/halo-box-strix-llama/$lane/build-hip-patched --target test-backend-ops -j 8; sha256sum /home/lhl/halo-box-strix-llama/$lane/build-hip-patched/bin/test-backend-ops; done",
+    "pr11_gdn_correctness": "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/test-backend-ops test -b ROCm0 -o GATED_DELTA_NET -p 'head_count=32.*head_size=128' --output csv",
+    "pr11_weighted_correctness": "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/test-backend-ops test -b ROCm0 -o WEIGHTED_EXPERT_SUM -p 'n_embd=2560,n_expert_used=10,n_tokens=32' --output csv"
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "campaign_review_stop": true,
+    "hb3_status": "blocked",
+    "next": "Stop the halo-box loop for review. If approved later, implement fixture/export harnesses as a separate measurement unit before any kernel port.",
+    "no_iq4_xs_download": true,
+    "no_production_changes": true,
+    "prerequisite": "A shared test-only cross-engine fixture and operation ABI is required for each active family. Building or porting production kernels before that would cross the approved HB-3 review boundary.",
+    "promote_candidate": false
+  },
+  "finding": "HB-3 cannot produce valid cross-engine ratios from current surfaces. The newly built pinned test harnesses prove PR11 correctness for available GDN and weighted-sum cases, but they do not expose identical operation-complete W/C against shipped hipEngine owners. Timing them would violate the campaign matching rule.",
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "identities": {
+    "hb_base": {
+      "server_binary_sha256": "14c40f2b64299c172219840b2bfbabf2ab888320516fe4b7dbb1d059aeada43c",
+      "source": {
+        "head": "6c84c7d5d8833c6e0df69628f75a0f599797934e",
+        "path": "/home/lhl/halo-box-strix-llama/hb-base",
+        "tracked_clean": false
+      },
+      "test_backend_ops": "/home/lhl/halo-box-strix-llama/hb-base/build-hip-patched/bin/test-backend-ops",
+      "test_backend_ops_sha256": "7af38994c760881169461d7c4a34f96d1d4b39876064659d36115beb51820607"
+    },
+    "hb_pr11": {
+      "server_binary_sha256": "22f1f8e634ff0cc4ae83b7323c15508c82f9e02b62d4c31704ed33f22b414c58",
+      "source": {
+        "head": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+        "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+        "tracked_clean": false
+      },
+      "test_backend_ops": "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/test-backend-ops",
+      "test_backend_ops_sha256": "bc640014c3c81c27e5eeaee43645667003a9a3e3d183a07ece8cae68297fae76"
+    },
+    "hipengine": {
+      "profile": {
+        "fell_back_to_strict": false,
+        "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+        "requested": "production",
+        "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b"
+      },
+      "source": {
+        "head": "0436e138b5fe6a43b1b1bae5df6c33fff2110148",
+        "path": "/home/lhl/hipEngine",
+        "tracked_clean": true
+      }
+    }
+  },
+  "kind": "qwen4exp_halo_box_hb3_matched_microbenchmark_readiness",
+  "ledger": [
+    {
+      "C": "unmeasured: no common operation-complete cross-engine harness/fixture satisfying this row",
+      "O": null,
+      "W": "Logical quantized matmul at actual Qwen4Exp tensor dimensions and row counts 512/1024/2048, including input quantization and output epilogue",
+      "arithmetic_class": "blocked_unclassified: a common fixture must define each engine representation before T0-T3 assignment; no cross-representation rate is admitted",
+      "blocker": "Neither test catalog has a Q4_K 512-expert/top-10 case; llama consumes F32 graph tensors while shipped hipEngine owners consume/emit BF16 or owner-specific F32, and no shared packed-weight fixture exists.",
+      "disposition": "blocked_before_timing",
+      "hb_base_vs_pr11": null,
+      "hipengine_vs_pr11": null,
+      "id": "M1",
+      "mechanism": "MMQ retuned Q4_K/Q8_0/Q5_K rows",
+      "mechanism_detail": "MMQ retuned Q4_K/Q8_0/Q5_K rows",
+      "overlap_exclusions": [
+        "HB-2 raw kernel sums are not microbenchmark walls",
+        "whole-engine HB-1 rates are not divided into mechanism rates",
+        "different dtypes/layouts/fusion boundaries are not compared",
+        "IQ4_XS and Q8_0 K/V remain excluded"
+      ],
+      "required_unblock": "Add a read-only cross-engine fixture exporter for identical GGUF weight bytes, activations, selected IDs, outputs, and complete quantize+matmul+epilogue timing boundaries.",
+      "s": null,
+      "scope": "gfx1151, UD-Q4_K_XL/BF16 model configuration, c=1",
+      "strict_fallback": "current registered hipEngine strict/unfused owner remains unchanged"
+    },
+    {
+      "C": "unmeasured: no common operation-complete cross-engine harness/fixture satisfying this row",
+      "O": null,
+      "W": "512 experts, top-10 IDs per token, rows 512/1024/2048; produce expert counts, prefix bounds, forward map, and inverse map",
+      "arithmetic_class": "blocked_unclassified: a common fixture must define each engine representation before T0-T3 assignment; no cross-representation rate is admitted",
+      "blocker": "mm_ids_helper_top10_parallel is an internal launch inside GGML MUL_MAT_ID and has no standalone test operation. hipEngine count/prefix/scatter uses different buffers and is only callable through its own chain.",
+      "disposition": "blocked_before_timing",
+      "hb_base_vs_pr11": null,
+      "hipengine_vs_pr11": null,
+      "id": "M2",
+      "mechanism": "top-10 expert-id compaction",
+      "mechanism_detail": "top-10 expert-id compaction",
+      "overlap_exclusions": [
+        "HB-2 raw kernel sums are not microbenchmark walls",
+        "whole-engine HB-1 rates are not divided into mechanism rates",
+        "different dtypes/layouts/fusion boundaries are not compared",
+        "IQ4_XS and Q8_0 K/V remain excluded"
+      ],
+      "required_unblock": "Expose non-production test-only wrappers on both sides with one shared ID fixture and identical four-output map contract; include initialization/reset and all map outputs.",
+      "s": null,
+      "scope": "gfx1151, UD-Q4_K_XL/BF16 model configuration, c=1",
+      "strict_fallback": "current registered hipEngine strict/unfused owner remains unchanged"
+    },
+    {
+      "C": "unmeasured: no common operation-complete cross-engine harness/fixture satisfying this row",
+      "O": null,
+      "W": "F32 expert values [tokens,10,2560] plus F32 weights [tokens,10], producing F32 [tokens,2560] for tokens 1/512/1024/2048",
+      "arithmetic_class": "blocked_unclassified: a common fixture must define each engine representation before T0-T3 assignment; no cross-representation rate is admitted",
+      "blocker": "PR11 alone adds WEIGHTED_EXPERT_SUM(2560,10,32) to its test catalog; HB-base has no row. Shipped hipEngine weighted owners consume BF16 expert values or fuse shared/residual work, so no identical F32 operation owner exists.",
+      "disposition": "blocked_before_timing",
+      "hb_base_vs_pr11": null,
+      "hipengine_vs_pr11": null,
+      "id": "M5-weighted",
+      "mechanism": "weighted 10x2560 expert sum",
+      "mechanism_detail": "weighted 10x2560 expert sum",
+      "overlap_exclusions": [
+        "HB-2 raw kernel sums are not microbenchmark walls",
+        "whole-engine HB-1 rates are not divided into mechanism rates",
+        "different dtypes/layouts/fusion boundaries are not compared",
+        "IQ4_XS and Q8_0 K/V remain excluded"
+      ],
+      "required_unblock": "Add a test-only hipEngine F32 logical weighted-sum surface or export the llama graph at the shipped BF16 boundary; add identical token sweeps to both harnesses.",
+      "s": null,
+      "scope": "gfx1151, UD-Q4_K_XL/BF16 model configuration, c=1",
+      "strict_fallback": "current registered hipEngine strict/unfused owner remains unchanged"
+    },
+    {
+      "C": "unmeasured: no common operation-complete cross-engine harness/fixture satisfying this row",
+      "O": null,
+      "W": "Normalized Q/K, V, beta, decay, FP32 recurrent state; Hk=16, Hv=32, Dk=Dv=128; tokens 1/512/1024/2048; return core output and final state",
+      "arithmetic_class": "blocked_unclassified: a common fixture must define each engine representation before T0-T3 assignment; no cross-representation rate is admitted",
+      "blocker": "The available llama test uses head_count=32,v_repeat=1 and its graph includes L2 normalization; the real model is Hk=16,Hv=32. hipEngine shipped prefill includes prepare and sigmoid/RMS gate around a differently laid-out state owner. Existing test cases therefore do not define the same W/C even though both pass their own oracles.",
+      "disposition": "blocked_before_timing",
+      "hb_base_vs_pr11": null,
+      "hipengine_vs_pr11": null,
+      "id": "M6",
+      "mechanism": "32-warp GDN recurrence",
+      "mechanism_detail": "32-warp GDN recurrence",
+      "overlap_exclusions": [
+        "HB-2 raw kernel sums are not microbenchmark walls",
+        "whole-engine HB-1 rates are not divided into mechanism rates",
+        "different dtypes/layouts/fusion boundaries are not compared",
+        "IQ4_XS and Q8_0 K/V remain excluded"
+      ],
+      "required_unblock": "Add Hk=16/Hv=32 model-shape GGML cases and a shared normalized-input/final-state fixture; expose hipEngine recurrence-only strict-layout timing or include equivalent prepare/post operations in both C boundaries.",
+      "s": null,
+      "scope": "gfx1151, UD-Q4_K_XL/BF16 model configuration, c=1",
+      "strict_fallback": "current registered hipEngine strict/unfused owner remains unchanged"
+    },
+    {
+      "C": "unmeasured: no common operation-complete cross-engine harness/fixture satisfying this row",
+      "O": null,
+      "W": "Six separate logical operations: transposed concat, contiguous F32 mul/add, dual S128 L2 norm, four-column Q8 matvec, RMSNorm-128, and four-row sum at HB-2 model shapes",
+      "arithmetic_class": "blocked_unclassified: a common fixture must define each engine representation before T0-T3 assignment; no cross-representation rate is admitted",
+      "blocker": "M8 is not one operation and cannot receive one ratio. PR symbols are internal graph selections; existing hipEngine analogues have separate APIs/layouts and no shared input/output fixtures for these six boundaries.",
+      "disposition": "blocked_before_timing",
+      "hb_base_vs_pr11": null,
+      "hipengine_vs_pr11": null,
+      "id": "M8",
+      "mechanism": "elementwise/recurrent specializations",
+      "mechanism_detail": "elementwise/recurrent specializations",
+      "overlap_exclusions": [
+        "HB-2 raw kernel sums are not microbenchmark walls",
+        "whole-engine HB-1 rates are not divided into mechanism rates",
+        "different dtypes/layouts/fusion boundaries are not compared",
+        "IQ4_XS and Q8_0 K/V remain excluded"
+      ],
+      "required_unblock": "Split M8 into six test-only fixtures with explicit dimensions, dtypes, strides, outputs, and owner-exclusive timing; deduplicate four-column Q8 matvec against M1 before measurement.",
+      "s": null,
+      "scope": "gfx1151, UD-Q4_K_XL/BF16 model configuration, c=1",
+      "strict_fallback": "current registered hipEngine strict/unfused owner remains unchanged"
+    }
+  ],
+  "lifecycle": {
+    "all_processes_exited": true,
+    "base_probe_returncodes": [
+      0,
+      0
+    ],
+    "harness_build_returncode": 0,
+    "harness_build_task": "bg-84",
+    "pr11_probe_returncodes": [
+      0,
+      0
+    ],
+    "timing_arms_started": false
+  },
+  "mechanical_evidence": {
+    "catalog_audit": {
+      "q4_512_experts_top10_case_count": {
+        "base": 0,
+        "pr11": 0
+      },
+      "real_model_gdn_contract": "HB-2 model trace uses gated_delta_net_cuda<128,false,false> with Hk=16/Hv=32; available catalog rows do not expose that complete model boundary to hipEngine.",
+      "weighted_2560_top10_case_count": {
+        "base": 0,
+        "pr11": 1
+      }
+    },
+    "correctness": {
+      "base_gdn_rows_supported": 1,
+      "base_weighted_case_present": false,
+      "pr11_gdn_rows_supported": 5,
+      "pr11_weighted_supported": true
+    },
+    "raw_outputs": [
+      {
+        "bytes": 7100,
+        "path": "/tmp/kendex-pi-bg/bg-84-1788366884808.log",
+        "sha256": "e43932bbbe378b76312aa8bcec25d7a2dab6098f4a8523aedb36cedb6d69893b"
+      },
+      {
+        "bytes": 96,
+        "path": "/tmp/hb3-base-weighted-test.csv",
+        "sha256": "ae1963f2ace9bac4695cdd6dad90f84bf7ceefcce8abcb97ec9d546ab75f0e0d"
+      },
+      {
+        "bytes": 161,
+        "path": "/tmp/hb3-base-weighted-test.stderr",
+        "sha256": "004d51b1921572533972c44f67a00d0405009db60a36594513a224ec0de0ce35"
+      },
+      {
+        "bytes": 234,
+        "path": "/tmp/hb3-base-gdn-test.csv",
+        "sha256": "78f2a5f6f52690819997bf2a65665b577b4e2ed4656ea856992ec6330ca72fd5"
+      },
+      {
+        "bytes": 161,
+        "path": "/tmp/hb3-base-gdn-test.stderr",
+        "sha256": "004d51b1921572533972c44f67a00d0405009db60a36594513a224ec0de0ce35"
+      },
+      {
+        "bytes": 186,
+        "path": "/tmp/hb3-pr11-weighted-test.csv",
+        "sha256": "d08fdfd64e520fbc63163d087821f9f501aebd09386bb2bafac0239dd63bf056"
+      },
+      {
+        "bytes": 161,
+        "path": "/tmp/hb3-pr11-weighted-test.stderr",
+        "sha256": "004d51b1921572533972c44f67a00d0405009db60a36594513a224ec0de0ce35"
+      },
+      {
+        "bytes": 792,
+        "path": "/tmp/hb3-pr11-gdn-test.csv",
+        "sha256": "eda31f1e9f4ef17a69a0958972cb806a8e435364e98c670f785536e3275bfa83"
+      },
+      {
+        "bytes": 161,
+        "path": "/tmp/hb3-pr11-gdn-test.stderr",
+        "sha256": "004d51b1921572533972c44f67a00d0405009db60a36594513a224ec0de0ce35"
+      }
+    ]
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "kv": "BF16",
+    "new_weight_quant_downloaded": false,
+    "quant": "Unsloth UD-Q4_K_XL",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "tensor_bytes": 111323630080
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "scope": "HB-3 shape/ABI readiness for HB-2 measured-active mechanisms only; no production or kernel changes",
+  "status": "blocked_concrete_prerequisite"
+}

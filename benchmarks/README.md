@@ -245,6 +245,10 @@ Routed-compact/J48/J64, shared-mul-add, and Q8-KV attention paths are inactive.
 The largest isolated trace change is p4096 GDN core kernel sum
 **2,139.377→647.976 ms**; it is diagnostic pending HB-3 operation-complete
 matched pairs. [`halo-box HB-2 census`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json).
+HB-3 stops before timing: pinned operation harnesses pass their exposed cases,
+but **0/5 active families** currently share an identical cross-engine fixture,
+dtype/layout contract, and operation boundary. No mechanism ratio or candidate is
+reported. [`halo-box HB-3 blocker`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json).
 
 The frozen p508 role/API profile still puts hipEngine versus llama HIP device
 kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90
