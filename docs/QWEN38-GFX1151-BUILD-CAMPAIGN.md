@@ -74,7 +74,7 @@ GEMMs on the same T16 tensors at ~230-260 ms — a 3-9x per-family gap (Q6
 | Step | Mechanism | Class | Measured/derived bound | Status |
 | --- | --- | --- | ---: | --- |
 | B1 | A+B verifier owner transfer + Q6 lm-head one-sweep | T0 registry / T2 | ~35-40% C8 cycle (derived from measured F3 + M3); parity plausible | blocked only by the refuted B0 premise |
-| B2 | P1 sole-T16 input-F16 Q4/Q5 family | T1 | 19.8%/20.1% C2/C8 prefill wall (derived from Laurent's measured quant delta) | blocked on missing kernel family — build it |
+| B2 | P1 sole-T16 input-F16 Q4/Q5 family | T1 | 18.13%/17.35% C2/C8 complete wall (measured) | retained production default; strict BF16 fallback |
 | B3 | M1 C1 request-owned shadow-session lifecycle | T2 | 41.76% C1 complete-suite (measured screen) | blocked on missing lifecycle ABI — build it |
 | B4 | M2 C2 draft depth K3→K2/K1 | T3 | 17.79% C2 (derived) | **authorized 2026-09-02**, incl. automatic promotion via full packet |
 | B5 | E integer MMQ M=17-48 | T2 | stock HIP 56.222 tok/s existence anchor | conditional on B1's measured pass |
@@ -311,7 +311,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   context variable. Missing/undersized ownership fails closed to BF16. RED/GREEN
   covers bounded restore, distinct session pointers, reuse, and no global;
   cache-only rows72/288 returned to zero tracked bytes/allocations after close.
-- [ ] Profile the expected kernels (prebuilt `.so`, `rocprofv3`), then run the
+- [x] Profile the expected kernels (prebuilt `.so`, `rocprofv3`), then run the
   complete C2/C8 same-suite prefill gates and the applicable production
   numerical gate (strict-teacher mean/p95/p99/max KL and top-1 by
   category/shape/transition, deterministic repeat, isolation, BF16-relative
@@ -359,10 +359,14 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   Q5 `_Float16` owners with positive durations. The fail-closed Z3 P1 evidence
   gate passes all 13 checks.
 
-  The candidate is retention-eligible but not yet the product default. The
-  switch remains default-off pending the next atomic unit: profile-scoped
-  production default, strict/fallback/env-override tests, and clean default-path
-  confirmation. BF16 owners remain registered strict fallbacks.
+  Retention executed in `98294239e` + persistent-server propagation repair
+  `8c34505b0`: resolved production sessions now default to F16 staging; strict,
+  legacy/no-profile, and production→strict fallback keep BF16, with env `1`/`0`
+  force-on/restore overrides. Clean no-env confirmation at `8c34505b0` matches
+  the explicit candidate within -0.49%/-0.11% at C2/C8
+  (208.373/334.326 prompt tok/s), preserves all 40 IDs and automatic K0; clean
+  strict remains exact/K0 on BF16 at 175.192/271.941. Final retained artifact:
+  [`...b2-f16-retained.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json).
 
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 

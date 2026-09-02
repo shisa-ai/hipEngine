@@ -1,3 +1,5 @@
+- [2026-09-02 gfx1151 Qwen3.8 B2 input-F16 prefill retained] Production C2/C8 prompt throughput 179.037/284.423 -> 209.391/334.704 tok/s (+16.95%/+17.68%); combined complete wall -18.13%/-17.35%. All 90 profile rows bit-identical; repeat/isolation/lifecycle/D24 automatic-K0 task/trace gates pass; strict BF16 fallback unchanged. `benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8 B1 verifier owner transfer retained] One-group D24 explicit K3 C5-C8 MTP 22.476/23.568/24.215/25.983 -> 34.969/38.425/41.615/47.642 tok/s (+56.3/+64.0/+69.5/+72.7%), 40/40 exact, identical IDs, sec-6 gate top-1 100% max KL 6.5e-4; production admission inert; strict oracle unchanged. Profile-scoped default-on at c27abc15d. `benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json`.
 # hipEngine Benchmark Changelog
 
