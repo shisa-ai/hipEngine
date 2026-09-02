@@ -324,24 +324,28 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   0.69–0.89, Q4 shared-B 0.71–0.81, Q5 0.81–0.83) — the vectorized-load
   mechanism is measurably real and the integration proceeds.
 
-  Serving screen complete but not retained (2026-09-02,
-  [`...b2-f16-prefill-screen.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-prefill-screen.json),
-  commit `af8440b0b`, physical `gfx1151`, production profile, all ten prompts,
-  C2/C8 D1 typed no-admission prefill, cached build): combined two-arm wall
-  falls **11.298→9.225 s at C2 (-18.35%, 1.225×)** and
-  **26.796→22.090 s at C8 (-17.56%, 1.213×)**. The independent candidate
-  repeat is -0.04%/+1.85% versus the first C2/C8 candidate. All 60 measured
-  cells pass per-arm self-exactness and typed K0 route expectations. The
-  required trace observes 1,008 BF16→F16 casts, 864 `_Float16` Q4 owners,
-  and 144 `_Float16` Q5 owners with positive durations at rows72/288.
+  Initial serving screen is **INVALID for retention** (2026-09-02,
+  [`...b2-f16-prefill-screen.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-prefill-screen.json)):
+  it measured 18.35%/17.56% C2/C8 wall reduction and traced the expected
+  kernels, but its device cast numerically converted `half_t` to `uint16_t`
+  instead of storing IEEE-half bits. An exact cast RED exposed
+  `-3.5→0`, `17.75→17`; the broken full-suite candidate had mean/max KL
+  14.02/16.48 and 0% top-1. Q4-only and Q5-only ablations also failed,
+  correctly ruling out the matmul families before source inspection found the
+  common cast defect.
 
-  The workspace blocker is resolved by the session-owned lifecycle packet
-  above. One C8 free-running arm cell still differs across candidate processes
-  (diagnostic until strict-teacher localization, but same-schedule determinism
-  is binding). Rerun deterministic/isolation evidence, then run the complete
-  strict-teacher, category/heldout, BF16-relative, task, lifecycle, and fresh
-  same-suite wall gates. The switch stays default-off and the BF16 owners
-  remain the strict fallback.
+  Cast correction packet (2026-09-02,
+  [`...b2-f16-cast-correction.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-cast-correction.json)):
+  destination is now `half_t*` with direct half assignment; Python/registry raw
+  pointer ABI is unchanged. The exact bit-pattern RED is GREEN. On all ten
+  canonical prompt-tail full-logit rows (C8 first eight + C2 mixed pair),
+  corrected candidate versus BF16 fallback is bit-identical: mean/p95/p99/max
+  KL 0, top-1 100%, strict and candidate repeats bit-identical. This is the
+  first corrected numerical screen, not retention. The workspace blocker is
+  resolved by the session-owned lifecycle packet above. Remaining: 90-row
+  prompt/decode transition numerics, same-width isolation, fresh corrected
+  same-suite wall, and corrected trace. The switch stays default-off and the
+  BF16 owners remain the strict fallback.
 
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 
