@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p10_natural_retrieval_current",
+  "status": "current_path_4k_16k_64k_passed",
+  "performance_claim": false,
+  "scope": "Current stacked production path natural archive retrieval at 4K, 16K, and 64K with exact selected-position/CPU selector controls",
+  "source": {
+    "repo": "/home/lhl/hipEngine",
+    "head_before_runs": "4cf7bc100",
+    "working_tree_scope_clean": true
+  },
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "gfx1151",
+    "power_dpm_force_performance_level": "auto"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "command_template": "HIPENGINE_HIP_ARCH=gfx1151 uv run python scripts/qwen4_exp_qsa_retrieval_gate.py /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --target-tokens DEPTH --max-tokens 128 --prefill-chunk-size 512 --json-out OUTPUT",
+  "rows": [
+    {
+      "depth": 4096,
+      "prefill_seconds": 77.16035283199744,
+      "prompt_tok_s": 53.084257000720186,
+      "raw_sha256": "a96892cf2dd3e86f42afe8a62dc341030c0ec125ef4e8201ee2145d71a262da8"
+    },
+    {
+      "depth": 16384,
+      "prefill_seconds": 318.25457881900365,
+      "prompt_tok_s": 51.4807989905397,
+      "raw_sha256": "c742dd6963163abc6ec02e7eecaa720a36eee0340e9c718db2c842436e63142c"
+    },
+    {
+      "depth": 65536,
+      "prefill_seconds": 1364.7747806769912,
+      "prompt_tok_s": 48.019644653377256,
+      "raw_sha256": "12c6cc6b277d442d0924bb3c29e35a538a6b20e48ab1c2e3991a76238f984f9d"
+    }
+  ],
+  "binding_controls_all_rows": {
+    "retrieval_exact": true,
+    "final_answer": "VIOLET-7391",
+    "needle_selected_layers": 12,
+    "selected_count": 2048,
+    "cpu_selected_positions_exact": true,
+    "position_mismatches": 0,
+    "transaction_repeat_exact": true,
+    "rollback_isolation_exact": true,
+    "after_close_bytes": 0,
+    "after_close_allocations": 0
+  },
+  "amdahl": {
+    "W_C_O_s": "not applicable to a correctness/depth qualification rung",
+    "arithmetic_class": "existing production path, no route change",
+    "overlap_exclusions": "these complete retrieval rows include prefill plus gate generation/control; historical rows are context only and are not old-to-new claims",
+    "strict_fallback": "unchanged"
+  },
+  "decision": "Close current natural 4K/16K/64K retrieval qualification. All depths pass exact retrieval, all 12 needle-selection owners, binding CPU selected-position parity, transactional replay/isolation, and teardown. Continue with depth-resolved QSA/PLE/graph/KV profiling."
+}
