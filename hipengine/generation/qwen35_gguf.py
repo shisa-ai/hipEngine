@@ -215,7 +215,19 @@ _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
 from hipengine.runtime.gguf_linear import (
     mtp_serving_target_use_wmma_prefill as _mtp_serving_target_use_wmma_prefill,
+    prefill_f16_staging_for as _prefill_f16_staging_for_profile,
 )
+
+
+def _prefill_f16_staging_for(generator: object) -> bool:
+    """Profile-scoped B2 prefill activation staging for one generator."""
+
+    return _prefill_f16_staging_for_profile(
+        getattr(generator, "execution_profile", None),
+        profile_fell_back_to_strict=bool(
+            getattr(generator, "execution_profile_fell_back_to_strict", True)
+        ),
+    )
 
 
 def _mtp_serving_target_wmma_for(generator: object) -> bool:
@@ -1566,6 +1578,7 @@ class Qwen35GGUFBringupGenerator:
             "bulk_prefill_attention_mode",
             "bulk",
         )
+        session.use_prefill_f16_staging = _prefill_f16_staging_for(self)
         prefill_quant = getattr(self, "prefill_quant", None)
         if prefill_quant is not None:
             session.select_prefill_quant(prefill_quant)

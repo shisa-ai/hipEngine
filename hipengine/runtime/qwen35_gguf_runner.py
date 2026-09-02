@@ -14093,6 +14093,7 @@ class Qwen35GGUFResidentSession:
     use_wmma_prefill: bool | None = None
     use_gemv_decode: bool | None = None
     use_q6_f16_rocblas_prefill: bool | None = None
+    use_prefill_f16_staging: bool = False
     prefill_chunk_size: int = 0
     prefill_config: PrefillConfig | None = None
     prefill_flight_recorder_path: str | Path | None = None
@@ -17467,7 +17468,7 @@ class Qwen35GGUFResidentSession:
     def _prefill_f16_staging_context(self):
         """Bind the B2 F16 cast workspace to this resident session."""
 
-        if not prefill_f16_staging_enabled():
+        if not prefill_f16_staging_enabled(self.use_prefill_f16_staging):
             return prefill_f16_staging_session(False)
         if self.runner is None or self.runner.weights is None:
             raise RuntimeError("GGUF resident session is closed")

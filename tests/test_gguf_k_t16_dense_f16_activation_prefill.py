@@ -369,6 +369,51 @@ def test_prefill_f16_staging_defaults_off() -> None:
             assert prefill_f16_staging_enabled() is False
 
 
+def test_prefill_f16_profile_default_and_env_overrides() -> None:
+    from hipengine.runtime.gguf_linear import (
+        PREFILL_F16_STAGING_ENV,
+        prefill_f16_staging_for,
+    )
+
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop(PREFILL_F16_STAGING_ENV, None)
+        assert prefill_f16_staging_for() is False
+        assert prefill_f16_staging_for("strict") is False
+        assert prefill_f16_staging_for("legacy_exact") is False
+        assert prefill_f16_staging_for("production") is True
+        assert (
+            prefill_f16_staging_for(
+                "production",
+                profile_fell_back_to_strict=True,
+            )
+            is False
+        )
+        with mock.patch.dict(os.environ, {PREFILL_F16_STAGING_ENV: "1"}):
+            assert prefill_f16_staging_for("strict") is True
+        with mock.patch.dict(os.environ, {PREFILL_F16_STAGING_ENV: "0"}):
+            assert prefill_f16_staging_for("production") is False
+
+
+def test_generator_configures_profile_scoped_prefill_f16_default() -> None:
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+
+    generator = object.__new__(Qwen35GGUFBringupGenerator)
+    generator.execution_profile = "production"
+    generator.execution_profile_fell_back_to_strict = False
+    session = SimpleNamespace()
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("HIPENGINE_GGUF_PREFILL_F16_STAGING", None)
+        generator._configure_session(session)
+        assert session.use_prefill_f16_staging is True
+        generator.execution_profile = "strict"
+        generator._configure_session(session)
+        assert session.use_prefill_f16_staging is False
+        generator.execution_profile = "production"
+        generator.execution_profile_fell_back_to_strict = True
+        generator._configure_session(session)
+        assert session.use_prefill_f16_staging is False
+
+
 def test_prefill_f16_workspace_context_is_bounded_and_restored() -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
     from hipengine.runtime.gguf_linear import (
