@@ -314,6 +314,7 @@ from hipengine.runtime.gguf_linear import (
     GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_F32,
+    PREFILL_F16_STAGING_MAX_ROWS,
     Q6T16F16RocblasPrefillSession,
     TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
     gemv_decode_session,
@@ -328,6 +329,8 @@ from hipengine.runtime.gguf_linear import (
     launch_gguf_linear_pair_silu,
     launch_gguf_linear_triple,
     native_batch_decode_session,
+    prefill_f16_staging_enabled,
+    prefill_f16_staging_session,
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
     q6_t16_f16_rocblas_prefill_session,
@@ -14260,6 +14263,7 @@ class Qwen35GGUFResidentSession:
     _prefill_hidden_a: object | None = field(default=None, init=False)
     _prefill_hidden_b: object | None = field(default=None, init=False)
     _bulk_prefill_scratch: object | None = field(default=None, init=False)
+    _prefill_f16_staging_buf: object | None = field(default=None, init=False)
     _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
@@ -17460,6 +17464,38 @@ class Qwen35GGUFResidentSession:
         )
         return q6_t16_f16_rocblas_prefill_session(owner)
 
+    def _prefill_f16_staging_context(self):
+        """Bind the B2 F16 cast workspace to this resident session."""
+
+        if not prefill_f16_staging_enabled():
+            return prefill_f16_staging_session(False)
+        if self.runner is None or self.runner.weights is None:
+            raise RuntimeError("GGUF resident session is closed")
+        config = self.runner.weights.config
+        max_in_features = max(
+            int(config.hidden_size),
+            int(config.feed_forward_length),
+            int(config.ssm_inner_size),
+        )
+        required_nbytes = (
+            int(PREFILL_F16_STAGING_MAX_ROWS)
+            * max_in_features
+            * DType.FP16.itemsize
+        )
+        buffer = self._prefill_f16_staging_buf
+        if buffer is None:
+            runtime = self.runtime or get_hip_runtime()
+            buffer = malloc(required_nbytes, runtime=runtime)
+            self._prefill_f16_staging_buf = buffer
+            self._buffers = (*self._buffers, buffer)
+        if int(buffer.nbytes) < required_nbytes:
+            raise RuntimeError("resident F16 staging workspace is undersized")
+        return prefill_f16_staging_session(
+            True,
+            workspace_ptr=int(buffer.ptr),
+            workspace_nbytes=int(buffer.nbytes),
+        )
+
     def _q8_mmq_prefill_context(self):
         """Return the bounded Q8 MMQ context selected by the generator plugin."""
 
@@ -17623,6 +17659,7 @@ class Qwen35GGUFResidentSession:
                 q4_t16_unequal_pair_prefill_session(
                     _gguf_q4_t16_unequal_pair_prefill_applies(self.runner)
                 ),
+                self._prefill_f16_staging_context(),
                 self._q8_mmq_prefill_context(),
                 self._q6_f16_rocblas_prefill_context(request_rows=len(token_ids)),
             ):
@@ -20521,21 +20558,22 @@ class Qwen35GGUFResidentSession:
                     " state before reusing the packed workspace slots"
                 )
         try:
-            return self._prefill_batch_native_impl(
-                prompt_token_ids,
-                sessions=sessions,
-                full_prompt_lengths=full_prompt_lengths,
-                return_logits=return_logits,
-                return_hidden_seeds=return_hidden_seeds,
-                sample_output=sample_output,
-                require_logits=require_logits,
-                capture_layer_output_hidden=capture_layer_output_hidden,
-                target_hidden_chunk_sinks=target_hidden_chunk_sinks,
-                target_hidden_request_ids=target_hidden_request_ids,
-                target_hidden_chunk_starts=target_hidden_chunk_starts,
-                finish_target_hidden_sinks=finish_target_hidden_sinks,
-                stream=stream,
-            )
+            with self._prefill_f16_staging_context():
+                return self._prefill_batch_native_impl(
+                    prompt_token_ids,
+                    sessions=sessions,
+                    full_prompt_lengths=full_prompt_lengths,
+                    return_logits=return_logits,
+                    return_hidden_seeds=return_hidden_seeds,
+                    sample_output=sample_output,
+                    require_logits=require_logits,
+                    capture_layer_output_hidden=capture_layer_output_hidden,
+                    target_hidden_chunk_sinks=target_hidden_chunk_sinks,
+                    target_hidden_request_ids=target_hidden_request_ids,
+                    target_hidden_chunk_starts=target_hidden_chunk_starts,
+                    finish_target_hidden_sinks=finish_target_hidden_sinks,
+                    stream=stream,
+                )
         finally:
             seen: set[int] = set()
             for session in session_tuple:
@@ -26675,6 +26713,7 @@ class Qwen35GGUFResidentSession:
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._buffers = ()
+        self._prefill_f16_staging_buf = None
         self._verify_linear_state_src_conv_table_buf = None
         self._verify_linear_state_src_recurrent_table_buf = None
         self._verify_linear_state_dst_conv_table_buf = None
@@ -26789,6 +26828,7 @@ class Qwen35GGUFResidentSession:
             if buffer is not None:
                 free(buffer, runtime=runtime)
         self._buffers = ()
+        self._prefill_f16_staging_buf = None
         self._native_spec_selected_hidden_bf16 = None
         for buffer in reversed(self._linear_state_snapshot_backups):
             if buffer is not None:

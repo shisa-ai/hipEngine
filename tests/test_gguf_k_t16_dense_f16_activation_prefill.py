@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+from types import SimpleNamespace
 from unittest import mock
 
 import numpy as np
@@ -315,6 +316,94 @@ def test_prefill_f16_staging_defaults_off() -> None:
             os.environ, {PREFILL_F16_STAGING_ENV: "0"}
         ):
             assert prefill_f16_staging_enabled() is False
+
+
+def test_prefill_f16_workspace_context_is_bounded_and_restored() -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+    from hipengine.runtime.gguf_linear import (
+        prefill_f16_staging_session,
+        prefill_f16_staging_workspace,
+    )
+
+    assert prefill_f16_staging_workspace() is None
+    assert gguf_linear._prefill_f16_stage_ptr(1) == 0
+    with prefill_f16_staging_session(
+        True,
+        workspace_ptr=0x1200,
+        workspace_nbytes=4096,
+    ):
+        owner = prefill_f16_staging_workspace()
+        assert owner is not None
+        assert owner.ptr == 0x1200
+        assert owner.nbytes == 4096
+        assert gguf_linear._prefill_f16_stage_ptr(2048) == 0x1200
+        assert gguf_linear._prefill_f16_stage_ptr(2049) == 0
+    assert prefill_f16_staging_workspace() is None
+    assert gguf_linear._prefill_f16_stage_ptr(1) == 0
+
+
+def test_prefill_f16_workspace_has_no_module_global_allocator() -> None:
+    import hipengine.runtime.gguf_linear as gguf_linear
+
+    assert not hasattr(gguf_linear, "_PREFILL_F16_WORKSPACE")
+    assert not hasattr(gguf_linear, "_PREFILL_F16_WORKSPACE_LOCK")
+
+
+def test_resident_sessions_own_distinct_prefill_f16_workspaces(monkeypatch) -> None:
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from hipengine.runtime.gguf_linear import prefill_f16_staging_workspace
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    allocations = []
+
+    def fake_malloc(nbytes: int, *, runtime):
+        buffer = SimpleNamespace(
+            ptr=0x4000 + len(allocations) * 0x1000,
+            nbytes=nbytes,
+        )
+        allocations.append((buffer, runtime))
+        return buffer
+
+    monkeypatch.setattr(runner_module, "malloc", fake_malloc)
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_F16_STAGING", "1")
+
+    def make_session() -> Qwen35GGUFResidentSession:
+        session = object.__new__(Qwen35GGUFResidentSession)
+        session.runtime = "rt"
+        session._buffers = ()
+        session._prefill_f16_staging_buf = None
+        session.runner = SimpleNamespace(
+            weights=SimpleNamespace(
+                config=SimpleNamespace(
+                    hidden_size=5_120,
+                    feed_forward_length=17_408,
+                    ssm_inner_size=6_144,
+                )
+            )
+        )
+        return session
+
+    first = make_session()
+    second = make_session()
+    with first._prefill_f16_staging_context():
+        first_owner = prefill_f16_staging_workspace()
+        assert first_owner is not None
+    with first._prefill_f16_staging_context():
+        assert prefill_f16_staging_workspace() == first_owner
+    with second._prefill_f16_staging_context():
+        second_owner = prefill_f16_staging_workspace()
+        assert second_owner is not None
+    monkeypatch.setenv("HIPENGINE_GGUF_PREFILL_F16_STAGING", "0")
+    disabled = make_session()
+    with disabled._prefill_f16_staging_context():
+        assert prefill_f16_staging_workspace() is None
+
+    assert first_owner.ptr != second_owner.ptr
+    assert len(allocations) == 2
+    assert disabled._buffers == ()
+    assert first._prefill_f16_staging_buf in first._buffers
+    assert second._prefill_f16_staging_buf in second._buffers
+    assert first._prefill_f16_staging_buf.nbytes == 1024 * 17_408 * 2
 
 
 def test_prefill_f16_router_twins_registered() -> None:

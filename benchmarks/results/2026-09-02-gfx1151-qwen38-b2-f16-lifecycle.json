@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b2_f16_lifecycle",
+  "date": "2026-09-02",
+  "status": "lifecycle_owner_green_pending_production_gates",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "c564c6e21",
+    "candidate_worktree": true,
+    "changed_files": [
+      "hipengine/runtime/gguf_linear.py",
+      "hipengine/runtime/qwen35_gguf_runner.py",
+      "tests/test_gguf_k_t16_dense_f16_activation_prefill.py"
+    ]
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Strix Halo Radeon Graphics / 1002:1586",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "standard_q4_k_m"
+  },
+  "execution_profile": "production candidate forced by HIPENGINE_GGUF_PREFILL_F16_STAGING=1; BF16 registered strict fallback unchanged",
+  "workspace_contract": {
+    "owner": "Qwen35GGUFResidentSession",
+    "binding": "PrefillF16StagingWorkspace ContextVar for the active prefill call",
+    "capacity_rows": 1024,
+    "max_input_features": 17408,
+    "capacity_bytes": 35651584,
+    "capacity_mib": 34.0,
+    "allocation": "lazy once per enabled resident session",
+    "reuse": "same session reuses one pointer",
+    "isolation": "distinct sessions own distinct pointers",
+    "undersized_or_missing_owner": "fail closed to the registered BF16 launch",
+    "teardown": "workspace is in the resident session _buffers ownership list"
+  },
+  "red_green": {
+    "red_command": "uv run pytest -q tests/test_gguf_k_t16_dense_f16_activation_prefill.py -k 'workspace_context or module_global or resident_sessions'",
+    "red_result": "3 failed: missing bounded workspace API, module-global allocator present, resident owner missing",
+    "green_result": "3 passed",
+    "full_b2_result": "10 passed",
+    "dispatch_cache_result": "5 passed"
+  },
+  "gpu_lifecycle": {
+    "rows": [72, 288],
+    "require_cached_build": true,
+    "before": {
+      "current_allocated_bytes": 0,
+      "active_allocations": 0
+    },
+    "peak": {
+      "allocated_bytes": 17765540876,
+      "active_allocations": 657
+    },
+    "after": {
+      "current_allocated_bytes": 0,
+      "active_allocations": 0,
+      "total_allocated_bytes": 17765573644,
+      "total_freed_bytes": 17765573644
+    },
+    "prefill": [
+      {"rows": 72, "wall_ms": 317.010337, "gpu_span_ms": 317.0058898925781, "next_token_id": 26049},
+      {"rows": 288, "wall_ms": 802.790261, "gpu_span_ms": 802.7823486328125, "next_token_id": 664}
+    ],
+    "passed": true,
+    "note": "The GPU capture completed and reclaimed all tracked allocations. Its final assertion used the obsolete key current_bytes and exited nonzero after writing the raw result; the saved-result focused check used current_allocated_bytes and passed, so the expensive model run was not repeated."
+  },
+  "raw_source": {
+    "path": "/tmp/q38-b2-run/pf4-lifecycle.json",
+    "sha256": "24181ee23e30ed66c84061ea41ac0e50e87a94bd5d8802f1e6e80ed23e23ce67",
+    "bytes": 182969
+  },
+  "decision": {
+    "workspace_lifecycle_blocker_resolved": true,
+    "candidate_retained": false,
+    "remaining": [
+      "same-schedule deterministic repeat",
+      "strict-teacher production numerics by category/shape/transition",
+      "same-width isolation",
+      "BF16-relative and task gates",
+      "fresh same-suite wall after ownership change"
+    ]
+  }
+}
