@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 
@@ -246,3 +247,152 @@ def test_shadow_policy_constructor_has_no_prompt_token_or_candidate_inputs() -> 
         not in {parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD}
         for parameter in parameters.values()
     )
+
+
+def _adapter_resource_fixture(*, fail_second_checkpoint: bool = False):
+    events = []
+    resources = _resources()
+    real_target = SimpleNamespace(
+        name="real_target_session",
+        scratch=resources["real_recurrent_owner"],
+    )
+    resources["real_target_session"] = real_target
+    resources["shadow_target_session"] = SimpleNamespace(
+        name="shadow_target_session"
+    )
+    row = type("Row", (), {})()
+    row.lease = type("Lease", (), {"session": real_target})()
+    row.slot = object()
+    row.kv_allocation = resources["real_kv_owner"]
+    shadow_bundle = {
+        "target_session": resources["shadow_target_session"],
+        "hidden_row": resources["shadow_hidden_row"],
+        "kv_owner": resources["shadow_kv_owner"],
+        "recurrent_owner": resources["shadow_recurrent_owner"],
+    }
+
+    def acquire(**kwargs):
+        events.append(("acquire", kwargs))
+        return shadow_bundle
+
+    def reclaim(bundle, *, surface, lane, resource, reason):
+        assert bundle is shadow_bundle
+        events.append(("reclaim", surface, lane, resource.name, reason))
+
+    def abort(bundle, *, reason):
+        assert bundle is shadow_bundle
+        events.append(("abort", reason))
+
+    checkpoint_calls = 0
+
+    def capture(request_id):
+        nonlocal checkpoint_calls
+        checkpoint_calls += 1
+        if fail_second_checkpoint and checkpoint_calls == 2:
+            raise RuntimeError("injected checkpoint failure")
+        checkpoint = _Resource(f"checkpoint_{request_id}")
+        events.append(("capture", request_id, checkpoint.name))
+        return checkpoint
+
+    executor = type("Executor", (), {})()
+    executor.capture_request_checkpoint = capture
+    executor.restore_request_checkpoint = lambda checkpoint: events.append(
+        ("restore", checkpoint.name)
+    )
+    executor.release_request_checkpoint = lambda checkpoint: events.append(
+        ("release_checkpoint", checkpoint.name)
+    )
+    provider = type("Provider", (), {})()
+    provider.executor = executor
+    provider.reset_request = lambda request_id: events.append(("reset", request_id))
+    provider.release_request = lambda request_id: events.append(
+        ("release_request", request_id)
+    )
+    state = mtp2._MTP2RequestState(
+        request_id=42,
+        provider=provider,
+        provider_pool_key=None,
+        provider_group_key=(42,),
+        verifier=None,
+        root_hidden_buffer=resources["real_hidden_row"],
+    )
+    owner = type("Owner", (), {})()
+    owner._row = lambda request_id: row
+    owner.acquire_c1_shadow_resources = acquire
+    owner.reclaim_c1_shadow_resource = reclaim
+    owner.abort_c1_shadow_resources = abort
+    adapter = object.__new__(mtp2.Qwen35GGUFMTP2Adapter)
+    adapter.owner = owner
+    adapter._states = {42: state}
+    adapter._c1_shadow_states = {}
+    return adapter, resources, events
+
+
+def test_adapter_acquires_and_drops_concrete_shadow_resources() -> None:
+    adapter, resources, events = _adapter_resource_fixture()
+
+    lifecycle = adapter.acquire_c1_shadow_lifecycle(
+        42,
+        real_slot=7,
+        shadow_slot=3,
+    )
+
+    assert lifecycle.physical_slots == (7, 3)
+    assert lifecycle.target_sessions == (
+        resources["real_target_session"],
+        resources["shadow_target_session"],
+    )
+    assert lifecycle.hidden_rows == (
+        resources["real_hidden_row"],
+        resources["shadow_hidden_row"],
+    )
+    assert 42 in adapter._c1_shadow_states
+    adapter.drop_c1_shadow_lifecycle(42, reason="request_drop")
+    adapter.drop_c1_shadow_lifecycle(42, reason="request_drop")
+
+    assert adapter._c1_shadow_states == {}
+    assert [event for event in events if event[0] == "reset"] == [
+        ("reset", -43)
+    ]
+    assert len([event for event in events if event[0] == "release_checkpoint"]) == 2
+    assert len([event for event in events if event[0] == "reclaim"]) == 8
+    assert [event for event in events if event[0] == "release_request"] == [
+        ("release_request", -43)
+    ]
+    assert not [event for event in events if event[0] == "restore"]
+
+
+def test_adapter_cancel_restores_both_provider_checkpoints() -> None:
+    adapter, _resources_by_name, events = _adapter_resource_fixture()
+    adapter.acquire_c1_shadow_lifecycle(42, real_slot=0, shadow_slot=1)
+
+    adapter.drop_c1_shadow_lifecycle(42, cancel=True)
+
+    assert [event for event in events if event[0] == "restore"] == [
+        ("restore", "checkpoint_42"),
+        ("restore", "checkpoint_-43"),
+    ]
+    assert len([event for event in events if event[0] == "release_checkpoint"]) == 2
+    assert [event for event in events if event[0] == "release_request"] == [
+        ("release_request", -43)
+    ]
+
+
+def test_adapter_acquire_failure_releases_provider_and_owner_resources() -> None:
+    adapter, _resources_by_name, events = _adapter_resource_fixture(
+        fail_second_checkpoint=True
+    )
+
+    with pytest.raises(RuntimeError, match="injected checkpoint failure"):
+        adapter.acquire_c1_shadow_lifecycle(42, real_slot=0, shadow_slot=1)
+
+    assert adapter._c1_shadow_states == {}
+    assert [event for event in events if event[0] == "release_checkpoint"] == [
+        ("release_checkpoint", "checkpoint_42")
+    ]
+    assert [event for event in events if event[0] == "release_request"] == [
+        ("release_request", -43)
+    ]
+    assert [event for event in events if event[0] == "abort"] == [
+        ("abort", "acquire_failed")
+    ]

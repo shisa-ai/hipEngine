@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_shadow_adapter_ownership",
+  "date": "2026-09-02",
+  "status": "adapter_resource_boundary_green_route_unselected",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "60e9326ec",
+    "candidate_worktree": true,
+    "module": "hipengine/generation/qwen35_gguf_mtp2.py"
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_used": false
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "execution_profile": "production experiment only; current C1 fallback unchanged"
+  },
+  "adapter_boundary": {
+    "acquire": "Qwen35GGUFMTP2Adapter.acquire_c1_shadow_lifecycle",
+    "drop": "Qwen35GGUFMTP2Adapter.drop_c1_shadow_lifecycle",
+    "owner_pool_abi": [
+      "acquire_c1_shadow_resources",
+      "reclaim_c1_shadow_resource",
+      "abort_c1_shadow_resources"
+    ],
+    "provider_pool_abi": [
+      "reset_request",
+      "capture_request_checkpoint",
+      "restore_request_checkpoint",
+      "release_request_checkpoint",
+      "release_request"
+    ],
+    "route_selected": false,
+    "owner_pool_implemented": false,
+    "physical_target_execution_enabled": false
+  },
+  "failure_atomicity": {
+    "checkpoint_capture_failure": "releases captured checkpoint, shadow provider request, and owner bundle",
+    "drop": "lifecycle closes before provider shadow request release",
+    "request_drop": "shadow cleanup precedes real provider-state teardown",
+    "idempotent": true
+  },
+  "validation": {
+    "command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py tests/test_qwen35_gguf_mtp2_seam.py",
+    "result": "74 passed",
+    "focused_adapter_tests": 3
+  },
+  "decision": "Retain the unselected adapter ownership boundary. Next implement the resident-owner pool ABI and bind an actual second session/KV/recurrent bundle before enabling physical C2 target execution."
+}

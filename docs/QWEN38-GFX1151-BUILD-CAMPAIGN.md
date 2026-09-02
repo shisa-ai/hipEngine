@@ -394,6 +394,15 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   duplicating successful releases. RED file 13/13 GREEN; MTP2 seam 58/58.
   Compact evidence:
   [`...b3-m1-shadow-lifecycle-green.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-lifecycle-green.json).
+
+  Adapter ownership boundary GREEN (route still unselected):
+  `acquire_c1_shadow_lifecycle`/`drop_c1_shadow_lifecycle` connect the contract
+  to explicit resident-owner and provider-pool ABIs, capture distinct real and
+  shadow checkpoints, clean up capture failures atomically, and drop shadow
+  ownership before real request teardown. Host-fake ownership + MTP2 seam:
+  74/74 GREEN. The resident-owner pool ABI and physical target execution are
+  intentionally still absent. Evidence:
+  [`...b3-m1-shadow-adapter-ownership.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-adapter-ownership.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.

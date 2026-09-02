@@ -242,6 +242,13 @@ class _PhysicalAcceptPending:
     output_stride: int
 
 
+@dataclass(slots=True)
+class _C1ShadowAdapterState:
+    lifecycle: C1ShadowSessionLifecycle
+    provider: Any
+    resource_bundle: Mapping[str, Any]
+
+
 class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
 
@@ -535,6 +542,7 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_streaming_sinks: dict[int, _StreamingNextNPromptSink] = {}
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
         self._states: dict[int, _MTP2RequestState] = {}
+        self._c1_shadow_states: dict[int, _C1ShadowAdapterState] = {}
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
@@ -643,6 +651,171 @@ class Qwen35GGUFMTP2Adapter:
                 raise ValueError("permanent-AR eligibility cannot register a provider")
             eligibility_by_request[rid] = static_eligibility
         self._disabled_requests.discard(rid)
+
+    def acquire_c1_shadow_lifecycle(
+        self,
+        request_id: int,
+        *,
+        real_slot: int,
+        shadow_slot: int,
+    ) -> C1ShadowSessionLifecycle:
+        """Acquire concrete C1 shadow resources through owner/provider pools.
+
+        This API is unselected until the physical-C2 target route lands. The
+        resident owner supplies and reclaims the shadow target/hidden/KV/state
+        bundle; the adapter owns provider request/checkpoint lifetime.
+        """
+
+        rid = int(request_id)
+        shadow_states = getattr(self, "_c1_shadow_states", None)
+        if shadow_states is None:
+            shadow_states = {}
+            self._c1_shadow_states = shadow_states
+        if rid in shadow_states:
+            raise C1ShadowOwnershipError(
+                f"request_id {rid} already owns a C1 shadow lifecycle"
+            )
+        state = self._states.get(rid)
+        if state is None:
+            raise C1ShadowOwnershipError("C1 shadow requires an active provider state")
+        row = self.owner._row(rid)
+        if row.lease is None or row.slot is None:
+            raise C1ShadowOwnershipError("C1 shadow requires an active target row")
+        real_target = row.lease.session
+        real_hidden = state.root_hidden_buffer
+        real_kv = row.kv_allocation
+        real_recurrent = getattr(real_target, "scratch", None)
+        if real_kv is None or real_recurrent is None:
+            raise C1ShadowOwnershipError(
+                "C1 shadow requires live KV and recurrent owners"
+            )
+        acquire = getattr(self.owner, "acquire_c1_shadow_resources", None)
+        reclaim = getattr(self.owner, "reclaim_c1_shadow_resource", None)
+        abort = getattr(self.owner, "abort_c1_shadow_resources", None)
+        if not callable(acquire) or not callable(reclaim) or not callable(abort):
+            raise C1ShadowOwnershipError(
+                "resident owner has no C1 shadow resource-pool ABI"
+            )
+        shadow_id = -(rid + 1)
+        bundle: Mapping[str, Any] | None = None
+        captured: list[Any] = []
+        shadow_provider_open = False
+        try:
+            bundle = acquire(
+                request_id=rid,
+                shadow_request_id=shadow_id,
+                real_slot=int(real_slot),
+                shadow_slot=int(shadow_slot),
+            )
+            if not isinstance(bundle, Mapping):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow resource bundle must be a mapping"
+                )
+            required = (
+                "target_session",
+                "hidden_row",
+                "kv_owner",
+                "recurrent_owner",
+            )
+            missing = [name for name in required if bundle.get(name) is None]
+            if missing:
+                raise C1ShadowOwnershipError(
+                    "C1 shadow resource bundle missing: " + ", ".join(missing)
+                )
+            state.provider.reset_request(shadow_id)
+            shadow_provider_open = True
+            executor = state.provider.executor
+            real_checkpoint = executor.capture_request_checkpoint(rid)
+            captured.append(real_checkpoint)
+            shadow_checkpoint = executor.capture_request_checkpoint(shadow_id)
+            captured.append(shadow_checkpoint)
+
+            def restore_checkpoint(lane: str, checkpoint: Any) -> None:
+                del lane
+                executor.restore_request_checkpoint(checkpoint)
+
+            def reclaim_resource(
+                surface: str,
+                lane: str,
+                resource: Any,
+                reason: str,
+            ) -> None:
+                if surface == "provider_checkpoint":
+                    executor.release_request_checkpoint(resource)
+                    return
+                reclaim(
+                    bundle,
+                    surface=surface,
+                    lane=lane,
+                    resource=resource,
+                    reason=reason,
+                )
+
+            lifecycle = C1ShadowSessionLifecycle(
+                request_id=rid,
+                real_slot=int(real_slot),
+                shadow_slot=int(shadow_slot),
+                target_session=real_target,
+                shadow_target_session=bundle["target_session"],
+                provider_checkpoint=real_checkpoint,
+                shadow_provider_checkpoint=shadow_checkpoint,
+                hidden_row=real_hidden,
+                shadow_hidden_row=bundle["hidden_row"],
+                kv_owner=real_kv,
+                shadow_kv_owner=bundle["kv_owner"],
+                recurrent_owner=real_recurrent,
+                shadow_recurrent_owner=bundle["recurrent_owner"],
+                restore_provider_checkpoint=restore_checkpoint,
+                reclaim=reclaim_resource,
+            )
+            shadow_states[rid] = _C1ShadowAdapterState(
+                lifecycle=lifecycle,
+                provider=state.provider,
+                resource_bundle=bundle,
+            )
+            return lifecycle
+        except Exception:
+            executor = getattr(state.provider, "executor", None)
+            release_checkpoint = getattr(
+                executor,
+                "release_request_checkpoint",
+                None,
+            )
+            if callable(release_checkpoint):
+                for checkpoint in captured:
+                    release_checkpoint(checkpoint)
+            if shadow_provider_open:
+                state.provider.release_request(shadow_id)
+            if bundle is not None:
+                abort(bundle, reason="acquire_failed")
+            raise
+
+    def drop_c1_shadow_lifecycle(
+        self,
+        request_id: int,
+        *,
+        reason: str = "teardown",
+        cancel: bool = False,
+    ) -> None:
+        """Restore/reclaim one request's shadow resources exactly once."""
+
+        rid = int(request_id)
+        shadow_states = getattr(self, "_c1_shadow_states", None)
+        if shadow_states is None:
+            return
+        shadow_state = shadow_states.get(rid)
+        if shadow_state is None:
+            return
+        if cancel:
+            shadow_state.lifecycle.cancel(rid)
+        else:
+            shadow_state.lifecycle.close(reason=str(reason))
+        if not shadow_state.lifecycle.closed:
+            raise C1ShadowOwnershipError("C1 shadow cleanup did not close")
+        shadow_state.provider.release_request(
+            shadow_state.lifecycle.shadow_request_id
+        )
+        shadow_states.pop(rid, None)
 
     def _physical_prompt_streaming_admitted(self, request_count: int) -> bool:
         if not bool(self.physical_prompt_streaming):
@@ -3997,6 +4170,7 @@ class Qwen35GGUFMTP2Adapter:
 
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
+        self.drop_c1_shadow_lifecycle(rid, reason="request_drop")
         state = self._states.pop(rid, None)
         if state is not None:
             target = self.owner._row(rid).lease.session
