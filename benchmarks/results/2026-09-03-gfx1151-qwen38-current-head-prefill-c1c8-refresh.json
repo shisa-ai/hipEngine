@@ -1,0 +1,55 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_qwen38_current_head_prefill_c1c8_refresh",
+ "date": "2026-09-03",
+ "status": "current_snapshot",
+ "performance_claim": true,
+ "title": "Current-head C1-C8 prefill-dominant refresh on the standardized survey boundary",
+ "physical_host": {
+  "hostname": "gfx1151",
+  "machine": "Framework Desktop / Ryzen AI MAX+ 395",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "pci_id": "1002:1586",
+  "gpu_max_hw_queues": 2
+ },
+ "software": {
+  "measurement_commit": "3d48170a700a59b218ddd290638586b4ef5466a2",
+  "tracked_tree_dirty": false,
+  "hip_arch": "gfx1151",
+  "compiler_version_file": "/tmp/q38-z0-run-20260901-201730/hipcc-version.txt",
+  "require_cached_build": true
+ },
+ "model": {
+  "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "standard_q4_k_m",
+  "kv": "bf16",
+  "execution_profile": "production"
+ },
+ "prompt_suite": {
+  "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+  "prompts": 10,
+  "sampling": "raw greedy",
+  "prompt_cache": false
+ },
+ "protocol": "one generated token per request; prefill-dominant rate = summed prompt tokens divided by summed AR-arm barrier-to-last-completion wall across all ten prompts at each width; batch-window 50 ms; exactness gate 10/10 per width",
+ "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --expected-mtp-widths none --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --output /tmp/q38-docs-refresh-prefill-c1c8.json",
+ "raw_sources": [
+  {"path": "/tmp/q38-docs-refresh-prefill-c1c8.json", "sha256": "20f7e35619930ba259cd2779506e15149352aed8bad560a21b79429590a4dfbb"}
+ ],
+ "prefill_prompt_tok_s": {
+  "1": 200.998, "2": 181.933, "3": 207.157, "4": 233.144,
+  "5": 258.190, "6": 285.107, "7": 291.322, "8": 301.808
+ },
+ "exact_cells_per_width": "10/10 x8",
+ "metric_convention_check": "The formula reproduces the pinned 2026-08-31 reviewed row exactly from its surviving raw file (C1 147.008, C8 247.333), confirming boundary comparability before the refresh was compared.",
+ "versus_pinned_row_pct": {
+  "note": "derived comparison against benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json",
+  "1": 36.7, "2": 30.1, "3": 21.9, "4": 23.4, "5": 21.9, "6": 25.2, "7": 22.8, "8": 22.0
+ },
+ "versus_frozen_external_matrix": {
+  "note": "derived comparison against the frozen same-host external rows recorded 2026-08-30 (L6). hipEngine leads C1 (+31.0% vs Nathan 153.4) and C3-C7 (+7.7% vs Laurent 192.4, +16.3% vs stock HIP 200.5, +14.2% vs stock HIP 226.1, +13.9% vs Laurent 250.4, +15.5% vs Laurent 252.3) and trails C2 (-14.2% vs Laurent 211.9) and C8 (-1.3% vs Laurent 305.8)."
+ },
+ "decision": "Retained as the current prefill-dominant row for docs surfaces. The C2 dip versus C1 persists and C8 remains fractionally behind Laurent's frozen row; both keep their standing prefill blockers."
+}

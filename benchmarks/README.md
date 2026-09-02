@@ -80,7 +80,7 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2/C3 MTP-3 explicit diagnostic | **29.976/30.541 tok/s** | **1.575x/1.279x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2-C4 MTP-3 explicit diagnostic | **30.094/32.819/37.985 tok/s** | **1.564x/1.314x/1.207x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — production C5-C8 MTP-3 explicit diagnostic (one-group) | **37.280/41.048/44.492/50.893 tok/s** | **0.981x/0.953x/0.964x/1.006x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
@@ -90,7 +90,7 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in. C2-C8 MTP rows are explicit diagnostics; production C1 explicit MTP-3 is currently slower than AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
@@ -132,7 +132,15 @@ its same-commit A controls); all four categories improve, all 80 task IDs and
 acceptance are unchanged, and the 216-row canonical+heldout gate has 100%
 top-1 with max KL 0.002231. C8 now reaches **1.0057x own AR**. The production
 width-4 admission path is unaffected (R2-R16), and strict C1/K3 automatic is
-unchanged.
+unchanged. The 2026-09-03 current-head refresh completes the one-group row —
+C2/C3/C4 measure **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x)** with
+10/10 AR equality — and records a named C1 blocker: the B1 rows>1 production
+owner at the R4 packed-verifier shape collapses production explicit C1 K3 to
+**8.556 tok/s (0.743x AR, acceptance 0.1523, AR equality 0/10)**; the
+registered opt-out `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0` restores
+**18.168 tok/s (1.582x, 10/10)**. Strict C1 automatic serving and C3-C8 are
+unaffected.
+[`C1-C8 refresh`](results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json) ·
 [`B5 retention packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json) ·
 [`B1 retention packet`](results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json) ·
 [`B1 sec-6 logits gate`](results/2026-09-02-gfx1151-qwen38-b1-transfer-logits-equality.json) ·
@@ -151,7 +159,12 @@ measures **209.391 prompt tok/s at C2** and **334.704 at C8**, up
 the prior same-host Laurent 196.824/297.325 rows. Complete C2/C8 wall falls
 18.13%/17.35%; all 90 profile-gate logits are bit-identical and automatic D24
 serving stays K0. Laurent's higher internal `prompt_ms` rates remain diagnostic
-and are not mixed with hipEngine complete wall.
+and are not mixed with hipEngine complete wall. On the standardized survey
+boundary the current-head prefill row is
+**200.998/181.933/207.157/233.144/258.190/285.107/291.322/301.808 tok/s**
+(C1-C8, exact 10/10 per width), leading the frozen external matrix at C1 and
+C3-C7 and trailing only at C2 (-14.2%) and C8 (-1.3%) versus Laurent.
+[`prefill refresh`](results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json)
 [`B2 retained`](results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json) ·
 [`Matched C2/C8 parity`](results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json) ·
 [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
@@ -438,7 +451,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 24.042 | **29.564** | **1.2297x** | Exact prompt streaming, proposal-head reuse, and standard-Q6/Q5 true-R12 improve MTP 38.27% from E0; exact 471/597 acceptance and every category positive. This beats the frozen external row by 7.45%; automatic C3 remains K0 pending complete production/serving gates. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-e2-q5-true-r12-retained.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C4 K3 D24, explicit diagnostic | 30.120 | **27.450** | **0.9114x** | Exact Q6 R8+R8 improves MTP 34.66%, preserves 628/796 acceptance, and beats the frozen external row by 1.61%. Overall and three categories remain below AR, so automatic C4 stays K0. [`artifact`](results/2026-08-29-gfx1151-qwen38-mtp-c4-q6-r16-retained.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C6/C8 K1 D24, explicit diagnostic | 39.908 / 47.240 | **37.074 / 43.421** | **0.9290x / 0.9192x** | Direct verifier state plus exact R12 pair/R16 down+narrow owners improve clean C6/C8 MTP 4.56%/3.78%. All 40 cells pass. Superseded as best explicit route at both widths by the one-group K3 row below. Automatic C6/C8 stays K0. [`artifact`](results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json) |
-| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C2, C5-C8 K3 D24 one-group, explicit diagnostic | 19.035 · 37.995/43.093/46.153/50.605 | **29.976 · 37.280/41.048/44.492/50.893** | **1.575x · 0.981x/0.953x/0.964x/1.006x** | Current-head rows after the B1 owner transfer and B5 planar-Q6 MMQ retentions: C2 keeps K3 (K2/K1 rejected on complete wall); C5-C8 improve with every category positive, 80/80 task IDs and acceptance unchanged, and C8 becomes the first width where explicit MTP reaches own AR. C2 measured at `e0319a98e` (B5 rows17-48 scope does not engage at C2); C5-C8 at `4fc772269`, default confirmed at `6d6fb3ed3`. Automatic C2-C8 remains K0. [`B4 screen`](results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json) · [`B5 packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json) |
+| Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C1-C8 K3 D24 one-group, explicit diagnostic | 11.511/19.249/24.974/31.478/37.995/43.093/46.153/50.605 | **8.556†/30.094/32.819/37.985/37.280/41.048/44.492/50.893** | 0.743x†/1.564x/1.314x/1.207x/0.981x/0.953x/0.964x/1.006x | Current-head C1-C8 refresh (2026-09-03): C3/C4 improve to 32.819/37.985 tok/s (+7.5%/+7.1% vs the reviewed matrix) with 10/10 AR equality and unchanged acceptance; C8 is the first width where explicit MTP reaches own AR. †Named blocker: production explicit C1 regressed 15.753→8.556 tok/s (1.418x→0.743x AR) with acceptance 0.7889→0.1523 and AR equality 10/10→0/10 — the B1 rows>1 owner at the R4 packed shape; the registered opt-out (`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0`) restores 18.168 tok/s (1.582x, 10/10). Strict C1 automatic serving is a separate unchanged route; automatic C2-C8 remains K0. [`refresh`](results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json) · [`B4 screen`](results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json) · [`B5 packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json) |
 | W7900 / Qwen3.6-35B-A3B packed PARO W4A16+MTP BF16 | Production/default B1 fast, raw D24 | 110.830 | **115.770** | **1.0446x** | Exact `720/720`; complete 10-prompt numerical/repeat/task/state gate passes. Fast improves strict MTP 10.33% overall and every category. [`artifact`](results/2026-08-24-w7900-paro-fast-d24-3run-default.json) |
 | W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 96.75 | **122.67** | **1.2679x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-w7900-llama-compat-reusable-native-cycle.json) |
 | Radeon 8060S / Qwen3.6-35B-A3B `UD-Q4_K_M` | `llama-compat` MTP-2 natural suite | 56.09 | **80.10** | **1.4282x** | Retained explicit opt-in; accuracy-traded versus normal AR. [`artifact`](results/2026-07-19-gfx1151-llama-compat-native-cycle-transfer.json) |

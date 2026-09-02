@@ -1,0 +1,75 @@
+{
+ "schema": 1,
+ "kind": "gfx1151_qwen38_current_head_mtp_c1c8_refresh",
+ "date": "2026-09-03",
+ "status": "current_snapshot_with_named_blocker",
+ "performance_claim": true,
+ "title": "Current-head C1-C8 one-group D24 explicit K3 refresh with C1 production-owner blocker",
+ "physical_host": {
+  "hostname": "gfx1151",
+  "machine": "Framework Desktop / Ryzen AI MAX+ 395",
+  "gpu": "AMD Radeon 8060S Graphics",
+  "pci_id": "1002:1586",
+  "gpu_max_hw_queues": 2
+ },
+ "software": {
+  "measurement_commit": "3d48170a700a59b218ddd290638586b4ef5466a2",
+  "tracked_tree_dirty": false,
+  "hip_arch": "gfx1151",
+  "compiler_version_file": "/tmp/q38-z0-run-20260901-201730/hipcc-version.txt",
+  "require_cached_build": true
+ },
+ "model": {
+  "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "quant": "standard_q4_k_m",
+  "kv": "bf16",
+  "execution_profile": "production"
+ },
+ "prompt_suite": {
+  "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+  "prompts": 10,
+  "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+  "heldout": "6 train / 4 heldout",
+  "sampling": "raw greedy",
+  "prompt_cache": false
+ },
+ "protocol": "one-group D24 explicit K3, ten canonical prompts, raw greedy, no prompt cache, batch-window 50 ms, complete barrier-to-last-completion wall, mtp_self_exact contract with per-cell AR-equality and acceptance telemetry",
+ "commands": {
+  "widths_1_3_4": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,3,4 --resident-capacity 4 --expected-mtp-widths 1,3,4 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/q38-docs-refresh-ar-mtp-c134.json",
+  "width_2_confirm": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 2 --resident-capacity 2 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/q38-docs-refresh-ar-mtp-c2.json",
+  "c1_attribution_b1_off": "same as widths_1_3_4 with --widths 1 --resident-capacity 1 --expected-mtp-widths 1 and HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0 --output /tmp/q38-docs-refresh-ar-mtp-c1-b1off.json"
+ },
+ "raw_sources": [
+  {"path": "/tmp/q38-docs-refresh-ar-mtp-c134.json", "sha256": "cd7212630c390c1477ee7f1b963f7a239efa0f61c71274c0fd9f1fa523af7622"},
+  {"path": "/tmp/q38-docs-refresh-ar-mtp-c2.json", "sha256": "c50ae1d21735f87699dcadb6aa00c0a83bddf096cae664aa1a155fa2e4096263"},
+  {"path": "/tmp/q38-docs-refresh-ar-mtp-c1-b1off.json", "sha256": "ef9fb1f7808b46d30f07807df95c544e49242fab5c47eef3f41975c73daeb2c8"}
+ ],
+ "widths_measured_here": {
+  "1": {"ar_tok_s": 11.511150, "mtp_tok_s": 8.556272, "mtp_over_ar": 0.74330, "draft_acceptance": 0.15232, "ar_mtp_equal_cells": "0/10", "mtp_self_exact": "10/10", "engaged": "10/10", "budget_conformed": "10/10"},
+  "2": {"ar_tok_s": 19.248594, "mtp_tok_s": 30.094260, "mtp_over_ar": 1.56345, "draft_acceptance": 0.78894, "ar_mtp_equal_cells": "10/10", "mtp_self_exact": "10/10", "engaged": "10/10", "budget_conformed": "10/10"},
+  "3": {"ar_tok_s": 24.973584, "mtp_tok_s": 32.818831, "mtp_over_ar": 1.31414, "draft_acceptance": 0.78889, "ar_mtp_equal_cells": "10/10", "mtp_self_exact": "10/10", "engaged": "10/10", "budget_conformed": "10/10"},
+  "4": {"ar_tok_s": 31.478169, "mtp_tok_s": 37.984691, "mtp_over_ar": 1.20670, "draft_acceptance": 0.78004, "ar_mtp_equal_cells": "10/10", "mtp_self_exact": "10/10", "engaged": "10/10", "budget_conformed": "10/10"}
+ },
+ "widths_from_retained_b5_packet": {
+  "5": {"ar_tok_s": 37.995061, "mtp_tok_s": 37.280352, "mtp_over_ar": 0.98119},
+  "6": {"ar_tok_s": 43.092988, "mtp_tok_s": 41.047843, "mtp_over_ar": 0.95254},
+  "7": {"ar_tok_s": 46.153405, "mtp_tok_s": 44.492250, "mtp_over_ar": 0.96401},
+  "8": {"ar_tok_s": 50.604623, "mtp_tok_s": 50.892938, "mtp_over_ar": 1.00570}
+ },
+ "c1_blocker": {
+  "finding": "Production-profile explicit C1 K3 D24 regressed versus the 2026-08-31 reviewed matrix: MTP 15.753 -> 8.556 tok/s (1.418x -> 0.743x own AR), draft acceptance 0.7889 -> 0.1523, and greedy AR equality 10/10 -> 0/10 (mtp_self_exact still 10/10). C3/C4 measured in the same run are healthy and bit-stable versus the pinned head (acceptance 0.7889/0.7800, equality 10/10), isolating the defect to the 4-row packed-verifier shape.",
+  "attribution": "Measured: rerunning C1 at the same commit with HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0 (B1 rows>1 owner transfer disabled, per-row GEMV owners) restores MTP to 18.167868 tok/s (1.58220x own AR), acceptance 0.78894, and AR equality 10/10. The B1 production owner for the R4 packed shape changes target logits enough to break greedy equality and collapse acceptance at C1 only.",
+  "scope": "Opt-in explicit diagnostic route only. Automatic serving is unaffected: strict C1/K3 remains the automatic C1 route (18.191 tok/s, 1.6445x, confirmed at 6d6fb3ed3) and C2-C8 remain automatic K0.",
+  "registered_opt_out": "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0",
+  "follow_up": "Named follow-up: R4 dispatch floor (keep per-row GEMV owners for rows<=4 under production) or an exact R4 owner, behind a RED test pinning C1 AR equality and acceptance; remove the floor only with a C1-inclusive complete gate. Recorded in worklog 20260902T225602 and the 2026-09-03 refresh worklog entry."
+ },
+ "reference_pinned_head": {
+  "commit": "b768516f2",
+  "date": "2026-08-31",
+  "artifact": "benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json",
+  "c1": {"ar_tok_s": 11.112, "mtp_tok_s": 15.753, "mtp_over_ar": 1.418, "draft_acceptance": 0.7889, "ar_mtp_equal_cells": "10/10"}
+ },
+ "decision": "Numbers are retainable as the current snapshot for docs surfaces. The C1 regression is recorded as a named blocker with a registered opt-out and a scoped follow-up; no dispatch change is made in this unit."
+}

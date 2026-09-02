@@ -9,6 +9,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-03 gfx1151 Qwen3.8 current-head C1-C8 refresh] One-group explicit K3 completes at C2-C4 **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x)** with 10/10 AR equality; prefill-dominant C1-C8 **200.998-301.808 tok/s** leads the frozen external matrix at C1 and C3-C7. Named blocker: production explicit C1 K3 regressed 15.753->8.556 tok/s (0.743x AR, acceptance 0.1523, AR equality 0/10) from the B1 rows>1 owner at the R4 packed shape; opt-out restores 18.168/1.582x/10/10. `[MTP refresh`](results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json) `[prefill refresh`](results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json)
+
 - [2026-09-03 gfx1151 Qwen3.8 docs refresh to current-head retained rows] Topline Strix Halo MTP C2/C3 explicit diagnostic 28.121/30.499 -> **29.976/30.541 tok/s (1.575x/1.279x)** and a new C5-C8 one-group K3 row **37.280/41.048/44.492/50.893 tok/s (0.981x/0.953x/0.964x/1.006x)**; scoreboard and external survey updated from the same retained packets (no new measurement). `[B4 screen`](results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json) `[B5 packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json)
 
 - [2026-09-02 gfx1151 Qwen3.8 Z1 Laurent prefill parity] Same-host one-output complete-wall refresh measures hipEngine/Laurent **178.660/196.824 prompt tok/s at C2 (-9.23%)** and **283.540/297.325 at C8 (-4.64%)**. The prior 211.888/305.847 Laurent targets used internal `prompt_ms`, not the matched complete-wall boundary. `benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json`.

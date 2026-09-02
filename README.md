@@ -232,7 +232,7 @@ Each value is the total tokens per second across all active requests:
 | --- | ---: | ---: |
 | Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — strict C1 MTP-3 automatic | **18.191 tok/s** | **1.6445x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2/C3 MTP-3 explicit diagnostic | **29.976/30.541 tok/s** | **1.575x/1.279x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2-C4 MTP-3 explicit diagnostic | **30.094/32.819/37.985 tok/s** | **1.564x/1.314x/1.207x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — production C5-C8 MTP-3 explicit diagnostic (one-group) | **37.280/41.048/44.492/50.893 tok/s** | **0.981x/0.953x/0.964x/1.006x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
 
@@ -242,7 +242,7 @@ Each value is the total tokens per second across all active requests:
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in. C2-C8 MTP rows are explicit diagnostics; production C1 explicit MTP-3 is currently slower than AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 Full commands, software versions, model hashes, memory use, and correctness
