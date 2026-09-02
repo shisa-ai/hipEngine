@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b4_c2_depth_screen",
+  "date": "2026-09-03",
+  "status": "k2_k1_rejected_k3_retained",
+  "performance_claim": false,
+  "source_commit": "e0319a98e",
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586 / GPU_MAX_HW_QUEUES=2",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (all 10 prompts, 4 categories, 6/4 train/heldout)",
+  "profile": "production explicit Generation-2 experiment; automatic policy unchanged",
+  "protocol": "C2, D24, one clean process per K, true same-arm AR control, cache-only, 50 ms window, mtp_self_exact",
+  "arms": {
+    "K3": {"ar_wall_seconds": 25.216230311896652, "ar_tok_s": 19.03535913429308, "mtp_wall_seconds": 16.012964133406058, "mtp_tok_s": 29.975711929475295, "mtp_vs_ar": 1.5747384495348271, "cycles": 142, "proposed": 398, "accepted": 314, "acceptance": 0.7889447236180904, "proposal_ms": 3277.2692861035466, "target_ms": 2852.3492380000002, "accept_ms": 13353.842372074723, "provider_update_ms": 523.9328751340508},
+    "K2": {"ar_wall_seconds": 25.20120796887204, "ar_tok_s": 19.046706038571052, "mtp_wall_seconds": 16.550263142213225, "mtp_tok_s": 29.00256001221566, "mtp_vs_ar": 1.5227073885365392, "cycles": 166, "proposed": 322, "accepted": 292, "acceptance": 0.906832298136646, "proposal_ms": 2671.8399627134204, "target_ms": 3378.915536, "accept_ms": 14672.473140060902, "provider_update_ms": 544.3300525657833, "versus_k3_wall_pct": 3.355400064165881, "versus_k3_tok_s_pct": -3.2464680723820583},
+    "K1": {"ar_wall_seconds": 25.215320865623653, "ar_tok_s": 19.036045686588494, "mtp_wall_seconds": 23.84470286569558, "mtp_tok_s": 20.130257135246453, "mtp_vs_ar": 1.0574810266098944, "cycles": 230, "proposed": 230, "accepted": 220, "acceptance": 0.9565217391304348, "proposal_ms": 1937.816469464451, "target_ms": 6574.00835, "accept_ms": 25587.21520099789, "provider_update_ms": 850.4861113615334, "versus_k3_wall_pct": 48.908738363755155, "versus_k3_tok_s_pct": -32.844773853553576}
+  },
+  "category_tok_s": {
+    "K3": {"code": 30.42144416963101, "general_en": 32.93341942280347, "general_ja": 29.197706116559274, "mixed_ja_en": 27.438566772668544},
+    "K2": {"code": 29.46325666568745, "general_en": 29.210841421214177, "general_ja": 29.74915785591038, "mixed_ja_en": 27.270877392037807},
+    "K1": {"code": 20.37193848385301, "general_en": 20.824828808746066, "general_ja": 20.403231842199055, "mixed_ja_en": 18.805258606042823}
+  },
+  "correctness": "all 30 prompt cells self-exact, MTP engaged, and budget-conformed; AR controls differ by at most 0.06%",
+  "decision": "Reject K2 and K1. Higher acceptance does not offset additional cycles/target/accept work; K3 wins complete wall. No T3 route/economics/lifecycle promotion packet opens and automatic serving is unchanged.",
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 2 --resident-capacity 2 --expected-mtp-widths 2 --max-tokens 24 --candidate-budget <3|2|1> --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output <arm.json>",
+  "raw": [
+    {"k": 3, "path": "/tmp/q38-b4-c2-k3.json", "sha256": "f5cf1ea9058d7a7844f9f64276a3580a8f6a7d5e70e82224b095f3101fac28a9", "bytes": 1717108},
+    {"k": 2, "path": "/tmp/q38-b4-c2-k2.json", "sha256": "d3960a56172548733d53e0311267a6444a214bafac60ba7942ad044b05539f8c", "bytes": 1702960},
+    {"k": 1, "path": "/tmp/q38-b4-c2-k1.json", "sha256": "c5f4a17a7f390b98fb12e925c9ba332b71ef07ccbee72dcfa726d74f1bede4cd", "bytes": 1723408}
+  ]
+}
