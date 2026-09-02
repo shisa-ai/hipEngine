@@ -459,9 +459,19 @@ before it enters here.
   changes. Each declaration names affected shapes/layers, stateful surfaces,
   strict fallback, bound, and discrete-decision risk. Wide target kernels stay
   rejected by the zero pass budget.
-- [ ] Write the RED test or production-profile numerical gate before the
+- [x] Write the RED test or production-profile numerical gate before the
   implementation when practical. If RED-first is impractical, record the
   reason in the unit worklog entry.
+
+  `scripts/qwen38_z3_candidate_gate.py` is the class-aware fail-closed evidence
+  gate, with host-only coverage in `tests/test_qwen38_z3_candidate_gate.py`.
+  The committed [`z3-red-baseline`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z3-red-baseline.json)
+  fails all four candidates as expected. P1/M1 cannot pass without their full
+  production numerical packets; M2 additionally requires explicit-experiment
+  status and forbids ordinary production promotion; M3 requires strict-exact
+  control/state/lifecycle/cancellation/compaction evidence. Every candidate
+  also requires a registered strict fallback, full category/heldout suite,
+  complete-wall improvement, and its declared trace/control checks.
 - [ ] Register through the four-axis plugin registry. Do not add backend- or
   quant-specific dispatch branches.
 - [ ] Keep kernel signatures on raw device pointers and preserve
