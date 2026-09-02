@@ -1748,8 +1748,14 @@ warm GPU-kernel claims.
 Goal: close depth-dependent competitor gaps only after short BF16 AR parity and
 the existing escalation thresholds permit each rung.
 
-- [ ] Re-run natural 4K, 16K, then 64K retrieval with the current stacked
-      production path and exact selected-position/CPU selector controls.
+- [x] Re-run natural 4K, 16K, then 64K retrieval with the current stacked
+      production path and exact selected-position/CPU selector controls. Current
+      chunk-512 rows reach **53.08 / 51.48 / 48.02 prompt tok/s** at 4K/16K/64K.
+      Every depth retrieves `VIOLET-7391`, selects the needle in all 12 QSA
+      layers, matches all 2,048 binding CPU-selected positions at layer 47,
+      passes repeat/rollback isolation, and tears down to zero. Historical depth
+      rows are not used as old→new comparisons. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json`.
 - [ ] Profile QSA score/top-k O(context/4), selected-K/V page locality, sparse
       attention, PLE I/O, graph reuse, and KV bytes separately at each depth.
 - [ ] Compare exact matched same-weight/BF16-KV Engram/Nathan/upstream rows; do

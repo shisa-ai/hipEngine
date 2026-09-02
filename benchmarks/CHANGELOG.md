@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 current retrieval ladder] Current production chunk-512 natural 4K/16K/64K reaches **53.08/51.48/48.02 prompt tok/s**; every depth has exact retrieval, all 12 needle-selected layers, exact 2,048-position CPU selector control, transaction isolation, and zero teardown. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 load drop-behind] Added default-off post-device-copy DONTNEED for 1,223 hot tensors, excluding lazy PLE/validation readers. Exact one-shot/reload controls show ~243/245 MB pre-request RSS but 13.75/15.61 GB request rereads and ~6.1K major faults; retain only for explicit one-shot serving. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-load-drop-behind.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 prefill overlap rejected] Exact one-chunk-ahead two-buffer/thread PLE staging is neutral at p1024 (**11.223→11.240 s, 0.9985x**) and p4096 (**54.487→54.396 s, 1.0017x**); below the 1% floor, so candidate and flag removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-prefill-overlap-rejected.json`.
