@@ -498,6 +498,15 @@ before it enters here.
   M3 is rejected for every primary wide cell: the apparent 63.9-65.2% accept
   boundary is queued target execution, not removable T0 host dataflow.
 
+  M1 shadow screen: [`2026-09-02-gfx1151-qwen38-z4-m1-c1-shadow-screen.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m1-c1-shadow-screen.json).
+  Treating the measured duplicate C2 wall as an optimistic C1 physical-padding
+  candidate reduces full-suite wall 41.76%, above the 31.8% entry threshold;
+  every C2 pair is internally ID-exact. C1 and C2 outputs differ in 10/10
+  cells, so this remains T2 and requires the complete production packet plus
+  exact shadow ownership/reclamation. Padding must be input-independent; no
+  prompt/token/candidate branch is allowed. The bound admits an implementation
+  screen but is not a retained result.
+
 Exit: an approved, bounded candidate plan with tests and fallback registered
 before implementation begins.
 
