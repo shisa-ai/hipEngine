@@ -288,11 +288,28 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   kernels already template on `scalar_t`, so the sibling is a new
   instantiation + wrapper, not a rewrite. The 19.8/20.1% C2/C8 wall bound
   remains an inferred portability transfer; the B2 measurement decides.
-- [ ] Implement the input-F16 siblings as new four-axis variants under
+- [x] Implement the input-F16 siblings as new four-axis variants under
   `hipengine/kernels/hip_gfx1100/quant/` (shared gfx11 bodies, peer-registered
   on gfx1151 per `docs/KERNELS.md`): BF16→F16 activation cast
   workspace/ownership, unchanged weight representation, raw device-pointer
   kernel signatures, current BF16 owners as registered strict fallback.
+
+  Implemented 2026-09-02 (commit pending): the dense Q4 plain, Q4 shared-B,
+  and Q5 kernels gained a trailing `scalar_t` template parameter (default
+  uint16_t keeps every existing instantiation bit-identical) with new
+  `half_t` instantiations behind three extern-C entry points and
+  ABI-identical Python wrappers. Registered unselected on both backends
+  (`t16_wmma_prefill_fp16_in_bf16_out`,
+  `t16_wmma_prefill_shared_b_fp16_in_bf16_out`); BF16 owners remain the
+  selected strict fallback. GREEN numerics
+  (`tests/test_gguf_k_t16_dense_f16_activation_prefill.py`, 5 tests): at
+  rows72/288 on Q4 5120→6144/5120→17408/17408→5120 and Q5 6144→5120, the
+  siblings match the BF16 owners with max relative drift < 5%, top-value
+  relative drift < 5%, correlation > 0.9999, and the BF16 owners themselves
+  sit < 2% from the CPU reference. No cast-workspace kernel yet: the tests
+  stage the F16 operand host-side; the device cast + runner integration is
+  item 3 (profile + serving measurement) work. Kernel catalog updated
+  (`docs/KERNELS.md` Q4/Q5/Q6 T16 selected row).
 - [ ] Profile the expected kernels (prebuilt `.so`, `rocprofv3`), then run the
   complete C2/C8 same-suite prefill gates and the applicable production
   numerical gate (strict-teacher mean/p95/p99/max KL and top-1 by

@@ -525,10 +525,10 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
 // instantiates one row tile to avoid invalid-row work; the 16-column
 // instantiation triples in-flight block count for latency-bound low-M slabs.
 // Every output retains the same K16 WMMA association and BF16 store.
-template <bool qmicro = false, int ROW_TILES_PER_BLOCK = 4, int OUT_TILES_PER_BLOCK_ = 3>
+template <bool qmicro = false, int ROW_TILES_PER_BLOCK = 4, int OUT_TILES_PER_BLOCK_ = 3, typename scalar_t = uint16_t>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
-    const uint16_t* __restrict__ x,
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
@@ -602,7 +602,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
         for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
           const int64_t input_row = row_base + tn * 16 + lane16;
           const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
+          a_reg[tn] = load_compact_row_half16<scalar_t>(
               x,
               valid_row ? input_row : 0,
               in_features,
@@ -661,10 +661,11 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
 template <
     int OUT_TILES_PER_BLOCK_ = 3,
     int WAVES_PER_BLOCK_ = 4,
-    int ROW_TILES_PER_WAVE_ = 4>
+    int ROW_TILES_PER_WAVE_ = 4,
+    typename scalar_t = uint16_t>
 __launch_bounds__((WAVES_PER_BLOCK_ > 4 ? 256 : 128), 1)
 __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
-    const uint16_t* __restrict__ x,
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
@@ -771,7 +772,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
         for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
           const int64_t input_row = row_base + tn * 16 + lane16;
           const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
+          a_reg[tn] = load_compact_row_half16<scalar_t>(
               x,
               valid_row ? input_row : 0,
               in_features,
@@ -1480,10 +1481,10 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
 // while amortizing activation and weight transport in both matrix
 // dimensions. The default keeps 32 columns x 64 rows; the low-VGPR
 // instantiations shrink the accumulator footprint for latency-bound slabs.
-template <int ROW_TILES_PER_BLOCK_ = 4, int OUT_TILES_PER_BLOCK_ = 2>
+template <int ROW_TILES_PER_BLOCK_ = 4, int OUT_TILES_PER_BLOCK_ = 2, typename scalar_t = uint16_t>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
-    const uint16_t* __restrict__ x,
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
@@ -1554,7 +1555,7 @@ __global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
         for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
           const int64_t input_row = row_base + tn * 16 + lane16;
           const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
+          a_reg[tn] = load_compact_row_half16<scalar_t>(
               x,
               valid_row ? input_row : 0,
               in_features,
@@ -1931,9 +1932,9 @@ int launch_k_t16_selected(
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool qmicro = false>
+template <bool qmicro = false, typename scalar_t = uint16_t>
 int launch_q4_t16_dense_wmma_prefill_bf16(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -1954,7 +1955,7 @@ int launch_q4_t16_dense_wmma_prefill_bf16(
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<qmicro>),
+      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<qmicro, 4, 3, scalar_t>),
       grid,
       block,
       0,
@@ -2075,9 +2076,10 @@ int launch_q4_t16_dense_wmma_smallm_bf16(
 template <
     int Q4_SHARED_OUT_TILES = 3,
     int Q4_SHARED_WAVES = 4,
-    int Q4_SHARED_ROW_TILES = 4>
+    int Q4_SHARED_ROW_TILES = 4,
+    typename scalar_t = uint16_t>
 int launch_q4_t16_dense_wmma_prefill_shared_b_impl(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2100,7 +2102,8 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_impl(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
       (gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<
-          Q4_SHARED_OUT_TILES, Q4_SHARED_WAVES, Q4_SHARED_ROW_TILES>),
+          Q4_SHARED_OUT_TILES, Q4_SHARED_WAVES, Q4_SHARED_ROW_TILES,
+          scalar_t>),
       grid,
       block,
       0,
@@ -2282,8 +2285,9 @@ int launch_q4_t16_dense_unequal_dual_wmma_prefill_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t = uint16_t>
 int launch_q5_t16_dense_wmma_prefill_bf16(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2304,7 +2308,7 @@ int launch_q5_t16_dense_wmma_prefill_bf16(
       static_cast<unsigned int>(
           (rows + Q5_DENSE_TILE_ROWS - 1) / Q5_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      (gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2>),
+      (gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, scalar_t>),
       grid,
       block,
       0,
@@ -2450,6 +2454,28 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1: F16-staged activation sibling (x bits are IEEE half). Identical
+// weights, schedule, and BF16 store; only the activation operand encoding
+// differs, so the per-element BF16->F16 WMMA converts disappear in favor of
+// one vectorized half16 load per row tile.
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_bf16<false, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2508,6 +2534,26 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 4>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1: F16-staged activation sibling of the shared-B owner (x bits are
+// IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 4, 4, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out(
@@ -2642,6 +2688,26 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q5_t16_dense_wmma_prefill_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1: F16-staged activation sibling of the Q5 dense owner (x bits are
+// IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_bf16<half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
