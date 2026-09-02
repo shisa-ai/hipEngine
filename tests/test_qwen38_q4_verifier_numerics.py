@@ -62,11 +62,12 @@ def test_c8_raw_q5_mmq_is_gfx1100_default_with_opt_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(gate.Q5_RAW_MMQ_ENV, raising=False)
-    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100") is True
-    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1151") is False
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=8) is True
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=7) is False
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1151", request_count=8) is False
 
     monkeypatch.setenv(gate.Q5_RAW_MMQ_ENV, "0")
-    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100") is False
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100", request_count=8) is False
 
 
 def test_q4_verifier_environment_restores_caller(
