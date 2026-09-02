@@ -56,6 +56,44 @@ def test_render_current_context_profile_carries_all_p0_census_fields() -> None:
     assert "H256 QSA" in report
 
 
+def test_render_p12_validation_report_separates_passes_and_blockers() -> None:
+    module = _load_script()
+    artifact = {
+        "date": "2026-09-02",
+        "focused_suite": {"passed": 268},
+        "canonical": {
+            "strict": {
+                "manifest_sha256": "strict",
+                "shapes": {
+                    "512": {
+                        "prefill_tok_s": 61.0,
+                        "decode_tok_s": 13.5,
+                        "max_case_cv": 0.02,
+                    }
+                },
+            },
+            "production": {
+                "manifest_sha256": "production",
+                "shapes": {
+                    "512": {
+                        "prefill_tok_s": 83.3,
+                        "decode_tok_s": 14.2,
+                        "max_case_cv": 0.01,
+                    }
+                },
+            },
+        },
+    }
+
+    report = module.render_validation_report(artifact)
+
+    assert "268 passed" in report
+    assert "83.300" in report
+    assert "five-pair comparator windows remain open" in report
+    assert "4K MTP remains blocked" in report
+    assert "No final match, beat, or campaign-closure claim" in report
+
+
 def test_parser_accepts_context_artifact_kind(tmp_path: Path) -> None:
     module = _load_script()
     args = module.build_parser().parse_args([str(tmp_path / "artifact.json")])

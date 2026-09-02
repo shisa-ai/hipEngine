@@ -98,6 +98,41 @@ def render_context_report(artifact: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def render_validation_report(artifact: dict[str, Any]) -> str:
+    strict = artifact["canonical"]["strict"]
+    production = artifact["canonical"]["production"]
+    lines = [
+        "# Qwen4Exp gfx1151 P12 validation report",
+        "",
+        f"- Date: `{artifact['date']}`",
+        f"- Production manifest: `{production['manifest_sha256']}`",
+        f"- Strict manifest: `{strict['manifest_sha256']}`",
+        f"- Focused tests: **{artifact['focused_suite']['passed']} passed**",
+        "",
+        "## Canonical exact-token packet",
+        "",
+        "| Profile | Context | Prompt tok/s | Decode tok/s | Max case CV |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+    for profile, data in (("strict", strict), ("production", production)):
+        for context, row in data["shapes"].items():
+            lines.append(
+                f"| {profile} | {int(context):,} | {row['prefill_tok_s']:.3f} | "
+                f"{row['decode_tok_s']:.3f} | {100 * row['max_case_cv']:.2f}% |"
+            )
+    lines.extend([
+        "",
+        "## Binding status",
+        "",
+        "- Short strict/production determinism, lifecycle, current-manifest quality/state/task/c2, and unlocked long-context gates pass.",
+        "- Final five-pair comparator windows remain open.",
+        "- Required 4K MTP remains blocked by the 1K provider and draft capacity.",
+        "- No final match, beat, or campaign-closure claim is made.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
 def render_report(artifact: dict[str, Any]) -> str:
     end_to_end = artifact["end_to_end"]
     ours_e2e = end_to_end["hipengine_production"]
@@ -215,9 +250,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     args = build_parser().parse_args()
     artifact = json.loads(args.artifact.read_text())
+    kind = artifact.get("kind")
     report = (
         render_context_report(artifact)
-        if artifact.get("kind") == "qwen4exp_p6_context_transition_profile"
+        if kind == "qwen4exp_p6_context_transition_profile"
+        else render_validation_report(artifact)
+        if kind == "qwen4exp_p12_validation_packet"
         else render_report(artifact)
     )
     if args.output is not None:
