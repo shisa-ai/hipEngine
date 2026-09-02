@@ -5,6 +5,22 @@ proven. During optimization, temporary flags and fallback paths are useful for
 bisection; after the optimal path stabilizes, they become dispatch confusion and
 should be removed or collapsed.
 
+## 2026-09-03 B1 wmma transfer R<8 dispatch floor — open
+
+- `MTP_SERVING_TARGET_WMMA_PREFILL_MIN_ROWS = 8` plus
+  `mtp_serving_target_wmma_prefill_allows_rows()` in
+  `hipengine/runtime/gguf_linear.py` floor the B1 rows>1 transferred verify
+  owner off for packed shapes below 8 rows; both verify entry points in
+  `qwen35_gguf_runner.py` clamp through it. R4 measured broken under the
+  transferred owner (production explicit C1 K3: 8.556 tok/s, 0.743x AR,
+  acceptance 0.1523, greedy AR equality 0/10); the per-row GEMV owners
+  measured healthy at the same commit. R8+ keeps the retained transfer.
+- Remove the floor only together with an exact small-row owner that passes a
+  C1 AR-equality RED gate (acceptance and 10/10 equality versus AR on the
+  canonical suite) plus the C2-C8 non-regression collateral; until then the
+  explicit env opt-in (`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=1`)
+  remains the bisection escape hatch.
+
 ## Policy
 
 - Exact, same-suite non-regressive performance wins should become defaults.
