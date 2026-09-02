@@ -1936,28 +1936,6 @@ def test_gfx1151_fixed_norm_residual_policies_are_exact() -> None:
             )
 
 
-def test_gfx1151_registers_bounded_q4_q5_f16_rocblas_candidates() -> None:
-    register_gfx1151_kernels(replace=True)
-
-    for quant in ("gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1"):
-        assert is_registered(
-            KernelKey(
-                "hip_gfx1151",
-                "linear",
-                quant,
-                "f16_rocblas_t16_bf16_bf16_out",
-            )
-        )
-    assert not is_registered(
-        KernelKey(
-            "hip_gfx1151",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "f16_rocblas_t16_qmicro_planar_bf16_bf16_out",
-        )
-    )
-
-
 def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     register_qwen35_rmsnorm_kernels()
     register_gfx1151_kernels()

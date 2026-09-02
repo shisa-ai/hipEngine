@@ -2944,9 +2944,6 @@ _GFX1100_MODULES = (
     "hipengine.kernels.hip_gfx1100.moe.maple_moe",
     "hipengine.kernels.hip_gfx1100.norm",
     "hipengine.kernels.hip_gfx1100.quant",
-    # Z3 P1 registers bounded Q4/Q5 F16/rocBLAS candidates without selecting
-    # them. The independently excluded Q6 changed-math route stays absent.
-    "hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill",
     "hipengine.kernels.hip_gfx1100.quant.maple_ternary",
     "hipengine.kernels.hip_gfx1100.rotary",
     "hipengine.kernels.hip_gfx1100.runtime",

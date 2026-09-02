@@ -480,13 +480,16 @@ before it enters here.
   expected kernel names.
 
   Routing/ABI/prebuild manifest: [`2026-09-02-gfx1151-qwen38-z3-routing-abi-prebuild.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z3-routing-abi-prebuild.json).
-  P1 explicitly registers existing in-tree Q4/Q5 F16/rocBLAS bodies under
-  `hip_gfx1151` without selecting them; Q6 remains excluded pending its own
-  gate. M1 reuses registered profile variants, while M2/M3 add no kernel key.
-  No backend/quant dispatch branch or kernel signature changed, and
-  `KVLiveSpans` is untouched. The P1 `prefill` artifact passes `require_cached`
-  at cache key `60cf9fac…`; expected dequant/cast/rocBLAS and existing M1/M3
-  kernel families are recorded before profiling.
+  M1 reuses registered profile variants, while M2/M3 add no kernel key. No
+  backend/quant dispatch branch or kernel signature changed, and `KVLiveSpans`
+  is untouched. P1's follow-up audit
+  ([blocker](../benchmarks/results/2026-09-02-gfx1151-qwen38-z4-p1-activation-f16-blocker.json))
+  corrects the initial route identification: existing `f16_rocblas_t16`
+  variants dequantize **weights** to temporary F16 and do not implement
+  Laurent's F16 activation-B mechanism. The temporary gfx1151 alias import is
+  removed. Dense Qwen3.8 owns sole-T16 payloads and has no registered input-F16
+  T16 sibling at rows72/288, so P1 is blocked pending a new kernel family with
+  current BF16 owners as strict fallback.
 
   M3 C8 attribution: [`2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json).
   The large `accept_ms` marker primarily synchronizes queued target kernels:
