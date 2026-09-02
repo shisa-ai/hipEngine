@@ -1882,7 +1882,11 @@ external MTP rows.
       different linear-state/layer/graph ABI and is not reusable unchanged.
       Split this into per-row output storage, device state transactions,
       deferred accepted-prefix commit, and rows2-8 serial-reference RED gates
-      before provider wiring. `W=51.711 s`, `C=49.383 s`, and the measured
+      before provider wiring. The first subunit is complete:
+      `Qwen4ExpTargetVerifyOutput` lazily owns bounded rows<=8 residual,
+      per-row-logit/token, and head-scratch storage; rows 0/9 reject before
+      allocation, HIP allocation/lifecycle passes, and serial dispatch is
+      unchanged. Device state transactions remain next. `W=51.711 s`, `C=49.383 s`, and the measured
       target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
       executable Qwen4Exp candidate exists. Strict fallback is serial
       `target.step`. Device-output cleanup remains independent. Evidence:
