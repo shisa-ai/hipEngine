@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 direct staging rejected] Per-row direct-to-ring IQ4_NL dequant removes the final copy but loses all 20 four-category p512 pairs (**111.698→113.594 s, 0.9833x**) and the first exact tg128 pair (**0.9861x**); candidate and flag removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-direct-staging-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 random prefetch mechanism] Added default-off off/auto/on mmap advice paired with page-aligned deduplicated adjacent-merged WILLNEED ranges; real warm code-p512 auto selects random advice with canonical output and zero teardown. No speed policy is promoted from the instrumented smoke. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-random-prefetch.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 PLE telemetry] Added default-off per-request row/page/fault/cache and gather/dequant/copy/H2D counters; real warm code-p512 reports 10,240 requested / 4,216 unique rows and **5.670 s / 0.825 ms / 19.207 ms** nested stage walls with canonical output and zero teardown. Instrumented wall is not performance evidence. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-ple-telemetry.json`.
