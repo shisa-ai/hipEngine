@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 compact draft output] Device argmax plus resident hidden chaining improves sidecar B2 **16.945→16.639 ms (1.018x)**, but warmed four-category whole-model wall is only **6,585.101→6,537.548 ms (1.0073x)** and English/mixed rows regress to **0.9435x/0.9745x**. Exact IDs and traced argmax pass; reject promotion and keep the full-output route default. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 verifier readiness] The measured **87.652-ms/row** owner cannot yet become a rows<=8 verifier: Qwen4Exp has no block-verifier API, its prefill primitive commits all rows and scores only the last, head/logit storage is rows=1, and state snapshots cross the host. Split output storage, device transactions, deferred commit, and rows2-8 RED gates; do not transplant the different Qwen3.5 ABI. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 MTP phase census] Four-category B2/tg8 measures **18 cycles / 34 proposals / 28 target rows**: serial target verification owns **2,454.264 ms total / 87.652 ms per row**, proposal wall is **320.013 ms**, and host acceptance plus cursor repair total **1.306 ms**. Cached tracing proves target and Q8 sidecar routes; no graph runs. Diagnostic only; no speed promotion. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json`.

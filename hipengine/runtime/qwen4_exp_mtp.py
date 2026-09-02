@@ -11,6 +11,7 @@ hidden row for intra-cycle chaining.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from types import MappingProxyType
 import time
 from typing import Mapping, Sequence
@@ -30,6 +31,10 @@ from hipengine.core.memory import (
 from hipengine.kernels.backends import load_backend_kernel_package
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
+)
+from hipengine.kernels.hip_gfx1100.linear.lm_head import (
+    argmax_f32,
+    lm_head_argmax_stage1_blocks,
 )
 from hipengine.kernels.registry import resolve
 from hipengine.loading.materialize import float_array_to_bf16_bits
@@ -58,8 +63,8 @@ from hipengine.runtime.qwen4_exp_runner import (
 @dataclass(frozen=True)
 class Qwen4ExpMTPDraftResult:
     token_id: int
-    logits: np.ndarray
-    hidden_seed: np.ndarray
+    logits: np.ndarray | None
+    hidden_seed: np.ndarray | None
 
 
 @dataclass(frozen=True)
@@ -156,6 +161,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
     def _allocate_buffers(self) -> None:
         hidden = self.config.hidden_size
         residual = self.config.residual_width
+        argmax_blocks = lm_head_argmax_stage1_blocks(
+            self.config.vocab_size, threads=256
+        )
         sizes = (
             DType.INT64.itemsize,
             hidden * DType.BF16.itemsize,
@@ -165,6 +173,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
             residual * DType.BF16.itemsize,
             residual * DType.BF16.itemsize,
             self.config.vocab_size * DType.FP32.itemsize,
+            argmax_blocks * DType.FP32.itemsize,
+            argmax_blocks * DType.INT64.itemsize,
+            DType.FP32.itemsize,
         )
         self._buffers.extend(malloc(size, runtime=self.runtime) for size in sizes)
 
@@ -199,6 +210,18 @@ class Qwen4ExpGGUFMTPDraftRunner:
     @property
     def logits_buffer(self) -> DeviceBuffer:
         return self._buffers[7]
+
+    @property
+    def argmax_block_values(self) -> DeviceBuffer:
+        return self._buffers[8]
+
+    @property
+    def argmax_block_indices(self) -> DeviceBuffer:
+        return self._buffers[9]
+
+    @property
+    def argmax_value(self) -> DeviceBuffer:
+        return self._buffers[10]
 
     def _bind_layer(self) -> Qwen4ExpQSALayerDeviceWeights:
         def weight(slot: str):
@@ -299,17 +322,28 @@ class Qwen4ExpGGUFMTPDraftRunner:
             runtime=self.runtime,
         )
 
-    def _fuse_inputs(self, token_id: int, hidden_seed: np.ndarray) -> None:
+    def _fuse_inputs(
+        self,
+        token_id: int,
+        hidden_seed: np.ndarray | None,
+        *,
+        token_id_resident: bool = False,
+        hidden_seed_resident: bool = False,
+    ) -> None:
         token = int(token_id)
         if token < 0 or token >= self.config.vocab_size:
             raise ValueError("Qwen4Exp MTP token is outside the vocabulary")
-        token_host = np.asarray([token], dtype=np.int64)
-        copy_host_to_device(
-            self.token_id_buffer,
-            host_array_ptr(token_host),
-            runtime=self.runtime,
-        )
-        self._upload_hidden_seed(hidden_seed)
+        if not token_id_resident:
+            token_host = np.asarray([token], dtype=np.int64)
+            copy_host_to_device(
+                self.token_id_buffer,
+                host_array_ptr(token_host),
+                runtime=self.runtime,
+            )
+        if not hidden_seed_resident:
+            if hidden_seed is None:
+                raise ValueError("Qwen4Exp MTP host hidden seed is required")
+            self._upload_hidden_seed(hidden_seed)
         embedding_weight = self.resident.weight("root.token_embedding")
         embedding = resolve(
             backend=self.backend,
@@ -372,7 +406,16 @@ class Qwen4ExpGGUFMTPDraftRunner:
             runtime=self.runtime,
         )
 
-    def forward(self, token_id: int, hidden_seed: np.ndarray) -> Qwen4ExpMTPDraftResult:
+    def forward(
+        self,
+        token_id: int,
+        hidden_seed: np.ndarray | None,
+        *,
+        capture_logits: bool = True,
+        capture_hidden_seed: bool = True,
+        token_id_resident: bool = False,
+        hidden_seed_resident: bool = False,
+    ) -> Qwen4ExpMTPDraftResult:
         self._require_open()
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP draft capacity exceeded")
@@ -382,7 +425,12 @@ class Qwen4ExpGGUFMTPDraftRunner:
             stages[name] = (time.perf_counter() - started) * 1_000.0
 
         started = time.perf_counter()
-        self._fuse_inputs(token_id, hidden_seed)
+        self._fuse_inputs(
+            token_id,
+            hidden_seed,
+            token_id_resident=token_id_resident,
+            hidden_seed_resident=hidden_seed_resident,
+        )
         finish_stage("draft_input_fusion", started)
         started = time.perf_counter()
         output = run_qwen4_exp_dense_qsa_layer(
@@ -444,27 +492,51 @@ class Qwen4ExpGGUFMTPDraftRunner:
             runtime=self.runtime,
         )
         finish_stage("draft_lm_head", started)
-        started = time.perf_counter()
-        self.runtime.device_synchronize()
-        finish_stage("draft_device_synchronize", started)
-        logits = np.empty(self.config.vocab_size, dtype=np.float32)
-        started = time.perf_counter()
-        copy_device_to_host(
-            host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
-        )
-        finish_stage("draft_logits_d2h", started)
-        hidden_bits = np.empty(self.config.residual_width, dtype=np.uint16)
-        started = time.perf_counter()
-        copy_device_to_host(
-            host_array_ptr(hidden_bits), self.last_hidden, runtime=self.runtime
-        )
-        finish_stage("draft_hidden_d2h", started)
-        started = time.perf_counter()
-        chained_hidden = np.ascontiguousarray(
-            (hidden_bits.astype(np.uint32) << 16).view(np.float32)
-        )
-        token_id_result = int(np.argmax(logits))
-        finish_stage("draft_sampler", started)
+        logits = None
+        if capture_logits:
+            started = time.perf_counter()
+            self.runtime.device_synchronize()
+            finish_stage("draft_device_synchronize", started)
+            logits = np.empty(self.config.vocab_size, dtype=np.float32)
+            started = time.perf_counter()
+            copy_device_to_host(
+                host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
+            )
+            finish_stage("draft_logits_d2h", started)
+            started = time.perf_counter()
+            token_id_result = int(np.argmax(logits))
+            finish_stage("draft_sampler", started)
+        else:
+            started = time.perf_counter()
+            argmax_f32(
+                self.logits_buffer.ptr,
+                self.argmax_block_values.ptr,
+                self.argmax_block_indices.ptr,
+                self.token_id_buffer.ptr,
+                self.argmax_value.ptr,
+                self.config.vocab_size,
+                runtime=self.runtime,
+            )
+            token_host = np.empty(1, dtype=np.int64)
+            copy_device_to_host(
+                host_array_ptr(token_host),
+                self.token_id_buffer,
+                token_host.nbytes,
+                runtime=self.runtime,
+            )
+            token_id_result = int(token_host[0])
+            finish_stage("draft_device_argmax_and_token_d2h", started)
+        chained_hidden = None
+        if capture_hidden_seed:
+            hidden_bits = np.empty(self.config.residual_width, dtype=np.uint16)
+            started = time.perf_counter()
+            copy_device_to_host(
+                host_array_ptr(hidden_bits), self.last_hidden, runtime=self.runtime
+            )
+            finish_stage("draft_hidden_d2h", started)
+            chained_hidden = np.ascontiguousarray(
+                (hidden_bits.astype(np.uint32) << 16).view(np.float32)
+            )
         self.last_forward_stage_timings_ms = stages
         self.position += 1
         return Qwen4ExpMTPDraftResult(
@@ -500,8 +572,13 @@ class Qwen4ExpGGUFMTPDraftRunner:
         start_token: int,
         target_hidden_seed: np.ndarray,
         draft_n_max: int,
+        compact_output: bool | None = None,
     ) -> tuple[Qwen4ExpMTPDraftResult, ...]:
         count = int(draft_n_max)
+        if compact_output is None:
+            compact_output = os.environ.get(
+                "HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT", "0"
+            ) not in {"", "0", "false", "False"}
         if count <= 0 or count > 4:
             raise ValueError("Qwen4Exp MTP draft_n_max must be in 1..4")
         if self.position + count > self.max_sequence_length:
@@ -509,14 +586,23 @@ class Qwen4ExpGGUFMTPDraftRunner:
         results: list[Qwen4ExpMTPDraftResult] = []
         stage_totals: dict[str, float] = {}
         token = int(start_token)
-        hidden = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
-        for _depth in range(count):
-            result = self.forward(token, hidden)
+        hidden: np.ndarray | None = np.ascontiguousarray(
+            target_hidden_seed, dtype=np.float32
+        )
+        for depth in range(count):
+            result = self.forward(
+                token,
+                hidden,
+                capture_logits=not compact_output,
+                capture_hidden_seed=not compact_output,
+                token_id_resident=compact_output and depth > 0,
+                hidden_seed_resident=compact_output and depth > 0,
+            )
             results.append(result)
             for name, elapsed_ms in self.last_forward_stage_timings_ms.items():
                 stage_totals[name] = stage_totals.get(name, 0.0) + elapsed_ms
             token = result.token_id
-            hidden = result.hidden_seed
+            hidden = None if compact_output else result.hidden_seed
         self.last_proposal_stage_timings_ms = stage_totals
         return tuple(results)
 

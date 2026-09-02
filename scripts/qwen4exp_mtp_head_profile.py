@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fullsuite-artifact", type=Path, default=DEFAULT_FULL_SUITE)
     parser.add_argument("--warmups", type=int, default=3)
     parser.add_argument("--iterations", type=int, default=20)
+    parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3, 4), default=2)
     parser.add_argument("--output", type=Path, required=True)
     return parser
 
@@ -145,6 +146,40 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             )
             d2h_ms.append((time.perf_counter() - started) * 1e3)
 
+        proposal_debug_ms: list[float] = []
+        proposal_compact_ms: list[float] = []
+        proposal_ids_exact = True
+        for _ in range(args.warmups + args.iterations):
+            runner.reset()
+            started = time.perf_counter()
+            debug = runner.propose_chain(
+                start_token=248_068,
+                target_hidden_seed=np.zeros(target_config.residual_width, dtype=np.float32),
+                draft_n_max=args.candidate_budget,
+                compact_output=False,
+            )
+            debug_elapsed = (time.perf_counter() - started) * 1e3
+            runner.reset()
+            started = time.perf_counter()
+            compact = runner.propose_chain(
+                start_token=248_068,
+                target_hidden_seed=np.zeros(target_config.residual_width, dtype=np.float32),
+                draft_n_max=args.candidate_budget,
+                compact_output=True,
+            )
+            compact_elapsed = (time.perf_counter() - started) * 1e3
+            proposal_ids_exact &= [row.token_id for row in debug] == [
+                row.token_id for row in compact
+            ]
+            if len(proposal_debug_ms) >= args.warmups:
+                proposal_debug_ms.append(debug_elapsed)
+                proposal_compact_ms.append(compact_elapsed)
+            else:
+                proposal_debug_ms.append(debug_elapsed)
+                proposal_compact_ms.append(compact_elapsed)
+        proposal_debug_ms = proposal_debug_ms[args.warmups :]
+        proposal_compact_ms = proposal_compact_ms[args.warmups :]
+
         head_median = statistics.median(head_ms)
         forward_median = statistics.median(forward_ms)
         bytes_per_row = int(weight.spec.device_nbytes) // target_config.vocab_size
@@ -186,6 +221,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                 "full_head": _distribution(head_ms),
                 "full_logits_d2h": _distribution(d2h_ms),
                 "head_share_of_draft_forward": float(head_median / forward_median),
+                "proposal_debug": _distribution(proposal_debug_ms),
+                "proposal_compact": _distribution(proposal_compact_ms),
+                "proposal_ids_exact": bool(proposal_ids_exact),
+                "proposal_compact_speedup": float(
+                    statistics.median(proposal_debug_ms)
+                    / statistics.median(proposal_compact_ms)
+                ),
             },
             "selected_q8_row_geometry": {
                 "bytes_per_vocab_row": bytes_per_row,
