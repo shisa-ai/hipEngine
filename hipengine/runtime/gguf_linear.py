@@ -162,23 +162,44 @@ TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV = "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4"
 # B1 mechanism-A transfer (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md): route the
 # packed MTP serving target verifier's rows>1 projections through the same
 # retained exact prefill band owners the prefill path uses, instead of the
-# July-2026 small-B per-row GEMV owners (9cceedbcc). Default OFF keeps the
-# current verifier owners as the strict fallback; the flag is a run-owned
-# diagnostic switch until the B1 retention gates pass.
+# July-2026 small-B per-row GEMV owners (9cceedbcc). Default ON for the
+# production execution profile (retained 2026-09-02 after the B1 gates: 
+# one-group suite +56.3/+64.0/+69.5/+72.7 pct C5-C8 with 40/40 exact and 
+# identical IDs; sec-6 teacher-forced logits gate top-1 100 pct, max KL 
+# 6.5e-4; production-admission measured inert). Strict (and any profile 
+# fallback) keeps the GEMV verifier oracle unchanged. The env remains an 
+# explicit override for bisection and diagnostics: 1/on forces the transfer, 
+# 0/off restores the GEMV owners everywhere.
 MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
     "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
 )
 
 
-def mtp_serving_target_use_wmma_prefill() -> bool:
-    """Whether MTP serving target verify passes use the prefill band owners."""
+def mtp_serving_target_use_wmma_prefill(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Whether MTP serving target verify passes use the prefill band owners.
 
-    return os.environ.get(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    ``profile`` accepts the generator's execution-profile value (or its
+    string). Resolution order: explicit env override, then the production
+    profile (without strict fallback), then off. Without profile context the
+    answer is off so unrelated callers never drift onto the transferred
+    owners.
+    """
+
+    override = os.environ.get(
+        MTP_SERVING_TARGET_WMMA_PREFILL_ENV, ""
+    ).strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
 
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
 # Q4_K verifier continuation blocks. Default ON: every specialization preserves
