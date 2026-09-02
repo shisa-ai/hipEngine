@@ -9,6 +9,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-03 gfx1151 Qwen3.8 docs refresh to current-head retained rows] Topline Strix Halo MTP C2/C3 explicit diagnostic 28.121/30.499 -> **29.976/30.541 tok/s (1.575x/1.279x)** and a new C5-C8 one-group K3 row **37.280/41.048/44.492/50.893 tok/s (0.981x/0.953x/0.964x/1.006x)**; scoreboard and external survey updated from the same retained packets (no new measurement). `[B4 screen`](results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json) `[B5 packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json)
+
 - [2026-09-02 gfx1151 Qwen3.8 Z1 Laurent prefill parity] Same-host one-output complete-wall refresh measures hipEngine/Laurent **178.660/196.824 prompt tok/s at C2 (-9.23%)** and **283.540/297.325 at C8 (-4.64%)**. The prior 211.888/305.847 Laurent targets used internal `prompt_ms`, not the matched complete-wall boundary. `benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Y5 closed] Rows288 GDN+other is 143.87 ms / 14.52% wall. Perfect deletion plus Y3's perfect 4.63% residual totals 19.16%, still 2.49 points short of the 21.64% C8 target gap; no Y5 implementation can close the frozen target. `benchmarks/results/2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json`.
