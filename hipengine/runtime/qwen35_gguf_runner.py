@@ -12723,7 +12723,7 @@ def _gguf_moe_graph_enabled() -> bool:
 
 
 def _gguf_c8_q5_raw_mmq_enabled(backend: str) -> bool:
-    return _env_flag(_GGUF_C8_Q5_RAW_MMQ_ENV, False) and bool(
+    return _env_flag(_GGUF_C8_Q5_RAW_MMQ_ENV, True) and bool(
         backend_package_capability(
             backend,
             "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",

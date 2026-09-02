@@ -773,7 +773,7 @@ def test_qwen38_dense_q5_ssm_out_plan_can_add_raw_mmq_sidecars() -> None:
     assert all(spec.allocation_names == ("tiles", "raw") for spec in q5_specs)
 
 
-def test_qwen38_dense_q5_ssm_out_materializes_opt_in_raw_mmq_sidecar(
+def test_qwen38_dense_q5_ssm_out_materializes_default_raw_mmq_sidecar(
     monkeypatch,
 ) -> None:
     if not QWEN38_DENSE_MODEL.exists():
@@ -782,7 +782,7 @@ def test_qwen38_dense_q5_ssm_out_materializes_opt_in_raw_mmq_sidecar(
         ctypes.CDLL("libamdhip64.so")
     except OSError:
         pytest.skip("HIP runtime is not available")
-    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
+    monkeypatch.delenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", raising=False)
     runtime = get_hip_runtime()
     resident = materialize_qwen35_gguf_weights(
         QWEN38_DENSE_MODEL,

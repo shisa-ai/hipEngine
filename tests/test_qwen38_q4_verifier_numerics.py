@@ -5,6 +5,7 @@ import os
 import numpy as np
 import pytest
 
+from hipengine.runtime.qwen35_gguf_runner import _gguf_c8_q5_raw_mmq_enabled
 from scripts import qwen38_q4_verifier_numerics as gate
 
 
@@ -55,6 +56,17 @@ def test_q4_verifier_numerics_accepts_c8_raw_q5_candidate() -> None:
     assert args.backend == "hip_gfx1100"
     assert args.concurrency == 8
     assert args.candidate_q5_raw_mmq is True
+
+
+def test_c8_raw_q5_mmq_is_gfx1100_default_with_opt_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(gate.Q5_RAW_MMQ_ENV, raising=False)
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100") is True
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1151") is False
+
+    monkeypatch.setenv(gate.Q5_RAW_MMQ_ENV, "0")
+    assert _gguf_c8_q5_raw_mmq_enabled("hip_gfx1100") is False
 
 
 def test_q4_verifier_environment_restores_caller(
