@@ -1,8 +1,11 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
-Status: **HB-0 complete 2026-09-02; local Q4_K_XL smoke evidence exists, but
-no binding comparison exists until HB-1.** Values attributed to the PR author
-remain author-reported until reproduced on `zbook`. The binding comparator set and the section-6 closure rules remain
+Status: **HB-0 and HB-1 complete 2026-09-02 on the approved
+UD-Q4_K_XL/BF16 c=1 scope.** HB-PR11 improves retained-arm prefill over HB-base
+by 10.12%/11.42%/17.44% at p512/p1024/p4096; short-shape magnitude remains
+provisional because HB-base drifted between arms. The IQ4_XS PR-shape diagnostic
+was not run because this campaign scope forbids that download. Values attributed
+to the PR author remain author-reported. The binding comparator set and the section-6 closure rules remain
 owned by
 [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md);
 this document is a subordinate lane that (a) adds the halo-box fork as a
@@ -101,9 +104,12 @@ Lanes: **hipEngine** (named production, pinned UD-Q4_K_XL, BF16 K/V),
 
 ### 3.1 Prefill tok/s, UD-Q4_K_XL, BF16 K/V (canonical p512/p1024/p4096)
 
+Cells list p512 / p1024 / p4096 weighted tok/s from retained arm B. Arm A is a
+stabilization diagnostic and remains in the HB-1 artifact.
+
 | c | hipEngine | upstream HIP | HB-base | HB-PR11 |
 | ---: | --- | --- | --- | --- |
-| 1 | TBD | TBD | TBD | TBD |
+| 1 | 83.366 / 82.908 / 69.200 | 235.890 / 306.510 / 283.734 | 223.893 / 308.278 / 301.621 | **246.546 / 343.485 / 354.209** |
 | 2 | TBD | TBD | TBD | TBD |
 | 3 | TBD | TBD | TBD | TBD |
 | 4 | TBD | TBD | TBD | TBD |
@@ -114,9 +120,11 @@ Lanes: **hipEngine** (named production, pinned UD-Q4_K_XL, BF16 K/V),
 
 ### 3.2 Decode tok/s, UD-Q4_K_XL, BF16 K/V (tg128 after p512/p1024/p4096)
 
+Cells list p512 / p1024 / p4096 weighted tok/s from retained arm B.
+
 | c | hipEngine | upstream HIP | HB-base | HB-PR11 |
 | ---: | --- | --- | --- | --- |
-| 1 | TBD | TBD | TBD | TBD |
+| 1 | 14.315 / 14.268 / 12.177 | 17.745 / 16.987 / 14.893 | 17.663 / 16.882 / 14.897 | **18.125 / 17.284 / 15.232** |
 | 2 | TBD | TBD | TBD | TBD |
 | 3 | TBD | TBD | TBD | TBD |
 | 4 | TBD | TBD | TBD | TBD |
@@ -150,10 +158,10 @@ pass/fail gate.
 
 | Depth | HB-base published | HB-base local | HB-PR11 published | HB-PR11 local | Local gain |
 | ---: | ---: | --- | ---: | --- | --- |
-| 0 | 441.37 ± 1.85 | TBD | 639.03 ± 4.84 | TBD | TBD |
-| 12000 | 323.14 ± 1.14 | TBD | 405.70 ± 1.71 | TBD | TBD |
-| 32000 | 235.37 ± 1.01 | TBD | 271.34 ± 0.96 | TBD | TBD |
-| 64000 | 167.44 ± 1.49 | TBD | 189.98 ± 0.88 | TBD | TBD |
+| 0 | 441.37 ± 1.85 | not run — IQ4_XS excluded | 639.03 ± 4.84 | not run — IQ4_XS excluded | n/a |
+| 12000 | 323.14 ± 1.14 | not run — IQ4_XS excluded | 405.70 ± 1.71 | not run — IQ4_XS excluded | n/a |
+| 32000 | 235.37 ± 1.01 | not run — IQ4_XS excluded | 271.34 ± 0.96 | not run — IQ4_XS excluded | n/a |
+| 64000 | 167.44 ± 1.49 | not run — IQ4_XS excluded | 189.98 ± 0.88 | not run — IQ4_XS excluded | n/a |
 
 ## 4. Measurement protocol
 
@@ -217,7 +225,7 @@ and 5.2. Source ports cite halo-box path + commit `a7ad7b7f` and run
 | Phase | Unit | Exit condition |
 | --- | --- | --- |
 | HB-0 | **Done** — checked out `6c84c7d5` and `a7ad7b7f`, preserved pristine HIP Release binaries, and froze separately labeled loader-patched binaries. Pristine HB-base produced zero samples at the 1,800-second startup timeout; the two documented patches reduced startup to 24.09/21.49 seconds. Both patched lanes completed all four exact p512 categories with matching output hashes. | Identity/smoke artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb0.json`. |
-| HB-1 | Canonical screen + PR-shape reproduction. Fill section 3.1/3.2 c=1 for all four lanes and section 3.4 in full; classify repeatability per lane (repeat arm on each build). | Sections 3.1/3.2 c=1 and 3.4 complete; artifact + worklog committed. |
+| HB-1 | **Done** — completed two exact 36-sample arms for each of HB-base, HB-PR11, current hipEngine, and freshly rebuilt patched upstream. Retained arm B shows HB-PR11/base prefill gains of 1.1012x/1.1142x/1.1744x and decode gains of 1.0261x/1.0238x/1.0225x at p512/p1024/p4096. Every lane is cross-arm output-exact. HB-base p512/p1024 prefill drift makes those magnitudes provisional; p4096 direction reproduces. Section 3.4 is explicitly not run because IQ4_XS is excluded by the approved scope. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json`; proceed to frozen-binary HB-2 profiling. |
 | HB-2 | Role-resolved profiling of HB-base and HB-PR11 on UD-Q4_K_XL; kernel-name census confirms/denies each section 1.1 activation prediction; aligned family ledger regenerated against HB-PR11. | "Active on Q4_K_XL?" column fully measured; family ledger artifact committed. |
 | HB-3 | Microbenchmark match ledger. For every active family, pair the HB-PR11 kernel/config against the hipEngine owner at identical shapes with counterbalanced pairs; record per-family ratios and rank by absolute delta against the main campaign's Amdahl owners. | Section 5 table complete; candidate list handed to the main campaign impact queue. |
 | HB-4 | IQ4_XS diagnostic arm. Download/pin UD-IQ4_XS as a separate artifact (hashes recorded); exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
