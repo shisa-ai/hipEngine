@@ -1,0 +1,171 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b0_corrected_pass_budgets",
+  "date": "2026-09-02",
+  "status": "mechanism_a_entry_reopened",
+  "performance_claim": false,
+  "gpu_run": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586 (inherited from source artifacts)",
+  "correction": "Z0 counted the accept/sync/commit window as non-target cost; M3 measured 96.2-98.3% of the target-pass host windows is traced target-kernel execution queued behind the accept marker. This artifact reassigns that kernel time to the target stage and recomputes the mechanism A+B entry budgets. It corrects the Z0 decision text ('zero feasible target-only pass budget'); the Z0 artifact itself is immutable and unchanged.",
+  "inputs": {
+    "z0_pass_budgets": "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-pass-budgets.json",
+    "m3_wide_closure": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-wide-accept-boundary-closure.json",
+    "m3_c8_attribution": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json",
+    "f3_anchor": {
+      "source": "docs/QWEN38-GFX1151-STRUCTURAL-DIFFERENTIAL-CAMPAIGN.md section 7.1 finding F3",
+      "anchor_band_ms_per_full_pass": [
+        230.0,
+        260.0
+      ],
+      "verify_pass_today_ms": 790.0,
+      "label": "derived from measured W0 row curve and Y0/Y2 prefill sizing; not a new measurement"
+    }
+  },
+  "formula": {
+    "windows": "accept_sync_commit + target_enqueue (host windows M3 showed kernel-covered)",
+    "reassigned_kernel": "windows * kernel_coverage",
+    "host_ceiling": "windows * (1 - kernel_coverage)",
+    "corrected_host_residual_removed": "proposal + provider_update + selected_commit + host_ceiling",
+    "corrected_target_pass_budget": "allowed_decode_cycle - corrected_host",
+    "verdict": "positive if the budget covers the F3 anchor band [230, 260] ms; near_miss if it covers part of the band; blocked if below the band"
+  },
+  "cells": {
+    "5": {
+      "full_row": 20,
+      "kernel_coverage": 0.982537,
+      "kernel_coverage_source": "m3_measured",
+      "measured_windows_ms_per_cycle": {
+        "accept_sync_commit": 490.776,
+        "target_enqueue": 34.724
+      },
+      "reassigned_target_kernel_ms_per_cycle": 516.323,
+      "host_ceiling_ms_per_cycle": 9.177,
+      "m3_diagnostic_host_minus_kernel_crosscheck_ms": 9.250276999999983,
+      "corrected_non_target_host_ms_per_cycle": {
+        "residual_removed": 45.061,
+        "residual_kept": 112.904
+      },
+      "prefill_amortized_ms_per_cycle": 124.933,
+      "allowed_decode_cycle_ms": 391.724,
+      "z0_old_pass_slack_residual_removed_ms": -134.936,
+      "corrected_target_pass_budget_ms": {
+        "residual_removed": 346.663,
+        "residual_kept": 278.821
+      },
+      "entry_verdict": {
+        "residual_removed": "positive",
+        "residual_kept": "positive"
+      },
+      "projected_ab_cycle_ms": {
+        "anchor_lo": 275.061,
+        "anchor_hi": 305.061,
+        "note": "decode cycle = corrected host + F3 owner anchor (derived)"
+      },
+      "projected_cycle_with_today_owners_ms": 835.061
+    },
+    "6": {
+      "full_row": 24,
+      "kernel_coverage": 0.982807,
+      "kernel_coverage_source": "derived_interpolated_c5_c7",
+      "measured_windows_ms_per_cycle": {
+        "accept_sync_commit": 552.45,
+        "target_enqueue": 38.549
+      },
+      "reassigned_target_kernel_ms_per_cycle": 580.838,
+      "host_ceiling_ms_per_cycle": 10.161,
+      "m3_diagnostic_host_minus_kernel_crosscheck_ms": null,
+      "corrected_non_target_host_ms_per_cycle": {
+        "residual_removed": 55.733,
+        "residual_kept": 136.372
+      },
+      "prefill_amortized_ms_per_cycle": 145.554,
+      "allowed_decode_cycle_ms": 400.328,
+      "z0_old_pass_slack_residual_removed_ms": -197.693,
+      "corrected_target_pass_budget_ms": {
+        "residual_removed": 344.595,
+        "residual_kept": 263.956
+      },
+      "entry_verdict": {
+        "residual_removed": "positive",
+        "residual_kept": "positive"
+      },
+      "projected_ab_cycle_ms": {
+        "anchor_lo": 285.733,
+        "anchor_hi": 315.733,
+        "note": "decode cycle = corrected host + F3 owner anchor (derived)"
+      },
+      "projected_cycle_with_today_owners_ms": 845.733
+    },
+    "7": {
+      "full_row": 28,
+      "kernel_coverage": 0.983077,
+      "kernel_coverage_source": "m3_measured",
+      "measured_windows_ms_per_cycle": {
+        "accept_sync_commit": 639.693,
+        "target_enqueue": 44.34
+      },
+      "reassigned_target_kernel_ms_per_cycle": 672.457,
+      "host_ceiling_ms_per_cycle": 11.576,
+      "m3_diagnostic_host_minus_kernel_crosscheck_ms": 11.607410749999985,
+      "corrected_non_target_host_ms_per_cycle": {
+        "residual_removed": 61.304,
+        "residual_kept": 146.225
+      },
+      "prefill_amortized_ms_per_cycle": 162.735,
+      "allowed_decode_cycle_ms": 350.719,
+      "z0_old_pass_slack_residual_removed_ms": -338.702,
+      "corrected_target_pass_budget_ms": {
+        "residual_removed": 289.414,
+        "residual_kept": 204.493
+      },
+      "entry_verdict": {
+        "residual_removed": "positive",
+        "residual_kept": "blocked"
+      },
+      "projected_ab_cycle_ms": {
+        "anchor_lo": 291.304,
+        "anchor_hi": 321.304,
+        "note": "decode cycle = corrected host + F3 owner anchor (derived)"
+      },
+      "projected_cycle_with_today_owners_ms": 851.304
+    },
+    "8": {
+      "full_row": 32,
+      "kernel_coverage": 0.962084,
+      "kernel_coverage_source": "m3_measured",
+      "measured_windows_ms_per_cycle": {
+        "accept_sync_commit": 667.111,
+        "target_enqueue": 76.359
+      },
+      "reassigned_target_kernel_ms_per_cycle": 715.281,
+      "host_ceiling_ms_per_cycle": 28.189,
+      "m3_diagnostic_host_minus_kernel_crosscheck_ms": 14.474466874999905,
+      "corrected_non_target_host_ms_per_cycle": {
+        "residual_removed": 75.451,
+        "residual_kept": 149.805
+      },
+      "prefill_amortized_ms_per_cycle": 178.428,
+      "allowed_decode_cycle_ms": 302.563,
+      "z0_old_pass_slack_residual_removed_ms": -411.81,
+      "corrected_target_pass_budget_ms": {
+        "residual_removed": 227.111,
+        "residual_kept": 152.758
+      },
+      "entry_verdict": {
+        "residual_removed": "near_miss_below_anchor",
+        "residual_kept": "blocked"
+      },
+      "projected_ab_cycle_ms": {
+        "anchor_lo": 305.451,
+        "anchor_hi": 335.451,
+        "note": "decode cycle = corrected host + F3 owner anchor (derived)"
+      },
+      "projected_cycle_with_today_owners_ms": 865.451
+    }
+  },
+  "findings": [
+    "Reassigned target-kernel execution hidden in the Z0 non-target stage is 516 ms/cycle at C5, 581 ms/cycle at C6, 672 ms/cycle at C7, 715 ms/cycle at C8 (derived from measured coverage); this is the double-count that drove the Z0 zero-budget verdict.",
+    "Corrected target-pass budgets (residual removed / kept): C5 positive 347 ms / positive 279 ms; C6 positive 345 ms / positive 264 ms; C7 positive 289 ms / blocked 204 ms; C8 near_miss_below_anchor 227 ms / blocked 153 ms. Mechanism A+B entry is positive at C5/C6/C7; C8 is a near-miss at the optimistic anchor end.",
+    "Even with zero accept-boundary host cost, today's ~790 ms verify pass cannot reach parity in any cell; the owners, not the boundary, are the lever. B1 (registry transfer of the retained Y2/Y3 owners) measures the truth; all projections here are derived, not measured."
+  ]
+}
