@@ -1676,8 +1676,15 @@ warm GPU-kernel claims.
       19.207 ms H2D** across prefill plus 128 transitions. Output hash remains
       canonical and teardown is zero. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-ple-telemetry.json`.
-- [ ] Add off/auto/on random-access advice only together with page-aligned,
-      deduplicated and adjacent-range-merged `WILLNEED` prefetch.
+- [x] Add off/auto/on random-access advice only together with page-aligned,
+      deduplicated and adjacent-range-merged `WILLNEED` prefetch. The default is
+      `off`; `auto` selects random advice only when useful row bytes are below
+      half the page-aligned fetch bytes. A real warm code-p512 route smoke selects
+      `on`, emits 16 deduplicated 4-KiB ranges for the final 16-row gather, keeps
+      the canonical output hash, and tears down to zero. This closes the mechanism,
+      not a speed claim: the single telemetry-enabled request is excluded, and a
+      future cold/warm paired gate must choose any production policy. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-random-prefetch.json`.
 - [ ] Dequantize directly into the active pinned ring where practical; remove
       temporary gather/value arrays and redundant copies.
 - [ ] For prefill, overlap next-chunk prefetch/dequant with current GPU work

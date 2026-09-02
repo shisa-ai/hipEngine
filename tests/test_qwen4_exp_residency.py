@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from math import prod
+import mmap
+import os
 from types import SimpleNamespace
 
 import numpy as np
@@ -187,6 +189,45 @@ def test_qwen4_exp_ple_telemetry_is_opt_in_and_reports_locality() -> None:
 
     ring.close()
     table.close()
+
+
+def test_qwen4_exp_ple_prefetch_merges_page_aligned_ranges(
+    monkeypatch: pytest.MonkeyPatch, tmp_path,
+) -> None:
+    raw = _iq4_nl_rows(tuple(float(i + 1) for i in range(100)))
+    source = tmp_path / "part.gguf"
+    source.write_bytes(b"0" * 16384)
+    mapping = SimpleNamespace(advice=[], madvise=lambda advice: mapping.advice.append(advice))
+    class Raw:
+        _mmap = mapping
+        def __getitem__(self, item):
+            return raw[item]
+    reader = SimpleNamespace(path=source, tensor_data=lambda name: Raw())
+    calls: list[tuple[int, int, int]] = []
+    monkeypatch.setattr(
+        "hipengine.loading.qwen4_exp_materialize.os.posix_fadvise",
+        lambda fd, offset, length, advice: calls.append((offset, length, advice)),
+    )
+    table = Qwen4ExpPLEMMapTable(reader, _ple_tensor(100), semantic_rows=100)
+
+    result = table.prefetch_rows([0, 0, 46, 99], random_access="auto")
+
+    assert result["random_access_requested"] == "auto"
+    assert result["random_access_selected"] == "on"
+    assert result["page_size"] == 4096
+    assert result["unique_pages"] == 3
+    assert result["mapping_advice_applied"] is True
+    assert mapping.advice == [mmap.MADV_RANDOM]
+    assert result["ranges"] == [{"offset": 0, "nbytes": 12288}]
+    assert calls[0][2] == os.POSIX_FADV_RANDOM
+    assert calls[1] == (0, 12288, os.POSIX_FADV_WILLNEED)
+    table.configure_random_access("on")
+    table.gather_rows([1])
+    assert calls[-1][2] == os.POSIX_FADV_WILLNEED
+    with pytest.raises(ValueError, match="off, auto, or on"):
+        table.prefetch_rows([0], random_access="sometimes")
+    with pytest.raises(ValueError, match="off, auto, or on"):
+        table.configure_random_access("sometimes")
 
 
 def test_qwen4_exp_ple_cache_advice_is_file_scoped(

@@ -435,6 +435,9 @@ class Qwen4ExpPLEMMapTable:
         self._telemetry_pages: set[int] = set()
         self._cache_mode = "unadvised"
         self._cache_range: dict[str, int] | None = None
+        self._random_access_mode = "off"
+        self._random_access_requested_mode = "off"
+        self._row_prefetch_ranges: list[dict[str, int]] = []
 
     def enable_telemetry(self) -> None:
         """Enable opt-in cumulative PLE I/O telemetry."""
@@ -450,7 +453,12 @@ class Qwen4ExpPLEMMapTable:
             "minor_faults_proxy": 0,
             "major_faults_proxy": 0,
             "cache_mode": self._cache_mode,
-            "prefetch_ranges": [dict(self._cache_range)] if self._cache_range else [],
+            "random_access_mode": self._random_access_mode,
+            "prefetch_ranges": (
+                [dict(item) for item in self._row_prefetch_ranges]
+                if self._row_prefetch_ranges
+                else [dict(self._cache_range)] if self._cache_range else []
+            ),
         }
         self._telemetry_rows.clear()
         self._telemetry_pages.clear()
@@ -494,6 +502,10 @@ class Qwen4ExpPLEMMapTable:
             int(np.min(indices)) < 0 or int(np.max(indices)) >= self.semantic_rows
         ):
             raise IndexError("PLE row index is outside semantic rows")
+        if self._random_access_requested_mode != "off":
+            self.prefetch_rows(
+                indices, random_access=self._random_access_requested_mode
+            )
         started = time.perf_counter_ns() if self._telemetry is not None else 0
         before_faults = resource.getrusage(resource.RUSAGE_SELF) if started else None
         selected = np.asarray(self._raw[indices])
@@ -518,6 +530,95 @@ class Qwen4ExpPLEMMapTable:
             self._telemetry["minor_faults_proxy"] += int(after_faults.ru_minflt - before_faults.ru_minflt)
             self._telemetry["major_faults_proxy"] += int(after_faults.ru_majflt - before_faults.ru_majflt)
         return values
+
+    def configure_random_access(self, mode: str) -> None:
+        """Configure default-off per-gather sparse prefetch advice."""
+
+        selected = str(mode)
+        if selected not in {"off", "auto", "on"}:
+            raise ValueError("PLE random access mode must be off, auto, or on")
+        self._random_access_requested_mode = selected
+
+    def prefetch_rows(
+        self, row_indices: Any, *, random_access: str = "auto"
+    ) -> dict[str, Any]:
+        """Apply sparse access advice and page-aligned WILLNEED row ranges."""
+
+        if self._raw is None:
+            raise RuntimeError("PLE mmap table is closed")
+        requested = str(random_access)
+        if requested not in {"off", "auto", "on"}:
+            raise ValueError("PLE random access mode must be off, auto, or on")
+        indices = np.asarray(row_indices, dtype=np.int64)
+        if indices.ndim != 1:
+            raise ValueError("row_indices must have shape [rows]")
+        if indices.size and (
+            int(np.min(indices)) < 0 or int(np.max(indices)) >= self.semantic_rows
+        ):
+            raise IndexError("PLE row index is outside semantic rows")
+        page_size = int(os.sysconf("SC_PAGE_SIZE"))
+        row_bytes = int(self.tensor.byte_shape[1])
+        pages: set[int] = set()
+        for index in indices.tolist():
+            start = int(self.tensor.data_offset) + int(index) * row_bytes
+            pages.update(range(start // page_size, (start + row_bytes - 1) // page_size + 1))
+        ranges: list[dict[str, int]] = []
+        for page in sorted(pages):
+            offset = page * page_size
+            if ranges and offset == ranges[-1]["offset"] + ranges[-1]["nbytes"]:
+                ranges[-1]["nbytes"] += page_size
+            else:
+                ranges.append({"offset": offset, "nbytes": page_size})
+        unique_rows = len({int(item) for item in indices.tolist()})
+        useful_bytes = unique_rows * row_bytes
+        prefetched_bytes = sum(item["nbytes"] for item in ranges)
+        selected = requested
+        if requested == "auto":
+            selected = "on" if prefetched_bytes and useful_bytes * 2 < prefetched_bytes else "off"
+        mapping = getattr(self._raw, "_mmap", None)
+        mapping_applied = False
+        if mapping is not None and hasattr(mapping, "madvise"):
+            mapping.madvise(
+                mmap.MADV_RANDOM if selected == "on" else mmap.MADV_NORMAL
+            )
+            mapping_applied = True
+        source = getattr(self.reader, "path", None)
+        fadvise = getattr(os, "posix_fadvise", None)
+        applied = False
+        if source is not None and callable(fadvise):
+            descriptor = os.open(os.fspath(source), os.O_RDONLY)
+            try:
+                fadvise(
+                    descriptor,
+                    int(self.tensor.data_offset),
+                    int(self.tensor.nbytes),
+                    os.POSIX_FADV_RANDOM if selected == "on" else os.POSIX_FADV_NORMAL,
+                )
+                for item in ranges:
+                    fadvise(
+                        descriptor,
+                        item["offset"],
+                        item["nbytes"],
+                        os.POSIX_FADV_WILLNEED,
+                    )
+                applied = True
+            finally:
+                os.close(descriptor)
+        self._random_access_mode = selected
+        self._row_prefetch_ranges = [dict(item) for item in ranges]
+        if self._telemetry is not None:
+            self._telemetry["random_access_mode"] = selected
+            self._telemetry["prefetch_ranges"] = [dict(item) for item in ranges]
+        return {
+            "random_access_requested": requested,
+            "random_access_selected": selected,
+            "page_size": page_size,
+            "unique_rows": unique_rows,
+            "unique_pages": len(pages),
+            "ranges": ranges,
+            "file_advice_applied": applied,
+            "mapping_advice_applied": mapping_applied,
+        }
 
     def advise_cache(self, mode: str) -> dict[str, Any]:
         """Apply file-scoped warm/cold advice to only the PLE tensor range."""
