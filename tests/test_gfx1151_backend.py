@@ -896,6 +896,26 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
             "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
             "shared4",
         ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out",
+            "shared4r3",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+            "shared4r4",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+            "shared4r6",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out",
+            "shared4r9",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out",
+            "shared3r1",
+        ),
     ):
         monkeypatch.setattr(
             gfx1151_backend,
@@ -911,6 +931,11 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
     for rows in (33, 48):
         fn(1, 2, 3, rows, 5_120, 17_408)
     others = [s for s in shapes if s != (5_120, 17_408)]
+    # (17_408, 5_120) is a retained shared3r1 shape at rows 33-48; every
+    # other low-M shape stays on the low-VGPR band there.
+    def _rows33_48_tag(shape: tuple[int, int]) -> str:
+        return "shared3r1" if shape == (17_408, 5_120) else "lowvgpr"
+
     for rows in (33, 48):
         for in_f, out_f in others:
             fn(1, 2, 3, rows, in_f, out_f)
@@ -934,13 +959,15 @@ def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
     expected = (
         ["lowvgpr"] * (2 * len(shapes))
         + ["lowvgpr48"] * 2
-        + ["lowvgpr"] * (2 * len(others))
+        + [_rows33_48_tag(s) for s in others] * 2
         + ["lowvgpr"] * (2 * len(shapes))
     )
     for _ in (65, 80):
         expected += ["lowvgpr"] * len(lowvgpr80_shapes)
         expected += ["lowvgpr48"] * len(set(shapes) - lowvgpr80_shapes)
-    expected += ["plain", "plain", "plain", "shared4"]
+    # rows45 (5_120, 1_024) is the other retained shared3r1 shape and rows512
+    # (17_408, 5_120) is the retained shared4r6 band; both must stay stubbed.
+    expected += ["plain", "plain", "shared3r1", "shared4r6"]
     assert calls == expected
 
 
@@ -1070,6 +1097,11 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out": "q6_lv",
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out": "q6_lv48",
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out": "q6_shared4",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out": "q6_shared4r3",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out": "q6_shared4r4",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out": "q6_shared4r6",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out": "q6_shared4r9",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out": "q6_shared3r1",
     }
     for name, tag in symbols.items():
         monkeypatch.setattr(
@@ -1228,7 +1260,32 @@ def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
         },
     )
     assert_routes(q6, (145, 255), {shape: "q6_plain" for shape in shapes})
-    assert_routes(q6, (256, 536), {shape: "q6_shared4" for shape in shapes})
+    # The retained Y2 high-row owners take (17_408, 5_120) at exact bands:
+    # shared4r4 at rows256, shared4r6 from row288, shared4r9 at rows536.
+    assert_routes(
+        q6,
+        (256,),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4r4",
+        },
+    )
+    assert_routes(
+        q6,
+        (288,),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4r6",
+        },
+    )
+    assert_routes(
+        q6,
+        (536,),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4r9",
+        },
+    )
 
 
 def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
