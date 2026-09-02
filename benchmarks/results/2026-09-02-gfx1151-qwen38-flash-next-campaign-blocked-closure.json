@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_performance_campaign_blocked_closure",
+  "status": "blocked_after_independent_work_exhausted",
+  "performance_claim": false,
+  "source": {
+    "head_before_closure_commit": "f5ceab62e",
+    "branch": "qwen3.8-flash-next",
+    "host": "zbook/gfx1151",
+    "gpu_clock_policy": "auto"
+  },
+  "progress": {
+    "baseline_open_or_partial_items": 69,
+    "final_open_or_partial_items": 17,
+    "closed_items": 52,
+    "retained_default_performance_units": [
+      "exact ordered QSA p4096 decode",
+      "Q4 DP4A+SiLU c1 calibrated layers",
+      "Q5_1 physical64 weighted down",
+      "Q8 F32 output-pack8",
+      "load-page drop-behind explicit one-shot mode"
+    ]
+  },
+  "current_snapshot": {
+    "production_manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+    "strict_manifest_sha256": "ec1c7828611b055014df9f5e5eb8a6c814e283606227cdfc6b33bfcaeeb0109b",
+    "focused_tests_passed": 268,
+    "canonical_production": {
+      "p512": [83.3519851692184, 14.180428822992493],
+      "p1024": [82.93265847439883, 14.164287956422347],
+      "p4096": [69.20031792148764, 12.159654770164765]
+    },
+    "all_36_canonical_samples_deterministic": true,
+    "post_close_bytes": 0,
+    "mtp_exact_rows": 10,
+    "mtp_total_rows": 10,
+    "mtp_over_true_ar": 0.7407306167361402,
+    "mtp_default": "target_ar"
+  },
+  "milestones": {
+    "1_p0_measurement": {"passed": false, "blockers": ["final cold/warm and category-heldout closure packet incomplete"]},
+    "2_hip_short_ar_parity": {"passed": false, "blockers": ["production remains below eligible patched HIP comparator rows"]},
+    "3_same_host_short_ar_parity": {"passed": false, "blockers": ["upstream Vulkan is faster and final p512/p1024 five-repeat rows are variance-invalid"]},
+    "4_role_closure": {"passed": true, "evidence": "all residual >=1.25x owners have measured architectural reasons and exhausted/rejected/prerequisite-blocked actions"},
+    "5_correctness_product": {"passed": true, "scope": "current bounded short/default profile", "evidence": "focused, 450-row quality/task/state, deterministic canonical, c2, lifecycle, strict fallback"},
+    "6_long_context_parity": {"passed": false, "blockers": ["4K/16K/64K retrieval passes, but matched 16K/64K external comparators do not exist"]},
+    "7_mtp_parity": {"passed": false, "blockers": ["0.7407x AR and every short category regresses", "4K MTP blocked at 1K capacity"]},
+    "8_evidence_closure": {"passed": false, "blockers": ["final five-pair target and 4K MTP raw evidence absent", "model closure checkpoint withheld"]}
+  },
+  "terminal_blockers": [
+    "eligible upstream Vulkan five-repeat p512/p1024 max per-case CV is 9.24%/4.73%, above 2%",
+    "no exact operation-complete target-body verifier beats serial MTP",
+    "public MTP/draft capacity is 1K versus required 4K suite",
+    "16K/64K matched same-config external comparator rows do not exist",
+    "Q8 KV remains behind BF16 parity and lacks Qwen4Exp registry families",
+    "external EXP-016 patch/source is unavailable"
+  ],
+  "remaining_items": {
+    "count": 17,
+    "classification": "14 measured/prerequisite blockers plus three aggregate P12 closure rows after P7 and the final decision checkbox close"
+  },
+  "amdahl_declaration": {
+    "W": "current shape/owner walls are preserved in the P12 validation and owner artifacts",
+    "C": "no final valid five-pair comparator target exists",
+    "O": "all remaining owners are measured/prerequisite-blocked; no new candidate owner",
+    "s": null,
+    "arithmetic_class": "terminal campaign decision; no arithmetic change",
+    "scope": "section 6 closure assessment after exhausting independent work",
+    "mechanism": "consolidate binding blockers without relabeling partial milestones",
+    "strict_fallback": "named strict profile and target_ar",
+    "overlap_exclusions": ["isolated wins do not close parity", "noisy comparator rows are not targets", "blocked 4K MTP is not inferred from short scope"]
+  },
+  "evidence": {
+    "validation_packet": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json",
+    "generated_report": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md",
+    "comparator_blocker": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-fivepair-comparator-blocked.json",
+    "mtp_blocker": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-promotion-readiness.json"
+  },
+  "decision": {
+    "section_6_closed": false,
+    "campaign_stopped": true,
+    "reason": "Every independent implementation family was retained, rejected, or assigned a concrete prerequisite. Remaining work cannot proceed without stabilizing/rebuilding external comparator evidence, extending MTP capacity and verification, or adding absent external source/configuration families.",
+    "resume_when": "At least one terminal blocker changes with new source, capacity, or stable evidence; re-profile and re-rank before implementation."
+  }
+}
