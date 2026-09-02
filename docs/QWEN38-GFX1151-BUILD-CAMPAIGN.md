@@ -135,13 +135,27 @@ per §1.4; commit each validated unit atomically with its worklog entry.
 
 ### B1 — mechanism A+B: verifier-side owner transfer (T0/T2)
 
-- [ ] Map every verifier R17-R32 packed subshape (including mixed
+- [x] Map every verifier R17-R32 packed subshape (including mixed
   R20/R24/R32) to the retained exact Y2/Y3 owner bodies
   (`<3,1,2>` Q6 standard/planar, Q5 one-sweep route, best Q4 rows17-48 owner)
   versus the pre-Y2 `shared4` bodies currently selected by
   `GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS`
   (`hipengine/kernels/hip_gfx1151/__init__.py:1705`). Record the four-axis
   keys; no backend/quant dispatch branches.
+
+  Owner map: [`2026-09-02-gfx1151-qwen38-b1-verifier-owner-map.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b1-verifier-owner-map.json)
+  (`scripts/qwen38_b1_verifier_owner_map.py`, host-only; sha-pinned to the
+  committed M3 C5/C7 raw telemetry + rocprof traces, launch-attributed via
+  hipLaunchKernel correlation IDs, reconciling with the M3 wide closure
+  within 1.65%). Measured current owners at R20/R28 passes: Q6 planar
+  per-row direct GEMV 209.4/292.7 ms (39-42%), Q4 generic wmma-prefill
+  bodies ~132+24 ms, Q6 std GEMV 90.0/125.6 ms, Q5 selected-direct
+  67.3/92.9 ms, lm-head rowtile re-sweep 23.9/33.4 ms; totals 540.6/702.0
+  ms. No retained Y2/Y3 owner is selected by the verifier today. Derived
+  A+B projection at R28 is ~265 ms (F3 per-tensor leaves), inside the B0
+  corrected C7 budget of 289.4 ms. Transfer surface: the four quant-family
+  routers at rows 17-48 plus the default-off wide-q6 table hook; four-axis
+  keys recorded per family in the artifact.
 - [ ] Register the transfer under verifier keys with the current owners as
   registered strict fallback, including B: the Q6 lm-head as one sweep at
   R > 8 (replacing the per-rowtile re-sweep, F4). RED-first where practical:

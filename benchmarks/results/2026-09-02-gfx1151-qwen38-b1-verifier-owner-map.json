@@ -1,0 +1,536 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b1_verifier_owner_map",
+  "date": "2026-09-02",
+  "status": "mapping_complete",
+  "performance_claim": false,
+  "gpu_run": false,
+  "measured_sources": {
+    "raw_telemetry": "/tmp/q38-z2-teacher/k3-profile-raw.json",
+    "raw_sha256": "93d13e649af5b6160ca6d6d69e93a24336a5ccdbe270475fa2db334a2a49681b",
+    "kernel_trace": "/tmp/q38-z2-teacher/k3-c5c7-rocprof/z4-m3-c5c7_kernel_trace.csv",
+    "kernel_trace_sha256": "846584075a5d3a6ae292035e0c646f9bb2f9c77fa93fba6a8b648e2c640e88a4",
+    "pinning_artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-wide-accept-boundary-closure.json",
+    "note": "C5/C7 single-prompt diagnostic under rocprof; target windows from specdec2_mtp2_target_pass_* telemetry on the same clock as the trace"
+  },
+  "measured_target_pass_kernels": {
+    "10": {
+      "passes": 1,
+      "median_kernel_ms": 310.292,
+      "mean_host_enqueue_ms": 45.142,
+      "mean_drain_ms": 270.493,
+      "template_ms_mean_per_pass": {
+        "q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>": {
+          "ms": 105.094,
+          "launches": 40,
+          "launches_per_pass": 40.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>": {
+          "ms": 75.582,
+          "launches": 232,
+          "launches_per_pass": 232.0
+        },
+        "q6_k_t16_gemv_kernel<unsigned short, unsigned short>": {
+          "ms": 45.38,
+          "launches": 24,
+          "launches_per_pass": 24.0
+        },
+        "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>": {
+          "ms": 35.032,
+          "launches": 48,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4>": {
+          "ms": 21.711,
+          "launches": 32,
+          "launches_per_pass": 32.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>": {
+          "ms": 9.607,
+          "launches": 2,
+          "launches_per_pass": 2.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>": {
+          "ms": 4.894,
+          "launches": 48,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>": {
+          "ms": 4.634,
+          "launches": 1,
+          "launches_per_pass": 1.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>": {
+          "ms": 3.887,
+          "launches": 24,
+          "launches_per_pass": 24.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 1.12,
+          "launches": 96,
+          "launches_per_pass": 96.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.825,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 0.687,
+          "launches": 48,
+          "launches_per_pass": 48.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.592,
+          "launches": 65,
+          "launches_per_pass": 65.0
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>": {
+          "ms": 0.417,
+          "launches": 16,
+          "launches_per_pass": 16.0
+        },
+        "silu_mul_separate_out_kernel<unsigned short>": {
+          "ms": 0.257,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "gguf_bf16_add_kernel": {
+          "ms": 0.176,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "bf16_to_f32_kernel": {
+          "ms": 0.127,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>": {
+          "ms": 0.077,
+          "launches": 16,
+          "launches_per_pass": 16.0
+        }
+      }
+    },
+    "14": {
+      "passes": 1,
+      "median_kernel_ms": 391.473,
+      "mean_host_enqueue_ms": 46.179,
+      "mean_drain_ms": 350.669,
+      "template_ms_mean_per_pass": {
+        "q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>": {
+          "ms": 146.412,
+          "launches": 40,
+          "launches_per_pass": 40.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>": {
+          "ms": 75.676,
+          "launches": 232,
+          "launches_per_pass": 232.0
+        },
+        "q6_k_t16_gemv_kernel<unsigned short, unsigned short>": {
+          "ms": 63.456,
+          "launches": 24,
+          "launches_per_pass": 24.0
+        },
+        "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>": {
+          "ms": 48.176,
+          "launches": 48,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4>": {
+          "ms": 21.764,
+          "launches": 32,
+          "launches_per_pass": 32.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>": {
+          "ms": 14.278,
+          "launches": 3,
+          "launches_per_pass": 3.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>": {
+          "ms": 7.852,
+          "launches": 48,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>": {
+          "ms": 4.692,
+          "launches": 1,
+          "launches_per_pass": 1.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>": {
+          "ms": 3.9,
+          "launches": 24,
+          "launches_per_pass": 24.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 1.401,
+          "launches": 96,
+          "launches_per_pass": 96.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 0.942,
+          "launches": 48,
+          "launches_per_pass": 48.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.826,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.592,
+          "launches": 65,
+          "launches_per_pass": 65.0
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>": {
+          "ms": 0.542,
+          "launches": 16,
+          "launches_per_pass": 16.0
+        },
+        "silu_mul_separate_out_kernel<unsigned short>": {
+          "ms": 0.316,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "gguf_bf16_add_kernel": {
+          "ms": 0.191,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "bf16_to_f32_kernel": {
+          "ms": 0.15,
+          "launches": 64,
+          "launches_per_pass": 64.0
+        },
+        "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>": {
+          "ms": 0.08,
+          "launches": 16,
+          "launches_per_pass": 16.0
+        }
+      }
+    },
+    "20": {
+      "passes": 7,
+      "median_kernel_ms": 540.569,
+      "mean_host_enqueue_ms": 45.655,
+      "mean_drain_ms": 500.581,
+      "template_ms_mean_per_pass": {
+        "q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>": {
+          "ms": 209.388,
+          "launches": 280,
+          "launches_per_pass": 40.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>": {
+          "ms": 131.914,
+          "launches": 1848,
+          "launches_per_pass": 264.0
+        },
+        "q6_k_t16_gemv_kernel<unsigned short, unsigned short>": {
+          "ms": 89.983,
+          "launches": 168,
+          "launches_per_pass": 24.0
+        },
+        "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>": {
+          "ms": 67.282,
+          "launches": 336,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>": {
+          "ms": 23.937,
+          "launches": 35,
+          "launches_per_pass": 5.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>": {
+          "ms": 7.536,
+          "launches": 336,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>": {
+          "ms": 4.435,
+          "launches": 168,
+          "launches_per_pass": 24.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 1.678,
+          "launches": 672,
+          "launches_per_pass": 96.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 1.296,
+          "launches": 336,
+          "launches_per_pass": 48.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.832,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.595,
+          "launches": 455,
+          "launches_per_pass": 65.0
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>": {
+          "ms": 0.58,
+          "launches": 112,
+          "launches_per_pass": 16.0
+        },
+        "silu_mul_separate_out_kernel<unsigned short>": {
+          "ms": 0.419,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "gguf_bf16_add_kernel": {
+          "ms": 0.24,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "bf16_to_f32_kernel": {
+          "ms": 0.178,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>": {
+          "ms": 0.098,
+          "launches": 112,
+          "launches_per_pass": 16.0
+        },
+        "argmax_rows_stage1_i32_kernel": {
+          "ms": 0.098,
+          "launches": 7,
+          "launches_per_pass": 1.0
+        },
+        "qwen35_split_qgate_bf16_kernel": {
+          "ms": 0.079,
+          "launches": 112,
+          "launches_per_pass": 16.0
+        }
+      }
+    },
+    "28": {
+      "passes": 7,
+      "median_kernel_ms": 702.0,
+      "mean_host_enqueue_ms": 47.559,
+      "mean_drain_ms": 660.122,
+      "template_ms_mean_per_pass": {
+        "q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>": {
+          "ms": 292.727,
+          "launches": 280,
+          "launches_per_pass": 40.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>": {
+          "ms": 131.934,
+          "launches": 1848,
+          "launches_per_pass": 264.0
+        },
+        "q6_k_t16_gemv_kernel<unsigned short, unsigned short>": {
+          "ms": 125.603,
+          "launches": 168,
+          "launches_per_pass": 24.0
+        },
+        "qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>": {
+          "ms": 92.859,
+          "launches": 336,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>": {
+          "ms": 33.373,
+          "launches": 49,
+          "launches_per_pass": 7.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>": {
+          "ms": 13.197,
+          "launches": 336,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>": {
+          "ms": 4.473,
+          "launches": 168,
+          "launches_per_pass": 24.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 2.142,
+          "launches": 672,
+          "launches_per_pass": 96.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 1.947,
+          "launches": 336,
+          "launches_per_pass": 48.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.845,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>": {
+          "ms": 0.773,
+          "launches": 112,
+          "launches_per_pass": 16.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.595,
+          "launches": 455,
+          "launches_per_pass": 65.0
+        },
+        "silu_mul_separate_out_kernel<unsigned short>": {
+          "ms": 0.546,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "gguf_bf16_add_kernel": {
+          "ms": 0.291,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "bf16_to_f32_kernel": {
+          "ms": 0.218,
+          "launches": 448,
+          "launches_per_pass": 64.0
+        },
+        "argmax_rows_stage1_i32_kernel": {
+          "ms": 0.134,
+          "launches": 7,
+          "launches_per_pass": 1.0
+        },
+        "void gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>": {
+          "ms": 0.126,
+          "launches": 112,
+          "launches_per_pass": 16.0
+        },
+        "qwen35_split_qgate_bf16_kernel": {
+          "ms": 0.097,
+          "launches": 112,
+          "launches_per_pass": 16.0
+        }
+      }
+    }
+  },
+  "crosscheck_vs_wide_closure": {
+    "5": {
+      "kernel_ms_measured_sum": 4095.0,
+      "closure_host_ms": 4237.541324,
+      "closure_kernel_ms": 4163.539108,
+      "closure_kernel_coverage": 0.982536529247631,
+      "reconciliation_error_pct": 1.65
+    },
+    "7": {
+      "kernel_ms_measured_sum": 5305.4,
+      "closure_host_ms": 5486.832765,
+      "closure_kernel_ms": 5393.973479,
+      "closure_kernel_coverage": 0.9830766163009916,
+      "reconciliation_error_pct": 1.64
+    }
+  },
+  "code_derived_transfer_map": {
+    "rows_considered": [
+      20,
+      24,
+      32
+    ],
+    "default_resolution_rule": "rows>1 resolves the per-family t16_wmma_prefill_bf16_bf16_out variant; the wide-q6 shared4 candidate table is default-off (env HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4 + logical width >= 8)",
+    "families": [
+      {
+        "quant": "gguf_q4_k_t16_v1",
+        "shapes": [
+          [
+            5120,
+            6144
+          ],
+          [
+            5120,
+            10240
+          ],
+          [
+            5120,
+            12288
+          ],
+          [
+            5120,
+            17408
+          ],
+          [
+            6144,
+            5120
+          ],
+          [
+            17408,
+            5120
+          ]
+        ],
+        "current_verify_owner": "dense Q4 wmma-prefill band routers (rows>1 base variant t16_wmma_prefill_bf16_bf16_out); measured windows show gguf_q4_t16_dense_wmma_prefill_bf16_kernel, rowtile16_w2 and shared_b bodies",
+        "a_transfer_target": "best retained exact Q4 rows17-48 owner band (low-VGPR/single-sweep owners retained in the prefill ladder); select per rows from the same router the prefill path uses",
+        "wide_candidate_table": "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS maps (q4,20/24/32,(5120,1024),(17408,5120)) to shared_b2w2 (default-off leaf session)"
+      },
+      {
+        "quant": "gguf_q5_k_t16_v1",
+        "shapes": [
+          [
+            6144,
+            5120
+          ]
+        ],
+        "current_verify_owner": "q5_k_t16_dense_rowtile_gemv_kernel<8/16> rowtile chains in measured windows",
+        "a_transfer_target": "retained exact Q5 one-sweep route (Y2 rows49-96 single sweep / shared6r1 rows65-80 bodies) where qualified; rows17-48 band from the prefill router",
+        "wide_candidate_table": "no Q5 entry (table covers Q4/Q6 only)"
+      },
+      {
+        "quant": "gguf_q6_k_t16_qmicro_planar_v1",
+        "shapes": [
+          [
+            17408,
+            5120
+          ],
+          [
+            5120,
+            1024
+          ]
+        ],
+        "current_verify_owner": "q6_k_t16_qmicro_planar_gemv_rowtile_col8 rowtile chains (R16/R8 chunked passes) in measured windows; per-row direct gemv above the rowtile cap",
+        "a_transfer_target": "retained exact low-VGPR band owners at rows17-32 and shared3r1 <3,1,2> bodies at rows33-48 (GGUF_Q6_PREFILL_SHARED3R1_MIN/MAX=33/48 on these shapes)",
+        "wide_candidate_table": "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS maps (planar,20/24/32,both shapes) to pre-Y2 shared4 (default-off leaf session)"
+      },
+      {
+        "quant": "gguf_q6_k_t16_v1",
+        "shapes": [
+          [
+            5120,
+            10240
+          ]
+        ],
+        "current_verify_owner": "q6_k_t16_gemv_rowtile_kernel rowtile chains in measured windows",
+        "a_transfer_target": "retained exact standard shared3r1 band (rows33-48, GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES) and shared4 rows96+; rows17-32 from the prefill router band",
+        "wide_candidate_table": "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS maps (std,20/24/32,(5120,10240)) to pre-Y2 shared4 (default-off leaf session)"
+      }
+    ],
+    "lm_head": {
+      "shape": [
+        5120,
+        248320
+      ],
+      "current_owner": "q6_k_t16_qmicro_planar_gemv_rowtile_col8 re-sweeps at R>8 (measured 23.9-33.4 ms per wide pass in this run versus one WMMA sweep ~6-8 ms)",
+      "b_transfer_target": "one sweep via the dense WMMA lm-head path or the Y2 standard body",
+      "measured_note": "rowtile_col8<float,4> at grid 3973120 appears in the C8 census (1465.1 ms across 307 launches including prefill ticks)"
+    },
+    "ab_projection_r28_derived": {
+      "note": "DERIVED: replace measured R28 owners with the F3 prefill-owner per-tensor leaves (0.96 ms ffn_down, 0.70 attn_qkv, 0.10 attn_v, ~0.63 Q5 one-sweep, one lm-head sweep); Q4 and GDN kept at today's measured cost",
+      "q6_planar_ms": 33.4,
+      "q6_std_ms": 16.8,
+      "q5_ms": 30.2,
+      "q4_ms": 155.8,
+      "lm_head_ms": 8.0,
+      "gdn_misc_ms": 20.7,
+      "total_ms": 264.9,
+      "versus_measured_r28_ms": 702.0,
+      "versus_b0_c7_budget_ms": 289.4,
+      "verdict": "A+B projection lands inside the B0 corrected budget at C7; Q4 becomes the largest remaining family"
+    }
+  },
+  "findings": [
+    "Dominant pass shape carries 540.6 ms median launch-attributed kernel time with 500.6 ms mean drain past the enqueue window; top templates: q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>, gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>, q6_k_t16_gemv_kernel<unsigned short, unsigned short>.",
+    "All measured verifier owners at R10-R28 are per-row direct GEMVs (q6_k_t16_qmicro_planar_gemv_bf16 6.49 ms median, q6_k_t16_gemv 3.80 ms), Q5 selected-direct chains, generic Q4 wmma-prefill bodies, and lm-head rowtile re-sweeps; none of the retained Y2/Y3 prefill owners (shared3r1, one-sweep Q5, low-VGPR bands) is selected by the verifier today. Launch-attributed census reconciles with the committed M3 wide closure within 1.65%.",
+    "Measured wide-pass totals: R20 540.6 ms, R28 702.0 ms kernel. Q6 planar per-row GEMV alone is 209.4/292.7 ms (39-42%). DERIVED A+B projection at R28 is ~265 ms, inside the B0 corrected C7 budget (289.4 ms); Q4 (~156 ms) becomes the largest remaining family and is already near its prefill-owner cost.",
+    "Transfer surface: four quant families x their inventory shapes at R20/R24/R32 plus the lm-head one-sweep (mechanism B). The default-off wide-q6 shared4 table is the existing hook for a verifier-keyed override and currently points Q4 at shared_b2w2 and Q6 at the pre-Y2 shared4 body."
+  ]
+}
