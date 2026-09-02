@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 economics matrix] Completed warm/cold × off/auto/on p512/p1024/p4096+tg128 screen with exact hashes and memory/I/O/fault fields: warm auto is **0.9962x** off, cold auto **1.1603x**, with cold reads/major faults **55.15 GB/29,271→55.81 MB/11**. One repetition/configuration; warm/off remains default. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-economics-matrix.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 cache protocol closure] Closed the existing isolated cold-remap/DONTNEED and warm-steady protocol prerequisite: tensor-scoped only, no global drop_caches, separate samples, deterministic equal outputs, and zero teardown. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-cache-protocol-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 direct staging rejected] Per-row direct-to-ring IQ4_NL dequant removes the final copy but loses all 20 four-category p512 pairs (**111.698→113.594 s, 0.9833x**) and the first exact tg128 pair (**0.9861x**); candidate and flag removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-direct-staging-rejected.json`.

@@ -1,0 +1,64 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p9_economics_matrix",
+  "status": "screen_complete_no_default_change",
+  "performance_claim": false,
+  "scope": "Isolated warm/cold x random-advice off/auto/on at canonical code p512/p1024/p4096 plus tg128",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "gpu": "gfx1151",
+    "power_dpm_force_performance_level": "auto",
+    "mem_available_bytes_range": [41285451776, 41610031104],
+    "mem_free_bytes_range": [890290176, 4483149824],
+    "swap_free_bytes_range": [261923258368, 262314000384]
+  },
+  "protocol": {
+    "rows": 18,
+    "repetitions_per_configuration": 1,
+    "warm": "one discarded warmup per shape, then one measured request",
+    "cold": "separate process/configuration; remap+DONTNEED before every measured request",
+    "telemetry": true,
+    "note": "screening matrix, not a final thermal promotion gate"
+  },
+  "aggregate_complete_wall_s": {
+    "warm": {"off": 97.617774519, "auto": 97.989348753, "on": 99.152550935},
+    "cold": {"off": 115.453329075, "auto": 99.500093487, "on": 99.995004316}
+  },
+  "relative": {
+    "warm_auto_vs_off": 0.9962079904,
+    "warm_on_vs_off": 0.9845210618,
+    "cold_auto_vs_off": 1.1603338752,
+    "cold_on_vs_off": 1.1545900589
+  },
+  "process_io_fault_totals": {
+    "warm_off": {"read_bytes": 0, "minor_faults": 4, "major_faults": 0},
+    "warm_auto": {"read_bytes": 0, "minor_faults": 363, "major_faults": 0},
+    "warm_on": {"read_bytes": 0, "minor_faults": 363, "major_faults": 0},
+    "cold_off": {"read_bytes": 55148359680, "minor_faults": 9497, "major_faults": 29271},
+    "cold_auto": {"read_bytes": 55808000, "minor_faults": 17470, "major_faults": 11},
+    "cold_on": {"read_bytes": 80482304, "minor_faults": 17069, "major_faults": 9}
+  },
+  "rss_after_bytes_ranges": {
+    "warm_off": {"rss": [720388096, 724172800], "file": [354656256, 358440960], "anonymous": [330145792, 330145792]},
+    "warm_auto": {"rss": [485339136, 486825984], "file": [115810304, 115810304], "anonymous": [333942784, 335429632]},
+    "warm_on": {"rss": [485007360, 486494208], "file": [117215232, 117215232], "anonymous": [332206080, 333692928]},
+    "cold_off": {"rss": [525299712, 558559232], "file": [273297408, 293482496], "anonymous": [216416256, 229490688]},
+    "cold_auto": {"rss": [469848064, 482816000], "file": [114987008, 115187712], "anonymous": [319074304, 332214272]},
+    "cold_on": {"rss": [416866304, 430940160], "file": [61366272, 61403136], "anonymous": [319913984, 333950976]}
+  },
+  "correctness": {
+    "all_18_rows_exact_by_shape": true,
+    "code_p512_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d",
+    "code_p1024_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9",
+    "code_p4096_sha256": "bac9125c216f96dd135782feb3a6e38c9d3af9788e6aedf8405fa885054eda9"
+  },
+  "amdahl": {
+    "W_C_O_s": "separate by cache workload; warm auto is 0.9962x off, cold auto is 1.1603x off across the three complete rows",
+    "arithmetic_class": "T0 I/O policy",
+    "overlap_exclusions": "cold and warm are distinct workloads; telemetry, read bytes, faults, and PLE stage walls are nested diagnostics and are not additive",
+    "strict_fallback": "warm/off remains the production and benchmark default"
+  },
+  "decision": "Close the screening matrix. Auto/on transform isolated cold behavior and nearly eliminate physical reads/major faults, but auto is slightly negative in warm steady state and each configuration has one measured repetition. Keep warm/off default; expose auto/on only as explicit diagnostics pending a counterbalanced multi-sample cold policy gate."
+}

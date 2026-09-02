@@ -16,6 +16,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import resource
 import signal
 import socket
 import statistics
@@ -606,6 +607,37 @@ def run_llamacpp(args: argparse.Namespace) -> dict[str, Any]:
     return artifact
 
 
+def _proc_kib_fields(path: Path) -> dict[str, int]:
+    fields: dict[str, int] = {}
+    for line in path.read_text().splitlines():
+        if ":" not in line:
+            continue
+        name, raw = line.split(":", 1)
+        parts = raw.strip().split()
+        if parts and parts[0].isdigit():
+            value = int(parts[0])
+            fields[name] = value * 1024 if len(parts) > 1 and parts[1] == "kB" else value
+    return fields
+
+
+def _process_memory_snapshot() -> dict[str, int]:
+    status = _proc_kib_fields(Path("/proc/self/status"))
+    meminfo = _proc_kib_fields(Path("/proc/meminfo"))
+    io = _proc_kib_fields(Path("/proc/self/io"))
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return {
+        "rss_bytes": status.get("VmRSS", 0),
+        "rss_anon_bytes": status.get("RssAnon", 0),
+        "rss_file_bytes": status.get("RssFile", 0),
+        "host_mem_available_bytes": meminfo.get("MemAvailable", 0),
+        "host_mem_free_bytes": meminfo.get("MemFree", 0),
+        "host_swap_free_bytes": meminfo.get("SwapFree", 0),
+        "process_read_bytes": io.get("read_bytes", 0),
+        "minor_faults": int(usage.ru_minflt),
+        "major_faults": int(usage.ru_majflt),
+    }
+
+
 def _hipengine_case_sample(
     runner: Any,
     *,
@@ -615,6 +647,7 @@ def _hipengine_case_sample(
 ) -> dict[str, Any]:
     runtime = runner.runtime
     token_ids = [int(token_id) for token_id in case["prompt_token_ids"]]
+    memory_before = _process_memory_snapshot()
     runtime.device_synchronize()
     started = time.perf_counter_ns()
     result = runner.prefill(token_ids)
@@ -630,6 +663,11 @@ def _hipengine_case_sample(
     runtime.device_synchronize()
     decode_ms = (time.perf_counter_ns() - started) / 1_000_000.0
     client_wall_s = (prefill_ms + decode_ms) / 1000.0
+    memory_after = _process_memory_snapshot()
+    memory_delta = {
+        key: memory_after[key] - memory_before[key]
+        for key in ("process_read_bytes", "minor_faults", "major_faults")
+    }
     return {
         "case_id": str(case["id"]),
         "category": str(case["category"]),
@@ -645,6 +683,9 @@ def _hipengine_case_sample(
         "output_token_count": len(output_ids),
         "output_token_ids": output_ids,
         "output_token_ids_sha256": token_ids_sha256(output_ids),
+        "memory_before": memory_before,
+        "memory_after": memory_after,
+        "memory_delta": memory_delta,
     }
 
 
