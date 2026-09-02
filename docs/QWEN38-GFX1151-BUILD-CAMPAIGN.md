@@ -185,8 +185,23 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   in [2,8]); one sweep at R20-R32 needs the rowtile primitive widened or a
   WMMA lm-head body with its own exactness RED — a named kernel unit before
   the B1 item-4 retention measurement.
-- [ ] `rocprofv3 --kernel-trace` smoke (prebuilt `.so`) confirming the new
+- [x] `rocprofv3 --kernel-trace` smoke (prebuilt `.so`) confirming the new
   owners execute under expected names with plausible durations at R20/R24/R32.
+
+  Smoke artifact: [`2026-09-02-gfx1151-qwen38-b1-transfer-smoke.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-smoke.json)
+  (driver `/tmp/q38-b1-run/driver.py`, analysis
+  `scripts/qwen38_b1_transfer_smoke.py`; two arms + rocprof'd env-on arm on
+  physical host `gfx1151`, production profile, single canonical prompt,
+  widths 5/7, K3/D24, cached build — no kernel code changed so the pinned JIT
+  cache stayed valid). Correctness: `ar_self_exact`, `mtp_self_exact`, and
+  `ar_mtp_equal` pass on every arm, and generated IDs are identical env-off
+  vs env-on at both widths. Owner routing (launch-attributed, R28 pass):
+  wmma-band owners 210.0 ms of 264.6 ms total; per-row GEMV owners 0 ms.
+  Measured pass medians: R20 540.6 → 245.9 ms, R28 702.0 → 264.6 ms versus
+  the B1 owner map. Warm-arm diagnostic walls (single prompt, no claim):
+  C5 MTP 21.381 → 34.560 tok/s (+61.6%), C7 23.545 → 42.837 (+81.9%). Q4
+  (~132+24 ms) and the lm-head rowtile re-sweep (33.4 ms) are unchanged, as
+  expected before B-full.
 - [ ] Measure one-pass K3/R32 and K2/R24 at C5-C8 on the full ten-prompt suite
   under the production profile (exact commands, host identity, manifest
   hashes): complete wall, target-pass kernel time, corrected cycle economics
