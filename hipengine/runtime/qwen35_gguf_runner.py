@@ -317,6 +317,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     build_gguf_k_mmq_prefill,
+    build_gguf_q5_k_source_mmq_prefill,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
     build_gguf_q6_k_f16_rocblas_prefill,
@@ -10820,6 +10821,7 @@ _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_ST
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _GGUF_C8_Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
+_GGUF_C8_Q5_SOURCE_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ"
 _GGUF_PREFILL_DEVICE_METADATA_ENV = "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"
 _GGUF_PREFILL_ROUTER_SELECT_THREADS_ENV = "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS"
 _QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
@@ -12738,6 +12740,17 @@ def _gguf_c8_q5_raw_mmq_enabled(
     )
 
 
+def _gguf_c8_q5_source_mmq_enabled(
+    backend: str,
+    *,
+    request_count: int,
+) -> bool:
+    return _gguf_c8_q5_raw_mmq_enabled(
+        backend,
+        request_count=request_count,
+    ) and _env_flag(_GGUF_C8_Q5_SOURCE_MMQ_ENV, False)
+
+
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     rows = int(rows)
     in_features = int(in_features)
@@ -14450,6 +14463,7 @@ class Qwen35GGUFResidentSession:
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
     _q5_raw_mmq_target_library: object | None = field(default=None, init=False)
+    _q5_source_mmq_target_library: object | None = field(default=None, init=False)
     _q8_mmq_risk_count: object | None = field(default=None, init=False)
     _q8_mmq_risk_indices: object | None = field(default=None, init=False)
     _prefill_flight_recorder: PrefillFlightRecorder | None = field(default=None, init=False)
@@ -17678,7 +17692,21 @@ class Qwen35GGUFResidentSession:
             self.runner.backend,
             request_count=request_count,
         )
-        if enabled and self._q5_raw_mmq_target_library is None:
+        source_layout = _gguf_c8_q5_source_mmq_enabled(
+            self.runner.backend,
+            request_count=request_count,
+        )
+        if source_layout and self._q5_source_mmq_target_library is None:
+            self._q5_source_mmq_target_library = build_gguf_q5_k_source_mmq_prefill(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        if (
+            enabled
+            and not source_layout
+            and self._q5_raw_mmq_target_library is None
+        ):
             self._q5_raw_mmq_target_library = build_gguf_k_mmq_prefill(
                 load=True,
                 compiler_version=self.compiler_version,
@@ -17688,8 +17716,13 @@ class Qwen35GGUFResidentSession:
         return q5_raw_mmq_target_session(
             workspace_ptr=int(workspace.ptr),
             workspace_nbytes=int(workspace.nbytes),
-            library=self._q5_raw_mmq_target_library,
+            library=(
+                self._q5_source_mmq_target_library
+                if source_layout
+                else self._q5_raw_mmq_target_library
+            ),
             enabled=enabled,
+            source_layout=source_layout,
         )
 
     def _drain_prefill_queue(

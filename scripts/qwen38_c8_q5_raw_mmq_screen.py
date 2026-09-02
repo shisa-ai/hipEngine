@@ -60,6 +60,11 @@ def main() -> None:
     parser.add_argument("--warmups", type=int, default=4)
     parser.add_argument("--compiler-version-file", type=Path, default=None)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument(
+        "--source-c8-candidate",
+        action="store_true",
+        help="Compare adaptive source-layout I64/J16-J32 against retained raw D4S4",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     if args.samples <= 0 or args.burst <= 0 or args.warmups < 0:
@@ -75,9 +80,13 @@ def main() -> None:
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
         build_gguf_k_mmq_prefill,
+        build_gguf_q5_k_source_mmq_prefill,
+        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out,
         gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out,
         gguf_q8_1_d4s4_f32_quantize_bf16,
+        gguf_q8_1_ds4_quantize_bf16_kmajor,
         q8_1_d4s4_f32_nbytes,
+        q8_1_ds4_kmajor_nbytes,
     )
     from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
         build_gguf_t16_selected_gemv,
@@ -100,16 +109,25 @@ def main() -> None:
     )
     if len(names) != 48:
         raise ValueError(f"expected 48 ssm_out weights, found {len(names)}")
-    control_library = build_gguf_t16_selected_gemv(
-        load=True,
-        compiler_version=compiler_version,
-        require_cached=args.require_cached_build,
-    )
+    control_library = None
+    if not args.source_c8_candidate:
+        control_library = build_gguf_t16_selected_gemv(
+            load=True,
+            compiler_version=compiler_version,
+            require_cached=args.require_cached_build,
+        )
     candidate_library = build_gguf_k_mmq_prefill(
         load=True,
         compiler_version=compiler_version,
         require_cached=args.require_cached_build,
     )
+    source_library = None
+    if args.source_c8_candidate:
+        source_library = build_gguf_q5_k_source_mmq_prefill(
+            load=True,
+            compiler_version=compiler_version,
+            require_cached=args.require_cached_build,
+        )
 
     def upload(host: np.ndarray):
         host = np.ascontiguousarray(host)
@@ -139,14 +157,18 @@ def main() -> None:
     results: list[dict[str, object]] = []
     for weight_index, name in enumerate(names):
         raw = np.ascontiguousarray(reader.tensor_data(name))
-        tiles = np.ascontiguousarray(
-            repack_gguf_q5_k_tile16(raw[None, ...]).tiles
-        )
+        tiles = None
+        if not args.source_c8_candidate:
+            tiles = np.ascontiguousarray(
+                repack_gguf_q5_k_tile16(raw[None, ...]).tiles
+            )
         buffers = []
         try:
             raw_device = upload(raw)
-            tiles_device = upload(tiles)
-            buffers.extend((raw_device, tiles_device))
+            tiles_device = upload(tiles) if tiles is not None else None
+            buffers.append(raw_device)
+            if tiles_device is not None:
+                buffers.append(tiles_device)
             for rows in (24, 32):
                 rng = np.random.default_rng(2_026_090_200 + weight_index * 100 + rows)
                 x = _bf16_bits(
@@ -156,18 +178,26 @@ def main() -> None:
                 q8_device = malloc(
                     q8_1_d4s4_f32_nbytes(rows, 6_144), runtime=runtime
                 )
+                source_q8_device = None
+                if args.source_c8_candidate:
+                    source_q8_device = malloc(
+                        q8_1_ds4_kmajor_nbytes(rows, 6_144), runtime=runtime
+                    )
                 control_device = malloc(rows * 5_120 * 2, runtime=runtime)
                 candidate_device = malloc(rows * 5_120 * 2, runtime=runtime)
-                buffers.extend(
-                    (x_device, q8_device, control_device, candidate_device)
-                )
+                buffers.extend((x_device, q8_device))
+                if source_q8_device is not None:
+                    buffers.append(source_q8_device)
+                buffers.extend((control_device, candidate_device))
                 grouped = (
                     gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out
                     if rows == 24
                     else gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out
                 )
 
-                def control() -> None:
+                def grouped_control() -> None:
+                    assert tiles_device is not None
+                    assert control_library is not None
                     grouped(
                         x_device.ptr,
                         tiles_device.ptr,
@@ -179,7 +209,7 @@ def main() -> None:
                         runtime=runtime,
                     )
 
-                def candidate() -> None:
+                def retained_raw(output_device) -> None:
                     gguf_q8_1_d4s4_f32_quantize_bf16(
                         x_device.ptr,
                         q8_device.ptr,
@@ -191,13 +221,48 @@ def main() -> None:
                     gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out(
                         q8_device.ptr,
                         raw_device.ptr,
-                        candidate_device.ptr,
+                        output_device.ptr,
                         rows,
                         6_144,
                         5_120,
                         library=candidate_library,
                         runtime=runtime,
                     )
+
+                def source_c8_candidate() -> None:
+                    assert source_q8_device is not None
+                    assert source_library is not None
+                    gguf_q8_1_ds4_quantize_bf16_kmajor(
+                        x_device.ptr,
+                        source_q8_device.ptr,
+                        rows,
+                        6_144,
+                        library=source_library,
+                        runtime=runtime,
+                    )
+                    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out(
+                        source_q8_device.ptr,
+                        raw_device.ptr,
+                        candidate_device.ptr,
+                        rows,
+                        6_144,
+                        5_120,
+                        library=source_library,
+                        runtime=runtime,
+                    )
+
+                def retained_control() -> None:
+                    retained_raw(control_device)
+
+                def retained_candidate() -> None:
+                    retained_raw(candidate_device)
+
+                if args.source_c8_candidate:
+                    control = retained_control
+                    candidate = source_c8_candidate
+                else:
+                    control = grouped_control
+                    candidate = retained_candidate
 
                 for _ in range(args.warmups):
                     control()
@@ -259,7 +324,11 @@ def main() -> None:
         }
     payload = {
         "schema": 1,
-        "kind": "qwen38_c8_q5_all48_raw_mmq_screen",
+        "kind": (
+            "qwen38_c8_q5_all48_source_mmq_screen"
+            if args.source_c8_candidate
+            else "qwen38_c8_q5_all48_raw_mmq_screen"
+        ),
         "host": platform.node(),
         "hardware": "AMD Radeon Pro W7900",
         "gpu": "GPU0",
@@ -276,8 +345,17 @@ def main() -> None:
             "samples": args.samples,
             "burst": args.burst,
             "warmups": args.warmups,
-            "candidate": "Q8_1 D4S4 FP32 producer + raw Q5 MMQ32 BF16 output",
-            "control": "T16 exact grouped rows6/rows8 BF16 output",
+            "candidate": (
+                "Q8_1 DS4 K-major producer + adaptive raw Q5 I64/J16-J32 "
+                "integer-WMMA BF16 output"
+                if args.source_c8_candidate
+                else "Q8_1 D4S4 FP32 producer + raw Q5 MMQ32 BF16 output"
+            ),
+            "control": (
+                "retained Q8_1 D4S4 FP32 producer + raw Q5 MMQ32 BF16 output"
+                if args.source_c8_candidate
+                else "T16 exact grouped rows6/rows8 BF16 output"
+            ),
         },
         "summary": summary,
         "results": results,

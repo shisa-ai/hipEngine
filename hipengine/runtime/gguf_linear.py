@@ -61,7 +61,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     gguf_q8_1_d4s4_f32_quantize_bf16,
+    gguf_q8_1_ds4_quantize_bf16_kmajor,
     q8_1_d4s4_f32_nbytes,
+    q8_1_ds4_kmajor_nbytes,
     register_gguf_k_mmq_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
@@ -340,6 +342,7 @@ class _Q5RawMMQTargetSession:
     workspace_ptr: int
     workspace_nbytes: int
     library: ctypes.CDLL | None
+    source_layout: bool
 
 
 _q5_raw_mmq_target_session: ContextVar[_Q5RawMMQTargetSession | None] = (
@@ -1030,6 +1033,7 @@ def q5_raw_mmq_target_session(
     workspace_nbytes: int = 0,
     library: ctypes.CDLL | None = None,
     enabled: bool = True,
+    source_layout: bool = False,
 ) -> Iterator[None]:
     """Expose bounded Q8_1 storage for the C8 recurrent-Q5 owner."""
 
@@ -1041,6 +1045,7 @@ def q5_raw_mmq_target_session(
             workspace_ptr=int(workspace_ptr),
             workspace_nbytes=int(workspace_nbytes),
             library=library,
+            source_layout=bool(source_layout),
         )
     token = _q5_raw_mmq_target_session.set(selected)
     try:
@@ -6120,7 +6125,11 @@ def _launch_t16_q5_raw_mmq(
     session = _q5_raw_mmq_target_session.get()
     if session is None:
         raise RuntimeError("Q5 raw MMQ launch escaped its target session")
-    required = q8_1_d4s4_f32_nbytes(rows, in_features)
+    required = (
+        q8_1_ds4_kmajor_nbytes(rows, in_features)
+        if session.source_layout
+        else q8_1_d4s4_f32_nbytes(rows, in_features)
+    )
     if required > session.workspace_nbytes:
         raise ValueError(
             "Q5 raw MMQ workspace is too small: "
@@ -6134,7 +6143,12 @@ def _launch_t16_q5_raw_mmq(
         "runtime": runtime,
         "library": session.library,
     }
-    gguf_q8_1_d4s4_f32_quantize_bf16(
+    quantize = (
+        gguf_q8_1_ds4_quantize_bf16_kmajor
+        if session.source_layout
+        else gguf_q8_1_d4s4_f32_quantize_bf16
+    )
+    quantize(
         x_ptr,
         session.workspace_ptr,
         rows,
@@ -6301,17 +6315,26 @@ def _q5_raw_mmq_target_dispatch(
         )
     ):
         return dispatch
-    required = q8_1_d4s4_f32_nbytes(rows, in_features)
+    required = (
+        q8_1_ds4_kmajor_nbytes(rows, in_features)
+        if session.source_layout
+        else q8_1_d4s4_f32_nbytes(rows, in_features)
+    )
     if required > session.workspace_nbytes:
         raise ValueError(
             "Q5 raw MMQ workspace is too small: "
             f"required={required}, available={session.workspace_nbytes}"
         )
+    variant = (
+        "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out"
+        if session.source_layout
+        else "mmq32_q8_1_d4s4_f32_bf16_bf16_out"
+    )
     key = KernelKey(
         dispatch.key.backend,
         dispatch.key.layer,
         "gguf_q5_k",
-        "mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+        variant,
     )
     if not is_registered(key):
         return dispatch

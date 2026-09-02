@@ -248,6 +248,7 @@ bypassed by a candidate:
 | Grouped planar-Q6 | Mixed/grouped rows and exact root R8 owners |
 | Grouped Q5 R8 | Exact T16 fallback; Q5 launches 240→144 and C8 +1.61% in its gate |
 | Raw-Q5 MMQ R24/R32 | Eight-request production default; Q5 operation wall 45.514→38.027 ms and C8 87.186→89.377 tok/s in its gate |
+| Adaptive source-Q5 I64/J16-J32 | Default-off staging candidate; all-48 retained-owner screen saves 0.606 ms at R24 and 1.724 ms at R32 |
 | Selected CJK-aware proposal head | Immutable model-bound 131,072-row selection; full category gate |
 | Fused packed state | Amortizes Conv/recurrent state pointer gathers |
 | Direct resident verifier state | Removes redundant initial state import |
@@ -498,6 +499,17 @@ fresh C5-C8 negative-control gate preserves C5-C7 generated IDs and acceptance
 exactly with pooled rates +0.79%/+0.44%/+0.41%; C8 remains +2.72% and positive
 in every category/heldout slice in both orders. This scope repair preserves the
 eight-request R24 accepted tail without claiming non-C8 performance.
+
+The follow-up source-layout reproduction fixes the rejected prototype's two
+mechanical defects without copying its bad geometry: R24 uses two J16 tiles,
+R32 uses J32, packed-Q5 loads are coalesced to one high-bit word plus four low
+words per lane/output block, and the four K32 subblocks are partially unrolled.
+Fast variants compile at 83/115 VGPR with zero scratch instead of the fixed-J32
+prototype's 206 VGPR. Against the retained raw owner, all 48 actual weights win
+at R24 (10.253→9.648 ms, 1.063x, -0.606 ms) and R32 (11.321→9.597 ms, 1.180x,
+-1.724 ms). This is a T2 staging candidate behind
+`HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=1`; the retained D4S4 owner and grouped T16
+remain fallbacks until L2-L5 pass.
 
 Second pool: **48.237 ms/cycle** across grouped Q4 R6 and R8 symbols. P1
 ranks the R24-only R6 tail slightly above the two R32 R8 cycles:

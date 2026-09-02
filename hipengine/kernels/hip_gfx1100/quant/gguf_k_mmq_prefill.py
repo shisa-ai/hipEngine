@@ -24,6 +24,8 @@ _VARIANT_D8R8_BF16 = "mmq32_q8_1_d8r8s8_f32_bf16_bf16_out"
 _VARIANT_D8R8_F32 = "mmq32_q8_1_d8r8s8_f32_bf16_f32_out"
 _SOURCE_VARIANT_BF16 = "mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out"
 _SOURCE_VARIANT_F32 = "mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out"
+_SOURCE_C8_VARIANT_BF16 = "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out"
+_SOURCE_C8_VARIANT_F32 = "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out"
 _Q8_BLOCK = 128
 _Q8_DS4_BLOCK_BYTES = 144
 _Q8_BLOCK_BYTES = 160
@@ -411,16 +413,26 @@ def gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out(
     _launch_q5_source_mmq("f32", *args, **kwargs)
 
 
-def gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out(
+def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out(
     *args, **kwargs
 ) -> None:
     _launch_q5_source_mmq("bf16", *args, tile="i64_j32", **kwargs)
 
 
-def gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out(
+def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out(
     *args, **kwargs
 ) -> None:
     _launch_q5_source_mmq("f32", *args, tile="i64_j32", **kwargs)
+
+
+# Compatibility names for the rejected fixed-J32 prototype. The underlying
+# owner now adapts to J16 below 32 rows while retaining the same C ABI symbol.
+gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out = (
+    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out
+)
+gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out = (
+    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out
+)
 
 
 def gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out(*args, **kwargs) -> None:
@@ -506,6 +518,20 @@ def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
         gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100", "linear", "gguf_q5_k", _SOURCE_C8_VARIANT_BF16
+        ),
+        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100", "linear", "gguf_q5_k", _SOURCE_C8_VARIANT_F32
+        ),
+        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out,
+        replace=replace,
+    )
     for quant, bf16_fn, f32_fn in (
         (
             "gguf_q5_k",
@@ -582,6 +608,8 @@ __all__ = [
     "build_gguf_q5_k_source_mmq_prefill",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
+    "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out",
+    "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out",
     "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out",
     "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",

@@ -138,15 +138,33 @@ def test_q5_source_mmq_registry_build_scope_and_workspace_contract() -> None:
         KernelKey("hip_gfx1151", producer_key.layer, producer_key.quant, producer_key.variant)
     )
 
-    for output_dtype, fn in (
-        ("bf16", mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out),
-        ("f32", mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out),
+    for tile, output_dtype, fn in (
+        (
+            "i128_j128",
+            "bf16",
+            mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out,
+        ),
+        (
+            "i128_j128",
+            "f32",
+            mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out,
+        ),
+        (
+            "i64_j16_j32",
+            "bf16",
+            mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out,
+        ),
+        (
+            "i64_j16_j32",
+            "f32",
+            mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out,
+        ),
     ):
         key = KernelKey(
             "hip_gfx1100",
             "linear",
             "gguf_q5_k",
-            f"mmq_i128_j128_k256_q8_1_ds4_bf16_{output_dtype}_out",
+            f"mmq_{tile}_k256_q8_1_ds4_bf16_{output_dtype}_out",
         )
         assert resolve(
             backend=key.backend,
@@ -262,10 +280,10 @@ def _run_candidate(
                 mmq.gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out
             ),
             ("i64_j32", "bf16"): (
-                mmq.gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out
+                mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out
             ),
             ("i64_j32", "f32"): (
-                mmq.gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out
+                mmq.gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out
             ),
         }[(consumer, output_dtype)]
         fn(
