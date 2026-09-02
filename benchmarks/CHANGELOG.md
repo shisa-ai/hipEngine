@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 Q8-KV readiness] Q8-KV remains blocked: exact ordered `code-p4096` is **12.868 tok/s**, only **0.678x** repeat-valid upstream BF16-KV, and Qwen4Exp has no quantized-KV storage/write/attention registry family. Existing model/backend Q8 rows are not substituted. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-q8-kv-readiness.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 64K owner closure] Exact live-64K decode is **82.459 ms/token** clean; ordered attention remains **19.584 ms**, complete QSA is **22.132 ms**, and score/top-k reaches only **2.490 ms (3.02%)**. The 4K/16K/64K depth ranking closes without opening another candidate. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-64k-owner-profile.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 16K owner profile] Exact live-16K decode is **82.617 ms/token** clean; marker-scoped ordered attention is **19.642 ms**, complete QSA is **20.834 ms** versus retained 4K **20.913 ms**, and score/top-k is only **1.116 ms (1.35%)**. No 16K score/top-k or graph candidate opens; 64K timing remains pending. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-16k-owner-profile.json`.

@@ -1794,9 +1794,16 @@ the existing escalation thresholds permit each rung.
       Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-16k-owner-profile.json`,
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-64k-owner-profile.json`.
-- [ ] After BF16 AR parity, open Q8 K/V as a T3 product configuration with its
+- [~] After BF16 AR parity, open Q8 K/V as a T3 product configuration with its
       own CPU/reference, BF16-relative, task/retrieval, memory, deterministic,
       lifecycle, and same-config competitor gates. It cannot close BF16 parity.
+      Blocked at the declared prerequisite: the retained exact ordered route is
+      **12.868 tok/s** on `code-p4096`, only **0.678x** the repeat-valid
+      same-weight/BF16-KV upstream **18.975 tok/s**. Qwen4Exp also has no
+      registered quantized-KV storage, write, or attention family; existing
+      INT8-KV evidence belongs to other model/backend configurations. Do not
+      bypass BF16 parity or substitute those rows. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-q8-kv-readiness.json`.
 
 ### Phase P11 — device-resident MTP economics
 
