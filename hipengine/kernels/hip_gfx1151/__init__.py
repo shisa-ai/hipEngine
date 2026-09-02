@@ -44,14 +44,17 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out,
     gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
@@ -2922,6 +2925,23 @@ _GFX1151_OVERRIDES = {
         "gguf_q5_k_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
+    # B2 P1: F16-staged activation siblings, admitted unselected; the
+    # bf16 routers above stay the selected strict fallback.
+    (
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_fp16_in_bf16_out",
+    ): gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out,
+    (
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_shared_b_fp16_in_bf16_out",
+    ): gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out,
+    (
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_wmma_prefill_fp16_in_bf16_out",
+    ): gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out,
     (
         "linear",
         "gguf_q6_k_t16_v1",

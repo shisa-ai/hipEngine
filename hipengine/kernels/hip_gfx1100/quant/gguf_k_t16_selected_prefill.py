@@ -44,6 +44,9 @@ _SYMBOLS = {
 _Q4_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out"
+)
 _Q4_QMICRO_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out"
 )
@@ -58,6 +61,9 @@ _Q4_DENSE_WMMA_LOWVGPR48_BF16 = (
 )
 _Q4_DENSE_WMMA_SHARED_B_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out"
+)
+_Q4_DENSE_WMMA_SHARED_B_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out"
 )
 _Q4_DENSE_WMMA_SHARED_B2W2_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out"
@@ -90,6 +96,9 @@ _Q4_DENSE_UNEQUAL_DUAL_WMMA_BF16 = (
 )
 _Q5_DENSE_WMMA_BF16 = (
     "hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out"
+)
+_Q5_DENSE_WMMA_FP16_IN = (
+    "hipengine_gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out"
 )
 _Q5_DENSE_WMMA_SHARED8R3_BF16 = (
     "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out"
@@ -444,6 +453,105 @@ def gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     del tile_m, tile_n
     _launch_dense_t16(
         _Q4_DENSE_WMMA_SHARED_B_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch dense one-expert Q4T16 WMMA prefill (F16-in, BF16-out).
+
+    B2 P1 sibling of ``gguf_q4_k_t16_wmma_prefill_bf16_bf16_out``: the
+    activation operand arrives pre-cast to IEEE half bits; weights, schedule,
+    and BF16 store are identical. The BF16 owner remains the strict
+    fallback.
+    """
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_FP16_IN,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch cooperative dense Q4T16 WMMA prefill (F16-in, BF16-out)."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q4_DENSE_WMMA_SHARED_B_FP16_IN,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+    tile_m: int | None = None,
+    tile_n: int | None = None,
+) -> None:
+    """Launch dense Q5T16 WMMA prefill (F16-in, BF16-out)."""
+
+    del tile_m, tile_n
+    _launch_dense_t16(
+        _Q5_DENSE_WMMA_FP16_IN,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -1260,6 +1368,24 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
             replace=replace,
         )
 
+    # B2 P1: F16-staged activation siblings, registered unselected. The
+    # BF16 owners above remain the selected strict fallback; selection
+    # happens only after the B2 item-3 profile and complete-wall gates.
+    for quant_key, fn in (
+        ("gguf_q4_k_t16_v1", gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out),
+        ("gguf_q5_k_t16_v1", gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out),
+    ):
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "linear",
+                quant_key,
+                "t16_wmma_prefill_fp16_in_bf16_out",
+            ),
+            fn,
+            replace=replace,
+        )
+
     for variant, fn in (
         (
             "t16_physical_c1_rowtile_bf16_bf16_out",
@@ -1280,6 +1406,14 @@ def register_gguf_k_t16_selected_prefill_kernels(*, replace: bool = True) -> Non
         (
             "t16_wmma_prefill_shared_b2r1_bf16_bf16_out",
             gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_fp16_in_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_shared_b_fp16_in_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out,
         ),
     ):
         register(
@@ -1423,6 +1557,8 @@ __all__ = [
     "gguf_q4_k_t16_dense_unequal_dual_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
@@ -1438,6 +1574,7 @@ __all__ = [
     "gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
