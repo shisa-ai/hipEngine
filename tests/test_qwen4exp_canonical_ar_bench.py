@@ -224,6 +224,17 @@ def test_rocm_platform_falls_back_to_rocm_sdk(monkeypatch: pytest.MonkeyPatch) -
     assert module._rocm_platform_version() == "10.0.0"
 
 
+def test_process_memory_snapshot_reports_required_fields() -> None:
+    snapshot = _load_script()._process_memory_snapshot()
+
+    assert set(snapshot) == {
+        "rss_bytes", "rss_anon_bytes", "rss_file_bytes",
+        "host_mem_available_bytes", "host_mem_free_bytes", "host_swap_free_bytes",
+        "process_read_bytes", "minor_faults", "major_faults",
+    }
+    assert all(isinstance(value, int) and value >= 0 for value in snapshot.values())
+
+
 def test_hipengine_parser_accepts_case_filter(tmp_path: Path) -> None:
     module = _load_script()
     args = module.build_parser().parse_args(

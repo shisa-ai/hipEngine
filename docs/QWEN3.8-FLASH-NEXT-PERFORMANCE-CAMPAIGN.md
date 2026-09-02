@@ -1709,9 +1709,18 @@ warm GPU-kernel claims.
       output-equal at **91.676 warm versus 56.214 cold pp/s**, with zero teardown.
       Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-cache-protocol-closure.json`.
-- [ ] Measure lazy on/off, cold/warm p512/p1024/p4096 and tg128, page reads,
+- [x] Measure lazy on/off, cold/warm p512/p1024/p4096 and tg128, page reads,
       RSS/file versus anonymous memory, available/free/swap, and exact output
-      hashes.
+      hashes. The 18-row off/auto/on screening matrix records every requested
+      field and is exact by shape. Across the three complete rows, warm auto is
+      **0.9962x** off and warm on **0.9845x**, while isolated cold auto is
+      **1.1603x** and cold on **1.1546x**. Cold physical reads/major faults fall
+      from **55.15 GB / 29,271** off to **55.81 MB / 11** auto; file RSS also
+      falls materially. These are one-repetition diagnostics, not a thermal
+      promotion gate. Keep warm/off default and cold modes separate; auto/on
+      remain explicit diagnostics pending a counterbalanced cold policy gate.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-economics-matrix.json`.
 - [ ] Add optional per-tensor load drop-behind only for data already copied to
       device ownership. Never invalidate lazy PLE pages or validation readers;
       include reload-heavy and one-shot serving controls.
