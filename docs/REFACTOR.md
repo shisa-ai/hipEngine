@@ -26,8 +26,10 @@ should be removed or collapsed.
   full-output route as default while the candidate is incomplete. The
   one-packet-per-cycle follow-up improves warmed four-category wall only 1.0103x,
   two categories regress, and packet D2H still synchronizes preceding proposal
-  work. Remove the flag and candidate if resident target-hidden/scheduling work
-  still fails category non-regression; otherwise promote the
+  work. Resident target-hidden D2D still yields only 1.0091x aggregate and two
+  category regressions because packet D2H remains a synchronization owner.
+  Remove the flag and candidate if target-verifier/device-transaction work does
+  not eliminate that synchronization and category loss; otherwise promote the
   completed route and retain full output only as an explicit debug facility.
 
 ## 2026-09-02 Qwen4Exp P9 load drop-behind

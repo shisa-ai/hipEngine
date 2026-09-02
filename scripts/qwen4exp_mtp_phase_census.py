@@ -168,6 +168,9 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
                         "proposed_draft_tokens": diagnostics["proposed_draft_tokens"],
                         "accepted_draft_tokens": diagnostics["accepted_draft_tokens"],
                         "draft_acceptance": diagnostics["draft_acceptance"],
+                        "target_hidden_handoff": diagnostics.get(
+                            "target_hidden_handoff", "host"
+                        ),
                         "phase_census": census,
                     }
                 )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -157,6 +158,11 @@ class Qwen4ExpMTPTextProvider:
         target = self.target_generator.runner
         phase_ms: dict[str, float] = {}
         phase_calls: dict[str, int] = {}
+        resident_handoff = (
+            os.environ.get("HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT", "0")
+            not in {"", "0", "false", "False"}
+            and self.draft.runtime is target.runtime
+        )
 
         def record_phase(name: str, started: float) -> None:
             phase_ms[name] = phase_ms.get(name, 0.0) + (
@@ -191,7 +197,10 @@ class Qwen4ExpMTPTextProvider:
             proposal_started = time.perf_counter()
             proposal = self.draft.propose_chain(
                 start_token=root_token,
-                target_hidden_seed=root_hidden,
+                target_hidden_seed=(None if resident_handoff else root_hidden),
+                target_hidden_seed_ptr=(
+                    target.last_target_hidden.ptr if resident_handoff else None
+                ),
                 draft_n_max=budget,
             )
             record_phase("proposal", proposal_started)
@@ -205,10 +214,12 @@ class Qwen4ExpMTPTextProvider:
             for candidate in candidates:
                 raise_if_generation_deadline_expired(request)
                 verify_started = time.perf_counter()
-                verified = target.step(root_token, capture_hidden_seed=True)
+                verified = target.step(
+                    root_token, capture_hidden_seed=not resident_handoff
+                )
                 record_phase("target_verify", verify_started)
                 acceptance_started = time.perf_counter()
-                if verified.hidden_seed is None:
+                if not resident_handoff and verified.hidden_seed is None:
                     raise RuntimeError("Qwen4Exp target verify row has no hidden seed")
                 truth = int(verified.token_id)
                 root_hidden = verified.hidden_seed
@@ -272,6 +283,9 @@ class Qwen4ExpMTPTextProvider:
                 ],
                 "target_verify": "serial_exact",
                 "draft_rollback": "cursor_trim",
+                "target_hidden_handoff": (
+                    "device_to_device" if resident_handoff else "host"
+                ),
                 "phase_census": {
                     "cycles": len(cycles),
                     "target_verify_rows": phase_calls.get("target_verify", 0),
