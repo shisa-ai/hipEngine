@@ -404,6 +404,16 @@ def test_adapter_cancel_restores_both_provider_checkpoints() -> None:
     ]
 
 
+def test_nextn_executor_provider_clone_api_exists_red() -> None:
+    from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNExecutor
+
+    assert hasattr(Qwen35GGUFNextNExecutor, "clone_request_state")
+    parameters = inspect.signature(
+        Qwen35GGUFNextNExecutor.clone_request_state
+    ).parameters
+    assert tuple(parameters) == ("self", "source_request_id", "destination_request_id")
+
+
 def test_adapter_provider_clone_miss_fails_closed_and_aborts_owner() -> None:
     adapter, _resources_by_name, events = _adapter_resource_fixture()
     del adapter._states[42].provider.executor.clone_request_state
