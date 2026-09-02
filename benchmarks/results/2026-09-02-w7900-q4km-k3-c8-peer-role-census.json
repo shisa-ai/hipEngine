@@ -1,0 +1,2342 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_c8_k3_peer_role_census",
+  "date": "2026-09-02",
+  "status": "diagnostic_retained",
+  "performance_claim": false,
+  "purpose": "C8-P1 semantic-role, cycle-shape, and direct current/Laurent mechanism census before selecting an implementation candidate.",
+  "hardware": {
+    "physical_host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "gpu_index": 0,
+    "backend": "gfx1100/HIP",
+    "rocm": "HIP 7.2.53211-3d9ef42"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "size_bytes": 17106773984,
+    "quant": "Q4_K_M"
+  },
+  "software": {
+    "hipengine_commit": "d84b17f86d227dfc655db9e0959b87eadd8530f1",
+    "hipengine_profile_commit": "b920ead8ee024cf83fc1ec480c5e8dbf8c50fa56",
+    "current_llama_cpp_commit": "b19cbe925be361d229f0fe03435affe4a2717f37",
+    "laurent_llama_cpp_commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+    "capture_harness": {
+      "temporary_path": "/tmp/qwen38_llama_c8_delayed_profile.py",
+      "capture_sha256": "34ce600770780549d633873210e260110f7885af23dda5756a117ee1c099e2be",
+      "durable_equivalent_path": "scripts/llamacpp_c8_k3_rocprof.py",
+      "durable_equivalent_sha256": "4f067d6b43ee7a8574c7b70bde47bf6104bb6d313b884cb2ab3e6c19f0fa9756"
+    }
+  },
+  "hipengine": {
+    "source_profile": {
+      "kernel_csv": "/tmp/he-current-c8-profile/trace/epyc/2835473_kernel_trace.csv",
+      "kernel_csv_sha256": "40de0672b71b8dbe5e1b654618c46767da0496a44df6711c390445e554e49c19",
+      "marker_csv": "/tmp/he-current-c8-profile/trace/epyc/2835473_marker_api_trace.csv",
+      "marker_csv_sha256": "20af3ce05e4e5132c799d6b88740e4cf214bae51a5e5d13257dff2380c1451b1"
+    },
+    "target_cycles": [
+      {
+        "cycle": 1,
+        "active_target_rows": 32,
+        "target_marker_ms": 168.554869,
+        "all_kernel_sum_ms": 155.130195,
+        "all_kernel_interval_union_ms": 140.83114,
+        "role_rows": [
+          {
+            "role": "ffn_gate_q4+ffn_up_q4_fused_silu",
+            "family": "q4_fused_gate_up",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_dual_wmma_prefill_row32_bf16_bf16_out",
+            "source_weight_shapes": [
+              "17408x5120"
+            ],
+            "source_weight_count": 128,
+            "unique_encoded_weight_bytes": 6417285120,
+            "calls": 64,
+            "kernel_sum_ms": 34.700259,
+            "interval_union_ms": 34.093823,
+            "grid": [
+              69632,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 248,
+            "lds_bytes": 32768,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "ffn_down_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x17408"
+            ],
+            "source_weight_count": 32,
+            "unique_encoded_weight_bytes": 2339635200,
+            "calls": 32,
+            "kernel_sum_ms": 21.50486,
+            "interval_union_ms": 21.50486,
+            "grid": [
+              81920,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_output_q4+ffn_down_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x6144",
+              "5120x17408"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 1887436800,
+            "calls": 48,
+            "kernel_sum_ms": 15.556741,
+            "interval_union_ms": 15.556741,
+            "grid": [
+              20480,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_ssm_output_q5",
+            "family": "q5_grouped",
+            "registry_variant": "gguf_q5_k_t16_v1/linear/t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x6144"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 1038090240,
+            "calls": 48,
+            "kernel_sum_ms": 15.243458,
+            "interval_union_ms": 15.243458,
+            "grid": [
+              163840,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 72,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "root_lm_head_q6",
+            "family": "q6_root_head",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_bf16_f32_out",
+            "source_weight_shapes": [
+              "248320x5120"
+            ],
+            "source_weight_count": 1,
+            "unique_encoded_weight_bytes": 1042944000,
+            "calls": 4,
+            "kernel_sum_ms": 10.73027,
+            "interval_union_ms": 5.436885,
+            "grid": [
+              3973120,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_qkv_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "10240x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 1032192000,
+            "calls": 24,
+            "kernel_sum_ms": 10.206669,
+            "interval_union_ms": 10.206669,
+            "grid": [
+              163840,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_gate_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "6144x5120"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 849346560,
+            "calls": 48,
+            "kernel_sum_ms": 7.038924,
+            "interval_union_ms": 7.038924,
+            "grid": [
+              24576,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "proposal_selected_lm_head_q6",
+            "family": "q6_proposal_head",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_decode_bf16_f32_out",
+            "source_weight_shapes": [
+              "131072x5120"
+            ],
+            "source_weight_count": 1,
+            "unique_encoded_weight_bytes": 550502400,
+            "calls": 1,
+            "kernel_sum_ms": 6.244481,
+            "interval_union_ms": 6.244481,
+            "grid": [
+              1048576,
+              8,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 96,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_qkv_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "10240x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 707788800,
+            "calls": 24,
+            "kernel_sum_ms": 5.808877,
+            "interval_union_ms": 5.808877,
+            "grid": [
+              40960,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_q_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "12288x5120"
+            ],
+            "source_weight_count": 16,
+            "unique_encoded_weight_bytes": 566231040,
+            "calls": 16,
+            "kernel_sum_ms": 4.594226,
+            "interval_union_ms": 4.594226,
+            "grid": [
+              49152,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_k_q4+full_attention_v_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "1024x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 70778880,
+            "calls": 24,
+            "kernel_sum_ms": 0.770887,
+            "interval_union_ms": 0.770887,
+            "grid": [
+              4096,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_v_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "1024x5120"
+            ],
+            "source_weight_count": 8,
+            "unique_encoded_weight_bytes": 34406400,
+            "calls": 8,
+            "kernel_sum_ms": 0.44276,
+            "interval_union_ms": 0.44276,
+            "grid": [
+              16384,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      {
+        "cycle": 2,
+        "active_target_rows": 32,
+        "target_marker_ms": 170.20845,
+        "all_kernel_sum_ms": 158.067952,
+        "all_kernel_interval_union_ms": 148.238534,
+        "role_rows": [
+          {
+            "role": "ffn_gate_q4+ffn_up_q4_fused_silu",
+            "family": "q4_fused_gate_up",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_dual_wmma_prefill_row32_bf16_bf16_out",
+            "source_weight_shapes": [
+              "17408x5120"
+            ],
+            "source_weight_count": 128,
+            "unique_encoded_weight_bytes": 6417285120,
+            "calls": 64,
+            "kernel_sum_ms": 35.682914,
+            "interval_union_ms": 35.682914,
+            "grid": [
+              69632,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 248,
+            "lds_bytes": 32768,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "ffn_down_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x17408"
+            ],
+            "source_weight_count": 32,
+            "unique_encoded_weight_bytes": 2339635200,
+            "calls": 32,
+            "kernel_sum_ms": 22.033502,
+            "interval_union_ms": 22.033502,
+            "grid": [
+              81920,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_output_q4+ffn_down_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x6144",
+              "5120x17408"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 1887436800,
+            "calls": 48,
+            "kernel_sum_ms": 16.189627,
+            "interval_union_ms": 16.189627,
+            "grid": [
+              20480,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_ssm_output_q5",
+            "family": "q5_grouped",
+            "registry_variant": "gguf_q5_k_t16_v1/linear/t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x6144"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 1038090240,
+            "calls": 48,
+            "kernel_sum_ms": 15.686262,
+            "interval_union_ms": 15.686262,
+            "grid": [
+              163840,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 72,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "root_lm_head_q6",
+            "family": "q6_root_head",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_bf16_f32_out",
+            "source_weight_shapes": [
+              "248320x5120"
+            ],
+            "source_weight_count": 1,
+            "unique_encoded_weight_bytes": 1042944000,
+            "calls": 4,
+            "kernel_sum_ms": 10.684828,
+            "interval_union_ms": 7.562379,
+            "grid": [
+              3973120,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_qkv_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "10240x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 1032192000,
+            "calls": 24,
+            "kernel_sum_ms": 10.405389,
+            "interval_union_ms": 10.405389,
+            "grid": [
+              163840,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_gate_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "6144x5120"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 849346560,
+            "calls": 48,
+            "kernel_sum_ms": 7.244408,
+            "interval_union_ms": 7.244408,
+            "grid": [
+              24576,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "proposal_selected_lm_head_q6",
+            "family": "q6_proposal_head",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_decode_bf16_f32_out",
+            "source_weight_shapes": [
+              "131072x5120"
+            ],
+            "source_weight_count": 1,
+            "unique_encoded_weight_bytes": 550502400,
+            "calls": 1,
+            "kernel_sum_ms": 6.2354,
+            "interval_union_ms": 6.2354,
+            "grid": [
+              1048576,
+              8,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 96,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_qkv_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "10240x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 707788800,
+            "calls": 24,
+            "kernel_sum_ms": 6.048363,
+            "interval_union_ms": 6.048363,
+            "grid": [
+              40960,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_q_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "12288x5120"
+            ],
+            "source_weight_count": 16,
+            "unique_encoded_weight_bytes": 566231040,
+            "calls": 16,
+            "kernel_sum_ms": 4.734469,
+            "interval_union_ms": 4.734469,
+            "grid": [
+              49152,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_k_q4+full_attention_v_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "1024x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 70778880,
+            "calls": 24,
+            "kernel_sum_ms": 0.797283,
+            "interval_union_ms": 0.797283,
+            "grid": [
+              4096,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 224,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_v_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "1024x5120"
+            ],
+            "source_weight_count": 8,
+            "unique_encoded_weight_bytes": 34406400,
+            "calls": 8,
+            "kernel_sum_ms": 0.449123,
+            "interval_union_ms": 0.449123,
+            "grid": [
+              16384,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          }
+        ]
+      },
+      {
+        "cycle": 3,
+        "active_target_rows": 24,
+        "target_marker_ms": 164.823872,
+        "all_kernel_sum_ms": 151.72292,
+        "all_kernel_interval_union_ms": 139.744582,
+        "role_rows": [
+          {
+            "role": "ffn_gate_q4+ffn_up_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "17408x5120"
+            ],
+            "source_weight_count": 128,
+            "unique_encoded_weight_bytes": 6417285120,
+            "calls": 128,
+            "kernel_sum_ms": 46.898948,
+            "interval_union_ms": 46.593577,
+            "grid": [
+              69632,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 192,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "ffn_down_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x17408"
+            ],
+            "source_weight_count": 32,
+            "unique_encoded_weight_bytes": 2339635200,
+            "calls": 32,
+            "kernel_sum_ms": 17.419473,
+            "interval_union_ms": 17.067914,
+            "grid": [
+              81920,
+              3,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_ssm_output_q5",
+            "family": "q5_grouped",
+            "registry_variant": "gguf_q5_k_t16_v1/linear/t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x6144"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 1038090240,
+            "calls": 48,
+            "kernel_sum_ms": 14.227456,
+            "interval_union_ms": 14.227456,
+            "grid": [
+              163840,
+              4,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 64,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_output_q4+ffn_down_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "5120x6144",
+              "5120x17408"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 1887436800,
+            "calls": 48,
+            "kernel_sum_ms": 13.406929,
+            "interval_union_ms": 13.406929,
+            "grid": [
+              20480,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 192,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "root_lm_head_q6",
+            "family": "q6_root_head",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_bf16_f32_out",
+            "source_weight_shapes": [
+              "248320x5120"
+            ],
+            "source_weight_count": 1,
+            "unique_encoded_weight_bytes": 1042944000,
+            "calls": 3,
+            "kernel_sum_ms": 8.356975,
+            "interval_union_ms": 4.169596,
+            "grid": [
+              3973120,
+              1,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_qkv_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "10240x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 1032192000,
+            "calls": 24,
+            "kernel_sum_ms": 8.247933,
+            "interval_union_ms": 8.247933,
+            "grid": [
+              163840,
+              3,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "proposal_selected_lm_head_q6",
+            "family": "q6_proposal_head",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_decode_bf16_f32_out",
+            "source_weight_shapes": [
+              "131072x5120"
+            ],
+            "source_weight_count": 1,
+            "unique_encoded_weight_bytes": 550502400,
+            "calls": 1,
+            "kernel_sum_ms": 6.247201,
+            "interval_union_ms": 6.247201,
+            "grid": [
+              1048576,
+              8,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 96,
+            "lds_bytes": 512,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_gate_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "6144x5120"
+            ],
+            "source_weight_count": 48,
+            "unique_encoded_weight_bytes": 849346560,
+            "calls": 48,
+            "kernel_sum_ms": 6.046283,
+            "interval_union_ms": 6.046283,
+            "grid": [
+              24576,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 192,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "recurrent_qkv_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "10240x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 707788800,
+            "calls": 24,
+            "kernel_sum_ms": 4.959832,
+            "interval_union_ms": 4.959832,
+            "grid": [
+              40960,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 192,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_q_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "12288x5120"
+            ],
+            "source_weight_count": 16,
+            "unique_encoded_weight_bytes": 566231040,
+            "calls": 16,
+            "kernel_sum_ms": 3.933508,
+            "interval_union_ms": 3.933508,
+            "grid": [
+              49152,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 192,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_k_q4+full_attention_v_q4",
+            "family": "q4_grouped",
+            "registry_variant": "gguf_q4_k_t16_v1/linear/dense_rowtile16_w2_grouped_rows6_bf16_bf16_out",
+            "source_weight_shapes": [
+              "1024x5120"
+            ],
+            "source_weight_count": 24,
+            "unique_encoded_weight_bytes": 70778880,
+            "calls": 24,
+            "kernel_sum_ms": 0.682562,
+            "interval_union_ms": 0.682562,
+            "grid": [
+              4096,
+              4,
+              1
+            ],
+            "workgroup": [
+              64,
+              1,
+              1
+            ],
+            "vgpr": 192,
+            "lds_bytes": 0,
+            "scratch_bytes": 0
+          },
+          {
+            "role": "full_attention_v_q6",
+            "family": "q6_grouped",
+            "registry_variant": "gguf_q6_k_t16_qmicro_planar_v1/linear/t16_gemv_rowtile_col8_grouped_rows8_bf16_bf16_out",
+            "source_weight_shapes": [
+              "1024x5120"
+            ],
+            "source_weight_count": 8,
+            "unique_encoded_weight_bytes": 34406400,
+            "calls": 8,
+            "kernel_sum_ms": 0.348083,
+            "interval_union_ms": 0.348083,
+            "grid": [
+              16384,
+              3,
+              1
+            ],
+            "workgroup": [
+              128,
+              1,
+              1
+            ],
+            "vgpr": 112,
+            "lds_bytes": 1024,
+            "scratch_bytes": 0
+          }
+        ]
+      }
+    ],
+    "weight_inventory": [
+      {
+        "role": "attn_gate",
+        "ggml_type": "Q4_K",
+        "weight_count": 48,
+        "encoded_bytes": 849346560,
+        "shapes": {
+          "6144x5120": 48
+        },
+        "layer_ids_csv": "0,1,2,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26,28,29,30,32,33,34,36,37,38,40,41,42,44,45,46,48,49,50,52,53,54,56,57,58,60,61,62"
+      },
+      {
+        "role": "attn_k",
+        "ggml_type": "Q4_K",
+        "weight_count": 16,
+        "encoded_bytes": 47185920,
+        "shapes": {
+          "1024x5120": 16
+        },
+        "layer_ids_csv": "3,7,11,15,19,23,27,31,35,39,43,47,51,55,59,63"
+      },
+      {
+        "role": "attn_output",
+        "ggml_type": "Q4_K",
+        "weight_count": 16,
+        "encoded_bytes": 283115520,
+        "shapes": {
+          "5120x6144": 16
+        },
+        "layer_ids_csv": "3,7,11,15,19,23,27,31,35,39,43,47,51,55,59,63"
+      },
+      {
+        "role": "attn_q",
+        "ggml_type": "Q4_K",
+        "weight_count": 16,
+        "encoded_bytes": 566231040,
+        "shapes": {
+          "12288x5120": 16
+        },
+        "layer_ids_csv": "3,7,11,15,19,23,27,31,35,39,43,47,51,55,59,63"
+      },
+      {
+        "role": "attn_qkv",
+        "ggml_type": "Q4_K",
+        "weight_count": 24,
+        "encoded_bytes": 707788800,
+        "shapes": {
+          "10240x5120": 24
+        },
+        "layer_ids_csv": "8,9,12,14,17,18,20,21,24,26,29,30,32,33,36,38,41,42,44,45,48,50,53,54"
+      },
+      {
+        "role": "attn_qkv",
+        "ggml_type": "Q6_K",
+        "weight_count": 24,
+        "encoded_bytes": 1032192000,
+        "shapes": {
+          "10240x5120": 24
+        },
+        "layer_ids_csv": "0,1,2,4,5,6,10,13,16,22,25,28,34,37,40,46,49,52,56,57,58,60,61,62"
+      },
+      {
+        "role": "attn_v",
+        "ggml_type": "Q4_K",
+        "weight_count": 8,
+        "encoded_bytes": 23592960,
+        "shapes": {
+          "1024x5120": 8
+        },
+        "layer_ids_csv": "11,15,23,27,35,39,47,51"
+      },
+      {
+        "role": "attn_v",
+        "ggml_type": "Q6_K",
+        "weight_count": 8,
+        "encoded_bytes": 34406400,
+        "shapes": {
+          "1024x5120": 8
+        },
+        "layer_ids_csv": "3,7,19,31,43,55,59,63"
+      },
+      {
+        "role": "ffn_down",
+        "ggml_type": "Q4_K",
+        "weight_count": 32,
+        "encoded_bytes": 1604321280,
+        "shapes": {
+          "5120x17408": 32
+        },
+        "layer_ids_csv": "8,9,11,12,14,15,17,18,20,21,23,24,26,27,29,30,32,33,35,36,38,39,41,42,44,45,47,48,50,51,53,54"
+      },
+      {
+        "role": "ffn_down",
+        "ggml_type": "Q6_K",
+        "weight_count": 32,
+        "encoded_bytes": 2339635200,
+        "shapes": {
+          "5120x17408": 32
+        },
+        "layer_ids_csv": "0,1,2,3,4,5,6,7,10,13,16,19,22,25,28,31,34,37,40,43,46,49,52,55,56,57,58,59,60,61,62,63"
+      },
+      {
+        "role": "ffn_gate",
+        "ggml_type": "Q4_K",
+        "weight_count": 64,
+        "encoded_bytes": 3208642560,
+        "shapes": {
+          "17408x5120": 64
+        },
+        "layer_ids_csv": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63"
+      },
+      {
+        "role": "ffn_up",
+        "ggml_type": "Q4_K",
+        "weight_count": 64,
+        "encoded_bytes": 3208642560,
+        "shapes": {
+          "17408x5120": 64
+        },
+        "layer_ids_csv": "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63"
+      },
+      {
+        "role": "ssm_alpha",
+        "ggml_type": "F32",
+        "weight_count": 48,
+        "encoded_bytes": 47185920,
+        "shapes": {
+          "48x5120": 48
+        },
+        "layer_ids_csv": "0,1,2,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26,28,29,30,32,33,34,36,37,38,40,41,42,44,45,46,48,49,50,52,53,54,56,57,58,60,61,62"
+      },
+      {
+        "role": "ssm_beta",
+        "ggml_type": "F32",
+        "weight_count": 48,
+        "encoded_bytes": 47185920,
+        "shapes": {
+          "48x5120": 48
+        },
+        "layer_ids_csv": "0,1,2,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26,28,29,30,32,33,34,36,37,38,40,41,42,44,45,46,48,49,50,52,53,54,56,57,58,60,61,62"
+      },
+      {
+        "role": "ssm_out",
+        "ggml_type": "Q5_K",
+        "weight_count": 48,
+        "encoded_bytes": 1038090240,
+        "shapes": {
+          "5120x6144": 48
+        },
+        "layer_ids_csv": "0,1,2,4,5,6,8,9,10,12,13,14,16,17,18,20,21,22,24,25,26,28,29,30,32,33,34,36,37,38,40,41,42,44,45,46,48,49,50,52,53,54,56,57,58,60,61,62"
+      },
+      {
+        "role": "lm_head",
+        "ggml_type": "Q6_K",
+        "weight_count": 1,
+        "encoded_bytes": 1042944000,
+        "shapes": {
+          "248320x5120": 1
+        },
+        "layer_ids_csv": ""
+      },
+      {
+        "role": "token_embedding",
+        "ggml_type": "Q4_K",
+        "weight_count": 1,
+        "encoded_bytes": 715161600,
+        "shapes": {
+          "248320x5120": 1
+        },
+        "layer_ids_csv": ""
+      }
+    ]
+  },
+  "peers": {
+    "current": {
+      "source_commit": "b19cbe925be361d229f0fe03435affe4a2717f37",
+      "source_dirty": false,
+      "prompt": {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "rendered": "<|im_start|>user\nExplain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.<|im_end|>\n<|im_start|>assistant\n"
+      },
+      "server_command": "/home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18123 -c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -t 16 -tb 16 -fa on -ctk f16 -ctv f16 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0",
+      "rocprof_command": "rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --output-format csv --collection-period 20.0:12.0:1 -d /tmp/qwen38-current-c8-matched/trace -- /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18123 -c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -t 16 -tb 16 -fa on -ctk f16 -ctv f16 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0",
+      "measured": {
+        "wall_s": 1.9043846325948834,
+        "visible_tokens": 192,
+        "complete_wall_tok_s": 100.8199691983357,
+        "lane_content_exact": true,
+        "content_sha256": [
+          "7bd2913436d23a83cb6de0ba6baeba2166edab3bd6d994967ed47286fec38809"
+        ],
+        "draft_generated": 152,
+        "draft_accepted": 128,
+        "draft_acceptance": 0.8421052631578947
+      },
+      "phase_split": {
+        "method": "largest inter-kernel idle gap; unique request prefill/decode gap exceeds the next gap by >10x",
+        "gap_ms": 227.519918,
+        "gap_start_offset_ms": 332.228675,
+        "gap_end_offset_ms": 559.748593
+      },
+      "phases": {
+        "prefill": {
+          "span_ms": 332.228675,
+          "kernel_sum_ms": 317.345596,
+          "kernel_interval_union_ms": 306.114018,
+          "dispatches": 2463,
+          "buckets": [
+            {
+              "bucket": "llama_mmq_q4_k",
+              "calls": 293,
+              "kernel_sum_ms": 173.830229,
+              "vgpr": [
+                248
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_rocblas_gemm",
+              "calls": 162,
+              "kernel_sum_ms": 54.50568,
+              "vgpr": [
+                56,
+                128,
+                256
+              ],
+              "lds_bytes": [
+                4096,
+                9216,
+                25600
+              ],
+              "workgroup_x": [
+                64,
+                128
+              ]
+            },
+            {
+              "bucket": "other",
+              "calls": 424,
+              "kernel_sum_ms": 23.400023,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                64,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_gdn",
+              "calls": 48,
+              "kernel_sum_ms": 18.934351,
+              "vgpr": [
+                40
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q5_k",
+              "calls": 48,
+              "kernel_sum_ms": 16.693132,
+              "vgpr": [
+                136
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_copy_layout",
+              "calls": 395,
+              "kernel_sum_ms": 8.904112,
+              "vgpr": [
+                16,
+                24,
+                32
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                64,
+                256,
+                512
+              ]
+            },
+            {
+              "bucket": "llama_linear_attn_conv",
+              "calls": 48,
+              "kernel_sum_ms": 6.304931,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128
+              ]
+            },
+            {
+              "bucket": "llama_norm",
+              "calls": 312,
+              "kernel_sum_ms": 4.593642,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32,
+                256,
+                1024
+              ]
+            },
+            {
+              "bucket": "llama_quantize_q8_1",
+              "calls": 342,
+              "kernel_sum_ms": 3.280231,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128
+              ]
+            },
+            {
+              "bucket": "llama_elementwise",
+              "calls": 322,
+              "kernel_sum_ms": 3.065028,
+              "vgpr": [
+                8,
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                24,
+                128,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_flash_attn",
+              "calls": 34,
+              "kernel_sum_ms": 2.301699,
+              "vgpr": [
+                16,
+                256
+              ],
+              "lds_bytes": [
+                512,
+                37888
+              ],
+              "workgroup_x": [
+                32,
+                128
+              ]
+            },
+            {
+              "bucket": "llama_rope",
+              "calls": 34,
+              "kernel_sum_ms": 1.017854,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                1
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q8_0",
+              "calls": 1,
+              "kernel_sum_ms": 0.514684,
+              "vgpr": [
+                256
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            }
+          ]
+        },
+        "decode": {
+          "span_ms": 1231.716807,
+          "kernel_sum_ms": 986.749077,
+          "kernel_interval_union_ms": 554.721378,
+          "dispatches": 19009,
+          "buckets": [
+            {
+              "bucket": "llama_mmq_q4_k",
+              "calls": 2344,
+              "kernel_sum_ms": 294.861052,
+              "vgpr": [
+                96,
+                120
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_rocblas_gemm",
+              "calls": 768,
+              "kernel_sum_ms": 179.406371,
+              "vgpr": [
+                48
+              ],
+              "lds_bytes": [
+                8192
+              ],
+              "workgroup_x": [
+                256
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q5_k",
+              "calls": 384,
+              "kernel_sum_ms": 131.650978,
+              "vgpr": [
+                48,
+                64
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q6_k",
+              "calls": 535,
+              "kernel_sum_ms": 127.468085,
+              "vgpr": [
+                120,
+                128
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_copy_layout",
+              "calls": 3402,
+              "kernel_sum_ms": 82.800513,
+              "vgpr": [
+                16,
+                24,
+                32
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                64,
+                256,
+                512
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q6_k",
+              "calls": 64,
+              "kernel_sum_ms": 61.392854,
+              "vgpr": [
+                72
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_gdn",
+              "calls": 384,
+              "kernel_sum_ms": 32.663459,
+              "vgpr": [
+                40
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q4_k",
+              "calls": 105,
+              "kernel_sum_ms": 18.909722,
+              "vgpr": [
+                88
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_quantize_q8_1",
+              "calls": 3461,
+              "kernel_sum_ms": 13.903597,
+              "vgpr": [
+                16,
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_norm",
+              "calls": 2643,
+              "kernel_sum_ms": 11.920314,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32,
+                256,
+                1024
+              ]
+            },
+            {
+              "bucket": "other",
+              "calls": 1871,
+              "kernel_sum_ms": 10.969416,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                256
+              ]
+            },
+            {
+              "bucket": "llama_flash_attn",
+              "calls": 471,
+              "kernel_sum_ms": 7.154528,
+              "vgpr": [
+                8,
+                16,
+                56,
+                128,
+                240
+              ],
+              "lds_bytes": [
+                0,
+                512,
+                6144,
+                19456,
+                21504
+              ],
+              "workgroup_x": [
+                32,
+                128,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_elementwise",
+              "calls": 1850,
+              "kernel_sum_ms": 6.001247,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                24,
+                128
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q8_0",
+              "calls": 21,
+              "kernel_sum_ms": 2.205172,
+              "vgpr": [
+                56
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_linear_attn_conv",
+              "calls": 384,
+              "kernel_sum_ms": 2.024773,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128
+              ]
+            },
+            {
+              "bucket": "llama_rope",
+              "calls": 314,
+              "kernel_sum_ms": 1.983505,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                1
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q8_0",
+              "calls": 8,
+              "kernel_sum_ms": 1.433491,
+              "vgpr": [
+                216,
+                256
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            }
+          ]
+        }
+      },
+      "graph_api": {
+        "hipGraphLaunch": {
+          "calls": 19,
+          "api_sum_ms": 6.35273
+        },
+        "hipGraphInstantiate": {
+          "calls": 2,
+          "api_sum_ms": 8.321148
+        },
+        "hipGraphExecUpdate": {
+          "calls": 8,
+          "api_sum_ms": 4.175688
+        },
+        "hipLaunchKernel": {
+          "calls": 11606,
+          "api_sum_ms": 35.511866
+        }
+      },
+      "raw": {
+        "profile_artifact": "/tmp/qwen38-current-c8-matched.json",
+        "profile_artifact_sha256": "2dc5a00d02ba3f57b3ec03a6497e2f3b0ea6d0f3f225a309fa8e0d2dff4c3e09",
+        "kernel_csv": "/tmp/qwen38-current-c8-matched/trace/epyc/3460091_kernel_trace.csv",
+        "kernel_csv_sha256": "b1f121311acffa2d4abd6cff19a8189dc8a1a45c5adff4ad3af3e247965d0047",
+        "hip_api_csv": "/tmp/qwen38-current-c8-matched/trace/epyc/3460091_hip_api_trace.csv",
+        "hip_api_csv_sha256": "f9ebdb8f60c549345259843a42254732c8fbdb0e38a13c717588d413368c9fcd",
+        "memory_copy_csv": "/tmp/qwen38-current-c8-matched/trace/epyc/3460091_memory_copy_trace.csv",
+        "memory_copy_csv_sha256": "44e68ef7b374efb9ae8084e5ea38368a9d8638fac226ec9098f941d32c64a655"
+      }
+    },
+    "laurent": {
+      "source_commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+      "source_dirty": false,
+      "prompt": {
+        "id": "general_en_explain",
+        "category": "general_en",
+        "rendered": "<|im_start|>user\nExplain why transformer inference is usually memory-bandwidth limited on local GPUs. Keep it technical and concrete, with examples of what changes throughput.<|im_end|>\n<|im_start|>assistant\n"
+      },
+      "server_command": "/home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18124 -c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -t 16 -tb 16 -fa on -ctk f16 -ctv f16 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0",
+      "rocprof_command": "rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --output-format csv --collection-period 20.0:12.0:1 -d /tmp/qwen38-laurent-c8-matched/trace -- /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --host 127.0.0.1 --port 18124 -c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -t 16 -tb 16 -fa on -ctk f16 -ctv f16 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0",
+      "measured": {
+        "wall_s": 1.7680826764553785,
+        "visible_tokens": 192,
+        "complete_wall_tok_s": 108.59220700296565,
+        "lane_content_exact": true,
+        "content_sha256": [
+          "7bd2913436d23a83cb6de0ba6baeba2166edab3bd6d994967ed47286fec38809"
+        ],
+        "draft_generated": 152,
+        "draft_accepted": 128,
+        "draft_acceptance": 0.8421052631578947
+      },
+      "phase_split": {
+        "method": "largest inter-kernel idle gap; unique request prefill/decode gap exceeds the next gap by >10x",
+        "gap_ms": 218.01904,
+        "gap_start_offset_ms": 329.665226,
+        "gap_end_offset_ms": 547.684266
+      },
+      "phases": {
+        "prefill": {
+          "span_ms": 329.665226,
+          "kernel_sum_ms": 314.633172,
+          "kernel_interval_union_ms": 302.96328,
+          "dispatches": 2463,
+          "buckets": [
+            {
+              "bucket": "llama_mmq_q4_k",
+              "calls": 293,
+              "kernel_sum_ms": 173.253987,
+              "vgpr": [
+                248
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_rocblas_gemm",
+              "calls": 162,
+              "kernel_sum_ms": 54.06855,
+              "vgpr": [
+                56,
+                128,
+                256
+              ],
+              "lds_bytes": [
+                4096,
+                9216,
+                25600
+              ],
+              "workgroup_x": [
+                64,
+                128
+              ]
+            },
+            {
+              "bucket": "other",
+              "calls": 424,
+              "kernel_sum_ms": 22.890056,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                64,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_gdn",
+              "calls": 48,
+              "kernel_sum_ms": 18.596825,
+              "vgpr": [
+                40
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q5_k",
+              "calls": 48,
+              "kernel_sum_ms": 15.879845,
+              "vgpr": [
+                256
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_copy_layout",
+              "calls": 395,
+              "kernel_sum_ms": 9.015153,
+              "vgpr": [
+                16,
+                24,
+                32
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                64,
+                256,
+                512
+              ]
+            },
+            {
+              "bucket": "llama_linear_attn_conv",
+              "calls": 48,
+              "kernel_sum_ms": 6.321286,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128
+              ]
+            },
+            {
+              "bucket": "llama_norm",
+              "calls": 312,
+              "kernel_sum_ms": 4.584398,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32,
+                256,
+                1024
+              ]
+            },
+            {
+              "bucket": "llama_quantize_q8_1",
+              "calls": 342,
+              "kernel_sum_ms": 3.106669,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128
+              ]
+            },
+            {
+              "bucket": "llama_elementwise",
+              "calls": 322,
+              "kernel_sum_ms": 3.088616,
+              "vgpr": [
+                8,
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                24,
+                128,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_flash_attn",
+              "calls": 34,
+              "kernel_sum_ms": 2.298178,
+              "vgpr": [
+                16,
+                256
+              ],
+              "lds_bytes": [
+                512,
+                37888
+              ],
+              "workgroup_x": [
+                32,
+                128
+              ]
+            },
+            {
+              "bucket": "llama_rope",
+              "calls": 34,
+              "kernel_sum_ms": 1.018885,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                1
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q8_0",
+              "calls": 1,
+              "kernel_sum_ms": 0.510724,
+              "vgpr": [
+                256
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            }
+          ]
+        },
+        "decode": {
+          "span_ms": 1098.313492,
+          "kernel_sum_ms": 863.91678,
+          "kernel_interval_union_ms": 441.195924,
+          "dispatches": 19009,
+          "buckets": [
+            {
+              "bucket": "llama_mmq_q4_k",
+              "calls": 2344,
+              "kernel_sum_ms": 289.780117,
+              "vgpr": [
+                96,
+                120
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_rocblas_gemm",
+              "calls": 768,
+              "kernel_sum_ms": 172.958155,
+              "vgpr": [
+                48
+              ],
+              "lds_bytes": [
+                8192
+              ],
+              "workgroup_x": [
+                256
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q6_k",
+              "calls": 535,
+              "kernel_sum_ms": 122.998289,
+              "vgpr": [
+                120,
+                128
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_copy_layout",
+              "calls": 3402,
+              "kernel_sum_ms": 82.511725,
+              "vgpr": [
+                16,
+                24,
+                32
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                64,
+                256,
+                512
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q6_k",
+              "calls": 64,
+              "kernel_sum_ms": 60.098911,
+              "vgpr": [
+                72
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_gdn",
+              "calls": 384,
+              "kernel_sum_ms": 32.600007,
+              "vgpr": [
+                40
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q5_k",
+              "calls": 384,
+              "kernel_sum_ms": 32.018292,
+              "vgpr": [
+                128,
+                136
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q4_k",
+              "calls": 105,
+              "kernel_sum_ms": 19.253942,
+              "vgpr": [
+                88
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_norm",
+              "calls": 2643,
+              "kernel_sum_ms": 11.766734,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32,
+                256,
+                1024
+              ]
+            },
+            {
+              "bucket": "other",
+              "calls": 1871,
+              "kernel_sum_ms": 10.488205,
+              "vgpr": [
+                8,
+                16
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                256
+              ]
+            },
+            {
+              "bucket": "llama_quantize_q8_1",
+              "calls": 3461,
+              "kernel_sum_ms": 9.032159,
+              "vgpr": [
+                16,
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_flash_attn",
+              "calls": 471,
+              "kernel_sum_ms": 7.044132,
+              "vgpr": [
+                8,
+                16,
+                56,
+                128,
+                240
+              ],
+              "lds_bytes": [
+                0,
+                512,
+                6144,
+                19456,
+                21504
+              ],
+              "workgroup_x": [
+                32,
+                128,
+                256
+              ]
+            },
+            {
+              "bucket": "llama_elementwise",
+              "calls": 1850,
+              "kernel_sum_ms": 5.69609,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                24,
+                128
+              ]
+            },
+            {
+              "bucket": "llama_mmvq_q8_0",
+              "calls": 21,
+              "kernel_sum_ms": 2.286139,
+              "vgpr": [
+                56
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            },
+            {
+              "bucket": "llama_linear_attn_conv",
+              "calls": 384,
+              "kernel_sum_ms": 1.999618,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                128
+              ]
+            },
+            {
+              "bucket": "llama_rope",
+              "calls": 314,
+              "kernel_sum_ms": 1.958052,
+              "vgpr": [
+                24
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                1
+              ]
+            },
+            {
+              "bucket": "llama_mmq_q8_0",
+              "calls": 8,
+              "kernel_sum_ms": 1.426213,
+              "vgpr": [
+                216,
+                256
+              ],
+              "lds_bytes": [
+                0
+              ],
+              "workgroup_x": [
+                32
+              ]
+            }
+          ]
+        }
+      },
+      "graph_api": {
+        "hipGraphLaunch": {
+          "calls": 19,
+          "api_sum_ms": 6.198536
+        },
+        "hipGraphInstantiate": {
+          "calls": 2,
+          "api_sum_ms": 7.34299
+        },
+        "hipGraphExecUpdate": {
+          "calls": 8,
+          "api_sum_ms": 3.6615
+        },
+        "hipLaunchKernel": {
+          "calls": 11606,
+          "api_sum_ms": 29.157806
+        }
+      },
+      "raw": {
+        "profile_artifact": "/tmp/qwen38-laurent-c8-matched.json",
+        "profile_artifact_sha256": "d947e72f48e94c6c1d9e70d6d5f29a474953069b5bbcd6116cc47a0e0e648818",
+        "kernel_csv": "/tmp/qwen38-laurent-c8-matched/trace/epyc/3467150_kernel_trace.csv",
+        "kernel_csv_sha256": "ba5fdf229b46945d45b89a1002d68cceb23057e884bc4f79a8fee74c5d52cf2c",
+        "hip_api_csv": "/tmp/qwen38-laurent-c8-matched/trace/epyc/3467150_hip_api_trace.csv",
+        "hip_api_csv_sha256": "2684db2bd3c7c1ab15cbe55878a211f5640276eb06b89a13eb0fdf7dccc0014c",
+        "memory_copy_csv": "/tmp/qwen38-laurent-c8-matched/trace/epyc/3467150_memory_copy_trace.csv",
+        "memory_copy_csv_sha256": "8904f45340fa124a397964c8396f71164876a6aef9fa632781e3d6533370b882"
+      }
+    }
+  },
+  "arithmetic_difference_probe": {
+    "current": {
+      "source_commit": "b19cbe925be361d229f0fe03435affe4a2717f37",
+      "prompt": {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "rendered": "<|im_start|>user\nWrite a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.<|im_end|>\n<|im_start|>assistant\n"
+      },
+      "wall_s": 1.8975375955924392,
+      "complete_wall_tok_s": 101.1837659743731,
+      "content_sha256": [
+        "74cca4a88aa512b69399e6ef0d22dc7d870a119717f4cf377a2306e45a2204b6"
+      ],
+      "draft_generated": 152,
+      "draft_accepted": 128,
+      "draft_acceptance": 0.8421052631578947,
+      "raw_profile": "/tmp/qwen38-current-c8-delayed.json",
+      "raw_profile_sha256": "085e39713b4cdefe0e04a1908b3d3256e34333c3eea3385e2c58024a830ac172"
+    },
+    "laurent": {
+      "source_commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+      "prompt": {
+        "id": "code_merge_intervals",
+        "category": "code",
+        "rendered": "<|im_start|>user\nWrite a Python function merge_intervals(intervals) that merges overlapping closed integer intervals. Include a compact pytest-style test block. Return only code.<|im_end|>\n<|im_start|>assistant\n"
+      },
+      "wall_s": 1.877221167087555,
+      "complete_wall_tok_s": 102.27883819245524,
+      "content_sha256": [
+        "2192619ebb428b74cc9e80619445518512e1bacc217a875e2d6d03c7df442e40"
+      ],
+      "draft_generated": 168,
+      "draft_accepted": 120,
+      "draft_acceptance": 0.7142857142857143,
+      "raw_profile": "/tmp/qwen38-laurent-c8-delayed.json",
+      "raw_profile_sha256": "18fd03ac4509a72b159c6559021f3d20074525591dc8e6904d54af1885e8e80d"
+    }
+  },
+  "mechanism_findings": {
+    "matched_output_prompt": "general_en_explain",
+    "matched_output": true,
+    "matched_current_vs_laurent_decode_span_delta_ms": -133.40331500000002,
+    "matched_current_vs_laurent_decode_kernel_sum_delta_ms": -122.83229700000004,
+    "matched_current_target_rounds_inferred_from_q5_calls": 8,
+    "q5_current_mmvq_ms": 131.650978,
+    "q5_laurent_mmq_plus_mmvq_ms": 32.018292,
+    "q5_delta_ms": -99.632686,
+    "q5_current_ms_per_target_round": 16.45637225,
+    "q5_laurent_ms_per_target_round": 4.0022865,
+    "q5_laurent_over_current_ratio": 0.2432058803239578,
+    "hipengine_q5_current_ms_per_cycle": 15.052392,
+    "hipengine_q5_analogue_estimated_ms_per_cycle": 3.6608302473412997,
+    "hipengine_q5_analogue_estimated_saving_ms_per_cycle": 11.3915617526587,
+    "q5_share_of_peer_decode_span_delta": 0.746853149788669,
+    "laurent_q5_source_commit": "25748619d26231137fa3add44d0a42d2c73c6003",
+    "laurent_q5_source_mechanism": "Flatten recurrent GDN ssm_out input from [6144,n_seq_tokens,n_seqs] to [6144,n_seq_tokens*n_seqs] before projection, replacing per-sequence MMVQ with batch-wide MMQ.",
+    "adaptive_draft_policy_present_but_disabled": true,
+    "laurent_ordering_commit": "eb3d32a6c4382a6e41a310ab0fe6b6a654b8202b",
+    "arithmetic_difference_probe_prompt": "code_merge_intervals",
+    "arithmetic_difference_probe_equal_output": false,
+    "note": "The matched-output profile isolates a peer mechanism without output drift. The separate known-different C8 cell proves equal requested K3 does not imply equal generated/accepted drafts or equal work."
+  },
+  "candidate_ranking": [
+    {
+      "rank": 1,
+      "role": "recurrent_ssm_output_q5",
+      "candidate": "production-profile batch-wide Q5 matrix tile/MMQ analogue for R24/R32 with current exact grouped Q5 fallback",
+      "evidence": "Laurent source commit 25748619 and direct matched-output trace replace current MMVQ with MMQ.",
+      "estimated_cycle_saving_ms": 11.3915617526587,
+      "estimate_formula": "hipEngine mean Q5 cycle wall * (1 - Laurent matched-output Q5 wall / current matched-output Q5 wall)",
+      "binding_gate": "exact control/ownership plus full T1/T2 production numerical, deterministic/isolation, BF16-relative, task, lifecycle and complete-suite perf gates"
+    }
+  ],
+  "limitations": [
+    "Peer traces are one-prompt diagnostics, not replacement throughput rows.",
+    "Raw rocprof CSV stays under /tmp and is represented by path plus SHA-256.",
+    "The arithmetic-difference probe uses one of the two known Laurent-different C8 cells; it is retained only to prove work/acceptance non-equivalence."
+  ]
+}
