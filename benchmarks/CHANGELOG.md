@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P12 current validation packet] **268** focused tests pass. Strict/production each complete 36 deterministic p512/p1024/p4096-tg128 samples with zero teardown; production reaches **83.352/14.180, 82.933/14.164, 69.200/12.160 pp/tok/s**. Current-manifest quality/state/task/c2 and unlocked long context remain valid. Final packet is blocked by five-pair comparators and 4K MTP capacity. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P12 comparator inventory] Every declared lane has a pinned exact-fixture refresh or explicit startup failure: upstream Vulkan 12/12 repeatable but noisy, Nathan 0/12, Engram 4K alternating, hybrid-04 2/12 exact, pristine HIP zero samples after two 1,800-s starts. Refresh-once closes; final five-pair freeze remains open. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-comparator-refresh-inventory.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 promotion readiness] Keep target AR default: exact 10/10 serial MTP is **22.821 vs 16.904 s (0.7407x AR)** and every category is **0.7111x-0.7581x**. No public candidate passes; internal 1.0071x B2 does not transfer, and required 4K MTP is blocked by 1K capacity. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-promotion-readiness.json`.

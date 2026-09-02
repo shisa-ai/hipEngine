@@ -2047,9 +2047,20 @@ Goal: make the complete result reproducible, default, and reversible.
       eligible lanes from pinned sources for final pairs rather than comparing
       new binaries to these absolute rows. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-comparator-refresh-inventory.json`.
-- [ ] Run the final strict/production packet, task/BF16/control/state/c2/
+- [~] Run the final strict/production packet, task/BF16/control/state/c2/
       lifecycle gates, exact matched p512/p1024/p4096 with tg128, and every
-      unlocked long-context/MTP milestone.
+      unlocked long-context/MTP milestone. Current short packet passes:
+      **268** focused Qwen4Exp tests; strict and production each complete 36/36
+      deterministic exact-fixture samples with zero teardown. Weighted
+      strict pp/tg is **61.049/13.517, 60.322/13.427, 52.561/9.472** at
+      p512/p1024/p4096; production is **83.352/14.180, 82.933/14.164,
+      69.200/12.160**. Production manifest `37d59564…` does not fall back;
+      its existing 450-row BF16/task/state/lifecycle gate and c2 exactness remain
+      binding because later default-path changes are unselected T0 verifier
+      primitives. Current 4K/16K/64K retrieval remains qualified. Final packet
+      is still blocked by five-pair eligible comparator windows and 4K MTP at
+      the provider's 1K capacity; neither is relabeled as passed. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`.
 - [ ] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
       reports, benchmark README/changelog updates, and the model checkpoint.
 - [ ] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
