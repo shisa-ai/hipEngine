@@ -288,7 +288,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   kernels already template on `scalar_t`, so the sibling is a new
   instantiation + wrapper, not a rewrite. The 19.8/20.1% C2/C8 wall bound
   remains an inferred portability transfer; the B2 measurement decides.
-- [~] Implement the input-F16 siblings as new four-axis variants under
+- [x] Implement the input-F16 siblings as new four-axis variants under
   `hipengine/kernels/hip_gfx1100/quant/` (shared gfx11 bodies, peer-registered
   on gfx1151 per `docs/KERNELS.md`): BF16→F16 activation cast
   workspace/ownership, unchanged weight representation, raw device-pointer
@@ -303,11 +303,14 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   owners and CPU reference pass the declared T1 envelope.
 
   Cast and runner integration landed in `d515a7772` (cache-hit repair
-  `af8440b0b`), but the screen audit found `_PREFILL_F16_WORKSPACE` is
-  module-global and is not reclaimed with a request or resident session. This
-  item is therefore partial only on the required workspace ownership/lifecycle
-  surface; the cast kernel, raw-pointer sibling ABIs, registrations, routing,
-  and strict fallback are implemented.
+  `af8440b0b`). Ownership repair completed 2026-09-02
+  ([`...b2-f16-lifecycle.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-lifecycle.json)):
+  the module-global allocator is removed; each enabled resident session lazily
+  owns one bounded 34 MiB workspace through its teardown-owned `_buffers`
+  list, and the active prefill call receives only its owner's pointer through a
+  context variable. Missing/undersized ownership fails closed to BF16. RED/GREEN
+  covers bounded restore, distinct session pointers, reuse, and no global;
+  cache-only rows72/288 returned to zero tracked bytes/allocations after close.
 - [ ] Profile the expected kernels (prebuilt `.so`, `rocprofv3`), then run the
   complete C2/C8 same-suite prefill gates and the applicable production
   numerical gate (strict-teacher mean/p95/p99/max KL and top-1 by
@@ -332,14 +335,13 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   required trace observes 1,008 BF16→F16 casts, 864 `_Float16` Q4 owners,
   and 144 `_Float16` Q5 owners with positive durations at rows72/288.
 
-  Two binding blockers remain before the production packet: one C8
-  free-running arm cell differs across candidate processes (diagnostic until
-  strict-teacher localization, but same-schedule determinism is binding), and
-  the current grow-only workspace is module-global rather than request/session
-  lifecycle-owned. Replace that workspace with a bounded lifecycle owner,
-  rerun deterministic/isolation evidence, then run the complete strict-teacher,
-  category/heldout, BF16-relative, task, and lifecycle gates. The switch stays
-  default-off and the BF16 owners remain the strict fallback.
+  The workspace blocker is resolved by the session-owned lifecycle packet
+  above. One C8 free-running arm cell still differs across candidate processes
+  (diagnostic until strict-teacher localization, but same-schedule determinism
+  is binding). Rerun deterministic/isolation evidence, then run the complete
+  strict-teacher, category/heldout, BF16-relative, task, lifecycle, and fresh
+  same-suite wall gates. The switch stays default-off and the BF16 owners
+  remain the strict fallback.
 
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import os
-import threading
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -13,7 +12,6 @@ from typing import Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
-from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
@@ -180,7 +178,8 @@ MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
 # B2 P1: prefill F16-staging route (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md).
 # Default OFF: the BF16 owners remain the selected strict fallback. When
 # enabled (env or prefill session), Q4/Q5-T16 dense prefill launches stage
-# the activation operand into a grow-only IEEE-half workspace and dispatch
+# the activation operand into a bounded session-owned IEEE-half workspace,
+# then dispatch
 # the registered fp16-in siblings (measured 0.69-0.89x their BF16 owners at
 # the kernel level). The cast kernel and siblings are exact-family; outputs
 # are T1 and require the complete B2 item-3 gates before any default flip.
@@ -189,25 +188,53 @@ _prefill_f16_staging_session_enabled: ContextVar[bool] = ContextVar(
     "gguf_prefill_f16_staging_session_enabled", default=False
 )
 _PREFILL_F16_STAGING_MIN_ROWS = 17
-_PREFILL_F16_STAGING_MAX_ROWS = 1024
+PREFILL_F16_STAGING_MAX_ROWS = 1024
 _PREFILL_F16_STAGING_QUANTS = frozenset(
     {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1"}
 )
 _PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
 PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
-_PREFILL_F16_WORKSPACE: dict[str, object] = {"buffer": None, "capacity": 0}
-_PREFILL_F16_WORKSPACE_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True)
+class PrefillF16StagingWorkspace:
+    """Bounded device workspace owned by the active resident session."""
+
+    ptr: int
+    nbytes: int
+
+    def __post_init__(self) -> None:
+        if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
+            raise ValueError("prefill F16 staging workspace must be non-empty")
+
+
+_prefill_f16_staging_workspace: ContextVar[
+    PrefillF16StagingWorkspace | None
+] = ContextVar("gguf_prefill_f16_staging_workspace", default=None)
 
 
 @contextlib.contextmanager
-def prefill_f16_staging_session(enabled: bool = True) -> Iterator[None]:
-    """Enable the prefill F16-staging route for launches in one context."""
+def prefill_f16_staging_session(
+    enabled: bool = True,
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+) -> Iterator[None]:
+    """Enable F16 staging with one caller-owned bounded device workspace."""
 
-    token = _prefill_f16_staging_session_enabled.set(bool(enabled))
+    workspace = None
+    if enabled and (int(workspace_ptr) or int(workspace_nbytes)):
+        workspace = PrefillF16StagingWorkspace(
+            ptr=int(workspace_ptr),
+            nbytes=int(workspace_nbytes),
+        )
+    enabled_token = _prefill_f16_staging_session_enabled.set(bool(enabled))
+    workspace_token = _prefill_f16_staging_workspace.set(workspace)
     try:
         yield
     finally:
-        _prefill_f16_staging_session_enabled.reset(token)
+        _prefill_f16_staging_workspace.reset(workspace_token)
+        _prefill_f16_staging_session_enabled.reset(enabled_token)
 
 
 def prefill_f16_staging_enabled() -> bool:
@@ -223,20 +250,20 @@ def prefill_f16_staging_enabled() -> bool:
     }
 
 
-def _prefill_f16_stage_ptr(count: int, runtime) -> int:
-    """Return a grow-only device buffer holding >= count IEEE-half elems."""
+def prefill_f16_staging_workspace() -> PrefillF16StagingWorkspace | None:
+    """Return the active caller-owned workspace, if one was supplied."""
 
-    with _PREFILL_F16_WORKSPACE_LOCK:
-        buffer = _PREFILL_F16_WORKSPACE["buffer"]
-        capacity = int(_PREFILL_F16_WORKSPACE["capacity"])
-        if capacity >= count and buffer is not None:
-            return buffer.ptr
-        if buffer is not None:
-            free(buffer, runtime=runtime)
-        buffer = malloc(count * 2, runtime=runtime)
-        _PREFILL_F16_WORKSPACE["buffer"] = buffer
-        _PREFILL_F16_WORKSPACE["capacity"] = count
-        return buffer.ptr
+    return _prefill_f16_staging_workspace.get()
+
+
+def _prefill_f16_stage_ptr(count: int) -> int:
+    """Return the bounded owner pointer, or zero to keep the strict fallback."""
+
+    workspace = prefill_f16_staging_workspace()
+    required_nbytes = int(count) * 2
+    if workspace is None or int(workspace.nbytes) < required_nbytes:
+        return 0
+    return int(workspace.ptr)
 
 
 def _launch_prefill_f16_staged(
@@ -272,7 +299,9 @@ def _launch_prefill_f16_staged(
         variant=key.variant,
     )
     count = int(rows) * int(in_features)
-    stage_ptr = _prefill_f16_stage_ptr(count, runtime)
+    stage_ptr = _prefill_f16_stage_ptr(count)
+    if stage_ptr <= 0:
+        return False
     gguf_cast_bf16_to_f16(
         x_ptr,
         stage_ptr,
@@ -3075,7 +3104,7 @@ def launch_gguf_linear(
         and quant in _PREFILL_F16_STAGING_QUANTS
         and variant == _PREFILL_F16_STAGING_SOURCE_VARIANT
         and _PREFILL_F16_STAGING_MIN_ROWS <= int(rows)
-        <= _PREFILL_F16_STAGING_MAX_ROWS
+        <= PREFILL_F16_STAGING_MAX_ROWS
         and activation_dtype == GGUF_ACTIVATION_BF16
         and output_dtype == GGUF_OUTPUT_BF16
     ):
@@ -6987,6 +7016,9 @@ __all__ = [
     "GGUF_OUTPUT_BF16",
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
+    "PREFILL_F16_STAGING_MAX_ROWS",
+    "PREFILL_F16_STAGING_VARIANT",
+    "PrefillF16StagingWorkspace",
     "launch_gguf_q4_t16_sidecar_decode",
     "GGUFLinearDispatch",
     "Q5F32OrderedPrefillSession",
@@ -7005,6 +7037,9 @@ __all__ = [
     "launch_gguf_linear_triple",
     "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
+    "prefill_f16_staging_enabled",
+    "prefill_f16_staging_session",
+    "prefill_f16_staging_workspace",
     "target_verifier_rowtile_session",
     "target_verifier_production_q4_rowtile_session",
     "target_verifier_wide_q6_shared4_session",
