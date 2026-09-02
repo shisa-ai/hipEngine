@@ -439,16 +439,36 @@ projections. P1 estimates a matrix-tile analogue at **3.661 ms/cycle**, leaving
 **11.392 ms/cycle** of mechanism-backed upside. Current grouped R6/R8 stays the
 strict fallback.
 
-- [ ] Add an actual-weight R24/R32 RED comparing a matrix-tiled Q5 candidate to
+- [x] Add an actual-weight R24/R32 RED comparing a matrix-tiled Q5 candidate to
       the current grouped-R6/R8 active-row output and production profile.
-- [ ] Prototype batch-wide Q5 matrix ownership using a generic DP4A/Q8-activation
+- [x] Prototype batch-wide Q5 matrix ownership using a generic DP4A/Q8-activation
       or WMMA mechanism; do not hard-code model data or bypass the registry.
 - [ ] Measure all 48 `ssm_out` weights in alternating order and require a
       projected operation-complete cycle wall below the incumbent 15.052 ms.
-- [ ] Keep exact grouped R6/R8 registered as strict fallback and declare any
+- [x] Keep exact grouped R6/R8 registered as strict fallback and declare any
       changed reduction/activation arithmetic as T2 rather than relabeling it.
 - [ ] Run L2→L5 if the actual-weight screen survives; target at least the
       11.392 ms/cycle peer-derived estimate before changing priority.
+
+The first actual-weight screen now covers both available arithmetic families
+and a peer-derived geometry prototype. On W7900 GPU0 with
+`blk.0.ssm_out.weight` `[5120,6144]`, the operation-complete raw D4S4 path was
+**0.2532/0.2763 ms** at R24/R32 versus grouped **0.2686/0.3112 ms** in its
+preliminary run: useful R32 evidence, but only a modest R24/R32 candidate rather
+than the peer's 4x mechanism. A source-compatible I64/J32/K256 prototype then
+reproduced its I128/J128 parent output bits and passed the broad production
+floor against grouped output (R24/R32 mean KL **7.87e-06/4.61e-05**, top-1
+**95.83%/100%**). In the more conservative alternating run it measured
+**0.2833/0.1899 ms** operation-complete versus grouped **0.2486/0.3047 ms**:
+a strong R32 result but an R24 regression, so it remains unregistered.
+
+The important blocker is now concrete rather than geometric. The prototype's
+no-tail BF16 code object uses **206 VGPR, 29 SGPR, 29,440 B LDS, WG128**;
+Laurent's matched Q5 I64/J32 kernel uses **136 VGPR, WG128**. Directly changing
+ownership therefore does not reproduce the peer's instruction/load layout.
+Next Q5 work should port or reproduce Laurent's shared-layout/load-dot schedule
+to reduce register pressure, then measure all 48 weights. Strict grouped R6/R8
+ownership remains unchanged.
 
 Second pool: **48.237 ms/cycle** across grouped Q4 R6 and R8 symbols. P1
 ranks the R24-only R6 tail slightly above the two R32 R8 cycles:

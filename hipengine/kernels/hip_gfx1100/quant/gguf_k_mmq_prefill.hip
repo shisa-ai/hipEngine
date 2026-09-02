@@ -24,11 +24,17 @@ constexpr int MMQ_THREADS = 128;
 constexpr int SOURCE_MMQ_I = 128;
 constexpr int SOURCE_MMQ_J = 128;
 constexpr int SOURCE_MMQ_THREADS = 256;
+constexpr int SOURCE_C8_MMQ_I = 64;
+constexpr int SOURCE_C8_MMQ_J = 32;
+constexpr int SOURCE_C8_MMQ_THREADS = 128;
 constexpr int SOURCE_WEIGHT_STRIDE_WORDS = 76;
 // llama.cpp's gfx1100 Q5_K I128/J128/K256 specialization reserves this
 // dynamic-LDS class. The live layouts below consume 57,344 bytes; retaining
 // the complete 57,856-byte class keeps launch/resource attribution comparable.
 constexpr int SOURCE_MMQ_SHARED_BYTES = 57856;
+constexpr int SOURCE_C8_MMQ_SHARED_BYTES =
+    SOURCE_C8_MMQ_I * SOURCE_WEIGHT_STRIDE_WORDS * sizeof(uint32_t) +
+    SOURCE_C8_MMQ_J * 144;
 
 struct q8_1_ds4_kmajor_block {
   uint16_t ds4[8];
@@ -1202,6 +1208,208 @@ __global__ void gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_kernel(
   }
 }
 
+// C8 target-verifier tile matching llama.cpp's small-matrix gfx1100 MMQ
+// geometry: four waves own 64 output columns and two J16 row minitiles. This
+// keeps the source Q5/DS4 arithmetic while avoiding the I128/J128 kernel's
+// inactive row work at the physical R24/R32 shapes.
+template <typename output_t, bool fallback>
+__launch_bounds__(128, 4)
+__global__ void gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_kernel(
+    const q8_1_ds4_kmajor_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight,
+    output_t* __restrict__ out,
+    int rows,
+    int hidden,
+    int out_features) {
+  typedef int i32x4_t __attribute__((__vector_size__(4 * sizeof(int))));
+  typedef int i32x8_t __attribute__((__vector_size__(8 * sizeof(int))));
+
+  extern __shared__ uint8_t shared_bytes[];
+  uint32_t* weight_tile = reinterpret_cast<uint32_t*>(shared_bytes);
+  q8_1_ds4_kmajor_block* activation =
+      reinterpret_cast<q8_1_ds4_kmajor_block*>(
+          weight_tile + SOURCE_C8_MMQ_I * SOURCE_WEIGHT_STRIDE_WORDS);
+
+  const int wave = static_cast<int>(threadIdx.y);
+  const int wave_tid = static_cast<int>(threadIdx.x);
+  const int tid = wave * 32 + wave_tid;
+  const int lane16 = wave_tid & 15;
+  const int half_id = wave_tid >> 4;
+  const int output_base = static_cast<int>(blockIdx.x) * SOURCE_C8_MMQ_I;
+  const int row_base = static_cast<int>(blockIdx.y) * SOURCE_C8_MMQ_J;
+  const int weight_input_local = wave * 16 + lane16;
+  const int weight_input_col = output_base + weight_input_local;
+  const bool valid_weight_input = !fallback || weight_input_col < out_features;
+  const int blocks_per_weight_row = hidden / QK_K;
+  const int weight_row_bytes = blocks_per_weight_row * Q5_K_BLOCK_BYTES;
+
+  float acc[2][8];
+#pragma unroll
+  for (int rt = 0; rt < 2; ++rt) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) acc[rt][j] = 0.0f;
+  }
+
+  for (int weight_block = 0; weight_block < blocks_per_weight_row;
+       ++weight_block) {
+    const int load_row_in_wave = wave_tid >> 3;
+    const int load_lane8 = wave_tid & 7;
+#pragma unroll
+    for (int load_round = 0; load_round < 4; ++load_round) {
+      const int output_round =
+          load_round * 16 + wave * 4 + load_row_in_wave;
+      const int global_output = output_base + output_round;
+      const bool valid = !fallback || global_output < out_features;
+      const uint8_t* block = valid
+          ? qweight + static_cast<int64_t>(global_output) * weight_row_bytes +
+                static_cast<int64_t>(weight_block) * Q5_K_BLOCK_BYTES
+          : nullptr;
+#pragma unroll
+      for (int sb = 0; sb < 8; ++sb) {
+        uint32_t packed = 0;
+        if (valid) packed = q5_pack4_unsigned(block, sb, load_lane8 * 4);
+        weight_tile[
+            output_round * SOURCE_WEIGHT_STRIDE_WORDS +
+            sb * 8 + load_lane8] = packed;
+      }
+      float scale = 0.0f;
+      float minimum = 0.0f;
+      if (valid) {
+        const float d = fp16_bytes_to_float(block);
+        const float dmin = fp16_bytes_to_float(block + 2);
+        scale = d * static_cast<float>(q45_scale(block + 4, load_lane8));
+        minimum =
+            -dmin * static_cast<float>(q45_min(block + 4, load_lane8));
+      }
+      uint16_t* row_dm = reinterpret_cast<uint16_t*>(
+          weight_tile + output_round * SOURCE_WEIGHT_STRIDE_WORDS + 64);
+      row_dm[2 * load_lane8 + 0] = float_to_fp16_bits(scale);
+      row_dm[2 * load_lane8 + 1] = float_to_fp16_bits(minimum);
+    }
+    __syncthreads();
+
+#pragma unroll
+    for (int khalf = 0; khalf < 2; ++khalf) {
+      const int activation_block = weight_block * 2 + khalf;
+      uint32_t* activation_words = reinterpret_cast<uint32_t*>(activation);
+      constexpr int words_per_record = sizeof(q8_1_ds4_kmajor_block) / 4;
+      for (int index = tid;
+           index < SOURCE_C8_MMQ_J * words_per_record;
+           index += SOURCE_C8_MMQ_THREADS) {
+        const int local_row = index / words_per_record;
+        const int word = index - local_row * words_per_record;
+        const int global_row = row_base + local_row;
+        uint32_t value = 0;
+        if (!fallback || global_row < rows) {
+          const q8_1_ds4_kmajor_block* source =
+              xq + static_cast<int64_t>(activation_block) * rows + global_row;
+          value = reinterpret_cast<const uint32_t*>(source)[word];
+        }
+        activation_words[index] = value;
+      }
+      __syncthreads();
+
+      for (int local_sb = 0; local_sb < 4; ++local_sb) {
+        const int weight_sb = khalf * 4 + local_sb;
+        i32x4_t weight0 = {0, 0, 0, 0};
+        i32x4_t weight1 = {0, 0, 0, 0};
+        if (valid_weight_input) {
+          const uint8_t* weight_values = reinterpret_cast<const uint8_t*>(
+              weight_tile +
+              weight_input_local * SOURCE_WEIGHT_STRIDE_WORDS) +
+              weight_sb * 32;
+          weight0 = i32x4_t{
+              static_cast<int>(pack_u8x4(weight_values + 0)),
+              static_cast<int>(pack_u8x4(weight_values + 4)),
+              static_cast<int>(pack_u8x4(weight_values + 8)),
+              static_cast<int>(pack_u8x4(weight_values + 12)),
+          };
+          weight1 = i32x4_t{
+              static_cast<int>(pack_u8x4(weight_values + 16)),
+              static_cast<int>(pack_u8x4(weight_values + 20)),
+              static_cast<int>(pack_u8x4(weight_values + 24)),
+              static_cast<int>(pack_u8x4(weight_values + 28)),
+          };
+        }
+
+        i32x8_t dots[2];
+#pragma unroll
+        for (int rt = 0; rt < 2; ++rt) {
+          const int activation_row = rt * 16 + lane16;
+          const q8_1_ds4_kmajor_block& xb = activation[activation_row];
+          const int8_t* activation_values = xb.qs + local_sb * 32;
+          const i32x4_t activation0 = i32x4_t{
+              static_cast<int>(pack_i8x4(activation_values + 0)),
+              static_cast<int>(pack_i8x4(activation_values + 4)),
+              static_cast<int>(pack_i8x4(activation_values + 8)),
+              static_cast<int>(pack_i8x4(activation_values + 12)),
+          };
+          const i32x4_t activation1 = i32x4_t{
+              static_cast<int>(pack_i8x4(activation_values + 16)),
+              static_cast<int>(pack_i8x4(activation_values + 20)),
+              static_cast<int>(pack_i8x4(activation_values + 24)),
+              static_cast<int>(pack_i8x4(activation_values + 28)),
+          };
+          dots[rt] = i32x8_t{0, 0, 0, 0, 0, 0, 0, 0};
+          dots[rt] = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+              true, weight0, true, activation0, dots[rt], true);
+          dots[rt] = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32(
+              true, weight1, true, activation1, dots[rt], true);
+        }
+
+#pragma unroll
+        for (int rt = 0; rt < 2; ++rt) {
+          const int activation_row = rt * 16 + lane16;
+          const q8_1_ds4_kmajor_block& xb = activation[activation_row];
+          const float activation_scale =
+              fp16_bits_to_float(xb.ds4[2 * local_sb + 0]);
+          const float activation_sum =
+              fp16_bits_to_float(xb.ds4[2 * local_sb + 1]);
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            const int output_local = wave * 16 + half_id + j * 2;
+            if (!fallback ||
+                (output_base + output_local < out_features &&
+                 row_base + activation_row < rows)) {
+              const uint16_t* row_dm =
+                  reinterpret_cast<const uint16_t*>(
+                      weight_tile +
+                      output_local * SOURCE_WEIGHT_STRIDE_WORDS + 64);
+              const float weight_scale =
+                  fp16_bits_to_float(row_dm[2 * weight_sb + 0]);
+              const float weight_minimum =
+                  fp16_bits_to_float(row_dm[2 * weight_sb + 1]);
+              acc[rt][j] +=
+                  weight_scale * activation_scale *
+                      static_cast<float>(dots[rt][j]) +
+                  weight_minimum * activation_sum;
+            }
+          }
+        }
+      }
+      __syncthreads();
+    }
+  }
+
+#pragma unroll
+  for (int rt = 0; rt < 2; ++rt) {
+    const int local_row = rt * 16 + lane16;
+    const int global_row = row_base + local_row;
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int output_local = wave * 16 + half_id + j * 2;
+      const int output_col = output_base + output_local;
+      if (!fallback ||
+          (global_row < rows && output_col < out_features)) {
+        store_output<output_t>(
+            out,
+            static_cast<int64_t>(global_row) * out_features + output_col,
+            acc[rt][j]);
+      }
+    }
+  }
+}
+
 int launch_quantize_ds4_kmajor(
     const uint16_t* x,
     q8_1_ds4_kmajor_block* out,
@@ -1268,6 +1476,57 @@ int launch_q5_source_mmq(
         grid,
         block,
         SOURCE_MMQ_SHARED_BYTES,
+        stream,
+        xq,
+        qweight,
+        out,
+        static_cast<int>(rows),
+        static_cast<int>(hidden),
+        static_cast<int>(out_features));
+  }
+  return static_cast<int>(hipGetLastError());
+}
+
+template <typename output_t>
+int launch_q5_source_c8_mmq(
+    const q8_1_ds4_kmajor_block* xq,
+    const uint8_t* qweight,
+    output_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || out == nullptr ||
+      rows <= 0 || hidden <= 0 || (hidden % QK_K) != 0 ||
+      out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32, 4);
+  const dim3 grid(
+      static_cast<unsigned int>(
+          (out_features + SOURCE_C8_MMQ_I - 1) / SOURCE_C8_MMQ_I),
+      static_cast<unsigned int>(
+          (rows + SOURCE_C8_MMQ_J - 1) / SOURCE_C8_MMQ_J));
+  if ((rows % SOURCE_C8_MMQ_J) == 0 &&
+      (out_features % SOURCE_C8_MMQ_I) == 0) {
+    hipLaunchKernelGGL(
+        (gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_kernel<output_t, false>),
+        grid,
+        block,
+        SOURCE_C8_MMQ_SHARED_BYTES,
+        stream,
+        xq,
+        qweight,
+        out,
+        static_cast<int>(rows),
+        static_cast<int>(hidden),
+        static_cast<int>(out_features));
+  } else {
+    hipLaunchKernelGGL(
+        (gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_kernel<output_t, true>),
+        grid,
+        block,
+        SOURCE_C8_MMQ_SHARED_BYTES,
         stream,
         xq,
         qweight,
@@ -1504,6 +1763,44 @@ hipengine_gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q5_source_mmq<float>(
+      reinterpret_cast<const q8_1_ds4_kmajor_block*>(xq),
+      qweight,
+      out,
+      rows,
+      hidden,
+      out_features,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out(
+    const void* xq,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_source_c8_mmq<uint16_t>(
+      reinterpret_cast<const q8_1_ds4_kmajor_block*>(xq),
+      qweight,
+      out,
+      rows,
+      hidden,
+      out_features,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out(
+    const void* xq,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_source_c8_mmq<float>(
       reinterpret_cast<const q8_1_ds4_kmajor_block*>(xq),
       qweight,
       out,

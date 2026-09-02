@@ -356,6 +356,7 @@ def _launch_q5_source_mmq(
     hidden: int,
     out_features: int,
     *,
+    tile: str = "i128_j128",
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
@@ -366,10 +367,12 @@ def _launch_q5_source_mmq(
         raise ValueError("hidden must be a positive multiple of 256")
     if out_features <= 0:
         raise ValueError("out_features must be positive")
+    if tile not in {"i128_j128", "i64_j32"}:
+        raise ValueError(f"unsupported source MMQ tile: {tile}")
     library = library or build_gguf_q5_k_source_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     symbol = (
-        "hipengine_gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_"
+        f"hipengine_gguf_q5_k_mmq_{tile}_k256_q8_1_ds4_"
         f"bf16_{output_dtype}_out"
     )
     fn = getattr(library, symbol)
@@ -406,6 +409,18 @@ def gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out(
     *args, **kwargs
 ) -> None:
     _launch_q5_source_mmq("f32", *args, **kwargs)
+
+
+def gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    _launch_q5_source_mmq("bf16", *args, tile="i64_j32", **kwargs)
+
+
+def gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out(
+    *args, **kwargs
+) -> None:
+    _launch_q5_source_mmq("f32", *args, tile="i64_j32", **kwargs)
 
 
 def gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out(*args, **kwargs) -> None:
@@ -567,6 +582,8 @@ __all__ = [
     "build_gguf_q5_k_source_mmq_prefill",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
+    "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out",
+    "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out",
