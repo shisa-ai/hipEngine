@@ -457,6 +457,11 @@ GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
 # H5120 K6,144/N5,120 recurrent output projections. The materializer remains
 # shape/role qualified; peer backends keep dense BF16 until independently gated.
 GGUF_DENSE_Q5_T16_SSM_OUT = True
+# Default-off C8 campaign route: retain a raw sidecar for the measured
+# K6144/N5120 recurrent output role so physical R24/R32 verification can screen
+# operation-complete Q8_1+Q5 MMQ. The env gate is resolved by the materializer
+# and runner; exact T16 grouped rowtiles remain the default and fallback.
+GGUF_C8_Q5_RAW_MMQ_SSM_OUT = True
 # Q5T16 and planar-qmicro Q6T16 true rowtile primitives were extended and
 # validated to rows 5-8 (strict bit-parity vs the per-row producer), so native
 # batch decode rewrites rows 2-8 to the true rowtile instead of padded WMMA.
@@ -1106,6 +1111,7 @@ __all__ = [
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
     "GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES",

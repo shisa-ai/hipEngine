@@ -751,6 +751,56 @@ def test_qwen38_dense_q5_ssm_out_plan_uses_one_t16_payload_per_owner() -> None:
     assert all(spec.allocation_names == ("tiles",) for spec in q5_specs)
 
 
+def test_qwen38_dense_q5_ssm_out_plan_can_add_raw_mmq_sidecars() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(QWEN38_DENSE_MODEL).info)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q5_raw_mmq_ssm_out=True,
+    )
+    q5_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.source.ggml_type_name == "Q5_K"
+        and spec.slot_path.endswith(".ssm_out")
+    )
+
+    assert len(q5_specs) == 48
+    assert all(spec.layout == LAYOUT_GGUF_Q5_K_T16 for spec in q5_specs)
+    assert all(spec.allocation_names == ("tiles", "raw") for spec in q5_specs)
+
+
+def test_qwen38_dense_q5_ssm_out_materializes_opt_in_raw_mmq_sidecar(
+    monkeypatch,
+) -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
+    runtime = get_hip_runtime()
+    resident = materialize_qwen35_gguf_weights(
+        QWEN38_DENSE_MODEL,
+        selected_slots=("layers.0.ssm_out",),
+        decode_repack=True,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    try:
+        weight = resident.layer(0).weight("ssm_out")
+        assert weight.spec.layout == LAYOUT_GGUF_Q5_K_T16
+        assert weight.spec.allocation_names == ("tiles", "raw")
+        assert tuple(weight.allocations) == ("tiles", "raw")
+        assert weight.allocation("raw").buffer.nbytes == 21_626_880
+    finally:
+        resident.free(runtime=runtime)
+
+
 def test_qwen38_dense_q5_ssm_out_materializes_sole_t16_on_gfx1151() -> None:
     if not QWEN38_DENSE_MODEL.exists():
         pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
