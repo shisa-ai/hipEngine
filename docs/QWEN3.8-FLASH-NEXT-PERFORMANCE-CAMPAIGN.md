@@ -1782,8 +1782,18 @@ the existing escalation thresholds permit each rung.
       different-weight-quant headlines remain excluded. This closes the evidence
       inventory, not the missing 16K/64K measurement. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-matched-comparator-audit.json`.
-- [ ] Optimize persistent compressed-key scoring, top-k, selected attention,
-      and graph/context buckets only where the depth profile ranks them.
+- [~] Optimize persistent compressed-key scoring, top-k, selected attention,
+      and graph/context buckets only where the depth profile ranks them. The
+      exact live-16K marker profile measures **82.617 ms/token** clean and
+      **20.834 ms/token** for the complete QSA role, effectively flat against
+      the retained 4K ordered-role **20.913 ms/token**. Ordered sparse attention
+      remains the named owner at **19.642 ms/token**, but that exact route was
+      already promoted in P6 and its next col4 leaf was rejected. Compressed-key
+      score/top-k is only **1.116 ms/token** (**1.35%** of clean wall); 48 graph
+      launches repeat with no lifecycle growth. Do not open a 16K score/top-k or
+      graph-bucket candidate. The item remains partial pending a 64K timed owner
+      profile. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-16k-owner-profile.json`.
 - [ ] After BF16 AR parity, open Q8 K/V as a T3 product configuration with its
       own CPU/reference, BF16-relative, task/retrieval, memory, deterministic,
       lifecycle, and same-config competitor gates. It cannot close BF16 parity.
