@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p12_fivepair_comparator",
+  "status": "blocked_upstream_vulkan_variance",
+  "performance_claim": false,
+  "host": {
+    "identity": "zbook",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "gpu_clock_policy": "auto"
+  },
+  "comparator": {
+    "engine": "upstream Vulkan",
+    "source": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+    "source_clean": true,
+    "build": "disposable shared clone; Release; GGML_VULKAN=ON; GGML_NATIVE=OFF",
+    "binary_sha256": "01c72085b5a9321059be6b55eac543afada1df19bf563f43c05f6c529dfb62b3",
+    "configuration": "graphics queue on; repack on; fit off; batch8192; ubatch2048; BF16 KV",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "warmups_per_case": 1,
+    "repetitions_per_case": 5,
+    "sample_count": 60,
+    "all_cases_deterministic": true,
+    "shapes": {
+      "512": {"prefill_tok_s": 248.6740198570576, "decode_tok_s": 23.70963155065862, "max_case_cv": 0.0923914118999232},
+      "1024": {"prefill_tok_s": 268.9802788203865, "decode_tok_s": 20.732867842116068, "max_case_cv": 0.04732527695890935},
+      "4096": {"prefill_tok_s": 279.5108613154146, "decode_tok_s": 18.667841535051945, "max_case_cv": 0.016756362627552385}
+    },
+    "raw_result_sha256": "114b47c112391f0dfa3f24015a7b38677f6edc9e5ac3d502318074c1e0e5be69",
+    "server_log_sha256": "1cd06940138174cde1c343438de4fe3642a1994c42c8e6049fc9f3da982a221f"
+  },
+  "current_hipengine": {
+    "artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json",
+    "production_manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+    "three_repeat_current_packet_passed": true,
+    "five_repeat_run_completed": false,
+    "reason": "Stopped after the comparator independently failed the <=2% closure CV requirement; continuing could not yield a valid paired match/beat verdict."
+  },
+  "amdahl_declaration": {
+    "W": "current production shape rows remain in the P12 validation packet",
+    "C": "five-repeat upstream Vulkan rates above are deterministic but p512/p1024 variance-invalid",
+    "O": null,
+    "s": null,
+    "arithmetic_class": "external comparator closure measurement; no hipEngine arithmetic",
+    "scope": "exact p512/p1024/p4096 tg128 five-repetition comparator gate",
+    "mechanism": "rebuild eligible pinned comparator and test stability before paired classification",
+    "strict_fallback": "current hipEngine production unchanged",
+    "overlap_exclusions": ["no old/new binary absolute comparison", "no noisy p512/p1024 rate promoted", "no incomplete hipEngine five-repeat run reported"]
+  },
+  "decision": {
+    "fivepair_target_frozen": false,
+    "p4096_comparator_stable": true,
+    "p512_p1024_comparator_stable": false,
+    "reason": "Section 6 requires both arms coefficient of variation <=2%. Upstream Vulkan max per-case CV is 9.24%/4.73% at p512/p1024, so it cannot define those closure targets despite deterministic outputs.",
+    "unblock": "Stabilize the eligible Vulkan lane and rerun it first. Only after every shape is <=2% CV should current production be rerun immediately in the same thermal window for paired confidence intervals."
+  }
+}

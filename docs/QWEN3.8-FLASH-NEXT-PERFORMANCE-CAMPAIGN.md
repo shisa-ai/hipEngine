@@ -2059,8 +2059,16 @@ Goal: make the complete result reproducible, default, and reversible.
       binding because later default-path changes are unselected T0 verifier
       primitives. Current 4K/16K/64K retrieval remains qualified. Final packet
       is still blocked by five-pair eligible comparator windows and 4K MTP at
-      the provider's 1K capacity; neither is relabeled as passed. Evidence:
-      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`.
+      the provider's 1K capacity; neither is relabeled as passed. The final
+      comparator attempt rebuilt clean upstream Vulkan `f1793c1c4` in a
+      disposable clone (binary `01c72085…`) and completed 60 deterministic
+      exact-fixture samples. Its max per-case CV is **9.24%/4.73%/1.68%** at
+      p512/p1024/p4096; p512/p1024 fail the <=2% closure rule. The current
+      production five-repeat arm was stopped because no valid paired verdict
+      could result. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-fivepair-comparator-blocked.json`.
 - [~] Emit compact accepted/rejected/blocked artifacts, raw-log hashes, generated
       reports, benchmark README/changelog updates, and the model checkpoint.
       Current P12 packet, compact report, and README/changelog rollup are current;
