@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
+import time
 from typing import Mapping, Sequence
 
 import numpy as np
@@ -144,6 +145,8 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self._buffers: list[DeviceBuffer] = []
         self.position = 0
         self.closed = False
+        self.last_forward_stage_timings_ms: dict[str, float] = {}
+        self.last_proposal_stage_timings_ms: dict[str, float] = {}
         try:
             self._allocate_buffers()
         except Exception:
@@ -373,7 +376,15 @@ class Qwen4ExpGGUFMTPDraftRunner:
         self._require_open()
         if self.position >= self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP draft capacity exceeded")
+        stages: dict[str, float] = {}
+
+        def finish_stage(name: str, started: float) -> None:
+            stages[name] = (time.perf_counter() - started) * 1_000.0
+
+        started = time.perf_counter()
         self._fuse_inputs(token_id, hidden_seed)
+        finish_stage("draft_input_fusion", started)
+        started = time.perf_counter()
         output = run_qwen4_exp_dense_qsa_layer(
             self.residual.ptr,
             self.binding,
@@ -398,12 +409,14 @@ class Qwen4ExpGGUFMTPDraftRunner:
             top_k=self.config.expert_used_count,
             runtime=self.runtime,
         )
+        finish_stage("draft_layer", started)
         self.runtime.memcpy(
             self.last_hidden.ptr,
             output.ptr,
             self.last_hidden.nbytes,
             HipMemcpyKind.DEVICE_TO_DEVICE,
         )
+        started = time.perf_counter()
         head = run_qwen4_exp_gr_read(
             output.ptr,
             self.resident.weight("root.head_hc_norm").allocation("raw").tensor.ptr,
@@ -417,6 +430,8 @@ class Qwen4ExpGGUFMTPDraftRunner:
             low_rank=self.config.residual_low_rank,
             runtime=self.runtime,
         )
+        finish_stage("draft_head_gr", started)
+        started = time.perf_counter()
         launch_gguf_linear(
             self.resident.weight("root.lm_head"),
             head.mixed.ptr,
@@ -428,21 +443,32 @@ class Qwen4ExpGGUFMTPDraftRunner:
             output_dtype=GGUF_OUTPUT_F32,
             runtime=self.runtime,
         )
+        finish_stage("draft_lm_head", started)
+        started = time.perf_counter()
         self.runtime.device_synchronize()
+        finish_stage("draft_device_synchronize", started)
         logits = np.empty(self.config.vocab_size, dtype=np.float32)
+        started = time.perf_counter()
         copy_device_to_host(
             host_array_ptr(logits), self.logits_buffer, runtime=self.runtime
         )
+        finish_stage("draft_logits_d2h", started)
         hidden_bits = np.empty(self.config.residual_width, dtype=np.uint16)
+        started = time.perf_counter()
         copy_device_to_host(
             host_array_ptr(hidden_bits), self.last_hidden, runtime=self.runtime
         )
+        finish_stage("draft_hidden_d2h", started)
+        started = time.perf_counter()
         chained_hidden = np.ascontiguousarray(
             (hidden_bits.astype(np.uint32) << 16).view(np.float32)
         )
+        token_id_result = int(np.argmax(logits))
+        finish_stage("draft_sampler", started)
+        self.last_forward_stage_timings_ms = stages
         self.position += 1
         return Qwen4ExpMTPDraftResult(
-            token_id=int(np.argmax(logits)),
+            token_id=token_id_result,
             logits=logits,
             hidden_seed=chained_hidden,
         )
@@ -481,13 +507,17 @@ class Qwen4ExpGGUFMTPDraftRunner:
         if self.position + count > self.max_sequence_length:
             raise ValueError("Qwen4Exp MTP proposal exceeds capacity")
         results: list[Qwen4ExpMTPDraftResult] = []
+        stage_totals: dict[str, float] = {}
         token = int(start_token)
         hidden = np.ascontiguousarray(target_hidden_seed, dtype=np.float32)
         for _depth in range(count):
             result = self.forward(token, hidden)
             results.append(result)
+            for name, elapsed_ms in self.last_forward_stage_timings_ms.items():
+                stage_totals[name] = stage_totals.get(name, 0.0) + elapsed_ms
             token = result.token_id
             hidden = result.hidden_seed
+        self.last_proposal_stage_timings_ms = stage_totals
         return tuple(results)
 
     def close(self) -> None:

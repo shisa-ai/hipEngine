@@ -63,6 +63,7 @@ class _DraftRunner:
         self.proposals = [(11, 98), (13, 14)]
         self.proposal_index = 0
         self.trimmed = []
+        self.last_proposal_stage_timings_ms = {}
 
     def prime_prompt(self, token_ids, hidden_rows):
         assert hidden_rows.shape == (len(token_ids), 8)
@@ -73,6 +74,14 @@ class _DraftRunner:
         values = self.proposals[self.proposal_index][:draft_n_max]
         self.proposal_index += 1
         self.position += len(values)
+        self.last_proposal_stage_timings_ms = {
+            "draft_input_fusion": 1.0,
+            "draft_layer": 2.0,
+            "draft_head": 3.0,
+            "draft_logits_d2h": 4.0,
+            "draft_hidden_d2h": 5.0,
+            "draft_sampler": 0.5,
+        }
         return tuple(
             SimpleNamespace(
                 token_id=token,
@@ -130,6 +139,19 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
     assert output.telemetry.diagnostics["proposed_draft_tokens"] == 4
     assert output.telemetry.diagnostics["accepted_draft_tokens"] == 3
     assert output.telemetry.diagnostics["draft_acceptance"] == 0.75
+    phase = output.telemetry.diagnostics["phase_census"]
+    assert phase["cycles"] == 2
+    assert phase["target_verify_rows"] == 4
+    assert phase["proposal"]["calls"] == 2
+    assert phase["target_verify"]["calls"] == 4
+    assert phase["acceptance_control"]["calls"] == 4
+    assert phase["draft_commit_or_rollback"]["calls"] == 2
+    assert phase["draft_stages_ms"]["draft_input_fusion"] == 2.0
+    assert phase["draft_stages_ms"]["draft_layer"] == 4.0
+    assert phase["draft_stages_ms"]["draft_head"] == 6.0
+    assert phase["draft_stages_ms"]["draft_logits_d2h"] == 8.0
+    assert phase["draft_stages_ms"]["draft_hidden_d2h"] == 10.0
+    assert phase["draft_stages_ms"]["draft_sampler"] == 1.0
     assert draft.trimmed == [4, 6]
     assert draft.position == target.runner.position == 6
     capability = provider.capabilities()
