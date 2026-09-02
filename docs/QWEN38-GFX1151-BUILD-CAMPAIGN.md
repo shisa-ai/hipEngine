@@ -413,6 +413,16 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   are atomic. Ownership + MTP2 seam 77/77; full generation sampling passes.
   Exact state population and physical target execution remain absent. Evidence:
   [`...b3-m1-shadow-resident-owner.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-resident-owner.json).
+
+  Exact state-population prerequisite RED: existing prefix clone/snapshot ABIs
+  require 256-token-aligned shared pages, while the ten canonical prompt
+  boundaries are 35-67 tokens. Source audit found a viable independent-owner
+  path through the existing arbitrary page-segment and all-plane KV copy
+  primitives plus recurrent-state D2D copy. A 300-token/noncontiguous-source/
+  independent-destination fixture now fails on missing
+  `clone_current_state_from`; it pins K/V + recurrent bytes and position.
+  Evidence:
+  [`...b3-m1-arbitrary-state-clone-red.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-arbitrary-state-clone-red.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
