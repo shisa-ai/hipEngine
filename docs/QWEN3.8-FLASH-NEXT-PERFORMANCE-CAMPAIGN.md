@@ -1468,9 +1468,16 @@ direct-launch surface before graph capture hides it.
       clearly fails leaf admission and does not warrant whole-model timing.
       Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-value-col4-rejected.json`.
-- [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
+- [x] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
-      do not force WMMA onto M=1.
+      do not force WMMA onto M=1. Actual-model retained packets select calibrated
+      Q4 DP4A+SiLU on 43 layers (**1.120x** complete decode; five layers stay
+      exact), exact physical64 Q5_1 weighted-down (**1.011x**), and exact Q8
+      F32/F32 output-pack8 (**1.107x**). Each packet proves the expected kernel,
+      full correctness controls, complete-model wall, and registered exact
+      fallback. All are decode-shaped GEMV/DP4A/output-column owners; no WMMA is
+      forced onto M=1. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-quant-owner-closure.json`.
 - [x] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
       replace them only with same-role evidence. Current c1 dispatch still
       resolves Q5_1 `selected_weighted_sum_logical256_t64_bf16_bf16_out` with

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next Q4/Q5/Q8 c1 owner closure] Actual-model retained Q4 DP4A+SiLU, exact Q5_1 weighted-down, and exact Q8 F32 output-pack8 owners improve complete decode **1.120x/1.011x/1.107x** with expected kernels and exact registered misses; no WMMA is forced onto M=1. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-quant-owner-closure.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next c1 fallback preservation] Exact Q4 dual+SiLU and Q5_1 weighted-down fallbacks remain registered; profile/registry and fused-vs-unfused bit-contract checks pass **9/9**. No dispatch or default changed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-fallback-preservation.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next calibrated GDN suffix closure] All-layer column-warp widening fails at mean KL **0.0068**; suffix 27–47 passes at **0.00099** plus the complete 450-row/task/state/c2/lifecycle/route/whole-model packet, improving p508/p1012 wall **17.09%/15.67%**. Layers 0–26 remain strict. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-suffix-boundary-closure.json`.
