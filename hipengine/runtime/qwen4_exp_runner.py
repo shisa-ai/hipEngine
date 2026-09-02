@@ -4669,6 +4669,14 @@ class Qwen4ExpTargetVerifyResult:
     hidden_seeds: np.ndarray | None
 
 
+@dataclass(frozen=True)
+class Qwen4ExpTargetAcceptResult:
+    verify: Qwen4ExpTargetVerifyResult
+    accepted: int
+    consumed: int
+    replayed: bool
+
+
 class Qwen4ExpGGUFResidentModelRunner:
     """Strict c1 text runner for the complete 48-layer Qwen4Exp target."""
 
@@ -5108,6 +5116,50 @@ class Qwen4ExpGGUFResidentModelRunner:
             token_ids=tuple(int(token) for token in np.argmax(logits, axis=1)),
             logits=tuple(row for row in logits),
             hidden_seeds=np.concatenate(hidden_rows, axis=0),
+        )
+
+    def verify_target_block_with_acceptance(
+        self,
+        input_token_ids: Sequence[int],
+        candidate_token_ids: Sequence[int],
+    ) -> Qwen4ExpTargetAcceptResult:
+        """Verify a fixed chain and replay only the committed rejection prefix."""
+
+        inputs = tuple(int(token) for token in input_token_ids)
+        candidates = tuple(int(token) for token in candidate_token_ids)
+        if not inputs or len(inputs) != len(candidates) or len(inputs) > 8:
+            raise ValueError(
+                "Qwen4Exp target verify inputs/candidates must have equal rows in 1..8"
+            )
+        transaction = self.begin_device_transaction(reuse_snapshot=True)
+        try:
+            block = self.verify_target_block_deferred_head(inputs)
+        except Exception:
+            self.rollback_device_transaction(transaction)
+            raise
+        accepted = 0
+        for truth, candidate in zip(block.token_ids, candidates, strict=True):
+            if truth != candidate:
+                break
+            accepted += 1
+        consumed = min(accepted + 1, len(inputs))
+        if consumed == len(inputs):
+            self.commit_device_transaction(transaction)
+            committed = block
+            replayed = False
+        else:
+            self.rollback_device_transaction(transaction)
+            committed = self.verify_target_block_serial_exact(
+                inputs[:consumed],
+                capture_logits=True,
+                capture_hidden_seeds=True,
+            )
+            replayed = True
+        return Qwen4ExpTargetAcceptResult(
+            verify=committed,
+            accepted=accepted,
+            consumed=consumed,
+            replayed=replayed,
         )
 
     def begin_device_transaction(
@@ -5998,6 +6050,7 @@ __all__ = [
     "Qwen4ExpRunnerSnapshot",
     "Qwen4ExpRunnerDeviceTransaction",
     "Qwen4ExpTokenResult",
+    "Qwen4ExpTargetAcceptResult",
     "Qwen4ExpTargetVerifyOutput",
     "Qwen4ExpTargetVerifyResult",
     "Qwen4ExpQSALayerDeviceWeights",

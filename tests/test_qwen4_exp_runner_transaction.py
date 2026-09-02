@@ -5,7 +5,10 @@ from types import MappingProxyType, MethodType, SimpleNamespace
 import numpy as np
 import pytest
 
-from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
+from hipengine.runtime.qwen4_exp_runner import (
+    Qwen4ExpGGUFResidentModelRunner,
+    Qwen4ExpTargetVerifyResult,
+)
 
 
 class _Snapshot:
@@ -120,6 +123,52 @@ def test_qwen4_exp_reusable_device_transaction_leases_one_snapshot() -> None:
     runner.rollback_device_transaction(second)
     assert not pooled.closed
     assert not runner._device_transaction_lease
+
+
+@pytest.mark.parametrize("rejection_depth", (0, 1, 2, 3, None))
+def test_qwen4_exp_acceptance_replays_only_rejected_prefix(rejection_depth) -> None:
+    runner = _runner()
+    candidates = (11, 12, 13, 14)
+    truths = list(candidates)
+    if rejection_depth is not None:
+        truths[rejection_depth] += 100
+    block = Qwen4ExpTargetVerifyResult(
+        token_ids=tuple(truths), logits=None, hidden_seeds=None
+    )
+    calls = []
+    transaction = SimpleNamespace()
+    runner.begin_device_transaction = lambda **kwargs: (
+        calls.append(("begin", kwargs)) or transaction
+    )
+    runner.verify_target_block_deferred_head = lambda inputs: (
+        calls.append(("verify", tuple(inputs))) or block
+    )
+    runner.commit_device_transaction = lambda tx: calls.append(("commit", tx))
+    runner.rollback_device_transaction = lambda tx: calls.append(("rollback", tx))
+
+    def replay(inputs, **kwargs):
+        calls.append(("replay", tuple(inputs), kwargs))
+        count = len(inputs)
+        return Qwen4ExpTargetVerifyResult(
+            token_ids=tuple(truths[:count]), logits=None, hidden_seeds=None
+        )
+
+    runner.verify_target_block_serial_exact = replay
+    result = runner.verify_target_block_with_acceptance(
+        (10, 11, 12, 13), candidates
+    )
+
+    accepted = 4 if rejection_depth is None else rejection_depth
+    consumed = 4 if rejection_depth is None else rejection_depth + 1
+    assert result.accepted == accepted
+    assert result.consumed == consumed
+    assert result.replayed == (rejection_depth is not None and consumed < 4)
+    assert result.verify.token_ids == tuple(truths[:consumed])
+    if consumed < 4:
+        assert ("rollback", transaction) in calls
+        assert any(call[0] == "replay" and len(call[1]) == consumed for call in calls)
+    else:
+        assert ("commit", transaction) in calls
 
 
 def test_qwen4_exp_device_transaction_commit_keeps_current_state() -> None:
