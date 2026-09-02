@@ -77,7 +77,7 @@ GEMMs on the same T16 tensors at ~230-260 ms — a 3-9x per-family gap (Q6
 | B2 | P1 sole-T16 input-F16 Q4/Q5 family | T1 | 18.13%/17.35% C2/C8 complete wall (measured) | retained production default; strict BF16 fallback |
 | B3 | M1 C1 request-owned shadow-session lifecycle | T2 | 41.76% C1 complete-suite (measured screen) | blocked on missing lifecycle ABI — build it |
 | B4 | M2 C2 draft depth K3→K2/K1 | T3 | K2/K1 +3.36%/+48.91% wall vs K3 (measured) | rejected; K3 retained |
-| B5 | E integer MMQ M=17-48 | T2 | stock HIP 56.222 tok/s existence anchor | conditional on B1's measured pass |
+| B5 | E integer MMQ M=17-48 | T2 | resident planar-Q6 −7.85/−7.83 ms/pass at R20/R28 | selective Q6 implementation open |
 
 ### 1.4 Authorization and policy deltas from the structural campaign
 
@@ -506,11 +506,33 @@ per §1.4; commit each validated unit atomically with its worklog entry.
 
 ### B5 — E: integer MMQ for M=17-48 (T2, conditional)
 
-- [ ] Only after B1's measured target-pass result: extend/screen the gfx1151
+- [~] Only after B1's measured target-pass result: extend/screen the gfx1151
   `mmq128x32`/`mmq64x64` bodies below rows512 on the three Q6 shapes,
   `ssm_out`, and the two binding Q4 shapes, **against the new A owners**, not
   `selected-wmma`. Proceed to registration and full gates only if the screen
   beats A's measured pass; otherwise record the measured bound and stop.
+
+  Direct screen positive for selective planar Q6 (2026-09-03, physical
+  `gfx1151`, actual immutable Qwen3.8 weights, current B1/B2 A controls,
+  counter-rotated HIP events at R20/R28): the existing planar integer
+  `mmq64x64` body wins all 18 pairs on each of `ffn_down` and narrow
+  `attn_v`, reducing their model-weighted pass projection
+  **36.44→28.59 ms (−7.85 ms)** at R20 and **36.56→28.73 ms
+  (−7.83 ms)** at R28. It also wins the standard-Q6 QKV leaf only after a
+  standard→planar residency change; that separate ownership change is not in
+  the first unit. Both Q4 bodies lose every pair (gate/up 1.47-1.59× slower;
+  down 2.01-2.41× slower) and remain on A/B2. Q5 remains on A pending the
+  selective Q6 result. All leaf outputs are finite; relative L2 is
+  0.52-1.29%, so this is T2 screen evidence only, not a quality gate.
+  Evidence:
+  [`...b5-integer-mmq-screen.json`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-integer-mmq-screen.json).
+
+  RED committed before integration: `tests/test_qwen38_b5_q6_integer_mmq.py`
+  pins a gfx1151-only four-axis key, exact R17-48/two-shape dispatch bounds,
+  default-off/env semantics, bounded/restored session workspace, resident
+  owner reuse, and composite pack→MMQ launch. Next: implement the selective
+  route with A as strict/default fallback, then run profiler and complete T2
+  gates before any production default change.
 
 ## 3. Dead ends (measured; do not spend on them)
 
