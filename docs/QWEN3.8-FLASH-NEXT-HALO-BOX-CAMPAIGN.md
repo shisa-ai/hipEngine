@@ -171,6 +171,15 @@ Reproduce the PR's own protocol exactly: `llama-bench -p 2048 -d
 --load-mode none`. The published column is author-reported context, never a
 pass/fail gate.
 
+Diagnostic artifact identity (acquired 2026-09-03 ahead of scope approval; the
+arm remains deferred per HB-3 review):
+`/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-IQ4_XS/UD-IQ4_XS/`, repo
+`unsloth/Qwen3.8-Flash-Next-GGUF` revision
+`38bb39ee97821de2c9009abb7e93950eec396e66`, three shards totaling
+93,682,584,224 bytes, SHA-256-verified against the HuggingFace LFS oids
+(`5ce89370…`, `577a38a2…`, `d4634e6d…`; manifest pair beside the shards). The
+llama.cpp model argument is `-00001-of-00003`.
+
 | Depth | HB-base published | HB-base local | HB-PR11 published | HB-PR11 local | Local gain |
 | ---: | ---: | --- | ---: | --- | --- |
 | 0 | 441.37 ± 1.85 | not run — IQ4_XS excluded | 639.03 ± 4.84 | not run — IQ4_XS excluded | n/a |
@@ -320,7 +329,7 @@ Reading rules and caveats, binding on any use of these rows:
 | HB-1 | **Done** — completed two exact 36-sample arms for each of HB-base, HB-PR11, current hipEngine, and freshly rebuilt patched upstream. Retained arm B shows HB-PR11/base prefill gains of 1.1012x/1.1142x/1.1744x and decode gains of 1.0261x/1.0238x/1.0225x at p512/p1024/p4096. Every lane is cross-arm output-exact. HB-base p512/p1024 prefill drift makes those magnitudes provisional; p4096 direction reproduces. Section 3.4 is explicitly not run because IQ4_XS is excluded by the approved scope. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json`; proceed to frozen-binary HB-2 profiling. |
 | HB-2 | **Done** — profiled frozen HB-base and HB-PR11 over exact p512/p1024/p4096 prefill and live-513/1025/4097 decode. All six pairs are output-exact across lanes and cached decode evaluates one appended token. Kernel-name and launch-geometry census confirms M1, M2, M5 weighted-sum, M6, and M8; denies M3, M4, M5 shared-mul-add, and M7 on this binding graph/payload. The aligned broad-family ledger is diagnostic because kernel sums can overlap. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json`; HB-3 admits only measured-active subfamilies. |
 | HB-3 | **Blocked** — completed the shape/ABI readiness ledger and built pinned base/PR11 `test-backend-ops` binaries (`7af38994…` / `bc640014…`). Available cases pass their own correctness probes, but no active family has an identical operation-complete cross-engine fixture: M1 lacks shared packed weights/dtypes, M2 is internal to `MUL_MAT_ID`, M5 lacks a common F32/BF16 boundary, M6 differs in heads/state/prepare-post ownership, and M8 must split into six stride-aware operations. Timing current surfaces would violate the matching rule. | Block artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json`. Stop for review; no candidate handed off. |
-| HB-4 | **Deferred behind PF-1…PF-5 by the HB-3 review** — IQ4_XS diagnostic arm. Download/pin UD-IQ4_XS as a separate artifact (hashes recorded); exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
+| HB-4 | **Deferred behind PF-1…PF-5 by the HB-3 review** — IQ4_XS diagnostic arm. Artifact already downloaded and hash-verified (section 3.4); when admitted, exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
 | HB-5 | **Deferred behind PF-1…PF-5 by the HB-3 review** — concurrency extension. Fill c=2..8 in sections 3.1–3.3 for every lane that supports it; record `unsupported` honestly; keep thermal windows shared across lanes. | Topline matrix complete or explicitly partial; artifact committed. |
 | HB-6 | Port decisions. For each PF unit (and each confirmed deficit): admit (with `W/C/O/s`), defer (named blocker), or reject (measured loss). Update the main campaign's section 4 row and mechanism transfer audit to point at measured rows instead of this doc's hypotheses. | Main campaign cross-references updated; this doc's status line advanced. |
 | PF-1 | **Approved at HB-3 review** — Dense projection + dense Q8 MMQ schedule (largest short/mid-shape delta; flat 23–26x ratio says schedule, not tuning; M1 evidence). Port the 128-wide RDNA3.5 tile geometry for Q8_0 dense matmuls and the M8 quantize paths behind a registry variant; RED exact-parity vs the registered strict unfused fallback. | `W/C/O/s` admitted in main campaign; exact-parity RED green; rocprofv3 expected-kernel trace; same-session whole-model A/B prefill improvement at p512/p1024 (p4096 recorded); artifact + rollup + worklog committed. |
