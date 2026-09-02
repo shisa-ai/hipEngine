@@ -4617,6 +4617,28 @@ class Qwen4ExpRunnerSnapshot:
     ple_hash_states: Mapping[int, PLEHashState]
 
 
+@dataclass
+class Qwen4ExpRunnerDeviceTransaction:
+    """One all-or-nothing device-state and cursor transaction."""
+
+    decode_state: Qwen4ExpDecodeStateDeviceSnapshot
+    position: int
+    ple_hash_states: Mapping[int, PLEHashState]
+    committed: bool = False
+    rolled_back: bool = False
+    closed: bool = False
+
+    def require_active(self) -> None:
+        if self.committed or self.rolled_back or self.closed:
+            raise RuntimeError("Qwen4Exp device transaction is already finalized")
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.decode_state.close()
+        self.closed = True
+
+
 @dataclass(frozen=True)
 class Qwen4ExpTokenResult:
     token_id: int
@@ -4970,6 +4992,47 @@ class Qwen4ExpGGUFResidentModelRunner:
     @property
     def prefill_rope_positions(self) -> DeviceBuffer:
         return self._prefill_buffers[4]
+
+    def begin_device_transaction(self) -> Qwen4ExpRunnerDeviceTransaction:
+        """Capture mutable state and all append-only cursor ownership."""
+
+        self._require_open()
+        assert self.state is not None
+        return Qwen4ExpRunnerDeviceTransaction(
+            decode_state=self.state.device_snapshot(),
+            position=int(self.position),
+            ple_hash_states=MappingProxyType(dict(self._ple_hash_states)),
+        )
+
+    def rollback_device_transaction(
+        self, transaction: Qwen4ExpRunnerDeviceTransaction
+    ) -> None:
+        """Restore device state, QSA cursors, and host PLE hash state."""
+
+        self._require_open()
+        transaction.require_active()
+        assert self.state is not None
+        self.state.restore_device_snapshot(transaction.decode_state)
+        position = int(transaction.position)
+        cursor = max(position - 1, 0)
+        for attention in self.attention_states:
+            attention.set_position(cursor)
+        for index in self.index_states:
+            index.restore_count(position)
+        self._ple_hash_states = dict(transaction.ple_hash_states)
+        self.position = position
+        transaction.rolled_back = True
+        transaction.close()
+
+    def commit_device_transaction(
+        self, transaction: Qwen4ExpRunnerDeviceTransaction
+    ) -> None:
+        """Keep current state and release the rollback snapshot."""
+
+        self._require_open()
+        transaction.require_active()
+        transaction.committed = True
+        transaction.close()
 
     def snapshot(self) -> Qwen4ExpRunnerSnapshot:
         """Capture mutable non-append state plus the shared KV/index cursor."""
@@ -5781,6 +5844,7 @@ __all__ = [
     "Qwen4ExpQSAIndexDeviceState",
     "Qwen4ExpQSAPrefillMetadata",
     "Qwen4ExpRunnerSnapshot",
+    "Qwen4ExpRunnerDeviceTransaction",
     "Qwen4ExpTokenResult",
     "Qwen4ExpTargetVerifyOutput",
     "Qwen4ExpQSALayerDeviceWeights",

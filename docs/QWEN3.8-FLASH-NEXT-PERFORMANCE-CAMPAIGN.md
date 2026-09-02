@@ -1888,8 +1888,10 @@ external MTP rows.
       allocation, HIP allocation/lifecycle passes, and serial dispatch is
       unchanged. A second subunit adds exact D2D snapshot/restore ownership for
       GDN matrix/conv, PLE conv, and residual state with idempotent cleanup.
-      QSA KV/index cursors plus host PLE-hash transaction ownership remain next.
-      `W=51.711 s`, `C=49.383 s`, and the measured
+      A third subunit adds all-or-nothing begin/commit/rollback ownership over
+      that snapshot, every QSA KV/index cursor, runner position, and a copied
+      host PLE-hash map; double finalization rejects. Accepted-prefix row commit
+      and multirow dispatch remain next. `W=51.711 s`, `C=49.383 s`, and the measured
       target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
       executable Qwen4Exp candidate exists. Strict fallback is serial
       `target.step`. Device-output cleanup remains independent. Evidence:
