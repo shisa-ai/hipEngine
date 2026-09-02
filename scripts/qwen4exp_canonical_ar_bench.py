@@ -722,6 +722,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
             "ple_cache_mode": str(args.ple_cache_mode),
             "ple_cache_scope": "per_layer_token_embd.weight file range only",
             "ple_telemetry": bool(args.ple_telemetry),
+            "ple_random_access": str(args.ple_random_access),
             "warmups_per_case": int(args.warmups),
             "measured_repetitions": int(args.repetitions),
             "decode_transitions": transitions,
@@ -742,6 +743,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
         if generator._resident is None:
             raise RuntimeError("Qwen4Exp canonical cache protocol needs resident PLE ownership")
         ple_table = generator._resident.ple_table
+        ple_table.configure_random_access(args.ple_random_access)
         if args.ple_cache_mode == "warm":
             artifact["ple_cache_advice"].append(
                 {"phase": "initial", **ple_table.advise_cache("warm")}
@@ -904,6 +906,10 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument(
         "--ple-cache-mode", choices=("warm", "cold"), default="warm",
         help="File-scoped PLE cache protocol; cold evicts only the PLE tensor range before each request",
+    )
+    hip_parser.add_argument(
+        "--ple-random-access", choices=("off", "auto", "on"), default="off",
+        help="Sparse mmap advice paired with page-aligned merged WILLNEED row prefetch",
     )
     hip_parser.add_argument(
         "--ple-telemetry", action="store_true",
