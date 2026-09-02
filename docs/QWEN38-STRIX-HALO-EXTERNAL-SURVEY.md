@@ -18,27 +18,38 @@ results and invalid state-contaminated output.
   matrix on standard `Q4_K_M`, Nathan leads prefill and AR at C1; Laurent
   leads prefill at C2-C3 and C6-C8, AR at C2, and fixed-K3 MTP at C1-C2 and
   C6; stock HIP leads prefill at C4-C5 and fixed-K3 MTP at C7-C8; mainline
-  Vulkan leads fixed-K3 MTP at C5; hipEngine leads AR at C3-C8 and fixed-K3
-  MTP at C3-C4. The retained current-head one-group K3 overlay (2026-09-03,
-  below) changes the MTP picture: hipEngine now also leads fixed-K3 MTP at
-  C5-C6 and ranks second at C7-C8, 3.45%/9.48% behind the stock-HIP leader.
-- **hipEngine AR is the strongest part of the current result:** it wins six of
-  eight standardized widths, C3-C8. At C1 it is 0.45% behind Nathan, and at C2
-  it is 8.80% behind Laurent.
-- **hipEngine prefill is competitive at six widths but still does not lead a
-  width:** it trails the best external result by 4.2-11.7% at C1/C3-C7 and by
-  19.1%/34.0% at C8/C2. The remaining gap is concentrated rather than uniform.
-- **hipEngine explicit K3 MTP now scales through C8 after the B1/B5
-  retentions:** the one-group route lifts C5-C8 to
-  **37.280/41.048/44.492/50.893 tok/s** (+33.2/+25.1/+34.4/+43.6% over the
-  reviewed K3 row), leading the fixed-K3 matrix at C5-C6 and ranking second
-  at C7-C8 behind stock HIP (-3.45%/-9.48%). C8 is the first width where
-  explicit MTP reaches own AR (**1.0057x**); C5-C7 remain slightly below own
-  AR. All widths stay explicit diagnostics, and automatic C2-C8 remains K0.
+  Vulkan leads fixed-K3 MTP at C5. The retained current-head overlays
+  (2026-09-03, below) move the leadership: hipEngine now leads AR at C1 and
+  C3-C8, prefill at C1 and C3-C7, and fixed-K3 MTP at C3-C6; Laurent keeps
+  prefill C2/C8, AR C2, and MTP C1-C2; stock HIP keeps MTP C7-C8.
+- **hipEngine AR now leads seven of eight widths:** the current-head overlay
+  measures C1 11.511 (+3.1% versus Nathan's frozen 11.162), C2 19.249
+  (-3.0% versus Laurent's 19.835), and C3-C8
+  24.974/31.478/37.995/43.093/46.153/50.605, improving on the pinned row at
+  every width. C2 remains the only AR deficit.
+- **hipEngine prefill now leads six of eight widths at the current head:** the
+  2026-09-03 refresh (after the B2 input-F16 and related retentions) measures
+  **201.0/181.9/207.2/233.1/258.2/285.1/291.3/301.8 prefill-dominant tok/s at
+  C1-C8**, leading the frozen external matrix at C1 (+31.0% versus Nathan)
+  and C3-C7 (+7.7% to +16.3%) and trailing only at C2 (-14.2% versus
+  Laurent) and C8 (-1.3% versus Laurent). The pinned baseline row remains in
+  the table for provenance; the C2 dip and the marginal C8 gap keep their
+  standing blockers.
+- **hipEngine explicit K3 MTP beats own AR at C2-C4 and leads the fixed-K3
+  matrix at C3-C6, with one named defect at C1:** the one-group route lifts
+  C5-C8 to **37.280/41.048/44.492/50.893 tok/s** (+33.2/+25.1/+34.4/+43.6%
+  over the reviewed K3 row) and C2-C4 measure
+  **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x own AR)** with 10/10 AR
+  equality. C8 is the first width where explicit MTP reaches own AR
+  (**1.0057x**); C5-C7 remain slightly below. C1 regressed after the B1
+  transfer — production explicit C1 K3 falls to **8.556 tok/s (0.743x AR)**
+  with acceptance 0.1523 and 0/10 AR equality; the registered opt-out
+  restores **18.168 tok/s (1.582x, 10/10)**. Automatic serving is unaffected;
+  automatic C2-C8 remains K0.
 - **Laurent's ordinary built-in MTP path provides broad, usable gains:** it
-  leads standardized MTP at C1-C2 and C6. Stock HIP is stronger at C7-C8.
-  This is separate from Laurent adaptive DFlash2, which remains unsafe across
-  sequential requests.
+  leads standardized MTP at C1-C2 in the pinned matrix. Stock HIP is stronger
+  at C7-C8. This is separate from Laurent adaptive DFlash2, which remains
+  unsafe across sequential requests.
 - **Strongest reproduced specialized result:** `q38rocm` strict MTP K4 reached
   **38.85 decode tok/s** under its published protocol and **35.575 arithmetic /
   32.969 token-weighted decode tok/s** on our shared prompt suite. It requires
@@ -55,11 +66,12 @@ results and invalid state-contaminated output.
 - **MTP must be routed by concurrency:** Mike's Q8 result was 2.23x AR at C1,
   neutral at C3, and 0.84x AR at C4.
 - **hipEngine is usable with the standard `Q4_K_M`:** the reviewed C1-C8 run
-  passed 80/80 explicit-K3 exact/route/budget cells, and the latest C6/C8 K1
-  pair passed all 40 control/candidate cells with unchanged acceptance. It
-  leads AR at C3-C8 and K3 MTP at C3-C4; C6 K1 is within 0.22% of the
-  leader, while C8 remains behind every external MTP
-  route. Automatic production C2-C8 remains K0.
+  passed 80/80 explicit-K3 exact/route/budget cells, the C6/C8 K1 pair passed
+  all 40 control/candidate cells, and the current-head refresh passes
+  mtp_self_exact at every re-measured width. At the current head it leads AR
+  at C1 and C3-C8, prefill at C1 and C3-C7, and K3 MTP at C3-C6; C7/C8 MTP
+  trail stock HIP, and production explicit C1 MTP carries the named B1-owner
+  defect with its registered opt-out. Automatic production C2-C8 remains K0.
 
 ### Route decisions
 
@@ -70,7 +82,7 @@ equal model quality.
 
 | Route | Usable? | Decision |
 | --- | :---: | --- |
-| hipEngine reviewed baseline `b768516f2`, with B1/B5 one-group K3 retentions through `6d6fb3ed3` | **Yes** | The reviewed C1-C8 baseline passed its AR/MTP gates. The retained one-group K3 route reaches **37.280/41.048/44.492/50.893 tok/s at C5-C8** (C8 at 1.0057x own AR), leading the pinned fixed-K3 matrix at C5-C6 and ranking second at C7-C8 behind stock HIP; C2 measures 29.976 tok/s. Automatic C2-C8 remains K0. |
+| hipEngine reviewed baseline `b768516f2`, with B1/B2/B5 retentions through `3d48170a7` | **Yes** | The reviewed C1-C8 baseline passed its AR/MTP gates. Current head: explicit K3 reaches **30.094/32.819/37.985/37.280/41.048/44.492/50.893 tok/s at C2-C8** (C8 at 1.0057x own AR), leading the pinned fixed-K3 matrix at C3-C6; prefill leads six of eight widths. Production explicit C1 carries a named B1-owner defect with a registered opt-out (18.168 tok/s, 1.582x). Automatic C2-C8 remains K0. |
 | `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
 | Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Broad reusable llama.cpp route; it leads standardized MTP at C1-C2 and C6. |
 | Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |
@@ -115,7 +127,9 @@ C6/C8 K1 successor was measured on the same host, model, prompt suite, D24
 budget, and complete-wall boundary through runtime `1f4687cab` on 2026-09-01
 ([L10]). The current-head one-group K3 overlay and C2 depth decision were
 measured on the same host, model, prompt suite, D24 budget, and complete-wall
-boundary through `6d6fb3ed3` on 2026-09-03 ([L13], [L14]). Rates are total
+boundary through `6d6fb3ed3` on 2026-09-03 ([L13], [L14]); the full C1-C8
+overlay and the prefill refresh were measured at `3d48170a7` on 2026-09-03 on
+the same protocol ([L15], [L16]). Rates are total
 tokens divided by summed wall across **all ten
 prompts**. The M3/M4 compact headlines (15.646 and 35.618 tok/s) are
 six-non-heldout arithmetic means and are not substituted into this aggregate
@@ -131,6 +145,7 @@ table.
 | Laurent Vulkan `c28d538df` | 149.1 | **211.9** | **192.4** | 191.9 | 222.1 | **250.4** | **252.3** | **305.8** |
 | Nathan Vulkan `0eb528051` | **153.4** | 200.8 | 186.1 | 186.3 | 208.2 | 227.5 | 228.6 | 263.9 |
 | `q38rocm` normal Vulkan `5d097740` | 146.9 | 186.5 | 181.3 | 184.2 | 206.1 | 229.7 | 233.0 | 273.5 |
+| hipEngine current head `3d48170a7` (2026-09-03) | **201.0** | 181.9 | **207.2** | **233.1** | **258.2** | **285.1** | **291.3** | 301.8 |
 
 #### Autoregressive complete-wall throughput
 
@@ -142,12 +157,15 @@ table.
 | Laurent Vulkan `c28d538df` | 11.047 | **19.835** | 16.359 | 14.255 | 20.294 | 28.322 | 35.896 | 45.614 |
 | Nathan Vulkan `0eb528051` | **11.162** | 19.662 | 16.341 | 14.321 | 20.099 | 27.575 | 34.317 | 41.511 |
 | `q38rocm` normal Vulkan `5d097740` | 10.582 | 18.645 | 15.663 | 13.866 | 19.054 | 24.970 | 29.576 | 35.021 |
+| hipEngine current head `3d48170a7` (2026-09-03) | **11.511** | 19.249 | **24.974** | **31.478** | **37.995** | **43.093** | **46.153** | **50.605** |
 
 #### Explicit MTP complete-wall throughput
 
-The first six rows are the fixed-K3 comparison. The final hipEngine row is a
-width-specific K1 overlay from the retained successor and is not a fixed-depth
+The first six rows are the fixed-K3 comparison. The K1 row is a
+width-specific overlay from the retained successor and is not a fixed-depth
 K3 result; blank cells were not re-measured under that successor protocol.
+The final row is the current-head one-group K3 overlay measured at
+`3d48170a7` after the B1/B2/B5 retentions.
 
 | Engine / route | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -158,7 +176,7 @@ K3 result; blank cells were not re-measured under that successor protocol.
 | Nathan Vulkan `0eb528051` | 20.781 | 30.566 | 27.859 | 26.385 | 29.768 | 33.318 | 36.992 | 45.173 |
 | `q38rocm` normal Vulkan `5d097740` | 20.357 | 27.163 | 26.178 | 26.482 | 32.297 | 31.613 | 38.314 | 45.342 |
 | hipEngine K1 runtime `1f4687cab` | — | — | — | — | — | 37.074 | — | 43.421 |
-| hipEngine K3 one-group, current head `6d6fb3ed3` (2026-09-03) | — | 29.976 | — | — | **37.280** | **41.048** | 44.492 | 50.893 |
+| hipEngine K3 one-group, current head `3d48170a7` (2026-09-03) | 8.556* | 30.094 | **32.819** | **37.985** | **37.280** | **41.048** | 44.492 | 50.893 |
 
 At C6, the latest hipEngine K1 row ranks second of six at 37.074 tok/s, only
 0.080 tok/s (0.22%) behind Laurent's 37.154. At C8, hipEngine improves 22.6%
@@ -172,16 +190,28 @@ hipEngine's best explicit route: it leads the pinned matrix at C5 (37.280
 versus Mainline Vulkan 32.713, +14.0%) and C6 (41.048 versus Laurent 37.154,
 +10.5%), ranks second at C7 (44.492, 3.45% behind stock HIP) and C8 (50.893,
 9.48% behind stock HIP and 0.11% ahead of Laurent), and reaches 1.0057x own
-AR at C8. C1/C3/C4 one-group cells are measured in the current-head refresh.
+AR at C8. C3/C4 one-group cells measure 32.819/37.985 tok/s (1.314x/1.207x
+own AR) with 10/10 AR equality and acceptance unchanged from the pinned head;
+C2 measures 30.094 (1.564x). *C1 carries a named defect: production explicit
+C1 K3 regressed to 8.556 tok/s (0.743x own AR) with draft acceptance
+0.1523 and 0/10 AR equality — the B1 rows>1 production owner at the 4-row
+packed-verifier shape changes target logits enough to break greedy equality;
+the registered opt-out (`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0`)
+restores 18.168 tok/s (1.582x, acceptance 0.7889, 10/10 equality) at the same
+commit. Strict C1 automatic serving is a separate unchanged route.
 The one-group packed-verifier execution differs mechanically from the pinned
 subgroup route; protocol, prompts, and boundary are identical.
 
 All llama.cpp outputs passed the character-window and word-trigram repetition
 guards. hipEngine passed 80/80 explicit-MTP generated-ID, route, and budget
-cells. Its K3 route reached 1.418x/1.572x/1.279x/1.177x own AR at C1-C4 and
-0.782x/0.813x/0.753x/0.751x at C5-C8. AR still leads the complete matrix at
-C3-C8. The MTP row is an explicit K3 diagnostic, not an automatic-admission
-claim; automatic production C2-C8 remains K0.
+cells in the pinned matrix, and the current-head refresh passes mtp_self_exact
+with 10/10 engaged/budget cells at every re-measured width. The pinned K3 route
+reached 1.418x/1.572x/1.279x/1.177x own AR at C1-C4 and 0.782x/0.813x/0.753x/
+0.751x at C5-C8; the current-head overlay reaches 0.743x*/1.564x/1.314x/
+1.207x/0.981x/0.953x/0.964x/1.006x at C1-C8. hipEngine's AR row leads the AR
+matrix at C1 and C3-C8 at the current head. The
+MTP rows are explicit K3 diagnostics, not automatic-admission claims;
+automatic production C2-C8 remains K0.
 
 ## 1. Test method
 
@@ -271,16 +301,20 @@ row in the standardized comparison.
 The reviewed `b768516f2` baseline ran C1-C8 with production-profile BF16
 arithmetic. It led AR at C3-C8, reaching 23.879-47.194 complete-wall tok/s. It
 was 0.45% behind Nathan at C1 (11.112 versus 11.162) and 8.80% behind Laurent
-at C2. The latest C6/C8 K1 pair measures matched AR at 39.908/47.240 tok/s;
-these same-host refresh values do not change the AR ranking.
+at C2. The latest C6/C8 K1 pair measures matched AR at 39.908/47.240 tok/s.
+The current-head refresh ([L15]) improves AR at every width — C1 11.511 now
+leads Nathan's frozen 11.162, and C3-C8 reach
+24.974/31.478/37.995/43.093/46.153/50.605 — leaving C2 (19.249, -3.0% versus
+Laurent) as the only AR deficit.
 
 Prefill reached 139.8-247.3 tok/s across C2-C8 (147.0 at C1) in the pinned
-baseline. It still trailed the best engine at every width; the largest gaps
-were C2 (-34.0%) and C8 (-19.1%). The retained B2 input-F16 prefill route
-(2026-09-02, [L12]) then raised matched same-host one-output complete-wall
-prefill to **209.391/334.704 prompt tok/s at C2/C8**, 6.38%/12.57% above
-Laurent's frozen matched rows; the standardized prefill-dominant row is
-re-measured at the current head in the same refresh.
+baseline and trailed the best engine at every width. The retained B2 input-F16
+prefill route (2026-09-02, [L12]) raised matched same-host one-output
+complete-wall prefill to **209.391/334.704 prompt tok/s at C2/C8**, 6.38%/
+12.57% above Laurent's frozen matched rows. The standardized prefill-dominant
+refresh ([L16]) measures **201.0/181.9/207.2/233.1/258.2/285.1/291.3/301.8
+tok/s at C1-C8**, leading the frozen external matrix at C1 and C3-C7 and
+trailing only at C2 (-14.2%) and C8 (-1.3%) versus Laurent.
 
 Explicit K3 MTP is strong at C1-C4 and weak at C5-C8. It led C3-C4 at
 30.541/35.474 tok/s and beat matched AR at every width C1-C4. The retained K1
@@ -290,8 +324,11 @@ latest K1 control/candidate pair passed all 40 cells with acceptance unchanged
 at 1,540/1,610. The 2026-09-02/03 B1 verifier-owner transfer and B5 planar-Q6
 integer MMQ retentions ([L11], [L14]) then lifted the one-group K3 route to
 **37.280/41.048/44.492/50.893 tok/s at C5-C8** (C8 = 1.0057x own AR),
-leading the pinned external matrix at C5-C6 and ranking second at C7-C8
-(see the overlay row above); C2 measures 29.976 tok/s at the current head. The C3/K3 production numerical gate previously passed 240/240
+leading the pinned external matrix at C3-C6 and ranking second at C7-C8
+(see the overlay row above); C2-C4 measure 30.094/32.819/37.985 tok/s
+(1.564x/1.314x/1.207x). Production explicit C1 carries the named B1-owner
+defect described below the MTP table; its opt-out arm measures 18.168 tok/s
+(1.582x). The C3/K3 production numerical gate previously passed 240/240
 canonical and 192/192 heldout top-1 checks, with maximum KL 8.69e-4 and 8.45e-4
 respectively ([L8]). Width-4 prompt streaming changed its acceptance
 trajectory, so that T3 scope remains an explicit diagnostic rather than an
@@ -731,6 +768,11 @@ The reviewed matrix and C=N screen narrow the remaining work:
 4. Target the remaining broad-MTP gaps directly: 3.45%/9.48% behind stock HIP
    at C7/C8 and the C1-C2 deficit to the llama.cpp forks. Do not return to
    serial per-request verification or acceptance-only tuning.
+5. Repair the production R4 packed-verifier owner: explicit C1 K3 fell to
+   0.743x own AR with broken greedy equality after the B1 transfer ([L15]).
+   Keep the `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0` opt-out
+   registered until an exact R4 owner or an R4 dispatch floor lands behind a
+   RED test pinning C1 AR equality and acceptance.
 
 Sequential ownership, lifecycle, and contamination gates are now part of the
 hipEngine correctness evidence. The external results still do not justify
@@ -745,6 +787,8 @@ Current reviewed matrix and successor:
 - [B2 input-F16 prefill retention][L12]
 - [B4 C2 depth screen][L13]
 - [B5 planar-Q6 integer MMQ retention][L14]
+- [current-head C1-C8 MTP refresh with C1 blocker][L15]
+- [current-head C1-C8 prefill refresh][L16]
 - [full C1-C8 hipEngine refresh and C=N review][L9]
 - [preserved same-host external matrix][L6]
 
@@ -785,6 +829,8 @@ Related hipEngine evidence uses different scopes or protocols:
 [L12]: ../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json
 [L13]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json
 [L14]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json
+[L15]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json
+[L16]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json
 [S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
 [S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc52706409b0c550636ff068b06894d27079d734/README.md
 [S3]: https://github.com/julianmb/q38rocm/blob/5d0977403b0dac778598b1af499bf178b46c0b35/README.md
