@@ -1,8 +1,8 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
-Status: **created 2026-09-02; no local halo-box measurement exists yet.** Every
-halo-box number in this document is author-reported until HB-1 reproduces it on
-`zbook`. The binding comparator set and the section-6 closure rules remain
+Status: **HB-0 complete 2026-09-02; local Q4_K_XL smoke evidence exists, but
+no binding comparison exists until HB-1.** Values attributed to the PR author
+remain author-reported until reproduced on `zbook`. The binding comparator set and the section-6 closure rules remain
 owned by
 [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md);
 this document is a subordinate lane that (a) adds the halo-box fork as a
@@ -27,7 +27,7 @@ AGENT-AUTHORED (OpenCode) per the PR disclosure.
 | --- | --- |
 | Base ("halo-box stock") | `6c84c7d5d8833c6e0df69628f75a0f599797934e` (the upstream #27742 Qwen4Exp merge) |
 | Change ("halo-box PR11") | `a7ad7b7f508746870e03d0da60cca420295a04b9` |
-| Diff size | 4,055 diff lines, 34 files, all compute changes gated on `GGML_CUDA_CC_IS_RDNA3_5` or AMD Vulkan paths |
+| PR commit diff size | 2,374 insertions, 248 deletions, 35 files for `a7ad7b7f^..a7ad7b7f`; all compute changes gated on `GGML_CUDA_CC_IS_RDNA3_5` or AMD Vulkan paths |
 | Their host | Ryzen AI Max+ 395 / Radeon 8060S, 128 GB, kernel 7.1.8-200.fc44, ROCm 7.14, RADV |
 | Their protocol | UD-**IQ4_XS** (4.25 bpw), PP2048, `-b 2048 -ub 2048`, F16 K/V, FA on, `--load-mode none`, 4 repeats |
 | Author-reported ROCm gain | +44.78% / +25.55% / +15.28% / +13.46% PP2048 at depth 0/12K/32K/64K (441.37→639.03 tok/s at depth 0) |
@@ -216,7 +216,7 @@ and 5.2. Source ports cite halo-box path + commit `a7ad7b7f` and run
 
 | Phase | Unit | Exit condition |
 | --- | --- | --- |
-| HB-0 | Checkout and build. Clone `halo-box/strix-llama.cpp` into a build workspace under `/home/lhl/`, check out `6c84c7d5` and `a7ad7b7f`, build both HIP Release binaries with comparator flags, record source/binary hashes, apply + label loader patches if startup-blocked, smoke-load the UD-Q4_K_XL artifact. | Both binaries serve one exact-fixture p512 request; identity block committed. |
+| HB-0 | **Done** — checked out `6c84c7d5` and `a7ad7b7f`, preserved pristine HIP Release binaries, and froze separately labeled loader-patched binaries. Pristine HB-base produced zero samples at the 1,800-second startup timeout; the two documented patches reduced startup to 24.09/21.49 seconds. Both patched lanes completed all four exact p512 categories with matching output hashes. | Identity/smoke artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb0.json`. |
 | HB-1 | Canonical screen + PR-shape reproduction. Fill section 3.1/3.2 c=1 for all four lanes and section 3.4 in full; classify repeatability per lane (repeat arm on each build). | Sections 3.1/3.2 c=1 and 3.4 complete; artifact + worklog committed. |
 | HB-2 | Role-resolved profiling of HB-base and HB-PR11 on UD-Q4_K_XL; kernel-name census confirms/denies each section 1.1 activation prediction; aligned family ledger regenerated against HB-PR11. | "Active on Q4_K_XL?" column fully measured; family ledger artifact committed. |
 | HB-3 | Microbenchmark match ledger. For every active family, pair the HB-PR11 kernel/config against the hipEngine owner at identical shapes with counterbalanced pairs; record per-family ratios and rank by absolute delta against the main campaign's Amdahl owners. | Section 5 table complete; candidate list handed to the main campaign impact queue. |
