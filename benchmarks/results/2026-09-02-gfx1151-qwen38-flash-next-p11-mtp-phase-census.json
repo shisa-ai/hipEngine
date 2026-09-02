@@ -1,0 +1,418 @@
+{
+  "aggregate": {
+    "acceptance_control": {
+      "max_ms": 0.042000028770416975,
+      "median_ms": 0.03807999019045383,
+      "min_ms": 0.03209005808457732,
+      "sum_ms": 0.15025006723590195
+    },
+    "draft_commit_or_rollback": {
+      "max_ms": 0.32105398713611066,
+      "median_ms": 0.30654149304609746,
+      "min_ms": 0.22204796550795436,
+      "sum_ms": 1.15618493873626
+    },
+    "draft_stages": {
+      "draft_device_synchronize": {
+        "max_ms": 38.158360053785145,
+        "median_ms": 36.12824350420851,
+        "min_ms": 30.738904053578153,
+        "sum_ms": 141.15375111578032
+      },
+      "draft_head_gr": {
+        "max_ms": 1.7097339732572436,
+        "median_ms": 1.0041724890470505,
+        "min_ms": 0.7411830010823905,
+        "sum_ms": 4.459261952433735
+      },
+      "draft_hidden_d2h": {
+        "max_ms": 0.22912895656190813,
+        "median_ms": 0.17774551815818995,
+        "min_ms": 0.10726199252530932,
+        "sum_ms": 0.6918819854035974
+      },
+      "draft_input_fusion": {
+        "max_ms": 3.0671260319650173,
+        "median_ms": 2.5870139797916636,
+        "min_ms": 2.1917709964327514,
+        "sum_ms": 10.432924987981096
+      },
+      "draft_layer": {
+        "max_ms": 52.353577921167016,
+        "median_ms": 37.2644300077809,
+        "min_ms": 30.666167003801093,
+        "sum_ms": 157.5486049405299
+      },
+      "draft_lm_head": {
+        "max_ms": 0.35563900019042194,
+        "median_ms": 0.20805698295589536,
+        "min_ms": 0.15241597429849207,
+        "sum_ms": 0.9241689404007047
+      },
+      "draft_logits_d2h": {
+        "max_ms": 1.1699100432451814,
+        "median_ms": 0.49276649951934814,
+        "min_ms": 0.3869460488203913,
+        "sum_ms": 2.542389091104269
+      },
+      "draft_sampler": {
+        "max_ms": 0.4254210216458887,
+        "median_ms": 0.33892650390043855,
+        "min_ms": 0.2565820177551359,
+        "sum_ms": 1.3598560472019017
+      }
+    },
+    "proposal": {
+      "max_ms": 89.44505898398347,
+      "median_ms": 80.45078651048243,
+      "min_ms": 69.66606702189893,
+      "sum_ms": 320.01269902684726
+    },
+    "target_verify": {
+      "max_ms": 935.5512529728003,
+      "median_ms": 522.2931559837889,
+      "min_ms": 474.1264129988849,
+      "sum_ms": 2454.263977939263
+    }
+  },
+  "amdahl_declaration": {
+    "C": {
+      "scope": "same retained suite true-AR comparator",
+      "value_seconds": 49.383127938017424
+    },
+    "O": {
+      "scope": "exclusive host-wall target.step boundary in this four-category tg8 census; includes hidden export",
+      "value_ms_per_target_verify_row": 87.65228492640225
+    },
+    "W": {
+      "artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json",
+      "scope": "retained 10-prompt short MTP suite; historical current-path reference",
+      "value_seconds": 51.711070590004965
+    },
+    "arithmetic_class": "T0 instrumentation; model arithmetic and dispatch selection unchanged",
+    "mechanism": "host-wall phase census and nested draft-stage counters only",
+    "overlap_exclusions": [
+      "proposal wall includes all nested draft stages",
+      "draft_device_synchronize owns queued draft GPU work and must not be added to asynchronous launch buckets",
+      "target verify includes target hidden export",
+      "target prefill hidden export includes target prefill compute",
+      "no graph route is active"
+    ],
+    "s": null,
+    "strict_fallback": "target_ar",
+    "zero_cost_ceiling": "not assigned: instrumentation unit only; nested async draft timings overlap the proposal wall"
+  },
+  "command": [
+    "qwen4exp_mtp_phase_census.py",
+    "--max-tokens",
+    "8",
+    "--candidate-budget",
+    "2",
+    "--output",
+    "/tmp/qwen4exp-p11-phase-census.json"
+  ],
+  "configuration": {
+    "candidate_budget": 2,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "execution_profile": "production",
+    "max_tokens": 8,
+    "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf"
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "next_owner": "serial target verifier: 2454.264 ms / 28 rows = 87.652 ms per row in this census; rows<=8 batch-invariant target verification precedes device-output cleanup by complete-wall impact",
+    "phase_census_complete": true,
+    "promotion": false,
+    "reason": "Census only. No model arithmetic or default changed; same-session A/B and locally measured owner speedup s are not applicable."
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_mtp_phase_census",
+  "lifecycle": {
+    "after_close": {
+      "active_allocations": 0,
+      "current_allocated_bytes": 0,
+      "peak_allocated_bytes": 88552981304,
+      "peak_allocations": 2179,
+      "total_allocated_bytes": 88553102136,
+      "total_freed_bytes": 88553102136
+    },
+    "passed": true
+  },
+  "notes": [
+    "Host wall stage timings are diagnostic and may overlap nested draft stages.",
+    "Target verify includes hidden export; draft device synchronize precedes separate logits and hidden D2H timings.",
+    "Current public provider uses no MTP graph and performs serial exact target verification plus cursor trim."
+  ],
+  "performance_claim": false,
+  "route_proof": {
+    "command": [
+      "rocprofv3",
+      "--kernel-trace",
+      "--output-format",
+      "csv",
+      "--output-directory",
+      "/tmp/qwen4exp-p11-phase-rocprof",
+      "--",
+      "uv",
+      "run",
+      "python",
+      "scripts/qwen4exp_mtp_phase_census.py",
+      "--max-tokens",
+      "2",
+      "--candidate-budget",
+      "1",
+      "--compiler-version-file",
+      "/tmp/qwen4exp-p11-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-p11-phase-census-rocprof.json"
+    ],
+    "expected_route_passed": true,
+    "graph_dispatches": 0,
+    "kernel_dispatches": 26398,
+    "note": "Cached trace proves target prefill/decode and Q8 sidecar embedding/QSA route execution; the public provider has no graph route.",
+    "raw_trace_sha256": "740906897f3e77436b7bdb61aa108ae084c8df8dd4a5de64512ad28927c09de5",
+    "selected_symbol_counts": {
+      "gguf_q8_0_embedding_bf16_out_kernel": 150,
+      "qwen35_router_select_kernel": 574,
+      "qwen4_exp_gdn_decode_f32_kernel": 144,
+      "qwen4_exp_qsa_flash_prefill_kernel": 16
+    }
+  },
+  "rows": [
+    {
+      "accepted_draft_tokens": 5,
+      "category": "code",
+      "draft_acceptance": 0.5555555555555556,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        264,
+        12654
+      ],
+      "id": "code_merge_intervals",
+      "phase_census": {
+        "acceptance_control": {
+          "calls": 7,
+          "ms": 0.03209005808457732
+        },
+        "cycles": 5,
+        "draft_commit_or_rollback": {
+          "calls": 5,
+          "ms": 0.3127490053884685
+        },
+        "draft_stages_ms": {
+          "draft_device_synchronize": 37.69004801870324,
+          "draft_head_gr": 0.7741450099274516,
+          "draft_hidden_d2h": 0.22080703638494015,
+          "draft_input_fusion": 2.2448609524872154,
+          "draft_layer": 30.666167003801093,
+          "draft_lm_head": 0.158840004587546,
+          "draft_logits_d2h": 1.1699100432451814,
+          "draft_sampler": 0.32189604826271534
+        },
+        "proposal": {
+          "calls": 5,
+          "ms": 73.47820402355865
+        },
+        "target_prefill_hidden_export": {
+          "calls": 1,
+          "ms": 1606.6023979801685
+        },
+        "target_verify": {
+          "calls": 7,
+          "includes_hidden_export": true,
+          "ms": 935.5512529728003
+        },
+        "target_verify_rows": 7
+      },
+      "proposed_draft_tokens": 9
+    },
+    {
+      "accepted_draft_tokens": 5,
+      "category": "general_en",
+      "draft_acceptance": 0.625,
+      "generated_token_ids": [
+        271,
+        248068,
+        271,
+        248069,
+        271,
+        8160,
+        369,
+        264
+      ],
+      "id": "general_en_plan",
+      "phase_census": {
+        "acceptance_control": {
+          "calls": 7,
+          "ms": 0.035825971281155944
+        },
+        "cycles": 4,
+        "draft_commit_or_rollback": {
+          "calls": 4,
+          "ms": 0.22204796550795436
+        },
+        "draft_stages_ms": {
+          "draft_device_synchronize": 34.56643898971379,
+          "draft_head_gr": 0.7411830010823905,
+          "draft_hidden_d2h": 0.10726199252530932,
+          "draft_input_fusion": 2.1917709964327514,
+          "draft_layer": 30.901218997314572,
+          "draft_lm_head": 0.15241597429849207,
+          "draft_logits_d2h": 0.5757829931098968,
+          "draft_sampler": 0.2565820177551359
+        },
+        "proposal": {
+          "calls": 4,
+          "ms": 69.66606702189893
+        },
+        "target_prefill_hidden_export": {
+          "calls": 1,
+          "ms": 1404.545307974331
+        },
+        "target_verify": {
+          "calls": 7,
+          "includes_hidden_export": true,
+          "ms": 557.8906419686973
+        },
+        "target_verify_rows": 7
+      },
+      "proposed_draft_tokens": 8
+    },
+    {
+      "accepted_draft_tokens": 5,
+      "category": "general_ja",
+      "draft_acceptance": 0.5555555555555556,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        369,
+        9859,
+        728
+      ],
+      "id": "general_ja_plan",
+      "phase_census": {
+        "acceptance_control": {
+          "calls": 7,
+          "ms": 0.042000028770416975
+        },
+        "cycles": 5,
+        "draft_commit_or_rollback": {
+          "calls": 5,
+          "ms": 0.3003339807037264
+        },
+        "draft_stages_ms": {
+          "draft_device_synchronize": 38.158360053785145,
+          "draft_head_gr": 1.2341999681666493,
+          "draft_hidden_d2h": 0.22912895656190813,
+          "draft_input_fusion": 2.9291670070961118,
+          "draft_layer": 43.62764101824723,
+          "draft_lm_head": 0.25727396132424474,
+          "draft_logits_d2h": 0.3869460488203913,
+          "draft_sampler": 0.35595695953816175
+        },
+        "proposal": {
+          "calls": 5,
+          "ms": 87.42336899740621
+        },
+        "target_prefill_hidden_export": {
+          "calls": 1,
+          "ms": 1338.2359069946688
+        },
+        "target_verify": {
+          "calls": 7,
+          "includes_hidden_export": true,
+          "ms": 486.6956699988805
+        },
+        "target_verify_rows": 7
+      },
+      "proposed_draft_tokens": 9
+    },
+    {
+      "accepted_draft_tokens": 6,
+      "category": "mixed_ja_en",
+      "draft_acceptance": 0.75,
+      "generated_token_ids": [
+        271,
+        248068,
+        198,
+        760,
+        1156,
+        6587,
+        728,
+        310
+      ],
+      "id": "mixed_ja_en_translate",
+      "phase_census": {
+        "acceptance_control": {
+          "calls": 7,
+          "ms": 0.04033400909975171
+        },
+        "cycles": 4,
+        "draft_commit_or_rollback": {
+          "calls": 4,
+          "ms": 0.32105398713611066
+        },
+        "draft_stages_ms": {
+          "draft_device_synchronize": 30.738904053578153,
+          "draft_head_gr": 1.7097339732572436,
+          "draft_hidden_d2h": 0.13468399993143976,
+          "draft_input_fusion": 3.0671260319650173,
+          "draft_layer": 52.353577921167016,
+          "draft_lm_head": 0.35563900019042194,
+          "draft_logits_d2h": 0.4097500059287995,
+          "draft_sampler": 0.4254210216458887
+        },
+        "proposal": {
+          "calls": 4,
+          "ms": 89.44505898398347
+        },
+        "target_prefill_hidden_export": {
+          "calls": 1,
+          "ms": 1973.8951850158628
+        },
+        "target_verify": {
+          "calls": 7,
+          "includes_hidden_export": true,
+          "ms": 474.1264129988849
+        },
+        "target_verify_rows": 7
+      },
+      "proposed_draft_tokens": 8
+    }
+  ],
+  "schema": 1,
+  "source": {
+    "head": "298fe24cb65bb2f25a44da7a746c18802ef58fcc",
+    "path": "/home/lhl/hipEngine",
+    "tracked_clean": false
+  },
+  "status": "passed"
+}

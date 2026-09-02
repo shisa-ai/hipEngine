@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import time
 from typing import Any
 
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
@@ -154,7 +155,18 @@ class Qwen4ExpMTPTextProvider:
             )
 
         target = self.target_generator.runner
+        phase_ms: dict[str, float] = {}
+        phase_calls: dict[str, int] = {}
+
+        def record_phase(name: str, started: float) -> None:
+            phase_ms[name] = phase_ms.get(name, 0.0) + (
+                time.perf_counter() - started
+            ) * 1_000.0
+            phase_calls[name] = phase_calls.get(name, 0) + 1
+
+        prefill_started = time.perf_counter()
         result = target.prefill(token_ids, capture_hidden_seeds=True)
+        record_phase("target_prefill_hidden_export", prefill_started)
         if result.hidden_seeds is None or result.hidden_seed is None:
             raise RuntimeError("Qwen4Exp target did not expose MTP hidden rows")
         self.draft.prime_prompt(token_ids, result.hidden_seeds)
@@ -176,17 +188,26 @@ class Qwen4ExpMTPTextProvider:
             start_position = int(target.position)
             if int(self.draft.position) != start_position:
                 raise RuntimeError("Qwen4Exp target/draft cursors diverged before proposal")
+            proposal_started = time.perf_counter()
             proposal = self.draft.propose_chain(
                 start_token=root_token,
                 target_hidden_seed=root_hidden,
                 draft_n_max=budget,
             )
+            record_phase("proposal", proposal_started)
+            for name, elapsed_ms in getattr(
+                self.draft, "last_proposal_stage_timings_ms", {}
+            ).items():
+                phase_ms[name] = phase_ms.get(name, 0.0) + float(elapsed_ms)
             candidates = tuple(int(row.token_id) for row in proposal)
             accepted = 0
             mismatch: int | None = None
             for candidate in candidates:
                 raise_if_generation_deadline_expired(request)
+                verify_started = time.perf_counter()
                 verified = target.step(root_token, capture_hidden_seed=True)
+                record_phase("target_verify", verify_started)
+                acceptance_started = time.perf_counter()
                 if verified.hidden_seed is None:
                     raise RuntimeError("Qwen4Exp target verify row has no hidden seed")
                 truth = int(verified.token_id)
@@ -199,13 +220,17 @@ class Qwen4ExpMTPTextProvider:
                     mismatch = truth
                 if not request.ignore_eos and truth == eos:
                     reason = "eos"
-                if (
+                should_stop = (
                     mismatch is not None
                     or reason == "eos"
                     or len(generated) >= request.max_tokens
-                ):
+                )
+                record_phase("acceptance_control", acceptance_started)
+                if should_stop:
                     break
+            trim_started = time.perf_counter()
             self.draft.trim(int(target.position))
+            record_phase("draft_commit_or_rollback", trim_started)
             cycles.append(
                 Qwen4ExpMTPCycle(
                     start_position=start_position,
@@ -247,6 +272,37 @@ class Qwen4ExpMTPTextProvider:
                 ],
                 "target_verify": "serial_exact",
                 "draft_rollback": "cursor_trim",
+                "phase_census": {
+                    "cycles": len(cycles),
+                    "target_verify_rows": phase_calls.get("target_verify", 0),
+                    "target_prefill_hidden_export": {
+                        "calls": phase_calls.get("target_prefill_hidden_export", 0),
+                        "ms": phase_ms.get("target_prefill_hidden_export", 0.0),
+                    },
+                    "proposal": {
+                        "calls": phase_calls.get("proposal", 0),
+                        "ms": phase_ms.get("proposal", 0.0),
+                    },
+                    "target_verify": {
+                        "calls": phase_calls.get("target_verify", 0),
+                        "ms": phase_ms.get("target_verify", 0.0),
+                        "includes_hidden_export": True,
+                    },
+                    "acceptance_control": {
+                        "calls": phase_calls.get("acceptance_control", 0),
+                        "ms": phase_ms.get("acceptance_control", 0.0),
+                    },
+                    "draft_commit_or_rollback": {
+                        "calls": phase_calls.get("draft_commit_or_rollback", 0),
+                        "ms": phase_ms.get("draft_commit_or_rollback", 0.0),
+                    },
+                    "draft_stages_ms": {
+                        name: elapsed_ms
+                        for name, elapsed_ms in sorted(phase_ms.items())
+                        if name.startswith("draft_")
+                        and name != "draft_commit_or_rollback"
+                    },
+                },
             },
         )
         return GenerationOutput(

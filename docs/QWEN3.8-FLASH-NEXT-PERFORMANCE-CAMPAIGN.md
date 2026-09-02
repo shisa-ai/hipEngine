@@ -1816,11 +1816,23 @@ external MTP rows.
       drift rejection, the global-normalization reference pairs every branch
       independently, and the real local sidecar is deterministic and
       transactional. Per-stream hyper-connection ownership remains unchanged.
-- [ ] Add phase timing/census for target hidden export, draft input fusion,
+- [x] Add phase timing/census for target hidden export, draft input fusion,
       draft layer/head, sampler, target verify, acceptance, commit/rollback,
-      copies, and graphs on every category. The first isolated Qwen4Exp sidecar
-      diagnostic measures the full Q8_0 head at **3.153 ms**, **41.3%** of a
-      **7.639-ms** draft step; artifact:
+      copies, and graphs on every category. The four-category B2/tg8 census
+      records **18 cycles, 34 proposals, 28 target rows**, and clean teardown.
+      Serial target verification owns **2,454.264 ms total / 87.652 ms per
+      row**, versus **320.013 ms** of proposal wall; host acceptance and cursor
+      repair total only **1.306 ms**. Nested asynchronous draft launch buckets
+      overlap proposal wall, and the synchronized bucket owns queued GPU work,
+      so they are not added together. A cached `rocprofv3` trace proves target
+      prefill/decode plus Q8 sidecar embedding/QSA execution and confirms that
+      this provider has no graph route. This T0 instrumentation changes no
+      arithmetic or dispatch and retains `target_ar` as strict fallback. The
+      retained 10-prompt reference remains `W=51.711 s` MTP and `C=49.383 s`
+      true AR; this census assigns no local speedup `s` and makes no promotion.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json`.
+      The earlier isolated sidecar diagnostic remains
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-mtp-hot-head-feasibility.json`.
 - [ ] Keep target hidden, draft hidden chaining, logits/top-k, and candidate IDs
       on device. Remove per-draft full-logit/hidden D2H and host reconstruction;

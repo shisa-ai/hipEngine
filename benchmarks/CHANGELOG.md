@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 MTP phase census] Four-category B2/tg8 measures **18 cycles / 34 proposals / 28 target rows**: serial target verification owns **2,454.264 ms total / 87.652 ms per row**, proposal wall is **320.013 ms**, and host acceptance plus cursor repair total **1.306 ms**. Cached tracing proves target and Q8 sidecar routes; no graph runs. Diagnostic only; no speed promotion. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 Q8-KV readiness] Q8-KV remains blocked: exact ordered `code-p4096` is **12.868 tok/s**, only **0.678x** repeat-valid upstream BF16-KV, and Qwen4Exp has no quantized-KV storage/write/attention registry family. Existing model/backend Q8 rows are not substituted. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-q8-kv-readiness.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 64K owner closure] Exact live-64K decode is **82.459 ms/token** clean; ordered attention remains **19.584 ms**, complete QSA is **22.132 ms**, and score/top-k reaches only **2.490 ms (3.02%)**. The 4K/16K/64K depth ranking closes without opening another candidate. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-64k-owner-profile.json`.
