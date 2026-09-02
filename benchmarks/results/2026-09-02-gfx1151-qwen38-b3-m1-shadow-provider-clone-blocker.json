@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_shadow_provider_clone_blocker",
+  "date": "2026-09-02",
+  "status": "target_state_populated_provider_clone_blocked",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "b1b3a62de",
+    "candidate_worktree": true
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "execution_profile": "production experiment only; current C1 fallback unchanged"
+  },
+  "integrated": {
+    "target": "shadow session clone_current_state_from(real) before checkpoint capture",
+    "hidden": "D2D copy real carried hidden row to independently owned shadow hidden row, then synchronize",
+    "provider": "reset negative shadow request and require clone_request_state(real, shadow) before checkpoints",
+    "route_selected": false
+  },
+  "blocker": {
+    "name": "missing_exact_provider_request_clone_abi",
+    "source_audit": "Qwen35GGUFNextNExecutor exposes checkpoint capture/restore/release and request fingerprinting, but no clone/copy/fork request-state ABI",
+    "failure_mode": "acquisition fails closed, releases shadow provider request, and aborts resident-owner bundle",
+    "required_next": "implement exact provider clone across Conv/GDN state, KV/cache, cursor, and request slot ownership; validate fingerprints before physical target routing"
+  },
+  "validation": {
+    "command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py tests/test_qwen35_gguf_mtp2_seam.py",
+    "result": "78 passed",
+    "provider_miss_test": "passes: missing clone ABI fails closed and aborts owner"
+  },
+  "decision": "Retain target/hidden population and the fail-closed provider prerequisite. Do not enable physical C2 until exact provider request cloning exists and passes fingerprints."
+}
