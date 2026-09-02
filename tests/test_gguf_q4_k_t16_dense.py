@@ -1239,6 +1239,77 @@ def test_q4_t16_physical_r32_pair_silu_selects_two_wave_fused_owner(
     assert calls == [variant]
 
 
+def test_q4_t16_physical_r28_production_silu_keeps_periodic_strict_layers(
+    monkeypatch,
+) -> None:
+    from hipengine.runtime import gguf_linear as gguf_linear_module
+
+    monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28", "1")
+    gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+    weight_a = _weight(0x1000, in_features=5_120, out_features=17_408)
+    weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
+    variant = "dense_dual_wmma_prefill_row32_bf16_bf16_out"
+    key = KernelKey(
+        "hip_gfx1100", "linear_pair_silu", "gguf_q4_k_t16_v1", variant
+    )
+    original = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    calls: list[str] = []
+    try:
+        register(key, lambda *args, **kwargs: calls.append(variant), replace=True)
+        with (
+            q4_t16_physical_extra_rowtiles_session(True),
+            physical_exact_rowtiles_session(True),
+        ):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                0x3000,
+                0x4000,
+                28,
+                5_120,
+                17_408,
+                layer_id=1,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                0x3000,
+                0x4000,
+                28,
+                5_120,
+                17_408,
+                layer_id=8,
+            )
+            assert not launch_gguf_linear_pair_silu(
+                weight_a, weight_b, 0x3000, 0x4000, 28, 5_120, 17_408
+            )
+            monkeypatch.setenv(
+                "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28", "0"
+            )
+            gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+            assert not launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                0x3000,
+                0x4000,
+                28,
+                5_120,
+                17_408,
+                layer_id=1,
+            )
+    finally:
+        register(key, original, replace=True)
+        gguf_linear_module._rowtile_variant_policy_env_cache.clear()
+        clear_gguf_linear_dispatch_cache()
+
+    assert calls == [variant]
+
+
 def test_q4_t16_physical_r36_pair_silu_defaults_row48_with_rollback(monkeypatch) -> None:
     from hipengine.runtime import gguf_linear as gguf_linear_module
 

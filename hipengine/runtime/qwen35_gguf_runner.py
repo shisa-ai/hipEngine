@@ -9073,6 +9073,7 @@ class Qwen35GGUFFullStackRunner:
             runtime=runtime,
             use_gemv_decode=(True if dense_decode_variant is not None else None),
             registered_decode_variant=dense_decode_variant,
+            layer_id=layer_id,
             q8_1_workspace_ptr=dense_q8_1_workspace_ptr,
             pair_workspace_ptr=scratch.ffn_gate_up.ptr,
             pair_workspace_nbytes=int(

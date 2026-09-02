@@ -1851,43 +1851,57 @@ def _q4_t16_dual_silu_retile_enabled() -> bool:
 def _q4_t16_physical_dual_silu_variant(
     backend: str,
     rows: int,
+    *,
+    layer_id: int | None = None,
 ) -> str | None:
     """Return a backend-qualified physical fused-FFN retile, if enabled."""
 
     if not q4_t16_physical_extra_rowtiles_enabled():
         return None
-    policy = backend_package_capability(
-        backend,
+    for capability in (
         "GGUF_SPECDEC2_Q4_DUAL_SILU_ROWTILE_POLICY",
-        {},
-    )
-    if not isinstance(policy, Mapping):
-        return None
-    rows_to_variant = policy.get("rows_to_variant", {})
-    if not isinstance(rows_to_variant, Mapping):
-        return None
-    variant = rows_to_variant.get(int(rows))
-    if not isinstance(variant, str) or not variant:
-        return None
-    enabled_env = policy.get("enabled_env")
-    if not isinstance(enabled_env, str) or not enabled_env:
-        return None
-    enabled_default = bool(policy.get("enabled_default", False))
-    cache_key = (enabled_env, enabled_default)
-    enabled = _rowtile_variant_policy_env_cache.get(cache_key)
-    if enabled is None:
-        raw = os.environ.get(
-            enabled_env,
-            "1" if enabled_default else "0",
-        ).strip().lower()
-        if raw in {"1", "true", "yes", "on"}:
-            enabled = True
-        elif raw in {"0", "false", "no", "off"}:
-            enabled = False
-        else:
-            raise ValueError(f"{enabled_env} must be a boolean value")
-        _rowtile_variant_policy_env_cache[cache_key] = enabled
-    return variant if enabled else None
+        "GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY",
+    ):
+        policy = backend_package_capability(backend, capability, {})
+        if not isinstance(policy, Mapping):
+            continue
+        rows_to_variant = policy.get("rows_to_variant", {})
+        if not isinstance(rows_to_variant, Mapping):
+            continue
+        variant = rows_to_variant.get(int(rows))
+        if not isinstance(variant, str) or not variant:
+            continue
+        strict_layer_modulus = policy.get("strict_layer_modulus")
+        if strict_layer_modulus is not None:
+            modulus = int(strict_layer_modulus)
+            remainder = int(policy.get("strict_layer_remainder", 0))
+            if modulus <= 0 or remainder < 0 or remainder >= modulus:
+                raise ValueError(
+                    f"{capability} has an invalid strict-layer schedule"
+                )
+            if layer_id is None or int(layer_id) % modulus == remainder:
+                continue
+        enabled_env = policy.get("enabled_env")
+        if not isinstance(enabled_env, str) or not enabled_env:
+            continue
+        enabled_default = bool(policy.get("enabled_default", False))
+        cache_key = (enabled_env, enabled_default)
+        enabled = _rowtile_variant_policy_env_cache.get(cache_key)
+        if enabled is None:
+            raw = os.environ.get(
+                enabled_env,
+                "1" if enabled_default else "0",
+            ).strip().lower()
+            if raw in {"1", "true", "yes", "on"}:
+                enabled = True
+            elif raw in {"0", "false", "no", "off"}:
+                enabled = False
+            else:
+                raise ValueError(f"{enabled_env} must be a boolean value")
+            _rowtile_variant_policy_env_cache[cache_key] = enabled
+        if enabled:
+            return variant
+    return None
 
 
 def _q4_t16_grouped_pair_rows6_variant(
@@ -1952,6 +1966,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
     rows: int,
     in_features: int,
     out_features: int,
+    layer_id: int | None = None,
     expanded_metadata: bool = False,
 ) -> KernelKey | None:
     """Resolve the operation-complete dense Q4T16 bulk FFN owner."""
@@ -1966,6 +1981,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
         physical_variant = _q4_t16_physical_dual_silu_variant(
             dispatch_a.key.backend,
             rows,
+            layer_id=layer_id,
         )
     if (
         (rows < _Q4_T16_DUAL_WMMA_SILU_MIN_ROWS and physical_variant is None)
@@ -1993,6 +2009,7 @@ def _q4_t16_dual_wmma_silu_dispatch(
             physical_variant = _q4_t16_physical_dual_silu_variant(
                 dispatch_a.key.backend,
                 rows,
+                layer_id=layer_id,
             )
         if physical_variant is not None:
             variants.append(physical_variant)
@@ -4620,6 +4637,7 @@ def launch_gguf_linear_pair_silu(
     use_q4_t16_sidecar: bool = True,
     use_q4_t16_dual_interleaved: bool = True,
     registered_decode_variant: str | None = None,
+    layer_id: int | None = None,
     q8_1_workspace_ptr: int | None = None,
     pair_workspace_ptr: int | None = None,
     pair_workspace_nbytes: int = 0,
@@ -4683,6 +4701,7 @@ def launch_gguf_linear_pair_silu(
                         use_q4_t16_sidecar=use_q4_t16_sidecar,
                         use_q4_t16_dual_interleaved=use_q4_t16_dual_interleaved,
                         registered_decode_variant=registered_decode_variant,
+                        layer_id=layer_id,
                         q8_1_workspace_ptr=q8_1_workspace_ptr,
                         pair_workspace_ptr=pair_workspace_ptr,
                         pair_workspace_nbytes=pair_workspace_nbytes,
@@ -4807,6 +4826,7 @@ def launch_gguf_linear_pair_silu(
             rows=rows,
             in_features=in_features,
             out_features=out_features,
+            layer_id=layer_id,
             expanded_metadata=use_expanded_qmicro_metadata,
         )
         if t16_wmma_key is not None:

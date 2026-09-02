@@ -63,6 +63,15 @@ should be removed or collapsed.
   same-build rollback. Remove the environment override after the next stable
   milestone audit; keep the exact padded composition available.
 
+## 2026-09-02 gfx1100 periodic-strict fused Q4 R28 candidate — open
+
+- `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28=1` enables the default-off
+  C7/R28 T2 candidate on layers whose ID is not divisible by 8; layers
+  0/8/…/64 retain the exact grouped-rowtile gate/up chain plus separate SiLU.
+- Remove the flag/policy/selector test if the tracked-clean task/performance,
+  BF16-relative, isolation, or profile-manifest gate fails. If all gates pass,
+  promote this exact fixed layer schedule and retain explicit zero as rollback.
+
 ## 2026-09-02 gfx1100 fused Q4 row32 / exact C8 target rows — closed
 
 - Promoted exact physical C8/K3 R32 and its two-active-wave fused gate/up+SiLU
