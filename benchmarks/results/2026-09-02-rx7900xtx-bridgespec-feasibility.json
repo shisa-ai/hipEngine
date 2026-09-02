@@ -2,14 +2,21 @@
   "schema": 1,
   "kind": "rx7900xtx_bridgespec_feasibility_campaign",
   "date": "2026-09-02",
-  "decision": "Retain the current hipEngine defaults. The BridgeSpec mechanism claims do not justify a new architecture route on this card: the 40,960-row draft head is a useful head micro-optimization but fails the full quality/promotion gate, graph capture is bounded by real kernel work, and K/V-only provider catch-up is already implemented. No public benchmark row changes.",
+  "decision": "Retain current defaults pending one integration follow-up. The 40,960-row draft head is a useful head micro-optimization but already fails the four-category feasibility quality floor; graph capture is bounded by real kernel work and is deprioritized; the K/V-only provider primitive is exact and already used by prompt priming, but accepted-tail advance_state_only wrappers do not currently request it. No public benchmark row changes.",
   "source": {
     "commit": "07f1ba6ae37e7d624c60239cafd51bea8d2beecf",
     "tree": "clean detached worktree /tmp/hipengine-bridgespec-gpu1",
-    "bridge_reference": {
+    "bridgespec_reference": {
+      "repo": "https://github.com/kdheeraj-p/bridgespec",
+      "commit": "2b846f2ff1eb95ac84e4b0488882b7e4066bff14",
+      "license": "MIT",
+      "role": "mechanism audit reference; not a comparable benchmark baseline"
+    },
+    "selection_reference": {
       "repo": "https://github.com/syv-ai/qwen38-27b-rtx3090",
       "commit": "c954724104a7856a07abb7031cc4af780ae7f5bf",
-      "license": "Apache-2.0"
+      "license": "Apache-2.0",
+      "role": "source of the tested 40,960-token ordered selection, not the BridgeSpec upstream identity"
     }
   },
   "hardware": {
@@ -110,7 +117,7 @@
     },
     "slice_over_full_tok_s": 1.1080134795081849,
     "same_output_ids_all_prompts": true,
-    "quality_blocker": "The restricted head changes draft candidates. Aggregate acceptance and recall regress, and Japanese mean acceptance falls from 1.8462 to 1.0909. More cycles erase part of the per-call head win. This fails the anti-gaming full-suite/category quality gate and is not promotable.",
+    "quality_blocker": "The restricted head changes draft candidates. Aggregate acceptance and recall regress, and Japanese mean acceptance falls from 1.8462 to 1.0909. More cycles erase part of the per-call head win. This already fails the four-category feasibility quality floor, so promotion is rejected without spending the final ten-prompt plus heldout gate.",
     "native_batch_verifier_blocker": "The B4 native verifier diagnostic returned INT_MAX token sentinels on the RX 7900 XTX; the binding B2 comparison therefore used the exact sequential target verifier. This is a separate existing diagnostic-path blocker, not evidence for the sliced head.",
     "raw": {
       "root": "/tmp/bridgespec-gpu1-b2",
@@ -131,7 +138,7 @@
       "selector_walk": 1.0998,
       "selector_projection": 0.4377
     },
-    "decision": "Do not open a graph-capture implementation. About 93% of profiled cycle wall is real device kernel time, so removing launch overhead cannot approach the claimed 5.7x graph compression. The live work is kernel/top16/selector math, not graph API overhead.",
+    "decision": "Deprioritize graph capture. About 93% of profiled cycle wall is real device kernel time, bounding ideal launch-only upside to roughly 4.5% of unprofiled wall and ruling out the claimed 5.7x graph compression. Reopen only if DFlash becomes a competitive product route or kernel reductions expose a materially larger host/launch gap.",
     "raw": {
       "root": "/tmp/bridgespec-gpu1-b3",
       "result_sha256": "0fc15326cdb8bd774ba2f9aae48577ffda7d16136f84d5d9be1875f8604baf98",
@@ -164,7 +171,7 @@
       "follow_top16": true,
       "state_after_follow": true
     },
-    "decision": "Mechanism confirmed, but it is already implemented and used by current prompt/state-only catch-up paths. Do not claim it as a new BridgeSpec port. A future route-usage audit may check whether every accepted-tail owner reaches this branch.",
+    "decision": "Mechanism confirmed and primitive already implemented. Review found prompt priming requests kv_write_only=True, but accepted-tail advance_state_only and advance_state_only_device wrappers do not. Qualify that integration before calling the opportunity exhausted; do not write another catch-up kernel.",
     "raw": {
       "root": "/tmp/bridgespec-gpu1-b4",
       "result_sha256": "a554b75ab05e5ff75cf7209f51ab92008a22f0c797d9c2bcf9aeb944751e263c",
@@ -181,8 +188,20 @@
     "The RX 7900 XTX has 24 GiB; C1/K3 used resident capacity 1 rather than the W7900 capacity-8 diagnostic because capacity 8 OOMs on this card.",
     "B1 family totals cover complete AR+MTP processes and establish current ownership, not stage-exclusive MTP kernel attribution.",
     "B2 is the required four-category feasibility gate, not the final ten-prompt plus heldout promotion suite; its quality regression already rejects promotion.",
-    "The DFlash2 model files were downloaded from the pinned Apache-2.0 snapshot and remain local cache artifacts, not repository content."
+    "The DFlash2 model files were downloaded from the pinned Apache-2.0 snapshot and remain local cache artifacts, not repository content.",
+    "Post-commit review found the B4 primitive is not yet requested by accepted-tail advance_state_only wrappers; the original \u201calready implemented\u201d conclusion was correct at the primitive level but too broad at the route-integration level."
   ],
   "performance_claim": false,
-  "public_rollup_change": false
+  "public_rollup_change": false,
+  "commands": {
+    "environment": "HIP_VISIBLE_DEVICES=1 ROCR_VISIBLE_DEVICES=1 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=.",
+    "b1_c1k3_unprofiled": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --batch-window-ms 20 --max-sequence-length 1024 --correctness-contract ar_exact --generation2-diagnostic --widths 1 --resident-capacity 1 --expected-mtp-widths 1 --candidate-budget 3 --mtp-request-mode explicit --output /tmp/bridgespec-gpu1-b1/c1k3-warm.json",
+    "b1_c2k2_unprofiled": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-tokens 24 --batch-window-ms 20 --max-sequence-length 1024 --correctness-contract ar_exact --widths 2 --resident-capacity 2 --expected-mtp-widths 2 --candidate-budget 2 --mtp-request-mode automatic --output /tmp/bridgespec-gpu1-b1/c2k2-warm.json",
+    "b1_profile_note": "The same two leaf commands were run under rocprofv3 --kernel-trace with outputs c1k3-profile.json/c2k2-profile.json and trace roots recorded below.",
+    "b2_sliced_head": ".venv/bin/python /tmp/bridgespec-gpu1-b2/bridgespec_dflash2_sliced_head_probe.py --limit 4 --max-new-tokens 24 --block-size 4 --output /tmp/bridgespec-gpu1-b2/result.json",
+    "b3_unprofiled": ".venv/bin/python /tmp/bridgespec-gpu1-b3/dflash2_real_cycle_profile.py --warmup 2 --steps 10 --output /tmp/bridgespec-gpu1-b3/warm.json",
+    "b3_profiled": "rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file /tmp/bridgespec-gpu1-b3/trace/trace -- .venv/bin/python /tmp/bridgespec-gpu1-b3/dflash2_real_cycle_profile.py --warmup 2 --steps 10 --roctx --output /tmp/bridgespec-gpu1-b3/result.json",
+    "b4_unprofiled": ".venv/bin/python /tmp/bridgespec-gpu1-b4/nextn_kv_catchup_probe.py --steps 12 --require-cached-build --output /tmp/bridgespec-gpu1-b4/warm.json",
+    "b4_profiled": "rocprofv3 --kernel-trace --marker-trace --output-format csv --output-file /tmp/bridgespec-gpu1-b4/trace/trace -- .venv/bin/python /tmp/bridgespec-gpu1-b4/nextn_kv_catchup_probe.py --steps 12 --require-cached-build --roctx --output /tmp/bridgespec-gpu1-b4/result.json"
+  }
 }
