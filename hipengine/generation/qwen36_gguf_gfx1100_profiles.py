@@ -23,11 +23,19 @@ FP16_RECURRENT_STATE_ENV = "HIPENGINE_GGUF_FP16_RECURRENT_STATE"
 VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
+Q4_FUSED_R28_ENV = "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28"
 
 _GDN_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
+_Q4_REGISTRY_QUANT = "gguf_q4_k_t16_v1"
+_Q4_FUSED_R28_VARIANT = "dense_dual_wmma_prefill_row32_bf16_bf16_out"
+_Q4_STRICT_R28_VARIANT = "dense_dual_rowtile_bf16_bf16_out"
 _DENSE_STRICT_EVIDENCE = (
     "benchmarks/results/2026-08-23-w7900-qwen36-27b-current-default-publication.json"
+)
+_DENSE_FUSED_R28_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json"
 )
 _MOE_STRICT_EVIDENCE = (
     "benchmarks/results/2026-08-27-w7900-dual-concurrency2-mtp-current-state-audit.json"
@@ -43,6 +51,13 @@ def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
     os.environ[VERIFY_F32_RESIDUAL_ENV] = "0"
     os.environ[VERIFY_F32_POST_NORM_ENV] = "0"
+    os.environ[Q4_FUSED_R28_ENV] = "0"
+
+
+def _dense_production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
+    explicit_r28 = os.environ.get(Q4_FUSED_R28_ENV)
+    _strict_binder(generator, resolved)
+    os.environ[Q4_FUSED_R28_ENV] = "1" if explicit_r28 is None else explicit_r28
 
 
 def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
@@ -67,6 +82,7 @@ def _register_profile(
     evidence: str,
     graph_policy: str,
     binder: Any = _strict_binder,
+    selections: tuple[VariantSelection, ...] = (),
 ) -> bool:
     key = _key(profile, model=model)
     if key in registered_runtime_profile_keys():
@@ -86,6 +102,7 @@ def _register_profile(
                     registry_quant=_GDN_REGISTRY_QUANT,
                     evidence_artifact=evidence,
                 ),
+                *selections,
             ),
             kv_policy="paged_bf16",
             graph_policy=str(graph_policy),
@@ -103,12 +120,33 @@ def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
         profile=ExecutionProfile.STRICT,
         evidence=_DENSE_STRICT_EVIDENCE,
         graph_policy="specdec2_eager_c1",
+        selections=(
+            VariantSelection(
+                layer="linear_pair_silu",
+                scope="specdec2_mtp2_c7_k3_r28_periodic_strict_mod8_0",
+                selected_variant=_Q4_STRICT_R28_VARIANT,
+                strict_fallback_variant=_Q4_STRICT_R28_VARIANT,
+                registry_quant=_Q4_REGISTRY_QUANT,
+                evidence_artifact=_DENSE_STRICT_EVIDENCE,
+            ),
+        ),
     )
     production = _register_profile(
         model=QWEN36_DENSE_GGUF_MODEL,
         profile=ExecutionProfile.PRODUCTION,
         evidence=_DENSE_STRICT_EVIDENCE,
         graph_policy="specdec2_eager_c1_exact",
+        binder=_dense_production_binder,
+        selections=(
+            VariantSelection(
+                layer="linear_pair_silu",
+                scope="specdec2_mtp2_c7_k3_r28_periodic_strict_mod8_0",
+                selected_variant=_Q4_FUSED_R28_VARIANT,
+                strict_fallback_variant=_Q4_STRICT_R28_VARIANT,
+                registry_quant=_Q4_REGISTRY_QUANT,
+                evidence_artifact=_DENSE_FUSED_R28_EVIDENCE,
+            ),
+        ),
     )
     return bool(strict or production)
 
@@ -151,6 +189,7 @@ __all__ = [
     "QWEN36_DENSE_GGUF_BACKEND",
     "QWEN36_DENSE_GGUF_MODEL",
     "QWEN36_DENSE_GGUF_QUANT",
+    "Q4_FUSED_R28_ENV",
     "QWEN36_MOE_GGUF_MODEL",
     "VERIFY_CAPTURE_PREFILL_GDN_ENV",
     "VERIFY_F32_POST_NORM_ENV",

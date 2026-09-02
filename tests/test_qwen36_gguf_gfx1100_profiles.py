@@ -6,6 +6,7 @@ from hipengine.execution_profiles import resolve_runtime_profile
 from hipengine.runtime import qwen35_gguf_runner as _qwen35_gguf_runner  # noqa: F401
 from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
     FP16_RECURRENT_STATE_ENV,
+    Q4_FUSED_R28_ENV,
     QWEN36_DENSE_GGUF_BACKEND,
     QWEN36_DENSE_GGUF_MODEL,
     QWEN36_DENSE_GGUF_QUANT,
@@ -85,7 +86,10 @@ def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
     )
 
 
-def test_qwen36_dense_gfx1100_production_resolves_exact_selected_variant() -> None:
+def test_qwen36_dense_gfx1100_production_resolves_periodic_strict_r28(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv(Q4_FUSED_R28_ENV, raising=False)
     register_qwen36_dense_gguf_gfx1100_profiles()
     resolved = resolve_runtime_profile(
         model=QWEN36_DENSE_GGUF_MODEL,
@@ -98,6 +102,30 @@ def test_qwen36_dense_gfx1100_production_resolves_exact_selected_variant() -> No
     assert resolved.source_profile.value == "production"
     assert resolved.manifest["execution_profile"] == "production"
     assert resolved.manifest["graph_policy"] == "specdec2_eager_c1_exact"
-    selection = resolved.manifest["selections"][0]
-    assert selection["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
-    assert selection["strict_fallback_variant"] == selection["selected_variant"]
+    resolved.construct_generator(lambda: SimpleNamespace())
+    selections = resolved.manifest["selections"]
+    assert selections[0]["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
+    r28 = next(row for row in selections if "c7_k3_r28" in row["scope"])
+    assert r28["selected_variant"] == (
+        "dense_dual_wmma_prefill_row32_bf16_bf16_out"
+    )
+    assert r28["strict_fallback_variant"] == (
+        "dense_dual_rowtile_bf16_bf16_out"
+    )
+    assert "periodic_strict_mod8_0" in r28["scope"]
+    assert __import__("os").environ[Q4_FUSED_R28_ENV] == "1"
+
+
+def test_qwen36_dense_gfx1100_production_honors_explicit_r28_rollback(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(Q4_FUSED_R28_ENV, "0")
+    register_qwen36_dense_gguf_gfx1100_profiles()
+    resolved = resolve_runtime_profile(
+        model=QWEN36_DENSE_GGUF_MODEL,
+        backend=QWEN36_DENSE_GGUF_BACKEND,
+        quant=QWEN36_DENSE_GGUF_QUANT,
+        profile="production",
+    )
+    resolved.construct_generator(lambda: SimpleNamespace())
+    assert __import__("os").environ[Q4_FUSED_R28_ENV] == "0"
