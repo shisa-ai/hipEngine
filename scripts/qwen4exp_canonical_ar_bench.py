@@ -728,7 +728,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
         model=QWEN4_EXP_MODEL,
         backend=QWEN4_EXP_BACKEND,
         quant=QWEN4_EXP_QUANTS[1],
-        profile=ExecutionProfile.PRODUCTION,
+        profile=ExecutionProfile(str(args.execution_profile)),
     )
 
     def factory() -> Qwen4ExpGGUFTextGenerator:
@@ -744,7 +744,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
     artifact: dict[str, Any] = {
         "schema": 1,
         "kind": "qwen4exp_canonical_ar_engine_run",
-        "engine": "hipengine_production",
+        "engine": f"hipengine_{args.execution_profile}",
         "surface": "synchronized_direct_runner",
         "status": "running",
         "host": _host_metadata(),
@@ -753,7 +753,7 @@ def run_hipengine(args: argparse.Namespace) -> dict[str, Any]:
         "model_root": str(model_root),
         "source": _git_metadata(ROOT),
         "profile": {
-            "requested": "production",
+            "requested": str(args.execution_profile),
             "manifest_sha256": resolved.manifest_sha256,
             "strict_manifest_sha256": resolved.strict_manifest_sha256,
             "fell_back_to_strict": resolved.fell_back_to_strict,
@@ -940,6 +940,9 @@ def build_parser() -> argparse.ArgumentParser:
     hip_parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     hip_parser.add_argument("--output", type=Path, required=True)
     hip_parser.add_argument("--prefill-chunk-size", type=int, default=512)
+    hip_parser.add_argument(
+        "--execution-profile", choices=("strict", "production"), default="production"
+    )
     hip_parser.add_argument(
         "--case-id", nargs="+",
         help="Measure only these IDs after validating the complete canonical fixture",

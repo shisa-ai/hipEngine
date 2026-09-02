@@ -242,13 +242,14 @@ def test_hipengine_parser_accepts_case_filter(tmp_path: Path) -> None:
             "hipengine", "--model-root", str(tmp_path / "model"),
             "--output", str(tmp_path / "out.json"),
             "--case-id", "code-p512", "code-p4096", "--ple-telemetry",
-            "--ple-random-access", "auto",
+            "--ple-random-access", "auto", "--execution-profile", "strict",
         ]
     )
     assert args.case_id == ["code-p512", "code-p4096"]
     assert args.ple_cache_mode == "warm"
     assert args.ple_telemetry is True
     assert args.ple_random_access == "auto"
+    assert args.execution_profile == "strict"
 
 
 def test_compare_rejects_different_case_sets(tmp_path: Path) -> None:
