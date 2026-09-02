@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P2 reprofile/stop-boundary closure] Sequential complete packets widen MoE **32→28→27** then Q8 suffix **32** at p508 **1.096x→1.122x→1.132x→1.234x**; failed suffix/layer boundaries remain strict, and the fresh 100%-attributed p512 ledger re-ranks the queue. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-reprofile-stop-boundary-closure.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P2 cluster-calibration closure] Existing independently screened suffix-27 MoE and suffix-32 Q8 packets pass complete 450-row/category/task/determinism/state/c2/lifecycle/manifest/trace/whole-model gates at **1.132x/1.234x p508**; layer 2 fails closed at mean KL **0.001179 > 0.001**. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-cluster-calibration-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P2 exact geometry closure] Existing exact p508 screens close the worker/output/team ladder at **1.0026x/0.9968x/0.9978x**, with every 95% interval including 1.0; source audit shows LDS metadata reads are wave broadcasts, so padding has no conflict to repair. Require new reuse or T1/T2 arithmetic. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-exact-geometry-closure.json`.

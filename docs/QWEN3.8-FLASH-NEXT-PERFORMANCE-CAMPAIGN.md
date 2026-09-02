@@ -1157,8 +1157,16 @@ Evidence:
       qualified full-BF16 Qwen4Exp runtime existed; same-quant strict remained
       binding. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-cluster-calibration-closure.json`.
-- [ ] Re-profile after each retained cluster and stop widening when the next
-      boundary fails. Layers that fail remain on strict owners.
+- [x] Re-profile after each retained cluster and stop widening when the next
+      boundary fails. Layers that fail remain on strict owners. The retained
+      chronology is MoE suffix **32→28→27**, then Q8 suffix **32**, with p508
+      speedups **1.096x→1.122x→1.132x→1.234x** and a complete superseding packet
+      at every step. Widening stopped at failed MoE suffix 24, every individual
+      layer 0–26, Q8 suffix 27, and grouped layer 2; all remain strict. The
+      later 100%-attributed post-P4 p512 ledger refreshes the queue at Q4
+      **1.265 s**, Q5 down **1.087 s**, dense-other **1.071 s**, Q8 **0.884 s**,
+      GDN **0.599 s**, and GR **0.404 s**. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-reprofile-stop-boundary-closure.json`.
 
 **Current P2 exact-scheduling outcome (2026-08-31):** three distinct T0
 schedules are exhausted without a retainable whole-model win: more expert
