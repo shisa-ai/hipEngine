@@ -69,6 +69,12 @@
       ]
     }
   },
+  "c1_c2_hipengine_proposal_invariance": {
+    "exact_contexts": 240,
+    "total_contexts": 240,
+    "rate": 1.0,
+    "comparison": "C1 first physical row versus C2 first physical row on the same exact teacher context"
+  },
   "c2_batch_internal": {
     "exact_pair_contexts": 240,
     "total_contexts": 240,
