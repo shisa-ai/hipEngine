@@ -10,7 +10,13 @@ retained-arm prefill over HB-base by 10.12%/11.42%/17.44% at
 p512/p1024/p4096; short-shape magnitude remains
 provisional because HB-base drifted between arms. The IQ4_XS PR-shape diagnostic
 was not run because this campaign scope forbids that download. Values attributed
-to the PR author remain author-reported. The binding comparator set and the section-6 closure rules remain
+to the PR author remain author-reported.
+**HB-3 review outcome (2026-09-02): prefill is the binding deficit.** The
+review admitted the section 5.2 hipEngine prefill gap ledger and approved the
+PF-1…PF-5 prefill closure queue in section 6 as the next executable work;
+HB-4 (IQ4_XS diagnostic) and HB-5 (concurrency) are deferred behind it, and
+HB-6 records each PF decision as it lands. The binding comparator set and the
+main campaign's section-6 closure rules remain
 owned by
 [`QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md);
 this document is a subordinate lane that (a) adds the halo-box fork as a
@@ -93,6 +99,10 @@ or denies each by kernel-name census, never by assumption.
 - Treating the author-reported +44.78% (IQ4_XS, PP2048, `--load-mode none`,
   older baseline) as transferable to `UD-Q4_K_XL` exact-token workloads.
 - Vulkan shader work.
+- Post-review in-tree PF units (section 6) are hipEngine kernel work admitted
+  under the main campaign's sections 5.1/5.2 rules; the halo-box trees remain
+  read-only references (`a7ad7b7f` citations only, `scripts/check_lineage.py`
+  on every port).
 
 ## 3. Topline matrix (c=1..8)
 
@@ -245,6 +255,63 @@ strict fallback before implementation, per the main campaign's sections 5.1
 and 5.2. Source ports cite halo-box path + commit `a7ad7b7f` and run
 `scripts/check_lineage.py`.
 
+### 5.2 hipEngine prefill gap ledger (HB-3 review input)
+
+The whole-engine prefill gap that motivates this campaign is already fully
+attributed on the binding payload by the
+[`2026-09-01 canonical impact profile`](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json):
+ROCTX-scoped hipEngine prefill device time with 100% role coverage at
+p512/p1024/p4096, aligned family-by-family against rocprofv3 device traces of
+pinned upstream llama.cpp `f1793c1c4` running the same exact canonical token
+fixtures on the same host. hipEngine prefill commits `3ddb748d`/`6e32efcf`;
+HB-1's later production lane (manifest `37d59564…`) measured 83.366/82.908/69.200
+pp tok/s versus the profile packet's unprofiled 85.711 pp at p1024, so the
+ledger still ranks current production within ~3% and stays the ranking basis
+until a retained prefill unit lands (protocol item 5).
+
+Device-time totals per profiled request (hipEngine vs llama.cpp, ms):
+
+| Shape | hipEngine | llama.cpp | Gap | Ratio |
+| --- | ---: | ---: | ---: | ---: |
+| p512 | 5,965.1 | 1,911.1 | 4,054.0 | 3.12x |
+| p1024 | 11,183.7 | 2,971.9 | 8,211.8 | 3.76x |
+| p4096 | 54,558.9 | 10,802.0 | 43,756.8 | 5.05x |
+
+Per-family rows (device ms; llama.cpp advantage in parentheses; rows grouped
+by workstream, largest deficits first):
+
+| Family | p512 | p1024 | p4096 | PR11 mechanism (HB-2) | Workstream |
+| --- | ---: | ---: | ---: | --- | --- |
+| Dense projection compute | 1,181.3 vs 50.4 (23.4x) | 2,173.3 vs 94.6 (23.0x) | 8,767.0 vs 337.7 (26.0x) | M1 Q8_0 MMQ tile retune (active) | **PF-1** |
+| QSA attention | 51.0 vs 12.9 (3.9x) | 180.1 vs 48.8 (3.7x) | 10,229.2 vs 526.0 (19.5x) | none under BF16 K/V (M7 inactive) | **PF-2** (native) |
+| MoE gate/up Q4_K | 1,368.5 vs 700.3 (2.0x) | 2,528.6 vs 851.7 (3.0x) | 10,233.3 vs 1,906.5 (5.4x) | M1 Q4_K tile retune (active) | **PF-3** |
+| MoE down Q5_1 | 1,173.9 vs 501.4 (2.3x) | 2,192.8 vs 625.0 (3.5x) | 8,782.4 vs 1,454.1 (6.0x) | none measured (M1 Q5_1 did not retune) | **PF-3** (native) |
+| Dense Q8 quantize | 957.4 vs 269.0 (3.6x) | 1,802.3 vs 451.2 (4.0x) | 7,241.7 vs 1,592.1 (4.6x) | M8 quantize/elementwise paths (active, partial) | **PF-1** |
+| GDN | 655.2 vs 83.3 (7.9x) | 1,233.0 vs 222.5 (5.5x) | 4,982.8 vs 1,845.3 (2.7x) | M6 32-warp + tile-16 (active; their p4096 kernel sum 2,139.4→648.0 ms) | **PF-5** |
+| MoE routing | 120.2 vs 21.6 (5.6x) | 225.0 vs 45.3 (5.0x) | 903.0 vs 269.5 (3.4x) | M2 parallel top-10 compaction (active, prefill) | **PF-4** |
+| Elementwise/materialization | 457.6 vs 272.2 (1.7x) | 848.5 vs 632.9 (1.3x) | 3,419.5 vs 2,870.8 (1.2x) | M5 weighted top-10 sum (active) + M8 set (partial) | **PF-4** |
+
+Reading rules and caveats, binding on any use of these rows:
+
+- This is a device-time diagnostic alignment on identical fixtures, not a
+  single merged wall ratio; family boundaries are per-engine role
+  attributions (`performance_claim=false`, status
+  `accepted_diagnostic_profile_with_external_profiler_teardown_caveat`).
+- llama.cpp family sums come from the pinned `f1793c1c4` patched-HIP lane,
+  which HB-1 shows is slower than HB-PR11; closing to these rows therefore
+  understates, not overstates, the remaining external gap.
+- The QSA row grows superlinearly with context (3.7x → 19.5x): chunked-512
+  prefill re-attends history without the reuse the retained ordered-QSA
+  decode route introduced for decode. PF-2 is the only workstream with no
+  external reference mechanism under BF16 K/V; it resumes the main
+  campaign's P4 QSA prefill subowner evidence
+  ([`p4-qsa-prefill-subowner`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json),
+  [`dense-other subowners`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json)).
+- HB-3's matching blocker stands: these are role-aligned whole-request rows,
+  not valid cross-engine microbenchmark ratios. PF units promote on in-tree
+  whole-model same-session A/B plus their RED gates, using HB-2 only as
+  mechanism-existence evidence.
+
 ## 6. Punchlist
 
 | Phase | Unit | Exit condition |
@@ -253,9 +320,14 @@ and 5.2. Source ports cite halo-box path + commit `a7ad7b7f` and run
 | HB-1 | **Done** — completed two exact 36-sample arms for each of HB-base, HB-PR11, current hipEngine, and freshly rebuilt patched upstream. Retained arm B shows HB-PR11/base prefill gains of 1.1012x/1.1142x/1.1744x and decode gains of 1.0261x/1.0238x/1.0225x at p512/p1024/p4096. Every lane is cross-arm output-exact. HB-base p512/p1024 prefill drift makes those magnitudes provisional; p4096 direction reproduces. Section 3.4 is explicitly not run because IQ4_XS is excluded by the approved scope. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json`; proceed to frozen-binary HB-2 profiling. |
 | HB-2 | **Done** — profiled frozen HB-base and HB-PR11 over exact p512/p1024/p4096 prefill and live-513/1025/4097 decode. All six pairs are output-exact across lanes and cached decode evaluates one appended token. Kernel-name and launch-geometry census confirms M1, M2, M5 weighted-sum, M6, and M8; denies M3, M4, M5 shared-mul-add, and M7 on this binding graph/payload. The aligned broad-family ledger is diagnostic because kernel sums can overlap. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json`; HB-3 admits only measured-active subfamilies. |
 | HB-3 | **Blocked** — completed the shape/ABI readiness ledger and built pinned base/PR11 `test-backend-ops` binaries (`7af38994…` / `bc640014…`). Available cases pass their own correctness probes, but no active family has an identical operation-complete cross-engine fixture: M1 lacks shared packed weights/dtypes, M2 is internal to `MUL_MAT_ID`, M5 lacks a common F32/BF16 boundary, M6 differs in heads/state/prepare-post ownership, and M8 must split into six stride-aware operations. Timing current surfaces would violate the matching rule. | Block artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json`. Stop for review; no candidate handed off. |
-| HB-4 | IQ4_XS diagnostic arm. Download/pin UD-IQ4_XS as a separate artifact (hashes recorded); exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
-| HB-5 | Concurrency extension. Fill c=2..8 in sections 3.1–3.3 for every lane that supports it; record `unsupported` honestly; keep thermal windows shared across lanes. | Topline matrix complete or explicitly partial; artifact committed. |
-| HB-6 | Port decisions. For each confirmed deficit: admit (with `W/C/O/s`), defer (named blocker), or reject (measured loss). Update the main campaign's section 4 row and mechanism transfer audit to point at measured rows instead of this doc's hypotheses. | Main campaign cross-references updated; this doc's status line advanced. |
+| HB-4 | **Deferred behind PF-1…PF-5 by the HB-3 review** — IQ4_XS diagnostic arm. Download/pin UD-IQ4_XS as a separate artifact (hashes recorded); exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
+| HB-5 | **Deferred behind PF-1…PF-5 by the HB-3 review** — concurrency extension. Fill c=2..8 in sections 3.1–3.3 for every lane that supports it; record `unsupported` honestly; keep thermal windows shared across lanes. | Topline matrix complete or explicitly partial; artifact committed. |
+| HB-6 | Port decisions. For each PF unit (and each confirmed deficit): admit (with `W/C/O/s`), defer (named blocker), or reject (measured loss). Update the main campaign's section 4 row and mechanism transfer audit to point at measured rows instead of this doc's hypotheses. | Main campaign cross-references updated; this doc's status line advanced. |
+| PF-1 | **Approved at HB-3 review** — Dense projection + dense Q8 MMQ schedule (largest short/mid-shape delta; flat 23–26x ratio says schedule, not tuning; M1 evidence). Port the 128-wide RDNA3.5 tile geometry for Q8_0 dense matmuls and the M8 quantize paths behind a registry variant; RED exact-parity vs the registered strict unfused fallback. | `W/C/O/s` admitted in main campaign; exact-parity RED green; rocprofv3 expected-kernel trace; same-session whole-model A/B prefill improvement at p512/p1024 (p4096 recorded); artifact + rollup + worklog committed. |
+| PF-2 | **Approved at HB-3 review** — QSA long-context prefill reuse (largest single p4096 delta, 19.5x; no external mechanism under BF16 K/V). Resume the P4 ordered-QSA prefill subowner line: extend the retained ordered three-pass decode reuse to chunked prefill without partial-softmax reassociation. | Same admission gates as PF-1 plus the exact ordered-QSA arithmetic contract; p4096 QSA role reduction measured in a refreshed role ledger; whole-model p4096 prefill A/B. |
+| PF-3 | **Approved at HB-3 review** — MoE expert GEMM schedules: Q4_K gate/up via the M1 tile retune; Q5_1 down via native tile work (no PR11 mechanism; HB-2 confirmed Q5_1 did not retune). Median 325–333/512 active experts at ~7 rows each is the binding shape. | Same admission gates as PF-1 plus expert-count invariance on the canonical fixture; whole-model A/B at all three shapes. |
+| PF-4 | **Approved at HB-3 review** — MoE routing + materialization: port M2 parallel top-10 compaction (prefill arm) and the M5 fused weighted top-10 expert sum; fold the active M8 elementwise specializations where the boundaries match hipEngine owners. | Same admission gates as PF-1; routing+materialization combined role reduction measured; whole-model A/B. |
+| PF-5 | **Approved at HB-3 review** — GDN port of M6: 32 warps/block for S_v=128 and the token-tile-16 state-in-register prefill kernel, adapted to the hipEngine GDN owner's state layout and prepare/post boundary (HB-3 documented the mismatch). | Same admission gates as PF-1; exact-parity RED vs strict fallback; p4096 GDN role reduction against the 3.3x PR11 kernel-level evidence; whole-model A/B. |
 
 ## 7. Standing risks
 
