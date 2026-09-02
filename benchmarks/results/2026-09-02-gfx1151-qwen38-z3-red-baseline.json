@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z3_red_baseline",
+  "date": "2026-09-02",
+  "status": "expected_red",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "candidates": [
+    {"candidate_id": "P1_F16_ACTIVATION_B", "declared_class": "T1", "checks": {"implemented": false, "strict_fallback_registered": true}},
+    {"candidate_id": "M1_C1_ACCEPT_ROUTE_PARITY", "declared_class": "T2", "checks": {"implemented": false, "strict_fallback_registered": true, "full_category_suite": true, "heldouts": true, "controls_exact": false}},
+    {"candidate_id": "M2_C2_DRAFT_DEPTH", "declared_class": "T3", "checks": {"implemented": false, "strict_fallback_registered": true, "explicit_experiment": true, "automatic_promotion_disabled": true}},
+    {"candidate_id": "M3_ACCEPT_BOUNDARY_DATAFLOW", "declared_class": "T0", "checks": {"implemented": false, "strict_fallback_registered": true, "strict_exact": false, "controls_exact": false}}
+  ],
+  "command": "python3 scripts/qwen38_z3_candidate_gate.py benchmarks/results/2026-09-02-gfx1151-qwen38-z3-red-baseline.json --output /tmp/qwen38-z3-red-result.json",
+  "expected_exit": 1,
+  "source_artifacts": [
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-z3-candidate-declarations.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-z2-mechanism-bounds.json"
+  ]
+}
