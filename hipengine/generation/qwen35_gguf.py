@@ -20,7 +20,8 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
-from hipengine.core.memory import memory_stats
+from hipengine.core.dtype import DType
+from hipengine.core.memory import free, malloc, memory_stats
 from hipengine.dispatch import (
     RequestState,
     SlotMove,
@@ -5067,6 +5068,7 @@ class Qwen35GGUFResidentModelRunner:
         self._kv_graph_invalidation_count = 0
         self._packed_workspace_release_events = 0
         self._packed_workspace_released_bytes = 0
+        self._c1_shadow_resource_bundles: dict[int, dict[str, Any]] = {}
         self._route_counts: Counter[str] = Counter()
         self._fallback_reasons: Counter[str] = Counter()
         self._last_execution_manifest: dict[str, Any] = {}
@@ -5510,6 +5512,180 @@ class Qwen35GGUFResidentModelRunner:
                 idle_grace_seconds=float(config.kv_pool_idle_grace_seconds),
             )
         self._sample_kv_hip_memory()
+
+    def acquire_c1_shadow_resources(
+        self,
+        *,
+        request_id: int,
+        shadow_request_id: int,
+        real_slot: int,
+        shadow_slot: int,
+    ) -> Mapping[str, Any]:
+        """Reserve one unselected physical-C2 shadow resource bundle.
+
+        This is an ownership-only ABI for B3. It borrows one available resident
+        session, binds an independently keyed KV allocation, and owns one hidden
+        row. It does not clone state or select physical target execution.
+        """
+
+        rid = int(request_id)
+        shadow_id = int(shadow_request_id)
+        if rid < 0 or shadow_id != -(rid + 1):
+            raise ValueError("C1 shadow request ID does not match real ownership")
+        if int(real_slot) < 0 or int(shadow_slot) < 0 or int(real_slot) == int(shadow_slot):
+            raise ValueError("C1 shadow physical slots must be distinct and non-negative")
+        bundles = getattr(self, "_c1_shadow_resource_bundles", None)
+        if bundles is None:
+            bundles = {}
+            self._c1_shadow_resource_bundles = bundles
+        if rid in bundles:
+            raise RuntimeError(f"request_id {rid} already owns C1 shadow resources")
+        pool = self._kv_pool
+        if pool is None:
+            raise RuntimeError("C1 shadow requires the dynamic KV pool")
+        row = self._row(rid)
+        if row.lease is None or row.kv_allocation is None:
+            raise RuntimeError("C1 shadow requires admitted real target resources")
+        lease = self._available[-1] if self._available else None
+        if lease is None or lease is row.lease:
+            raise RuntimeError("C1 shadow requires one additional resident session")
+        shadow_target = lease.session
+        scratch = getattr(shadow_target, "scratch", None)
+        if scratch is None:
+            raise RuntimeError("C1 shadow target has no recurrent-state owner")
+        real_blocks = tuple(int(value) for value in row.kv_allocation.block_ids)
+        if not real_blocks:
+            raise RuntimeError("C1 shadow real KV allocation has no pages")
+        allocation = None
+        hidden_row = None
+        bound = False
+        try:
+            allocation = pool.allocate(
+                shadow_id,
+                len(real_blocks),
+                now_seconds=time.monotonic(),
+            )
+            shadow_target.bind_device_kv_allocation(pool, allocation)
+            bound = True
+            hidden_size = int(getattr(self._shared_runner, "hidden_size", 0))
+            if hidden_size <= 0:
+                raise RuntimeError("C1 shadow shared runner has no hidden size")
+            hidden_row = malloc(
+                hidden_size * DType.BF16.itemsize,
+                runtime=shadow_target.runtime,
+            )
+            if not self._available or self._available[-1] is not lease:
+                raise RuntimeError(
+                    "GGUF available-session order changed during C1 shadow acquisition"
+                )
+            self._available.pop()
+            bundle: dict[str, Any] = {
+                "request_id": rid,
+                "shadow_request_id": shadow_id,
+                "real_slot": int(real_slot),
+                "shadow_slot": int(shadow_slot),
+                "lease": lease,
+                "target_session": shadow_target,
+                "hidden_row": hidden_row,
+                "kv_owner": allocation,
+                "recurrent_owner": scratch,
+                "pool": pool,
+                "reclaimed": set(),
+                "finalized": False,
+            }
+            bundles[rid] = bundle
+            return bundle
+        except Exception:
+            if hidden_row is not None:
+                free(hidden_row, runtime=shadow_target.runtime)
+            if bound:
+                shadow_target.invalidate_device_kv_graphs()
+                shadow_target.unbind_device_kv_allocation()
+            if allocation is not None:
+                pool.release(shadow_id, now_seconds=time.monotonic())
+            raise
+
+    @staticmethod
+    def _c1_shadow_expected_reclaims() -> set[tuple[str, str]]:
+        return {
+            (surface, lane)
+            for surface in (
+                "target_session",
+                "hidden_row",
+                "kv_owner",
+                "recurrent_owner",
+            )
+            for lane in ("real", "shadow")
+        }
+
+    def _finalize_c1_shadow_bundle(
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        reason: str,
+    ) -> None:
+        mutable = bundle if isinstance(bundle, dict) else None
+        if mutable is None:
+            raise TypeError("C1 shadow resource bundle must be mutable")
+        if bool(mutable.get("finalized", False)):
+            return
+        shadow_target = mutable["target_session"]
+        allocation = mutable["kv_owner"]
+        hidden_row = mutable["hidden_row"]
+        pool = mutable["pool"]
+        shadow_id = int(mutable["shadow_request_id"])
+        lease = mutable["lease"]
+        if hidden_row is not None:
+            free(hidden_row, runtime=shadow_target.runtime)
+            mutable["hidden_row"] = None
+        if allocation is not None:
+            shadow_target.invalidate_device_kv_graphs()
+            shadow_target.unbind_device_kv_allocation()
+            pool.release(shadow_id, now_seconds=time.monotonic())
+            mutable["kv_owner"] = None
+        reset = getattr(shadow_target, "reset", None)
+        if callable(reset):
+            reset()
+        if lease in self._available:
+            raise RuntimeError("C1 shadow session lease was already returned")
+        self._available.append(lease)
+        mutable["finalized"] = True
+        mutable["finalize_reason"] = str(reason)
+        self._c1_shadow_resource_bundles.pop(int(mutable["request_id"]), None)
+
+    def reclaim_c1_shadow_resource(
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        surface: str,
+        lane: str,
+        resource: Any,
+        reason: str,
+    ) -> None:
+        """Return one lifecycle claim; finalize after all eight claims return."""
+
+        del resource
+        key = (str(surface), str(lane))
+        expected = self._c1_shadow_expected_reclaims()
+        if key not in expected:
+            raise ValueError(f"unsupported C1 shadow reclaim surface: {key!r}")
+        mutable = bundle if isinstance(bundle, dict) else None
+        if mutable is None:
+            raise TypeError("C1 shadow resource bundle must be mutable")
+        reclaimed = mutable["reclaimed"]
+        reclaimed.add(key)
+        if reclaimed == expected:
+            self._finalize_c1_shadow_bundle(mutable, reason=str(reason))
+
+    def abort_c1_shadow_resources(
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        reason: str,
+    ) -> None:
+        """Abort a partial adapter acquisition and return the whole bundle."""
+
+        self._finalize_c1_shadow_bundle(bundle, reason=str(reason))
 
     def reserve_admission(self, request: RequestState) -> None:
         """Reserve and bind real device KV before scheduler slot publication."""

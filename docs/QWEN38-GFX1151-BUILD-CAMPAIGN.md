@@ -403,6 +403,16 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   74/74 GREEN. The resident-owner pool ABI and physical target execution are
   intentionally still absent. Evidence:
   [`...b3-m1-shadow-adapter-ownership.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-adapter-ownership.json).
+
+  Resident-owner pool ABI GREEN (route still unselected): borrows one
+  additional available session, binds a separately keyed negative-request KV
+  allocation with the real request's page capacity, allocates a BF16 hidden
+  row, and exposes the shadow session recurrent scratch. Finalization frees,
+  invalidates/unbinds/releases, resets, and returns the lease only after all
+  eight non-checkpoint lifecycle claims return; abort/capacity/bind failures
+  are atomic. Ownership + MTP2 seam 77/77; full generation sampling passes.
+  Exact state population and physical target execution remain absent. Evidence:
+  [`...b3-m1-shadow-resident-owner.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-resident-owner.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
