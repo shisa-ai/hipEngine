@@ -1,0 +1,366 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b2_f16_prefill_screen",
+  "date": "2026-09-02",
+  "status": "screen_passed_pending_lifecycle_and_production_gates",
+  "performance_claim": false,
+  "source_commit": "af8440b0b2014fa0cafec172213ad66b364ded79",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Strix Halo Radeon Graphics / 1002:1586",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "protocol": {
+    "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_ids": [
+      "code_merge_intervals",
+      "code_topological_sort",
+      "code_lru_cache",
+      "code_markdown_table",
+      "general_en_plan",
+      "general_en_explain",
+      "general_ja_plan",
+      "general_ja_explain",
+      "mixed_ja_en_translate",
+      "mixed_ja_en_review"
+    ],
+    "full_prompt_suite": true,
+    "diagnostic_prompt_count": 0,
+    "performance_claim_eligible": true,
+    "widths": [
+      2,
+      8
+    ],
+    "resident_capacity": 8,
+    "expected_mtp_widths": [],
+    "max_tokens": 1,
+    "candidate_budget": 2,
+    "batch_window_ms": 50.0,
+    "warmup_arms_per_width": 2,
+    "runs": 1,
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "correctness_contract": "mtp_self_exact",
+    "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+    "generation2_diagnostic_plan": false,
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+  },
+  "arm_definition": {
+    "control": "HIPENGINE_GGUF_PREFILL_F16_STAGING=0",
+    "candidate": "HIPENGINE_GGUF_PREFILL_F16_STAGING=1",
+    "candidate_repeat": "independent candidate process with the same environment and schedule",
+    "combined_wall": "sum of the independently measured AR-labeled and speculative-request-labeled D1 walls; expected_mtp_widths=none makes both typed no-admission prefill arms"
+  },
+  "per_width": {
+    "2": {
+      "control": {
+        "ar_wall_seconds": 6.278146857628599,
+        "second_arm_wall_seconds": 5.019734645728022,
+        "combined_wall_seconds": 11.29788150335662,
+        "combined_generated_tokens": 40,
+        "combined_generated_tok_s": 3.54048677073803
+      },
+      "candidate": {
+        "ar_wall_seconds": 4.945930601796135,
+        "second_arm_wall_seconds": 4.278928168118,
+        "combined_wall_seconds": 9.224858769914135,
+        "combined_generated_tokens": 40,
+        "combined_generated_tok_s": 4.336109744081461
+      },
+      "candidate_repeat": {
+        "ar_wall_seconds": 4.94538905355148,
+        "second_arm_wall_seconds": 4.276146831223741,
+        "combined_wall_seconds": 9.221535884775221,
+        "combined_generated_tokens": 40,
+        "combined_generated_tok_s": 4.337672216408126
+      },
+      "candidate_wall_reduction_pct": 18.348773907980775,
+      "candidate_speedup_pct": 22.472135185455855,
+      "repeat_wall_delta_pct": -0.0360209865732708
+    },
+    "8": {
+      "control": {
+        "ar_wall_seconds": 14.162152724107727,
+        "second_arm_wall_seconds": 12.633529216283932,
+        "combined_wall_seconds": 26.79568194039166,
+        "combined_generated_tokens": 160,
+        "combined_generated_tok_s": 5.971111328904711
+      },
+      "candidate": {
+        "ar_wall_seconds": 11.402271163184196,
+        "second_arm_wall_seconds": 10.687263261061162,
+        "combined_wall_seconds": 22.089534424245358,
+        "combined_generated_tokens": 160,
+        "combined_generated_tok_s": 7.243249084706142
+      },
+      "candidate_repeat": {
+        "ar_wall_seconds": 11.809814373031259,
+        "second_arm_wall_seconds": 10.688191847875714,
+        "combined_wall_seconds": 22.498006220906973,
+        "combined_generated_tokens": 160,
+        "combined_generated_tok_s": 7.111741299605252
+      },
+      "candidate_wall_reduction_pct": 17.563081718223717,
+      "candidate_speedup_pct": 21.304874180511746,
+      "repeat_wall_delta_pct": 1.8491643545609504
+    }
+  },
+  "correctness": {
+    "self_exact_cells": 60,
+    "cells": 60,
+    "route_expectation_cells": 60,
+    "candidate_repeat_generated_ids": {
+      "compared_arm_cells": 40,
+      "equal_arm_cells": 39,
+      "mismatch_count": 1,
+      "mismatches": [
+        {
+          "width": 8,
+          "prompt_id": "mixed_ja_en_review",
+          "arm": "ar",
+          "left": [
+            [
+              179620
+            ],
+            [
+              179620
+            ],
+            [
+              179620
+            ],
+            [
+              179620
+            ],
+            [
+              179620
+            ],
+            [
+              179620
+            ],
+            [
+              179620
+            ],
+            [
+              179620
+            ]
+          ],
+          "right": [
+            [
+              179802
+            ],
+            [
+              179802
+            ],
+            [
+              179802
+            ],
+            [
+              179802
+            ],
+            [
+              179802
+            ],
+            [
+              179802
+            ],
+            [
+              179802
+            ],
+            [
+              179802
+            ]
+          ]
+        }
+      ],
+      "mismatch_details_truncated": false
+    },
+    "control_candidate_generated_ids_diagnostic": {
+      "compared_arm_cells": 40,
+      "equal_arm_cells": 0,
+      "mismatch_count": 40,
+      "mismatches": [
+        {
+          "width": 2,
+          "prompt_id": "code_merge_intervals",
+          "arm": "ar",
+          "left": [
+            [
+              248068
+            ],
+            [
+              248068
+            ]
+          ],
+          "right": [
+            [
+              179620
+            ],
+            [
+              179620
+            ]
+          ]
+        },
+        {
+          "width": 2,
+          "prompt_id": "code_merge_intervals",
+          "arm": "mtp",
+          "left": [
+            [
+              248068
+            ],
+            [
+              248068
+            ]
+          ],
+          "right": [
+            [
+              179620
+            ],
+            [
+              179620
+            ]
+          ]
+        },
+        {
+          "width": 2,
+          "prompt_id": "code_topological_sort",
+          "arm": "ar",
+          "left": [
+            [
+              248068
+            ],
+            [
+              248068
+            ]
+          ],
+          "right": [
+            [
+              179620
+            ],
+            [
+              179620
+            ]
+          ]
+        },
+        {
+          "width": 2,
+          "prompt_id": "code_topological_sort",
+          "arm": "mtp",
+          "left": [
+            [
+              248068
+            ],
+            [
+              248068
+            ]
+          ],
+          "right": [
+            [
+              179620
+            ],
+            [
+              179620
+            ]
+          ]
+        }
+      ],
+      "mismatch_details_truncated": true
+    },
+    "generated_id_equality_policy": "diagnostic; production promotion binds the complete execution-profile numerical/task gate"
+  },
+  "kernel_trace": {
+    "path": "/tmp/q38-b2-run/pf3-rocprof/gfx1151/3545243_kernel_trace.csv",
+    "sha256": "cf49041c0fa637b07ef38b5574b91e717dd52203a9c66f648d7ca9c12855178c",
+    "bytes": 1515673,
+    "rows": 6630,
+    "families": {
+      "cast": {
+        "calls": 1008,
+        "duration_ms_sum": 16.24377,
+        "duration_ms_median": 0.008135,
+        "kernel_names": [
+          "gguf_cast_bf16_to_f16_kernel(unsigned short const*, unsigned short*, long)"
+        ]
+      },
+      "q4_f16": {
+        "calls": 864,
+        "duration_ms_sum": 805.66006,
+        "duration_ms_median": 0.8461675,
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 3, 1, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 8, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)"
+        ]
+      },
+      "q5_f16": {
+        "calls": 144,
+        "duration_ms_sum": 68.850805,
+        "duration_ms_median": 0.368712,
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<3, 1, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<8, 3, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)"
+        ]
+      }
+    },
+    "expected_families_observed": true
+  },
+  "screen_verdict": {
+    "performance_screen_passed": true,
+    "retained": false,
+    "blockers": [
+      "F16 staging workspace is module-global rather than request/session lifecycle-owned",
+      "candidate repeat differs in one free-running C8 arm cell; the binding strict-teacher and same-schedule determinism gates remain pending",
+      "production numerical, isolation, lifecycle, BF16-relative, task, and full retention gates remain pending"
+    ]
+  },
+  "raw_sources": [
+    {
+      "role": "control",
+      "path": "/tmp/q38-b2-run/pf3-off.json",
+      "sha256": "c5ffe1c67ed33aeaeee6cf6036af29ddb8c2cab857ce8b7d748282abe5b32384",
+      "bytes": 1010425
+    },
+    {
+      "role": "candidate",
+      "path": "/tmp/q38-b2-run/pf3-on.json",
+      "sha256": "2cb8e17e8ef754e8cbb95042133bd0b1b62cbbcfed0ecf988c50d5fdb0a76869",
+      "bytes": 1010501
+    },
+    {
+      "role": "candidate_repeat",
+      "path": "/tmp/q38-b2-run/pf3-on-rep.json",
+      "sha256": "4ad4c9b67d04f2d9cc12f8fe798b9d27674a71bd38ee62e39a6c24a6f639e209",
+      "bytes": 1010518
+    }
+  ],
+  "commands": {
+    "suite_template": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 HIPENGINE_GGUF_PREFILL_F16_STAGING=<0|1> .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 2,8 --expected-mtp-widths none --max-tokens 1 --batch-window-ms 50 --correctness-contract mtp_self_exact --output <arm.json>",
+    "trace": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_PREFILL_F16_STAGING=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/q38-b2-run/pf3-rocprof -- .venv/bin/python scripts/qwen38_prefill_sweep_trace.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --rows 72,288 --max-sequence-length 1152 --compiler-version-file /tmp/q38-z0-run-20260901-201730/hipcc-version.txt --require-cached-build --output /tmp/q38-b2-run/pf3-trace-raw.json"
+  }
+}

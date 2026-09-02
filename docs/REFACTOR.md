@@ -4619,7 +4619,11 @@ the registered `t16_wmma_prefill_fp16_in_bf16_out` siblings (kernel-level
 0.69-0.89x their BF16 owners; see the B2 sibling screen). The BF16 owners
 remain the selected strict fallback; the route is a blunt diagnostic switch
 (prefill and verify launches share the family variant) until the B2 item-3
-gates decide a profile-scoped default. Removal condition: after the
-complete C2/C8 same-suite gates either promote to a profile-scoped default
-and keep the env as a bisection override, or record the measured blocker
-and delete the route.
+gates decide a profile-scoped default. The first serving screen also exposed
+lifecycle debt: `_PREFILL_F16_WORKSPACE` is module-global, so it is not a
+request/session owner and is not reclaimed with the resident session. This
+must become a bounded session-owned workspace before deterministic/isolation
+or lifecycle evidence can pass. Removal condition: after the lifecycle repair
+and complete C2/C8 gates, either promote to a profile-scoped default and keep
+the env as a bisection override, or record the measured blocker and delete
+the route.
