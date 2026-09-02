@@ -49,12 +49,21 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
     gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
@@ -374,6 +383,269 @@ def gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
         fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
     else:
         fn = gguf_q5_k_t16_wmma_prefill_bf16_bf16_out
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """F16-staged twin of the Q4 dense prefill router (B2 P1).
+
+    Same band ladder as the BF16 router; every band body is the registered
+    input-F16 sibling. The BF16 router remains the selected strict fallback.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        row_count <= GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS
+        and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
+    ):
+        fn = (
+            gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+            if shape == (17_408, 5_120)
+            else gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+        )
+    elif (
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_PLAIN128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS
+        <= row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+    else:
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """F16-staged twin of the Q5 dense prefill router (B2 P1)."""
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS <= row_count
+        <= GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out
+    elif (
+        17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    else:
+        fn = gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out
     return fn(
         x_ptr,
         tiles_ptr,
@@ -2931,7 +3203,7 @@ _GFX1151_OVERRIDES = {
         "linear",
         "gguf_q4_k_t16_v1",
         "t16_wmma_prefill_fp16_in_bf16_out",
-    ): gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out,
+    ): gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out,
     (
         "linear",
         "gguf_q4_k_t16_v1",
@@ -2941,7 +3213,7 @@ _GFX1151_OVERRIDES = {
         "linear",
         "gguf_q5_k_t16_v1",
         "t16_wmma_prefill_fp16_in_bf16_out",
-    ): gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out,
+    ): gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out,
     (
         "linear",
         "gguf_q6_k_t16_v1",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import ctypes
 import os
+import threading
 from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -12,6 +13,7 @@ from typing import Iterator, Mapping
 
 from hipengine.core.dtype import DType
 from hipengine.core.hip import get_hip_runtime
+from hipengine.core.memory import free, malloc
 from hipengine.kernels.backends import (
     backend_package_capability,
     load_backend_kernel_package,
@@ -173,6 +175,124 @@ TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV = "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4"
 MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
     "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
 )
+
+
+# B2 P1: prefill F16-staging route (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md).
+# Default OFF: the BF16 owners remain the selected strict fallback. When
+# enabled (env or prefill session), Q4/Q5-T16 dense prefill launches stage
+# the activation operand into a grow-only IEEE-half workspace and dispatch
+# the registered fp16-in siblings (measured 0.69-0.89x their BF16 owners at
+# the kernel level). The cast kernel and siblings are exact-family; outputs
+# are T1 and require the complete B2 item-3 gates before any default flip.
+PREFILL_F16_STAGING_ENV = "HIPENGINE_GGUF_PREFILL_F16_STAGING"
+_prefill_f16_staging_session_enabled: ContextVar[bool] = ContextVar(
+    "gguf_prefill_f16_staging_session_enabled", default=False
+)
+_PREFILL_F16_STAGING_MIN_ROWS = 17
+_PREFILL_F16_STAGING_MAX_ROWS = 1024
+_PREFILL_F16_STAGING_QUANTS = frozenset(
+    {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1"}
+)
+_PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
+PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
+_PREFILL_F16_WORKSPACE: dict[str, object] = {"buffer": None, "capacity": 0}
+_PREFILL_F16_WORKSPACE_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def prefill_f16_staging_session(enabled: bool = True) -> Iterator[None]:
+    """Enable the prefill F16-staging route for launches in one context."""
+
+    token = _prefill_f16_staging_session_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _prefill_f16_staging_session_enabled.reset(token)
+
+
+def prefill_f16_staging_enabled() -> bool:
+    """Whether the prefill F16-staging route is active for this launch."""
+
+    if _prefill_f16_staging_session_enabled.get():
+        return True
+    return os.environ.get(PREFILL_F16_STAGING_ENV, "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _prefill_f16_stage_ptr(count: int, runtime) -> int:
+    """Return a grow-only device buffer holding >= count IEEE-half elems."""
+
+    with _PREFILL_F16_WORKSPACE_LOCK:
+        buffer = _PREFILL_F16_WORKSPACE["buffer"]
+        capacity = int(_PREFILL_F16_WORKSPACE["capacity"])
+        if capacity >= count and buffer is not None:
+            return buffer.ptr
+        if buffer is not None:
+            free(buffer, runtime=runtime)
+        buffer = malloc(count * 2, runtime=runtime)
+        _PREFILL_F16_WORKSPACE["buffer"] = buffer
+        _PREFILL_F16_WORKSPACE["capacity"] = count
+        return buffer.ptr
+
+
+def _launch_prefill_f16_staged(
+    fn,
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    kwargs,
+    *,
+    backend: str,
+    quant: str,
+    layer: str,
+    runtime,
+) -> bool:
+    """Stage x as IEEE half and dispatch the fp16-in sibling; False = skip."""
+
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+        gguf_cast_bf16_to_f16,
+    )
+
+    key = KernelKey(
+        backend, layer, quant, PREFILL_F16_STAGING_VARIANT
+    )
+    if not is_registered(key):
+        return False
+    sibling = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    count = int(rows) * int(in_features)
+    stage_ptr = _prefill_f16_stage_ptr(count, runtime)
+    gguf_cast_bf16_to_f16(
+        x_ptr,
+        stage_ptr,
+        count,
+        stream=kwargs.get("stream", 0),
+        runtime=runtime,
+    )
+    stage_kwargs = dict(kwargs)
+    stage_kwargs.pop("library", None)
+    _LAUNCH_ABI["t16"](
+        sibling,
+        weight,
+        stage_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stage_kwargs,
+    )
+    return True
 
 
 def mtp_serving_target_use_wmma_prefill(
@@ -2943,6 +3063,31 @@ def launch_gguf_linear(
             **kwargs,
         )
         return
+    if (
+        prefill_f16_staging_enabled()
+        and abi == "t16"
+        and quant in _PREFILL_F16_STAGING_QUANTS
+        and variant == _PREFILL_F16_STAGING_SOURCE_VARIANT
+        and _PREFILL_F16_STAGING_MIN_ROWS <= int(rows)
+        <= _PREFILL_F16_STAGING_MAX_ROWS
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+    ):
+        if _launch_prefill_f16_staged(
+            fn,
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+            backend=resolved_backend,
+            quant=quant,
+            layer=dispatch.key.layer,
+            runtime=runtime,
+        ):
+            return
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 

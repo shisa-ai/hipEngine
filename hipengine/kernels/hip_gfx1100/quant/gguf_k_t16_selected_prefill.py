@@ -56,8 +56,14 @@ _Q4_DENSE_WMMA_SMALLM_BF16 = (
 _Q4_DENSE_WMMA_LOWVGPR_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_LOWVGPR_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out"
+)
 _Q4_DENSE_WMMA_LOWVGPR48_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out"
+)
+_Q4_DENSE_WMMA_LOWVGPR48_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out"
 )
 _Q4_DENSE_WMMA_SHARED_B_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out"
@@ -68,14 +74,26 @@ _Q4_DENSE_WMMA_SHARED_B_FP16_IN = (
 _Q4_DENSE_WMMA_SHARED_B2W2_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_SHARED_B2W2_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out"
+)
 _Q4_DENSE_WMMA_SHARED_B3W8R3_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out"
+)
+_Q4_DENSE_WMMA_SHARED_B3W8R3_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out"
 )
 _Q4_DENSE_WMMA_SHARED_B2R1_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out"
 )
+_Q4_DENSE_WMMA_SHARED_B2R1_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out"
+)
 _Q4_DENSE_WMMA_SHARED_B2W4_BF16 = (
     "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out"
+)
+_Q4_DENSE_WMMA_SHARED_B2W4_FP16_IN = (
+    "hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out"
 )
 _Q4_DENSE_DUAL_WMMA_SILU_BF16 = (
     "hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out"
@@ -1558,6 +1576,12 @@ __all__ = [
     "gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out",
+    "gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
     "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
@@ -1575,6 +1599,9 @@ __all__ = [
     "gguf_q5_k_t16_selected_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out",
+    "gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
     "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
@@ -1584,3 +1611,67 @@ __all__ = [
     "plan_gguf_k_t16_selected_prefill_build",
     "register_gguf_k_t16_selected_prefill_kernels",
 ]
+
+
+def _f16_in_wrapper(symbol: str):
+    def _wrapper(
+        x_ptr: int,
+        tiles_ptr: int,
+        out_ptr: int,
+        rows: int,
+        in_features: int,
+        out_features: int,
+        *,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: HipRuntime | None = None,
+        tile_m: int | None = None,
+        tile_n: int | None = None,
+    ) -> None:
+        del tile_m, tile_n
+        _launch_dense_t16(
+            symbol,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    _wrapper.__name__ = symbol
+    return _wrapper
+
+
+gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out = _f16_in_wrapper(
+    _Q4_DENSE_WMMA_LOWVGPR_FP16_IN
+)
+gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out = _f16_in_wrapper(
+    _Q4_DENSE_WMMA_LOWVGPR48_FP16_IN
+)
+gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out = _f16_in_wrapper(
+    _Q4_DENSE_WMMA_SHARED_B2W2_FP16_IN
+)
+gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out = _f16_in_wrapper(
+    _Q4_DENSE_WMMA_SHARED_B2W4_FP16_IN
+)
+gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out = _f16_in_wrapper(
+    _Q4_DENSE_WMMA_SHARED_B2R1_FP16_IN
+)
+gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out = _f16_in_wrapper(
+    _Q4_DENSE_WMMA_SHARED_B3W8R3_FP16_IN
+)
+
+
+gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out = _f16_in_wrapper(
+    "hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out"
+)
+gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out = _f16_in_wrapper(
+    "hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out"
+)
+gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out = _f16_in_wrapper(
+    "hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out"
+)
