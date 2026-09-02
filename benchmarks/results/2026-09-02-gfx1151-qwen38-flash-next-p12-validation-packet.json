@@ -93,6 +93,10 @@
     "strict_fallback": "named strict profile / target_ar",
     "overlap_exclusions": ["three-repeat packet is not five-pair closure", "blocked 4K MTP is not marked passed", "historical quality gates reused only for unchanged selected manifest/default arithmetic"]
   },
+  "generated_report": {
+    "path": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md",
+    "sha256": "7130500da101b02553defb2c549ceb0d9cdbd0f07a596e575234e69a2acae4aa"
+  },
   "decision": {
     "short_current_packet_passed": true,
     "final_packet_complete": false,
