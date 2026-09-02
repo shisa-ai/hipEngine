@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_provider_clone_physical",
+  "date": "2026-09-02",
+  "status": "physical_clone_green_route_unselected",
+  "performance_claim": false,
+  "source_commit": "3d3f293dd",
+  "physical_host": "gfx1151 / AMD Radeon 8060S / 1002:1586",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "protocol": "NextN max_requests=2; mutate request 7 for three steps, allocate/reset request 8, clone 7->8, compare distinct-slot fingerprints, then consume identical token/position/external hidden input",
+  "result": {
+    "slots": [0, 1],
+    "slots_distinct": true,
+    "position": 2,
+    "context_length": 3,
+    "state_bytes": 0,
+    "visible_kv_bytes": 12288,
+    "visible_kv_sha256": "bd888458561344648ea86103f6496153b9d33fe545ac75fe586ce9db052eea78",
+    "fingerprint_equal": true,
+    "next_token_equal": true,
+    "next_logit_equal": true,
+    "next_token": 279,
+    "next_logit": 12.3407621383667
+  },
+  "raw": {"path": "/tmp/q38-b3-provider-clone-physical.json", "sha256": "3dc3ec09dcb66a896963edf377fa04156e0185646cd9bec0d98d09290c94a523", "bytes": 850},
+  "note": "An initial continuation check reused a mutable executor output view and was invalid; the corrected check supplies the same immutable external hidden buffer to both slots. Physical C2 routing remains disabled."
+}

@@ -454,6 +454,12 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   position; ownership/checkpoint/seam bundle 85/85. Physical two-slot
   fingerprint equality remains required before routing. Evidence:
   [`...b3-m1-provider-clone-green.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-provider-clone-green.json).
+
+  Physical provider clone GREEN on gfx1151: distinct slots 0/1 have equal
+  position/context and 12,288 visible KV bytes with identical SHA-256; the next
+  identical token/position/external-hidden input produces token 279 and logit
+  12.340762 on both. Route remains unselected. Evidence:
+  [`...b3-m1-provider-clone-physical.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-provider-clone-physical.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
