@@ -201,6 +201,18 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. The Q6 X8 direct-top1 consumer is c1-only for shared-slot AR; multi-row uses Q6 rowtile logits plus GPU argmax after the physical-cN shortcut emitted an invalid second-row sentinel. |
 | Selected pack8/T16 support files | `quant/gguf_*selected*.{hip,py}`, `quant/gguf_*pack8*.{hip,py}`, `quant/gguf_*t16*.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, producer/metadata variants | Build/registration partitions for selected-expert storage layouts; exact ownership stays in each wrapper. |
 
+The gfx1100 grouped-Q4/Q6 packed FFN-down residual-store experiment is rejected
+and removed. Candidate row6/row8 kernels preserved the retained projection
+arithmetic and first BF16 boundary exactly, then folded the BF16 residual add
+into the store; all 12 actual-weight R12/R18/R24/R28/R32/R36 cells were
+BF16-bit exact. The binding current-width leaf gate nevertheless lost Q4 at
+R24/R28/R32 (**0.996x/0.983x/0.992x**, 9/6/13 of 30 event wins), while planar
+Q6 was only **1.003x/1.000x/1.002x**. Residual liveness/read/add pressure inside
+the heavy projection outweighed deleting the tiny add launch, so the full
+prompt suite was not spent and the retained grouped projection plus standalone
+`gguf_bf16_add` remains the registered chain. Evidence:
+[`grouped down-residual rejection`](../benchmarks/results/2026-09-02-w7900-q4km-grouped-down-residual-rejected.json).
+
 For dense Qwen3.6-27B on gfx1100, the package-default rank-2 Q4 map is one
 `gguf_q4_k_t16_v1/tiles` payload across all 288 tensors. Its c1/rows-2-4 owners
 live in `gguf_t16_selected_gemv.{hip,py}` and its M16-through-M4096/tail

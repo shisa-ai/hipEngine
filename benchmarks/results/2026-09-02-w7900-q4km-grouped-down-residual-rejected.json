@@ -1,0 +1,502 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_grouped_down_residual_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove grouped Q4/Q6 packed-target FFN-down plus rounded-BF16 residual owners before marker/product-suite spend. The exact fused store loses all current C5/C7/C8 Q4 physical rows; planar Q6 is only noise-flat to +0.33% and cannot offset the Q4 loss.",
+  "source": {
+    "baseline_commit": "af92392b4fe8844dfad281399973bcb3c0a0625a",
+    "candidate": "uncommitted RED/GREEN screen",
+    "candidate_removed": true,
+    "script": "/tmp/he-k3-grouped-down-residual-screen.py",
+    "script_sha256": "47e93df2871ece896cc56ff05765f285b9160b6861349192a568b3260d15907b"
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "candidate": {
+    "scope": "gfx1100 production packed-target FFN-down K17408/N5120 at physical R12/R18/R24/R28/R32/R36",
+    "mechanism": "Parameterize retained grouped Q4 WG64 row6/row8 and planar-Q6 WG128 row6/row8 projection kernels with a residual-store specialization that preserves the first BF16 projection boundary, then reads/adds BF16 residual and rounds to BF16.",
+    "strict_fallback": "Retained grouped projection segment plan plus standalone gguf_bf16_add.",
+    "planned_route": {
+      "C5_C6_R24": "one grouped R8 residual launch",
+      "C7_R28": "grouped R8 R24 residual prefix plus strict R4 residual tail",
+      "C8_R32": "one grouped R8 residual launch"
+    }
+  },
+  "protocol": {
+    "warmups": 5,
+    "sample_pairs": 30,
+    "launches_per_sample": 3,
+    "order": "alternating control/candidate and candidate/control",
+    "timing": "HIP-event and synchronized operation-complete wall",
+    "control": "retained grouped projection segment plan plus standalone gguf_bf16_add",
+    "candidate": "same grouped projection arithmetic with rounded-BF16 residual store ownership",
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. PYTHONUNBUFFERED=1 .venv/bin/python /tmp/he-k3-grouped-down-residual-screen.py",
+    "rows": [
+      12,
+      18,
+      24,
+      28,
+      32,
+      36
+    ],
+    "actual_weight_roles": [
+      "blk.8.ffn_down.weight (standard Q4T16)",
+      "blk.3.ffn_down.weight (planar-qmicro Q6T16)"
+    ]
+  },
+  "summary": {
+    "cells": 12,
+    "all_exact": true,
+    "minimum_event_speedup": 0.9831301614416289,
+    "maximum_event_speedup": 1.037679177457978,
+    "minimum_event_pair_wins": 6,
+    "minimum_wall_speedup": 0.9835019028640182,
+    "minimum_wall_pair_wins": 5
+  },
+  "current_width_stop_gate": {
+    "q4": {
+      "24": {
+        "segments": [
+          [
+            24,
+            8
+          ]
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_launches": 2,
+        "candidate_launches": 1,
+        "control_event_median_ms": 0.33468466997146606,
+        "candidate_event_median_ms": 0.33611134688059485,
+        "event_speedup": 0.9957553444048539,
+        "event_pair_wins": 9,
+        "control_wall_median_ms": 0.33982330933213234,
+        "candidate_wall_median_ms": 0.34197156007091206,
+        "wall_speedup": 0.9937180426982458,
+        "wall_pair_wins": 9,
+        "sample_pairs": 30
+      },
+      "28": {
+        "segments": [
+          [
+            24,
+            8
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_launches": 3,
+        "candidate_launches": 2,
+        "control_event_median_ms": 0.43282600243886316,
+        "candidate_event_median_ms": 0.4402529994646708,
+        "event_speedup": 0.9831301614416289,
+        "event_pair_wins": 6,
+        "control_wall_median_ms": 0.4388775366048018,
+        "candidate_wall_median_ms": 0.44623964155713713,
+        "wall_speedup": 0.9835019028640182,
+        "wall_pair_wins": 5,
+        "sample_pairs": 30
+      },
+      "32": {
+        "segments": [
+          [
+            32,
+            8
+          ]
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_launches": 2,
+        "candidate_launches": 1,
+        "control_event_median_ms": 0.43711282809575397,
+        "candidate_event_median_ms": 0.44051283597946167,
+        "event_speedup": 0.9922817053079783,
+        "event_pair_wins": 13,
+        "control_wall_median_ms": 0.44246126587192214,
+        "candidate_wall_median_ms": 0.4464595889051755,
+        "wall_speedup": 0.991044378634451,
+        "wall_pair_wins": 13,
+        "sample_pairs": 30
+      }
+    },
+    "q6": {
+      "24": {
+        "segments": [
+          [
+            24,
+            8
+          ]
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_launches": 2,
+        "candidate_launches": 1,
+        "control_event_median_ms": 0.5768683354059856,
+        "candidate_event_median_ms": 0.5749613444010416,
+        "event_speedup": 1.0033167290697265,
+        "event_pair_wins": 25,
+        "control_wall_median_ms": 0.5825801442066829,
+        "candidate_wall_median_ms": 0.5807081858317058,
+        "wall_speedup": 1.0032235784179553,
+        "wall_pair_wins": 24,
+        "sample_pairs": 30
+      },
+      "28": {
+        "segments": [
+          [
+            24,
+            8
+          ],
+          [
+            4,
+            4
+          ]
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_launches": 3,
+        "candidate_launches": 2,
+        "control_event_median_ms": 0.73097030321757,
+        "candidate_event_median_ms": 0.7306903600692749,
+        "event_speedup": 1.0003831214473236,
+        "event_pair_wins": 16,
+        "control_wall_median_ms": 0.7363253583510716,
+        "candidate_wall_median_ms": 0.7360788683096569,
+        "wall_speedup": 1.0003348690636653,
+        "wall_pair_wins": 16,
+        "sample_pairs": 30
+      },
+      "32": {
+        "segments": [
+          [
+            32,
+            8
+          ]
+        ],
+        "bf16_bit_exact": true,
+        "bf16_mismatches": 0,
+        "control_launches": 2,
+        "candidate_launches": 1,
+        "control_event_median_ms": 0.7715310255686443,
+        "candidate_event_median_ms": 0.769724170366923,
+        "event_speedup": 1.0023474060855593,
+        "event_pair_wins": 19,
+        "control_wall_median_ms": 0.7772793372472127,
+        "candidate_wall_median_ms": 0.7751743930081526,
+        "wall_speedup": 1.0027154460442012,
+        "wall_pair_wins": 18,
+        "sample_pairs": 30
+      }
+    },
+    "weighted_inference": "At C7/R28 Q4 adds 7.427 us per down projection while Q6 saves 0.280 us; with both quant families represented across the model, the route is operation-complete negative before whole-target overhead.",
+    "full_suite_spent": false,
+    "reason": "Task stop rule requires operation-complete actual-weight leaves to win before marker/full category+heldout spend."
+  },
+  "cases": {
+    "q4": {
+      "tensor": "blk.8.ffn_down.weight",
+      "shape_k_n": [
+        17408,
+        5120
+      ],
+      "rows": {
+        "12": {
+          "segments": [
+            [
+              12,
+              6
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.19204933444658917,
+          "candidate_event_median_ms": 0.18507582942644757,
+          "event_speedup": 1.037679177457978,
+          "event_pair_wins": 25,
+          "control_wall_median_ms": 0.19978793958822885,
+          "candidate_wall_median_ms": 0.19231252372264862,
+          "wall_speedup": 1.0388711859263062,
+          "wall_pair_wins": 25,
+          "sample_pairs": 30
+        },
+        "18": {
+          "segments": [
+            [
+              18,
+              6
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.27992416421572364,
+          "candidate_event_median_ms": 0.27680400013923645,
+          "event_speedup": 1.011272106165076,
+          "event_pair_wins": 26,
+          "control_wall_median_ms": 0.2853039962550004,
+          "candidate_wall_median_ms": 0.28218391040960944,
+          "wall_speedup": 1.0110569232698703,
+          "wall_pair_wins": 25,
+          "sample_pairs": 30
+        },
+        "24": {
+          "segments": [
+            [
+              24,
+              8
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.33468466997146606,
+          "candidate_event_median_ms": 0.33611134688059485,
+          "event_speedup": 0.9957553444048539,
+          "event_pair_wins": 9,
+          "control_wall_median_ms": 0.33982330933213234,
+          "candidate_wall_median_ms": 0.34197156007091206,
+          "wall_speedup": 0.9937180426982458,
+          "wall_pair_wins": 9,
+          "sample_pairs": 30
+        },
+        "28": {
+          "segments": [
+            [
+              24,
+              8
+            ],
+            [
+              4,
+              4
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 3,
+          "candidate_launches": 2,
+          "control_event_median_ms": 0.43282600243886316,
+          "candidate_event_median_ms": 0.4402529994646708,
+          "event_speedup": 0.9831301614416289,
+          "event_pair_wins": 6,
+          "control_wall_median_ms": 0.4388775366048018,
+          "candidate_wall_median_ms": 0.44623964155713713,
+          "wall_speedup": 0.9835019028640182,
+          "wall_pair_wins": 5,
+          "sample_pairs": 30
+        },
+        "32": {
+          "segments": [
+            [
+              32,
+              8
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.43711282809575397,
+          "candidate_event_median_ms": 0.44051283597946167,
+          "event_speedup": 0.9922817053079783,
+          "event_pair_wins": 13,
+          "control_wall_median_ms": 0.44246126587192214,
+          "candidate_wall_median_ms": 0.4464595889051755,
+          "wall_speedup": 0.991044378634451,
+          "wall_pair_wins": 13,
+          "sample_pairs": 30
+        },
+        "36": {
+          "segments": [
+            [
+              36,
+              6
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.4932403365770976,
+          "candidate_event_median_ms": 0.48277366161346436,
+          "event_speedup": 1.021680294091962,
+          "event_pair_wins": 23,
+          "control_wall_median_ms": 0.50386522586147,
+          "candidate_wall_median_ms": 0.4931318884094556,
+          "wall_speedup": 1.021765652768134,
+          "wall_pair_wins": 23,
+          "sample_pairs": 30
+        }
+      }
+    },
+    "q6": {
+      "tensor": "blk.3.ffn_down.weight",
+      "shape_k_n": [
+        17408,
+        5120
+      ],
+      "rows": {
+        "12": {
+          "segments": [
+            [
+              12,
+              6
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.3333846628665924,
+          "candidate_event_median_ms": 0.3323981761932373,
+          "event_speedup": 1.0029677860590354,
+          "event_pair_wins": 26,
+          "control_wall_median_ms": 0.3387398707369963,
+          "candidate_wall_median_ms": 0.3382251597940922,
+          "wall_speedup": 1.001521799688756,
+          "wall_pair_wins": 26,
+          "sample_pairs": 30
+        },
+        "18": {
+          "segments": [
+            [
+              18,
+              6
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.49645382165908813,
+          "candidate_event_median_ms": 0.4940803448359171,
+          "event_speedup": 1.0048038276526852,
+          "event_pair_wins": 23,
+          "control_wall_median_ms": 0.5033972362677257,
+          "candidate_wall_median_ms": 0.500991940498352,
+          "wall_speedup": 1.0048010667935716,
+          "wall_pair_wins": 24,
+          "sample_pairs": 30
+        },
+        "24": {
+          "segments": [
+            [
+              24,
+              8
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.5768683354059856,
+          "candidate_event_median_ms": 0.5749613444010416,
+          "event_speedup": 1.0033167290697265,
+          "event_pair_wins": 25,
+          "control_wall_median_ms": 0.5825801442066829,
+          "candidate_wall_median_ms": 0.5807081858317058,
+          "wall_speedup": 1.0032235784179553,
+          "wall_pair_wins": 24,
+          "sample_pairs": 30
+        },
+        "28": {
+          "segments": [
+            [
+              24,
+              8
+            ],
+            [
+              4,
+              4
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 3,
+          "candidate_launches": 2,
+          "control_event_median_ms": 0.73097030321757,
+          "candidate_event_median_ms": 0.7306903600692749,
+          "event_speedup": 1.0003831214473236,
+          "event_pair_wins": 16,
+          "control_wall_median_ms": 0.7363253583510716,
+          "candidate_wall_median_ms": 0.7360788683096569,
+          "wall_speedup": 1.0003348690636653,
+          "wall_pair_wins": 16,
+          "sample_pairs": 30
+        },
+        "32": {
+          "segments": [
+            [
+              32,
+              8
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 2,
+          "candidate_launches": 1,
+          "control_event_median_ms": 0.7715310255686443,
+          "candidate_event_median_ms": 0.769724170366923,
+          "event_speedup": 1.0023474060855593,
+          "event_pair_wins": 19,
+          "control_wall_median_ms": 0.7772793372472127,
+          "candidate_wall_median_ms": 0.7751743930081526,
+          "wall_speedup": 1.0027154460442012,
+          "wall_pair_wins": 18,
+          "sample_pairs": 30
+        },
+        "36": {
+          "segments": [
+            [
+              24,
+              8
+            ],
+            [
+              12,
+              6
+            ]
+          ],
+          "bf16_bit_exact": true,
+          "bf16_mismatches": 0,
+          "control_launches": 3,
+          "candidate_launches": 2,
+          "control_event_median_ms": 0.9233063062032063,
+          "candidate_event_median_ms": 0.9264063437779744,
+          "event_speedup": 0.9966536956535447,
+          "event_pair_wins": 11,
+          "control_wall_median_ms": 0.9302830634017785,
+          "candidate_wall_median_ms": 0.9330497123301029,
+          "wall_speedup": 0.9970348322369498,
+          "wall_pair_wins": 8,
+          "sample_pairs": 30
+        }
+      }
+    }
+  },
+  "validation": {
+    "red": "Four candidate-only Q4/Q6 row6/row8 tests failed because the registered composites were absent.",
+    "green": "Candidate-only HIP tests passed BF16 bit equality for Q4 and Q6 grouped row6/row8; registry/dispatch rollback test passed.",
+    "affected_modules": "396 passed; one unrelated pre-existing/stale Q4 pair-SiLU capture test failed because it intercepts only the parent variant while current rows33-192 dispatch selects retained row64/row128 siblings.",
+    "lineage": "scripts/check_lineage.py --kind kernel --diff stat reviewed; external tracked drift is unrelated and no external source was copied."
+  }
+}
