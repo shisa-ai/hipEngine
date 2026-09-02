@@ -884,12 +884,12 @@ def test_nextn_executor_enqueues_prompt_rows_on_target_stream_without_scoring(
     assert not any(call[0] == "sync" for call in runtime_calls)
 
 
-def test_nextn_executor_state_only_tail_skips_output_head(
+def test_nextn_executor_state_only_tail_uses_kv_write_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     executor = object.__new__(Qwen35GGUFNextNExecutor)
     runtime_calls: list[str] = []
-    block_calls: list[tuple[int, int, int, int]] = []
+    block_calls: list[tuple[int, int, int, int, bool]] = []
     executor.runtime = SimpleNamespace(
         device_synchronize=lambda: runtime_calls.append("synchronize")
     )
@@ -900,10 +900,15 @@ def test_nextn_executor_state_only_tail_skips_output_head(
         token_id: int,
         position: int,
         target_hidden: Tensor,
+        *,
+        kv_write_only: bool,
     ) -> tuple[int, int]:
-        block_calls.append((request_id, token_id, position, target_hidden.ptr))
+        block_calls.append(
+            (request_id, token_id, position, target_hidden.ptr, kv_write_only)
+        )
         return 0x8000, 0x9000
 
+    monkeypatch.setenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", "1")
     monkeypatch.setattr(executor, "_run_block", fake_run_block, raising=False)
     monkeypatch.setattr(
         executor,
@@ -918,8 +923,70 @@ def test_nextn_executor_state_only_tail_skips_output_head(
         input_token=11,
         position=14,
     )
-    assert block_calls == [(41, 11, 14, 0x7000)]
+    assert block_calls == [(41, 11, 14, 0x7000, True)]
     assert runtime_calls == ["synchronize"]
+
+
+def test_nextn_executor_device_state_only_tail_uses_kv_write_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    calls: list[tuple[object, ...]] = []
+    executor.runtime = SimpleNamespace(
+        device_synchronize=lambda: calls.append(("synchronize",))
+    )
+    executor._slot = lambda request_id: 2
+    executor._token_buf = SimpleNamespace(ptr=0x1000)
+    executor._batch_session = SimpleNamespace(
+        _runtime_state_library="runtime-library"
+    )
+    executor._set_batch_session_position = (
+        lambda slot, position: calls.append(("position", slot, position))
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", "1")
+    monkeypatch.setattr(
+        nextn_mod,
+        "copy_i32_to_i64",
+        lambda src, dst, count, **kwargs: calls.append(
+            ("copy", src, dst, count, kwargs["library"])
+        ),
+    )
+    executor._run_block = lambda *args, **kwargs: calls.append(
+        ("block", args, kwargs)
+    )
+    token = Tensor.from_handle(0x2000, (1,), DType.INT32, Device("hip", 0))
+    hidden = Tensor.from_handle(0x3000, (1, 8), DType.BF16, Device("hip", 0))
+
+    executor.advance_state_only_device(41, token, 14, hidden)
+
+    assert calls[0] == ("copy", 0x2000, 0x1010, 1, "runtime-library")
+    assert calls[1] == (
+        "block",
+        (41, 0, 14, hidden),
+        {"token_ready": True, "kv_write_only": True},
+    )
+    assert calls[2:] == [("position", 2, 15), ("synchronize",)]
+
+
+def test_nextn_executor_batch_state_only_requests_kv_write_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setenv("HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY", "1")
+
+    def fake_batch(*args, **kwargs):
+        calls.append(kwargs)
+        return (
+            Qwen35GGUFNextNStateAdvance(10, 101, 4),
+            Qwen35GGUFNextNStateAdvance(20, 202, 7),
+        )
+
+    executor._run_step_batch_impl = fake_batch
+    hidden = Tensor.from_handle(0x4000, (2, 8), DType.BF16, Device("hip", 0))
+    result = executor.advance_state_batch_only((10, 20), (101, 202), (4, 7), hidden)
+    assert len(result) == 2
+    assert calls == [{"score_output": False, "kv_write_only": True}]
 
 
 @pytest.mark.parametrize("quant_key", ["gguf_q6_k", "gguf_q6_k_t16_v1"])
@@ -1410,6 +1477,72 @@ def test_real_dense_blk64_one_step_logits_match_llamacpp_oracle() -> None:
     finally:
         executor.close()
         free(hidden_buf, runtime=runtime)
+
+
+def test_nextn_executor_batch_kv_only_reaches_packed_model_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor = object.__new__(Qwen35GGUFNextNExecutor)
+    executor.hidden_size = 8
+    executor.vocab_size = 16
+    executor.max_requests = 2
+    executor.runtime = SimpleNamespace(memcpy_async=lambda *args, **kwargs: None)
+    executor._request_slots = {10: 0, 20: 1}
+    executor._batch_sessions = (
+        SimpleNamespace(position=4),
+        SimpleNamespace(position=7),
+    )
+    executor._token_host = np.zeros((2,), dtype=np.int64)
+    executor._token_buf = SimpleNamespace(ptr=100, nbytes=16)
+    for name, ptr in (
+        ("_embedding_buf", 200),
+        ("_enorm_buf", 300),
+        ("_hnorm_buf", 400),
+        ("_fusion_buf", 500),
+        ("_fused_buf", 600),
+        ("_final_hidden_buf", 700),
+        ("_logits_buf", 800),
+    ):
+        setattr(executor, name, SimpleNamespace(ptr=ptr))
+
+    def weight():
+        return SimpleNamespace(
+            allocation=lambda name="raw": SimpleNamespace(
+                tensor=SimpleNamespace(ptr=900)
+            )
+        )
+
+    executor.weights = SimpleNamespace(
+        fallback=lambda name: weight(),
+        nextn=lambda name: weight(),
+        config=SimpleNamespace(rms_norm_eps=1e-6),
+    )
+    calls = []
+    executor._batch_session = SimpleNamespace(
+        step_hidden_batch_native=lambda *args, **kwargs: calls.append(kwargs),
+    )
+    monkeypatch.setattr(nextn_mod, "copy_host_to_device", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "launch_gguf_embedding", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "gguf_rmsnorm_bf16_f32_weight", lambda *a, **k: None)
+    monkeypatch.setattr(nextn_mod, "launch_gguf_linear", lambda *a, **k: None)
+    monkeypatch.setattr(
+        Qwen35GGUFNextNExecutor,
+        "_publish_batch_consumed_positions",
+        lambda *args, **kwargs: None,
+    )
+
+    results = executor._run_step_batch_impl(
+        (10, 20),
+        (1, 2),
+        (4, 7),
+        Tensor.from_handle(1100, (2, 8), DType.BF16, Device("hip", 0)),
+        score_output=False,
+        kv_write_only=True,
+    )
+
+    assert all(isinstance(row, Qwen35GGUFNextNStateAdvance) for row in results)
+    assert calls and calls[0]["score_output"] is False
+    assert calls[0]["kv_write_only"] is True
 
 
 def test_device_batch_top1_keeps_model_step_enqueue_only(

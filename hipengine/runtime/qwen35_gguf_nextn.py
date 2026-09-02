@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import hashlib
+import os
 from pathlib import Path
 from typing import Mapping, Protocol, Sequence
 
@@ -310,6 +311,20 @@ class Qwen35GGUFNextNStepExecutor(Protocol):
     def reset_request(self, request_id: int) -> None: ...
 
     def close(self) -> None: ...
+
+
+_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV = "HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY"
+
+
+def _nextn_accept_kv_write_only_enabled() -> bool:
+    """Resolve the default-off accepted-tail K/V-only integration screen."""
+
+    raw = os.environ.get(_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV, "0").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV} must be a boolean value")
 
 
 def _private_slot_buffer(
@@ -982,8 +997,12 @@ class Qwen35GGUFNextNExecutor:
         *,
         score_output: bool,
         token_ids_device: Sequence[Tensor] | None = None,
+        kv_write_only: bool = False,
     ) -> tuple[Qwen35GGUFNextNStepResult | Qwen35GGUFNextNStateAdvance, ...]:
         """Run one physically row-batched NextN state transition."""
+
+        if kv_write_only and score_output:
+            raise ValueError("K/V-only NextN transition cannot score output")
 
         ids = tuple(int(value) for value in request_ids)
         device_tokens = (
@@ -1117,6 +1136,7 @@ class Qwen35GGUFNextNExecutor:
             output_hidden_ptr=self._final_hidden_buf.ptr,
             logits_ptr=self._logits_buf.ptr,
             score_output=bool(score_output),
+            kv_write_only=bool(kv_write_only),
         )
         self._publish_batch_consumed_positions(ids, pos)
         if not score_output:
@@ -1206,6 +1226,7 @@ class Qwen35GGUFNextNExecutor:
             positions,
             target_hidden,
             score_output=False,
+            kv_write_only=_nextn_accept_kv_write_only_enabled(),
         )
         if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
             raise RuntimeError("NextN state-only batch returned a scored result")
@@ -1231,6 +1252,7 @@ class Qwen35GGUFNextNExecutor:
             target_hidden,
             score_output=False,
             token_ids_device=token_ids,
+            kv_write_only=_nextn_accept_kv_write_only_enabled(),
         )
         if not all(isinstance(result, Qwen35GGUFNextNStateAdvance) for result in results):
             raise RuntimeError("NextN device state-only batch returned a scored result")
@@ -2386,7 +2408,13 @@ class Qwen35GGUFNextNExecutor:
     ) -> Qwen35GGUFNextNStateAdvance:
         """Consume an accepted tail without computing its discarded prediction."""
 
-        self._run_block(request_id, token_id, position, target_hidden)
+        self._run_block(
+            request_id,
+            token_id,
+            position,
+            target_hidden,
+            kv_write_only=_nextn_accept_kv_write_only_enabled(),
+        )
         slots = getattr(self, "_request_slots", None)
         if slots is not None:
             slot = self._slot(request_id)
@@ -2427,6 +2455,7 @@ class Qwen35GGUFNextNExecutor:
             int(position),
             target_hidden,
             token_ready=True,
+            kv_write_only=_nextn_accept_kv_write_only_enabled(),
         )
         self._set_batch_session_position(slot, int(position) + 1)
         self.runtime.device_synchronize()

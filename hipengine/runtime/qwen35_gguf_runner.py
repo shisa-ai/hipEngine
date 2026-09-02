@@ -21820,6 +21820,7 @@ class Qwen35GGUFResidentSession:
         score_weight: Qwen35GGUFDeviceWeight | None = None,
         score_vocab_size: int | None = None,
         synchronize: bool = True,
+        kv_write_only: bool = False,
     ) -> None:
         """Run one packed model step from caller-owned BF16 hidden rows.
 
@@ -21839,6 +21840,8 @@ class Qwen35GGUFResidentSession:
             and min(int(output_hidden_ptr), int(logits_ptr)) <= 0
         ):
             raise ValueError("hidden batch pointers must be non-zero")
+        if kv_write_only and score_output:
+            raise ValueError("K/V-only hidden batch cannot score output")
         if (score_weight is None) != (score_vocab_size is None):
             raise ValueError("score_weight and score_vocab_size must be provided together")
         if score_vocab_size is not None and int(score_vocab_size) <= 0:
@@ -21883,7 +21886,7 @@ class Qwen35GGUFResidentSession:
             packed_state,
             runtime=runtime,
             stream=stream,
-            copy_linear_state=True,
+            copy_linear_state=not kv_write_only,
         )
         packed_scratch = packed_scratch_base.for_packed_verify_layout(
             layout,
@@ -21916,6 +21919,7 @@ class Qwen35GGUFResidentSession:
             sync_stage_timings=False,
             stage_prefix="nextn_batch_full_attn",
             split_workspace=None,
+            kv_write_only=bool(kv_write_only),
         )
         if score_output:
             gguf_rmsnorm_bf16_f32_weight(
@@ -21955,7 +21959,7 @@ class Qwen35GGUFResidentSession:
             stream=stream,
             copy_full_kv=False,
             copy_kv=True,
-            copy_linear_state=True,
+            copy_linear_state=not kv_write_only,
         )
         if synchronize:
             if stream:
