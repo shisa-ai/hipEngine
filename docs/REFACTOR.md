@@ -4587,22 +4587,23 @@ candidates, and delete the partitioner-level route check as redundant. Until
 then this path is defense-in-depth with adapter-seam and engine-loop tests and
 must not be reported as a C5-C8 performance mechanism.
 
-## RF-B1A — MTP serving target verify wmma-prefill transfer switch (2026-09-02)
+## RF-B1A — MTP serving target verify wmma-prefill transfer (2026-09-02)
 
-`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` (default off) in
-`hipengine/runtime/gguf_linear.py::mtp_serving_target_use_wmma_prefill`,
-consumed by the four MTP serving verify-job sites in
-`qwen35_gguf.py` and the packed-batch job in `qwen35_gguf_mtp2.py`. Replaces
-the July-2026 hard constant `_MTP_SERVING_TARGET_USE_WMMA_PREFILL = False`
+`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` (unset by default) plus the
+profile-scoped `mtp_serving_target_use_wmma_prefill(profile,
+profile_fell_back_to_strict)` in `hipengine/runtime/gguf_linear.py`,
+consumed by all five MTP serving verify-job sites (four in
+`qwen35_gguf.py`, packed-batch job in `qwen35_gguf_mtp2.py`). Replaces the
+July-2026 hard constant `_MTP_SERVING_TARGET_USE_WMMA_PREFILL = False`
 (9cceedbcc) that pinned verify passes to per-row GEMV owners after the
-pre-Y2-era WMMA bodies lost the small-B screen. The B1 build campaign
-(docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md) re-opens that routing: enabling the
-env routes verify rows>1 through the same retained exact prefill band owners
-(low-VGPR, shared3r1, one-sweep Q5) the prefill path uses; the measured
-B1 owner map shows the current per-row GEMV owners cost 540.6/702.0 ms per
-R20/R28 pass versus a ~265 ms derived projection under the prefill owners.
-Removal condition: after the B1 retention gates (full-suite exactness,
-production numerical gate, deterministic repeat, complete-wall
-non-regression) either flip the default and delete the env, or record the
-measured blocker and keep the constant form. Do not leave this switch
-default-off past the B1 close.
+pre-Y2-era WMMA bodies lost the small-B screen. **Default ON for the
+production execution profile** (retained 2026-09-02 after the B1 gates:
+one-group suite +56.3/+64.0/+69.5/+72.7 pct at C5-C8, 40/40 exact, identical
+IDs, sec-6 teacher-forced logits gate top-1 100 pct with max KL 6.5e-4,
+production-admission measured inert). Strict and any profile fallback keep
+the GEMV verifier oracle and its manifest unchanged. The env remains only as
+an explicit bisection/diagnostic override (`1` forces the transfer on any
+profile, `0` restores the GEMV owners everywhere), mirroring the
+`HIPENGINE_GGUF_Q4K_ROWTILE` opt-out pattern. Removal condition: none
+projected; revisit only if a future verifier owner family supersedes the
+prefill bands.
