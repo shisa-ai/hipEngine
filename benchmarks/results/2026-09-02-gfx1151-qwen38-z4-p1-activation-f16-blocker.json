@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z4_p1_activation_f16_blocker",
+  "date": "2026-09-02",
+  "status": "blocked_no_matching_t16_kernel",
+  "performance_claim": false,
+  "source_commit_before_correction": "4e5d6acfacf6e68caa17859795460f0b1c42b50c",
+  "measured_external_mechanism": "Laurent quantized MUL_MAT consumes an F16 activation-B operand, halving activation bytes and shared-memory staging.",
+  "in_tree_audit": {
+    "raw_q4_kernel": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_prefill.hip supports template scalar_t=half_t and exports wmma_prefill_fp16_* variants, but dense Qwen3.8 Q4_K_M owns sole gguf_q4_k_t16_v1 payloads and carries no raw-Q4 runtime payload.",
+    "sole_t16_kernel": "hipengine/kernels/hip_gfx1100/quant/gguf_t16_selected_gemv.hip production owners consume BF16 activation pointers; no F16-input T16 sibling is registered for the M35-96/M288 primary shapes.",
+    "misidentified_family": "hipengine/kernels/hip_gfx1100/quant/gguf_q6_k_f16_rocblas_prefill.py f16_rocblas_t16 variants dequantize quantized weights into temporary F16 source matrices for rocBLAS. They do not implement F16 activation-B staging.",
+    "existing_gfx1151_policy": "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES is empty; Q5 source-F16 policy begins at rows512 and uses the unrelated weight-source mechanism; Q6 remains excluded."
+  },
+  "correction": "Remove the explicit gfx1151 alias import added in 4e5d6acfa. Registration of an unrelated unselected kernel family is not a valid P1 implementation plan.",
+  "required_new_work": [
+    "Add input-F16 siblings for sole-T16 Q4 and Q5 owners under new four-axis variants.",
+    "Add BF16-to-F16 activation workspace/cast ownership without changing weight representation.",
+    "RED full-output numerics at rows72/288 and all production shapes, retain current BF16 owners as strict fallback.",
+    "Only then profile expected T16 input-F16 kernels and run complete C2/C8 same-suite gates."
+  ],
+  "decision": "P1 remains a measured external mechanism with a bound, but implementation is blocked. Do not use or select f16_rocblas_t16 weight-source variants as a substitute."
+}
