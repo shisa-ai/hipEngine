@@ -297,6 +297,11 @@ GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY = {
         28: "dense_dual_wmma_prefill_row32_bf16_bf16_out",
     },
 }
+GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY = {
+    "enabled_env": "HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8",
+    "enabled_default": False,
+    "rows": frozenset({32}),
+}
 GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
     "gguf_q4_k_t16_v1": {
         "canonical": True,
@@ -1071,6 +1076,7 @@ __all__ = [
     "GGUF_Q6_F32_ORDERED_PREFILL_H6E_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_H6U_POLICY",
     "GGUF_Q6_F32_ORDERED_PREFILL_POLICY",
+    "GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY",
     "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
     "GGUF_DENSE_Q4_T16",

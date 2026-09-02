@@ -22,6 +22,7 @@ from hipengine.core.specdec2_scope import (
     q5_t16_physical_rowtile_enabled,
 )
 from hipengine.kernels.hip_gfx1100 import (
+    GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY,
     GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY,
     GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY,
     GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS,
@@ -170,11 +171,17 @@ _Q5_DENSE_ROWTILE_BF16 = (
 _Q5_DENSE_ROWTILE_COL8_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out"
 )
+_Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16 = (
+    "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out"
+)
 _Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16 = (
     "hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out"
 )
 _Q5_DENSE_ROWTILE_GROUPED_ROWS6_ENV = (
     "HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6"
+)
+_Q5_DENSE_ROWTILE_GROUPED_ROWS8_C8_ENV = str(
+    GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY["enabled_env"]
 )
 _Q5_SINGLE_DIRECT_BF16 = "hipengine_gguf_q5_k_t16_selected_gemv_bf16_bf16_out"
 _Q5_QMICRO_SINGLE_DIRECT_BF16 = (
@@ -1834,6 +1841,21 @@ def _q5_dense_rowtile_grouped_rows6_enabled() -> bool:
     )
 
 
+def _q5_dense_rowtile_grouped_rows8_c8_enabled() -> bool:
+    default = bool(GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY["enabled_default"])
+    raw = os.environ.get(
+        _Q5_DENSE_ROWTILE_GROUPED_ROWS8_C8_ENV,
+        "1" if default else "0",
+    ).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(
+        f"{_Q5_DENSE_ROWTILE_GROUPED_ROWS8_C8_ENV} must be a boolean value"
+    )
+
+
 def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
     x_ptr: int,
     tiles_ptr: int,
@@ -1852,6 +1874,26 @@ def gguf_q5_k_t16_gemv_decode_bf16_bf16_out(
         GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY["rows"]
         | GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY["rows"]
     )
+    if (
+        q5_t16_physical_rowtile_enabled()
+        and physical_exact_rowtiles_enabled()
+        and int(rows) in GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY["rows"]
+        and _q5_dense_rowtile_grouped_rows8_c8_enabled()
+    ):
+        _check_dense_q5_t16_shape(8, in_features, out_features, rowtile=True)
+        _launch_dense_q5_t16(
+            _Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16,
+            x_ptr,
+            tiles_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
     if (
         q5_t16_physical_rowtile_enabled()
         and physical_exact_rowtiles_enabled()
@@ -2047,6 +2089,39 @@ def gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out(
     _check_dense_q5_t16_shape(6, in_features, out_features, rowtile=True)
     _launch_dense_q5_t16(
         _Q5_DENSE_ROWTILE_GROUPED_ROWS6_BF16,
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )
+
+
+def gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch exact Q5 row8 chunks through one two-dimensional grid."""
+
+    if int(rows) < 16 or int(rows) % 8:
+        raise ValueError(
+            "dense Q5T16 grouped rowtile requires rows >= 16 divisible by 8"
+        )
+    _check_dense_q5_t16_shape(8, in_features, out_features, rowtile=True)
+    _launch_dense_q5_t16(
+        _Q5_DENSE_ROWTILE_GROUPED_ROWS8_BF16,
         x_ptr,
         tiles_ptr,
         out_ptr,
@@ -4440,6 +4515,16 @@ def register_gguf_t16_selected_gemv_kernels(*, replace: bool = True) -> None:
         gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out,
         replace=replace,
     )
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k_t16_v1",
+            "t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
+        ),
+        gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out,
+        replace=replace,
+    )
     for variant, fn in (
         (
             "selected_dual_t16_gemv_decode_bf16_bf16_out",
@@ -4846,6 +4931,7 @@ __all__ = [
     "gguf_q5_k_t16_gemv_rowtile_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_col8_bf16_bf16_out",
     "gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out",
+    "gguf_q5_k_t16_gemv_rowtile_grouped_rows8_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_qmicro_t16_selected_qwen_tile8_gemv_bf16_bf16_out",
     "gguf_q5_k_t16_selected_gemv_bf16_bf16_out",
