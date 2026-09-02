@@ -42,14 +42,16 @@ should be removed or collapsed.
   the environment/cache policy after the next stable milestone audit; keep the
   row64 registered strict parent.
 
-## 2026-09-02 NextN accepted-tail K/V-only integration — open
+## 2026-09-02 NextN accepted-tail K/V-only integration — closed
 
-- `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=1` routes singleton and physical
-  accepted-tail state commits through the existing exact K/V-only full-attention
-  branch; zero retains the full NextN block for same-build qualification.
-- Remove the environment branch after the complete category+heldout task/economics
-  and lifecycle gates pass (or remove the candidate if they fail). Keep the full
-  state transition callable as a diagnostic correctness parent.
+- The existing exact K/V-only full-attention branch is now the default singleton,
+  device-token, and physical-batch accepted-tail state-transition owner. The
+  complete C5-C8 category+heldout gate improves every width and every binding
+  slice with all 520 generated-ID/acceptance rows exact and all packets drained.
+  `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0` retains the full NextN block as
+  same-build rollback.
+- Remove the environment branch after the next stable milestone audit; keep the
+  complete state transition callable as a diagnostic correctness parent.
 
 ## 2026-09-02 gfx1100 grouped Q4 R8 at active C5-C6 — closed
 

@@ -317,9 +317,9 @@ _NEXTN_ACCEPT_KV_WRITE_ONLY_ENV = "HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY"
 
 
 def _nextn_accept_kv_write_only_enabled() -> bool:
-    """Resolve the default-off accepted-tail K/V-only integration screen."""
+    """Resolve the default-on accepted-tail K/V-only transition."""
 
-    raw = os.environ.get(_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV, "0").strip().lower()
+    raw = os.environ.get(_NEXTN_ACCEPT_KV_WRITE_ONLY_ENV, "1").strip().lower()
     if raw in {"1", "true", "yes", "on"}:
         return True
     if raw in {"0", "false", "no", "off"}:
