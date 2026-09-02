@@ -1379,28 +1379,27 @@ class Qwen35GGUFBringupGenerator:
             reset = getattr(session, "reset", None)
             if callable(reset):
                 reset()
+            self._configure_session(session)
             return session, key, True
         session_kwargs = (
             {}
             if max_sequence_length is None
             else {"max_sequence_length": int(max_sequence_length)}
         )
-        return (
-            Qwen35GGUFResidentSession(
-                self.model_path,
-                backend=self.backend,
-                runtime=shared_runner.runtime,
-                shared_runner=shared_runner,
-                use_wmma_prefill=use_wmma_prefill,
-                use_gemv_decode=use_gemv_decode,
-                defer_kv_allocation=bool(defer_kv_allocation),
-                max_batch_size=int(max_batch_size),
-                **self._prepared_session_kv_kwargs(),
-                **session_kwargs,
-            ),
-            key,
-            False,
+        session = Qwen35GGUFResidentSession(
+            self.model_path,
+            backend=self.backend,
+            runtime=shared_runner.runtime,
+            shared_runner=shared_runner,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            defer_kv_allocation=bool(defer_kv_allocation),
+            max_batch_size=int(max_batch_size),
+            **self._prepared_session_kv_kwargs(),
+            **session_kwargs,
         )
+        self._configure_session(session)
+        return session, key, False
 
     def _release_shared_session(
         self,

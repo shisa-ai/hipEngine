@@ -414,6 +414,15 @@ def test_generator_configures_profile_scoped_prefill_f16_default() -> None:
         assert session.use_prefill_f16_staging is False
 
 
+def test_shared_session_acquisition_applies_profile_configuration() -> None:
+    import inspect
+
+    from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+
+    source = inspect.getsource(Qwen35GGUFBringupGenerator._acquire_shared_session)
+    assert source.count("self._configure_session(session)") == 2
+
+
 def test_prefill_f16_workspace_context_is_bounded_and_restored() -> None:
     import hipengine.runtime.gguf_linear as gguf_linear
     from hipengine.runtime.gguf_linear import (
