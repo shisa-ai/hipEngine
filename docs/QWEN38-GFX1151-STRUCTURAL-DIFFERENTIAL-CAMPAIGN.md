@@ -446,9 +446,19 @@ Open implementation only after Z0-Z2 identify a mechanism with enough bound.
 Section 7.3 is the starting ledger; Z0-Z2 confirm or reject each row's bound
 before it enters here.
 
-- [ ] Declare the arithmetic class (T0/T1/T2/T3), affected layers/shapes,
+- [x] Declare the arithmetic class (T0/T1/T2/T3), affected layers/shapes,
   stateful surfaces, strict fallback, expected mechanism, and whether the
   candidate can alter downstream discrete decisions.
+
+  Declaration ledger: [`2026-09-02-gfx1151-qwen38-z3-candidate-declarations.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z3-candidate-declarations.json).
+  P1 F16 activation-B staging is T1; M1 C1 accept-route parity is T2; M2 C2
+  K3→K2/K1 policy is T3 and remains an explicit experiment; M3 accept-boundary
+  dataflow begins as T0 only while every token, accepted count, position, state
+  byte, lifecycle owner, and cancellation result remains exact. M3 must be
+  reclassified T2 if arithmetic association changes or T3 if decision policy
+  changes. Each declaration names affected shapes/layers, stateful surfaces,
+  strict fallback, bound, and discrete-decision risk. Wide target kernels stay
+  rejected by the zero pass budget.
 - [ ] Write the RED test or production-profile numerical gate before the
   implementation when practical. If RED-first is impractical, record the
   reason in the unit worklog entry.
