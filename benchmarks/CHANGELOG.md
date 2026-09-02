@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 exact-greedy policy] The public serial provider passes **10/10** category+heldout generated-ID equality at **134/159 (84.28%)** acceptance. It remains **51.711 vs 49.383 s (0.955x AR)**, so this closes correctness policy only; EngramHalo's faster 9/10 row remains invalid precedent. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exact-greedy-policy.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 EXP-016 readiness] Current serial truth-only target commits cannot express the rollback-ring failure; the rejection-depth grid awaits the Qwen4Exp verifier transaction ABI. External falsification is blocked because patch `hybrid-03-mtp/0006` and commits `413c33c`/`32af70900` are absent locally and the cited repository is HTTP 404. Pinned comparator trees remain untouched. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exp016-readiness.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 target-hidden D2D] Shared-runtime D2D handoff removes post-prefill hidden D2H/H2D and stays exact, but warmed whole-model wall is only **6,590.224→6,530.592 ms (1.0091x)** and English/mixed regress to **0.9292x/0.9847x**. Packet synchronization remains; reject promotion. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-hidden-d2d-rejected.json`.

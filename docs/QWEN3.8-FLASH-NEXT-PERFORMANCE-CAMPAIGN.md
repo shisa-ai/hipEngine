@@ -1930,9 +1930,14 @@ external MTP rows.
       dilute the head), plain n-gram speculation is 0 to -33%, and two of its
       four types hang the server on this hybrid-recurrent architecture. Run it
       only if a local trace gives a reason to expect a different result.
-- [ ] Require exact greedy outputs where that is the provider contract. The
+- [x] Require exact greedy outputs where that is the provider contract. The
+      public serial provider passes **10/10** category+heldout rows and all
+      generated IDs against true target AR at B2/tg16, with **134/159 = 84.28%**
+      accepted drafts. It remains **51.711 vs 49.383 s (0.955x AR)**, so this
+      closes correctness policy only and does not promote performance. The
       refreshed Engram row is 1.128x but only 9/10 exact and is therefore not a
-      valid target or promotion precedent.
+      valid target or promotion precedent. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exact-greedy-policy.json`.
 - [ ] Promote at >=1.0x AR with every binding category non-regressive; continue
       toward >=1.5x and the best correctness-valid same-config competitor.
 
