@@ -1770,8 +1770,18 @@ the existing escalation thresholds permit each rung.
       The diagnostic adds no default-route work and makes no throughput claim.
       Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-structural-depth-census.json`.
-- [ ] Compare exact matched same-weight/BF16-KV Engram/Nathan/upstream rows; do
-      not compare against their IQ3/IQ4 or quantized-KV headlines.
+- [x] Compare exact matched same-weight/BF16-KV Engram/Nathan/upstream rows; do
+      not compare against their IQ3/IQ4 or quantized-KV headlines. Audit result:
+      the shared canonical fixture contains 512/1,024/4,096-token rows only.
+      Upstream's refreshed 4,096 row is repeat-exact at **266.58/18.98 pp/tok/s**;
+      EngramHalo's **381.17/15.99** row fails `code-p4096` repeatability, and
+      Nathan's **351.85/19.01** row belongs to a 0/12-repeatable lane. No retained
+      exact-token BF16-KV row exists for any named external lane at 16K or 64K.
+      The current hipEngine natural-retrieval rates use a different single-prompt
+      protocol and are not divided by these canonical rates. Published Q8-KV and
+      different-weight-quant headlines remain excluded. This closes the evidence
+      inventory, not the missing 16K/64K measurement. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-matched-comparator-audit.json`.
 - [ ] Optimize persistent compressed-key scoring, top-k, selected attention,
       and graph/context buckets only where the depth profile ranks them.
 - [ ] After BF16 AR parity, open Q8 K/V as a T3 product configuration with its
