@@ -1,0 +1,219 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z2_mechanism_bounds",
+  "date": "2026-09-01",
+  "status": "z2_mechanisms_bounded",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "commands": {
+    "derive": "python3 /tmp/q38-z2-teacher/build_mechanism_bounds.py",
+    "source_suite": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/q38-z0-run-20260901-201730/ar-mtp-c1c8.json"
+  },
+  "definitions": {
+    "acceptance_quality": "Raise accepted-draft ratio to the external leader while holding cycle cost fixed; prefill remains fixed. Negative deltas clamp to zero.",
+    "accept_non_target_dataflow": "Optimistically remove the entire measured accept/synchronization/commit stage. This is an upper bound, not an implementation claim.",
+    "draft_depth": "Optimistically remove both proposal and target stages while holding visible output fixed. This intentionally does not borrow an acceptance change.",
+    "target_cost": "Optimistically remove only target stage.",
+    "entry": "Bound must be at least the campaign 1.25x-required wall reduction."
+  },
+  "cells": {
+    "1": {
+      "leader": "laurent_vulkan",
+      "complete_wall_ms": 28536.21169948019,
+      "prefill_ms": 2911.9349766988307,
+      "cycles": 155.0,
+      "current_acceptance": 0.15333333333333332,
+      "leader_acceptance": 0.8051282051282052,
+      "stage_ms_per_cycle": {
+        "accept": 111.90044742918784,
+        "proposal": 12.79379451016505,
+        "provider_update": 0.6016736414523856,
+        "selected_commit": 0.3570684547265691,
+        "target": 31.53103596774194
+      },
+      "bounds": {
+        "acceptance_quality": 0.49385664600186935,
+        "accept_non_target_dataflow": 0.6078091070455599,
+        "draft_depth": 0.2407589625570633,
+        "target_cost": 0.17126697217097764
+      },
+      "required_entry_fraction": 0.318,
+      "passes_entry": [
+        "acceptance_quality",
+        "accept_non_target_dataflow"
+      ]
+    },
+    "2": {
+      "leader": "laurent_vulkan",
+      "complete_wall_ms": 16619.563227985054,
+      "prefill_ms": 5026.316618314013,
+      "cycles": 71.0,
+      "current_acceptance": 0.7889447236180904,
+      "leader_acceptance": 0.7451923076923077,
+      "stage_ms_per_cycle": {
+        "accept": 94.51336003708798,
+        "proposal": 22.85948540018478,
+        "provider_update": 3.509794037238183,
+        "selected_commit": 0.7551615585533666,
+        "target": 18.783371788732392
+      },
+      "bounds": {
+        "acceptance_quality": 0,
+        "accept_non_target_dataflow": 0.4037680455605341,
+        "draft_depth": 0.17790135756603642,
+        "target_cost": 0.08024394977807651
+      },
+      "required_entry_fraction": 0.147,
+      "passes_entry": [
+        "accept_non_target_dataflow",
+        "draft_depth"
+      ]
+    },
+    "5": {
+      "leader": "mainline_vulkan",
+      "complete_wall_ms_per_cycle": 754.1591475986627,
+      "cycles": 71.0,
+      "current_acceptance": 0.7889447236180904,
+      "leader_acceptance": 0.8101135190918473,
+      "stage_ms_per_cycle": {
+        "accept": 490.7760859506441,
+        "proposal": 28.049010642423806,
+        "target": 34.72363632394366,
+        "provider_update": 5.212658773583006,
+        "selected_commit": 2.6221294579109258
+      },
+      "bounds": {
+        "acceptance_quality": 0.015446282459546668,
+        "accept_non_target_dataflow": 0.6507593092430646,
+        "draft_depth": 0.08323527887481501,
+        "target_cost": 0.04604284975460163
+      },
+      "required_entry_fraction": 0.181,
+      "passes_entry": [
+        "accept_non_target_dataflow"
+      ],
+      "target_only_pass_budget_ms": 0
+    },
+    "6": {
+      "leader": "laurent_vulkan",
+      "complete_wall_ms_per_cycle": 862.7633019842365,
+      "cycles": 71.0,
+      "current_acceptance": 0.7889447236180904,
+      "leader_acceptance": 0.7067494181536075,
+      "stage_ms_per_cycle": {
+        "accept": 552.4497270079094,
+        "proposal": 34.57605054037987,
+        "target": 38.549138338028165,
+        "provider_update": 6.2885097339486995,
+        "selected_commit": 4.706891748765615
+      },
+      "bounds": {
+        "acceptance_quality": 0,
+        "accept_non_target_dataflow": 0.640325945409768,
+        "draft_depth": 0.08475695328050023,
+        "target_cost": 0.04468101303030677
+      },
+      "required_entry_fraction": null,
+      "passes_entry": [
+        "control"
+      ],
+      "target_only_pass_budget_ms": 0
+    },
+    "7": {
+      "leader": "stock_hip",
+      "complete_wall_ms_per_cycle": 981.4162379832493,
+      "cycles": 71.0,
+      "current_acceptance": 0.7889447236180904,
+      "leader_acceptance": 0.7790530846484935,
+      "stage_ms_per_cycle": {
+        "accept": 639.6925162563336,
+        "proposal": 36.6782974255022,
+        "target": 44.34025057746479,
+        "provider_update": 7.196325851394467,
+        "selected_commit": 5.853433949007115
+      },
+      "bounds": {
+        "acceptance_quality": 0,
+        "accept_non_target_dataflow": 0.651805514825048,
+        "draft_depth": 0.082552687501335,
+        "target_cost": 0.04517986238803356
+      },
+      "required_entry_fraction": 0.352,
+      "passes_entry": [
+        "accept_non_target_dataflow"
+      ],
+      "target_only_pass_budget_ms": 0
+    },
+    "8": {
+      "leader": "stock_hip",
+      "complete_wall_ms_per_cycle": 1043.513975430831,
+      "cycles": 71.0,
+      "current_acceptance": 0.7889447236180904,
+      "leader_acceptance": 0.8051282051282052,
+      "stage_ms_per_cycle": {
+        "accept": 667.1108204025355,
+        "proposal": 33.39557556278059,
+        "target": 76.35920253521127,
+        "provider_update": 6.954466317399916,
+        "selected_commit": 6.912125238466641
+      },
+      "bounds": {
+        "acceptance_quality": 0.0117845918297285,
+        "accept_non_target_dataflow": 0.6392926554980813,
+        "draft_depth": 0.10517806247173442,
+        "target_cost": 0.07317506457322259
+      },
+      "required_entry_fraction": 0.285,
+      "passes_entry": [
+        "accept_non_target_dataflow"
+      ],
+      "target_only_pass_budget_ms": 0
+    }
+  },
+  "decision": [
+    "Keep acceptance-quality, accept/non-target dataflow, draft-depth, and target-cost as separate mechanisms; never add their optimistic bounds.",
+    "C1 acceptance quality clears entry because hipEngine accepted-draft ratio is 15.33% versus Laurent 80.51%; C2 acceptance does not because hipEngine already exceeds Laurent.",
+    "Accept/non-target dataflow is the only cost mechanism whose optimistic bound clears every primary cell. It advances as the Z3 structural candidate, but the bound does not identify a safe implementation.",
+    "Draft-depth clears only C2 (17.79% versus 14.7%) and advances as a separate C2 policy screen; it does not clear C1 or any wide primary cell. Target cost clears no primary cell. Zero target-only pass budgets at C5-C8 therefore reject target-kernel work until accept/non-target dataflow has a measured complete-cycle bound."
+  ],
+  "source_artifacts": [
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-current-head-baseline.json",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z0-pass-budgets.json",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z2-wide-cycle-decomposition.json",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z2-external-shape-comparison.json",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z2-teacher-forced-proposal-parity.json"
+  ]
+}
