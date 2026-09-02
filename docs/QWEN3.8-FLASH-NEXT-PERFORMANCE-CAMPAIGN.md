@@ -1847,8 +1847,16 @@ external MTP rows.
       `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1` default-off until candidate IDs
       become one packet per cycle and target hidden export is resident; remove
       it if that complete route still fails category non-regression. Cached
-      tracing proves the candidate's argmax stage1/stage2 route. Evidence:
-      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`.
+      tracing proves the candidate's argmax stage1/stage2 route. A follow-up
+      appends each device argmax ID to a four-int64 device packet and performs
+      one D2H per cycle. Sidecar B2 is exact at **16.794→16.591 ms (1.012x)**;
+      warmed whole-model wall is **6,588.589→6,521.622 ms (1.0103x)**, but
+      `general_en` and `mixed_ja_en` still regress to **0.9344x/0.9845x**.
+      Packet D2H synchronizes preceding proposal work, so promotion remains
+      rejected and full output remains default. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`
+      and
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-candidate-packet-rejected.json`.
 - [ ] After device-output cleanup and target-verifier progress, build
       default-off individual-row compact Q8_0 draft heads at 8K/16K/32K with a
       local→global token map. Do not port EXL3 block-group rules or FP8 constants.

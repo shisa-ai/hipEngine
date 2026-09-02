@@ -1,0 +1,166 @@
+{
+  "amdahl_declaration": {
+    "C": {
+      "scope": "one-packet candidate",
+      "value_ms": 6521.621666004648
+    },
+    "O": {
+      "debug_proposal_median_ms": 16.79421450535301,
+      "packet_proposal_median_ms": 16.590817001997493
+    },
+    "W": {
+      "scope": "warmed four-category full-output control",
+      "value_ms": 6588.589177961694
+    },
+    "arithmetic_class": "T0 output ownership",
+    "mechanism": "device argmax per depth, D2D append to four-int64 packet, one packet D2H per cycle, resident hidden/token chaining",
+    "overlap_exclusions": [
+      "packet D2H synchronizes preceding queued proposal GPU work",
+      "proposal wall includes draft layer/head/argmax",
+      "whole-request wall includes target and host phases"
+    ],
+    "s": 1.0122596435926592,
+    "scope": "Qwen4Exp Q8 MTP B2 proposal",
+    "strict_fallback": "full-output debug route (default)"
+  },
+  "configuration": {
+    "candidate_budget": 2,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "gpu_clock_policy": "auto",
+    "max_tokens": 8,
+    "mode_warmups": "one global and one per prompt/mode",
+    "pair_order": "alternating AB/BA by category"
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "default": "full_output",
+    "next": "Do not rescreen this route until target-hidden handoff and proposal scheduling can avoid the packet-boundary synchronization or verifier progress raises its complete-wall ceiling.",
+    "opt_in_env": "HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1",
+    "promoted": false,
+    "reason": "Exact aggregate improves only 1.0103x; general_en and mixed_ja_en regress to 0.9344x and 0.9845x. Packet D2H remains a synchronization owner."
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_p11_candidate_packet",
+  "performance_claim": false,
+  "route_proof": {
+    "argmax_stage1_dispatches": 12,
+    "argmax_stage2_dispatches": 12,
+    "expected_route_passed": true,
+    "kernel_dispatches": 34002,
+    "note": "B2/tg3 four-category cached trace; phase telemetry records one draft_candidate_packet_d2h per proposal cycle.",
+    "raw_trace_sha256": "0744257af8bcd3f738148733c8209e46ffa9212e193166505856d1c1b1af8063"
+  },
+  "schema": 1,
+  "sidecar_ab": {
+    "debug": {
+      "max_ms": 18.222379992948845,
+      "median_ms": 16.79421450535301,
+      "min_ms": 16.006158984964713,
+      "samples_ms": [
+        16.14530000369996,
+        16.482633975101635,
+        16.006158984964713,
+        16.689603013219312,
+        16.559348005102947,
+        17.22722200793214,
+        17.935612006112933,
+        18.222379992948845,
+        16.89882599748671,
+        17.044157983036712
+      ]
+    },
+    "ids_exact": true,
+    "packet": {
+      "max_ms": 17.717861977871507,
+      "median_ms": 16.590817001997493,
+      "min_ms": 15.668937005102634,
+      "samples_ms": [
+        15.927000000374392,
+        16.466964007122442,
+        16.249606997007504,
+        15.668937005102634,
+        15.999586990801618,
+        17.494733998319134,
+        16.714669996872544,
+        17.151619016658515,
+        17.58652599528432,
+        17.717861977871507
+      ]
+    },
+    "speedup": 1.0122596435926592
+  },
+  "source": {
+    "base_head": "1c9203bb1",
+    "tracked_clean": false
+  },
+  "status": "rejected_category_regression_default_off",
+  "whole_model_ab": {
+    "debug_over_packet": 1.0102685367822128,
+    "debug_total_ms": 6588.589177961694,
+    "ids_exact": true,
+    "lifecycle": {
+      "after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 88552984256,
+        "peak_allocations": 2183,
+        "total_allocated_bytes": 88553105088,
+        "total_freed_bytes": 88553105088
+      },
+      "passed": true
+    },
+    "packet_total_ms": 6521.621666004648,
+    "rows": [
+      {
+        "category": "code",
+        "debug_ms": 1618.4696709970012,
+        "debug_over_packet": 1.1132565681973414,
+        "id": "code_merge_intervals",
+        "ids_exact": true,
+        "packet_ms": 1453.815514978487
+      },
+      {
+        "category": "general_en",
+        "debug_ms": 1429.9241029948462,
+        "debug_over_packet": 0.9343669773052882,
+        "id": "general_en_plan",
+        "ids_exact": true,
+        "packet_ms": 1530.3666950203478
+      },
+      {
+        "category": "general_ja",
+        "debug_ms": 1545.3306449926458,
+        "debug_over_packet": 1.0225664309681108,
+        "id": "general_ja_plan",
+        "ids_exact": true,
+        "packet_ms": 1511.2276309810113
+      },
+      {
+        "category": "mixed_ja_en",
+        "debug_ms": 1994.8647589772008,
+        "debug_over_packet": 0.9845292255920884,
+        "id": "mixed_ja_en_translate",
+        "ids_exact": true,
+        "packet_ms": 2026.2118250248022
+      }
+    ]
+  }
+}

@@ -176,6 +176,7 @@ class Qwen4ExpGGUFMTPDraftRunner:
             argmax_blocks * DType.FP32.itemsize,
             argmax_blocks * DType.INT64.itemsize,
             DType.FP32.itemsize,
+            4 * DType.INT64.itemsize,
         )
         self._buffers.extend(malloc(size, runtime=self.runtime) for size in sizes)
 
@@ -222,6 +223,10 @@ class Qwen4ExpGGUFMTPDraftRunner:
     @property
     def argmax_value(self) -> DeviceBuffer:
         return self._buffers[10]
+
+    @property
+    def candidate_packet(self) -> DeviceBuffer:
+        return self._buffers[11]
 
     def _bind_layer(self) -> Qwen4ExpQSALayerDeviceWeights:
         def weight(slot: str):
@@ -331,9 +336,9 @@ class Qwen4ExpGGUFMTPDraftRunner:
         hidden_seed_resident: bool = False,
     ) -> None:
         token = int(token_id)
-        if token < 0 or token >= self.config.vocab_size:
-            raise ValueError("Qwen4Exp MTP token is outside the vocabulary")
         if not token_id_resident:
+            if token < 0 or token >= self.config.vocab_size:
+                raise ValueError("Qwen4Exp MTP token is outside the vocabulary")
             token_host = np.asarray([token], dtype=np.int64)
             copy_host_to_device(
                 self.token_id_buffer,
@@ -413,6 +418,7 @@ class Qwen4ExpGGUFMTPDraftRunner:
         *,
         capture_logits: bool = True,
         capture_hidden_seed: bool = True,
+        capture_token_id: bool = True,
         token_id_resident: bool = False,
         hidden_seed_resident: bool = False,
     ) -> Qwen4ExpMTPDraftResult:
@@ -517,15 +523,19 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 self.config.vocab_size,
                 runtime=self.runtime,
             )
-            token_host = np.empty(1, dtype=np.int64)
-            copy_device_to_host(
-                host_array_ptr(token_host),
-                self.token_id_buffer,
-                token_host.nbytes,
-                runtime=self.runtime,
-            )
-            token_id_result = int(token_host[0])
-            finish_stage("draft_device_argmax_and_token_d2h", started)
+            token_id_result = -1
+            if capture_token_id:
+                token_host = np.empty(1, dtype=np.int64)
+                copy_device_to_host(
+                    host_array_ptr(token_host),
+                    self.token_id_buffer,
+                    token_host.nbytes,
+                    runtime=self.runtime,
+                )
+                token_id_result = int(token_host[0])
+                finish_stage("draft_device_argmax_and_token_d2h", started)
+            else:
+                finish_stage("draft_device_argmax", started)
         chained_hidden = None
         if capture_hidden_seed:
             hidden_bits = np.empty(self.config.residual_width, dtype=np.uint16)
@@ -595,14 +605,38 @@ class Qwen4ExpGGUFMTPDraftRunner:
                 hidden,
                 capture_logits=not compact_output,
                 capture_hidden_seed=not compact_output,
+                capture_token_id=not compact_output,
                 token_id_resident=compact_output and depth > 0,
                 hidden_seed_resident=compact_output and depth > 0,
             )
             results.append(result)
+            if compact_output:
+                self.runtime.memcpy(
+                    self.candidate_packet.ptr + depth * DType.INT64.itemsize,
+                    self.token_id_buffer.ptr,
+                    DType.INT64.itemsize,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
             for name, elapsed_ms in self.last_forward_stage_timings_ms.items():
                 stage_totals[name] = stage_totals.get(name, 0.0) + elapsed_ms
             token = result.token_id
             hidden = None if compact_output else result.hidden_seed
+        if compact_output:
+            packet = np.empty(count, dtype=np.int64)
+            started = time.perf_counter()
+            copy_device_to_host(
+                host_array_ptr(packet),
+                self.candidate_packet,
+                packet.nbytes,
+                runtime=self.runtime,
+            )
+            stage_totals["draft_candidate_packet_d2h"] = (
+                time.perf_counter() - started
+            ) * 1_000.0
+            results = [
+                Qwen4ExpMTPDraftResult(int(packet[index]), None, None)
+                for index in range(count)
+            ]
         self.last_proposal_stage_timings_ms = stage_totals
         return tuple(results)
 

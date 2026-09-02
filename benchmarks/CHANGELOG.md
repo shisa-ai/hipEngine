@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 candidate packet] One device packet per B2 cycle is exact and improves sidecar **16.794→16.591 ms (1.012x)** and warmed four-category wall **6,588.589→6,521.622 ms (1.0103x)**, but English/mixed regress to **0.9344x/0.9845x**. Packet D2H still synchronizes queued proposal work; reject promotion. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-candidate-packet-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 compact draft output] Device argmax plus resident hidden chaining improves sidecar B2 **16.945→16.639 ms (1.018x)**, but warmed four-category whole-model wall is only **6,585.101→6,537.548 ms (1.0073x)** and English/mixed rows regress to **0.9435x/0.9745x**. Exact IDs and traced argmax pass; reject promotion and keep the full-output route default. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 verifier readiness] The measured **87.652-ms/row** owner cannot yet become a rows<=8 verifier: Qwen4Exp has no block-verifier API, its prefill primitive commits all rows and scores only the last, head/logit storage is rows=1, and state snapshots cross the host. Split output storage, device transactions, deferred commit, and rows2-8 RED gates; do not transplant the different Qwen3.5 ABI. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
