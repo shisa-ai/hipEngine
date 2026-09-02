@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p10_q8_kv_readiness_audit",
+  "status": "blocked_prerequisite_and_implementation_absent",
+  "performance_claim": false,
+  "baseline_claim": false,
+  "finding": "The optional Q8-KV product configuration cannot open yet. Its explicit prerequisite, short BF16 AR parity, is not met: the retained exact ordered route reaches 12.868 tok/s on code-p4096 while the repeat-valid same-weight/BF16-KV upstream row is 18.975 tok/s. The Qwen4Exp runtime has no registered quantized-KV storage, write, or attention family; existing INT8-KV evidence belongs to other models/backends and cannot substitute. Opening Q8 now would bypass both the campaign ordering and every required T3 product gate.",
+  "prerequisite": {
+    "name": "short BF16 AR parity",
+    "met": false,
+    "hipengine_code_p4096_tok_s": 12.867621434342738,
+    "repeat_valid_upstream_p4096_tok_s": 18.975199155277505,
+    "hipengine_fraction_of_upstream": 0.6781283995516807,
+    "hipengine_source": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json",
+    "upstream_source": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-matched-comparator-audit.json"
+  },
+  "implementation_inventory": {
+    "qwen4exp_quantized_kv_storage": false,
+    "qwen4exp_quantized_kv_write_kernel": false,
+    "qwen4exp_quantized_kv_attention_kernel": false,
+    "qwen4exp_quantized_kv_registry_variant": false,
+    "existing_int8_kv_scope": "Qwen3.5/dense GGUF and PARO evidence; not Qwen4Exp",
+    "external_q8_kv_scope": "llama.cpp comparator only; incompatible representation and not a hipEngine implementation"
+  },
+  "required_gates_before_promotion": {
+    "cpu_reference": false,
+    "bf16_relative": false,
+    "task_and_retrieval": false,
+    "memory": false,
+    "deterministic_repeatability": false,
+    "lifecycle": false,
+    "same_configuration_competitor": false
+  },
+  "scope": {
+    "host": "zbook",
+    "arch": "gfx1151",
+    "model": "Qwen/Qwen3.8-Flash-Next",
+    "weight_artifact": "Unsloth UD-Q4_K_XL split GGUF",
+    "binding_kv": "BF16",
+    "candidate_kv": "Q8, not implemented",
+    "mechanism": "repository readiness audit",
+    "arithmetic_class": "prospective T3; no arithmetic change made in this audit",
+    "strict_fallback": "current BF16 production/strict profiles remain unchanged",
+    "w_c_o_s": "W remains the current BF16 path; candidate C is unavailable; O and s are not applicable because no candidate exists.",
+    "overlap_exclusions": ["Qwen3.5 INT8-KV evidence", "PARO KV8 evidence", "llama.cpp Q8_0 KV rates", "different-weight-quant headlines"]
+  },
+  "decision": "Keep the P10 Q8-KV item partial and blocked. Do not implement or benchmark Q8-KV until short BF16 AR parity is established. After that prerequisite, start with a Qwen4Exp CPU oracle and registered strict/BF16 fallback, then execute every listed T3 gate under a same-configuration comparator protocol. Continue independent P11 work now."
+}
