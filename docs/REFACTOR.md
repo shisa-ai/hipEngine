@@ -74,6 +74,17 @@ should be removed or collapsed.
   same-build rollback. Remove the environment override after the next stable
   milestone audit; keep the exact padded composition available.
 
+## 2026-09-02 gfx1100 C8 adaptive source-Q5 MMQ — open
+
+- `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=1` stages the source-layout
+  I64/J16-J32 integer-WMMA consumer only inside the existing gfx1100
+  eight-request raw-Q5 owner. Omitted/zero retains the qualified D4S4 raw MMQ;
+  disabling `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` retains grouped T16.
+- Remove the source-layout flag if marker, strict-teacher, or full category and
+  heldout gates fail. Promote it and retain one temporary zero-valued rollback
+  only if every C8 scope passes; remove that rollback after the next stable
+  milestone audit.
+
 ## 2026-09-02 gfx1100 C8 raw-Q5 MMQ — closed
 
 - The gfx1100-only eight-request physical R24/R32 `ssm_out` route is now the

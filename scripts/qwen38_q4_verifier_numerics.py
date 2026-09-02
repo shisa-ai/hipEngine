@@ -55,6 +55,7 @@ DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 VERIFY_CAPTURE_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
+Q5_SOURCE_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ"
 
 
 class GateError(RuntimeError):
@@ -80,6 +81,7 @@ def _make_sessions(
     fp16_state: bool,
     q4_rowtile: bool,
     q5_raw_mmq: bool,
+    q5_source_mmq: bool,
     max_sequence_length: int,
 ) -> tuple[ExitStack, tuple[Any, ...]]:
     from hipengine.runtime.prefill import PrefillConfig
@@ -91,14 +93,20 @@ def _make_sessions(
         else args.compiler_version_file.read_text(encoding="utf-8")
     )
     stack = ExitStack()
-    with (
-        fp16_state_environment(fp16_state),
-        _environment(
-            TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
-            "1" if q4_rowtile else "0",
-        ),
-        _environment(Q5_RAW_MMQ_ENV, "1" if q5_raw_mmq else "0"),
-    ):
+    try:
+        stack.enter_context(fp16_state_environment(fp16_state))
+        stack.enter_context(
+            _environment(
+                TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
+                "1" if q4_rowtile else "0",
+            )
+        )
+        stack.enter_context(
+            _environment(Q5_RAW_MMQ_ENV, "1" if q5_raw_mmq else "0")
+        )
+        stack.enter_context(
+            _environment(Q5_SOURCE_MMQ_ENV, "1" if q5_source_mmq else "0")
+        )
         owner = stack.enter_context(
             Qwen35GGUFResidentSession(
                 args.model,
@@ -129,6 +137,9 @@ def _make_sessions(
                     )
                 )
             )
+    except BaseException:
+        stack.close()
+        raise
     sessions = tuple(sessions_list)
     if any(
         session.runner is None
@@ -320,6 +331,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         fp16_state=False,
         q4_rowtile=False,
         q5_raw_mmq=False,
+        q5_source_mmq=False,
         max_sequence_length=max_sequence_length,
     )
     try:
@@ -355,7 +367,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         args,
         fp16_state=True,
         q4_rowtile=True,
-        q5_raw_mmq=bool(args.candidate_q5_raw_mmq),
+        q5_raw_mmq=bool(
+            args.candidate_q5_raw_mmq or args.candidate_q5_source_mmq
+        ),
+        q5_source_mmq=bool(args.candidate_q5_source_mmq),
         max_sequence_length=max_sequence_length,
     )
     try:
@@ -421,12 +436,21 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
                 FP16_STATE_ENV: "0",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "0",
                 Q5_RAW_MMQ_ENV: "0",
+                Q5_SOURCE_MMQ_ENV: "0",
             },
             "candidate": {
                 FP16_STATE_ENV: "1",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "1",
                 Q5_RAW_MMQ_ENV: (
-                    "1" if bool(args.candidate_q5_raw_mmq) else "0"
+                    "1"
+                    if bool(
+                        args.candidate_q5_raw_mmq
+                        or args.candidate_q5_source_mmq
+                    )
+                    else "0"
+                ),
+                Q5_SOURCE_MMQ_ENV: (
+                    "1" if bool(args.candidate_q5_source_mmq) else "0"
                 ),
             },
         },
@@ -468,8 +492,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "production": (
                 "FP16 state + shape-scoped Q4/Q5/Q6 verifier rowtiles"
                 + (
-                    " + raw-Q5 D4S4 MMQ"
-                    if bool(args.candidate_q5_raw_mmq)
+                    (
+                        " + raw-Q5 adaptive DS4 MMQ"
+                        if bool(args.candidate_q5_source_mmq)
+                        else " + raw-Q5 D4S4 MMQ"
+                    )
+                    if bool(
+                        args.candidate_q5_raw_mmq
+                        or args.candidate_q5_source_mmq
+                    )
                     else ""
                 )
                 + f" at physical R{int(args.concurrency) * rows_per_job}"
@@ -477,6 +508,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "strict_fallbacks": [
                 "linear/gguf_q4_k_t16_v1/t16_wmma_prefill_smallm_bf16_bf16_out",
                 "linear_pair_silu/gguf_q4_k_t16_v1/dense_dual_wmma_prefill_bf16_bf16_out",
+                "linear/gguf_q5_k_t16_v1/t16_gemv_rowtile_grouped_rows6_or_rows8_bf16_bf16_out",
             ],
             "excluded": [
                 "rows outside the selected R8/R12 cell",
@@ -543,6 +575,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--concurrency", type=int, choices=(2, 3, 8), default=2)
     parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=3)
     parser.add_argument("--candidate-q5-raw-mmq", action="store_true")
+    parser.add_argument("--candidate-q5-source-mmq", action="store_true")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--decode-steps", type=int, default=24)

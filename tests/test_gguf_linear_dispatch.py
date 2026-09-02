@@ -3304,6 +3304,12 @@ _Q5_RAW_MMQ_BF16 = KernelKey(
     "gguf_q5_k",
     "mmq32_q8_1_d4s4_f32_bf16_bf16_out",
 )
+_Q5_SOURCE_MMQ_BF16 = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q5_k",
+    "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out",
+)
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
 _Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
@@ -3561,17 +3567,25 @@ def test_q3_mmq_prefill_session_rejects_undersized_workspace() -> None:
 
 
 @pytest.mark.parametrize("rows", [24, 32])
+@pytest.mark.parametrize("source_layout", [False, True])
 def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
     monkeypatch,
     rows: int,
+    source_layout: bool,
 ) -> None:
     quantize_calls = []
     monkeypatch.setattr(
         gguf_linear_module,
         "gguf_q8_1_d4s4_f32_quantize_bf16",
-        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+        lambda *args, **kwargs: quantize_calls.append(("d4s4", args, kwargs)),
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_1_ds4_quantize_bf16_kmajor",
+        lambda *args, **kwargs: quantize_calls.append(("ds4", args, kwargs)),
     )
     library = object()
+    expected_key = _Q5_SOURCE_MMQ_BF16 if source_layout else _Q5_RAW_MMQ_BF16
     with (
         target_verifier_rowtile_session(True),
         target_verifier_production_q4_rowtile_session(True),
@@ -3579,6 +3593,7 @@ def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
             workspace_ptr=10_000_000,
             workspace_nbytes=245_760,
             library=library,  # type: ignore[arg-type]
+            source_layout=source_layout,
         ),
     ):
         key, args, kwargs = _capture_launch(
@@ -3587,23 +3602,34 @@ def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
             out_features=5_120,
             quant_key="gguf_q5_k_t16_v1",
             layout=LAYOUT_GGUF_Q5_K_T16,
-            extra_keys=(_Q5_RAW_MMQ_BF16,),
+            extra_keys=(expected_key,),
         )
     common_kwargs = {
         "stream": 7,
         "runtime": "runtime-sentinel",
         "library": library,
     }
-    assert key == _Q5_RAW_MMQ_BF16
-    assert quantize_calls == [((100, 10_000_000, rows, 6_144), common_kwargs)]
+    assert key == expected_key
+    expected_quantizer = "ds4" if source_layout else "d4s4"
+    assert quantize_calls == [
+        (expected_quantizer, (100, 10_000_000, rows, 6_144), common_kwargs)
+    ]
     assert args == (10_000_000, 10, 200, rows, 6_144, 5_120)
     assert kwargs == common_kwargs
 
 
-def test_q5_raw_mmq_target_session_rejects_undersized_workspace() -> None:
+@pytest.mark.parametrize(
+    ("source_layout", "workspace_nbytes"),
+    [(False, 245_759), (True, 221_183)],
+)
+def test_q5_raw_mmq_target_session_rejects_undersized_workspace(
+    source_layout: bool,
+    workspace_nbytes: int,
+) -> None:
     with q5_raw_mmq_target_session(
         workspace_ptr=10_000_000,
-        workspace_nbytes=245_759,
+        workspace_nbytes=workspace_nbytes,
+        source_layout=source_layout,
     ):
         with pytest.raises(ValueError, match="workspace is too small"):
             _capture_launch(
