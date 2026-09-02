@@ -181,7 +181,9 @@ def test_real_qwen4_exp_mtp_draft_is_deterministic_and_transactional() -> None:
         assert all(row.hidden_seed is None for row in replay)
         assert "draft_logits_d2h" not in runner.last_proposal_stage_timings_ms
         assert "draft_hidden_d2h" not in runner.last_proposal_stage_timings_ms
-        assert "draft_device_argmax_and_token_d2h" in runner.last_proposal_stage_timings_ms
+        assert "draft_device_argmax" in runner.last_proposal_stage_timings_ms
+        assert "draft_device_argmax_and_token_d2h" not in runner.last_proposal_stage_timings_ms
+        assert "draft_candidate_packet_d2h" in runner.last_proposal_stage_timings_ms
         runner.restore(checkpoint)
         debug = runner.propose_chain(
             start_token=repeat.token_id,
