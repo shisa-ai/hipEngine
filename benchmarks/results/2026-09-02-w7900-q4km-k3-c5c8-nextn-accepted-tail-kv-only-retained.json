@@ -1,0 +1,554 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_nextn_accepted_tail_kv_only_retained",
+  "date": "2026-09-02",
+  "status": "retained_default",
+  "performance_claim": true,
+  "decision": "Promote the exact existing NextN K/V-only transition for accepted-tail state repair. Singleton/device and physical-batch wrappers skip stateless Q/attention-output/FFN/discarded-prediction work while retaining token fusion plus K/V projection/write; explicit zero remains rollback.",
+  "source": {
+    "candidate_commit": "9ebec23e93a92b64fb590419e6ec159739beb47a",
+    "parallel_rx_evidence_commit": "b249a53bfefc542fcb08346ca48310a5a56814ae",
+    "tracked_clean": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "visible_device": "0",
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompts": 10,
+    "heldouts": 4,
+    "widths": [
+      5,
+      6,
+      7,
+      8
+    ],
+    "resident_capacity": 8,
+    "candidate_budget": 3,
+    "decode_tokens": 24,
+    "sampling": "greedy",
+    "execution_profile": "production",
+    "timing": "blocking barrier-to-last completion complete wall",
+    "orders": [
+      "candidate->control",
+      "control->candidate"
+    ]
+  },
+  "measurements": {
+    "5": {
+      "candidate_tok_s": 68.44240254229786,
+      "control_tok_s": 67.64482395834997,
+      "delta_pct": 1.179068164090391,
+      "candidate_wall_seconds": 35.06598118785769,
+      "control_wall_seconds": 35.47943300846964,
+      "generated_tokens_per_arm": 2400
+    },
+    "6": {
+      "candidate_tok_s": 76.62348218721915,
+      "control_tok_s": 75.64088578428195,
+      "delta_pct": 1.2990281548783456,
+      "candidate_wall_seconds": 37.58638889528811,
+      "control_wall_seconds": 38.07464666943997,
+      "generated_tokens_per_arm": 2880
+    },
+    "7": {
+      "candidate_tok_s": 80.25815829596988,
+      "control_tok_s": 79.74061738577431,
+      "delta_pct": 0.6490304780207179,
+      "candidate_wall_seconds": 41.86490285024047,
+      "control_wall_seconds": 42.13661882933229,
+      "generated_tokens_per_arm": 3360
+    },
+    "8": {
+      "candidate_tok_s": 87.50758256493503,
+      "control_tok_s": 86.44330745247173,
+      "delta_pct": 1.2311827761200211,
+      "candidate_wall_seconds": 43.88191157206893,
+      "control_wall_seconds": 44.42217810917646,
+      "generated_tokens_per_arm": 3840
+    }
+  },
+  "pairs": [
+    {
+      "scope": "c5c7",
+      "order": "candidate->control",
+      "wins": 28,
+      "cells": 30,
+      "minimum_delta_pct": -0.24719185803833144,
+      "median_delta_pct": 1.195017240933094,
+      "maximum_delta_pct": 2.94276947734482
+    },
+    {
+      "scope": "c5c7",
+      "order": "control->candidate",
+      "wins": 29,
+      "cells": 30,
+      "minimum_delta_pct": -1.0902873626153053,
+      "median_delta_pct": 0.872749611925927,
+      "maximum_delta_pct": 3.383290454858745
+    },
+    {
+      "scope": "c8",
+      "order": "candidate->control",
+      "wins": 10,
+      "cells": 10,
+      "minimum_delta_pct": 1.4473413212956698,
+      "median_delta_pct": 2.0417037657529447,
+      "maximum_delta_pct": 2.299371098088865
+    },
+    {
+      "scope": "c8",
+      "order": "control->candidate",
+      "wins": 10,
+      "cells": 10,
+      "minimum_delta_pct": 0.07352738493637823,
+      "median_delta_pct": 0.39949931760160373,
+      "maximum_delta_pct": 0.8833316663019897
+    }
+  ],
+  "slices": {
+    "code|5": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 68.99892338154623,
+        "control_tok_s": 67.97300690189593,
+        "delta_pct": 1.5092998329925278
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 68.7569139405466,
+        "control_tok_s": 68.01294043993204,
+        "delta_pct": 1.093870513173334
+      }
+    ],
+    "heldout|5": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 68.45233713675518,
+        "control_tok_s": 67.55422369919943,
+        "delta_pct": 1.3294704437057936
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 68.04469118779203,
+        "control_tok_s": 67.59917159157762,
+        "delta_pct": 0.6590607336228516
+      }
+    ],
+    "general_en|5": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 76.1057296678866,
+        "control_tok_s": 75.15270320548773,
+        "delta_pct": 1.2681200033391349
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 75.72011169653047,
+        "control_tok_s": 74.91583640551505,
+        "delta_pct": 1.0735717968386682
+      }
+    ],
+    "general_ja|5": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 66.56376524858904,
+        "control_tok_s": 65.55027817674242,
+        "delta_pct": 1.546121694730207
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 66.29471831467893,
+        "control_tok_s": 65.5862833843628,
+        "delta_pct": 1.080157151403771
+      }
+    ],
+    "mixed_ja_en|5": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 63.827965108119976,
+        "control_tok_s": 62.726940413357646,
+        "delta_pct": 1.7552660587409452
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 63.43055114943977,
+        "control_tok_s": 62.75776872401492,
+        "delta_pct": 1.0720305057107637
+      }
+    ],
+    "code|6": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 74.16879922597091,
+        "control_tok_s": 73.52079513294983,
+        "delta_pct": 0.8813888531119307
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 74.60576211052671,
+        "control_tok_s": 73.38008389851578,
+        "delta_pct": 1.6703145416214538
+      }
+    ],
+    "heldout|6": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 77.3082119007559,
+        "control_tok_s": 76.36557574829602,
+        "delta_pct": 1.2343731363550825
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 77.03932020569177,
+        "control_tok_s": 76.50848444860515,
+        "delta_pct": 0.6938259997075535
+      }
+    ],
+    "general_en|6": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 86.15192508098446,
+        "control_tok_s": 85.04666900872961,
+        "delta_pct": 1.2995877265238764
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 86.2906457141576,
+        "control_tok_s": 85.1772213869554,
+        "delta_pct": 1.3071855468776095
+      }
+    ],
+    "general_ja|6": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 77.0031455237596,
+        "control_tok_s": 74.80189809805543,
+        "delta_pct": 2.94276947734482
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 76.87760114338498,
+        "control_tok_s": 74.36172790123447,
+        "delta_pct": 3.383290454858745
+      }
+    ],
+    "mixed_ja_en|6": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 72.74390218538234,
+        "control_tok_s": 72.12509353925488,
+        "delta_pct": 0.8579658143398783
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 72.6887516956319,
+        "control_tok_s": 72.05465918492276,
+        "delta_pct": 0.8800159738203472
+      }
+    ],
+    "code|7": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 78.96222064560969,
+        "control_tok_s": 78.37645143651665,
+        "delta_pct": 0.7473790894545917
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 78.80976947234238,
+        "control_tok_s": 78.49540860494712,
+        "delta_pct": 0.40048312758953486
+      }
+    ],
+    "heldout|7": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 80.35391522343933,
+        "control_tok_s": 79.93096440973531,
+        "delta_pct": 0.5291451402186453
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 80.49820217868142,
+        "control_tok_s": 80.07121067741492,
+        "delta_pct": 0.5332646998266855
+      }
+    ],
+    "general_en|7": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 93.00988971648997,
+        "control_tok_s": 91.71870333391239,
+        "delta_pct": 1.4077678114101433
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 92.87185629036993,
+        "control_tok_s": 92.29111124273031,
+        "delta_pct": 0.6292534999521537
+      }
+    ],
+    "general_ja|7": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 75.95503262941088,
+        "control_tok_s": 75.12540080236462,
+        "delta_pct": 1.1043293189593628
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 75.9136886342008,
+        "control_tok_s": 75.23734295927538,
+        "delta_pct": 0.898949442288921
+      }
+    ],
+    "mixed_ja_en|7": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 77.43348254354055,
+        "control_tok_s": 77.03513685738551,
+        "delta_pct": 0.5170960971906835
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 77.55302003252194,
+        "control_tok_s": 76.93922831002523,
+        "delta_pct": 0.797761734785607
+      }
+    ],
+    "code|8": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 88.85343019558073,
+        "control_tok_s": 87.01870770669609,
+        "delta_pct": 2.108423047454022
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 87.24344835410729,
+        "control_tok_s": 86.84837686597817,
+        "delta_pct": 0.4548979524842345
+      }
+    ],
+    "heldout|8": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 87.9475666198206,
+        "control_tok_s": 86.2839908915756,
+        "delta_pct": 1.9280236241453697
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 86.2356586828807,
+        "control_tok_s": 85.86006930284746,
+        "delta_pct": 0.4374436022272832
+      }
+    ],
+    "general_en|8": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 95.18399845443945,
+        "control_tok_s": 93.1581132259885,
+        "delta_pct": 2.1746739583877517
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 93.3047302891753,
+        "control_tok_s": 93.00960352988967,
+        "delta_pct": 0.3173078349815617
+      }
+    ],
+    "general_ja|8": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 84.58090313667677,
+        "control_tok_s": 82.90023346626286,
+        "delta_pct": 2.027340093195118
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 82.9292336877798,
+        "control_tok_s": 82.20310760759759,
+        "delta_pct": 0.8833316663019897
+      }
+    ],
+    "mixed_ja_en|8": [
+      {
+        "order": "candidate->control",
+        "candidate_tok_s": 86.30053622096982,
+        "control_tok_s": 84.68853627345338,
+        "delta_pct": 1.9034452813204705
+      },
+      {
+        "order": "control->candidate",
+        "candidate_tok_s": 84.43789552785304,
+        "control_tok_s": 84.17819123666827,
+        "delta_pct": 0.30851730997001336
+      }
+    ]
+  },
+  "published_roll_forward": {
+    "5": {
+      "previous_tok_s": 68.513,
+      "new_tok_s": 68.513,
+      "note": "Retain the higher prior current-source absolute; the long four-arm gate is same-build positive but candidate absolute is 0.10% lower under host-clock drift."
+    },
+    "6": {
+      "previous_tok_s": 76.554,
+      "new_tok_s": 76.62348218721915
+    },
+    "7": {
+      "previous_tok_s": 81.641,
+      "new_tok_s": 81.641,
+      "note": "Retain the higher prior current-source absolute; the long four-arm gate is same-build positive but candidate absolute is 1.69% lower under host-clock drift."
+    },
+    "8": {
+      "previous_tok_s": 86.991,
+      "new_tok_s": 87.50758256493503
+    }
+  },
+  "correctness": {
+    "rows_compared": 520,
+    "generated_ids_exact": true,
+    "acceptance_sequences_exact": true,
+    "all_packets_passed": true,
+    "all_packets_drained": true,
+    "prompt_order_wins": 77,
+    "prompt_order_cells": 80,
+    "all_category_heldout_slices_positive": true
+  },
+  "accepted_wrapper_future_state_probe": {
+    "sha256": "f28a0aba291cb91bcf1e4b295e2933cceea972912f154e1295d90e45b27ace83",
+    "steps": 12,
+    "speedup": 2.763443022907884,
+    "saved_ms_per_tail_token": 0.5804322815189759,
+    "exact": {
+      "cache_before_follow": false,
+      "follow_token": true,
+      "follow_logit": true,
+      "follow_logits": true,
+      "follow_top16": true,
+      "state_after_follow": true
+    },
+    "functional_exact": true,
+    "note": "full-capacity scratch digest differs before follow-on, but the consumed prefix and complete post-follow state/logits are byte-exact"
+  },
+  "marker": {
+    "arms": {
+      "control": {
+        "sha256": "40f4fc618bd0ee33e6b3cef32fcfe4c0b92409d5988410c9de1b3a5ec7ffcbd1",
+        "complete_wall_seconds": 1.2649671286344528,
+        "cycle_wall_seconds": 0.5822488525882363,
+        "target_accept_provider_wall_seconds": 0.5142695065587759,
+        "provider_update_ms": 127.31986492872238
+      },
+      "candidate": {
+        "sha256": "3eb5db32687a953555187dc3fb68228d983517777ec6f44a0f0a385defe64acc",
+        "complete_wall_seconds": 1.2558702854439616,
+        "cycle_wall_seconds": 0.571064043790102,
+        "target_accept_provider_wall_seconds": 0.505023711360991,
+        "provider_update_ms": 75.48708468675613
+      }
+    },
+    "target_accept_provider_ranges": {
+      "control": {
+        "ranges": 4,
+        "range_wall_ms": 684.139755,
+        "kernel_ms": 631.004919,
+        "kernel_calls": 6301
+      },
+      "candidate": {
+        "ranges": 4,
+        "range_wall_ms": 669.5812,
+        "kernel_ms": 616.998509,
+        "kernel_calls": 6265
+      }
+    },
+    "removed_kernel_calls": 36,
+    "kernel_ms_saved": 14.00640999999996,
+    "range_wall_ms_saved": 14.55855500000007
+  },
+  "packets": [
+    {
+      "scope": "c5c7",
+      "name": "r1-candidate.json",
+      "arm": "candidate",
+      "sha256": "d5c80e6dd52b0ed2226c369a779398453fe37f85e39d6e768ff31fa33e10e9d8",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c5c7",
+      "name": "r1-control.json",
+      "arm": "control",
+      "sha256": "33b3f863bc0a044f87ccf1938376f635fcd886dcf535ca1e45a49e91693a7a48",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c5c7",
+      "name": "r2-control.json",
+      "arm": "control",
+      "sha256": "54b9821d84475d3468a6266d2536405337dda98602180fb11c2c32771c4e43f1",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c5c7",
+      "name": "r2-candidate.json",
+      "arm": "candidate",
+      "sha256": "ed1ead329f4e928f2318f978eb7c8a775685ad5b50648e4da37ea75949d85557",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c8",
+      "name": "r1-candidate.json",
+      "arm": "candidate",
+      "sha256": "353e5746868025a73e1d89779a1367996ec13f0b6c2bfd26dfe6b1bb88b84e76",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c8",
+      "name": "r1-control.json",
+      "arm": "control",
+      "sha256": "63059550e9420fb66cf453280db899ac3913ac18b97e0afec53ce3356dc11451",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c8",
+      "name": "r2-control.json",
+      "arm": "control",
+      "sha256": "a7b470d7cffee382e741a1305d8808da5884715d6d3628fae66ef350fdc02701",
+      "passed": true,
+      "active_allocations": 0
+    },
+    {
+      "scope": "c8",
+      "name": "r2-candidate.json",
+      "arm": "candidate",
+      "sha256": "f0519845209655ae8b30da76c3aecee1532c1f540e269977df1eeb6f25e494b5",
+      "passed": true,
+      "active_allocations": 0
+    }
+  ],
+  "commands": {
+    "gate_template": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY={0|1} PYTHONPATH=. .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths {5,6,7|8} --resident-capacity 8 --expected-mtp-widths {5,6,7|8} --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output <packet.json>",
+    "leaf": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/he-nextn-accepted-tail-kv-probe.py --steps 12 --require-cached-build --output /tmp/he-nextn-accepted-tail-kv-probe.json",
+    "unit": ".venv/bin/python -m pytest -q tests/test_qwen35_gguf_nextn_provider.py"
+  },
+  "rollback": "HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0"
+}
