@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z4_m3_c8_accept_boundary_attribution",
+  "date": "2026-09-02",
+  "status": "m3_c8_bound_collapsed",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "source_commit": "4e5d6acfacf6e68caa17859795460f0b1c42b50c",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_fingerprint": "sha256-sampled-v1:e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+  "prompt": "code_merge_intervals",
+  "runtime_profile": {
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --marker-trace --output-format csv --output-directory /tmp/q38-z2-teacher/k3-rocprof --output-file z4-m3-k3 -- .venv/bin/python /tmp/q38-z2-teacher/k3_profile_driver.py",
+  "protocol": {
+    "width": 8,
+    "candidate_budget": 3,
+    "physical_groups": 1,
+    "max_tokens": 24,
+    "cycles": 8,
+    "target_passes": 16,
+    "target_shapes": {"8": 2, "16": 14},
+    "correctness": "exact, MTP engaged, K3 budget conformant",
+    "scope": "single canonical prompt diagnostic; no throughput claim"
+  },
+  "measurement": {
+    "complete_wall_ms_per_cycle": 664.1219739976805,
+    "telemetry_accept_ms_per_cycle": 289.38463202212006,
+    "telemetry_target_enqueue_ms_per_cycle": 82.7362995,
+    "target_pass_host_window_ms_total": 3054.0829009999998,
+    "target_pass_traced_kernel_ms_total": 2938.2871660000005,
+    "target_passes": 16,
+    "target_kernel_coverage": 0.9620844784332364,
+    "target_host_minus_kernel_ms_total": 115.79573499999924,
+    "target_host_minus_kernel_ms_per_cycle": 14.474466874999905,
+    "optimistic_removable_fraction_of_complete_wall": 0.021794892266357172,
+    "required_entry_fraction": 0.285
+  },
+  "shape_attribution": {
+    "16": {"passes": 14, "host_ms_median": 200.9643995, "kernel_ms_median": 193.53779550000002, "classified_kernel_fraction": 0.9189508025578392},
+    "8": {"passes": 2, "host_ms_median": 120.290654, "kernel_ms_median": 114.37901450000001, "classified_kernel_fraction": 0.8923765163232805}
+  },
+  "decision": "Reject M3 as a C8 T0 accept-boundary mechanism. The large accept marker primarily synchronizes queued target execution; only a 2.18% complete-wall host-minus-kernel ceiling remains, far below the 28.5% entry threshold. Continue with C5/C7 confirmation before closing the shared wide mechanism.",
+  "raw_sources": {
+    "profile_raw": ["/tmp/q38-z2-teacher/k3-profile-raw.json", "016f454d0a297e5c9a090861e5f452f77214f94985ca22c82bfa48bbc58ba479"],
+    "accounting": ["/tmp/q38-z2-teacher/k3-accounting.json", "1c246d0f400e67d8bc168d54a76a239863b4e36b2c9e884b56ff5a34a11613d0"],
+    "kernel_trace": ["/tmp/q38-z2-teacher/k3-rocprof/z4-m3-k3_kernel_trace.csv", "3398eac88717f9dfcb83617705276fd957a075e7f9384a6063752a8b404537a4"],
+    "hip_api_trace": ["/tmp/q38-z2-teacher/k3-rocprof/z4-m3-k3_hip_api_trace.csv", "b2c512e5e5f84988edb0dccd17c855084961f5e65de69e6f5792cfd7bda7f9cd"],
+    "memory_copy_trace": ["/tmp/q38-z2-teacher/k3-rocprof/z4-m3-k3_memory_copy_trace.csv", "cd5464b35df015a0ddf70dc18aeaeb8ec82113e83c94a329ce78aff5d290bc91"]
+  }
+}
