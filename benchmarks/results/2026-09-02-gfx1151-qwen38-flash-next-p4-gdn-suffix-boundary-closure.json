@@ -1,0 +1,50 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p4_gdn_suffix_boundary_closure",
+  "status": "closed_suffix_27_retained_early_strict",
+  "performance_claim": false,
+  "scope": "Audit T1/T2 GDN suffix widening against independently calibrated all-category boundaries",
+  "amdahl": {
+    "W_C_O_s": "unchanged from the retained production packet; this audit credits no new saving",
+    "overlap_exclusions": "no other owner or historical run is combined",
+    "arithmetic_class": "declared production numerical GDN column-warp path",
+    "strict_fallback": "qwen4exp_sigmoid_strict_prefill on layers 0-26 and every shape miss"
+  },
+  "authority": "2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json",
+  "boundary_ladder": {
+    "all_layers_mean_kl": 0.0068,
+    "all_layers_passed": false,
+    "suffix_27_mean_kl": 0.00099,
+    "suffix_27_passed": true,
+    "suffix_44_47_mean_kl": 0.00059,
+    "decision": "27-47 is the admitted boundary; numerical deltas amplify through the recurrent chain, so 0-26 remain strict"
+  },
+  "complete_gate": {
+    "rows": 450,
+    "repeats": 3,
+    "mean_kl": 0.00028992541668820246,
+    "p95_kl": 0.0017061772312812746,
+    "p99_kl": 0.003929947436537171,
+    "max_kl": 0.007617963302857456,
+    "top1_matches": 446,
+    "scope_failures": [],
+    "repeat_determinism_passed": true,
+    "state_repeat_exact": true,
+    "task_candidate_repeat_exact": "18/18",
+    "physical_c2_ids_exact": true,
+    "teardown_bytes": 0
+  },
+  "route_proof": {
+    "expected_kernel": "qwen4_exp_gdn_prefill_columnwarps_f32_kernel",
+    "profile_selection": "qwen4exp_gdn_columnwarps_prefill",
+    "public_profile_fell_back_to_strict": false,
+    "strict_after_production_unchanged": true
+  },
+  "whole_model": {
+    "protocol": "counterbalanced eight repetitions versus then-current production, one residency per length",
+    "p508_delta_percent": -17.09,
+    "p1012_delta_percent": -15.67
+  },
+  "decision": "Close GDN suffix widening. The all-layer candidate fails, suffix 27-47 passes the complete packet and remains retained, and every rejected early layer stays on its registered strict owner. A future widening requires a materially new mechanism and fresh all-category packet."
+}
