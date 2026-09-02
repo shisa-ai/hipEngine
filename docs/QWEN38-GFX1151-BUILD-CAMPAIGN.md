@@ -288,28 +288,26 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   kernels already template on `scalar_t`, so the sibling is a new
   instantiation + wrapper, not a rewrite. The 19.8/20.1% C2/C8 wall bound
   remains an inferred portability transfer; the B2 measurement decides.
-- [x] Implement the input-F16 siblings as new four-axis variants under
+- [~] Implement the input-F16 siblings as new four-axis variants under
   `hipengine/kernels/hip_gfx1100/quant/` (shared gfx11 bodies, peer-registered
   on gfx1151 per `docs/KERNELS.md`): BF16→F16 activation cast
   workspace/ownership, unchanged weight representation, raw device-pointer
   kernel signatures, current BF16 owners as registered strict fallback.
 
-  Implemented 2026-09-02 (commit pending): the dense Q4 plain, Q4 shared-B,
-  and Q5 kernels gained a trailing `scalar_t` template parameter (default
-  uint16_t keeps every existing instantiation bit-identical) with new
-  `half_t` instantiations behind three extern-C entry points and
-  ABI-identical Python wrappers. Registered unselected on both backends
-  (`t16_wmma_prefill_fp16_in_bf16_out`,
-  `t16_wmma_prefill_shared_b_fp16_in_bf16_out`); BF16 owners remain the
-  selected strict fallback. GREEN numerics
-  (`tests/test_gguf_k_t16_dense_f16_activation_prefill.py`, 5 tests): at
-  rows72/288 on Q4 5120→6144/5120→17408/17408→5120 and Q5 6144→5120, the
-  siblings match the BF16 owners with max relative drift < 5%, top-value
-  relative drift < 5%, correlation > 0.9999, and the BF16 owners themselves
-  sit < 2% from the CPU reference. No cast-workspace kernel yet: the tests
-  stage the F16 operand host-side; the device cast + runner integration is
-  item 3 (profile + serving measurement) work. Kernel catalog updated
-  (`docs/KERNELS.md` Q4/Q5/Q6 T16 selected row).
+  Kernel arithmetic and registration completed 2026-09-02 (`c41ec1007`): the
+  dense Q4 plain, Q4 shared-B, and Q5 kernels gained a trailing `scalar_t`
+  template parameter (default `uint16_t` keeps existing instantiations
+  bit-identical), `half_t` entry points, and ABI-identical Python wrappers.
+  The variants are registered unselected on both backends; BF16 owners remain
+  the selected strict fallback. GREEN rows72/288 numerics versus the BF16
+  owners and CPU reference pass the declared T1 envelope.
+
+  Cast and runner integration landed in `d515a7772` (cache-hit repair
+  `af8440b0b`), but the screen audit found `_PREFILL_F16_WORKSPACE` is
+  module-global and is not reclaimed with a request or resident session. This
+  item is therefore partial only on the required workspace ownership/lifecycle
+  surface; the cast kernel, raw-pointer sibling ABIs, registrations, routing,
+  and strict fallback are implemented.
 - [ ] Profile the expected kernels (prebuilt `.so`, `rocprofv3`), then run the
   complete C2/C8 same-suite prefill gates and the applicable production
   numerical gate (strict-teacher mean/p95/p99/max KL and top-1 by
@@ -321,10 +319,27 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   physical gfx1151, warm JIT, 60 timed iterations/arm): the F16 siblings
   run at **0.69–0.89× their BF16 owners across all 12 cells** (Q4 plain
   0.69–0.89, Q4 shared-B 0.71–0.81, Q5 0.81–0.83) — the vectorized-load
-  mechanism is measurably real and the integration proceeds. Remaining for
-  this item: device BF16→F16 cast workspace + serving integration (env-gated
-  like RF-B1A), rocprof confirmation of the expected kernel names, then the
-  complete C2/C8 same-suite prefill gates and the retention decision.
+  mechanism is measurably real and the integration proceeds.
+
+  Serving screen complete but not retained (2026-09-02,
+  [`...b2-f16-prefill-screen.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-prefill-screen.json),
+  commit `af8440b0b`, physical `gfx1151`, production profile, all ten prompts,
+  C2/C8 D1 typed no-admission prefill, cached build): combined two-arm wall
+  falls **11.298→9.225 s at C2 (-18.35%, 1.225×)** and
+  **26.796→22.090 s at C8 (-17.56%, 1.213×)**. The independent candidate
+  repeat is -0.04%/+1.85% versus the first C2/C8 candidate. All 60 measured
+  cells pass per-arm self-exactness and typed K0 route expectations. The
+  required trace observes 1,008 BF16→F16 casts, 864 `_Float16` Q4 owners,
+  and 144 `_Float16` Q5 owners with positive durations at rows72/288.
+
+  Two binding blockers remain before the production packet: one C8
+  free-running arm cell differs across candidate processes (diagnostic until
+  strict-teacher localization, but same-schedule determinism is binding), and
+  the current grow-only workspace is module-global rather than request/session
+  lifecycle-owned. Replace that workspace with a bounded lifecycle owner,
+  rerun deterministic/isolation evidence, then run the complete strict-teacher,
+  category/heldout, BF16-relative, task, and lifecycle gates. The switch stays
+  default-off and the BF16 owners remain the strict fallback.
 
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 
