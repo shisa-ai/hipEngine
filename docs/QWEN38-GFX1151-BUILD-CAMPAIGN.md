@@ -185,6 +185,18 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   in [2,8]); one sweep at R20-R32 needs the rowtile primitive widened or a
   WMMA lm-head body with its own exactness RED — a named kernel unit before
   the B1 item-4 retention measurement.
+
+  B-full feasibility bound (2026-09-02): widening the exact planar rowtile
+  template is structurally infeasible — `float acc[ROW_TILE][kTileCols]`
+  in `q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel` needs 128 accumulator
+  VGPRs at ROW_TILE=16 and 256 at 32 (RDNA3 caps at 256 total per thread),
+  so a one-sweep body must be a new design (WMMA sweep or split-row
+  accumulation), not a template widening. Measured share after the A
+  transfer: 23.9-33.4 ms per wide pass, ~7.1 cycles/cell → an estimated
+  2.4-3.2% of one-group complete wall (derived). B1's measured retention
+  stands without it; the B-full kernel unit remains open here with this
+  named prerequisite and is deprioritized behind B2 (P1 prefill bound
+  19.8/20.1% vs B-full ~2-3%).
 - [x] `rocprofv3 --kernel-trace` smoke (prebuilt `.so`) confirming the new
   owners execute under expected names with plausible durations at R20/R24/R32.
 
