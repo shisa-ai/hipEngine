@@ -488,6 +488,13 @@ before it enters here.
   at cache key `60cf9fac…`; expected dequant/cast/rocBLAS and existing M1/M3
   kernel families are recorded before profiling.
 
+  M3 C8 attribution: [`2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json).
+  The large `accept_ms` marker primarily synchronizes queued target kernels:
+  traced target kernels cover 96.21% of target-pass host windows. The remaining
+  host-minus-kernel ceiling is 14.47 ms/cycle, or only 2.18% of complete C8
+  wall, far below the 28.5% entry threshold. M3 is rejected for C8; C5/C7
+  confirmation remains before closing the shared wide mechanism.
+
 Exit: an approved, bounded candidate plan with tests and fallback registered
 before implementation begins.
 
