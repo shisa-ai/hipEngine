@@ -4586,3 +4586,23 @@ submission grouping), re-measure C5-C8 against the current AR ceiling
 candidates, and delete the partitioner-level route check as redundant. Until
 then this path is defense-in-depth with adapter-seam and engine-loop tests and
 must not be reported as a C5-C8 performance mechanism.
+
+## RF-B1A — MTP serving target verify wmma-prefill transfer switch (2026-09-02)
+
+`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` (default off) in
+`hipengine/runtime/gguf_linear.py::mtp_serving_target_use_wmma_prefill`,
+consumed by the four MTP serving verify-job sites in
+`qwen35_gguf.py` and the packed-batch job in `qwen35_gguf_mtp2.py`. Replaces
+the July-2026 hard constant `_MTP_SERVING_TARGET_USE_WMMA_PREFILL = False`
+(9cceedbcc) that pinned verify passes to per-row GEMV owners after the
+pre-Y2-era WMMA bodies lost the small-B screen. The B1 build campaign
+(docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md) re-opens that routing: enabling the
+env routes verify rows>1 through the same retained exact prefill band owners
+(low-VGPR, shared3r1, one-sweep Q5) the prefill path uses; the measured
+B1 owner map shows the current per-row GEMV owners cost 540.6/702.0 ms per
+R20/R28 pass versus a ~265 ms derived projection under the prefill owners.
+Removal condition: after the B1 retention gates (full-suite exactness,
+production numerical gate, deterministic repeat, complete-wall
+non-regression) either flip the default and delete the env, or record the
+measured blocker and keep the constant form. Do not leave this switch
+default-off past the B1 close.
