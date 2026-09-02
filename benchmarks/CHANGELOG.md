@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next Q8 attention-gate five-pair rejection] Four-category p512 remains default-off: English beats at **1.0309x**, Japanese/mixed match, but code is noisy at **1.0067x** (95% CI **0.9862–1.0271**) with both arms above 2% CV. All logits/repeats are exact; categories cannot be averaged. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P2 reprofile/stop-boundary closure] Sequential complete packets widen MoE **32→28→27** then Q8 suffix **32** at p508 **1.096x→1.122x→1.132x→1.234x**; failed suffix/layer boundaries remain strict, and the fresh 100%-attributed p512 ledger re-ranks the queue. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-reprofile-stop-boundary-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P2 cluster-calibration closure] Existing independently screened suffix-27 MoE and suffix-32 Q8 packets pass complete 450-row/category/task/determinism/state/c2/lifecycle/manifest/trace/whole-model gates at **1.132x/1.234x p508**; layer 2 fails closed at mean KL **0.001179 > 0.001**. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-cluster-calibration-closure.json`.

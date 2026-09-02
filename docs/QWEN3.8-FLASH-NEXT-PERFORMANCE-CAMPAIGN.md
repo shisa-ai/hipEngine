@@ -1239,7 +1239,7 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       not add transcendental work to the register-heavy down publication.
       Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-gr-down-scaled-silu-rejected.json`.
-- [ ] Evaluate output-projection+GR-write composites for attention and MoE
+- [~] Evaluate output-projection+GR-write composites for attention and MoE
       boundaries, including the exact inject ordering. Start with the 36-layer
       Q8 `attn_qkv+attn_gate` boundary: preserve the current MMQ qkv and exact
       coltile gate arithmetic while sharing input/activation quantization, or
@@ -1250,7 +1250,15 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       requires true original-F32/MMQ ownership, not another tile constant.
       Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p3-attn-gate-exact-geometry-exhausted.json`.
-      GR down+inject is the secondary operation-complete target.
+      A final five-pair/category auto-clock screen rejects the current Q8 MMQ
+      attention-gate route: English beats at **1.0309x** (95% CI
+      **1.0113–1.0504**), Japanese/mixed match, but code remains noisy with
+      bound/candidate CV **2.19%/2.30%** and interval **0.9862–1.0271**. All
+      logits and repeats are exact and teardown is zero, but section 6 forbids
+      averaging categories; keep the route default-off. GR down+inject remains
+      the untested secondary operation-complete target, so this composite item
+      stays partial. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
 - [~] Extend dense Q8 MMQ/WMMA scopes earlier only through the complete
       production packet. Optimize exact coltile/rowbatch fallbacks for layers
       that reject changed arithmetic. The first default-off extension adds the
@@ -1267,9 +1275,10 @@ of primary P3 roles: GR projection/read **709.32 ms**, GDN
       **1.0002–1.0206**, 9/12 wins), every per-category interval includes 1.0,
       and alternating first-pair drift makes three categories noisy. This is
       neither a clean win nor a loss under section 6; the route stays
-      default-off pending thermal stabilization/five pairs or a larger
-      operation-complete mechanism. Evidence:
-      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-current-blocked.json`.
+      default-off. The subsequent five-pair/category screen confirms rejection:
+      code remains above 2% CV in both arms and its interval includes 1.0,
+      while the other categories cannot compensate. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p3-q8-mmq-attn-gate-fivepair-rejected.json`.
 - [x] Require each retained subunit to reduce its complete role and p512/p1024,
       not merely an isolated GEMM; re-run p4096 at the phase gate. A fresh
       stacked profile after the retained router/GR paths re-ranks P3 to GR
