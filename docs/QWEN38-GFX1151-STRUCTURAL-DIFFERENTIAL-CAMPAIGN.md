@@ -410,14 +410,14 @@ control.
   disagreement. The category, heldout, teacher-position, and draft-depth
   breakdown is in the artifact. Proposal mismatch is a measured acceptance
   mechanism and must remain separate from target cost.
-- [ ] Keep acceptance changes, draft-depth changes, and target-cost changes as
+- [x] Keep acceptance changes, draft-depth changes, and target-cost changes as
   separate mechanisms. Do not let one aggregate rate hide which mechanism
   moved.
-- [ ] Compute an optimistic complete-cycle bound for each mechanism. Continue
+- [x] Compute an optimistic complete-cycle bound for each mechanism. Continue
   only when the bound is at least **1.25x the required wall reduction** for a
   primary cell: at least 35.2% for C7, 28.5% for C8, 18.1% for C5, 14.7% for
   C2, and 31.8% for C1.
-- [ ] Use the pass budget from section 7.2 as the wide-cell entry condition
+- [x] Use the pass budget from section 7.2 as the wide-cell entry condition
   in place of W1's flatness gate. Z0 now measures a **zero target-only pass
   budget**: current one-group K3 accept/non-target time exceeds the complete
   cycle allowance before R20-R32 target work. Start the wide-cell differential
@@ -425,6 +425,17 @@ control.
   only after that mechanism has a measured complete-cycle bound. Stock HIP's
   56.222 tok/s at C8 K3 remains the existence proof that both accept and
   target costs can fit on this host.
+
+  Mechanism ledger: [`2026-09-02-gfx1151-qwen38-z2-mechanism-bounds.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z2-mechanism-bounds.json).
+  Bounds are never added. Acceptance quality clears only C1 (49.39% optimistic
+  complete-wall reduction); C2 already exceeds Laurent's measured acceptance.
+  Draft-depth clears only C2 (17.79% versus 14.7%). Target-cost clears no
+  primary cell. Removing the complete measured accept/synchronization/commit
+  boundary is a 40.38-65.18% upper bound and clears every primary cell, so
+  accept/non-target dataflow advances as the structural Z3 candidate. This
+  upper bound does not yet identify a safe implementation. The measured zero
+  target-only C5-C8 budget rejects wide target-kernel work until that dataflow
+  has a measured complete-cycle result.
 
 Exit: either a named MTP mechanism with a measured bound, or a per-cell
 blocker that supersedes the scaling campaign's broad multi-family blocker.
