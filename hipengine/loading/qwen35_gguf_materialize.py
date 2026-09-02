@@ -657,7 +657,7 @@ def materialize_qwen35_gguf_weights(
             )
         ),
         dense_q5_raw_mmq_ssm_out=(
-            os.environ.get("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
+            os.environ.get("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
             .strip()
             .lower()
             in {"1", "true", "yes", "on"}

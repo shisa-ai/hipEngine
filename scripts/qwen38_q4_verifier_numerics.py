@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate scoped Qwen3.8 C2/C3 K3 production Q4 verifier rowtiles.
+"""Evaluate scoped Qwen3.8 C2/C3/C8 production verifier arithmetic.
 
 The strict side uses FP32 recurrent state and the strict small-M/shared-B Q4
 WMMA target owners. The candidate uses FP16 recurrent state and profile-selected
