@@ -42,12 +42,14 @@ from hipengine.runtime.gguf_linear import (
     native_batch_decode_session,
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
+    q5_raw_mmq_target_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     resolve_gguf_linear_dispatch,
     resolve_q8_mmq_prefill_policy,
     set_wmma_prefill_enabled,
     target_verifier_production_q4_rowtile_session,
+    target_verifier_rowtile_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -3296,6 +3298,12 @@ _PREFILL_MMQ128_X3_GUARDED_BF16 = KernelKey(
     "gguf_q8_0",
     "mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
 )
+_Q5_RAW_MMQ_BF16 = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q5_k",
+    "mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+)
 _Q4_WMMA_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "wmma_prefill_bf16_bf16_out")
 _Q4_PREFILL_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "prefill_bf16_bf16_out")
 _Q4_GEMV_BF16 = KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "gemv_bf16_bf16_out")
@@ -3549,6 +3557,62 @@ def test_q3_mmq_prefill_session_rejects_undersized_workspace() -> None:
                 in_features=2048,
                 out_features=8192,
                 extra_keys=(_PREFILL_MMQ128_X3_GUARDED_BF16,),
+            )
+
+
+@pytest.mark.parametrize("rows", [24, 32])
+def test_q5_raw_mmq_target_session_uses_sidecar_and_bounded_workspace(
+    monkeypatch,
+    rows: int,
+) -> None:
+    quantize_calls = []
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_1_d4s4_f32_quantize_bf16",
+        lambda *args, **kwargs: quantize_calls.append((args, kwargs)),
+    )
+    library = object()
+    with (
+        target_verifier_rowtile_session(True),
+        target_verifier_production_q4_rowtile_session(True),
+        q5_raw_mmq_target_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=245_760,
+            library=library,  # type: ignore[arg-type]
+        ),
+    ):
+        key, args, kwargs = _capture_launch(
+            rows=rows,
+            in_features=6_144,
+            out_features=5_120,
+            quant_key="gguf_q5_k_t16_v1",
+            layout=LAYOUT_GGUF_Q5_K_T16,
+            extra_keys=(_Q5_RAW_MMQ_BF16,),
+        )
+    common_kwargs = {
+        "stream": 7,
+        "runtime": "runtime-sentinel",
+        "library": library,
+    }
+    assert key == _Q5_RAW_MMQ_BF16
+    assert quantize_calls == [((100, 10_000_000, rows, 6_144), common_kwargs)]
+    assert args == (10_000_000, 10, 200, rows, 6_144, 5_120)
+    assert kwargs == common_kwargs
+
+
+def test_q5_raw_mmq_target_session_rejects_undersized_workspace() -> None:
+    with q5_raw_mmq_target_session(
+        workspace_ptr=10_000_000,
+        workspace_nbytes=245_759,
+    ):
+        with pytest.raises(ValueError, match="workspace is too small"):
+            _capture_launch(
+                rows=32,
+                in_features=6_144,
+                out_features=5_120,
+                quant_key="gguf_q5_k_t16_v1",
+                layout=LAYOUT_GGUF_Q5_K_T16,
+                extra_keys=(_Q5_RAW_MMQ_BF16,),
             )
 
 

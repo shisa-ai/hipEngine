@@ -60,6 +60,8 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+    gguf_q8_1_d4s4_f32_quantize_bf16,
+    q8_1_d4s4_f32_nbytes,
     register_gguf_k_mmq_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
@@ -330,6 +332,18 @@ class _Q8MMQPrefillSession:
 _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
     "q8_mmq_prefill_session",
     default=None,
+)
+
+
+@dataclass(frozen=True)
+class _Q5RawMMQTargetSession:
+    workspace_ptr: int
+    workspace_nbytes: int
+    library: ctypes.CDLL | None
+
+
+_q5_raw_mmq_target_session: ContextVar[_Q5RawMMQTargetSession | None] = (
+    ContextVar("q5_raw_mmq_target_session", default=None)
 )
 
 
@@ -1007,6 +1021,32 @@ def q5_f32_ordered_prefill_session(
         yield
     finally:
         _q5_f32_ordered_prefill_session.reset(token)
+
+
+@contextlib.contextmanager
+def q5_raw_mmq_target_session(
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+    library: ctypes.CDLL | None = None,
+    enabled: bool = True,
+) -> Iterator[None]:
+    """Expose bounded Q8_1 storage for the opt-in C8 recurrent-Q5 owner."""
+
+    selected = None
+    if enabled:
+        if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= 0:
+            raise ValueError("Q5 raw MMQ target session requires a device workspace")
+        selected = _Q5RawMMQTargetSession(
+            workspace_ptr=int(workspace_ptr),
+            workspace_nbytes=int(workspace_nbytes),
+            library=library,
+        )
+    token = _q5_raw_mmq_target_session.set(selected)
+    try:
+        yield
+    finally:
+        _q5_raw_mmq_target_session.reset(token)
 
 
 @contextlib.contextmanager
@@ -2441,6 +2481,13 @@ def _native_rowtile_chunk_groups(
     """
 
     rows = int(rows)
+    if _q5_raw_mmq_target_eligible(
+        weight,
+        rows=rows,
+        in_features=in_features,
+        out_features=out_features,
+    ):
+        return None
     if not _ROWTILE_MAX_ROWS < rows < _NATIVE_ROWTILE_CHUNK_MAX_ROWS:
         return None
     resolved = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
@@ -2641,7 +2688,12 @@ def launch_gguf_linear(
     raw_k_rowbatch = raw_k_prefill_rowbatch()
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
+    q5_raw_mmq_session = _q5_raw_mmq_target_session.get()
     q5_f32_ordered_session = _q5_f32_ordered_prefill_session.get()
+    try:
+        has_raw_weight_sidecar = int(weight.allocation("raw").tensor.ptr) > 0
+    except KeyError:
+        has_raw_weight_sidecar = False
     raw_weight_ptr = (
         int(weight.allocation("raw").tensor.ptr)
         if weight.spec.layout == LAYOUT_RAW_GGUF
@@ -2667,6 +2719,7 @@ def launch_gguf_linear(
         registered_variant,
         bool(_native_batch_decode_session_enabled),
         None if mmq_session is None else id(mmq_session),
+        None if q5_raw_mmq_session is None else id(q5_raw_mmq_session),
         (
             None
             if q5_f32_ordered_session is None
@@ -2679,6 +2732,7 @@ def launch_gguf_linear(
             else id(q6_f16_session)
         ),
         raw_weight_ptr,
+        has_raw_weight_sidecar,
     )
     cached = _DISPATCH_RESOLVE_CACHE.get(cache_key)
     if cached is None:
@@ -2831,6 +2885,13 @@ def launch_gguf_linear(
                     )
                 )
             ),
+        )
+        dispatch = _q5_raw_mmq_target_dispatch(
+            dispatch,
+            weight=weight,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
         )
         _ensure_linear_kernel_registered(dispatch.key)
         fn = resolve(
@@ -6046,6 +6107,51 @@ def _launch_t16_f16_rocblas(
     )
 
 
+def _launch_t16_q5_raw_mmq(
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    session = _q5_raw_mmq_target_session.get()
+    if session is None:
+        raise RuntimeError("Q5 raw MMQ launch escaped its target session")
+    required = q8_1_d4s4_f32_nbytes(rows, in_features)
+    if required > session.workspace_nbytes:
+        raise ValueError(
+            "Q5 raw MMQ workspace is too small: "
+            f"required={required}, available={session.workspace_nbytes}"
+        )
+    raw_weight_ptr = int(weight.allocation("raw").tensor.ptr)
+    runtime = kwargs.get("runtime") or get_hip_runtime()
+    stream = int(kwargs.get("stream", 0))
+    mmq_kwargs = {
+        "stream": stream,
+        "runtime": runtime,
+        "library": session.library,
+    }
+    gguf_q8_1_d4s4_f32_quantize_bf16(
+        x_ptr,
+        session.workspace_ptr,
+        rows,
+        in_features,
+        **mmq_kwargs,
+    )
+    fn(
+        session.workspace_ptr,
+        raw_weight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+
+
 def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     session = _q8_mmq_prefill_session.get()
     if session is None:
@@ -6150,6 +6256,66 @@ def _pack8_decode_dispatch(
             dispatch.abi,
         )
     return dispatch
+
+
+def _q5_raw_mmq_target_eligible(
+    weight: GGUFDeviceWeight,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> bool:
+    if _q5_raw_mmq_target_session.get() is None or not (
+        weight.spec.layout == LAYOUT_GGUF_Q5_K_T16
+        and weight.spec.quant_key == "gguf_q5_k_t16_v1"
+        and int(rows) in {24, 32}
+        and (int(in_features), int(out_features)) == (6_144, 5_120)
+    ):
+        return False
+    try:
+        weight.allocation("raw")
+    except KeyError:
+        return False
+    return True
+
+
+def _q5_raw_mmq_target_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    weight: GGUFDeviceWeight,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select the opt-in operation-complete raw-Q5 MMQ target owner."""
+
+    session = _q5_raw_mmq_target_session.get()
+    if session is None or not (
+        dispatch.abi == "t16"
+        and dispatch.key.quant == "gguf_q5_k_t16_v1"
+        and _q5_raw_mmq_target_eligible(
+            weight,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+    ):
+        return dispatch
+    required = q8_1_d4s4_f32_nbytes(rows, in_features)
+    if required > session.workspace_nbytes:
+        raise ValueError(
+            "Q5 raw MMQ workspace is too small: "
+            f"required={required}, available={session.workspace_nbytes}"
+        )
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        "gguf_q5_k",
+        "mmq32_q8_1_d4s4_f32_bf16_bf16_out",
+    )
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, "t16_q5_raw_mmq")
 
 
 def _q8_mmq_prefill_dispatch(
@@ -6851,6 +7017,7 @@ _LAUNCH_ABI = {
     "pack8": _launch_pack8,
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
+    "t16_q5_raw_mmq": _launch_t16_q5_raw_mmq,
     "raw_k_f32_ordered": _launch_raw_k_f32_ordered,
     "raw_k_f32_ordered_activation_tile_k_row": (
         _launch_raw_k_f32_ordered_activation_tile_k_row
@@ -6902,6 +7069,7 @@ __all__ = [
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",
+    "q5_raw_mmq_target_session",
     "q6_t16_f16_rocblas_prefill_session",
     "t16_f16_rocblas_prefill_session",
     "q8_mmq_prefill_session",

@@ -266,6 +266,7 @@ def plan_qwen35_gguf_materialization(
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_raw_mmq_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -300,6 +301,7 @@ def plan_qwen35_gguf_materialization(
             dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
             dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
@@ -317,6 +319,7 @@ def plan_qwen35_gguf_materialization(
             dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
             dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
@@ -653,6 +656,19 @@ def materialize_qwen35_gguf_weights(
                 False,
             )
         ),
+        dense_q5_raw_mmq_ssm_out=(
+            os.environ.get("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"}
+            and bool(
+                backend_package_capability(
+                    backend,
+                    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
+                    False,
+                )
+            )
+        ),
         dense_q5_t16_ssm_out_08b=bool(
             backend_package_capability(
                 backend,
@@ -827,6 +843,7 @@ def _plan_layer(
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_raw_mmq_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -843,6 +860,7 @@ def _plan_layer(
             dense_q4_qmicro_t16_gate_up=dense_q4_qmicro_t16_gate_up,
             dense_q4_t16_attn_q_08b=dense_q4_t16_attn_q_08b,
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
+            dense_q5_raw_mmq_ssm_out=dense_q5_raw_mmq_ssm_out,
             dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
             dense_q5_t16_qkv=dense_q5_t16_qkv,
             dense_q5_t16_h5120=dense_q5_t16_h5120,
@@ -987,6 +1005,7 @@ def plan_qwen35_gguf_weight_spec(
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_raw_mmq_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -1003,6 +1022,7 @@ def plan_qwen35_gguf_weight_spec(
         dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
         dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+        dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
         dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
         dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
         dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
@@ -1023,6 +1043,7 @@ def _spec_for_tensor(
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
+    dense_q5_raw_mmq_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -1156,7 +1177,12 @@ def _spec_for_tensor(
                 source=tensor,
                 quant_key="gguf_q5_k_t16_v1",
                 layout=LAYOUT_GGUF_Q5_K_T16,
-                allocation_names=("tiles",),
+                allocation_names=(
+                    ("tiles", "raw")
+                    if dense_q5_raw_mmq_ssm_out
+                    and _is_dense_q5_t16_ssm_out_tensor(slot_path, tensor)
+                    else ("tiles",)
+                ),
             )
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
             if _gguf_selected_down_raw_enabled_for("q5") and _is_selected_down_expert_tensor(slot_path, tensor):

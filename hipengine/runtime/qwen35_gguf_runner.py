@@ -315,6 +315,9 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weights,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
+    build_gguf_k_mmq_prefill,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import (
     build_gguf_q6_k_f16_rocblas_prefill,
 )
@@ -342,6 +345,7 @@ from hipengine.runtime.gguf_linear import (
     native_batch_decode_session,
     q4_pack8_dual_wmma_silu_prefill_session,
     q4_t16_unequal_pair_prefill_session,
+    q5_raw_mmq_target_session,
     q6_t16_f16_rocblas_prefill_session,
     q8_mmq_prefill_session,
     q8_t16_dual_wmma_prefill_session,
@@ -10815,6 +10819,7 @@ _GGUF_VERIFY_CAPTURE_SCORE_PREFILL_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_SCORE_PR
 _GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS_ENV = "HIPENGINE_GGUF_PACKED_VERIFY_GPU_STAGE_TIMINGS"
 _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS"
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
+_GGUF_C8_Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
 _GGUF_PREFILL_DEVICE_METADATA_ENV = "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"
 _GGUF_PREFILL_ROUTER_SELECT_THREADS_ENV = "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS"
 _QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
@@ -12717,6 +12722,16 @@ def _gguf_moe_graph_enabled() -> bool:
     return _env_flag(_GGUF_MOE_GRAPH_ENV, False)
 
 
+def _gguf_c8_q5_raw_mmq_enabled(backend: str) -> bool:
+    return _env_flag(_GGUF_C8_Q5_RAW_MMQ_ENV, False) and bool(
+        backend_package_capability(
+            backend,
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
+            False,
+        )
+    )
+
+
 def _q8_1_workspace_bytes(rows: int, in_features: int) -> int:
     rows = int(rows)
     in_features = int(in_features)
@@ -14428,6 +14443,7 @@ class Qwen35GGUFResidentSession:
     _q6_f16_rocblas_prefill_library: object | None = field(default=None, init=False)
     _q6_f16_rocblas: Rocblas | None = field(default=None, init=False)
     _q8_mmq_prefill_library: object | None = field(default=None, init=False)
+    _q5_raw_mmq_target_library: object | None = field(default=None, init=False)
     _q8_mmq_risk_count: object | None = field(default=None, init=False)
     _q8_mmq_risk_indices: object | None = field(default=None, init=False)
     _prefill_flight_recorder: PrefillFlightRecorder | None = field(default=None, init=False)
@@ -17647,6 +17663,26 @@ class Qwen35GGUFResidentSession:
             library=getattr(self, "_q8_mmq_prefill_library", None),
         )
 
+    def _q5_raw_mmq_target_context(self, scratch):
+        """Expose the staged C8 recurrent-Q5 MMQ workspace to linear dispatch."""
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        enabled = _gguf_c8_q5_raw_mmq_enabled(self.runner.backend)
+        if enabled and self._q5_raw_mmq_target_library is None:
+            self._q5_raw_mmq_target_library = build_gguf_k_mmq_prefill(
+                load=True,
+                compiler_version=self.compiler_version,
+                require_cached=self.require_cached_build,
+            )
+        workspace = scratch.moe_q8_1
+        return q5_raw_mmq_target_session(
+            workspace_ptr=int(workspace.ptr),
+            workspace_nbytes=int(workspace.nbytes),
+            library=self._q5_raw_mmq_target_library,
+            enabled=enabled,
+        )
+
     def _drain_prefill_queue(
         self,
         boundary: str,
@@ -18732,6 +18768,7 @@ class Qwen35GGUFResidentSession:
             target_verifier_production_q4_rowtile_session(
                 self.target_verifier_production_q4_rowtile
             ),
+            self._q5_raw_mmq_target_context(packed_scratch),
         ):
             for layer_id, layer_type in enumerate(self.runner.weights.config.layer_types):
                 layer_start = time.perf_counter()

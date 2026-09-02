@@ -74,6 +74,18 @@ should be removed or collapsed.
   same-build rollback. Remove the environment override after the next stable
   milestone audit; keep the exact padded composition available.
 
+## 2026-09-02 gfx1100 C8 raw-Q5 MMQ staging — open
+
+- `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=1` currently stages a gfx1100-only physical
+  R24/R32 `ssm_out` route. It retains raw sidecars beside exact T16 residents,
+  quantizes each layer input into bounded scratch, and launches the registered
+  operation-complete raw Q5 MMQ; omitted/false, peer backends, shape misses,
+  missing sidecars, and workspace misses retain the exact grouped T16 owner.
+- Remove the staging flag and sidecar branch if the complete C8 L2-L5 gate
+  rejects the route. If retained, promote the capability default and turn the
+  flag into a temporary same-build opt-out; remove that opt-out after the next
+  stable milestone while preserving the registered strict fallback.
+
 ## 2026-09-02 gfx1100 grouped Q5 R8 C8 rollback — open
 
 - Exact grouped-R8 now owns physical C8/R32 by default; explicit
