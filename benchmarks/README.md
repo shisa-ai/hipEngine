@@ -118,10 +118,10 @@ standardized complete-wall server protocol.
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | **68.513** | **76.554** | 76.443 | 85.806 |
+| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | **68.513** | **76.554** | **81.641** | 85.806 |
 | llama.cpp current HIP | 32.553 | 41.042 | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
 | llama.cpp Laurent HIP | 32.733 | 40.808 | 45.947 | 51.054 | 61.013 | 74.628 | **78.281** | **101.072** |
-| hipEngine K3 / published AR | 1.5150x | 1.3658x | 1.0439x | 0.8769x | 0.9651x | 0.9936x | 0.9408x | 1.0222x |
+| hipEngine K3 / published AR | 1.5150x | 1.3658x | 1.0439x | 0.8769x | 0.9651x | 0.9936x | 1.0047x | 1.0222x |
 
 **Prefill**
 
@@ -138,7 +138,7 @@ current hipEngine prefill C1-C3 and K3 cells roll forward later retained exact
 same-build gates. All named source gates pass their trajectory, ownership,
 category/heldout, provenance, and clean-drain contracts. hipEngine uses BF16 KV;
 the peers use F16 KV. K3 is forced and measures an engine path, not the
-capacity-8 automatic product route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C8 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json).
+capacity-8 automatic product route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C7 retention`](results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json); [`latest C8 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json).
 
 On Strix Halo, Qwen3.8 `Q4_K_M` automatic MTP retains strict C1/B3 at
 **15.609 vs 9.807 tok/s (1.5916x)** and production C2/K3 at **17.031 tok/s

@@ -158,6 +158,27 @@ trail AR, so this is a retained production-profile implementation association,
 not an automatic serving promotion: C3 remains K0. Authorization is D24-only.
 Evidence: [`production C3 rowtiles`](../benchmarks/results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json).
 
+### 2.6 Qwen3.8 gfx1100 production C7 periodic-strict fused R28 decision
+
+The W7900 Qwen3.8 `Q4_K_M` manifest qualifies one C7/K3/R28 T2 gate/up
+schedule: layers 0/8/…/64 retain exact grouped-rowtile projections plus
+standalone SiLU, while the other 56 of 65 layers use the fused row32 WMMA
+sibling. The fixed schedule is model/layer/shape policy, never prompt-, token-,
+or candidate-conditioned. Strict, omitted-profile behavior, explicit rollback,
+rows other than 28, and scope misses retain exact registered fallbacks.
+
+The final strict-teacher packet covers 1,922 full-vocabulary rows over all ten
+category+heldout prompts. Mean/p95/p99/max KL is
+`0.0000557/0.0003267/0.0008558/0.0015884`, top-1 is 100% globally and in every
+category/shape/transition scope, and three candidate runs are bit-exact. The
+tracked-clean counterbalanced server gate improves **76.510 -> 81.641 tok/s
+(+6.71%)**, wins all 20 prompt-order cells and every category/heldout slice,
+and preserves all generated IDs, acceptance sequences, and lifecycle
+accounting. The production/strict manifest hashes are
+`a7e5ad33b4af17707b1a375ecb706c369b7f0f35e6532456dd507ef13be1bc35` and
+`52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`.
+Evidence: [`periodic-strict fused R28`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json).
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It
