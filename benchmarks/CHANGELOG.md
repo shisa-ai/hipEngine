@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 verifier readiness] The measured **87.652-ms/row** owner cannot yet become a rows<=8 verifier: Qwen4Exp has no block-verifier API, its prefill primitive commits all rows and scores only the last, head/logit storage is rows=1, and state snapshots cross the host. Split output storage, device transactions, deferred commit, and rows2-8 RED gates; do not transplant the different Qwen3.5 ABI. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 MTP phase census] Four-category B2/tg8 measures **18 cycles / 34 proposals / 28 target rows**: serial target verification owns **2,454.264 ms total / 87.652 ms per row**, proposal wall is **320.013 ms**, and host acceptance plus cursor repair total **1.306 ms**. Cached tracing proves target and Q8 sidecar routes; no graph runs. Diagnostic only; no speed promotion. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 Q8-KV readiness] Q8-KV remains blocked: exact ordered `code-p4096` is **12.868 tok/s**, only **0.678x** repeat-valid upstream BF16-KV, and Qwen4Exp has no quantized-KV storage/write/attention registry family. Existing model/backend Q8 rows are not substituted. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-q8-kv-readiness.json`.

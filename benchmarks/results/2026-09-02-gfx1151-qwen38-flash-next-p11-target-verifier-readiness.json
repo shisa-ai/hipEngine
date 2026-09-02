@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_target_verifier_readiness",
+  "status": "blocked_missing_qwen4exp_block_verifier_abi",
+  "performance_claim": false,
+  "source": {
+    "head": "bc976b10d",
+    "target_runner": "hipengine/runtime/qwen4_exp_runner.py",
+    "reference_runner": "hipengine/runtime/qwen35_gguf_runner.py"
+  },
+  "amdahl_declaration": {
+    "W": {
+      "value_seconds": 51.711070590004965,
+      "scope": "retained 10-prompt short MTP suite",
+      "artifact": "benchmarks/results/2026-08-28-gfx1151-qwen38-flash-next-mtp-fullsuite-short.json"
+    },
+    "C": {
+      "value_seconds": 49.383127938017424,
+      "scope": "same retained suite true AR"
+    },
+    "O": {
+      "value_ms_per_target_verify_row": 87.65228492640225,
+      "scope": "P11 four-category B2/tg8 target.step host boundary"
+    },
+    "s": null,
+    "zero_cost_ceiling": "not assigned until an executable Qwen4Exp block-verifier candidate exists",
+    "arithmetic_class": "candidate not implemented; future verifier must declare T0 exact or a qualified production class",
+    "strict_fallback": "serial target.step",
+    "overlap_exclusions": [
+      "target.step includes target hidden export",
+      "proposal wall is disjoint from target verification",
+      "no Qwen4Exp verifier graph exists"
+    ]
+  },
+  "audit": {
+    "qwen4exp_verify_target_block_defined": false,
+    "qwen4exp_multirow_primitive": "Qwen4ExpGGUFResidentModelRunner._prefill_chunk",
+    "qwen4exp_multirow_limit": "prefill_chunk_size, not verifier rows<=8",
+    "qwen35_reference_methods": [
+      "verify_target_block",
+      "verify_target_block_serial_exact",
+      "verify_target_block_native_cycle"
+    ],
+    "blocking_deltas": [
+      "_prefill_chunk mutates and commits every GDN, QSA, PLE, KV, index, and host PLE-hash row; it has no deferred accepted-prefix commit",
+      "_prefill_chunk returns one last-row residual pointer and optional hidden rows but does not score or return every target row",
+      "Qwen4Exp head scratch and logits buffers have rows=1 capacity",
+      "Qwen4ExpRunnerSnapshot copies recurrent state device-to-host and restores host-to-device, so it cannot provide a device-resident transaction",
+      "Qwen3.5 verifier code depends on a different linear-state, layer, and graph ABI and cannot be registered against Qwen4Exp unchanged"
+    ],
+    "required_subunits": [
+      "add rows<=8 target residual/head/logit buffers and per-row output ownership",
+      "add device-resident GDN/PLE state snapshots plus QSA KV/index cursor transaction ownership",
+      "add deferred accepted-prefix state commit or exact state-row capture",
+      "add serial-reference RED coverage for rows 2 through 8 before provider wiring",
+      "only then profile and build a Qwen4Exp verifier graph"
+    ]
+  },
+  "decision": {
+    "ready_to_wire_public_provider": false,
+    "reuse_qwen35_verifier": false,
+    "next_independent_owner": "P11 device-output cleanup can proceed independently while the verifier ABI is built in separate RED-gated subunits",
+    "reason": "No executable Qwen4Exp block-verifier candidate exists, so a speedup or same-session A/B cannot be measured honestly."
+  }
+}

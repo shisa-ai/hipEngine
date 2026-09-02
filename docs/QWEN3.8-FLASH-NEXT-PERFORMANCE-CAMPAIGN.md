@@ -1847,9 +1847,21 @@ external MTP rows.
       zero-cost-head upper bound is only **0.97% complete wall / 0.964x AR**, so
       reject unchanged hot-head work if verifier progress does not raise its
       Amdahl ceiling.
-- [ ] Build the rows<=8 batch-invariant target verifier before raising budget.
+- [~] Build the rows<=8 batch-invariant target verifier before raising budget.
       Its per-row decode arithmetic, GDN/QSA/PLE state, and outputs must equal
-      serial target verification under the declared contract.
+      serial target verification under the declared contract. Readiness audit:
+      Qwen4Exp has no `verify_target_block` API. Its `_prefill_chunk` commits all
+      rows, scores only the final residual, has rows=1 head/logit capacity, and
+      cannot defer accepted-prefix state. `Qwen4ExpRunnerSnapshot` also copies
+      recurrent state through the host. Qwen3.5's mature rows<=8 verifier uses a
+      different linear-state/layer/graph ABI and is not reusable unchanged.
+      Split this into per-row output storage, device state transactions,
+      deferred accepted-prefix commit, and rows2-8 serial-reference RED gates
+      before provider wiring. `W=51.711 s`, `C=49.383 s`, and the measured
+      target-step owner is `O=87.652 ms/row`; `s` remains unknown because no
+      executable Qwen4Exp candidate exists. Strict fallback is serial
+      `target.step`. Device-output cleanup remains independent. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json`.
 - [ ] Add a rejection-depth RED sweep before any budget work. Force a rejection
       at every draft depth `d` in `[1, n_max]`, at the first, middle, and last
       position of a verify batch, and with a batch shorter than the ring depth;
