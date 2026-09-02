@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next campaign blocked closure] Punchlist closes **69→17** items after all independent families are retained/rejected/blocked. Current production is deterministic and lifecycle-clean, but section 6 remains open: comparator five-pair variance, HIP/Vulkan parity, matched 16K/64K rows, 4K MTP, Q8-KV prerequisites, and EXP-016 source block closure. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-campaign-blocked-closure.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P7 four-column GDN decode] Parent-exact four-wave CTA packing cuts transposed recurrence blocks **6,144→1,536** but loses the leaf **0.04817→0.04856 ms (0.9919x)** and complete prepare+recurrence+norm-gate **0.06534→0.06571 ms (0.9944x)**. Remove candidate; CTA reduction without state reuse does not pay. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p7-gdn-col4-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P12 five-pair comparator] Clean upstream Vulkan `f1793c1c4` / binary `01c72085…` completes 60 deterministic exact-fixture samples at **248.67/23.71, 268.98/20.73, 279.51/18.67 pp/tg**, but max per-case CV is **9.24%/4.73%/1.68%**. p512/p1024 fail the ≤2% closure rule; no target is frozen and the redundant production arm was stopped. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-fivepair-comparator-blocked.json`.

@@ -2109,8 +2109,15 @@ Goal: make the complete result reproducible, default, and reversible.
       verifier oracles/transactions, and graph fallbacks because no replacement
       is default. The broader campaign's rejected/default-off selectors remain
       tracked in `docs/REFACTOR.md`; final cleanup stays partial.
-- [ ] Commit every validated logical unit; campaign closure is its own final
-      decision/worklog commit.
+- [x] Commit every validated logical unit; campaign closure is its own final
+      decision/worklog commit. This final decision is **blocked closure**, not
+      section-6 success: independent work is exhausted with 17 prerequisite or
+      aggregate items open. Current short/default correctness passes, but final
+      five-pair comparator stability, HIP/Vulkan parity, matched 16K/64K
+      comparators, 4K MTP capacity/economics, Q8-KV prerequisites, and external
+      EXP-016 source do not. Resume only when a terminal prerequisite changes,
+      then re-profile before implementation. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-campaign-blocked-closure.json`.
 
 ## 6. Acceptance and closure
 
