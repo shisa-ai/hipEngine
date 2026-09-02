@@ -1699,8 +1699,16 @@ warm GPU-kernel claims.
 - [ ] For prefill, overlap next-chunk prefetch/dequant with current GPU work
       using the existing two-buffer ownership plus explicit event/thread
       lifetime. Decode remains demand-driven unless a real lookahead exists.
-- [ ] Add a safe isolated cold-cache protocol and a warm steady protocol. Do
-      not use one process's warming repetitions as independent samples.
+- [x] Add a safe isolated cold-cache protocol and a warm steady protocol. Do
+      not use one process's warming repetitions as independent samples. The
+      retained driver applies one initial file-scoped `WILLNEED` for warm steady;
+      cold closes/remaps the PLE mapping and reapplies mapping+file `DONTNEED`
+      before every warmup and measured request, only over the 28.8-GB PLE tensor
+      range. It never uses global `drop_caches` or treats warming repetitions as
+      independent samples. Existing code-p512 evidence is deterministic and
+      output-equal at **91.676 warm versus 56.214 cold pp/s**, with zero teardown.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-cache-protocol-closure.json`.
 - [ ] Measure lazy on/off, cold/warm p512/p1024/p4096 and tg128, page reads,
       RSS/file versus anonymous memory, available/free/swap, and exact output
       hashes.

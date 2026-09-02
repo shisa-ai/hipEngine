@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 cache protocol closure] Closed the existing isolated cold-remap/DONTNEED and warm-steady protocol prerequisite: tensor-scoped only, no global drop_caches, separate samples, deterministic equal outputs, and zero teardown. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-cache-protocol-closure.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 direct staging rejected] Per-row direct-to-ring IQ4_NL dequant removes the final copy but loses all 20 four-category p512 pairs (**111.698→113.594 s, 0.9833x**) and the first exact tg128 pair (**0.9861x**); candidate and flag removed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-direct-staging-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 random prefetch mechanism] Added default-off off/auto/on mmap advice paired with page-aligned deduplicated adjacent-merged WILLNEED ranges; real warm code-p512 auto selects random advice with canonical output and zero teardown. No speed policy is promoted from the instrumented smoke. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-random-prefetch.json`.
