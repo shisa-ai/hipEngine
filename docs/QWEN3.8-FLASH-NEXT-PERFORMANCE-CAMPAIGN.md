@@ -1471,8 +1471,15 @@ direct-launch surface before graph capture hides it.
 - [ ] Tune Q4/Q5/Q8 c1 owners on rotating actual weights for coalescing,
       physical-lane contraction, occupancy, and operation-complete epilogues;
       do not force WMMA onto M=1.
-- [ ] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
-      replace them only with same-role evidence.
+- [x] Preserve the exact fused Q5 weighted-down and Q4 dual+SiLU fallbacks;
+      replace them only with same-role evidence. Current c1 dispatch still
+      resolves Q5_1 `selected_weighted_sum_logical256_t64_bf16_bf16_out` with
+      the exact selected-projection+ordered-weighted-sum chain on misses, while
+      the production Q4 DP4A scope names
+      `selected_dual_silu_logical128_t64_gemv_bf16_bf16_out` as strict
+      fallback. Focused registry/profile and fused-vs-unfused bit tests pass
+      **9/9**. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-fallback-preservation.json`.
 - [x] After every retained fusion, update direct launches, graph launches,
       kernel rows, API time, copy bytes, and context-conditioned tg128 wall.
       The retained ordered-QSA unit refreshes this census; the requirement

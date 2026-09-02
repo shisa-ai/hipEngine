@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next c1 fallback preservation] Exact Q4 dual+SiLU and Q5_1 weighted-down fallbacks remain registered; profile/registry and fused-vs-unfused bit-contract checks pass **9/9**. No dispatch or default changed. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p6-c1-fallback-preservation.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next calibrated GDN suffix closure] All-layer column-warp widening fails at mean KL **0.0068**; suffix 27–47 passes at **0.00099** plus the complete 450-row/task/state/c2/lifecycle/route/whole-model packet, improving p508/p1012 wall **17.09%/15.67%**. Layers 0–26 remain strict. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-suffix-boundary-closure.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next exact GDN campaign closure] Retained register-sharded column warps stay scoped to layers 27–47; early prepared strict is **0.9967x**, four-block columns fail production-width output parity despite **1.0328x**, and transposed-state integration regresses to **0.883x**. Early layers remain strict. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-gdn-exact-campaign-closure.json`.
