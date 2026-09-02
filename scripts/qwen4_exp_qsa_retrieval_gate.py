@@ -74,6 +74,29 @@ def build_retrieval_prompt(tokenizer: object, *, target_tokens: int) -> tuple[st
     return prompt, needle
 
 
+def _selection_locality(
+    selected_positions: np.ndarray, *, kv_row_bytes: int
+) -> dict[str, int | float]:
+    selected = np.sort(np.asarray(selected_positions, dtype=np.int64))
+    if selected.size == 0:
+        return {
+            "selected_position_span": 0,
+            "selected_contiguous_pairs": 0,
+            "selected_gap_mean": 0.0,
+            "selected_gap_max": 0,
+            "selected_kv_pages_per_layer": 0,
+        }
+    gaps = np.diff(selected)
+    selected_pages = np.unique(selected * int(kv_row_bytes) // 4096)
+    return {
+        "selected_position_span": int(selected[-1] - selected[0] + 1),
+        "selected_contiguous_pairs": int(np.count_nonzero(gaps == 1)),
+        "selected_gap_mean": float(np.mean(gaps)) if gaps.size else 0.0,
+        "selected_gap_max": int(np.max(gaps)) if gaps.size else 0,
+        "selected_kv_pages_per_layer": int(selected_pages.size),
+    }
+
+
 def _read_llama_tap(path: Path) -> tuple[list[int], np.ndarray]:
     payload = path.read_bytes()
     if len(payload) < 32:
@@ -97,6 +120,10 @@ def main() -> int:
     parser.add_argument("--teacher-logits", type=Path)
     parser.add_argument("--teacher-tokens", type=Path)
     parser.add_argument("--llama-topk-tap", type=Path)
+    parser.add_argument(
+        "--depth-profile", action="store_true",
+        help="Record structural QSA locality, PLE I/O, graph reuse, and KV-byte census",
+    )
     args = parser.parse_args()
 
     info = load_gguf_index(discover_gguf_files(args.model)[0])
@@ -113,6 +140,13 @@ def main() -> int:
         )
         runner = generator.runner
         config = runner.config
+        graph_stats_before = (
+            dict(runner.moe_graph_cache.stats)
+            if args.depth_profile and runner.moe_graph_cache is not None
+            else None
+        )
+        if args.depth_profile:
+            runner.resident.ple_table.enable_telemetry()
         prompt, needle = build_retrieval_prompt(
             generator.tokenizer, target_tokens=args.target_tokens
         )
@@ -212,6 +246,34 @@ def main() -> int:
         native = selected_by_layer[int(layer)][: cpu_selection.size].copy()
         native.sort()
         score_count = prepared.block_starts.size
+        depth_profile = None
+        if args.depth_profile:
+            attention = runner.attention_states[binding.qsa_state_index]
+            allocated_positions = len(attention.block_host) * int(attention.block_size)
+            row_bytes = (
+                int(attention.key_cache.nbytes) + int(attention.value_cache.nbytes)
+            ) // allocated_positions
+            locality = _selection_locality(native, kv_row_bytes=row_bytes)
+            live_kv_bytes = sum(
+                (
+                    int(item.key_cache.nbytes) + int(item.value_cache.nbytes)
+                )
+                * len(token_ids)
+                // int(item.max_positions)
+                for item in runner.attention_states
+            )
+            depth_profile = {
+                "score_rows": int(score_count),
+                "score_rows_over_context": float(score_count / len(token_ids)),
+                "selected_tokens": int(native.size),
+                **locality,
+                "selected_kv_row_bytes_per_layer": int(row_bytes),
+                "live_kv_bytes_all_qsa_layers": int(live_kv_bytes),
+                "allocated_kv_bytes_all_qsa_layers": int(sum(
+                    int(item.key_cache.nbytes) + int(item.value_cache.nbytes)
+                    for item in runner.attention_states
+                )),
+            }
         batched_selection = os.environ.get(
             "HIPENGINE_QWEN4_EXP_QSA_BATCHED_SELECTION", "1"
         ) not in {"", "0", "false", "False"}
@@ -287,6 +349,15 @@ def main() -> int:
         text = generator.tokenizer.decode(generated, skip_special=False)
         answer = text.split("</think>", 1)[-1].replace("<|im_end|>", "").strip()
         peak = memory_stats()
+        if depth_profile is not None:
+            graph_stats_after = (
+                dict(runner.moe_graph_cache.stats)
+                if runner.moe_graph_cache is not None
+                else None
+            )
+            depth_profile["graph_stats_before"] = graph_stats_before
+            depth_profile["graph_stats_after"] = graph_stats_after
+            depth_profile["ple_telemetry"] = runner.resident.ple_table.telemetry()
         generator.close()
         generator = None
         after = memory_stats()
@@ -321,6 +392,7 @@ def main() -> int:
                 "cutoff_margin": cutoff_margin,
             },
             "llama_index_tap": llama_tap,
+            "depth_profile": depth_profile,
             "transactional": {
                 "repeat_exact": repeat_exact,
                 "abandoned_token": int(abandoned),

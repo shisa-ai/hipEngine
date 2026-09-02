@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 structural depth census] Natural 4K/16K/64K confirms context/4 score rows, fixed 2,048-token selected attention, 2,048-byte K+V rows, 1,024 selected 4-KiB pages/layer, fixed 3,143,680-byte PLE publication, and 48/14,688 graph capture/replay counts; all correctness/control/lifecycle gates pass. Diagnostic only; no throughput claim. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-structural-depth-census.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P10 current retrieval ladder] Current production chunk-512 natural 4K/16K/64K reaches **53.08/51.48/48.02 prompt tok/s**; every depth has exact retrieval, all 12 needle-selected layers, exact 2,048-position CPU selector control, transaction isolation, and zero teardown. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-natural-retrieval-current.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 load drop-behind] Added default-off post-device-copy DONTNEED for 1,223 hot tensors, excluding lazy PLE/validation readers. Exact one-shot/reload controls show ~243/245 MB pre-request RSS but 13.75/15.61 GB request rereads and ~6.1K major faults; retain only for explicit one-shot serving. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-load-drop-behind.json`.
