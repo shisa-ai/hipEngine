@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 depth-budget admission] Do not fit budgets: public draft/provider capacity is **1K**, the six-category long-context suite is **4K**, supported budgets stop at 4 rather than hypothesis B6, and exact deferred verification is **0.8726x serial** while serial MTP is **0.7407x AR**. Extend capacity/verifier first; do not tune fixed <=1K prompts. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-depth-budget-admission.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 acceptance-kernel admission] Host acceptance plus cursor repair is only **1.306 ms across 18 cycles / 0.020%** of four-category wall, while the prerequisite verifier adds **3,331 ms** on the full suite. Block device acceptance kernels until an operation-complete verifier beats serial MTP. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 public deferred verifier] Full ten-prompt tg16 is exact with unchanged acceptance, but deferred verification is **26.152 s** versus serial MTP **22.821 s (0.8726x)** and true AR **16.904 s (0.6464x)**; every category regresses. Remove uncommitted provider wiring; full-width execution plus mismatch replay overwhelms pooled/head savings. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-public-deferred-verifier-rejected.json`.

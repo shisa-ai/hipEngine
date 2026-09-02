@@ -1976,7 +1976,7 @@ external MTP rows.
       operation-complete target-body verifier that beats serial MTP, then
       re-profile this boundary. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-acceptance-kernel-admission.json`.
-- [ ] Sweep budget against context depth, not budget alone, on the full
+- [~] Sweep budget against context depth, not budget alone, on the full
       category+heldout suite against a true no-MTP AR denominator from the same
       command. Record acceptance, visible tokens/cycle, target rows, phase wall,
       and speed by category and context. Externally the optimum is
@@ -1985,7 +1985,15 @@ external MTP rows.
       context under-serves depth. Fit a policy over measured acceptance -
       raise the budget while marginal accepted tokens per cycle still increase -
       rather than freezing a constant; a constant tuned on a fixed prompt set is
-      not retainable.
+      not retainable. Admission is blocked before fitting: the public provider
+      and draft are capped at **1,024 tokens**, while the committed long-context
+      suite has six **4,096-token** categories; local budgets are only 1-4, not
+      the external hypothesis's 6. The exact public deferred verifier is
+      **0.8726x serial MTP**, and serial MTP is only **0.7407x true AR** on the
+      ten-prompt suite. Sweeping <=1K budgets would fit the wrong depth and fixed
+      evaluation prompts. Extend draft/provider capacity to >=4K, add B6 RED,
+      and beat serial verification before fitting disjoint telemetry. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-depth-budget-admission.json`.
 - [~] Evaluate confidence thresholds as explicit provider policies over the
       full suite. No fixed prompt, token, or candidate-specific policy is
       retainable. Readiness is blocked: compact output exposes device argmax ID
