@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p11_compact_head_admission",
+  "status": "blocked_below_economics_floor_and_prerequisites",
+  "performance_claim": false,
+  "source_artifacts": [
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-mtp-hot-head-feasibility.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-candidate-packet-rejected.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-hidden-d2d-rejected.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-verifier-readiness.json"
+  ],
+  "amdahl_declaration": {
+    "W_seconds": 51.711070590004965,
+    "C_seconds": 49.383127938017424,
+    "O_ms_per_proposal": 3.152780504024122,
+    "s": null,
+    "zero_cost_ceiling": {
+      "saved_seconds": 0.5012921001398354,
+      "wall_reduction_percent": 0.969409633991852,
+      "mtp_over_ar": 0.9643300438761082
+    },
+    "arithmetic_class": "no candidate; compact vocabulary changes draft logits/control and requires exact generated-ID gate",
+    "scope": "Qwen4Exp Q8_0 draft heads at 8K/16K/32K",
+    "mechanism": "individual Q8_0 vocabulary rows with local-to-global ID map",
+    "strict_fallback": "full 248320-row Q8_0 head",
+    "overlap_exclusions": [
+      "full head time is nested inside draft proposal wall",
+      "device-output and hidden-handoff candidates are not promoted baselines",
+      "target verification is disjoint and remains the dominant measured owner"
+    ]
+  },
+  "prerequisites": {
+    "device_output_promoted": false,
+    "target_verifier_progress": false,
+    "disjoint_map_training_manifest": false,
+    "zero_cost_head_can_reach_true_ar": false
+  },
+  "supporting_results": {
+    "full_head_ms": 3.152780504024122,
+    "head_share_of_draft": 0.4127444005694839,
+    "candidate_packet_whole_model": 1.0102685367822128,
+    "candidate_packet_category_nonregression": false,
+    "target_hidden_d2d_whole_model": 1.009131216313822,
+    "target_hidden_d2d_category_nonregression": false,
+    "target_verify_ms_per_row": 87.65228492640225
+  },
+  "decision": {
+    "build_maps_now": false,
+    "reason": "Even a free head leaves retained full-suite MTP at 0.964x AR. Required output cleanup failed category promotion, verifier progress is blocked, and no disjoint map-training manifest exists. Building maps now would spend work below the economics floor and risk heldout contamination.",
+    "unblock": "Raise the measured complete-wall ceiling above 1.0x AR through verifier/device-transaction work and provide an immutable disjoint map-training manifest."
+  }
+}

@@ -1857,7 +1857,7 @@ external MTP rows.
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`
       and
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-candidate-packet-rejected.json`. A shared-runtime D2D handoff then removes post-prefill target-hidden D2H and draft-hidden H2D. It is exact and traced, but warmed whole-model wall is only **6,590.224→6,530.592 ms (1.0091x)**; `general_en`/`mixed_ja_en` regress to **0.9292x/0.9847x**. Packet synchronization masks the removed round trip, so this rung is also rejected and default-off. Evidence: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-target-hidden-d2d-rejected.json`.
-- [ ] After device-output cleanup and target-verifier progress, build
+- [~] After device-output cleanup and target-verifier progress, build
       default-off individual-row compact Q8_0 draft heads at 8K/16K/32K with a
       local→global token map. Do not port EXL3 block-group rules or FP8 constants.
       Train maps on unrestricted multi-prompt proposal telemetry plus general
@@ -1865,7 +1865,13 @@ external MTP rows.
       AR-equivalence, acceptance, memory, and same-command economics. The current
       zero-cost-head upper bound is only **0.97% complete wall / 0.964x AR**, so
       reject unchanged hot-head work if verifier progress does not raise its
-      Amdahl ceiling.
+      Amdahl ceiling. Admission is currently blocked: compact output and D2D
+      hidden handoff both failed category promotion, the rows<=8 verifier is not
+      executable, and no disjoint map-training manifest exists. Even a free
+      head cannot reach 1.0x AR on retained full-suite economics. Do not build or
+      fit vocabulary maps until verifier/device transactions raise that ceiling.
+      Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-head-admission.json`.
 - [~] Build the rows<=8 batch-invariant target verifier before raising budget.
       Its per-row decode arithmetic, GDN/QSA/PLE state, and outputs must equal
       serial target verification under the declared contract. Readiness audit:
