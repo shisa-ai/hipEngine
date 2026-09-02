@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_q6_planar_wmma_r32_rejection",
+  "date": "2026-09-02",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "decision": "Reject and remove planar-qmicro Q6 WMMA ownership at physical C8/K3 R32. Existing R64-capacity and new two-row-tile R32-capacity WMMA both lose every actual Q6 role to exact grouped-R8 rowtiles.",
+  "source": {"base_commit": "c54497fd9", "candidate_removed": true},
+  "hardware": {"physical_host": "epyc", "gpu": "AMD Radeon Pro W7900", "target_arch": "gfx1100", "compute_units": 96, "rocm": "7.2.4"},
+  "model": {"path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf", "quant": "Q4_K_M", "kv": "BF16", "fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"},
+  "protocol": {"rows": 32, "warmups": 5, "sample_pairs": 30, "launches_per_sample": 3, "order": "alternating", "timing": "HIP event plus operation-complete wall", "control": "exact grouped-R8 planar-Q6 rowtile", "roles": ["recurrent_qkv", "full_v", "ffn_down"]},
+  "existing_r64_capacity": {"wall_speedups": {"recurrent_qkv": 0.9382521882963972, "full_v": 0.20703627658375096, "ffn_down": 0.4191482626393784}, "positive_roles": 0, "verdict": "Loses all roles despite four-row-tile activation reuse."},
+  "r32_capacity": {
+    "mechanism": "Template the established one-wave planar-Q6 WMMA body at two rather than four independent 16-row activation tiles.",
+    "roles": {
+      "recurrent_qkv": {"control_wall_ms": 0.42838944743076957, "candidate_wall_ms": 0.631705392152071, "speedup": 0.6781475237552556, "pair_wins": 0},
+      "full_v": {"control_wall_ms": 0.057750847190618515, "candidate_wall_ms": 0.4093890699247519, "speedup": 0.14106592342886307, "pair_wins": 0},
+      "ffn_down": {"control_wall_ms": 0.6154435686767101, "candidate_wall_ms": 1.9293967634439468, "speedup": 0.31898237850163685, "pair_wins": 0}
+    },
+    "positive_roles": 0,
+    "all_bf16_different_from_strict": true,
+    "verdict": "Reducing row capacity lowers weight reuse/ILP and is slower than the existing WMMA as well as exact grouped-R8. No model-level T2 gate is justified."
+  },
+  "validation": {"final_source_equals_base": true, "hip_runtime_alive": true}
+}
