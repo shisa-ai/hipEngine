@@ -202,7 +202,7 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   C5 MTP 21.381 → 34.560 tok/s (+61.6%), C7 23.545 → 42.837 (+81.9%). Q4
   (~132+24 ms) and the lm-head rowtile re-sweep (33.4 ms) are unchanged, as
   expected before B-full.
-- [~] Measure one-pass K3/R32 and K2/R24 at C5-C8 on the full ten-prompt suite
+- [x] Measure one-pass K3/R32 and K2/R24 at C5-C8 on the full ten-prompt suite
   under the production profile (exact commands, host identity, manifest
   hashes): complete wall, target-pass kernel time, corrected cycle economics
   versus the B0 budget. Retain only if complete same-suite wall is
@@ -239,16 +239,17 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   - **Determinism:** deterministic repeat arm IDs identical; smoke rep
     identical; in-process A/B logits stable.
 
-  Retention state: the performance and gate evidence satisfies the §1.4
-  bar on both protocols (one-group improves 56-73%; production-admission
-  non-regressive at ±0.1%). The default flip is **not yet executed**: the
-  switch is profile-agnostic and would also rewrite the strict-profile
-  verifier oracle, violating "strict remains the oracle" by construction.
-  Named prerequisite (next unit): profile-scope the routing (production
-  serves the transferred owners; strict keeps the GEMV oracle and its
-  manifest hash), flip the default, delete the env per RF-B1A, then update
-  the rollup with the retained one-group public numbers. Strict fallback
-  remains selectable today via env off.
+  Retention executed 2026-09-02 (commit c27abc15d): the switch is now
+  profile-scoped and **default-on for the production execution profile**;
+  strict and any profile fallback keep the GEMV verifier oracle and
+  manifest unchanged. Confirmed on the default path with no env set:
+  one-group C5-C8 34.969/38.425/41.615/47.642 tok/s (matches the env-on
+  arm), production-admission C7 spot 34.049 (inert as measured), and a
+  strict-profile C7 spot at 20.317 tok/s with 10/10 exact running the
+  unchanged GEMV chain. The env remains an explicit override for bisection
+  (`1` forces the transfer on any profile, `0` restores the GEMV owners).
+  Retained public numbers and the rollup row are recorded in
+  `benchmarks/README.md`/`CHANGELOG.md` with this artifact as source.
 
 ### B2 — P1: sole-T16 input-F16 Q4/Q5 kernel family (T1)
 

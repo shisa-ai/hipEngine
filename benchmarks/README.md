@@ -114,6 +114,19 @@ optimization loop, clean C6/C8 MTP improves 4.56%/3.78%, but the 1.15x target
 still requires 19.2%/20.1% less full-suite wall. Existing single-family owner
 transfers are exhausted; the reopen condition is a multi-family packed-verifier
 dataflow. Both widths remain unpromoted below AR.
+The B1 build campaign retained the verifier owner transfer (2026-09-02,
+profile-scoped default-on for production; strict keeps the GEMV oracle): the
+packed verifier's rows>1 projections now use the retained exact prefill band
+owners instead of July's per-row GEMV bodies. One-group D24 explicit K3
+complete-suite means at current head: C5-C8 **34.969/38.425/41.615/47.642
+tok/s** (**0.988/0.962/0.963/0.974** own AR), up from 22.476/23.568/24.215/
+25.983 (+56.3/+64.0/+69.5/+72.7%), 40/40 cells exact with identical
+generated IDs, sec-6 teacher-forced logits gate top-1 100% and max KL
+6.5e-4; C5 now leads mainline Vulkan (+7.4%) and C6 leads Laurent (+4.0%).
+The production width-4 admission path is measured inert (R2-R16 passes
+only) and strict C1/K3 automatic is unchanged.
+[`B1 retention packet`](results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json) ·
+[`sec-6 logits gate`](results/2026-09-02-gfx1151-qwen38-b1-transfer-logits-equality.json) ·
 [`Ten-iteration closeout`](results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json) ·
 [`C8 narrow extension`](results/2026-09-01-gfx1151-qwen38-c8-r16-shared-b2r1-narrow-retained.json) ·
 [`C8 R16 owner`](results/2026-09-01-gfx1151-qwen38-c8-r16-shared-b2r1-retained.json) ·
