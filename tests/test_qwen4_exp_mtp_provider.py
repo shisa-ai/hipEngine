@@ -13,9 +13,6 @@ from hipengine.speculative.registry import (
 )
 
 
-_RUNTIME = object()
-
-
 class _Tokenizer:
     eos_token_id = 99_999
 
@@ -32,9 +29,6 @@ class _TargetRunner:
         self.position = 0
         self.truth = (10, 11, 12, 13, 14)
         self.cursor = 0
-        self.runtime = _RUNTIME
-        self.last_target_hidden = SimpleNamespace(ptr=123)
-        self.capture_hidden_seed_calls = []
 
     def _hidden(self, value: int) -> np.ndarray:
         return np.full(8, float(value), dtype=np.float32)
@@ -50,7 +44,6 @@ class _TargetRunner:
         )
 
     def step(self, token_id: int, *, capture_hidden_seed=False):
-        self.capture_hidden_seed_calls.append(bool(capture_hidden_seed))
         assert int(token_id) == self.truth[self.cursor]
         self.cursor += 1
         self.position += 1
@@ -71,8 +64,6 @@ class _DraftRunner:
         self.proposal_index = 0
         self.trimmed = []
         self.last_proposal_stage_timings_ms = {}
-        self.runtime = _RUNTIME
-        self.target_hidden_seed_ptrs = []
 
     def prime_prompt(self, token_ids, hidden_rows):
         assert hidden_rows.shape == (len(token_ids), 8)
@@ -87,7 +78,6 @@ class _DraftRunner:
         draft_n_max,
         target_hidden_seed_ptr=None,
     ):
-        self.target_hidden_seed_ptrs.append(target_hidden_seed_ptr)
         values = self.proposals[self.proposal_index][:draft_n_max]
         self.proposal_index += 1
         self.position += len(values)
@@ -179,28 +169,6 @@ def test_qwen4_exp_mtp_provider_keeps_exact_target_output_and_trims_draft() -> N
     assert len(chunks) == 1
     assert chunks[0].generated_token_ids == (10, 11, 12, 13, 14)
 
-
-def test_qwen4_exp_mtp_provider_uses_resident_target_hidden_when_enabled(
-    monkeypatch,
-) -> None:
-    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT", "1")
-    target = _TargetGenerator()
-    draft = _DraftRunner()
-    provider = Qwen4ExpMTPTextProvider(
-        target_generator=target,
-        config=SpeculativeProviderConfig(
-            provider="qwen4_exp_mtp", draft_model="/tmp/fake.gguf", candidate_budget=2
-        ),
-        draft_runner=draft,
-        draft_resident=object(),
-    )
-
-    output = provider.generate_detailed(_request())[0]
-
-    assert output.generated_token_ids == (10, 11, 12, 13, 14)
-    assert draft.target_hidden_seed_ptrs == [123, 123]
-    assert target.runner.capture_hidden_seed_calls == [False, False, False, False]
-    assert output.telemetry.diagnostics["target_hidden_handoff"] == "device_to_device"
 
 
 def test_qwen4_exp_mtp_provider_is_registered_for_operational_quant() -> None:

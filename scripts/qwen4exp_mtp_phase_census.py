@@ -35,9 +35,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--max-tokens", type=int, default=8)
     parser.add_argument("--candidate-budget", type=int, default=2)
-    parser.add_argument(
-        "--draft-output-mode", choices=("compact", "debug", "both"), default="compact"
-    )
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
@@ -102,78 +99,36 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     output_rows: list[dict[str, Any]] = []
     try:
-        modes = (
-            ("debug", "compact")
-            if args.draft_output_mode == "both"
-            else (args.draft_output_mode,)
-        )
-        if args.draft_output_mode == "both":
-            for mode in modes:
-                os.environ["HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT"] = (
-                    "1" if mode == "compact" else "0"
-                )
-                llm.generate_speculative_mtp_detailed(
-                    [_prompt_text(rows[0])],
-                    SamplingParams(
-                        max_tokens=2,
-                        temperature=0.0,
-                        top_k=1,
-                        ignore_eos=True,
-                    ),
-                )
-        for row_index, row in enumerate(rows):
-            row_modes = modes if row_index % 2 == 0 else tuple(reversed(modes))
-            if args.draft_output_mode == "both":
-                for mode in row_modes:
-                    os.environ["HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT"] = (
-                        "1" if mode == "compact" else "0"
-                    )
-                    llm.generate_speculative_mtp_detailed(
-                        [_prompt_text(row)],
-                        SamplingParams(
-                            max_tokens=2,
-                            temperature=0.0,
-                            top_k=1,
-                            ignore_eos=True,
-                        ),
-                    )
-            for mode in row_modes:
-                os.environ["HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT"] = (
-                    "1" if mode == "compact" else "0"
-                )
-                started = time.perf_counter()
-                output = llm.generate_speculative_mtp_detailed(
-                    [_prompt_text(row)],
-                    SamplingParams(
-                        max_tokens=args.max_tokens,
-                        temperature=0.0,
-                        top_k=1,
-                        ignore_eos=True,
-                    ),
-                )[0]
-                request_wall_ms = (time.perf_counter() - started) * 1_000.0
-                if output.telemetry is None:
-                    raise RuntimeError("Qwen4Exp MTP output has no telemetry")
-                diagnostics = dict(output.telemetry.diagnostics)
-                census = diagnostics.get("phase_census")
-                if not isinstance(census, dict):
-                    raise RuntimeError("Qwen4Exp MTP output has no phase census")
-                output_rows.append(
-                    {
-                        "id": row["id"],
-                        "category": row["category"],
-                        "draft_output_mode": mode,
-                        "request_wall_ms": request_wall_ms,
-                        "generated_token_ids": list(output.generated_token_ids),
-                        "proposed_draft_tokens": diagnostics["proposed_draft_tokens"],
-                        "accepted_draft_tokens": diagnostics["accepted_draft_tokens"],
-                        "draft_acceptance": diagnostics["draft_acceptance"],
-                        "target_hidden_handoff": diagnostics.get(
-                            "target_hidden_handoff", "host"
-                        ),
-                        "phase_census": census,
-                    }
-                )
+        for row in rows:
+            started = time.perf_counter()
+            output = llm.generate_speculative_mtp_detailed(
+                [_prompt_text(row)],
+                SamplingParams(
+                    max_tokens=args.max_tokens,
+                    temperature=0.0,
+                    top_k=1,
+                    ignore_eos=True,
+                ),
+            )[0]
+            request_wall_ms = (time.perf_counter() - started) * 1_000.0
+            if output.telemetry is None:
+                raise RuntimeError("Qwen4Exp MTP output has no telemetry")
+            diagnostics = dict(output.telemetry.diagnostics)
+            census = diagnostics.get("phase_census")
+            if not isinstance(census, dict):
+                raise RuntimeError("Qwen4Exp MTP output has no phase census")
+            output_rows.append(
+                {
+                    "id": row["id"],
+                    "category": row["category"],
+                    "request_wall_ms": request_wall_ms,
+                    "generated_token_ids": list(output.generated_token_ids),
+                    "proposed_draft_tokens": diagnostics["proposed_draft_tokens"],
+                    "accepted_draft_tokens": diagnostics["accepted_draft_tokens"],
+                    "draft_acceptance": diagnostics["draft_acceptance"],
+                    "phase_census": census,
+                }
+            )
     finally:
         llm.close()
     after_close = memory_stats()
@@ -200,9 +155,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "execution_profile": "production",
             "candidate_budget": args.candidate_budget,
             "max_tokens": args.max_tokens,
-            "draft_output_mode": args.draft_output_mode,
-            "mode_warmups": "one global and one per prompt/mode" if args.draft_output_mode == "both" else 0,
-            "pair_order": "alternating AB/BA by category" if args.draft_output_mode == "both" else None,
+            "draft_output_mode": "full_debug",
             "categories": list(CATEGORIES),
         },
         "rows": output_rows,
@@ -217,31 +170,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "target_verify": _summary([row["phase_census"]["target_verify"]["ms"] for row in output_rows]),
             "acceptance_control": _summary([row["phase_census"]["acceptance_control"]["ms"] for row in output_rows]),
             "draft_commit_or_rollback": _summary([row["phase_census"]["draft_commit_or_rollback"]["ms"] for row in output_rows]),
-            "request_wall_by_mode": {
-                mode: _summary(
-                    [
-                        row["request_wall_ms"]
-                        for row in output_rows
-                        if row["draft_output_mode"] == mode
-                    ]
-                )
-                for mode in sorted({row["draft_output_mode"] for row in output_rows})
-            },
-            "paired_output_ids_exact": all(
-                next(
-                    row["generated_token_ids"]
-                    for row in output_rows
-                    if row["id"] == prompt["id"]
-                    and row["draft_output_mode"] == modes[0]
-                )
-                == next(
-                    row["generated_token_ids"]
-                    for row in output_rows
-                    if row["id"] == prompt["id"]
-                    and row["draft_output_mode"] == modes[-1]
-                )
-                for prompt in rows
-            ),
+            "request_wall": _summary([row["request_wall_ms"] for row in output_rows]),
         },
         "lifecycle": {"after_close": after_close, "passed": after_close["current_allocated_bytes"] == 0},
         "notes": [

@@ -2071,10 +2071,24 @@ Goal: make the complete result reproducible, default, and reversible.
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`
       and
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md`.
-- [ ] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
-      `docs/PLAN.md` if architecture moved.
-- [ ] Remove superseded experiment flags, dead selectors, duplicate fallback
+- [x] Update `docs/KERNELS.md`, lineage metadata, `docs/REFACTOR.md`, and
+      `docs/PLAN.md` if architecture moved. P11 added runtime-only verifier
+      storage/transaction/oracle primitives, not a kernel or lineage entry;
+      `docs/KERNELS.md` and `docs/source_lineage.json` therefore stay unchanged.
+      `docs/PLAN.md` now records current manifest/rates and MTP/verifier bounds;
+      `docs/REFACTOR.md` records selector closure and retained oracle lifetime.
+      The optional lineage audit is currently environment-blocked because
+      `/home/lhl/amd-gpu-tuning/reference/atlas` is absent, but no kernel port or
+      source-parent claim was made in P11/P12.
+- [~] Remove superseded experiment flags, dead selectors, duplicate fallback
       chains, and stale graph routes only after their replacements are default.
+      Removed public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selection and its
+      resident-hidden provider branch after three exact candidates failed
+      category promotion. The explicit runner `compact_output=True` leaf remains
+      only for focused rejected-path oracles/profiling. Retain strict serial MTP,
+      verifier oracles/transactions, and graph fallbacks because no replacement
+      is default. The broader campaign's rejected/default-off selectors remain
+      tracked in `docs/REFACTOR.md`; final cleanup stays partial.
 - [ ] Commit every validated logical unit; campaign closure is its own final
       decision/worklog commit.
 
