@@ -1,0 +1,67 @@
+{
+  "amdahl_declaration": {
+    "C_ms_per_token": 0.465,
+    "O_ms": 0.06534249405376613,
+    "W_ms_per_token": 2.659,
+    "arithmetic_class": "T0 parent-exact retile; production strict-envelope versus original strict owner",
+    "mechanism": "four independent value-column warps per 128-thread CTA; 6144 to 1536 blocks",
+    "overlap_exclusions": [
+      "leaf excludes prepare and norm/gate",
+      "complete boundary includes prepare+recurrence+norm/gate",
+      "persistent layout integration and conversion excluded because prior complete integration already regressed"
+    ],
+    "s": 0.9944220880617802,
+    "scope": "actual Qwen4Exp transposed recurrence kh16/vh48/d128, one decode row",
+    "strict_fallback": "qwen4exp_sigmoid_strict; transposed wave_value_t1 diagnostic parent",
+    "zero_cost_ceiling_percent": 3.842485549132948
+  },
+  "correctness": {
+    "actual_shape_col4_bit_exact_to_wave_parent": true,
+    "cancellation_c2": "not run because leaf and complete boundary regress before integration",
+    "reduced_fixture": "not applicable: fixed 128x128 candidate rejects other dimensions",
+    "wave_parent_strict_output_state_envelope": true
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "full_profile_or_tg128_run": false,
+    "next": "No independent P7 candidate remains. Reopen only with fused prepare/recurrence/norm-gate or actual cross-column data reuse, not CTA repacking.",
+    "p7_ladder_closed": true,
+    "promoted": false,
+    "reason": "The requested four-warp topology is parent-exact but loses recurrence-only and operation-complete boundaries. Four independent warps reduce CTA count without sharing state traffic. Later gates cannot compensate for a losing leaf.",
+    "rocprof_run": false
+  },
+  "host": {
+    "arch": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "gpu_clock_policy": "auto",
+    "identity": "zbook"
+  },
+  "kind": "qwen4exp_p7_gdn_col4_closure",
+  "performance": {
+    "col4_complete_median_ms": 0.06570901314262301,
+    "col4_leaf_median_ms": 0.04855700535699725,
+    "complete_speedup": 0.9944220880617802,
+    "leaf_speedup": 0.9919270249567551,
+    "raw_sha256": "d35ce8ca4732a8a6e9eeb7494845a9ce52efe7aa2a465c7bcf52a44ebc01ae47",
+    "samples": 30,
+    "warmups": 5,
+    "wave_complete_median_ms": 0.06534249405376613,
+    "wave_leaf_median_ms": 0.048165005864575505
+  },
+  "performance_claim": false,
+  "schema": 1,
+  "shape": {
+    "col4_blocks": 1536,
+    "d": 128,
+    "kh": 16,
+    "vh": 48,
+    "wave_blocks": 6144
+  },
+  "source": {
+    "base_head": "710745013",
+    "candidate_committed": false,
+    "candidate_removed": true,
+    "lineage": "/home/lhl/llama.cpp/llama.cpp-hip@17252c769 ggml/src/ggml-cuda/gated_delta_net.cu lines 4-35; four warps/columns per CTA"
+  },
+  "status": "rejected_performance_candidate_removed"
+}
