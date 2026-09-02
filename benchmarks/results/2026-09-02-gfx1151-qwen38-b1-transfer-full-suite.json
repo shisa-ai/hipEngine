@@ -1,0 +1,276 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b1_transfer_full_suite",
+  "date": "2026-09-02",
+  "status": "measured_pending_gates",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (10 prompts)",
+  "runtime_profile": "production",
+  "protocol": "production-admission suite (width-4 fail-closed groups) and one-group diagnostic suite (Z0 budget protocol, run-owned PHYSICAL_MAX=8 override), gguf_mtp_c1c8_server_bench widths 5-8, max-tokens 24, batch-window-ms 50, mtp_self_exact, AR arm per width; env HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=1 on the on-arms",
+  "production_admission": {
+    "target_pass_shape_histogram": {
+      "off_k3": {
+        "2": 5,
+        "3": 5,
+        "4": 155,
+        "6": 23,
+        "8": 244,
+        "9": 12,
+        "12": 266,
+        "16": 1240
+      },
+      "on_k3": {
+        "2": 5,
+        "3": 5,
+        "4": 155,
+        "6": 23,
+        "8": 244,
+        "9": 12,
+        "12": 266,
+        "16": 1240
+      }
+    },
+    "finding": "Production admission caps groups at 4, so verify passes are R2-R16 and the rows 17-48 transfer never executes on this path; the measured zero-delta is structural, not noise."
+  },
+  "per_width": {
+    "5": {
+      "mtp_tok_s": {
+        "off_k3": 21.777,
+        "on_k3": 21.756,
+        "on_k3_rep": 21.76,
+        "on_k2": 20.732
+      },
+      "ar_tok_s": {
+        "off": 35.831,
+        "on": 35.795
+      },
+      "mtp_mean_tok_s_note": "per-width mean over the ten prompt cells",
+      "on_vs_off_mtp_delta_pct": -0.1,
+      "exactness": {
+        "off_k3": false,
+        "on_k3": false,
+        "on_k3_rep": false,
+        "on_k2": false
+      },
+      "engaged_conformed": {
+        "on_k3": [
+          true,
+          true
+        ],
+        "on_k2": [
+          true,
+          true
+        ]
+      },
+      "ids_on_equal_off": false,
+      "ids_rep_equal_first": false,
+      "ar_mtp_equal_on": false,
+      "acceptance": {
+        "off_k3": null,
+        "on_k3": null
+      }
+    },
+    "6": {
+      "mtp_tok_s": {
+        "off_k3": 33.58,
+        "on_k3": 33.569,
+        "on_k3_rep": 33.57,
+        "on_k2": 33.104
+      },
+      "ar_tok_s": {
+        "off": 40.439,
+        "on": 40.177
+      },
+      "mtp_mean_tok_s_note": "per-width mean over the ten prompt cells",
+      "on_vs_off_mtp_delta_pct": -0.03,
+      "exactness": {
+        "off_k3": true,
+        "on_k3": true,
+        "on_k3_rep": true,
+        "on_k2": true
+      },
+      "engaged_conformed": {
+        "on_k3": [
+          true,
+          true
+        ],
+        "on_k2": [
+          true,
+          true
+        ]
+      },
+      "ids_on_equal_off": true,
+      "ids_rep_equal_first": true,
+      "ar_mtp_equal_on": true,
+      "acceptance": {
+        "off_k3": null,
+        "on_k3": null
+      }
+    },
+    "7": {
+      "mtp_tok_s": {
+        "off_k3": 34.207,
+        "on_k3": 34.188,
+        "on_k3_rep": 34.176,
+        "on_k2": 31.292
+      },
+      "ar_tok_s": {
+        "off": 43.463,
+        "on": 43.483
+      },
+      "mtp_mean_tok_s_note": "per-width mean over the ten prompt cells",
+      "on_vs_off_mtp_delta_pct": -0.06,
+      "exactness": {
+        "off_k3": true,
+        "on_k3": true,
+        "on_k3_rep": true,
+        "on_k2": true
+      },
+      "engaged_conformed": {
+        "on_k3": [
+          true,
+          true
+        ],
+        "on_k2": [
+          true,
+          true
+        ]
+      },
+      "ids_on_equal_off": true,
+      "ids_rep_equal_first": true,
+      "ar_mtp_equal_on": true,
+      "acceptance": {
+        "off_k3": null,
+        "on_k3": null
+      }
+    },
+    "8": {
+      "mtp_tok_s": {
+        "off_k3": 36.44,
+        "on_k3": 36.452,
+        "on_k3_rep": 36.442,
+        "on_k2": 34.867
+      },
+      "ar_tok_s": {
+        "off": 47.764,
+        "on": 47.746
+      },
+      "mtp_mean_tok_s_note": "per-width mean over the ten prompt cells",
+      "on_vs_off_mtp_delta_pct": 0.03,
+      "exactness": {
+        "off_k3": true,
+        "on_k3": true,
+        "on_k3_rep": true,
+        "on_k2": true
+      },
+      "engaged_conformed": {
+        "on_k3": [
+          true,
+          true
+        ],
+        "on_k2": [
+          true,
+          true
+        ]
+      },
+      "ids_on_equal_off": true,
+      "ids_rep_equal_first": true,
+      "ar_mtp_equal_on": true,
+      "acceptance": {
+        "off_k3": null,
+        "on_k3": null
+      }
+    }
+  },
+  "suite_aggregate": {
+    "mean_mtp_tok_s": {
+      "off_k3": 31.501,
+      "on_k3": 31.491,
+      "on_k3_rep": 31.487,
+      "on_k2": 29.999
+    }
+  },
+  "suite_mean_delta_pct": -0.03,
+  "invariants": {
+    "all_arms_exact": false,
+    "ids_on_equal_off_and_repeat_stable": false
+  },
+  "findings": [
+    "Suite-mean MTP: off K3 31.501 -> on K3 31.491 tok/s (-0.03%); on K2 29.999.",
+    "Exactness all arms/all widths: False; IDs on==off and repeat-stable: False.",
+    "One-group protocol suite mean: off K3 24.061 -> on K3 39.922 tok/s (+65.92%)."
+  ],
+  "onegroup": {
+    "5": {
+      "off_k3": 22.476,
+      "on_k3": 35.135,
+      "delta_pct": 56.32,
+      "on_k2": 32.749,
+      "ar_off": 35.578,
+      "ar_on": 35.567,
+      "ratio_off": 0.632,
+      "ratio_on": 0.988,
+      "exact": [
+        true,
+        true,
+        true
+      ],
+      "ids_on_equal_off": true
+    },
+    "6": {
+      "off_k3": 23.568,
+      "on_k3": 38.651,
+      "delta_pct": 63.99,
+      "on_k2": 36.806,
+      "ar_off": 40.176,
+      "ar_on": 40.189,
+      "ratio_off": 0.587,
+      "ratio_on": 0.962,
+      "exact": [
+        true,
+        true,
+        true
+      ],
+      "ids_on_equal_off": true
+    },
+    "7": {
+      "off_k3": 24.215,
+      "on_k3": 41.032,
+      "delta_pct": 69.45,
+      "on_k2": 39.061,
+      "ar_off": 43.526,
+      "ar_on": 42.608,
+      "ratio_off": 0.556,
+      "ratio_on": 0.963,
+      "exact": [
+        true,
+        true,
+        true
+      ],
+      "ids_on_equal_off": true
+    },
+    "8": {
+      "off_k3": 25.983,
+      "on_k3": 44.87,
+      "delta_pct": 72.69,
+      "on_k2": 43.241,
+      "ar_off": 47.73,
+      "ar_on": 46.053,
+      "ratio_off": 0.544,
+      "ratio_on": 0.974,
+      "exact": [
+        true,
+        true,
+        true
+      ],
+      "ids_on_equal_off": true
+    }
+  },
+  "onegroup_suite_mean": {
+    "off_k3": 24.061,
+    "on_k3": 39.922,
+    "delta_pct": 65.92
+  }
+}

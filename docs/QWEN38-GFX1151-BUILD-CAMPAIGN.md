@@ -202,13 +202,53 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   C5 MTP 21.381 → 34.560 tok/s (+61.6%), C7 23.545 → 42.837 (+81.9%). Q4
   (~132+24 ms) and the lm-head rowtile re-sweep (33.4 ms) are unchanged, as
   expected before B-full.
-- [ ] Measure one-pass K3/R32 and K2/R24 at C5-C8 on the full ten-prompt suite
+- [~] Measure one-pass K3/R32 and K2/R24 at C5-C8 on the full ten-prompt suite
   under the production profile (exact commands, host identity, manifest
   hashes): complete wall, target-pass kernel time, corrected cycle economics
   versus the B0 budget. Retain only if complete same-suite wall is
   non-regressive and the applicable gates pass; update
   `benchmarks/README.md`/`CHANGELOG.md` and a compact artifact only on a
   retained public number. Strict fallback must remain selectable.
+
+  Measurement complete 2026-09-02 (retention packet:
+  [`...b1-transfer-full-suite.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json),
+  [`...b1-transfer-logits-equality.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-logits-equality.json);
+  seven arms on physical host `gfx1151`, production profile, ten-prompt
+  suite, cached build, `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=1`
+  on-arms):
+
+  - **One-group protocol (the D24 declared scope, Z0 budget protocol):**
+    complete-suite MTP means 22.476→35.135 (+56.3%) at C5, 23.568→38.651
+    (+64.0%) at C6, 24.215→41.032 (+69.5%) at C7, 25.983→44.870 (+72.7%)
+    at C8; 40/40 cells exact; every generated ID identical off-vs-on;
+    MTP/own-AR ratio 0.54-0.63 → 0.96-0.99. K2 arm: 32.7/36.8/39.1/43.2 —
+    K3 wins at every width with the new owners. Versus the entry-table
+    leaders: C5 now **leads** mainline Vulkan (+7.4%), C6 leads Laurent
+    (+4.0%), C7/C8 remain behind stock HIP (−11.0%/−20.2%).
+  - **Production-admission suite: measured inert** (−0.1% to +0.0%).
+    Structural, not noise: admission caps groups at 4, so verify passes are
+    R2-R16 (histogram in the artifact) and the rows 17-48 transfer never
+    executes on that path. C5's pre-existing exactness anomaly reproduces
+    identically on both arms (not caused by the transfer).
+  - **§6 teacher-forced logits gate:** 336 full-vocabulary rows across
+    widths 5/7/8 plus a mixed-category offset window: top-1 agreement 100%,
+    mean/p95/max KL 2.8e-5-5.7e-5 / 2.0e-4-3.0e-4 / 4.9e-4-6.5e-4 — 17-77x
+    inside every binding envelope threshold; no row above the 2e-2 review
+    line. Not bit-identical (T1-class body swap), consistent with identical
+    free-running IDs everywhere.
+  - **Determinism:** deterministic repeat arm IDs identical; smoke rep
+    identical; in-process A/B logits stable.
+
+  Retention state: the performance and gate evidence satisfies the §1.4
+  bar on both protocols (one-group improves 56-73%; production-admission
+  non-regressive at ±0.1%). The default flip is **not yet executed**: the
+  switch is profile-agnostic and would also rewrite the strict-profile
+  verifier oracle, violating "strict remains the oracle" by construction.
+  Named prerequisite (next unit): profile-scope the routing (production
+  serves the transferred owners; strict keeps the GEMV oracle and its
+  manifest hash), flip the default, delete the env per RF-B1A, then update
+  the rollup with the retained one-group public numbers. Strict fallback
+  remains selectable today via env off.
 
 ### B2 — P1: sole-T16 input-F16 Q4/Q5 kernel family (T1)
 
