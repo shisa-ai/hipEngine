@@ -3026,9 +3026,15 @@ def launch_gguf_linear(
             quant=dispatch.key.quant,
             variant=dispatch.key.variant,
         )
-        cached = (dispatch.abi, fn, dispatch.key.quant, dispatch.key.variant)
+        cached = (
+            dispatch.abi,
+            fn,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            dispatch.key.variant,
+        )
         _DISPATCH_RESOLVE_CACHE[cache_key] = cached
-    abi, fn, quant, variant = cached
+    abi, fn, layer, quant, variant = cached
     library = None
     if libraries is not None:
         library = libraries.get(f"{quant}:{variant}", libraries.get(quant))
@@ -3084,7 +3090,7 @@ def launch_gguf_linear(
             kwargs,
             backend=resolved_backend,
             quant=quant,
-            layer=dispatch.key.layer,
+            layer=layer,
             runtime=runtime,
         ):
             return
