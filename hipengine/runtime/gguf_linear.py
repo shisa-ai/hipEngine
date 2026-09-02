@@ -237,17 +237,33 @@ def prefill_f16_staging_session(
         _prefill_f16_staging_session_enabled.reset(enabled_token)
 
 
-def prefill_f16_staging_enabled() -> bool:
+def prefill_f16_staging_enabled(default: bool = False) -> bool:
     """Whether the prefill F16-staging route is active for this launch."""
 
     if _prefill_f16_staging_session_enabled.get():
         return True
-    return os.environ.get(PREFILL_F16_STAGING_ENV, "0").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    override = os.environ.get(PREFILL_F16_STAGING_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    return bool(default)
+
+
+def prefill_f16_staging_for(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Resolve the profile default while preserving explicit env overrides."""
+
+    override = os.environ.get(PREFILL_F16_STAGING_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
 
 
 def prefill_f16_staging_workspace() -> PrefillF16StagingWorkspace | None:
@@ -7038,6 +7054,7 @@ __all__ = [
     "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
     "prefill_f16_staging_enabled",
+    "prefill_f16_staging_for",
     "prefill_f16_staging_session",
     "prefill_f16_staging_workspace",
     "target_verifier_rowtile_session",
