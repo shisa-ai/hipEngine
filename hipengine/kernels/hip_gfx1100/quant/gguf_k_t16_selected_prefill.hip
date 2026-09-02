@@ -656,7 +656,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
 // four is the retained 256-row parent; one is the exact 64-row occupancy
 // candidate. Every output retains the same FP16 operand, K16 WMMA sequence,
 // FP32 accumulator, and BF16 store.
-template <int ROW_TILES_PER_WAVE>
+template <int ROW_TILES_PER_WAVE, bool SKIP_INACTIVE_WAVES = false>
 __device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body(
     const uint16_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
@@ -678,6 +678,11 @@ __device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_bod
   const int64_t row_base =
       static_cast<int64_t>(blockIdx.y) * WAVES_PER_BLOCK * ROWS_PER_WAVE +
       wave * ROWS_PER_WAVE;
+  // All four waves cooperate on the decoded weight slab, but waves whose
+  // complete row tile is outside the logical matrix need not issue zero-input
+  // WMMA instructions. Keep them resident so every thread reaches the LDS
+  // barriers while eliding only arithmetic and publication they cannot own.
+  const bool active_wave = row_base < rows;
   const int64_t blocks_per_row = in_features / QK_K;
   const int64_t out_tiles = out_features / T16_COLS;
 
@@ -754,36 +759,38 @@ __device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_bod
     }
     __syncthreads();
 
-    const int64_t block_k_base = blk * QK_K;
+    if (!SKIP_INACTIVE_WAVES || active_wave) {
+      const int64_t block_k_base = blk * QK_K;
 #pragma unroll 1
-    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+      for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
 #pragma unroll
-      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
-        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
-        half16_t a_reg[ROW_TILES_PER_WAVE];
-#pragma unroll
-        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
-          const int64_t input_row = row_base + tn * 16 + lane16;
-          const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
-              x,
-              valid_row ? input_row : 0,
-              in_features,
-              block_k_base + k_off,
-              valid_row);
-        }
-#pragma unroll
-        for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
-          half16_t b_reg;
-#pragma unroll
-          for (int kk = 0; kk < 16; ++kk) {
-            b_reg[kk] = weight_tile[
-                (tm * T16_COLS + lane16) * QK_K + k_off + kk];
-          }
+        for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+          const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+          half16_t a_reg[ROW_TILES_PER_WAVE];
 #pragma unroll
           for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
-            acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
-                a_reg[tn], b_reg, acc[tm][tn]);
+            const int64_t input_row = row_base + tn * 16 + lane16;
+            const bool valid_row = input_row < rows;
+            a_reg[tn] = load_compact_row_half16<uint16_t>(
+                x,
+                valid_row ? input_row : 0,
+                in_features,
+                block_k_base + k_off,
+                valid_row);
+          }
+#pragma unroll
+          for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+            half16_t b_reg;
+#pragma unroll
+            for (int kk = 0; kk < 16; ++kk) {
+              b_reg[kk] = weight_tile[
+                  (tm * T16_COLS + lane16) * QK_K + k_off + kk];
+            }
+#pragma unroll
+            for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+              acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                  a_reg[tn], b_reg, acc[tm][tn]);
+            }
           }
         }
       }
@@ -837,6 +844,20 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel(
   constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
   __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
   gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<1>(
+      x, tiles, out, rows, in_features, out_features, weight_tile);
+}
+
+__launch_bounds__(128, 1)
+__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_row64_tail_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
+  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
+  gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<1, true>(
       x, tiles, out, rows, in_features, out_features, weight_tile);
 }
 
@@ -1833,18 +1854,33 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
           (out_features + Q4_DENSE_TILE_COLS - 1) / Q4_DENSE_TILE_COLS),
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
-  hipLaunchKernelGGL(
-      gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel,
-      grid,
-      block,
-      0,
-      stream,
-      x,
-      tiles,
-      out,
-      rows,
-      in_features,
-      out_features);
+  if ((rows % Q4_DENSE_TILE_ROWS) == 0) {
+    hipLaunchKernelGGL(
+        gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel,
+        grid,
+        block,
+        0,
+        stream,
+        x,
+        tiles,
+        out,
+        rows,
+        in_features,
+        out_features);
+  } else {
+    hipLaunchKernelGGL(
+        gguf_q4_t16_dense_wmma_prefill_shared_b_row64_tail_bf16_kernel,
+        grid,
+        block,
+        0,
+        stream,
+        x,
+        tiles,
+        out,
+        rows,
+        in_features,
+        out_features);
+  }
   return static_cast<int>(hipGetLastError());
 }
 

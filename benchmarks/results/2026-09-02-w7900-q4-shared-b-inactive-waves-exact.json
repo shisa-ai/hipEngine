@@ -1,0 +1,167 @@
+{
+  "schema": 1,
+  "kind": "q4_shared_b_inactive_wave_exact_screen",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "tensor": "blk.8.ffn_down.weight",
+  "shape_k_n": [
+    17408,
+    5120
+  ],
+  "old_so": "/home/lhl/.cache/hipengine/build/gguf_k_t16_selected_prefill-1a2dd6b6369a1806/gguf_k_t16_selected_prefill.so",
+  "candidate": "skip WMMA for cooperative waves whose complete R16 tile is outside logical rows",
+  "protocol": {
+    "rows": [
+      32,
+      35,
+      48,
+      64,
+      67,
+      128,
+      129,
+      192
+    ],
+    "warmups": 5,
+    "sample_pairs": 30,
+    "inner": 3,
+    "order": "alternating",
+    "timing": "HIP event and operation-complete wall"
+  },
+  "cases": {
+    "32": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 0.6770536502202351,
+      "new_event_median_ms": 0.4100730021794637,
+      "event_speedup": 1.6510563890376047,
+      "event_pair_wins": 30,
+      "old_wall_median_ms": 0.6831934054692587,
+      "new_wall_median_ms": 0.416265024493138,
+      "wall_speedup": 1.6412462380214239,
+      "wall_pair_wins": 30,
+      "sample_pairs": 30
+    },
+    "35": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 0.6767224868138632,
+      "new_event_median_ms": 0.5396088361740112,
+      "event_speedup": 1.2540982308815194,
+      "event_pair_wins": 30,
+      "old_wall_median_ms": 0.6827798982461293,
+      "new_wall_median_ms": 0.5456901465853055,
+      "wall_speedup": 1.2512226993994167,
+      "wall_pair_wins": 30,
+      "sample_pairs": 30
+    },
+    "48": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 0.678482969601949,
+      "new_event_median_ms": 0.5406691630681356,
+      "event_speedup": 1.2548948894214,
+      "event_pair_wins": 30,
+      "old_wall_median_ms": 0.6846354032556217,
+      "new_wall_median_ms": 0.5468814633786678,
+      "wall_speedup": 1.2518899416080065,
+      "wall_pair_wins": 30,
+      "sample_pairs": 30
+    },
+    "64": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 0.6873769760131836,
+      "new_event_median_ms": 0.6879034837086995,
+      "event_speedup": 0.9992346198151559,
+      "event_pair_wins": 11,
+      "old_wall_median_ms": 0.6937218519548575,
+      "new_wall_median_ms": 0.6948035831252735,
+      "wall_speedup": 0.9984431122741908,
+      "wall_pair_wins": 12,
+      "sample_pairs": 30
+    },
+    "67": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 1.0547056595484414,
+      "new_event_median_ms": 0.7276373306910198,
+      "event_speedup": 1.4494936076833946,
+      "event_pair_wins": 30,
+      "old_wall_median_ms": 1.0608651985724766,
+      "new_wall_median_ms": 0.7337743105987709,
+      "wall_speedup": 1.4457649760275673,
+      "wall_pair_wins": 30,
+      "sample_pairs": 30
+    },
+    "128": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 1.0916993220647175,
+      "new_event_median_ms": 1.094452659289042,
+      "event_speedup": 0.9974842792870429,
+      "event_pair_wins": 12,
+      "old_wall_median_ms": 1.0978152664999166,
+      "new_wall_median_ms": 1.100610320766767,
+      "wall_speedup": 0.9974604506117086,
+      "wall_pair_wins": 14,
+      "sample_pairs": 30
+    },
+    "129": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 1.3585076332092285,
+      "new_event_median_ms": 1.0927461783091228,
+      "event_speedup": 1.2432051103682062,
+      "event_pair_wins": 30,
+      "old_wall_median_ms": 1.3658100118239722,
+      "new_wall_median_ms": 1.100150247414907,
+      "wall_speedup": 1.2414758938911326,
+      "wall_pair_wins": 30,
+      "sample_pairs": 30
+    },
+    "192": {
+      "bf16_bit_exact": true,
+      "bf16_mismatches": 0,
+      "old_event_median_ms": 1.421375036239624,
+      "new_event_median_ms": 1.4236218134562173,
+      "event_speedup": 0.9984217878685501,
+      "event_pair_wins": 16,
+      "old_wall_median_ms": 1.4287644686798255,
+      "new_wall_median_ms": 1.4301761984825134,
+      "wall_speedup": 0.9990128979882438,
+      "wall_pair_wins": 16,
+      "sample_pairs": 30
+    }
+  },
+  "summary": {
+    "cells": 8,
+    "all_exact": true,
+    "minimum_wall_speedup": 0.9974604506117086,
+    "maximum_wall_speedup": 1.6412462380214239,
+    "positive_wall_cells": 5
+  },
+  "script_sha256": "f675583aaad0b034d253057447dc6cfcc51746351612dfb097ce2b81175ce682",
+  "created_at": "2026-09-02T02:50:10Z",
+  "commit_before": "2e3664c4ff7ec08bd665ad226b6a21733c433baf",
+  "commit_after": "pending",
+  "host": {
+    "identity": "lhl-hp-z6-g4",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm": "7.2.53211-3d9ef42"
+  },
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/he-q4-sharedb-inactive-waves-screen.py",
+  "correctness_gate": {
+    "bf16_bit_exact_all_cells": true,
+    "pytest": "tests/test_gguf_q4_k_t16_dense.py::test_q4_t16_shared_b_row64_matches_shared_b_parent (4 passed)"
+  },
+  "note": "Rows divisible by 64 continue to launch the unchanged parent kernel; only partial row64 tiles use inactive-wave arithmetic elision.",
+  "rocprof_kernel_trace": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. rocprofv3 --kernel-trace --output-format csv --output-file /tmp/he-q4-sharedb-tail-rocprof2/trace -- /home/lhl/mambaforge/envs/therock/bin/python3.12 /tmp/he-q4-sharedb-tail-fixture-trace.py",
+    "kernel_name": "gguf_q4_t16_dense_wmma_prefill_shared_b_row64_tail_bf16_kernel",
+    "duration_ns": 21203,
+    "lds_block_size": 24576,
+    "vgpr_count": 248,
+    "workgroup_size": 128,
+    "grid_size": 256
+  }
+}
