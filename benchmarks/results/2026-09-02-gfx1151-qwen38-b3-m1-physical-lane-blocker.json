@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_physical_lane_blocker",
+  "date": "2026-09-02",
+  "status": "measured_named_blocker",
+  "performance_claim": false,
+  "source_commit": "96963c8a3",
+  "candidate": "M1 logical-C1 physical-C2 shadow, T2 production experiment",
+  "ready_prerequisites": [
+    "request-owned lifecycle",
+    "resident shadow session/KV/hidden/recurrent allocation",
+    "arbitrary-boundary independent target clone",
+    "exact provider request clone with physical fingerprint parity"
+  ],
+  "blocker": {
+    "name": "public_request_equals_physical_lane_in_batch_executor",
+    "function": "Qwen35GGUFMTP2Adapter._execute_target_frontier_batch",
+    "surfaces": [
+      "plan.speculative_request_ids and plan.request_ids",
+      "adapter _states lookup",
+      "owner._row lookup",
+      "TargetVerifyBatch request IDs",
+      "GPU accept summary",
+      "selected-state commit target list",
+      "request telemetry and generated-ID publication"
+    ],
+    "reason": "Every physical lane is assumed to be a public scheduler request. A shadow has no public row and must compute while being excluded from acceptance, commit ownership, telemetry, cancellation publication, and output IDs.",
+    "unsafe_shortcut": "fabricating a negative-ID scheduler row would violate exact request/slot/commit ownership",
+    "required_refactor": "separate physical target lanes from public request IDs and add explicit compute/publish/commit masks through verify, accept, selected-state commit, cancellation, compaction, and telemetry"
+  },
+  "decision": "Do not enable B3. Retain current C1 strict fallback and record implementation/full T2 packet as blocked until the physical-lane/public-request separation exists."
+}

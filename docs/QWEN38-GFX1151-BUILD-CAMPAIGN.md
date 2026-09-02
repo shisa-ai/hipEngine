@@ -460,13 +460,26 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   identical token/position/external-hidden input produces token 279 and logit
   12.340762 on both. Route remains unselected. Evidence:
   [`...b3-m1-provider-clone-physical.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-provider-clone-physical.json).
-- [ ] Implement the C1 shadow-row route on the qualified physical C2
+- [~] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
-- [ ] Full T2 production packet: full-logit strict-teacher gates, lifecycle,
+
+  Blocked after prerequisites GREEN: `_execute_target_frontier_batch` equates
+  every physical lane with a public scheduler request across plan/state/row
+  lookup, accept, selected-state commit, telemetry, cancellation, and output
+  publication. A shadow must compute but be excluded from all public ownership
+  surfaces. Fabricating a negative-ID scheduler row would violate ownership.
+  Required refactor: separate physical lanes from public request IDs and carry
+  compute/publish/commit masks end-to-end. Current C1 remains selected. Evidence:
+  [`...b3-m1-physical-lane-blocker.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-physical-lane-blocker.json).
+- [~] Full T2 production packet: full-logit strict-teacher gates, lifecycle,
   isolation, deterministic repeat, category/heldout, task gates, and the
   complete C1 suite wall versus current C1 (bound: 41.76% screen, acceptance
   15.33% C1 versus 78.89% C2). Retain per §1.4.
+
+  Blocked on the same physical-lane/public-request separation; no integrated
+  candidate exists to gate. The 41.76% duplicate-C2 result remains an
+  optimistic screen, not a retained implementation result.
 
 ### B4 — M2: C2 draft-depth K3→K2/K1 (T3, authorized)
 
