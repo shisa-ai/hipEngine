@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import os
+import time
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -4948,12 +4949,19 @@ class Qwen4ExpGGUFResidentModelRunner:
             ngram_size=cfg.ple_ngram_size,
         )
         staged = self.resident.ple_staging.stage(rows[0]).reshape(1, cfg.hidden_size)
+        ple_telemetry = self.resident.ple_table.telemetry() is not None
+        ple_h2d_started = time.perf_counter_ns() if ple_telemetry else 0
         copy_host_to_device(
             self.ple_embedding_buffer,
             host_array_ptr(staged),
             staged.nbytes,
             runtime=self.runtime,
         )
+        if ple_h2d_started:
+            self.resident.ple_staging.record_h2d(
+                nbytes=staged.nbytes,
+                wall_ns=time.perf_counter_ns() - ple_h2d_started,
+            )
         residual_ptr = self.state.residual.ptr
         gdn_conv_row_bytes = (
             (2 * cfg.gdn_group_count * cfg.gdn_state_size + cfg.gdn_inner_size)

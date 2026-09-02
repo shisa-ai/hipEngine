@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P9 PLE telemetry] Added default-off per-request row/page/fault/cache and gather/dequant/copy/H2D counters; real warm code-p512 reports 10,240 requested / 4,216 unique rows and **5.670 s / 0.825 ms / 19.207 ms** nested stage walls with canonical output and zero teardown. Instrumented wall is not performance evidence. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-ple-telemetry.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P8 production feasibility rejected] Warm same-residency production graph wins five/five exact pairs at p512 (**57.312→55.907 ms, 1.0251x**) and p1024 (**58.962→57.868 ms, 1.0189x**), but cannot cross the p4096 sparse-QSA boundary; no production cache is admitted. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-production-feasibility-rejected.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P8 pointer/key audit] Strict research capture reuses stable resident allocations, updates token/PLE staging in place, and allocates nothing after first launch, but no request-owned production cache or composite manifest/shape/context/fallback key exists; item remains partial pending named-production economics. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-pointer-key-audit.json`.

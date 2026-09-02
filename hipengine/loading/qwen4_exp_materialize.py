@@ -6,6 +6,8 @@ from collections import Counter
 from dataclasses import dataclass
 import mmap
 import os
+import resource
+import time
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
@@ -428,6 +430,59 @@ class Qwen4ExpPLEMMapTable:
         self.row_width = int(tensor.shape[1])
         self.rows_gathered = 0
         self._raw: Any | None = reader.tensor_data(tensor.name)
+        self._telemetry: dict[str, Any] | None = None
+        self._telemetry_rows: set[int] = set()
+        self._telemetry_pages: set[int] = set()
+        self._cache_mode = "unadvised"
+        self._cache_range: dict[str, int] | None = None
+
+    def enable_telemetry(self) -> None:
+        """Enable opt-in cumulative PLE I/O telemetry."""
+
+        self._telemetry = {
+            "calls": 0,
+            "requested_rows": 0,
+            "requested_source_bytes": 0,
+            "gather_dequant_wall_ns": 0,
+            "staging_copy_wall_ns": 0,
+            "h2d_wall_ns": 0,
+            "h2d_bytes": 0,
+            "minor_faults_proxy": 0,
+            "major_faults_proxy": 0,
+            "cache_mode": self._cache_mode,
+            "prefetch_ranges": [dict(self._cache_range)] if self._cache_range else [],
+        }
+        self._telemetry_rows.clear()
+        self._telemetry_pages.clear()
+
+    def telemetry(self) -> dict[str, Any] | None:
+        if self._telemetry is None:
+            return None
+        pages = sorted(self._telemetry_pages)
+        ranges: list[dict[str, int]] = []
+        for page in pages:
+            if ranges and page == ranges[-1]["last_page"] + 1:
+                ranges[-1]["last_page"] = page
+                ranges[-1]["page_count"] += 1
+            else:
+                ranges.append({"first_page": page, "last_page": page, "page_count": 1})
+        return {
+            **self._telemetry,
+            "unique_rows": len(self._telemetry_rows),
+            "unique_pages": len(pages),
+            "adjacent_page_pairs": sum(item["page_count"] - 1 for item in ranges),
+            "page_range_count": len(ranges),
+            "page_ranges_sample": ranges[:32],
+        }
+
+    def _record_stage_copy(self, wall_ns: int) -> None:
+        if self._telemetry is not None:
+            self._telemetry["staging_copy_wall_ns"] += int(wall_ns)
+
+    def record_h2d(self, *, nbytes: int, wall_ns: int) -> None:
+        if self._telemetry is not None:
+            self._telemetry["h2d_bytes"] += int(nbytes)
+            self._telemetry["h2d_wall_ns"] += int(wall_ns)
 
     def gather_rows(self, row_indices: Any) -> np.ndarray:
         if self._raw is None:
@@ -439,10 +494,29 @@ class Qwen4ExpPLEMMapTable:
             int(np.min(indices)) < 0 or int(np.max(indices)) >= self.semantic_rows
         ):
             raise IndexError("PLE row index is outside semantic rows")
+        started = time.perf_counter_ns() if self._telemetry is not None else 0
+        before_faults = resource.getrusage(resource.RUSAGE_SELF) if started else None
         selected = np.asarray(self._raw[indices])
         values = dequantize_gguf_data(selected, self.tensor.ggml_type).astype(np.float32)
         values = values.reshape(indices.size, self.row_width)
         self.rows_gathered += int(indices.size)
+        if self._telemetry is not None:
+            row_bytes = int(self.tensor.byte_shape[1])
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))
+            for index in indices.tolist():
+                row = int(index)
+                self._telemetry_rows.add(row)
+                first = (int(self.tensor.data_offset) + row * row_bytes) // page_size
+                last = (int(self.tensor.data_offset) + (row + 1) * row_bytes - 1) // page_size
+                self._telemetry_pages.update(range(first, last + 1))
+            after_faults = resource.getrusage(resource.RUSAGE_SELF)
+            self._telemetry["calls"] += 1
+            self._telemetry["requested_rows"] += int(indices.size)
+            self._telemetry["requested_source_bytes"] += int(indices.size) * row_bytes
+            self._telemetry["gather_dequant_wall_ns"] += time.perf_counter_ns() - started
+            assert before_faults is not None
+            self._telemetry["minor_faults_proxy"] += int(after_faults.ru_minflt - before_faults.ru_minflt)
+            self._telemetry["major_faults_proxy"] += int(after_faults.ru_majflt - before_faults.ru_majflt)
         return values
 
     def advise_cache(self, mode: str) -> dict[str, Any]:
@@ -488,6 +562,14 @@ class Qwen4ExpPLEMMapTable:
                 os.close(descriptor)
         if remapped:
             self._raw = self.reader.tensor_data(self.tensor.name)
+        self._cache_mode = selected
+        self._cache_range = {
+            "offset": int(self.tensor.data_offset),
+            "nbytes": int(self.tensor.nbytes),
+        }
+        if self._telemetry is not None:
+            self._telemetry["cache_mode"] = selected
+            self._telemetry["prefetch_ranges"] = [dict(self._cache_range)]
         return {
             "mode": selected,
             "scope": "ple_tensor_file_range",
@@ -576,10 +658,16 @@ class Qwen4ExpPLEStagingRing:
             raise ValueError("PLE row request exceeds staging capacity")
         buffer = self._buffers[self._active]
         values = self.table.gather_rows(indices)
+        started = time.perf_counter_ns() if self.table._telemetry is not None else 0
         np.copyto(buffer[: indices.size], values)
+        if started:
+            self.table._record_stage_copy(time.perf_counter_ns() - started)
         result = buffer[: indices.size]
         self._active = 1 - self._active
         return result
+
+    def record_h2d(self, *, nbytes: int, wall_ns: int) -> None:
+        self.table.record_h2d(nbytes=nbytes, wall_ns=wall_ns)
 
     def close(self) -> None:
         if self._closed:

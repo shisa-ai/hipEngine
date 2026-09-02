@@ -1666,9 +1666,16 @@ request-owned transition submission.
 Goal: implement the reproduced Nathan/Engram mechanism without mixing it into
 warm GPU-kernel claims.
 
-- [ ] Instrument `Qwen4ExpPLEMMapTable` and staging with requested/unique rows,
+- [x] Instrument `Qwen4ExpPLEMMapTable` and staging with requested/unique rows,
       unique/adjacent pages, bytes, prefetch ranges, faults or resident-page
-      proxy, dequant/copy/H2D wall, and cache mode.
+      proxy, dequant/copy/H2D wall, and cache mode. Telemetry is opt-in and
+      excluded from performance evidence. A real warm code-p512 request records
+      10,240 requested / 4,216 unique rows, 4,297 unique pages with 86 adjacent
+      pairs, 921,600 source bytes, 1,310,720 H2D bytes, process-fault proxies,
+      cache advice/range, and **5.670 s gather+dequant / 0.825 ms staging copy /
+      19.207 ms H2D** across prefill plus 128 transitions. Output hash remains
+      canonical and teardown is zero. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-ple-telemetry.json`.
 - [ ] Add off/auto/on random-access advice only together with page-aligned,
       deduplicated and adjacent-range-merged `WILLNEED` prefetch.
 - [ ] Dequantize directly into the active pinned ring where practical; remove
