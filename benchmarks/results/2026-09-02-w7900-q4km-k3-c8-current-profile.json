@@ -1,0 +1,295 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_c8_current_profile",
+  "date": "2026-09-02",
+  "status": "diagnostic_profile_complete",
+  "performance_claim": false,
+  "decision": "Use the current tracked-clean C8 profile as the baseline for the dedicated C8 optimization campaign. The remaining cycle is target-kernel dominated: Q4/Q6/Q5 account for 79.94% of target wall. Do not reopen copy cosmetics, host-captured graphs, or geometry-only WMMA candidates without a materially new mechanism.",
+  "hardware": {
+    "physical_host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "visible_device": 0,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "full_file_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "sampled_fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "recurrent_state": "FP32"
+  },
+  "source": {
+    "commit": "b920ead8ee024cf83fc1ec480c5e8dbf8c50fa56",
+    "branch": "campaign/gfx1100-mtp-cn-promotion",
+    "tracked_clean": true,
+    "no_jit_compile_during_profile": true,
+    "execution_profile_manifest_sha256": "a7e5ad33b4af17707b1a375ecb706c369b7f0f35e6532456dd507ef13be1bc35",
+    "strict_fallback_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+    "rocprofv3_version": "1.3.2",
+    "rocprofv3_package_rocm": "7.15.0",
+    "profiled_hip_runtime": "7.2.0"
+  },
+  "profile_environment": {
+    "HIP_VISIBLE_DEVICES": "0",
+    "ROCR_VISIBLE_DEVICES": "0",
+    "HIPENGINE_HIP_ARCH": "gfx1100",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "PYTHONPATH": ".",
+    "LD_LIBRARY_PATH_prefix": "/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib:/home/lhl/mambaforge/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib/rocm_sysdeps/lib"
+  },
+  "workload": {
+    "purpose": "Current-source attribution only; not a retained throughput row",
+    "prompt": "code_merge_intervals",
+    "prompt_scope": "one train prompt",
+    "concurrency": 8,
+    "resident_capacity": 8,
+    "candidate_budget": 3,
+    "max_tokens_per_request": 12,
+    "sampling": "raw greedy",
+    "execution_profile": "production",
+    "physical_cycles": 3,
+    "generated_tokens": 96,
+    "proposal_physical_rows": [8, 8, 8, 8, 8, 8, 8, 8],
+    "target_physical_rows": [32, 32, 24],
+    "accepted_counts_per_cycle": [3, 3, 2],
+    "candidate_d2h_after_target": 0,
+    "recoverable_failures": 0,
+    "final_active_allocations": 0,
+    "final_allocated_bytes": 0
+  },
+  "peer_targets": {
+    "canonical_hipengine_k3_tok_s": 87.508,
+    "current_llama_cpp_hip_k3_tok_s": 94.735,
+    "laurent_llama_cpp_hip_k3_tok_s": 101.072,
+    "relative_gain_required_to_current_peer_pct": 8.2587,
+    "relative_gain_required_to_laurent_peer_pct": 15.5003,
+    "caveat": "Peer rows are D24 ten-prompt complete-wall results; this one-prompt D12 profile only attributes hipEngine and must not be used as an absolute cross-engine throughput comparison. Laurent differs from its AR output in two C8 cells, while current llama.cpp and hipEngine match their controls."
+  },
+  "measurements": {
+    "complete_wall_seconds": 1.2508675828576088,
+    "cycle": {
+      "calls": 3,
+      "host_wall_ms_per_call": 190.30673566666667,
+      "kernel_sum_ms_per_call": 173.32896966666667,
+      "device_interval_union_ms_per_call": 159.622036,
+      "wall_minus_device_union_ms_per_call": 30.68469966666666,
+      "kernel_launches_per_call": 1816.6666666666667,
+      "hip_api_calls_per_call": 2951.3333333333335,
+      "allocation_ops_per_call": 0,
+      "memory_copy_ops_per_call": 0
+    },
+    "proposal": {
+      "calls": 3,
+      "host_wall_ms_per_call": 22.28573666666667,
+      "kernel_sum_ms_per_call": 18.13557266666667,
+      "device_interval_union_ms_per_call": 16.464242666666667,
+      "kernel_launches_per_call": 288.3333333333333,
+      "q6_ms_per_call": 10.406,
+      "q4_ms_per_call": 5.398
+    },
+    "target_accept_commit_provider": {
+      "calls": 3,
+      "host_wall_ms_per_call": 167.862397,
+      "share_of_cycle_wall_pct": 88.2062,
+      "kernel_sum_ms_per_call": 154.973689,
+      "device_interval_union_ms_per_call": 142.93808533333333,
+      "device_interval_union_share_of_wall_pct": 85.1519,
+      "wall_minus_device_union_ms_per_call": 24.924311666666654,
+      "kernel_launches_per_call": 1528.0,
+      "hip_api_calls_per_call": 2478.3333333333335,
+      "allocation_ops_per_call": 0,
+      "memory_copy_ops_per_call": 0,
+      "quant_family_ms_per_call": 134.191434,
+      "quant_share_of_target_wall_pct": 79.9413,
+      "quant_share_of_kernel_sum_pct": 86.5898,
+      "families": {
+        "q4_t16": {
+          "ms_per_call": 72.62,
+          "calls_per_call": 249.66666666666666,
+          "share_of_target_wall_pct": 43.2617,
+          "share_of_kernel_sum_pct": 46.8596
+        },
+        "q6_t16": {
+          "ms_per_call": 46.519,
+          "calls_per_call": 68.66666666666667,
+          "share_of_target_wall_pct": 27.7126,
+          "share_of_kernel_sum_pct": 30.0173
+        },
+        "q5_t16": {
+          "ms_per_call": 15.052,
+          "calls_per_call": 48.0,
+          "share_of_target_wall_pct": 8.9671,
+          "share_of_kernel_sum_pct": 9.7129
+        },
+        "gdn_linear_attention": {
+          "ms_per_call": 8.303895,
+          "calls_per_call": 96.0
+        },
+        "commit_repair": {
+          "ms_per_call": 4.66159,
+          "calls_per_call": 24.0
+        },
+        "copy_fill": {
+          "ms_per_call": 1.072,
+          "calls_per_call": 492.6666666666667
+        },
+        "attention": {
+          "ms_per_call": 0.575,
+          "calls_per_call": 34.333333333333336
+        }
+      }
+    }
+  },
+  "top_target_kernels": [
+    {
+      "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_kernel<unsigned short, 8, true>",
+      "ms_per_cycle": 30.352597333333335,
+      "calls_per_cycle": 64.0,
+      "workgroup": 128,
+      "vgpr": 112,
+      "lds_bytes": 1024
+    },
+    {
+      "name": "q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>",
+      "ms_per_cycle": 25.309354,
+      "calls_per_cycle": 96.0,
+      "workgroup": 64,
+      "vgpr": 192,
+      "lds_bytes": 0
+    },
+    {
+      "name": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 1, 2>",
+      "ms_per_cycle": 23.461057666666665,
+      "calls_per_cycle": 42.666666666666664,
+      "workgroup": 128,
+      "vgpr": 248,
+      "lds_bytes": 32768
+    },
+    {
+      "name": "q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>",
+      "ms_per_cycle": 22.927935,
+      "calls_per_cycle": 106.66666666666667,
+      "workgroup": 64,
+      "vgpr": 224,
+      "lds_bytes": 0
+    },
+    {
+      "name": "q5_k_t16_dense_rowtile_grouped_gemv_kernel<unsigned short, 8, 4>",
+      "ms_per_cycle": 10.309906666666667,
+      "calls_per_cycle": 32.0,
+      "workgroup": 128,
+      "vgpr": 72,
+      "lds_bytes": 512
+    },
+    {
+      "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>",
+      "ms_per_cycle": 9.924024333333334,
+      "calls_per_cycle": 3.6666666666666665,
+      "workgroup": 128,
+      "vgpr": 112,
+      "lds_bytes": 1024
+    },
+    {
+      "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel",
+      "ms_per_cycle": 7.341,
+      "calls_per_cycle": 48.0
+    },
+    {
+      "name": "q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>",
+      "ms_per_cycle": 6.2423606666666664,
+      "calls_per_cycle": 1.0,
+      "workgroup": 128,
+      "vgpr": 96,
+      "lds_bytes": 512
+    },
+    {
+      "name": "q5_k_t16_dense_rowtile_grouped_gemv_kernel<unsigned short, 6, 4>",
+      "ms_per_cycle": 4.742485333333334,
+      "calls_per_cycle": 16.0,
+      "workgroup": 128,
+      "vgpr": 64,
+      "lds_bytes": 512
+    },
+    {
+      "name": "linear_state_pair_commit_chunked_i32_kernel",
+      "ms_per_cycle": 4.301,
+      "calls_per_cycle": 8.0
+    }
+  ],
+  "host_api_attribution": {
+    "target_hip_memcpy_calls_per_cycle": 39.333333333333336,
+    "target_hip_memcpy_api_ms_per_cycle": 113.984,
+    "target_hip_launch_calls_per_cycle": 1008.3333333333334,
+    "target_hip_launch_api_ms_per_cycle": 6.062,
+    "target_device_synchronize_calls_per_cycle": 1.0,
+    "target_device_synchronize_api_ms_per_cycle": 0.378,
+    "interpretation": "HIP API sums overlap device work and are not additive. The memory-copy trace contains zero DMA operations; prior current-route analysis proves the long blocking memcpy calls wait for required target producers. Launch-only removal is bounded by about 6.1 ms/cycle and host-captured dynamic-geometry graphs were already rejected."
+  },
+  "comparison_to_prior_diagnostic": {
+    "source": "benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json",
+    "same_shape_protocol": "one train prompt, C8/K3/D12, production BF16, three target cycles; different tracked-clean commits",
+    "prior_commit": "a81e42440b5ae199d623a30c78e3bb838379f842",
+    "cycle_wall_ms_per_call": [301.3931586666667, 190.30673566666667],
+    "target_wall_ms_per_call": [267.76225566666665, 167.862397],
+    "target_kernel_launches_per_call": [3620.6666666666665, 1528.0],
+    "q4_ms_per_call": [125.36109133333333, 72.62],
+    "q6_ms_per_call": [69.02365633333334, 46.519],
+    "q5_ms_per_call": [19.122905, 15.052],
+    "deltas_pct": {
+      "cycle_wall": -36.8576,
+      "target_wall": -37.3092,
+      "target_kernel_launches": -57.7978,
+      "q4": -42.0713,
+      "q6": -32.6043,
+      "q5": -21.2881
+    },
+    "caveat": "Diagnostic profile comparison only; it validates that accumulated exact/default work changed the intended cycle owners but is not a canonical throughput claim."
+  },
+  "commands": {
+    "warmup": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. .venv/bin/python -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --output /tmp/he-current-c8-profile/warmup.json",
+    "profile": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt PYTHONPATH=. rocprofv3 --kernel-trace --marker-trace --hip-runtime-trace --memory-copy-trace --memory-allocation-trace --output-format csv -d /tmp/he-current-c8-profile/trace -- .venv/bin/python -u scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 8 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --profile-child --output /tmp/he-current-c8-profile/child.json",
+    "summary": ".venv/bin/python scripts/specdec2_rocprof_summary.py --lane 8 /tmp/he-current-c8-profile/child.json /tmp/he-current-c8-profile/trace --output /tmp/he-current-c8-profile/summary.json"
+  },
+  "raw_sources": {
+    "child": {
+      "path": "/tmp/he-current-c8-profile/child.json",
+      "sha256": "e3f9e5ad179a9c673991cd06f7e86a97a7427b326bd9457e6b9d22ead2ed7678"
+    },
+    "summary": {
+      "path": "/tmp/he-current-c8-profile/summary.json",
+      "sha256": "e9ede88d68ba8ecf2a33290e8681120690f04887fd152b974dd312b286b3779d"
+    },
+    "kernel_trace": {
+      "path": "/tmp/he-current-c8-profile/trace/epyc/2835473_kernel_trace.csv",
+      "sha256": "40de0672b71b8dbe5e1b654618c46767da0496a44df6711c390445e554e49c19"
+    },
+    "marker_trace": {
+      "path": "/tmp/he-current-c8-profile/trace/epyc/2835473_marker_api_trace.csv",
+      "sha256": "20af3ce05e4e5132c799d6b88740e4cf214bae51a5e5d13257dff2380c1451b1"
+    },
+    "hip_api_trace": {
+      "path": "/tmp/he-current-c8-profile/trace/epyc/2835473_hip_api_trace.csv",
+      "sha256": "5ed7ceb5398860f72861ae7ef8abc91b55503f6f91269ff02122e41ce250712b"
+    },
+    "memory_copy_trace": {
+      "path": "/tmp/he-current-c8-profile/trace/epyc/2835473_memory_copy_trace.csv",
+      "sha256": "20f33f26ca78b7779435cc9b3c01c4b65fb47147117ebc7bdc0ef4de09a42839"
+    },
+    "memory_allocation_trace": {
+      "path": "/tmp/he-current-c8-profile/trace/epyc/2835473_memory_allocation_trace.csv",
+      "sha256": "7d666fc88fa838befe6ea770dbe9eea18502319cfd87e3285f6a0179d7db0a79"
+    }
+  },
+  "limitations": [
+    "One prompt and D12 under profiler instrumentation: attribution only, never a retained throughput row.",
+    "Summed kernel duration exceeds interval-union wall under overlap; use interval union as the device-busy lower bound.",
+    "HIP API duration overlaps queued device work and cannot be added to kernel duration or treated as directly removable host time.",
+    "Kernel symbols and geometries identify owners but not every semantic projection role; the campaign requires a role-resolved census before changing shared kernels.",
+    "Cross-engine closure remains bound to the full ten-prompt plus heldout D24 complete-wall protocol."
+  ]
+}

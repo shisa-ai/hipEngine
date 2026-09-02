@@ -493,14 +493,18 @@ automatic product cell promotes because the capacity-1 C1 premise does not
 engage on the normal capacity-4 server owner; automatic remains K0. The
 independent gfx1100 campaign is closed with retained exact C1 device chains and
 automatic K0 under
-[`SPECDEC2-PERF-GFX1100.md`](SPECDEC2-PERF-GFX1100.md). The active W7900
-promotion campaign independently targets real Generation-2 MTP for Qwen3.6
-35B MoE and 27B Dense under the production numerical/task/serving gates in
+[`SPECDEC2-PERF-GFX1100.md`](SPECDEC2-PERF-GFX1100.md). The W7900 dual-model
+promotion campaign completed real Generation-2 automatic MTP keys independently
+for Qwen3.6 35B MoE and 27B Dense under the production
+numerical/task/serving gates in
 [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md);
 the prior measured queue remains historical context in
-[`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md).
-Source audit and rejected alternatives remain in
-[`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
+[`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md). The active
+W7900 Qwen3.8 continuation is the explicit C8/K3 cross-engine campaign in
+[`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md): its
+current-source profile is target-kernel dominated, and capacity-8 automatic
+routing remains K0 unless a separate product gate passes. Source audit and
+rejected alternatives remain in [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,
 transactional-KV, and plugin invariants below remain binding while Generation-2
