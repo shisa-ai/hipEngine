@@ -10,12 +10,12 @@
     {
       "id": "P1_F16_ACTIVATION_B",
       "class": "T1",
-      "scope": "Qwen3.8 standard-Q4_K_M prefill quantized Q4/Q5/Q6 matmul owners; grouped C2 rows72 and C8 rows288 first, then all admitted M=35-96 and M>=256 shapes",
+      "scope": "Qwen3.8 standard-Q4_K_M prefill Q4/Q5 T16 matmul owners; grouped C2 rows72 and C8 rows288 first. Q6 remains excluded pending an independent changed-math gate.",
       "stateful_surfaces": ["none; prefill activation staging only", "downstream target hidden/logits may drift"],
       "strict_fallback": "registered current BF16 activation-B Q4/Q5/Q6 owners for every shape",
       "expected_mechanism": "halve activation-B staging/shared-memory bytes where the current owner can preserve occupancy",
       "can_alter_discrete_decisions": true,
-      "bound": "19.8%/20.1% optimistic C2/C8 prefill wall",
+      "bound": "17.5%/16.95% optimistic C2/C8 prefill wall from Q4+Q5 family deltas only; still clears the matched-gap entry thresholds",
       "admission": "production only after complete T1 numerical/task/isolation/determinism gate"
     },
     {

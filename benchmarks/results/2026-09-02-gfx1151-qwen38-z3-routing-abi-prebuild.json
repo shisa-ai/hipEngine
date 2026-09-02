@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z3_routing_abi_prebuild",
+  "date": "2026-09-02",
+  "status": "preimplementation_routing_ready",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "source_commit_before_change": "e80d246fee980d2476bf92a9989c05eb80ec22db",
+  "lineage_command": "python3 scripts/check_lineage.py --kind kernel --diff stat",
+  "lineage_result": "18 tracked sources; 11 existing DRIFT entries reviewed. No P1 source is copied from an external tree; P1 reuses an in-tree registered body.",
+  "routing": {
+    "P1_F16_ACTIVATION_B": {
+      "backend": "hip_gfx1151",
+      "keys": [
+        ["linear", "gguf_q4_k_t16_v1", "f16_rocblas_t16_bf16_bf16_out"],
+        ["linear", "gguf_q5_k_t16_v1", "f16_rocblas_t16_bf16_bf16_out"]
+      ],
+      "registration": "existing gfx1100 source module explicitly imported by register_gfx1151_kernels; keys are available but no capability/profile selects them",
+      "strict_fallback": "current shape-owned Q4/Q5 T16 WMMA/rowtile/direct registry variants",
+      "excluded": ["Q6 f16_rocblas_t16_qmicro_planar_bf16_bf16_out remains in _GFX1151_ALIAS_EXCLUSIONS"],
+      "expected_kernel_names": [
+        "hipengine_gguf_q4_k_t16_dequantize_f16_tile",
+        "hipengine_gguf_q5_k_t16_dequantize_f16_tile",
+        "hipengine_bf16_to_fp16",
+        "rocBLAS GEMM kernel selected by rocblas_gemm_ex"
+      ]
+    },
+    "M1_C1_ACCEPT_ROUTE_PARITY": {
+      "registration": "reuse existing hip_gfx1151 Q4 rowtile/WMMA and GDN strict/production keys; any selection must be added as a RuntimeProfilePlan VariantSelection, not a backend/quant branch",
+      "strict_fallback": "qwen38_gguf_profiles strict C1 chain plus current C1 target verifier",
+      "expected_kernel_names": ["dense_rowtile_bf16_bf16_out", "dense_dual_rowtile_bf16_bf16_out", "bf16_c1_exact_state_rows_tloop"]
+    },
+    "M2_C2_DRAFT_DEPTH": {
+      "registration": "no new kernel key; explicit T3 serving-policy candidate uses existing K1/K2/K3 proposal and target registry owners",
+      "strict_fallback": "current K3 policy"
+    },
+    "M3_ACCEPT_BOUNDARY_DATAFLOW": {
+      "registration": "no new kernel key while T0; uses existing target, device-accept, state-commit, and runtime-state registry owners",
+      "strict_fallback": "current synchronous accept/commit boundary",
+      "expected_kernel_names": ["existing target verifier family", "existing state_commit family; no new kernel name is expected for a T0 host/dataflow refactor"]
+    }
+  },
+  "abi": {
+    "P1": "Existing HIP __global__ and ctypes wrappers use raw device pointers; no framework tensor ABI.",
+    "M1_M2_M3": "No kernel signature change.",
+    "kv_live_spans": "Unchanged. M1/M2/M3 continue through existing paged-KV/attention interfaces; P1 does not touch attention or KV."
+  },
+  "prebuild": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt .venv/bin/python -c 'from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_f16_rocblas_prefill import build_gguf_q6_k_f16_rocblas_prefill; build_gguf_q6_k_f16_rocblas_prefill(profile=\"prefill\", require_cached=True)'",
+    "family": "gguf_q6_k_f16_rocblas_prefill",
+    "profile": "prefill",
+    "target_arch": "gfx1151",
+    "cache_key": "60cf9facb019bb18d8a7c932476fa567ddf2b2d30639fd93524bedf469258fbc",
+    "output": "/home/lhl/.cache/hipengine/build/gguf_q6_k_f16_rocblas_prefill-60cf9facb019bb18/gguf_q6_k_f16_rocblas_prefill.so",
+    "require_cached": "PASS"
+  }
+}

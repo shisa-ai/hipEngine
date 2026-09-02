@@ -472,12 +472,21 @@ before it enters here.
   control/state/lifecycle/cancellation/compaction evidence. Every candidate
   also requires a registered strict fallback, full category/heldout suite,
   complete-wall improvement, and its declared trace/control checks.
-- [ ] Register through the four-axis plugin registry. Do not add backend- or
+- [x] Register through the four-axis plugin registry. Do not add backend- or
   quant-specific dispatch branches.
-- [ ] Keep kernel signatures on raw device pointers and preserve
+- [x] Keep kernel signatures on raw device pointers and preserve
   `KVLiveSpans` as the attention/paged-KV ABI.
-- [ ] Prebuild HIP artifacts before `rocprofv3` measurements and record the
+- [x] Prebuild HIP artifacts before `rocprofv3` measurements and record the
   expected kernel names.
+
+  Routing/ABI/prebuild manifest: [`2026-09-02-gfx1151-qwen38-z3-routing-abi-prebuild.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-z3-routing-abi-prebuild.json).
+  P1 explicitly registers existing in-tree Q4/Q5 F16/rocBLAS bodies under
+  `hip_gfx1151` without selecting them; Q6 remains excluded pending its own
+  gate. M1 reuses registered profile variants, while M2/M3 add no kernel key.
+  No backend/quant dispatch branch or kernel signature changed, and
+  `KVLiveSpans` is untouched. The P1 `prefill` artifact passes `require_cached`
+  at cache key `60cf9fac…`; expected dequant/cast/rocBLAS and existing M1/M3
+  kernel families are recorded before profiling.
 
 Exit: an approved, bounded candidate plan with tests and fallback registered
 before implementation begins.
