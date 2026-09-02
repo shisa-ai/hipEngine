@@ -1,0 +1,348 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_entitled_vulkan_canonical_refresh",
+  "status": "screen_complete_freeze_blocked_by_variance",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "configuration": {
+    "model": "pinned UD-Q4_K_XL c8b5954a",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "kv": "BF16/BF16",
+    "graphics_queue": true,
+    "repack": true,
+    "fit": "off",
+    "batch": 8192,
+    "ubatch": 2048,
+    "clock_policy": "auto",
+    "warmups_per_case": 1,
+    "measured_repetitions_per_case": 3,
+    "cases": 12,
+    "decode_transitions": 128
+  },
+  "driver_command": "export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json GGML_VK_ALLOW_GRAPHICS_QUEUE=1; uv run python scripts/qwen4exp_canonical_ar_bench.py llamacpp --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --warmups 1 --repetitions 3 --server-arg=-ngl --server-arg=999 --server-arg=-fa --server-arg=on --server-arg=-c --server-arg=4352 --server-arg=-b --server-arg=8192 --server-arg=-ub --server-arg=2048 --server-arg=-ctk --server-arg=bf16 --server-arg=-ctv --server-arg=bf16 --server-arg=-t --server-arg=4 --server-arg=-lm --server-arg=mmap --server-arg=--no-host --server-arg=-fit --server-arg=off",
+  "prior_screening_rows": {
+    "upstream": {
+      "512": [
+        240.53,
+        22.97
+      ],
+      "1024": [
+        259.73,
+        20.11
+      ],
+      "4096": [
+        266.98,
+        18.07
+      ]
+    },
+    "nathan": {
+      "512": [
+        348.31,
+        23.23
+      ],
+      "1024": [
+        354.93,
+        20.36
+      ],
+      "4096": [
+        350.54,
+        18.44
+      ]
+    }
+  },
+  "lanes": {
+    "upstream": {
+      "source": {
+        "path": "/tmp/qwen4exp-upstream-rebuild",
+        "head": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+        "tracked_clean": true
+      },
+      "server_binary_sha256": "070ae16710ad4279abffaf3a16e438c19d5b1f950817b7910d4474dfcdc2dce0",
+      "raw_json_sha256": "d225ada76f05d46d7d0a92a612faa931672be5ef7b736d18f88d82d820ff5215",
+      "server_log_sha256": "8ef15736185202cd82520afd4f53471848a3ad2c0201458331d8ba1543177dae",
+      "server_returncode": 0,
+      "deterministic_cases": 12,
+      "all_cases_deterministic": true,
+      "shapes": {
+        "512": {
+          "prefill_tok_s_weighted": 200.00678408427785,
+          "decode_tok_s_weighted": 24.385197727756793,
+          "prefill_wall_s": 2.5599131666666666,
+          "decode_wall_ms_per_token": 41.008484375,
+          "prefill_samples": [
+            186.65054861408322,
+            194.69746030092165,
+            197.00786607774654,
+            187.0004722492395,
+            201.82653009738132,
+            209.12153841566746,
+            203.79610040938337,
+            203.3980989428463,
+            208.52696066252923,
+            201.75996160255733,
+            203.70731396787633,
+            205.7721499452011
+          ],
+          "decode_samples": [
+            23.48226162798484,
+            23.45722044399387,
+            23.61687669388819,
+            23.644116152459475,
+            25.01213479352092,
+            25.036576874026895,
+            24.865749237078017,
+            24.013333403372222,
+            24.839098915113542,
+            24.98888189981098,
+            24.90074717804501,
+            24.98047424649717
+          ],
+          "prefill_coefficient_of_variation": 0.03744879821503327,
+          "decode_coefficient_of_variation": 0.028145637562903492,
+          "delta_vs_2026_08_30_percent": [
+            -16.847468472008543,
+            6.1610697769124645
+          ]
+        },
+        "1024": {
+          "prefill_tok_s_weighted": 241.84337555410633,
+          "decode_tok_s_weighted": 21.326614561137635,
+          "prefill_wall_s": 4.234145333333333,
+          "decode_wall_ms_per_token": 46.889767578124996,
+          "prefill_samples": [
+            228.1109804472802,
+            240.9966340489647,
+            248.3601921298924,
+            239.25641722393866,
+            238.9829780639765,
+            249.29059298052223,
+            244.06172092114232,
+            239.1970081686713,
+            240.7067564082885,
+            245.96623777104628,
+            249.12174852327246,
+            239.71013800655737
+          ],
+          "decode_samples": [
+            20.696709449567777,
+            21.019108175661284,
+            20.780806327755528,
+            20.953316991928716,
+            21.399128520491004,
+            21.662304307312283,
+            21.506113448780837,
+            21.62555951911514,
+            21.542159436551355,
+            21.679486074232933,
+            21.552406359845712,
+            21.57104626315328
+          ],
+          "prefill_coefficient_of_variation": 0.02459471800611163,
+          "decode_coefficient_of_variation": 0.017016329241242457,
+          "delta_vs_2026_08_30_percent": [
+            -6.8866224332551855,
+            6.049798911673965
+          ]
+        },
+        "4096": {
+          "prefill_tok_s_weighted": 266.58250776072,
+          "decode_tok_s_weighted": 18.975199155277505,
+          "prefill_wall_s": 15.364849083333334,
+          "decode_wall_ms_per_token": 52.70036914062499,
+          "prefill_samples": [
+            263.427198137899,
+            269.11404515794123,
+            269.4413866969367,
+            264.05035058550396,
+            271.0114423598163,
+            269.1635971217632,
+            263.45840875494935,
+            263.8812251020881,
+            263.57552294580654,
+            268.54485469435224,
+            269.9798609260968,
+            263.74223574988656
+          ],
+          "decode_samples": [
+            18.800808082232386,
+            18.91896166235004,
+            18.58739568368725,
+            18.60917903571305,
+            19.186679647654614,
+            19.071071925355824,
+            19.251058620225493,
+            18.92560801842526,
+            19.259707983705685,
+            19.160572332283245,
+            19.036279430571344,
+            18.925361773815016
+          ],
+          "prefill_coefficient_of_variation": 0.011685511515823317,
+          "decode_coefficient_of_variation": 0.012014432937486661,
+          "delta_vs_2026_08_30_percent": [
+            -0.14888465026595687,
+            5.009403183605454
+          ]
+        }
+      }
+    },
+    "nathan": {
+      "source": {
+        "path": "/tmp/qwen4exp-nathan-rebuild",
+        "head": "ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5",
+        "tracked_clean": true
+      },
+      "server_binary_sha256": "563c54db7a7ace8000082635b3cc17d3dafb5378a7b5a0b22de21b42c46516b2",
+      "raw_json_sha256": "c64eb0fdbec9ef8a7052adb060af4caade27fe0698bad44c7f01c5fd6227493c",
+      "server_log_sha256": "37ffa14a34b35ca2ca0204e775e0ee016c9ffd7eb250b2b96a2ea14f14d7ed71",
+      "server_returncode": 0,
+      "deterministic_cases": 0,
+      "all_cases_deterministic": false,
+      "shapes": {
+        "512": {
+          "prefill_tok_s_weighted": 360.2289001374428,
+          "decode_tok_s_weighted": 24.34242180472433,
+          "prefill_wall_s": 1.4213185000000002,
+          "decode_wall_ms_per_token": 41.080546875,
+          "prefill_samples": [
+            362.9818104993907,
+            371.799312606974,
+            377.8806945033858,
+            367.135888321852,
+            352.41878364584113,
+            366.22936115150526,
+            358.26468342906884,
+            350.1996890609792,
+            364.0332322524912,
+            351.8934202803326,
+            347.63314111664926,
+            354.9536133861881
+          ],
+          "decode_samples": [
+            24.384417290533094,
+            24.4063210083319,
+            24.15809966348522,
+            24.455118934031933,
+            24.46957418735206,
+            23.970544695046918,
+            24.44613275548787,
+            24.186008545219146,
+            24.402384646782153,
+            24.50843358176205,
+            24.392679451987966,
+            24.34076924817639
+          ],
+          "prefill_coefficient_of_variation": 0.026079307004677914,
+          "decode_coefficient_of_variation": 0.006505494042259356,
+          "delta_vs_2026_08_30_percent": [
+            3.421923039086683,
+            4.788729249781887
+          ]
+        },
+        "1024": {
+          "prefill_tok_s_weighted": 357.61324936134986,
+          "decode_tok_s_weighted": 21.097945605403005,
+          "prefill_wall_s": 2.863428583333333,
+          "decode_wall_ms_per_token": 47.39797981770834,
+          "prefill_samples": [
+            360.7860767579425,
+            363.97073589977725,
+            364.93254806311336,
+            361.45122667510054,
+            357.54976453741824,
+            359.84508388009993,
+            356.21703079190104,
+            355.5170412094245,
+            348.1606475788045,
+            354.62724486145464,
+            357.3929025399327,
+            351.6499215140727
+          ],
+          "decode_samples": [
+            21.06741341869147,
+            21.025599159764493,
+            21.173473607595984,
+            21.26146603455885,
+            20.822403604878623,
+            21.214873018211808,
+            21.09168588811322,
+            21.028131039427088,
+            20.994812969020842,
+            21.00845508252794,
+            21.23387034565589,
+            21.26253970737762
+          ],
+          "prefill_coefficient_of_variation": 0.013695365325468114,
+          "decode_coefficient_of_variation": 0.0063479843467667265,
+          "delta_vs_2026_08_30_percent": [
+            0.7559939597525878,
+            3.624487256399833
+          ]
+        },
+        "4096": {
+          "prefill_tok_s_weighted": 351.8546700478752,
+          "decode_tok_s_weighted": 19.011559795749505,
+          "prefill_wall_s": 11.641169916666666,
+          "decode_wall_ms_per_token": 52.59957682291667,
+          "prefill_samples": [
+            354.975577229634,
+            357.32808275076326,
+            358.7024848379017,
+            356.1119495642541,
+            357.142483458618,
+            354.1085059007134,
+            351.2084666620765,
+            349.99967529327,
+            345.4366894076343,
+            347.16804196122484,
+            346.1817237686208,
+            344.71237640302394
+          ],
+          "decode_samples": [
+            19.02590629830332,
+            18.861543743677515,
+            19.11404604633424,
+            19.053800191133433,
+            18.975287060514564,
+            18.844011189220517,
+            18.970807040362914,
+            19.17786299274747,
+            19.13061517183328,
+            18.91370886305263,
+            19.076546131708646,
+            19.00099309877993
+          ],
+          "prefill_coefficient_of_variation": 0.014537276302186073,
+          "decode_coefficient_of_variation": 0.005534390547363039,
+          "delta_vs_2026_08_30_percent": [
+            0.3750413784090689,
+            3.0995650528715
+          ]
+        }
+      }
+    }
+  },
+  "amdahl_declaration": {
+    "W": "unchanged named hipEngine production authority; this unit only refreshes external C",
+    "C": "refreshed upstream shape walls are recorded per shape; Nathan is excluded because 0/12 cases repeat",
+    "O": "not applicable to a comparator baseline refresh",
+    "s": "not applicable; no hipEngine mechanism changed",
+    "overlap_exclusions": "external baseline event only; no owner or wall saving is credited to hipEngine",
+    "arithmetic_class": "external comparator measurement; no hipEngine arithmetic change",
+    "strict_fallback": "not applicable"
+  },
+  "decision": "Upstream is the only correctness-repeatable refreshed Vulkan lane. Its p512 prefill/decode and p1024 prefill coefficients of variation exceed 2%, so this three-repetition screen replaces the under-configured diagnostic row but cannot freeze the section-6 closure target. Nathan remains 0/12 repeatable and diagnostic. Stabilize and repeat upstream in counterbalanced closure pairs before milestone 3."
+}
