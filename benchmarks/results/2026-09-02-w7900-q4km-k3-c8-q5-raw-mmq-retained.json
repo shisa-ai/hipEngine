@@ -1,0 +1,275 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_c8_q5_raw_mmq_retention",
+  "date": "2026-09-02",
+  "status": "retained_default",
+  "performance_claim": true,
+  "decision": "Promote operation-complete raw-Q5 MMQ for gfx1100 eight-request physical R24/R32 K6144/N5120 recurrent ssm_out. Explicit HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0, peer backends, shape/layout misses, missing sidecars, and workspace misses retain exact grouped T16.",
+  "source": {
+    "screen_and_marker_commit": "7a2ddb31f8478bcf76248c8bce791e0e3aca96e2",
+    "numerics_commit": "caff33e3cdc3ac640404691eabef8ac3b46b7383",
+    "initial_default_commit": "68cb8c7cc43fc607038634b643fb815c970b5155",
+    "scoped_retained_commit": "12db61182dba6e84659d8d3f596bd30daceb7e1d",
+    "tracked_clean": true,
+    "no_jit_compile_during_profile": true
+  },
+  "hardware": {
+    "physical_host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "compute_units": 96,
+    "rocm": "7.2.4"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106773984,
+    "full_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "sampled_fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "candidate": {
+    "arithmetic_class": "T2 Q8_1 activation quantization plus DP4A accumulation",
+    "registry_keys": [
+      ["hip_gfx1100", "activation_quant", "gguf_q8_1_d4s4_f32", "quantize_bf16"],
+      ["hip_gfx1100", "linear", "gguf_q5_k", "mmq32_q8_1_d4s4_f32_bf16_bf16_out"]
+    ],
+    "scope": {
+      "roles": 48,
+      "weight": "ssm_out",
+      "request_count": 8,
+      "rows": [24, 32],
+      "in_features": 6144,
+      "out_features": 5120
+    },
+    "resident_raw_sidecar_bytes": 1038090240,
+    "bounded_workspace_bytes": {"R24": 184320, "R32": 245760},
+    "strict_fallback": "exact T16 grouped rows6 at R24 / grouped rows8 at R32",
+    "rollback_env": "HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0"
+  },
+  "l1_actual_weights": {
+    "protocol": {
+      "weights": 48,
+      "rows": [24, 32],
+      "cells": 96,
+      "warmups": 4,
+      "samples": 5,
+      "burst": 8,
+      "timing": "counterbalanced HIP events",
+      "candidate": "Q8_1 D4S4 FP32 producer + raw Q5 MMQ32 BF16 output",
+      "control": "T16 exact grouped rows6/rows8 BF16 output"
+    },
+    "source_sha256": "48791cde18d655902205bf75bdea192669f1d6c4fb0a3b64d96aad819f57a249",
+    "summary": {
+      "R24": {
+        "control_sum_ms": 12.983323350548744,
+        "candidate_sum_ms": 11.686316654086113,
+        "speedup": 1.1109850721021781,
+        "winning_weights": 45,
+        "mean_kl": 1.696825076749407e-06,
+        "max_kl": 0.00017116952092332887,
+        "top1": 0.9869791666666666
+      },
+      "R32": {
+        "control_sum_ms": 16.11103916168213,
+        "candidate_sum_ms": 13.483402967453003,
+        "speedup": 1.1948793046215307,
+        "winning_weights": 48,
+        "mean_kl": 3.3699478230629956e-06,
+        "max_kl": 0.0017866865362636368,
+        "top1": 0.9921875
+      }
+    },
+    "note": "Tracked committed-harness rerun; supersedes provisional pre-integration timing quoted in the promotion worklog."
+  },
+  "l2_marker": {
+    "protocol": "One train prompt, D12, target rows [32,32,24], cached-only rocprofv3 kernel+ROCTx, three target cycles.",
+    "control": {
+      "complete_wall_seconds": 1.2593253152444959,
+      "target_wall_ms": 508.980044,
+      "cycle_device_union_ms": 477.44315,
+      "target_launches": 4597,
+      "q5_launches": 144,
+      "q5_operation_wall_ms": 45.514428
+    },
+    "candidate": {
+      "complete_wall_seconds": 1.248359553515911,
+      "target_wall_ms": 490.306207,
+      "cycle_device_union_ms": 457.526158,
+      "target_launches": 4732,
+      "q5_mmq_launches": 144,
+      "q5_mmq_wall_ms": 37.508283,
+      "activation_quantizer_launches": 144,
+      "activation_quantizer_wall_ms": 0.519085,
+      "q5_operation_wall_ms": 38.027368
+    },
+    "delta": {
+      "complete_wall_pct": -0.870764813177427,
+      "target_wall_pct": -3.6688740983330304,
+      "cycle_device_union_pct": -4.171594461036876,
+      "q5_operation_wall_pct": -16.449860690328787,
+      "q5_saving_ms_per_cycle": 2.495686666666669
+    },
+    "ownership": {
+      "target_rows": [32, 32, 24],
+      "candidate_d2h_after_target": 0,
+      "recoverable_failures": 0,
+      "generated_ids_equal": true,
+      "accepted_drafts_equal": true
+    },
+    "sources": {
+      "control_child_sha256": "bd477bed2b8fdf0bff11150201f2b4453c83707325bf0d63c507028f5a2cd61e",
+      "candidate_child_sha256": "eab78c5e83d27f9ed69ffe2384fae91375a655ad9219aab33b378bf01dd0ab2b",
+      "control_kernel_csv_sha256": "9cd934e9e73bc0107cc828839d757d510ddb79e0bf4dc3af1d15252a6d7aba4b",
+      "candidate_kernel_csv_sha256": "3dc18f3c1592eb635e1db1604750d243745fd61e7c9f1a74bbdba110b5df56a9",
+      "control_marker_csv_sha256": "8acd0f4f2314e19cb64d1ae236100609ce7ec0b858d4a4763bf4f6da7ac7bfaf",
+      "candidate_marker_csv_sha256": "4691ee1c726221949de99f5ab6624c355e8de57c3c0f7f9fbf41560d8de94916"
+    }
+  },
+  "l3_task": {
+    "protocol": {
+      "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_count": 10,
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "heldouts": 4,
+      "width": 8,
+      "resident_capacity": 8,
+      "candidate_budget": 3,
+      "max_tokens": 24,
+      "batch_window_ms": 20,
+      "execution_profile": "production",
+      "timing": "blocking barrier-to-last-completion complete wall",
+      "candidate_env": "unset",
+      "rollback_env": "HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0",
+      "orders": ["default->rollback", "rollback->default"]
+    },
+    "summary": {
+      "rollback_tok_s": 87.18607741869177,
+      "default_tok_s": 89.3771892381625,
+      "delta_pct": 2.513144167443615,
+      "rollback_wall_seconds": 44.043729385361075,
+      "default_wall_seconds": 42.963982563465834,
+      "generated_tokens_per_arm": 3840,
+      "prompt_wins": 20,
+      "prompt_cells": 20,
+      "all_packets_passed": true,
+      "generated_ids_equal": true,
+      "acceptance_equal": false,
+      "final_allocations": 0
+    },
+    "orders": [
+      {"order": "default->rollback", "wins": 10, "cells": 10, "median_delta_pct": 3.066187301398804, "minimum_delta_pct": 2.0415986890157667},
+      {"order": "rollback->default", "wins": 10, "cells": 10, "median_delta_pct": 1.6501800779126885, "minimum_delta_pct": 1.0642195534470655}
+    ],
+    "category_delta_pct_by_order": {
+      "code": [2.426804852722153, 1.4578648090613822],
+      "general_en": [4.967087706122841, 3.315757097345884],
+      "general_ja": [3.1584613104023385, 1.920654021974899],
+      "mixed_ja_en": [2.769567597688205, 1.5162387677149836],
+      "heldout": [2.974580245078795, 1.6209940303946846]
+    },
+    "acceptance_per_run": {
+      "default": {"cycles": 568, "proposed_draft_tokens": 1592, "accepted_draft_tokens": 1256, "draft_acceptance": 0.7889447236180904},
+      "rollback": {"cycles": 576, "proposed_draft_tokens": 1600, "accepted_draft_tokens": 1256, "draft_acceptance": 0.785},
+      "interpretation": "Declared T2 arithmetic changes verifier intermediates while every visible generated ID remains AR-exact."
+    },
+    "runtime_profile": {
+      "production_manifest_sha256": "a7e5ad33b4af17707b1a375ecb706c369b7f0f35e6532456dd507ef13be1bc35",
+      "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb"
+    },
+    "runs": {
+      "r1-default": "2f05da7119a1e56d046a3cbb5edbf3a01a00029ab78f86560ad29d226a32fb2a",
+      "r1-rollback": "5bd3fbff6f05032711144c2dac0498d4426a5b416471acc02b73ff1804caf19d",
+      "r2-rollback": "bc0b232a7c8cf7fdc991fda4367d4a552fbc0ec9d7627a324a897ee6cd041d68",
+      "r2-default": "1487c31c6a3b61433594da791d2a1860047278d4a3e5d1e91f6774e4024e11af"
+    }
+  },
+  "l4_numerics": {
+    "protocol": {
+      "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_count": 10,
+      "strict_teacher_rows_per_shape": 240,
+      "candidate_repeats": 3,
+      "strict": "FP32 recurrent state plus strict small-M/shared-B Q4 and grouped T16 Q5",
+      "candidate": "FP16 state plus production Q4 rowtiles and raw-Q5 MMQ"
+    },
+    "R32": {
+      "status": "passed",
+      "rows": 240,
+      "kl_mean": 7.127879403424014e-05,
+      "kl_p95": 0.00036741778273931036,
+      "kl_p99": 0.000596791799422284,
+      "kl_max": 0.0008124026354604044,
+      "top1_agreement": 1.0,
+      "topk_overlap_mean": 0.9900000000000001,
+      "all_category_shape_transition_scopes_passed": true,
+      "repeat_determinism_passed": true,
+      "candidate_repeats": 3,
+      "teardown_exact": true,
+      "source_sha256": "80a5e6de4bcbf62c2208d54ab32d1d8fb59de38f1fb33d3bc114bfce43c9e6df"
+    },
+    "R24": {
+      "status": "passed",
+      "rows": 240,
+      "kl_mean": 9.118029434708721e-05,
+      "kl_p95": 0.0003275574344648613,
+      "kl_p99": 0.0008432825938862278,
+      "kl_max": 0.00501773283855946,
+      "top1_agreement": 1.0,
+      "topk_overlap_mean": 0.9933333333333334,
+      "all_category_shape_transition_scopes_passed": true,
+      "repeat_determinism_passed": true,
+      "candidate_repeats": 3,
+      "teardown_exact": true,
+      "source_sha256": "e7a0f641c221be01eb2366ffa98993d5933e0f801e105d40fb6ec79441dcba50"
+    }
+  },
+  "l5": {
+    "focused_tests": "6 passed: C8 numerics parser/default and request-count policy, raw-MMQ dispatch/workspace, sidecar materialization, and gfx1151 miss",
+    "first_broad_scope_rejection": {
+      "commit": "68cb8c7cc43fc607038634b643fb815c970b5155",
+      "reason": "Row-only R24 eligibility reached C5-C7. C7 was noise-flat at +0.011% with multiple negative scopes, so non-C8 ownership was rejected.",
+      "pooled_delta_pct": {"C5": 2.0882949487729174, "C6": 1.804594722752939, "C7": 0.01109917458474996, "C8": 2.5815248678632274}
+    },
+    "scoped_c5c8_gate": {
+      "commit": "12db61182dba6e84659d8d3f596bd30daceb7e1d",
+      "policy": "request_count == 8; C5-C7 retain identical grouped-T16 execution and are negative controls",
+      "pooled": {
+        "C5": {"rollback_tok_s": 68.25295721877238, "default_tok_s": 68.79222745717438, "delta_pct": 0.7901053088051002},
+        "C6": {"rollback_tok_s": 76.29606738732618, "default_tok_s": 76.62939572351978, "delta_pct": 0.4368879650132218},
+        "C7": {"rollback_tok_s": 80.4114832382428, "default_tok_s": 80.73762634146102, "delta_pct": 0.4055926965703893},
+        "C8": {"rollback_tok_s": 85.48073540935192, "default_tok_s": 87.81001845197005, "delta_pct": 2.724921622940668}
+      },
+      "C5_C7_generated_ids_and_acceptance_equal": true,
+      "C8_generated_ids_equal": true,
+      "C8_acceptance_equal": false,
+      "C8_category_delta_pct_by_order": {
+        "code": [3.391601414652712, 2.1673884478734085],
+        "general_en": [4.356082888689139, 4.071537032503514],
+        "general_ja": [2.8556606546638275, 2.001876613412845],
+        "mixed_ja_en": [2.0372128154765967, 1.2201059008084991],
+        "heldout": [2.79005643708492, 2.5315344480258073]
+      },
+      "all_packets_passed": true,
+      "generated_rows": 520,
+      "final_allocations": 0,
+      "run_sha256": {
+        "r1-default": "8076524f6f6d258df963f678f6ba53bb01fcbfc06c8f52d67285e3b251d89ac3",
+        "r1-rollback": "4c669e1860ae37ac5d136c795f322b55f85fa4acb2fca3a2fc538640fbb15a03",
+        "r2-rollback": "850945e0a401aaba65bba1b07c3251424cfea22cfdca5c5ad3c9761b6b0ad41e",
+        "r2-default": "bb2a3e75fa991d24035a0fbc40cd8533d448058abc2f2fc36a537569430e672d"
+      }
+    },
+    "publication_old_tok_s": 87.508,
+    "publication_new_tok_s": 89.3771892381625,
+    "publication_delta_pct": 2.1360209788390927,
+    "current_peer_gap_pct": 5.994606462237906,
+    "laurent_peer_gap_pct": 13.084782438922371
+  },
+  "residual": {
+    "peer_estimated_q5_saving_ms_per_cycle": 11.392,
+    "measured_marker_q5_saving_ms_per_cycle": 2.495686666666669,
+    "decision": "Retain the compound win, but do not claim peer-mechanism closure. Continue Q5 with a source-layout/load-dot implementation capable of approaching Laurent resource/operation wall before changing priority."
+  }
+}

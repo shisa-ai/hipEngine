@@ -1,6 +1,6 @@
 # Qwen3.8 gfx1100 C8/K3 Optimization Campaign
 
-Status: **active; C8-P1 peer/role census completed on 2026-09-02; the peer-derived C8-P2 Q5 matrix-tile track is next.**
+Status: **active; C8-P2 retained its first raw-Q5 MMQ owner at 89.377 tok/s; the remaining peer-derived Q5 layout gap is next.**
 
 This campaign owns the sole remaining cell in the standardized W7900
 Qwen3.8-27B `Q4_K_M` cross-engine matrix where hipEngine trails the strongest
@@ -15,6 +15,7 @@ Authoritative evidence:
 - [`Current C1-C8 scoreboard`](../benchmarks/results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json)
 - [`Exact C8 R32 retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json)
 - [`Grouped Q5 R8 retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-q5-grouped-r8-retained.json)
+- [`Raw-Q5 MMQ retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json)
 - [`Accepted-tail K/V-only retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json)
 - [`Prior one-group attribution`](../benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json)
 - [`Execution profiles`](EXECUTION-PROFILES.md), [`testing`](TESTING.md),
@@ -39,10 +40,10 @@ Current canonical rows:
 
 | Route | Aggregate tok/s | hipEngine gap |
 | --- | ---: | ---: |
-| hipEngine explicit C8/K3 | **87.508** | — |
-| llama.cpp current HIP C8/K3 | 94.735 | **+8.2587% required** |
-| llama.cpp Laurent HIP C8/K3 | 101.072 | **+15.5003% required** |
-| hipEngine true AR C8 | 83.939 | current K3 is 1.0425x |
+| hipEngine explicit C8/K3 | **89.377** | — |
+| llama.cpp current HIP C8/K3 | 94.735 | **+5.9946% required** |
+| llama.cpp Laurent HIP C8/K3 | 101.072 | **+13.0848% required** |
+| hipEngine true AR C8 | 83.939 | current K3 is 1.0648x |
 
 Closure is staged:
 
@@ -245,7 +246,8 @@ bypassed by a candidate:
 | Fused Q4 row32 | Two active waves preserve the fused transition at exact R32 |
 | Grouped Q4 rowtiles | R8 at R32, R6 where the exact tail schedule requires it |
 | Grouped planar-Q6 | Mixed/grouped rows and exact root R8 owners |
-| Grouped Q5 R8 | Q5 launches 240→144 and C8 +1.61% in its gate |
+| Grouped Q5 R8 | Exact T16 fallback; Q5 launches 240→144 and C8 +1.61% in its gate |
+| Raw-Q5 MMQ R24/R32 | Eight-request production default; Q5 operation wall 45.514→38.027 ms and C8 87.186→89.377 tok/s in its gate |
 | Selected CJK-aware proposal head | Immutable model-bound 131,072-row selection; full category gate |
 | Fused packed state | Amortizes Conv/recurrent state pointer gathers |
 | Direct resident verifier state | Removes redundant initial state import |
@@ -443,12 +445,13 @@ strict fallback.
       the current grouped-R6/R8 active-row output and production profile.
 - [x] Prototype batch-wide Q5 matrix ownership using a generic DP4A/Q8-activation
       or WMMA mechanism; do not hard-code model data or bypass the registry.
-- [ ] Measure all 48 `ssm_out` weights in alternating order and require a
+- [x] Measure all 48 `ssm_out` weights in alternating order and require a
       projected operation-complete cycle wall below the incumbent 15.052 ms.
 - [x] Keep exact grouped R6/R8 registered as strict fallback and declare any
       changed reduction/activation arithmetic as T2 rather than relabeling it.
-- [ ] Run L2→L5 if the actual-weight screen survives; target at least the
-      11.392 ms/cycle peer-derived estimate before changing priority.
+- [~] Run L2→L5 if the actual-weight screen survives; the first retained owner
+      passed every gate but saves 2.496 ms/cycle, so the 11.392 ms/cycle
+      peer-derived target remains open before changing priority.
 
 The first actual-weight screen now covers both available arithmetic families
 and a peer-derived geometry prototype. On W7900 GPU0 with
@@ -462,13 +465,39 @@ floor against grouped output (R24/R32 mean KL **7.87e-06/4.61e-05**, top-1
 **0.2833/0.1899 ms** operation-complete versus grouped **0.2486/0.3047 ms**:
 a strong R32 result but an R24 regression, so it remains unregistered.
 
-The important blocker is now concrete rather than geometric. The prototype's
+The important residual is now concrete rather than geometric. The prototype's
 no-tail BF16 code object uses **206 VGPR, 29 SGPR, 29,440 B LDS, WG128**;
 Laurent's matched Q5 I64/J32 kernel uses **136 VGPR, WG128**. Directly changing
 ownership therefore does not reproduce the peer's instruction/load layout.
-Next Q5 work should port or reproduce Laurent's shared-layout/load-dot schedule
-to reduce register pressure, then measure all 48 weights. Strict grouped R6/R8
-ownership remains unchanged.
+
+The simpler existing D4S4 owner nevertheless cleared the complete ladder and is
+retained. The tracked committed-harness all-48 screen measures
+**12.983→11.686 ms (1.111x, 45/48 wins)** at R24 and
+**16.111→13.483 ms (1.195x, 48/48)** at R32. Current-route tracing physically
+replaces 144 grouped-Q5 launches with 144 quantizers plus 144 MMQs and moves
+three-cycle Q5 operation wall **45.514→38.027 ms (-16.45%)**, target marker
+wall **508.980→490.306 ms (-3.67%)**, and cycle device union
+**477.443→457.526 ms (-4.17%)**. The strict-teacher R24/R32 gates pass all
+**480** rows at 100% top-1 with max KL **0.005018**, three deterministic
+candidate repeats, and exact teardown. The promoted-default task gate improves
+**87.186→89.377 tok/s (+2.51%)**, wins all 20 prompt/order cells and every
+category/heldout slice, preserves all visible generated IDs, and drains.
+
+That measured **2.496 ms/cycle** Q5 saving is retainable but only **21.91%** of
+the peer-derived 11.392 ms/cycle target. Continue Q5 by porting or reproducing
+Laurent's shared-layout/load-dot schedule to reduce register pressure; do not
+change priority yet. `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0`, request counts other
+than eight, peer backends, and scope misses retain exact grouped R6/R8
+ownership.
+
+An initial all-width L5 audit caught that row-only R24 selection also reached
+C5-C7. Although C5/C6 improved, C6 had a -0.04% reverse-order category and C7
+was noise-flat with several negative slices, so that broad policy was rejected.
+The retained selector additionally requires exactly eight request blocks. Its
+fresh C5-C8 negative-control gate preserves C5-C7 generated IDs and acceptance
+exactly with pooled rates +0.79%/+0.44%/+0.41%; C8 remains +2.72% and positive
+in every category/heldout slice in both orders. This scope repair preserves the
+eight-request R24 accepted tail without claiming non-C8 performance.
 
 Second pool: **48.237 ms/cycle** across grouped Q4 R6 and R8 symbols. P1
 ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
