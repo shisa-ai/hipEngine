@@ -342,10 +342,27 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   corrected candidate versus BF16 fallback is bit-identical: mean/p95/p99/max
   KL 0, top-1 100%, strict and candidate repeats bit-identical. This is the
   first corrected numerical screen, not retention. The workspace blocker is
-  resolved by the session-owned lifecycle packet above. Remaining: 90-row
-  prompt/decode transition numerics, same-width isolation, fresh corrected
-  same-suite wall, and corrected trace. The switch stays default-off and the
-  BF16 owners remain the strict fallback.
+  resolved by the session-owned lifecycle packet above.
+
+  Complete corrected gate packet (2026-09-02,
+  [`...b2-f16-retention-gates.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retention-gates.json),
+  clean `29b408cc7`, physical `gfx1151`, production profile): combined D1 wall
+  improves **11.299→9.250 s at C2 (-18.13%, 1.222×)** and
+  **27.019→22.331 s at C8 (-17.35%, 1.210×)**; repeat wall is +0.17%/+0.43%.
+  Matched second-arm prompt throughput is **179.037→209.391 tok/s (+16.95%)**
+  and **284.423→334.704 (+17.68%)**. All 90 prompt-tail/decode-transition
+  full-logit rows are bit-identical in every category/width/transition scope;
+  strict/candidate repeats, controls, C2/C8 neighbor substitution, and derived
+  BF16-relative deltas are exact. D24 task arms preserve 40/40 control/candidate
+  and 40/40 candidate/repeat output cells while all 60 measured cells remain
+  typed automatic K0. Corrected trace: 1,008 half-output casts, 864 Q4 and 144
+  Q5 `_Float16` owners with positive durations. The fail-closed Z3 P1 evidence
+  gate passes all 13 checks.
+
+  The candidate is retention-eligible but not yet the product default. The
+  switch remains default-off pending the next atomic unit: profile-scoped
+  production default, strict/fallback/env-override tests, and clean default-path
+  confirmation. BF16 owners remain registered strict fallbacks.
 
 ### B3 — M1: request-owned C1 shadow-session lifecycle (T2)
 
