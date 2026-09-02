@@ -1629,8 +1629,16 @@ request-owned transition submission.
 - [ ] Compare direct/graph API time, graph build/reuse counts, kernel rows/span,
       compact copies, first-token latency, and context-conditioned tg128. A graph
       that merely hides a slower kernel chain is not a retained win.
-- [ ] Target no per-layer graph launches and no unexplained direct launch in the
-      steady transition; document any irreducible boundary.
+- [x] Target no per-layer graph launches and no unexplained direct launch in the
+      steady transition; document any irreducible boundary. The research full
+      transition uses exactly one graph launch/token containing **1,708** traced
+      dispatches: embedding, active PLE consumer, all 48 layers, 12 QSA appends/
+      advances, lm head, and argmax, with zero post-launch allocation. The
+      explained external boundary is host PLE hash + 16-row IQ4_NL mmap gather/
+      dequant + 10-KiB H2D, then compact token readback; the exact 28.8-GB sparse
+      table is not graph-resident. This closes only the research prerequisite;
+      named-production A/B/key/lifecycle/c2/cancellation remain open. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p8-single-launch-boundary-closure.json`.
 - [x] Do not spend a rung on submission batching alone. The nearest external
       evidence (`GGML_VK_MAX_NODES_PER_SUBMIT` 200-800, -1.3 to -2.4%) concludes
       cost is per-dispatch, not per-submit. A P8 win must remove dispatches; a

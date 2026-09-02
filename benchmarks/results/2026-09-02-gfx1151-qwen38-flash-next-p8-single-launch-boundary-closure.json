@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p8_single_launch_boundary_closure",
+  "status": "research_prerequisite_closed_production_binding_open",
+  "performance_claim": false,
+  "scope": "Verify the research transition eliminates per-layer graph launches and explains the remaining host boundary",
+  "amdahl": {
+    "W_C_O_s": "unknown for named production; no graph performance promotion is claimed",
+    "overlap_exclusions": "probe eager/graph rows are not imported into named production",
+    "strict_fallback": "forced eager transition and strict runner remain available"
+  },
+  "evidence": {
+    "full_transition": "2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json",
+    "all48": "2026-09-01-gfx1151-qwen38-flash-next-p8-all48-graph.json",
+    "segment8": "2026-09-01-gfx1151-qwen38-flash-next-p8-advancing-segment8-graph.json"
+  },
+  "full_transition_trace": {
+    "graph_launches": 10,
+    "kernel_dispatches_per_graph_launch": 1708,
+    "dynamic_qsa_appends_per_launch": 12,
+    "position_advances_per_launch": 12,
+    "embedding_per_launch": 1,
+    "argmax_dispatches_per_launch": 2,
+    "device_allocations_after_first_launch": 0,
+    "interpretation": "Each token transition uses one graph launch containing root embedding, active PLE consumer, all 48 layers, 12 QSA appends/advances, lm head, and argmax; there are no per-layer graph launches."
+  },
+  "irreducible_current_boundary": {
+    "publication": "host PLE hash + 16-row IQ4_NL mmap gather/dequant + 10-KiB H2D before graph launch, then compact token readback",
+    "reason": "the exact 320,001,446-row, 28.8-GB sparse mmap PLE table cannot be captured as a resident graph input without changing the product memory model",
+    "inside_graph_direct_launches": "none unexplained; 1708 traced dispatches are children of the single graph launch"
+  },
+  "correctness_lifecycle": {
+    "positions": [8, 9, 10, 11],
+    "trajectory": [3147, 278, 18407, 2129, 69422],
+    "full_logits_tokens_state_exact": true,
+    "reset_replay_exact": true,
+    "forced_eager_then_graph_resume_exact": true,
+    "after_close_bytes": 0
+  },
+  "decision": "Close only the no-per-layer-launch research prerequisite. Named-production graph A/B, graph-key/cache lifecycle, multi-prompt/context buckets, cancellation, c2, and cold-PLE economics remain open and block production binding."
+}
