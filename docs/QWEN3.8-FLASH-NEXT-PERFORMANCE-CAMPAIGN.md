@@ -1130,9 +1130,19 @@ Evidence:
       A retry needs cooperative token-major ownership or explicit T1/T2 gates.
       Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-q5-down-route-blocked.json`.
-- [ ] Sweep wave32 ownership, workgroup size, row/output tiles, and LDS padding
+- [x] Sweep wave32 ownership, workgroup size, row/output tiles, and LDS padding
       on rotating actual weights. Use Nathan's wave32/bank-conflict findings as
-      hypotheses, never as transferable constants.
+      hypotheses, never as transferable constants. The full-model p508 ladder
+      already traverses actual resident early-layer tensors: expert-grid
+      64→128 is neutral (**1.0026x**, 95% CI **0.9981–1.0070**), output4→8 is
+      neutral/negative (**0.9968x**, **0.9922–1.0013**), and two concurrent
+      128-thread teams are neutral (**0.9978x**, **0.9927–1.0028**). The retained
+      128-thread kernel uses contiguous unique LDS metadata stores, wave-uniform
+      metadata broadcasts, and one reduction slot per wave; there is no
+      strided multi-lane LDS access for padding to repair. This closes the T0
+      schedule family. A retry requires new concurrent data reuse or explicit
+      T1/T2 gates. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-exact-geometry-closure.json`.
 - [ ] Test T1/T2 WMMA only in independently calibrated layer clusters. Every
       candidate must pass category, shape, transition, repeat, task, c2, BF16-
       relative, lifecycle, and manifest gates; no final-prompt or one-layer
