@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next entitled Vulkan canonical refresh — freeze blocked] Upstream queue/repack/fit-off reaches **200.01/24.39**, **241.84/21.33**, and **266.58/18.98 pp/tok/s** with 12/12 exact cases, but p512 prefill/decode and p1024 prefill exceed 2% CV. Nathan reaches **360.23/24.34**, **357.61/21.10**, and **351.85/19.01** but remains 0/12 repeatable. Replace the under-configured diagnostic rows; repeat upstream before the section-6 freeze. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next historical Vulkan configuration audit] Exact code-p512 graphics queue improves upstream/Nathan decode by **2.23%/2.31%**; fit-on loses **8.86%/1.79%** prefill, and Nathan no-repack loses 1.02%. Both canonical lanes are entitled to queue-on/repack/fit-off before refresh. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-historical-vulkan-config-audit.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next hybrid-04 Vulkan configuration subaudit — diagnostic] Exact code-p512 graphics-queue off→on changes **212.08/25.59→209.60/25.96 pp/tok/s** (-1.19% prefill, +1.43% decode); no-repack and fit-on are neutral within 0.40%, with exact IDs throughout. This does not close the separate historical Vulkan-lane audit. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-vulkan-config-screen.json`.

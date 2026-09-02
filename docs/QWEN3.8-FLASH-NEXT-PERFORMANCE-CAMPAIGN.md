@@ -99,10 +99,10 @@ tokens per second.
 | Engine | p512 | p1024 | p4096 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
 | hipEngine production `61b1cef1b` | **83.70 / 14.40** | **83.16 / 14.42** | **69.10 / 10.42** | 12/12 exact |
-| Upstream Vulkan `f1793c1c4` | 240.53 / 22.97 | 259.73 / 20.11 | 266.98 / 18.07 | 12/12 exact |
+| Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; p512 and p1024 prefill noisy |
 | Patched-upstream HIP `f1793c1c4` | 239.23 / 17.74 | 301.68 / 16.88 | 294.47 / 14.77 | 12/12 exact; non-stock loader |
 | EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; `code-p4096` alternates |
-| Nathan Vulkan `ad914eb` | 348.31 / 23.23 | 354.93 / 20.36 | 350.54 / 18.44 | 0/12 exact |
+| Nathan Vulkan `ad914eb`, queue/repack/fit-off | 360.23 / 24.34 | 357.61 / 21.10 | 351.85 / 19.01 | 0/12 exact; diagnostic |
 
 #### Starting-point correctness and accuracy contract
 
@@ -115,6 +115,13 @@ existing BF16-teacher
 and named-production execution-profile packet (production manifest
 `9e27fec0...`, strict manifest `42509601...`). Any arithmetic change must re-run
 the applicable gates; a repeat-exact speed row does not replace them.
+
+The entitled Vulkan refresh uses graphics queue, repack, explicit fit-off, and
+auto clocks. Upstream remains exact, but p512 prefill/decode and p1024 prefill
+have coefficients of variation above 2%; these rows replace the
+under-configured diagnostic screen but cannot freeze the section 6 target.
+Nathan remains diagnostic. Evidence:
+[`2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json).
 
 The measured correctness status is:
 
@@ -188,10 +195,10 @@ are:
 | Lane | tg128 p512 | tg128 p1024 | tg128 p4096 | Added ms/token, p1024→p4096 | p512→p4096 |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | hipEngine production | 14.399 | 14.421 | 10.416 | **+26.64** | **-27.7%** |
-| Upstream Vulkan | 22.974 | 20.113 | 18.075 | +5.61 | -21.3% |
+| Upstream Vulkan | 24.385 | 21.327 | 18.975 | +5.81 | -22.2% |
 | Patched-upstream HIP | 17.741 | 16.881 | 14.768 | +8.47 | -16.8% |
 | EngramHalo HIP | 17.439 | 17.044 | 15.989 | +3.87 | -8.3% (p4096 diagnostic) |
-| Nathan Vulkan | 23.225 | 20.358 | 18.442 | +5.10 | -20.6% (diagnostic) |
+| Nathan Vulkan | 24.342 | 21.098 | 19.012 | +5.20 | -21.9% (diagnostic) |
 
 For context only, the same-host scoreboards show Qwen3.8-27B Dense at
 13.069→13.038 tok/s (-0.2%) and Qwen3.6-35B-A3B at 54.330→54.798 tok/s
@@ -217,9 +224,9 @@ The repeatability-valid screening targets and current hipEngine gaps are:
 
 | Shape | HIP target and gap | Vulkan target and gap |
 | --- | ---: | ---: |
-| p512 / tg128 | patched upstream, **2.86x / 1.23x** | upstream, **2.87x / 1.60x** |
-| p1024 / tg128 | EngramHalo, **3.79x / 1.18x** | upstream, **3.12x / 1.39x** |
-| p4096 / tg128 | patched upstream, **4.26x / 1.42x** | upstream, **3.86x / 1.74x** |
+| p512 / tg128 | patched upstream, **2.86x / 1.23x** | upstream, **2.39x / 1.69x** (noisy) |
+| p1024 / tg128 | EngramHalo, **3.79x / 1.18x** | upstream, **2.91x / 1.48x** (prefill noisy) |
+| p4096 / tg128 | patched upstream, **4.26x / 1.42x** | upstream, **3.86x / 1.82x** |
 
 These are screening ratios, not match/loss verdicts. Section 6 still requires
 five same-thermal counterbalanced pairs, per-row CV at or below 2% for a match,
@@ -239,12 +246,12 @@ Nathan/apepojken rows and EngramHalo p4096 are excluded.
 
 | Workload | hipEngine wall | HIP target wall; reduction required | Final valid wall; reduction required |
 | --- | ---: | ---: | ---: |
-| p512 prefill | 5.939 s | 2.140 s; **3.799 s (64.0%)** | 2.129 s; **3.810 s (64.2%)** |
+| p512 prefill | 5.939 s | 2.140 s; **3.799 s (64.0%)** | 2.140 s; **3.799 s (64.0%)** |
 | p1024 prefill | 11.947 s | 3.251 s; **8.696 s (72.8%)** | 3.251 s; **8.696 s (72.8%)** |
 | p4096 prefill | 57.730 s | 13.910 s; **43.821 s (75.9%)** | 13.910 s; **43.821 s (75.9%)** |
-| p512 decode | 68.012 ms/token | 56.367 ms; **11.645 ms (17.1%)** | 43.527 ms; **24.485 ms (36.0%)** |
-| p1024 decode | 68.250 ms/token | 58.672 ms; **9.578 ms (14.0%)** | 49.719 ms; **18.532 ms (27.2%)** |
-| p4096 decode | 94.461 ms/token | 67.714 ms; **26.747 ms (28.3%)** | 55.325 ms; **39.136 ms (41.4%)** |
+| p512 decode | 68.012 ms/token | 56.367 ms; **11.645 ms (17.1%)** | 41.008 ms; **27.004 ms (39.7%)** |
+| p1024 decode | 68.250 ms/token | 58.672 ms; **9.578 ms (14.0%)** | 46.890 ms; **21.360 ms (31.3%)** |
+| p4096 decode | 94.461 ms/token | 67.714 ms; **26.747 ms (28.3%)** | 52.700 ms; **41.761 ms (44.2%)** |
 
 Every profile artifact and candidate decision now uses one Amdahl row with:
 
@@ -967,6 +974,15 @@ matrix before implementation claims parity.
       its same four position-dependent hashes in every arm but remains
       nondeterministic and diagnostic. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-historical-vulkan-config-audit.json`.
+      **Canonical refresh complete, freeze blocked:** upstream reaches
+      **200.01/24.39**, **241.84/21.33**, and **266.58/18.98 pp/tok/s** and is
+      exact on 12/12 cases. Nathan reaches **360.23/24.34**,
+      **357.61/21.10**, and **351.85/19.01** but remains 0/12 repeatable.
+      Upstream p512 prefill/decode CVs are **3.74%/2.81%** and p1024 prefill CV
+      is **2.46%**, so this screen replaces the old under-configured row but
+      cannot freeze the section 6 target. Stabilize and repeat upstream in the
+      final counterbalanced thermal window. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json`.
 - [x] Build the Pat1entZ3r0 `hybrid-04` patch line on the pinned UD-Q4_K_XL
       shards with BF16 K/V and run it through the canonical 12-case screen. It
       is a patch series over a pinned base, so it is the cheapest new comparator
