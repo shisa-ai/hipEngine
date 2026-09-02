@@ -1,6 +1,6 @@
 # Qwen3.8 gfx1100 C8/K3 Optimization Campaign
 
-Status: **active; C8-P0 current-source attribution completed on 2026-09-02; C8-P1 peer/role census is next.**
+Status: **active; C8-P1 peer/role census completed on 2026-09-02; the peer-derived C8-P2 Q5 matrix-tile track is next.**
 
 This campaign owns the sole remaining cell in the standardized W7900
 Qwen3.8-27B `Q4_K_M` cross-engine matrix where hipEngine trails the strongest
@@ -11,6 +11,7 @@ or promote capacity-8 MTP automatically.
 Authoritative evidence:
 
 - [`Current C8 profile`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-current-profile.json)
+- [`Peer/role census`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json)
 - [`Current C1-C8 scoreboard`](../benchmarks/results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json)
 - [`Exact C8 R32 retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json)
 - [`Grouped Q5 R8 retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-q5-grouped-r8-retained.json)
@@ -160,7 +161,7 @@ to explain the peer gap.
 | grouped Q4 R8 | **22.928** | 106.7 | WG64, VGPR224, no LDS |
 | grouped Q5 R8 | 10.310 | 32.0 | WG128, VGPR72, LDS 512 B |
 | planar-Q6 F32 rowtile R8 | 9.924 | 3.7 | WG128, VGPR112, LDS 1 KiB |
-| segmented GDN state rows | 7.341 | 48.0 | role-resolve before editing |
+| segmented GDN state rows | 7.341 | 48.0 | recurrent attention state update |
 | direct planar-Q6 F32 | 6.242 | 1.0 | WG128, VGPR96, LDS 512 B |
 | grouped Q5 R6 | 4.742 | 16.0 | WG128, VGPR64, LDS 512 B |
 | chunked linear-state commit | 4.301 | 8.0 | already independently compacted |
@@ -208,24 +209,27 @@ claim. The D24 ten-prompt row remains the only closure metric.
 
 1. **No single missing C8 batching switch remains.** One physical group and
    exact R32/R24 rows are active.
-2. **The campaign must compound wins.** Deleting all full-attention work would
-   save less than 0.4% of target wall. Q5 alone cannot supply the 8.26% exact-
-   peer gap. Q4 and Q6 require most attention.
+2. **The original source-only ranking is superseded by the peer census.**
+   Deleting all full-attention work would still save less than 0.4% of target
+   wall, but the direct current/Laurent comparison identifies a materially
+   different Q5 matrix-tile mechanism with an estimated **11.392 ms/cycle**
+   upside. C8-P2 therefore tests Q5 before resuming Q4/Q6 work.
 3. **Q4 has three distinct owners.** Grouped R6 dominates the R24 tail, grouped
    R8 dominates exact R32 projections, and the 32 KiB/VGPR248 fused dual WMMA
    owner dominates gate/up+SiLU. They need separate hypotheses and fallbacks.
-4. **Q6 has both projection and head-shaped work.** The 30.353 ms grouped-R8
-   kernel is the largest single symbol; F32 rowtile/direct symbols add another
-   16.166 ms. Semantic role attribution is required before choosing a body.
+4. **Q6 has both projection and head-shaped work.** P1 maps the 30.353 ms
+   grouped-R8 family to recurrent QKV, full-attention V, and FFN down. The F32
+   rowtile/direct symbols are the root full-vocabulary and selected proposal
+   heads. Each role needs its own traffic and top-1 contract.
 5. **Launch-only upside is bounded.** Target launch API time is roughly
    6.1 ms/cycle and dynamic host graphs already failed. Persistent/device-driven
    submission is considered only after kernel work exposes launch gaps or a
    prototype avoids dynamic recapture.
-6. **The external target needs auditing.** Current llama.cpp's 94.735 row is the
+6. **The peer deficit has two scopes.** Current llama.cpp's 94.735 row is the
    exact-output peer. Laurent's 101.072 row is the strongest speed result but
-   differs from its AR output in two C8 cells, and neither compact API exposes
-   acceptance. Comparative profiling and acceptance/source accounting precede
-   conclusions about a 15.5% implementation deficit.
+   differs from its AR output in two C8 cells. The retained score artifact did
+   not expose acceptance; P1's direct response timings now do, and separate a
+   matched-output Q5 mechanism from the two arithmetic-different cells.
 
 ---
 
@@ -358,39 +362,99 @@ Status: **complete at `b920ead8ee`.**
       no failures, exact AR/MTP IDs, and clean final drain.
 - [x] Publish the compact diagnostic artifact and this plan.
 
-Decision: target Q4/Q6 first; do not reopen batching, DMA cosmetics, ordinary
-attention, or host-captured graphs from stale attribution.
+Decision at P0: target Q4/Q6 first; do not reopen batching, DMA cosmetics,
+ordinary attention, or host-captured graphs from stale attribution. P1
+supersedes only the quant-family priority by exposing a new Q5 matrix-tile
+mechanism; the closed directions remain closed.
 
 ### C8-P1 — peer and semantic-role census
 
-Status: **next. No implementation candidate starts before this census.**
+Status: **complete.** Evidence:
+[`peer/role census`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json).
 
-- [ ] Map each top C8 symbol/geometry to semantic roles and layers: recurrent
+- [x] Map each top C8 symbol/geometry to semantic roles and layers: recurrent
       gate/QKV, full-attention Q/K/V/output, FFN gate/up/down, SSM output, root
       and proposal heads.
-- [ ] Split attribution by the two R32 cycles and the R24 accepted-tail cycle.
-- [ ] Record bytes/weight shape, calls, kernel sum, interval union, VGPR, LDS,
+- [x] Split attribution by the two R32 cycles and the R24 accepted-tail cycle.
+- [x] Record bytes/weight shape, calls, kernel sum, interval union, VGPR, LDS,
       workgroup, and registry variant per role.
-- [ ] Directly profile prewarmed current and Laurent `llama-server` processes at
+- [x] Directly profile prewarmed current and Laurent `llama-server` processes at
       C8/K3; drive requests from a separate harness so profiler/JIT state does
       not propagate through a nested parent.
-- [ ] Audit llama.cpp source commits and logs for physical batch, candidate
+- [x] Audit llama.cpp source commits and logs for physical batch, candidate
       depth, accepted progress, graph usage, quant kernel family, and F16-KV
-      attention ownership. If acceptance is unavailable, add diagnostic-only
-      parsing/instrumentation without changing the timed path.
-- [ ] Separate the exact current-peer deficit from Laurent's two arithmetic-
+      attention ownership. The standard response already exposes aggregate
+      draft/accept counters, so timed-path instrumentation was unnecessary.
+- [x] Separate the exact current-peer deficit from Laurent's two arithmetic-
       different C8 cells; never infer equal work from equal requested K.
-- [ ] Publish a cross-engine mechanism artifact before claiming that a specific
+- [x] Publish a cross-engine mechanism artifact before claiming that a specific
       hipEngine kernel explains the 101.072 tok/s row.
 
-Exit: one evidence-ranked role, an explicit estimated cycle saving, and a
-source-grounded mechanism not already closed in §6.
+The hipEngine trace now maps every dominant geometry. The two R32 cycles use
+fused Q4 gate/up+SiLU plus grouped R8 Q4/Q5/Q6; the R24 tail replaces fused
+Q4 with grouped R6 work while retaining grouped Q6 R8 and grouped Q5 R6. The
+artifact records every role's source weights/bytes, calls, kernel sum, interval
+union, registry variant, workgroup, VGPR, LDS, and scratch. The compact cycle
+split is:
 
-### C8-P2 — exact grouped Q4 projection track
+| Target cycle | Q4 grouped | Q4 fused | Q5 SSM out | Q6 grouped | root/proposal heads |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| R32 #1 | 33.770 ms | 34.700 ms | 15.243 ms | 32.154 ms | 10.730 / 6.244 ms |
+| R32 #2 | 35.014 ms | 35.683 ms | 15.686 ms | 32.888 ms | 10.685 / 6.235 ms |
+| R24 tail | 75.928 ms | — | 14.227 ms | 26.015 ms | 8.357 / 6.247 ms |
 
-Current pool: **48.237 ms/cycle** across grouped R6 and R8 symbols.
+A matched-output `general_en_explain` profile holds requested K3, physical C8,
+visible output, generated/accepted drafts (**152/128; 84.21%**), F16 K/V, and
+19 graph launches equal. Current→Laurent decode span is
+**1231.717→1098.313 ms (-133.403 ms)** and kernel sum is
+**986.749→863.917 ms (-122.832 ms)**. Q5 alone changes from 384 MMVQ calls
+and **131.651 ms** to 384 MMQ calls and **32.018 ms**: **-99.633 ms**, or
+**74.69%** of the decode-span delta. Each side executes eight target rounds,
+so the Q5 role moves **16.456→4.002 ms/round**.
 
-- [ ] Use P1 to distinguish R24-only R6 work from R32 R8 work and rank by total
+The source cause is Laurent commit `25748619d26231137fa3add44d0a42d2c73c6003`:
+it flattens recurrent GDN `ssm_out` input to a batch-wide 2D matrix before the
+Q5 projection, selecting matrix-matrix quant ownership instead of per-sequence
+matrix-vector ownership. Applying the measured **0.2432x** Q5 ratio to
+hipEngine's 15.052 ms/cycle predicts **3.661 ms/cycle**, an estimated
+**11.392 ms/cycle saving**. hipEngine already groups physical rows, so the
+candidate is a true matrix-tile/MMQ analogue—not a host reshape or another
+launch-only grouping change.
+
+The separate known-different `code_merge_intervals` probe is kept diagnostic:
+current generates/accepts **152/128** drafts, Laurent **168/120**, and their
+output hashes differ. Thus Laurent's arithmetic-different cells cannot quantify
+an equal-work deficit. The matched-output cell establishes the Q5 mechanism
+independently; current llama.cpp remains the exact-output closure baseline.
+Laurent's adaptive-draft commit is present but disabled in both profile commands.
+
+Exit met: **recurrent Q5 `ssm_out`** is ranked first, its estimated saving is
+11.392 ms/cycle, and matrix-tiled Q5 ownership is a source-grounded mechanism
+not closed by §6.
+
+### C8-P2 — peer-derived Q5 matrix tile, then exact grouped Q4
+
+First pool: **15.052 ms/cycle** across the 48 recurrent Q5 `ssm_out`
+projections. P1 estimates a matrix-tile analogue at **3.661 ms/cycle**, leaving
+**11.392 ms/cycle** of mechanism-backed upside. Current grouped R6/R8 stays the
+strict fallback.
+
+- [ ] Add an actual-weight R24/R32 RED comparing a matrix-tiled Q5 candidate to
+      the current grouped-R6/R8 active-row output and production profile.
+- [ ] Prototype batch-wide Q5 matrix ownership using a generic DP4A/Q8-activation
+      or WMMA mechanism; do not hard-code model data or bypass the registry.
+- [ ] Measure all 48 `ssm_out` weights in alternating order and require a
+      projected operation-complete cycle wall below the incumbent 15.052 ms.
+- [ ] Keep exact grouped R6/R8 registered as strict fallback and declare any
+      changed reduction/activation arithmetic as T2 rather than relabeling it.
+- [ ] Run L2→L5 if the actual-weight screen survives; target at least the
+      11.392 ms/cycle peer-derived estimate before changing priority.
+
+Second pool: **48.237 ms/cycle** across grouped Q4 R6 and R8 symbols. P1
+ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
+**75.928/144.711 ms (52.47%)** of grouped-Q4 complete-profile exposure.
+
+- [x] Use P1 to distinguish R24-only R6 work from R32 R8 work and rank by total
       complete-workload exposure, not per-call latency.
 - [ ] Inspect current ISA/resource counters for weight loads, cache behavior,
       VALU, stalls, and occupancy on each actual role.
@@ -404,14 +468,14 @@ Current pool: **48.237 ms/cycle** across grouped R6 and R8 symbols.
 - [ ] Keep the current grouped-R8/R6 registered chain as strict rollback.
 - [ ] Run L0→L3 and L5; retain any exact same-suite win.
 
-Exit: retained exact Q4 target-wall reduction, or a role-specific structural
-blocker with measured roofline/resource evidence.
+Exit: retained Q5 and/or exact Q4 target-wall reduction, or role-specific
+structural blockers with measured roofline/resource evidence.
 
 ### C8-P3 — fused Q4 gate/up+SiLU row32 track
 
 Current pool: **23.461 ms/cycle**, WG128, VGPR248, LDS 32 KiB.
 
-- [ ] Profile per-layer distribution and confirm the expected 64 calls on each
+- [x] Profile per-layer distribution and confirm the expected 64 calls on each
       R32 cycle versus no unintended ownership on the R24 tail.
 - [ ] Inspect whether LDS capacity, VGPR pressure, barriers, weight decode, or
       WMMA issue is binding; do not assume occupancy from resource counts alone.
@@ -430,9 +494,9 @@ at its measured occupancy/bandwidth floor.
 
 Current pool: **46.519 ms/cycle**.
 
-- [ ] Role-resolve the grouped-R8 symbol (**30.353 ms**) separately from F32
+- [x] Role-resolve the grouped-R8 symbol (**30.353 ms**) separately from F32
       rowtile/direct symbols (**16.166 ms combined**).
-- [ ] Determine whether F32 symbols are target root/full-vocabulary heads,
+- [x] Determine whether F32 symbols are target root/full-vocabulary heads,
       projection tails, or another boundary before editing them.
 - [ ] For grouped R8, seek reduced weight traversal/dequantization or an exact
       reduction schedule with lower operation wall; WMMA capacity changes and
@@ -569,7 +633,38 @@ PYTHONPATH=. rocprofv3 \
   --output /tmp/he-current-c8-profile/summary.json
 ```
 
-### 9.2 Binding full C8 gate
+### 9.2 Direct peer mechanism profile
+
+Run one peer at a time. The helper starts `llama-server` under delayed rocprof
+collection, finishes a C8 prewarm before collection begins, and drives the
+measured request from the unprofiled Python parent:
+
+```bash
+python3 scripts/llamacpp_c8_k3_rocprof.py \
+  --server /home/lhl/external-qwen38-bench/llama.cpp-upstream/build-hip-gfx1100/bin/llama-server \
+  --source /home/lhl/external-qwen38-bench/llama.cpp-upstream \
+  --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --prompt-id general_en_explain --port 18123 \
+  --raw-root /tmp/qwen38-current-c8-profile \
+  --output /tmp/qwen38-current-c8-profile.json \
+  --label current-hip-c8-k3
+
+python3 scripts/llamacpp_c8_k3_rocprof.py \
+  --server /home/lhl/external-qwen38-bench/llama.cpp-laurent/build-hip-gfx1100/bin/llama-server \
+  --source /home/lhl/external-qwen38-bench/llama.cpp-laurent \
+  --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
+  --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl \
+  --prompt-id general_en_explain --port 18124 \
+  --raw-root /tmp/qwen38-laurent-c8-profile \
+  --output /tmp/qwen38-laurent-c8-profile.json \
+  --label laurent-hip-c8-k3
+```
+
+These one-prompt rows are mechanism evidence only. They do not replace the
+binding ten-prompt D24 scores.
+
+### 9.3 Binding full C8 gate
 
 Each candidate supplies an explicit same-build rollback variable or registered
 fallback. Run both process orders; placeholders are recorded as templates, not

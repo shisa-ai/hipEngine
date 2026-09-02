@@ -502,8 +502,10 @@ the prior measured queue remains historical context in
 [`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md). The active
 W7900 Qwen3.8 continuation is the explicit C8/K3 cross-engine campaign in
 [`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md): its
-current-source profile is target-kernel dominated, and capacity-8 automatic
-routing remains K0 unless a separate product gate passes. Source audit and
+current-source profile is target-kernel dominated, and its matched-output peer
+census ranks a recurrent-Q5 matrix-tile analogue first with estimated
+11.392 ms/cycle upside. Capacity-8 automatic routing remains K0 unless a
+separate product gate passes. Source audit and
 rejected alternatives remain in [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,

@@ -164,6 +164,14 @@ See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), the
 Retained C1-C8 optimization history remains in the result artifacts and
 [`CHANGELOG.md`](CHANGELOG.md), not in this current-row scoreboard.
 
+The direct prewarmed C8/K3 peer census changes no topline row. On one
+matched-output cell, current and Laurent llama.cpp have identical 152/128
+generated/accepted drafts, while recurrent Q5 projection wall is
+**131.651→32.018 ms** across eight target rounds. Laurent commit `25748619`
+selects batch-wide MMQ instead of MMVQ; this ranks a Q5 matrix-tile analogue
+first for the hipEngine C8 campaign with estimated **11.392 ms/cycle** upside.
+[`Peer/role census`](results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json).
+
 ## Evidence status
 
 | Status | Meaning | Eligible for a current numeric table? |
