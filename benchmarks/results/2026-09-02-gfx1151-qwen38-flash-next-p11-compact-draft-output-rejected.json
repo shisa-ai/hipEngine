@@ -1,0 +1,167 @@
+{
+  "amdahl_declaration": {
+    "C": {
+      "scope": "compact-output candidate; no external comparator used",
+      "value_ms": 6537.54765400663
+    },
+    "O": {
+      "compact_proposal_median_ms": 16.639110006508417,
+      "debug_proposal_median_ms": 16.944692499237135
+    },
+    "W": {
+      "scope": "four-category warmed debug-output control in this same-session screen",
+      "value_ms": 6585.100786964176
+    },
+    "arithmetic_class": "T0 output-ownership change",
+    "mechanism": "device argmax, int64 token readback, resident hidden chaining; explicit full-logit debug route retained",
+    "overlap_exclusions": [
+      "proposal wall includes draft layer and head",
+      "whole-request wall includes target prefill, target verification, proposal, and host control",
+      "first two invalid screens are excluded because cold or prompt-specific second-arm warming biased results"
+    ],
+    "s": 1.0183653147679887,
+    "scope": "Qwen4Exp Q8 MTP draft B2 proposal output only",
+    "strict_fallback": "debug full-logit/full-hidden output (shipped default)",
+    "zero_cost_ceiling": "not used; measured implementation candidate"
+  },
+  "configuration": {
+    "candidate_budget": 2,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "gpu_clock_policy": "auto",
+    "max_tokens": 8,
+    "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "pair_order": "alternating AB/BA by category after one global and one per-prompt warmup per mode",
+    "sidecar": "/models/gguf/Qwen3.8-Flash-Next-MTP-Q8_0/mtp-Qwen3.8-Flash-Next-Q8_0.gguf"
+  },
+  "date": "2026-09-02",
+  "decision": {
+    "default": "debug",
+    "next": "Keep the candidate default-off for device-residency development; remove it if one-packet-per-cycle plus verifier work does not produce a category-clean complete-wall win.",
+    "opt_in_env": "HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1",
+    "promoted": false,
+    "reason": "Sidecar proposal median improves 16.945 to 16.639 ms (1.018x), but warmed whole-model aggregate is only 1.0073x and general_en/mixed_ja_en regress to 0.9435x/0.9745x. Binding per-category non-regression fails."
+  },
+  "host": {
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "hostname": "zbook",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "rocm_platform": "10.0.0",
+    "tuned_active": "Current active profile: accelerator-performance"
+  },
+  "kind": "qwen4exp_p11_compact_draft_output",
+  "performance_claim": false,
+  "route_proof": {
+    "argmax_stage1_dispatches": 4,
+    "argmax_stage2_dispatches": 4,
+    "expected_route_passed": true,
+    "raw_trace_committed": false,
+    "raw_trace_sha256": "494a1b65b76467eca3bc89fd518cd72b1c5c697564849cbc0bcc79b8e803d9f1"
+  },
+  "schema": 1,
+  "sidecar_ab": {
+    "compact": {
+      "max_ms": 18.593568995129317,
+      "median_ms": 16.639110006508417,
+      "min_ms": 15.507511998293921,
+      "samples_ms": [
+        16.681048000464216,
+        16.61878201412037,
+        16.28209199407138,
+        16.602371993940324,
+        15.507511998293921,
+        16.44699097960256,
+        16.727946000173688,
+        16.659437998896465,
+        17.105564009398222,
+        18.593568995129317
+      ]
+    },
+    "debug": {
+      "max_ms": 18.158084014430642,
+      "median_ms": 16.944692499237135,
+      "min_ms": 16.72756497282535,
+      "samples_ms": [
+        16.72756497282535,
+        16.82896600686945,
+        16.755567979998887,
+        16.947627998888493,
+        17.507095995824784,
+        16.941756999585778,
+        17.713851993903518,
+        17.307050991803408,
+        18.158084014430642,
+        16.884579992620274
+      ]
+    },
+    "ids_exact": true,
+    "speedup": 1.0183653147679887
+  },
+  "source": {
+    "base_head": "7c7acd8e9",
+    "tracked_clean": false
+  },
+  "status": "rejected_category_regression_default_off",
+  "whole_model_ab": {
+    "compact_total_ms": 6537.54765400663,
+    "debug_over_compact": 1.007273848769332,
+    "debug_total_ms": 6585.100786964176,
+    "lifecycle": {
+      "after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 88552984224,
+        "peak_allocations": 2182,
+        "total_allocated_bytes": 88553105056,
+        "total_freed_bytes": 88553105056
+      },
+      "passed": true
+    },
+    "paired_ids_exact": true,
+    "rows": [
+      {
+        "category": "code",
+        "compact_ms": 1453.0795089958701,
+        "debug_ms": 1614.6223609976005,
+        "debug_over_compact": 1.1111727548297492,
+        "id": "code_merge_intervals",
+        "ids_exact": true
+      },
+      {
+        "category": "general_en",
+        "compact_ms": 1523.1525140115991,
+        "debug_ms": 1437.0219979900867,
+        "debug_over_compact": 0.9434524676753043,
+        "id": "general_en_plan",
+        "ids_exact": true
+      },
+      {
+        "category": "general_ja",
+        "compact_ms": 1530.00712901121,
+        "debug_ms": 1553.9408749900758,
+        "debug_over_compact": 1.0156428983401753,
+        "id": "general_ja_plan",
+        "ids_exact": true
+      },
+      {
+        "category": "mixed_ja_en",
+        "compact_ms": 2031.3085019879509,
+        "debug_ms": 1979.5155529864132,
+        "debug_over_compact": 0.974502667147383,
+        "id": "mixed_ja_en_translate",
+        "ids_exact": true
+      }
+    ]
+  }
+}

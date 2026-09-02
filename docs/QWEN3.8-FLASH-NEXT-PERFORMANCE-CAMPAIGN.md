@@ -1834,10 +1834,21 @@ external MTP rows.
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-mtp-phase-census.json`.
       The earlier isolated sidecar diagnostic remains
       `benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-mtp-hot-head-feasibility.json`.
-- [ ] Keep target hidden, draft hidden chaining, logits/top-k, and candidate IDs
+- [~] Keep target hidden, draft hidden chaining, logits/top-k, and candidate IDs
       on device. Remove per-draft full-logit/hidden D2H and host reconstruction;
-      read one compact candidate packet per cycle at most. This is the first
-      PR-#303 transfer rung and must preserve an explicit full-logit debug path.
+      read one compact candidate packet per cycle at most. The first T0 rung
+      keeps draft hidden chaining resident and replaces full-logit/hidden D2H
+      with device argmax plus one int64 read per draft; the explicit full-output
+      path remains the default/fallback. Sidecar B2 median improves
+      **16.945→16.639 ms (1.018x)** with exact IDs. A warmed four-category
+      same-session AB/BA is also exact and improves aggregate wall only
+      **6,585.101→6,537.548 ms (1.0073x)**; `general_en` and `mixed_ja_en`
+      regress to **0.9435x/0.9745x**, so promotion is rejected. Keep
+      `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1` default-off until candidate IDs
+      become one packet per cycle and target hidden export is resident; remove
+      it if that complete route still fails category non-regression. Cached
+      tracing proves the candidate's argmax stage1/stage2 route. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-compact-draft-output-rejected.json`.
 - [ ] After device-output cleanup and target-verifier progress, build
       default-off individual-row compact Q8_0 draft heads at 8K/16K/32K with a
       local→global token map. Do not port EXL3 block-group rules or FP8 constants.

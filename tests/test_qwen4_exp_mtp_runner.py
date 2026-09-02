@@ -77,6 +77,9 @@ def test_qwen4_exp_mtp_draft_result_contract() -> None:
     assert result.token_id == 1
     np.testing.assert_array_equal(result.logits, logits)
     np.testing.assert_array_equal(result.hidden_seed, hidden)
+    compact = Qwen4ExpMTPDraftResult(1, None, None)
+    assert compact.logits is None
+    assert compact.hidden_seed is None
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
@@ -161,6 +164,7 @@ def test_real_qwen4_exp_mtp_draft_is_deterministic_and_transactional() -> None:
             start_token=repeat.token_id,
             target_hidden_seed=repeat.hidden_seed,
             draft_n_max=2,
+            compact_output=True,
         )
         assert runner.position == checkpoint.position + 2
         runner.restore(checkpoint)
@@ -168,11 +172,26 @@ def test_real_qwen4_exp_mtp_draft_is_deterministic_and_transactional() -> None:
             start_token=repeat.token_id,
             target_hidden_seed=repeat.hidden_seed,
             draft_n_max=2,
+            compact_output=True,
         )
         assert [row.token_id for row in replay] == [row.token_id for row in chain]
-        for expected, actual in zip(chain, replay, strict=True):
-            np.testing.assert_array_equal(actual.logits, expected.logits)
-            np.testing.assert_array_equal(actual.hidden_seed, expected.hidden_seed)
+        assert all(row.logits is None for row in chain)
+        assert all(row.hidden_seed is None for row in chain)
+        assert all(row.logits is None for row in replay)
+        assert all(row.hidden_seed is None for row in replay)
+        assert "draft_logits_d2h" not in runner.last_proposal_stage_timings_ms
+        assert "draft_hidden_d2h" not in runner.last_proposal_stage_timings_ms
+        assert "draft_device_argmax_and_token_d2h" in runner.last_proposal_stage_timings_ms
+        runner.restore(checkpoint)
+        debug = runner.propose_chain(
+            start_token=repeat.token_id,
+            target_hidden_seed=repeat.hidden_seed,
+            draft_n_max=2,
+            compact_output=False,
+        )
+        assert [row.token_id for row in debug] == [row.token_id for row in chain]
+        assert all(row.logits is not None for row in debug)
+        assert all(row.hidden_seed is not None for row in debug)
     finally:
         if runner is not None:
             runner.close()

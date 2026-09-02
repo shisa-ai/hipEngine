@@ -18,6 +18,17 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-02 Qwen4Exp P11 compact draft output
+
+- `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT=1` selects a default-off T0 MTP draft
+  path that keeps hidden chaining resident and replaces full-logit/full-hidden
+  readback with device argmax plus one int64 token read per draft. Keep the
+  full-output route as default while the candidate is incomplete: warmed
+  four-category wall improves only 1.0073x and two categories regress. Remove
+  the flag and candidate if one-packet-per-cycle candidate output plus resident
+  target-hidden work still fails category non-regression; otherwise promote the
+  completed route and retain full output only as an explicit debug facility.
+
 ## 2026-09-02 Qwen4Exp P9 load drop-behind
 
 - `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot
