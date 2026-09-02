@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 confidence readiness] Threshold work is blocked before execution: compact output has no calibrated probability/margin/log-sum-exp, and retained evaluation evidence has no machine-readable disjoint fit/heldout partition. Fitting fixed prompts or restoring full-logit D2H is rejected under anti-gaming/device-residency rules. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-confidence-policy-readiness.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 exact-greedy policy] The public serial provider passes **10/10** category+heldout generated-ID equality at **134/159 (84.28%)** acceptance. It remains **51.711 vs 49.383 s (0.955x AR)**, so this closes correctness policy only; EngramHalo's faster 9/10 row remains invalid precedent. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exact-greedy-policy.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P11 EXP-016 readiness] Current serial truth-only target commits cannot express the rollback-ring failure; the rejection-depth grid awaits the Qwen4Exp verifier transaction ABI. External falsification is blocked because patch `hybrid-03-mtp/0006` and commits `413c33c`/`32af70900` are absent locally and the cited repository is HTTP 404. Pinned comparator trees remain untouched. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p11-exp016-readiness.json`.
