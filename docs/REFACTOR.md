@@ -76,14 +76,22 @@ should be removed or collapsed.
 
 ## 2026-09-02 gfx1100 C8 adaptive source-Q5 MMQ — open
 
-- `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=1` stages the source-layout
-  I64/J16-J32 integer-WMMA consumer only inside the existing gfx1100
-  eight-request raw-Q5 owner. Omitted/zero retains the qualified D4S4 raw MMQ;
-  disabling `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` retains grouped T16.
-- Remove the source-layout flag if marker, strict-teacher, or full category and
-  heldout gates fail. Promote it and retain one temporary zero-valued rollback
-  only if every C8 scope passes; remove that rollback after the next stable
-  milestone audit.
+- `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=1` stages an R32-only K-major
+  D4S4-FP32 I64/J32 integer-WMMA consumer inside the existing gfx1100
+  eight-request raw-Q5 owner. R24, omitted/zero, and shape misses retain the
+  qualified D4S4 raw MMQ; disabling `HIPENGINE_GGUF_C8_Q5_RAW_MMQ` retains
+  grouped T16.
+- The original source-faithful DS4 R24/R32 route passed strict-teacher numerics
+  and improved pooled task throughput by 0.99%, but changed one acceptance
+  decision and regressed `general_en` by 1.38%/1.90% across the two orders, so
+  it is superseded. The replacement retains FP32 activation and weight
+  metadata; its fast-math R32 operation screen wins all 48 weights by 2.77%
+  with max KL below 3e-9 versus raw MMQ, while the bit-exact baseline build
+  loses all 48 R32 weights by 4.34%.
+- Remove the source-layout flag if its R32 marker or full category and heldout
+  gates fail. Promote it and retain one temporary zero-valued rollback only if
+  every C8 scope passes; remove that rollback after the next stable milestone
+  audit.
 
 ## 2026-09-02 gfx1100 C8 raw-Q5 MMQ — closed
 

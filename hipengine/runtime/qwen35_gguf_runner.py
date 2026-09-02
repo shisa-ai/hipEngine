@@ -17696,18 +17696,14 @@ class Qwen35GGUFResidentSession:
             self.runner.backend,
             request_count=request_count,
         )
-        if source_layout and self._q5_source_mmq_target_library is None:
-            self._q5_source_mmq_target_library = build_gguf_q5_k_source_mmq_prefill(
+        if enabled and self._q5_raw_mmq_target_library is None:
+            self._q5_raw_mmq_target_library = build_gguf_k_mmq_prefill(
                 load=True,
                 compiler_version=self.compiler_version,
                 require_cached=self.require_cached_build,
             )
-        if (
-            enabled
-            and not source_layout
-            and self._q5_raw_mmq_target_library is None
-        ):
-            self._q5_raw_mmq_target_library = build_gguf_k_mmq_prefill(
+        if source_layout and self._q5_source_mmq_target_library is None:
+            self._q5_source_mmq_target_library = build_gguf_q5_k_source_mmq_prefill(
                 load=True,
                 compiler_version=self.compiler_version,
                 require_cached=self.require_cached_build,
@@ -17721,6 +17717,7 @@ class Qwen35GGUFResidentSession:
                 if source_layout
                 else self._q5_raw_mmq_target_library
             ),
+            quant_library=self._q5_raw_mmq_target_library,
             enabled=enabled,
             source_layout=source_layout,
         )

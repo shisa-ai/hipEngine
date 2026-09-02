@@ -13,6 +13,9 @@ _SOURCE = Path(__file__).with_name("gguf_k_mmq_prefill.hip")
 _OUTPUT_NAME = "gguf_k_mmq_prefill.so"
 _SOURCE_OUTPUT_NAME = "gguf_q5_k_source_mmq_prefill.so"
 _QUANT_DS4_KMAJOR_SYMBOL = "hipengine_gguf_q8_1_ds4_quantize_bf16_kmajor"
+_QUANT_D4S4_KMAJOR_SYMBOL = (
+    "hipengine_gguf_q8_1_d4s4_f32_quantize_bf16_kmajor"
+)
 _QUANT_SYMBOL = "hipengine_gguf_q8_1_d4s4_f32_quantize_bf16"
 _QUANT_D8_SYMBOL = "hipengine_gguf_q8_1_d8s8_f32_quantize_bf16"
 _QUANT_D8R8_SYMBOL = "hipengine_gguf_q8_1_d8r8s8_f32_quantize_bf16"
@@ -24,8 +27,12 @@ _VARIANT_D8R8_BF16 = "mmq32_q8_1_d8r8s8_f32_bf16_bf16_out"
 _VARIANT_D8R8_F32 = "mmq32_q8_1_d8r8s8_f32_bf16_f32_out"
 _SOURCE_VARIANT_BF16 = "mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out"
 _SOURCE_VARIANT_F32 = "mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out"
-_SOURCE_C8_VARIANT_BF16 = "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out"
-_SOURCE_C8_VARIANT_F32 = "mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out"
+_SOURCE_C8_VARIANT_BF16 = (
+    "mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out"
+)
+_SOURCE_C8_VARIANT_F32 = (
+    "mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out"
+)
 _Q8_BLOCK = 128
 _Q8_DS4_BLOCK_BYTES = 144
 _Q8_BLOCK_BYTES = 160
@@ -138,6 +145,12 @@ def q8_1_d4s4_f32_nbytes(rows: int, hidden: int) -> int:
     return rows * (hidden // _Q8_BLOCK) * _Q8_BLOCK_BYTES
 
 
+def q8_1_d4s4_f32_kmajor_nbytes(rows: int, hidden: int) -> int:
+    """Return bytes for K-major K128 Q8_1 blocks with FP32 scale/sum."""
+
+    return q8_1_d4s4_f32_nbytes(rows, hidden)
+
+
 def q8_1_d8s8_f32_nbytes(rows: int, hidden: int) -> int:
     """Return bytes for row-major K128 Q8_1 blocks with eight FP32 groups."""
 
@@ -174,6 +187,41 @@ def gguf_q8_1_ds4_quantize_bf16_kmajor(
     library = library or build_gguf_k_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _QUANT_DS4_KMAJOR_SYMBOL)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    error = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def gguf_q8_1_d4s4_f32_quantize_bf16_kmajor(
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Quantize BF16 rows to precision-preserving K-major Q8_1 blocks."""
+
+    q8_1_d4s4_f32_kmajor_nbytes(rows, hidden)
+    library = library or build_gguf_k_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _QUANT_D4S4_KMAJOR_SYMBOL)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -373,8 +421,11 @@ def _launch_q5_source_mmq(
         raise ValueError(f"unsupported source MMQ tile: {tile}")
     library = library or build_gguf_q5_k_source_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
+    producer_layout = (
+        "ds4" if tile == "i128_j128" else "d4s4_f32_kmajor"
+    )
     symbol = (
-        f"hipengine_gguf_q5_k_mmq_{tile}_k256_q8_1_ds4_"
+        f"hipengine_gguf_q5_k_mmq_{tile}_k256_q8_1_{producer_layout}_"
         f"bf16_{output_dtype}_out"
     )
     fn = getattr(library, symbol)
@@ -413,26 +464,16 @@ def gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out(
     _launch_q5_source_mmq("f32", *args, **kwargs)
 
 
-def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out(
+def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out(
     *args, **kwargs
 ) -> None:
     _launch_q5_source_mmq("bf16", *args, tile="i64_j32", **kwargs)
 
 
-def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out(
+def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out(
     *args, **kwargs
 ) -> None:
     _launch_q5_source_mmq("f32", *args, tile="i64_j32", **kwargs)
-
-
-# Compatibility names for the rejected fixed-J32 prototype. The underlying
-# owner now adapts to J16 below 32 rows while retaining the same C ABI symbol.
-gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out = (
-    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out
-)
-gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out = (
-    gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out
-)
 
 
 def gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out(*args, **kwargs) -> None:
@@ -490,6 +531,13 @@ def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
     register(
+        KernelKey(
+            "hip_gfx1100", "activation_quant", "q8_1_d4s4_f32", "bf16_kmajor"
+        ),
+        gguf_q8_1_d4s4_f32_quantize_bf16_kmajor,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "activation_quant", "q8_1_d4s4_f32", "bf16"),
         gguf_q8_1_d4s4_f32_quantize_bf16,
         replace=replace,
@@ -522,14 +570,14 @@ def register_gguf_k_mmq_prefill_kernels(*, replace: bool = True) -> None:
         KernelKey(
             "hip_gfx1100", "linear", "gguf_q5_k", _SOURCE_C8_VARIANT_BF16
         ),
-        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out,
+        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out,
         replace=replace,
     )
     register(
         KernelKey(
             "hip_gfx1100", "linear", "gguf_q5_k", _SOURCE_C8_VARIANT_F32
         ),
-        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out,
+        gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out,
         replace=replace,
     )
     for quant, bf16_fn, f32_fn in (
@@ -608,10 +656,8 @@ __all__ = [
     "build_gguf_q5_k_source_mmq_prefill",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_bf16_out",
     "gguf_q5_k_mmq_i128_j128_k256_q8_1_ds4_bf16_f32_out",
-    "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_bf16_out",
-    "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_ds4_bf16_f32_out",
-    "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_bf16_out",
-    "gguf_q5_k_mmq_i64_j32_k256_q8_1_ds4_bf16_f32_out",
+    "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out",
+    "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out",
@@ -625,11 +671,13 @@ __all__ = [
     "gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out",
     "gguf_q6_k_mmq32_q8_1_d8s8_f32_bf16_f32_out",
     "gguf_q8_1_d4s4_f32_quantize_bf16",
+    "gguf_q8_1_d4s4_f32_quantize_bf16_kmajor",
     "gguf_q8_1_ds4_quantize_bf16_kmajor",
     "gguf_q8_1_d8r8s8_f32_quantize_bf16",
     "gguf_q8_1_d8s8_f32_quantize_bf16",
     "plan_gguf_k_mmq_prefill_build",
     "plan_gguf_q5_k_source_mmq_prefill_build",
+    "q8_1_d4s4_f32_kmajor_nbytes",
     "q8_1_d4s4_f32_nbytes",
     "q8_1_ds4_kmajor_nbytes",
     "q8_1_d8r8s8_f32_nbytes",
