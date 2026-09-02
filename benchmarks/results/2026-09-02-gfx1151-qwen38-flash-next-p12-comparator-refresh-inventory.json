@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p12_comparator_refresh_inventory",
+  "status": "refresh_once_complete_final_freeze_blocked",
+  "performance_claim": false,
+  "protocol": {
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "shapes": [512, 1024, 4096],
+    "decode_transitions": 128,
+    "kv": "BF16",
+    "weight_quant": "UD-Q4_K_XL",
+    "host": "zbook/gfx1151",
+    "clock_policy": "auto"
+  },
+  "lanes": {
+    "upstream_vulkan": {
+      "source": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+      "binary_sha256": "070ae16710ad4279abffaf3a16e438c19d5b1f950817b7910d4474dfcdc2dce0",
+      "refresh_date": "2026-09-02",
+      "repeatable_cases": 12,
+      "case_count": 12,
+      "status": "eligible_but_final_freeze_blocked_by_short_shape_variance"
+    },
+    "nathan_vulkan": {
+      "source": "ad914eb6587d3da8b2bf50f0056cc20b3d3e91f5",
+      "binary_sha256": "563c54db7a7ace8000082635b3cc17d3dafb5378a7b5a0b22de21b42c46516b2",
+      "refresh_date": "2026-09-02",
+      "repeatable_cases": 0,
+      "case_count": 12,
+      "status": "diagnostic_nondeterministic"
+    },
+    "patched_upstream_hip": {
+      "source": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+      "binary_sha256": "bb41c7555c4ad6cd14df4d2a308d991ddb5d1b44ec21d294fa0fe24f5aeafa86",
+      "refresh_date": "2026-08-30",
+      "repeatable": true,
+      "status": "eligible_nonstock_patched_lane"
+    },
+    "pristine_upstream_hip": {
+      "source": "f1793c1c4e586022efa0b1d3aa6e30ccd67f4e2d",
+      "attempts": 2,
+      "startup_budget_seconds_each": 1800,
+      "samples": 0,
+      "status": "blocked_startup_no_timing"
+    },
+    "engramhalo_hip": {
+      "source": "1423f689986f670417128fd545a0aa1241166103",
+      "binary_sha256": "0514f125650e306d5f21920ed0a7d49f4e3fe123d1f10da896f5126c9fb4df50",
+      "refresh_date": "2026-08-30",
+      "repeatability": "p512/p1024 repeat; code-p4096 alternates",
+      "status": "eligible_short_shapes_diagnostic_p4096"
+    },
+    "hybrid04_vulkan": {
+      "source": "899dbe249 over c589f0ed plus hybrid-04",
+      "refresh_date": "2026-09-02",
+      "exact_cases": 2,
+      "case_count": 12,
+      "status": "diagnostic_correctness_invalid"
+    }
+  },
+  "source_artifacts": [
+    "benchmarks/results/2026-08-30-gfx1151-qwen38-flash-next-canonical-ar-screening.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-entitled-vulkan-canonical-refresh.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-hybrid04-canonical-screen.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p10-matched-comparator-audit.json"
+  ],
+  "amdahl_declaration": {
+    "W": "current hipEngine production is not remeasured by this external inventory",
+    "C": "each eligible comparator's exact shape wall remains in its source artifact",
+    "O": null,
+    "s": null,
+    "arithmetic_class": "external evidence inventory; no model arithmetic",
+    "scope": "all declared P0/P12 comparator lanes",
+    "mechanism": "source/binary/protocol/repeatability eligibility audit",
+    "strict_fallback": "unchanged hipEngine production",
+    "overlap_exclusions": ["invalid/nondeterministic lanes are not promoted", "different quant/KV/protocol rows are excluded", "three-repeat screens do not satisfy final five-pair freeze"]
+  },
+  "decision": {
+    "refresh_once_complete": true,
+    "final_target_freeze_complete": false,
+    "reason": "Every declared lane has a pinned exact-protocol refresh or an explicit failed startup attempt. Final five-pair same-thermal closure remains open because upstream Vulkan variance exceeds limits and several lanes are nondeterministic or unavailable.",
+    "rerun_policy": "Rebuild from pinned source because temporary binaries were removed; rerun only eligible upstream Vulkan/HIP and current hipEngine in final five-pair windows, not correctness-invalid lanes."
+  }
+}
