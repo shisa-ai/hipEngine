@@ -1143,10 +1143,20 @@ Evidence:
       schedule family. A retry requires new concurrent data reuse or explicit
       T1/T2 gates. Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-exact-geometry-closure.json`.
-- [ ] Test T1/T2 WMMA only in independently calibrated layer clusters. Every
+- [x] Test T1/T2 WMMA only in independently calibrated layer clusters. Every
       candidate must pass category, shape, transition, repeat, task, c2, BF16-
       relative, lifecycle, and manifest gates; no final-prompt or one-layer
-      screen can promote it.
+      screen can promote it. The retained Q4/Q5 suffix 27–47 and Q8 suffix
+      32–47 satisfy independent boundary screens, 450-row numerical/category/
+      transition/repeat/state gates, 18-prompt task gates, physical c2,
+      lifecycle, manifest, expected-kernel trace, and same-session p508/p1012
+      whole-model gates. Their p508 speedups are **1.132x** and **1.234x**.
+      Layer 2 demonstrates the fail-closed boundary: its **0.001179** mean KL
+      exceeds **0.001**, so c2/depth work was skipped and the route remains
+      default-off. BF16-relative comparison was inapplicable because no
+      qualified full-BF16 Qwen4Exp runtime existed; same-quant strict remained
+      binding. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p2-cluster-calibration-closure.json`.
 - [ ] Re-profile after each retained cluster and stop widening when the next
       boundary fails. Layers that fail remain on strict owners.
 
