@@ -1608,10 +1608,10 @@ __global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
 // 32-column output slab into LDS, then eight waves consume three independent
 // M16 tiles each. This preserves the parent kernel's K16 WMMA order while
 // reducing the rows288 weight sweep from five workgroups to one.
-template <int WAVES_PER_BLOCK, int ROW_TILES_PER_WAVE, int OUT_TILES_PER_BLOCK>
+template <int WAVES_PER_BLOCK, int ROW_TILES_PER_WAVE, int OUT_TILES_PER_BLOCK, typename scalar_t = uint16_t>
 __global__ __launch_bounds__((WAVES_PER_BLOCK > 4 ? 256 : 128), 1)
 void gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel(
-    const uint16_t* __restrict__ x,
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
@@ -1693,7 +1693,7 @@ void gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel(
       for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
         const int64_t input_row = row_base + tn * 16 + lane16;
         const bool valid_row = input_row < rows;
-        a[tn] = load_compact_row_half16<uint16_t>(
+        a[tn] = load_compact_row_half16<scalar_t>(
             x, valid_row ? input_row : 0, in_features,
             block_k_base + k_off, valid_row);
       }
@@ -1969,9 +1969,9 @@ int launch_q4_t16_dense_wmma_prefill_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-template <int LOWVGPR_ROW_TILES>
+template <int LOWVGPR_ROW_TILES, typename scalar_t = uint16_t>
 static int launch_q4_t16_dense_wmma_prefill_lowvgpr_impl(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2005,9 +2005,9 @@ int launch_q4_t16_dense_wmma_prefill_lowvgpr48_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
-template <int LOWVGPR_ROW_TILES>
+template <int LOWVGPR_ROW_TILES, typename scalar_t>
 static int launch_q4_t16_dense_wmma_prefill_lowvgpr_impl(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2025,7 +2025,7 @@ static int launch_q4_t16_dense_wmma_prefill_lowvgpr_impl(
       static_cast<unsigned int>(
           (rows + LOWVGPR_ROW_TILES * 16 - 1) / (LOWVGPR_ROW_TILES * 16)));
   hipLaunchKernelGGL(
-      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, LOWVGPR_ROW_TILES, 1>),
+      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, LOWVGPR_ROW_TILES, 1, scalar_t>),
       grid,
       block,
       0,
@@ -2322,9 +2322,9 @@ int launch_q5_t16_dense_wmma_prefill_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-template <int WAVES, int ROW_TILES>
+template <int WAVES = 8, int ROW_TILES = 3, typename scalar_t = uint16_t>
 int launch_q5_t16_dense_wmma_prefill_shared_bf16(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2345,7 +2345,7 @@ int launch_q5_t16_dense_wmma_prefill_shared_bf16(
                                 (WAVES * ROW_TILES * 16)));
   hipLaunchKernelGGL(
       (gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<
-          WAVES, ROW_TILES, OUT_TILES>),
+          WAVES, ROW_TILES, OUT_TILES, scalar_t>),
       grid, block, 0, stream, x, tiles, out, rows, in_features, out_features);
   return static_cast<int>(hipGetLastError());
 }
@@ -2362,9 +2362,9 @@ int launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
-template <int Q5_LOWVGPR_ROW_TILES>
+template <int Q5_LOWVGPR_ROW_TILES, typename scalar_t = uint16_t>
 static int launch_q5_t16_dense_wmma_prefill_lowvgpr_impl(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2386,7 +2386,7 @@ static int launch_q5_t16_dense_wmma_prefill_lowvgpr_impl(
           (rows + Q5_LOWVGPR_ROW_TILES * 16 - 1) /
               (Q5_LOWVGPR_ROW_TILES * 16)));
   hipLaunchKernelGGL(
-      (gguf_q5_t16_dense_wmma_prefill_bf16_kernel<Q5_LOWVGPR_ROW_TILES, 1>),
+      (gguf_q5_t16_dense_wmma_prefill_bf16_kernel<Q5_LOWVGPR_ROW_TILES, 1, scalar_t>),
       grid,
       block,
       0,
@@ -2500,6 +2500,25 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_impl<2, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2510,6 +2529,25 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_lowvgpr48_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_impl<3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out(
@@ -2568,6 +2606,25 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2, 1, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2578,6 +2635,25 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 8, 3>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 8, 3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out(
@@ -2592,6 +2668,25 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2, 4, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2602,6 +2697,25 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 4>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 4, 4, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out(
@@ -2722,6 +2836,20 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_shared_bf16<8, 3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles, out, rows, in_features, out_features, stream);
+}
+
 extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2734,6 +2862,20 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<2, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles, out, rows, in_features, out_features, stream);
+}
+
 extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2744,6 +2886,20 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<3>(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out(

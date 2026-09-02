@@ -19,6 +19,8 @@ fallback stays on the BF16 owners.
 from __future__ import annotations
 
 import ctypes
+import os
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -290,3 +292,41 @@ def test_f16_dense_sibling_numerics_vs_bf16_owner(rows: int) -> None:
             )
             argmax_agreements.append(corr)
     assert argmax_agreements, "no numerics cases ran"
+
+
+def test_prefill_f16_staging_defaults_off() -> None:
+    from hipengine.runtime.gguf_linear import (
+        PREFILL_F16_STAGING_ENV,
+        prefill_f16_staging_enabled,
+        prefill_f16_staging_session,
+    )
+
+    with mock.patch.dict(os.environ, {}, clear=False):
+        os.environ.pop(PREFILL_F16_STAGING_ENV, None)
+        assert prefill_f16_staging_enabled() is False
+        with prefill_f16_staging_session(True):
+            assert prefill_f16_staging_enabled() is True
+        assert prefill_f16_staging_enabled() is False
+        with mock.patch.dict(
+            os.environ, {PREFILL_F16_STAGING_ENV: "1"}
+        ):
+            assert prefill_f16_staging_enabled() is True
+        with mock.patch.dict(
+            os.environ, {PREFILL_F16_STAGING_ENV: "0"}
+        ):
+            assert prefill_f16_staging_enabled() is False
+
+
+def test_prefill_f16_router_twins_registered() -> None:
+    from hipengine.kernels.hip_gfx1151 import (
+        gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out,
+        gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out,
+    )
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (  # noqa: F401
+        gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out as _a,
+        gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out as _b,  # noqa: F401
+        gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out as _c,  # noqa: F401
+    )
+    assert callable(gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out)
+    assert callable(gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out)

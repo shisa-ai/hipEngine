@@ -4607,3 +4607,19 @@ profile, `0` restores the GEMV owners everywhere), mirroring the
 `HIPENGINE_GGUF_Q4K_ROWTILE` opt-out pattern. Removal condition: none
 projected; revisit only if a future verifier owner family supersedes the
 prefill bands.
+
+## RF-B2A — prefill F16-staging route switch (2026-09-02)
+
+`HIPENGINE_GGUF_PREFILL_F16_STAGING` (default off) plus
+`prefill_f16_staging_session` in `hipengine/runtime/gguf_linear.py`,
+intercepted at the final `launch_gguf_linear` dispatch for Q4/Q5-T16 dense
+prefill variants at rows 17-1024: the activation operand is cast BF16->F16
+into a grow-only stage workspace (`gguf_cast_bf16_to_f16`) and dispatched to
+the registered `t16_wmma_prefill_fp16_in_bf16_out` siblings (kernel-level
+0.69-0.89x their BF16 owners; see the B2 sibling screen). The BF16 owners
+remain the selected strict fallback; the route is a blunt diagnostic switch
+(prefill and verify launches share the family variant) until the B2 item-3
+gates decide a profile-scoped default. Removal condition: after the
+complete C2/C8 same-suite gates either promote to a profile-scoped default
+and keep the env as a bisection override, or record the measured blocker
+and delete the route.
