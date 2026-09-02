@@ -156,11 +156,35 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   corrected C7 budget of 289.4 ms. Transfer surface: the four quant-family
   routers at rows 17-48 plus the default-off wide-q6 table hook; four-axis
   keys recorded per family in the artifact.
-- [ ] Register the transfer under verifier keys with the current owners as
+- [~] Register the transfer under verifier keys with the current owners as
   registered strict fallback, including B: the Q6 lm-head as one sweep at
   R > 8 (replacing the per-rowtile re-sweep, F4). RED-first where practical:
   strict exact/parent-parity tests per transferred owner on R17-R32 shapes
   before the routing default flips.
+
+  A-transfer registered (default-off, 2026-09-02): root cause of the GEMV
+  verifier was the hard constant `_MTP_SERVING_TARGET_USE_WMMA_PREFILL =
+  False` (9cceedbcc, a July small-B perf decision on pre-Y2 bodies). It is
+  now the env-gated `mtp_serving_target_use_wmma_prefill()` switch
+  (`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL`, default off = current
+  per-row GEMV owners remain the strict fallback) consumed by all five MTP
+  serving verify-job sites (four in `qwen35_gguf.py`, packed-batch job in
+  `qwen35_gguf_mtp2.py`). No dispatch branch, no kernel signature, and no
+  registry key changed: enabling routes verify rows>1 through the already
+  registered `t16_wmma_prefill_bf16_bf16_out` four-axis variants — the same
+  retained exact band routers prefill uses. RED coverage:
+  `tests/test_mtp_serving_target_wmma_transfer.py` (12 tests: default-off
+  fallback, env values, both serving modules consume the switch, prefill
+  band variants registered for all four verifier quants on hip_gfx1151).
+  Ledger entry RF-B1A in `docs/REFACTOR.md`.
+
+  Remaining for this item (B-full): the one-sweep lm-head at R>8. The batched
+  verifier lm-head already amortizes the head read via exact rowtile chunks
+  capped at the primitive's 2-8 row band
+  (`_verify_lm_head_rowtile_chunked`, `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK`
+  in [2,8]); one sweep at R20-R32 needs the rowtile primitive widened or a
+  WMMA lm-head body with its own exactness RED — a named kernel unit before
+  the B1 item-4 retention measurement.
 - [ ] `rocprofv3 --kernel-trace` smoke (prebuilt `.so`) confirming the new
   owners execute under expected names with plausible durations at R20/R24/R32.
 - [ ] Measure one-pass K3/R32 and K2/R24 at C5-C8 on the full ten-prompt suite

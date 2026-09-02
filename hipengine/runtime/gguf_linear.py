@@ -159,6 +159,27 @@ TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
 )
 TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV = "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4"
 
+# B1 mechanism-A transfer (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md): route the
+# packed MTP serving target verifier's rows>1 projections through the same
+# retained exact prefill band owners the prefill path uses, instead of the
+# July-2026 small-B per-row GEMV owners (9cceedbcc). Default OFF keeps the
+# current verifier owners as the strict fallback; the flag is a run-owned
+# diagnostic switch until the B1 retention gates pass.
+MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
+    "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
+)
+
+
+def mtp_serving_target_use_wmma_prefill() -> bool:
+    """Whether MTP serving target verify passes use the prefill band owners."""
+
+    return os.environ.get(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
 # Q4_K verifier continuation blocks. Default ON: every specialization preserves
 # the corresponding per-row arithmetic. The opt-out exists only for bisection;

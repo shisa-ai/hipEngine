@@ -213,7 +213,9 @@ _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
 _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET = 3
 _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
-_MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
+from hipengine.runtime.gguf_linear import (
+    mtp_serving_target_use_wmma_prefill as _mtp_serving_target_use_wmma_prefill,
+)
 
 
 def _target_arch_scoped(method):
@@ -1221,7 +1223,7 @@ class Qwen35GGUFBringupGenerator:
                                                     "session": session,
                                                     "input_token_ids": warm_verify_tokens_for(slot_index),
                                                     "bulk_attention_mode": "bulk",
-                                                    "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                                                    "use_wmma_prefill": _mtp_serving_target_use_wmma_prefill(),
                                                     "capture_linear_state_rows": True,
                                                     "defer_linear_state_commit": True,
                                                     "defer_state_scatter": _gguf_mtp_server_defer_verify_scatter_enabled(),
@@ -3589,7 +3591,7 @@ class Qwen35GGUFBringupGenerator:
                     block_result = slot.session.verify_target_block(
                         drafted.block_inputs,
                         bulk_attention_mode="bulk",
-                        use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                        use_wmma_prefill=_mtp_serving_target_use_wmma_prefill(),
                         capture_linear_state_rows=True,
                         defer_linear_state_commit=True,
                     )
@@ -3719,7 +3721,7 @@ class Qwen35GGUFBringupGenerator:
                 "session": drafted.slot.session,
                 "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
                 "bulk_attention_mode": "bulk",
-                "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                "use_wmma_prefill": _mtp_serving_target_use_wmma_prefill(),
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
                 "defer_state_scatter": defer_state_scatter,
@@ -4144,7 +4146,7 @@ class Qwen35GGUFBringupGenerator:
                     block_result = session.verify_target_block(
                         block_inputs,
                         bulk_attention_mode="bulk",
-                        use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                        use_wmma_prefill=_mtp_serving_target_use_wmma_prefill(),
                         capture_linear_state_rows=True,
                         defer_linear_state_commit=True,
                     )

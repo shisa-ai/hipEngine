@@ -32,6 +32,7 @@ from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
 from hipengine.runtime.gguf_linear import (
+    mtp_serving_target_use_wmma_prefill,
     target_verifier_wide_q6_shared4_leaf_session,
     target_verifier_wide_q6_shared4_policy_enabled,
 )
@@ -2514,7 +2515,7 @@ class Qwen35GGUFMTP2Adapter:
                 "resident_slot": int(plan.resident_slots[plan.request_ids.index(request_id)]),
                 "transaction_id": int(transaction_id),
                 "bulk_attention_mode": "bulk",
-                "use_wmma_prefill": False,
+                "use_wmma_prefill": mtp_serving_target_use_wmma_prefill(),
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
                 "defer_state_scatter": True,
