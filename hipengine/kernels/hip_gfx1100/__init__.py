@@ -299,7 +299,7 @@ GGUF_SPECDEC2_Q4_DUAL_SILU_PRODUCTION_R28_POLICY = {
 }
 GGUF_Q5_T16_GROUPED_ROWS8_C8_POLICY = {
     "enabled_env": "HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8",
-    "enabled_default": False,
+    "enabled_default": True,
     "rows": frozenset({32}),
 }
 GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT = {
