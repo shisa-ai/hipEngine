@@ -54,6 +54,7 @@ KIND = "qwen38_production_q4_verifier_numerics"
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 DEFAULT_PROMPTS = ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl"
 VERIFY_CAPTURE_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
+Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
 
 
 class GateError(RuntimeError):
@@ -78,6 +79,7 @@ def _make_sessions(
     *,
     fp16_state: bool,
     q4_rowtile: bool,
+    q5_raw_mmq: bool,
     max_sequence_length: int,
 ) -> tuple[ExitStack, tuple[Any, ...]]:
     from hipengine.runtime.prefill import PrefillConfig
@@ -95,6 +97,7 @@ def _make_sessions(
             TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV,
             "1" if q4_rowtile else "0",
         ),
+        _environment(Q5_RAW_MMQ_ENV, "1" if q5_raw_mmq else "0"),
     ):
         owner = stack.enter_context(
             Qwen35GGUFResidentSession(
@@ -316,6 +319,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         args,
         fp16_state=False,
         q4_rowtile=False,
+        q5_raw_mmq=False,
         max_sequence_length=max_sequence_length,
     )
     try:
@@ -351,6 +355,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         args,
         fp16_state=True,
         q4_rowtile=True,
+        q5_raw_mmq=bool(args.candidate_q5_raw_mmq),
         max_sequence_length=max_sequence_length,
     )
     try:
@@ -404,7 +409,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
         repo_root=ROOT,
         configured_backend=str(args.backend),
         resolved_backend=str(args.backend),
-        target_arch="gfx1151",
+        target_arch=str(args.backend).removeprefix("hip_"),
         model_path=args.model,
         quant="gguf_q4_k_m",
         kv_dtype="bf16",
@@ -415,10 +420,14 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "strict": {
                 FP16_STATE_ENV: "0",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "0",
+                Q5_RAW_MMQ_ENV: "0",
             },
             "candidate": {
                 FP16_STATE_ENV: "1",
                 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV: "1",
+                Q5_RAW_MMQ_ENV: (
+                    "1" if bool(args.candidate_q5_raw_mmq) else "0"
+                ),
             },
         },
         build_profile="qwen38_q4_verifier_numerics",
@@ -457,8 +466,13 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, object
             "arithmetic_class": "T1+T2",
             "strict": "FP32 state + strict small-M/shared-B Q4 WMMA",
             "production": (
-                "FP16 state + shape-scoped Q4/Q5/Q6 verifier rowtiles at "
-                f"physical R{int(args.concurrency) * rows_per_job}"
+                "FP16 state + shape-scoped Q4/Q5/Q6 verifier rowtiles"
+                + (
+                    " + raw-Q5 D4S4 MMQ"
+                    if bool(args.candidate_q5_raw_mmq)
+                    else ""
+                )
+                + f" at physical R{int(args.concurrency) * rows_per_job}"
             ),
             "strict_fallbacks": [
                 "linear/gguf_q4_k_t16_v1/t16_wmma_prefill_smallm_bf16_bf16_out",
@@ -526,8 +540,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--backend", default="hip_gfx1151")
-    parser.add_argument("--concurrency", type=int, choices=(2, 3), default=2)
+    parser.add_argument("--concurrency", type=int, choices=(2, 3, 8), default=2)
     parser.add_argument("--candidate-budget", type=int, choices=(1, 2, 3), default=3)
+    parser.add_argument("--candidate-q5-raw-mmq", action="store_true")
     parser.add_argument("--prompts", type=Path, default=DEFAULT_PROMPTS)
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--decode-steps", type=int, default=24)

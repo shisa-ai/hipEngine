@@ -39,6 +39,24 @@ def test_q4_verifier_numerics_accepts_c3_tail_budget_and_pads_final_group() -> N
     )
 
 
+def test_q4_verifier_numerics_accepts_c8_raw_q5_candidate() -> None:
+    args = gate.build_parser().parse_args(
+        (
+            "--backend",
+            "hip_gfx1100",
+            "--concurrency",
+            "8",
+            "--candidate-q5-raw-mmq",
+            "--output",
+            "/tmp/out.json",
+        )
+    )
+
+    assert args.backend == "hip_gfx1100"
+    assert args.concurrency == 8
+    assert args.candidate_q5_raw_mmq is True
+
+
 def test_q4_verifier_environment_restores_caller(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
