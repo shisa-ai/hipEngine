@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_provider_clone_red",
+  "date": "2026-09-02",
+  "status": "red_contract_complete",
+  "performance_claim": false,
+  "source_commit": "9aa47c52d",
+  "candidate": "M1_C1_ACCEPT_ROUTE_PARITY T2 production experiment; current C1 fallback unchanged",
+  "red": {
+    "test": "tests/test_qwen38_m1_shadow_lifecycle.py::test_nextn_executor_provider_clone_api_exists_red",
+    "command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py::test_nextn_executor_provider_clone_api_exists_red",
+    "observed": "failed: Qwen35GGUFNextNExecutor.clone_request_state absent",
+    "signature": "clone_request_state(self, source_request_id, destination_request_id)",
+    "required": "distinct active slots; exact Conv/GDN, KV/cache, cursor copy; independent destination ownership; fingerprint equality"
+  },
+  "decision": "Implement provider cloning before physical C2 target execution. No prompt/token/candidate inputs and no route change."
+}

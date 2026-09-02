@@ -441,6 +441,13 @@ per §1.4; commit each validated unit atomically with its worklog entry.
   request and aborts the owner bundle; ownership/seam 78/78. Physical execution
   remains unselected. Evidence:
   [`...b3-m1-shadow-provider-clone-blocker.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-shadow-provider-clone-blocker.json).
+
+  Provider-clone RED now pins
+  `clone_request_state(self, source_request_id, destination_request_id)` on the
+  concrete NextN executor; it fails on the absent API before any route change.
+  GREEN must copy distinct-slot Conv/GDN, KV/cache, and cursor state and pass
+  fingerprint equality with independent destination ownership. Evidence:
+  [`...b3-m1-provider-clone-red.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b3-m1-provider-clone-red.json).
 - [ ] Implement the C1 shadow-row route on the qualified physical C2
   production path; publish one row, discard/reclaim the shadow. Current C1
   route remains the registered strict fallback.
