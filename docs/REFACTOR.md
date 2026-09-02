@@ -4667,3 +4667,13 @@ should be boring.
   D64 gate plus focused strict schedule/commit and state-owner regressions.
   Remove the old simultaneous `run()` in the next cleanup unit; keep only the
   sequential evaluator.
+
+## PF-1d MMQ tile template (2026-09-02)
+
+- `gguf_q8_0_mmq_prefill.hip` keeps the tile-parametrized
+  `q8_0_raw_mmq_tile_q8_1_d4_kernel<MMQ_M_T, MMQ_N_T, ...>` plus
+  `launch_mmq_tile<>`; only the `<128,128>` instantiation is registered.
+  Remove the template parameters (fold back to constants) if no second tile
+  variant is admitted by the end of PF-1e. Measured losers m64x64 (0.89x) and
+  m32n128 (0.35x) were removed after rejection; the cross-variant bit-parity
+  gate in `tests/test_qwen4exp_pf1_dense_parity.py` is the readmission path.

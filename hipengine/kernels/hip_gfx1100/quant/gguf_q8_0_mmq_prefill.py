@@ -71,7 +71,6 @@ class Q8MMQPrefillPolicy:
     def risk_indices_nbytes(self, rows: int) -> int:
         return self.risk_capacity(rows) * ctypes.sizeof(ctypes.c_int32)
 
-
 # GPU1 RX 7900 XTX crossover gates against the retained exact raw-Q8 family.
 # The narrow/short shapes lose once exact BF16 boundary repair is included, so
 # they intentionally retain the exact tiled fallback.
@@ -114,7 +113,6 @@ QWEN4EXP_Q8_MMQ_PREFILL_POLICY = Q8MMQPrefillPolicy(
     max_out_features=12288,
 )
 
-
 def plan_gguf_q8_0_mmq_prefill_build(
     *,
     cache_root: str | Path | None = None,
@@ -129,7 +127,6 @@ def plan_gguf_q8_0_mmq_prefill_build(
         compiler_version=compiler_version,
         output_name=_OUTPUT_NAME,
     )
-
 
 def build_gguf_q8_0_mmq_prefill(
     *,
@@ -152,7 +149,6 @@ def build_gguf_q8_0_mmq_prefill(
         require_cached=require_cached,
     )
 
-
 def q8_mmq_d4_nbytes(rows: int, hidden: int) -> int:
     """Return the source-compatible D4 activation workspace size."""
 
@@ -162,24 +158,20 @@ def q8_mmq_d4_nbytes(rows: int, hidden: int) -> int:
         raise ValueError("hidden must be a positive multiple of 128")
     return (hidden // 128) * rows * 144
 
-
 def q8_mmq_d4x2_nbytes(rows: int, hidden: int) -> int:
     """Return the primary-plus-residual D4 activation workspace size."""
 
     return 2 * q8_mmq_d4_nbytes(rows, hidden)
-
 
 def q8_mmq_d4x3_nbytes(rows: int, hidden: int) -> int:
     """Return the three-plane residual D4 activation workspace size."""
 
     return 3 * q8_mmq_d4_nbytes(rows, hidden)
 
-
 def ud_q3_k_m_q8_mmq_prefill_policy(rows: int, hidden: int, out_features: int) -> bool:
     """Compatibility wrapper for the registered Q3 policy object."""
 
     return UD_Q3_K_M_Q8_MMQ_PREFILL_POLICY(rows, hidden, out_features)
-
 
 def gguf_q8_0_mmq128_quantize_bf16_d4(
     x_ptr: int,
@@ -215,7 +207,6 @@ def gguf_q8_0_mmq128_quantize_bf16_d4(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_quantize_bf16_d4x2(
     x_ptr: int,
     out_d4_ptr: int,
@@ -250,7 +241,6 @@ def gguf_q8_0_mmq128_quantize_bf16_d4x2(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_quantize_bf16_d4x3(
     x_ptr: int,
     out_d4_ptr: int,
@@ -284,7 +274,6 @@ def gguf_q8_0_mmq128_quantize_bf16_d4x3(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
-
 
 def gguf_q8_0_mmq128_prefill_q8_1_d4_bf16_bf16_out(
     x_d4_ptr: int,
@@ -331,7 +320,6 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4_bf16_bf16_out(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_prefill_q8_1_d4x2_bf16_bf16_out(
     x_d4_ptr: int,
     qweight_ptr: int,
@@ -377,7 +365,6 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x2_bf16_bf16_out(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_bf16_out(
     x_d4_ptr: int,
     qweight_ptr: int,
@@ -422,7 +409,6 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_bf16_out(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
-
 
 def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out(
     x_d4_ptr: int,
@@ -485,7 +471,6 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_sparse_exact_correct_bf16(
     x_ptr: int,
     qweight_ptr: int,
@@ -542,7 +527,6 @@ def gguf_q8_0_mmq128_sparse_exact_correct_bf16(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_quantize_f32_d4x3(
     x_ptr: int,
     out_d4_ptr: int,
@@ -575,7 +559,6 @@ def gguf_q8_0_mmq128_quantize_f32_d4x3(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
-
 
 def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     x_d4_ptr: int,
@@ -638,7 +621,6 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_sparse_exact_correct_f32(
     x_ptr: int,
     qweight_ptr: int,
@@ -695,7 +677,6 @@ def gguf_q8_0_mmq128_sparse_exact_correct_f32(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
     x_d4_ptr: int,
     qweight_ptr: int,
@@ -741,7 +722,6 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
 
-
 def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "activation_quant", "q8_1_d4x3", "bf16"),
@@ -774,9 +754,7 @@ def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
         replace=replace,
     )
 
-
 register_gguf_q8_0_mmq_prefill_kernels()
-
 
 __all__ = [
     "Q8MMQPrefillPolicy",
