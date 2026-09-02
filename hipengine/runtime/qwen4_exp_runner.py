@@ -4458,6 +4458,90 @@ def run_qwen4_exp_gdn_token_mixer(
     return scratch.output
 
 
+@dataclass
+class Qwen4ExpTargetVerifyOutput:
+    """Bounded request-owned rows<=8 storage for future target verification."""
+
+    rows_capacity: int
+    residual_rows: DeviceBuffer
+    logits_rows: DeviceBuffer
+    token_ids: DeviceBuffer
+    head_scratch: Qwen4ExpGRScratch
+    runtime: HipRuntime
+    closed: bool = False
+
+    @classmethod
+    def allocate(
+        cls,
+        *,
+        rows: int,
+        branches: int,
+        hidden: int,
+        low_rank: int,
+        vocab: int,
+        runtime: HipRuntime | None = None,
+    ) -> "Qwen4ExpTargetVerifyOutput":
+        capacity = int(rows)
+        if not 1 <= capacity <= 8:
+            raise ValueError("Qwen4Exp target verify rows must be in 1..8")
+        if min(int(branches), int(hidden), int(low_rank), int(vocab)) <= 0:
+            raise ValueError("Qwen4Exp target verify dimensions must be positive")
+        active_runtime = runtime or get_hip_runtime()
+        buffers: list[DeviceBuffer] = []
+        head_scratch = None
+        try:
+            buffers = [
+                malloc(capacity * branches * hidden * DType.BF16.itemsize, runtime=active_runtime),
+                malloc(capacity * vocab * DType.FP32.itemsize, runtime=active_runtime),
+                malloc(capacity * DType.INT64.itemsize, runtime=active_runtime),
+            ]
+            head_scratch = Qwen4ExpGRScratch.allocate(
+                rows=capacity,
+                branches=branches,
+                hidden=hidden,
+                low_rank=low_rank,
+                runtime=active_runtime,
+            )
+        except Exception:
+            if head_scratch is not None:
+                head_scratch.close()
+            for buffer in reversed(buffers):
+                free(buffer, runtime=active_runtime)
+            raise
+        return cls(capacity, *buffers, head_scratch, active_runtime)
+
+    @property
+    def owned_buffers(self) -> Mapping[str, DeviceBuffer]:
+        return MappingProxyType({
+            "residual_rows": self.residual_rows,
+            "logits_rows": self.logits_rows,
+            "token_ids": self.token_ids,
+        })
+
+    @property
+    def nbytes_by_owner(self) -> Mapping[str, int]:
+        return MappingProxyType({
+            name: buffer.nbytes for name, buffer in self.owned_buffers.items()
+        })
+
+    def require_rows(self, rows: int) -> None:
+        if self.closed:
+            raise RuntimeError("Qwen4Exp target verify output is closed")
+        count = int(rows)
+        if not 1 <= count <= self.rows_capacity:
+            raise ValueError(
+                f"Qwen4Exp target verify rows must be in 1..{self.rows_capacity}"
+            )
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.head_scratch.close()
+        for buffer in reversed(tuple(self.owned_buffers.values())):
+            free(buffer, runtime=self.runtime)
+        self.closed = True
+
+
 @dataclass(frozen=True)
 class Qwen4ExpRunnerSnapshot:
     decode_state: Qwen4ExpDecodeStateSnapshot
@@ -4519,6 +4603,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.qsa_scratch: Qwen4ExpQSALayerScratch | None = None
         self.ple_scratch: Qwen4ExpPLEScratch | None = None
         self.head_scratch: Qwen4ExpGRScratch | None = None
+        self._target_verify_output: Qwen4ExpTargetVerifyOutput | None = None
         self.gdn_prefill_scratch: Qwen4ExpGDNLayerScratch | None = None
         self.qsa_prefill_scratch: Qwen4ExpQSALayerScratch | None = None
         self.ple_prefill_scratch: Qwen4ExpPLEScratch | None = None
@@ -4738,6 +4823,27 @@ class Qwen4ExpGGUFResidentModelRunner:
             ),
             library=self._q8_mmq_library if enabled else None,
         )
+
+    def target_verify_output(self, rows: int) -> Qwen4ExpTargetVerifyOutput:
+        """Return lazily allocated rows<=8 verifier output storage."""
+
+        self._require_open()
+        count = int(rows)
+        capacity = min(8, self.max_sequence_length)
+        if not 1 <= count <= capacity:
+            raise ValueError(f"Qwen4Exp target verify rows must be in 1..{capacity}")
+        if self._target_verify_output is None:
+            cfg = self.config
+            self._target_verify_output = Qwen4ExpTargetVerifyOutput.allocate(
+                rows=capacity,
+                branches=cfg.residual_branch_count,
+                hidden=cfg.hidden_size,
+                low_rank=cfg.residual_low_rank,
+                vocab=cfg.vocab_size,
+                runtime=self.runtime,
+            )
+        self._target_verify_output.require_rows(count)
+        return self._target_verify_output
 
     @property
     def token_id_buffer(self) -> DeviceBuffer:
@@ -5546,6 +5652,9 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.moe_graph_cache is not None:
             self.moe_graph_cache.close()
             self.moe_graph_cache = None
+        if self._target_verify_output is not None:
+            self._target_verify_output.close()
+            self._target_verify_output = None
         self._q8_mmq_policy = None
         self._q8_mmq_library = None
         self._q8_mmq_buffers = ()
@@ -5604,6 +5713,7 @@ __all__ = [
     "Qwen4ExpQSAPrefillMetadata",
     "Qwen4ExpRunnerSnapshot",
     "Qwen4ExpTokenResult",
+    "Qwen4ExpTargetVerifyOutput",
     "Qwen4ExpQSALayerDeviceWeights",
     "Qwen4ExpQSALayerScratch",
     "Qwen4ExpQSAMixerDeviceWeights",
