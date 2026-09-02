@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "date": "2026-09-02",
+  "kind": "qwen4exp_p4_gdn_exact_campaign_closure",
+  "status": "closed_retained_suffix_early_exact_exhausted",
+  "performance_claim": false,
+  "scope": "Exact early-layer GDN column ownership, prepare+recurrence fusion, state residency, and bounded token traversal",
+  "amdahl": {
+    "W": "current p512 named-production wall",
+    "C": "refreshed comparator wall",
+    "O": "0.599361848 s fresh p512 GDN owner",
+    "s": "no new speedup credited; retained suffix and rejected candidates retain their original measurements",
+    "overlap_exclusions": "Q4/Q5/dense/GR/QSA/submission are excluded",
+    "arithmetic_class": "T0 exact early candidates; retained suffix uses its declared production numerical profile",
+    "strict_fallback": "qwen4_exp_gdn_prefill_f32 / qwen4exp_sigmoid_strict_prefill"
+  },
+  "retained_suffix": {
+    "artifact": "2026-08-30-gfx1151-qwen38-flash-next-gdn-colwarps27-production.json",
+    "layers": "27-47",
+    "mechanism": "one warp per value-head column, FP32 state rows sharded in registers, no token-loop block barriers, in-place norm/gate tail",
+    "micro_speedup": 4.58,
+    "p508_delta_percent": -17.09,
+    "p1012_delta_percent": -15.67,
+    "complete_gate": "450 rows, category/task/repeat/state/c2/lifecycle passed",
+    "strict_fallback_registered": true
+  },
+  "early_exact_candidates": {
+    "prepared_strict": {
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-prepared-strict-rejected.json",
+      "output_exact": true,
+      "state_exact": true,
+      "ratio": 0.9967382818570243,
+      "decision": "rejected_removed_real_shape_regression"
+    },
+    "four_column_blocks": {
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p4-gdn-columnblocks4-rejected.json",
+      "state_exact": true,
+      "output_exact": false,
+      "ratio": 1.032825005842713,
+      "decision": "rejected_removed_production_width_output_parity"
+    },
+    "transposed_state_integration": {
+      "artifact": "2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-transposed-integration-rejected.json",
+      "layout_roundtrip_exact": true,
+      "output_state_envelope_passed": true,
+      "ratio": 0.8828529448752559,
+      "decision": "rejected_no_runtime_binding_operation_complete_regression"
+    }
+  },
+  "fresh_owner": {
+    "artifact": "2026-09-02-gfx1151-qwen38-flash-next-p4-p512-ledger.json",
+    "gdn_ms": 599.361848,
+    "role_attribution_pct": 100.0
+  },
+  "decision": "Close the exact GDN test item. Register-sharded column ownership pays only on the admitted suffix; exact prepared traffic is neutral, production-width early columns fail output parity, and persistent transposed layout regresses operation-complete wall. Early layers remain strict. Further widening is a separate T1/T2 suffix-calibration item."
+}
