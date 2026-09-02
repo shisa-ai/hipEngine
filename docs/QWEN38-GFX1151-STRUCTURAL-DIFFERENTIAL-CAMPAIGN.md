@@ -774,3 +774,31 @@ Current references:
   — P1 C2 blocker whose grouping verdict F9 reopens.
 - [`2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-y5-nongemm-tail-closure.json)
   — rows288 tick wall used for the prefill share in F1/F5.
+
+## 9. Decision log (post-close)
+
+### 2026-09-02 — mechanism A/B entry conditions reopened (B0 correction)
+
+The Z0 pass-budget decision ("zero feasible target-only pass budget; A/B
+target owner work cannot enter alone") rested on a double-count that the M3
+attribution later refuted. Z0 classified the entire 490.8-667.1 ms/cycle
+accept/sync/commit window as **non-target** cost, while M3 measured that
+96.2-98.3% of the target-pass host windows is traced **target-kernel
+execution** queued behind the accept marker. The budget counted target
+execution as non-target cost and concluded there was no room to reduce
+target cost.
+
+Corrected budgets (reassigning the covered kernel time to the target stage;
+all inputs from committed Z0/M3 artifacts, F3 owner anchor labeled derived)
+are in
+[`2026-09-02-gfx1151-qwen38-b0-corrected-pass-budgets.json`](../benchmarks/results/2026-09-02-gfx1151-qwen38-b0-corrected-pass-budgets.json):
+C5 346.7/278.8, C6 344.6/264.0, C7 289.4/204.5, C8 227.1/152.8 ms
+(residual removed/kept) against the F3 prefill-owner anchor band of
+230-260 ms. **Mechanism A/B entry is reopened**: positive at C5/C6/C7
+(residual removed) and at C5/C6 with the residual kept; C8 is a near-miss
+that needs owners at or below ~227 ms. The committed Z0 artifact and
+worklog entries are immutable and unchanged; this entry supersedes only the
+Z0 entry-condition decision, not its measurements. Implementation proceeds
+in the successor
+[`build campaign`](QWEN38-GFX1151-BUILD-CAMPAIGN.md) (B1), with human
+authorization recorded there (2026-09-02).
