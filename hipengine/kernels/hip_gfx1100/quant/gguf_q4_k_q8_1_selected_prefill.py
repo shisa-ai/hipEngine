@@ -1,14 +1,17 @@
-"""Wrappers for diagnostic GGUF Q4_K x prequantized-Q8_1 selected prefill.
+"""GGUF K-quant x prequantized-Q8_1 MMQ wrappers.
 
-The kernel is a standalone microbench/prototype for the llama.cpp MMQ prefill
-hypothesis.  It is not wired into model dispatch; callers provide Q8_1-style
-prequantized activations plus raw Q4_K gate/up expert weights.
+Most entry points are selected-MoE diagnostics. The dense planar-Q6 composite
+is separately session-owned and registry-selected on qualified backends.
 """
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
+from contextvars import ContextVar
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
@@ -143,6 +146,10 @@ _SYMBOL_Q6_T16_QMICRO_PLANAR_INTEGER_WMMA_HOIST_ACTIVATION_PREFETCH_WEIGHT_ACTIV
     "prefetch_weight_activation_precomputed_sums_skip_padded_activation_"
     "selected_q8_1_ds4_f32_mmq64x64_rowvec_prefill_compact64_bf16_bf16_out"
 )
+_SYMBOL_Q6_T16_QMICRO_PLANAR_DENSE_INTEGER_MMQ64X64_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_integer_mmq64x64_dense_"
+    "bf16_bf16_out"
+)
 _SYMBOL_Q4_T16_DS4_F32_MMQ64X32_BF16 = {
     passes: (
         "hipengine_gguf_q4_k_t16_selected_dual_q8_1_"
@@ -219,6 +226,71 @@ _SYMBOL_Q4_T16_DUAL_INTERLEAVED_RAW_PREFETCH_DS8_F32_MMQ128X32_WAVECOLS_DIRECT_D
 )
 _Q4_K_BLOCK = 256
 _Q8_1_MMQ_BLOCK = 128
+_Q8_1_DS4_F32_BLOCK_BYTES = 160
+
+
+@dataclass(frozen=True)
+class Q6DenseIntegerMMQWorkspace:
+    """Caller-owned Q8 workspace and library for one dense MMQ session."""
+
+    ptr: int
+    nbytes: int
+    library: object
+
+    def __post_init__(self) -> None:
+        if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
+            raise ValueError("dense Q6 integer MMQ workspace must be non-empty")
+        if self.library is None:
+            raise ValueError("dense Q6 integer MMQ library is required")
+
+
+_q6_dense_integer_mmq_workspace: ContextVar[
+    Q6DenseIntegerMMQWorkspace | None
+] = ContextVar("q6_dense_integer_mmq_workspace", default=None)
+
+
+def q6_dense_integer_mmq_nbytes(rows: int, hidden: int) -> int:
+    """Return the one-plane D4 Q8_1 bytes required by a dense launch."""
+
+    _check_positive(rows, "rows")
+    _check_positive(hidden, "hidden")
+    if hidden % _Q8_1_MMQ_BLOCK:
+        raise ValueError("hidden must be divisible by 128")
+    return (
+        int(rows)
+        * (int(hidden) // _Q8_1_MMQ_BLOCK)
+        * _Q8_1_DS4_F32_BLOCK_BYTES
+    )
+
+
+def q6_dense_integer_mmq_workspace() -> Q6DenseIntegerMMQWorkspace | None:
+    """Return the active caller-owned dense MMQ workspace."""
+
+    return _q6_dense_integer_mmq_workspace.get()
+
+
+@contextlib.contextmanager
+def q6_dense_integer_mmq_session(
+    enabled: bool = True,
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+    library: object = None,
+) -> Iterator[None]:
+    """Bind a bounded workspace for dense planar-Q6 integer MMQ."""
+
+    workspace = None
+    if enabled:
+        workspace = Q6DenseIntegerMMQWorkspace(
+            ptr=int(workspace_ptr),
+            nbytes=int(workspace_nbytes),
+            library=library,
+        )
+    token = _q6_dense_integer_mmq_workspace.set(workspace)
+    try:
+        yield
+    finally:
+        _q6_dense_integer_mmq_workspace.reset(token)
 
 
 def plan_gguf_q4_k_q8_1_selected_prefill_build(
@@ -684,6 +756,104 @@ def gguf_q6_k_t16_selected_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_o
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+
+def _launch_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64(
+    x_q8_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the one-expert dense specialization over packed Q8_1 rows."""
+
+    _check_positive(rows, "rows")
+    _check_positive(in_features, "in_features")
+    _check_positive(out_features, "out_features")
+    if rows > 64:
+        raise ValueError("dense Q6 integer MMQ supports at most 64 rows")
+    if in_features % _Q4_K_BLOCK:
+        raise ValueError("in_features must be divisible by 256")
+    if out_features % 64:
+        raise ValueError("out_features must be divisible by 64")
+    library = library or build_gguf_q4_k_q8_1_selected_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_Q6_T16_QMICRO_PLANAR_DENSE_INTEGER_MMQ64X64_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_q8_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
+
+
+def gguf_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64_bf16_bf16_out(
+    x_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Pack BF16 rows and launch the session-owned dense planar-Q6 MMQ."""
+
+    workspace = q6_dense_integer_mmq_workspace()
+    required_nbytes = q6_dense_integer_mmq_nbytes(rows, in_features)
+    if workspace is None:
+        raise RuntimeError("dense Q6 integer MMQ escaped its owner session")
+    if int(workspace.nbytes) < required_nbytes:
+        raise ValueError(
+            "dense Q6 integer MMQ workspace is too small: "
+            f"required={required_nbytes}, available={workspace.nbytes}"
+        )
+    runtime = runtime or get_hip_runtime()
+    candidate_library = workspace.library
+    gguf_q8_1_mmq_ds4_f32_pack_bf16_d4x3(
+        x_ptr,
+        workspace.ptr,
+        rows,
+        in_features,
+        residual_passes=1,
+        q6_half_sums=True,
+        stream=stream,
+        library=candidate_library,
+        runtime=runtime,
+    )
+    _launch_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64(
+        workspace.ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        library=candidate_library,
+        runtime=runtime,
+    )
 
 
 def gguf_q4_k_t16_selected_dual_q8_1_ds4x3_f32_mmq64x32_prefill_compact32_bf16_bf16_out(

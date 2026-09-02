@@ -3904,7 +3904,8 @@ template <
     bool WMMA_HOIST_ACTIVATION = false,
     bool WMMA_PREFETCH_WEIGHT = false,
     bool WMMA_PREFETCH_ACTIVATION = false,
-    bool PRECOMPUTED_ACTIVATION_SUMS = false>
+    bool PRECOMPUTED_ACTIVATION_SUMS = false,
+    bool DENSE_LINEAR = false>
 __launch_bounds__(THREADS, 1)
 __global__ void
 gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
@@ -3983,15 +3984,19 @@ gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel(
   const int tid = static_cast<int>(threadIdx.x);
   const int tile_col = static_cast<int>(blockIdx.x);
   const int tile_row = static_cast<int>(blockIdx.y);
-  const int64_t expert_id = tile_expert[tile_row];
-  if (expert_id < 0 || expert_id >= num_experts) return;
+  const int64_t expert_id = DENSE_LINEAR ? 0 : tile_expert[tile_row];
+  if (!DENSE_LINEAR && (expert_id < 0 || expert_id >= num_experts)) return;
 
   const int64_t global_col_base = static_cast<int64_t>(tile_col) * MMQ_M;
   if (global_col_base >= out_features) return;
-  const int64_t compact_base = expert_start_compact[expert_id];
+  const int64_t compact_base =
+      DENSE_LINEAR ? 0 : expert_start_compact[expert_id];
   const int64_t expert_count =
-      expert_start_compact[expert_id + 1] - compact_base;
-  const int64_t padded_base = expert_start_mmq32[expert_id];
+      DENSE_LINEAR
+          ? compact_rows
+          : expert_start_compact[expert_id + 1] - compact_base;
+  const int64_t padded_base =
+      DENSE_LINEAR ? 0 : expert_start_mmq32[expert_id];
   const int64_t tile_row_in_expert =
       static_cast<int64_t>(tile_row) * MMQ_N - padded_base;
   const int64_t remaining_rows = expert_count - tile_row_in_expert;
@@ -4763,7 +4768,8 @@ template <
     bool WMMA_HOIST_ACTIVATION = false,
     bool WMMA_PREFETCH_WEIGHT = false,
     bool WMMA_PREFETCH_ACTIVATION = false,
-    bool PRECOMPUTED_ACTIVATION_SUMS = false>
+    bool PRECOMPUTED_ACTIVATION_SUMS = false,
+    bool DENSE_LINEAR = false>
 int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     const block_q8_1_mmq_ds4_f32* x_q8,
     const int64_t* expert_start_compact,
@@ -4777,8 +4783,10 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
     int64_t num_experts,
     int64_t mmq_total_rows,
     hipStream_t stream) {
-  if (x_q8 == nullptr || expert_start_compact == nullptr ||
-      expert_start_mmq32 == nullptr || tile_expert == nullptr ||
+  if (x_q8 == nullptr ||
+      (!DENSE_LINEAR &&
+       (expert_start_compact == nullptr || expert_start_mmq32 == nullptr ||
+        tile_expert == nullptr)) ||
       qweight == nullptr || out == nullptr || compact_rows <= 0 ||
       in_features <= 0 || out_features <= 0 || num_experts <= 0 ||
       mmq_total_rows <= 0 || (in_features % QK_K) != 0 ||
@@ -4806,7 +4814,8 @@ int launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32(
           WMMA_HOIST_ACTIVATION,
           WMMA_PREFETCH_WEIGHT,
           WMMA_PREFETCH_ACTIVATION,
-          PRECOMPUTED_ACTIVATION_SUMS>),
+          PRECOMPUTED_ACTIVATION_SUMS,
+          DENSE_LINEAR>),
       grid,
       block,
       0,
@@ -6498,6 +6507,47 @@ hipengine_gguf_q6_k_t16_qmicro_planar_integer_wmma_hoist_activation_prefetch_wei
       out_features,
       num_experts,
       mmq_total_rows,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_integer_mmq64x64_dense_bf16_bf16_out(
+    const void* x_q8,
+    const void* qweight,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32<
+      1,
+      true,
+      false,
+      128,
+      64,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true>(
+      reinterpret_cast<const block_q8_1_mmq_ds4_f32*>(x_q8),
+      nullptr,
+      nullptr,
+      nullptr,
+      reinterpret_cast<const uint8_t*>(qweight),
+      reinterpret_cast<uint16_t*>(out),
+      rows,
+      in_features,
+      out_features,
+      1,
+      64,
       stream);
 }
 
