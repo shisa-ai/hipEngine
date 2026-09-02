@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from types import MappingProxyType
+from types import MappingProxyType, MethodType, SimpleNamespace
 
+import numpy as np
 import pytest
 
 from hipengine.runtime.qwen4_exp_runner import Qwen4ExpGGUFResidentModelRunner
@@ -73,6 +74,34 @@ def test_qwen4_exp_device_transaction_rolls_back_all_owned_cursors() -> None:
     assert transaction.closed
     with pytest.raises(RuntimeError, match="already finalized"):
         runner.rollback_device_transaction(transaction)
+
+
+def test_qwen4_exp_serial_verify_oracle_returns_every_row() -> None:
+    runner = _runner()
+    calls = []
+
+    def step(self, token_id, **kwargs):
+        calls.append((int(token_id), dict(kwargs)))
+        self.position += 1
+        return SimpleNamespace(
+            token_id=int(token_id) + 10,
+            logits=np.asarray([token_id, token_id + 1], dtype=np.float32),
+            hidden_seeds=np.full((1, 3), token_id, dtype=np.float32),
+        )
+
+    runner.step = MethodType(step, runner)
+    result = runner.verify_target_block_serial_exact(
+        (1, 2, 3), capture_logits=True, capture_hidden_seeds=True
+    )
+
+    assert result.token_ids == (11, 12, 13)
+    assert len(result.logits) == 3
+    assert result.hidden_seeds.shape == (3, 3)
+    assert runner.position == 10
+    assert [row[0] for row in calls] == [1, 2, 3]
+    assert all(row[1]["capture_target_hidden"] for row in calls)
+    with pytest.raises(ValueError, match="rows must be in 1..8"):
+        runner.verify_target_block_serial_exact(())
 
 
 def test_qwen4_exp_device_transaction_commit_keeps_current_state() -> None:
