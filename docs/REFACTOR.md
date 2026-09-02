@@ -18,6 +18,17 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-02 Qwen4Exp P9 load drop-behind
+
+- `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` is an explicit default-off one-shot
+  serving control. It applies file `DONTNEED` only after successful device
+  ownership of non-PLE tensors; lazy PLE and validation readers are excluded.
+  Keep it only while one-shot low-RSS deployment is a supported product mode.
+  Remove the flag and branch if that mode is dropped, or replace it with a named
+  loader policy if repeated-load evidence establishes a production contract.
+  Never make it a reload-heavy default: retained controls force 13.75-15.61 GB
+  of request reads and about 6.1K major faults after load.
+
 ## 2026-08-30 Qwen4Exp P1 device-driven grouped Q8_0 down
 
 - `HIPENGINE_QWEN4_EXP_Q8_0_GROUPED=1` selects the new device-driven grouped

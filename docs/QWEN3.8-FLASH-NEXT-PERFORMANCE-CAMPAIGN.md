@@ -1730,9 +1730,18 @@ warm GPU-kernel claims.
       remain explicit diagnostics pending a counterbalanced cold policy gate.
       Evidence:
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-economics-matrix.json`.
-- [ ] Add optional per-tensor load drop-behind only for data already copied to
+- [x] Add optional per-tensor load drop-behind only for data already copied to
       device ownership. Never invalidate lazy PLE pages or validation readers;
-      include reload-heavy and one-shot serving controls.
+      include reload-heavy and one-shot serving controls. The default-off
+      `HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND=1` path applies file `DONTNEED` only
+      after each of 1,223 hot tensor loaders returns successful device ownership;
+      descriptors are reused by part and closed on success/failure. Lazy PLE and
+      validation readers are excluded. One-shot and immediate reload controls
+      remain exact and zero-teardown at **47.12/45.67 s** process wall, with
+      ~**243/245 MB** RSS before request, but each request rereads **13.75/15.61
+      GB** and incurs **6,093/6,212** major faults. Retain only as explicit
+      one-shot serving control; reload-heavy services keep it off. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-load-drop-behind.json`.
 
 ### Phase P10 — long-context AR and optional KV profile
 

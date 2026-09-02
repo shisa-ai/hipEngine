@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 from math import prod
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -87,6 +88,43 @@ def test_qwen4_exp_materialize_owns_every_hot_weight_once_and_closes_reverse() -
     resident.close()
     assert closed == list(reversed(loaded))
     assert resident.closed
+
+
+def test_qwen4_exp_materialize_drop_behind_follows_device_copy_and_excludes_ple(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    model_map = build_qwen4_exp_gguf_tensor_map(_infos())
+    plan = plan_qwen4_exp_residency(model_map, staging_token_capacity=1)
+    paths = (tmp_path / "part0.gguf", tmp_path / "part1.gguf")
+    for path in paths:
+        path.write_bytes(b"x")
+    readers = (_Reader(), _Reader())
+    readers[0].path, readers[1].path = paths
+    events: list[tuple[str, str | int]] = []
+    closed: list[str] = []
+
+    def loader(spec, reader, *, runtime=None):
+        del reader, runtime
+        events.append(("load", spec.source.name))
+        return _Allocation(spec.slot_path, closed)
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_LOAD_DROP_BEHIND", "1")
+    monkeypatch.setattr(
+        "hipengine.loading.qwen4_exp_materialize.os.posix_fadvise",
+        lambda fd, offset, length, advice: events.append(("advice", advice)),
+    )
+    resident = materialize_qwen4_exp_weights(
+        readers, plan=plan, device_loader=loader, pin_ple_staging=False
+    )
+
+    assert len([event for event in events if event[0] == "advice"]) == 1_223
+    assert all(
+        events[index][0:1] == ("load",) and events[index + 1] == ("advice", os.POSIX_FADV_DONTNEED)
+        for index in range(0, len(events), 2)
+    )
+    assert all(event != ("load", "per_layer_token_embd.weight") for event in events)
+    assert readers[1].calls == ["per_layer_token_embd.weight"]
+    resident.close()
 
 
 def test_qwen4_exp_materialize_frees_partial_owners_after_injected_failure() -> None:
