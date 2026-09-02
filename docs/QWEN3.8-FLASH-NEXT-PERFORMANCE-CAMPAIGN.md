@@ -1525,17 +1525,29 @@ c1-shaped layout without reviving the rejected prefill-colwarps route.
       removed; a paying design must fuse stages or reduce 6,144 wave-block
       overhead. Evidence:
       `benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-p7-gdn-transposed-integration-rejected.json`.
-- [ ] Port the relevant llama four-warp decode dataflow, not its prefill body or
+- [x] Port the relevant llama four-warp decode dataflow, not its prefill body or
       constants. `ggml-cuda/gated_delta_net.cu` assigns four output columns to
-      one CTA, keeps each transposed state shard in registers, and writes state
-      once after the token loop. The rejected hipEngine primitive instead used
-      one wave per value (**6,144 blocks**) plus separate prepare/gate stages.
-      A new candidate must combine four or more columns per CTA and fuse enough
-      prepare/recurrence/norm-gate work to win the complete boundary.
-- [ ] Prove CPU-reference state/output parity on reduced and actual fixtures,
-      repeated steps, restore/replay, cancellation, and c2 isolation.
-- [ ] Require expected kernel trace, complete profile packet, and canonical
+      one CTA. The T0 hipEngine retile likewise packs four independent value
+      waves into one 128-thread CTA and reduces blocks **6,144→1,536**, while
+      preserving each wave's instruction/reduction order. It is bit-exact to
+      the transposed parent at actual kh16/vh48/d128, but loses recurrence leaf
+      **0.04817→0.04856 ms (0.9919x)** and complete
+      prepare+recurrence+norm-gate **0.06534→0.06571 ms (0.9944x)**. Fewer CTAs
+      do not reduce independent state traffic. The candidate is removed.
+- [x] Prove CPU-reference state/output parity on reduced and actual fixtures,
+      repeated steps, restore/replay, cancellation, and c2 isolation. Actual
+      fixed-shape parent parity and the existing parent strict output/state
+      envelope pass. Reduced dimensions are unsupported by the candidate's
+      explicit 128x128 admission. Repeated/cancellation/c2 integration was not
+      run because both actual-shape leaf boundaries regress; those gates cannot
+      rescue a losing primitive.
+- [x] Require expected kernel trace, complete profile packet, and canonical
       tg128 win. Never re-enable the invalid `GDN_COLWARPS_DECODE_LAYERS` route.
+      No trace/profile/tg128 claim follows a pre-integration leaf rejection, and
+      no selector or registry entry remains. This closes the evaluated P7 ladder;
+      reopen only for fused prepare/recurrence/norm-gate or real cross-column
+      data reuse, not CTA repacking. Evidence:
+      `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p7-gdn-col4-rejected.json`.
 
 ### Phase P8 — state-safe whole-transition graph
 

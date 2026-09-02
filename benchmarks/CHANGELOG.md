@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-02 gfx1151 Qwen3.8-Flash-Next P7 four-column GDN decode] Parent-exact four-wave CTA packing cuts transposed recurrence blocks **6,144→1,536** but loses the leaf **0.04817→0.04856 ms (0.9919x)** and complete prepare+recurrence+norm-gate **0.06534→0.06571 ms (0.9944x)**. Remove candidate; CTA reduction without state reuse does not pay. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p7-gdn-col4-rejected.json`.
+
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P12 five-pair comparator] Clean upstream Vulkan `f1793c1c4` / binary `01c72085…` completes 60 deterministic exact-fixture samples at **248.67/23.71, 268.98/20.73, 279.51/18.67 pp/tg**, but max per-case CV is **9.24%/4.73%/1.68%**. p512/p1024 fail the ≤2% closure rule; no target is frozen and the redundant production arm was stopped. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-fivepair-comparator-blocked.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8-Flash-Next P12 current validation packet] **268** focused tests pass. Strict/production each complete 36 deterministic p512/p1024/p4096-tg128 samples with zero teardown; production reaches **83.352/14.180, 82.933/14.164, 69.200/12.160 pp/tok/s**. Current-manifest quality/state/task/c2 and unlocked long context remain valid. Final packet is blocked by five-pair comparators and 4K MTP capacity. `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json`.
