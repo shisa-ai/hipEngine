@@ -1,0 +1,128 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_q5_planar_dp4a_grouped_leaf",
+ "created_utc": "2026-09-03T23:46:08.251345+00:00",
+ "device": "AMD Radeon Pro W7900",
+ "target_arches": [
+  "gfx1100"
+ ],
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "arms": {
+  "control": "gguf_q8_1_d4s4_f32_quantize_bf16 + gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out (registered owner, raw weights)",
+  "candidate": "gguf_q8_1_d4s4_f32_quantize_bf16 + gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_bf16_out (grouped integer decode, qmicro-planar tiles)"
+ },
+ "control_wins": 0,
+ "candidate_wins": 9,
+ "results": [
+  {
+   "tensor": "blk.0.ssm_out.weight",
+   "rows": 8,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.161360502243042,
+   "candidate_ms": 0.07135225087404251,
+   "candidate_ratio": 0.4421915517254117,
+   "mismatches_vs_control": 10,
+   "kl_vs_control": 5.947615772104271e-12,
+   "finite": true
+  },
+  {
+   "tensor": "blk.0.ssm_out.weight",
+   "rows": 24,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.22935424745082855,
+   "candidate_ms": 0.1867043823003769,
+   "candidate_ratio": 0.8140437091334208,
+   "mismatches_vs_control": 60,
+   "kl_vs_control": 2.812540970211625e-10,
+   "finite": true
+  },
+  {
+   "tensor": "blk.0.ssm_out.weight",
+   "rows": 32,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.26938462257385254,
+   "candidate_ms": 0.2597297430038452,
+   "candidate_ratio": 0.9641594999827415,
+   "mismatches_vs_control": 60,
+   "kl_vs_control": 1.0445468523293802e-09,
+   "finite": true
+  },
+  {
+   "tensor": "blk.1.ssm_out.weight",
+   "rows": 8,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.1608705073595047,
+   "candidate_ms": 0.07162024825811386,
+   "candidate_ratio": 0.44520434126598984,
+   "mismatches_vs_control": 25,
+   "kl_vs_control": 1.1642071376630254e-10,
+   "finite": true
+  },
+  {
+   "tensor": "blk.1.ssm_out.weight",
+   "rows": 24,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.22547075152397156,
+   "candidate_ms": 0.17456549406051636,
+   "candidate_ratio": 0.7742267805496579,
+   "mismatches_vs_control": 55,
+   "kl_vs_control": 3.7831415308115525e-09,
+   "finite": true
+  },
+  {
+   "tensor": "blk.1.ssm_out.weight",
+   "rows": 32,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.27519598603248596,
+   "candidate_ms": 0.26225587725639343,
+   "candidate_ratio": 0.9529785700632821,
+   "mismatches_vs_control": 76,
+   "kl_vs_control": 8.587669081814858e-10,
+   "finite": true
+  },
+  {
+   "tensor": "blk.2.ssm_out.weight",
+   "rows": 8,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.16297049820423126,
+   "candidate_ms": 0.07190024852752686,
+   "candidate_ratio": 0.44118567053420277,
+   "mismatches_vs_control": 14,
+   "kl_vs_control": 1.0937392588302305e-10,
+   "finite": true
+  },
+  {
+   "tensor": "blk.2.ssm_out.weight",
+   "rows": 24,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.23617087304592133,
+   "candidate_ms": 0.19762562215328217,
+   "candidate_ratio": 0.8367908354001622,
+   "mismatches_vs_control": 46,
+   "kl_vs_control": 1.1963378012990825e-09,
+   "finite": true
+  },
+  {
+   "tensor": "blk.2.ssm_out.weight",
+   "rows": 32,
+   "in_features": 6144,
+   "out_features": 5120,
+   "control_ms": 0.2712160050868988,
+   "candidate_ms": 0.26187101006507874,
+   "candidate_ratio": 0.9655440871978559,
+   "mismatches_vs_control": 48,
+   "kl_vs_control": 8.517056087030263e-10,
+   "finite": true
+  }
+ ],
+ "timing": "HIP events, counterbalanced bursts; both arms include the shared quantize launch",
+ "note": "same-decode-class screen (integer dp4a reassociation; informational KL, no exactness gate); kernel-level oracle/owner-parity/determinism contracts in tests/test_gguf_q5_k_planar_q8_1_grouped_gemv.py"
+}
