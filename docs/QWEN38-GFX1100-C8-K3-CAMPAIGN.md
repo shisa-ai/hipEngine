@@ -597,8 +597,22 @@ Current pool: **23.461 ms/cycle**, WG128, VGPR248, LDS 32 KiB.
 
 - [x] Profile per-layer distribution and confirm the expected 64 calls on each
       R32 cycle versus no unintended ownership on the R24 tail.
-- [ ] Inspect whether LDS capacity, VGPR pressure, barriers, weight decode, or
+- [x] Inspect whether LDS capacity, VGPR pressure, barriers, weight decode, or
       WMMA issue is binding; do not assume occupancy from resource counts alone.
+      Measured offline (iter29, rocprofv3 PMC remains broken on this stack):
+      the row32 instantiation `<false,false,1,2>` allocates VGPR 241
+      (next_free_vgpr; table's 248 is the rocprof-aligned figure), SGPR 28,
+      LDS 32,768 B. 241 VGPRs/wave × 64 lanes = 15,424 of 16,384 per SIMD →
+      1 wave/SIMD → 1 block/CU → **2 active waves/CU (6.25%)**; LDS would allow
+      4 blocks/CU, so VGPR pressure binds, not LDS. Disassembly (1,583 insns):
+      3 barriers, 8 WMMA, 66 LDS, 87 VMEM, 1,100 vector — Q4 T16 decode
+      dominates; barriers and WMMA issue are not binding. Achieved BW =
+      104.5 MB/call / 0.5499 ms/call = **190 GB/s** (weights 187). Cross-check:
+      the row48/row64 siblings at 3–4 active waves measured 1.36–1.61x faster
+      per row on actual weights, confirming latency-hiding (occupancy) as the
+      limiter. A lower-VGPR sibling is the live axis; the ~209 non-accumulator
+      VGPRs are decode temporaries, so the authorized instruction-layout axis
+      must narrow decode state (accumulator floor is 32 VGPRs: 2×float8×2).
 - [ ] Screen a lower-pressure or lower-barrier row32 sibling only when its
       arithmetic boundary is declared. Candidate axes may include LDS lifetime,
       gate/up staging order, active-wave scheduling, or instruction layout.

@@ -1,0 +1,59 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p3_fused_row32_inspection",
+ "date": "2026-09-04",
+ "status": "inspection",
+ "decision": "C8-P3 fused Q4 gate/up+SiLU row32 binding-resource inspection complete. VGPR pressure binds (241 VGPRs/wave -> 1 wave/SIMD -> 1 block/CU -> 2 active waves/CU, 6.25% occupancy); LDS (32 KiB) would allow 4 blocks/CU and is not binding; barriers (3) and WMMA issue (8/call body) are not binding; achieved 190 GB/s vs 864 peak with the sibling record (row48/row64 at 3-4 active waves 1.36-1.61x faster per row) confirming occupancy/latency-hiding as the limiter. Live axis: lower-VGPR decode (instruction-layout); accumulator floor 32 VGPRs.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "kernel": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false,false,1,2>",
+ "elf_audit": {
+  "next_free_vgpr": 241,
+  "sgpr": 28,
+  "fixed_lds_bytes": 32768,
+  "workgroup": 128,
+  "active_waves_per_block": 2,
+  "waves_per_simd": 1,
+  "blocks_per_cu": 1,
+  "active_waves_per_cu": 2,
+  "max_wave_slots_per_cu": 32,
+  "occupancy_pct": 6.25,
+  "note": "table VGPR 248 is the rocprof-aligned figure; ELF next_free_vgpr is 241"
+ },
+ "instruction_mix": {
+  "total": 1583,
+  "vector_alu": 1100,
+  "vmem_global": 87,
+  "lds": 66,
+  "wmma": 8,
+  "barrier": 3,
+  "scalar": 319
+ },
+ "bandwidth": {
+  "shape": "K5120/N17408 dual gate/up, rows=32",
+  "q4_t16_block_bytes": 2368,
+  "tiles_per_call": 21760,
+  "weight_mb_per_call": 103.06,
+  "total_mb_per_call": 104.5,
+  "pool_ms_per_cycle": 23.461,
+  "calls_per_cycle": 42.667,
+  "per_call_ms": 0.5499,
+  "achieved_gbps": 190.0,
+  "weight_only_gbps": 187.4,
+  "theoretical_peak_gbps": 864
+ },
+ "cross_check": {
+  "row48_row64_sibling_speedup_per_row": "1.36-1.61x at 3-4 active waves (KERNELS.md measured record)",
+  "conclusion": "more active waves -> proportionally faster; occupancy/latency-hiding is the limiter"
+ },
+ "sources": [
+  "offline hipcc -S ELF audit (gfx1100)",
+  "benchmarks/results/2026-09-02-w7900-q4km-k3-c8-current-profile.json",
+  "docs/KERNELS.md fused row32/row48/row64 measured record"
+ ],
+ "method_note": "rocprofv3 PMC counters remain broken on this stack (iteration 9); offline ELF/ISA audit plus already-measured durations per the established pattern"
+}
