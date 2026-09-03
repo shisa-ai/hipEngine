@@ -152,6 +152,9 @@ class TestPf4Lever2FusedCombine:
                 free(allocation, runtime=runtime)
 
     def test_registry_entry_present(self):
-        from hipengine.kernels.registry import KernelKey, get_kernel
-        fn = get_kernel(KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", "bf16", "out"))
-        assert callable(fn)
+        from hipengine.kernels.registry import KernelKey, is_registered
+        from hipengine.kernels.hip_gfx1100.fused import paro_combine
+        paro_combine.register_paro_combine_kernels()
+        assert is_registered(
+            KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", "bf16", "out")
+        )

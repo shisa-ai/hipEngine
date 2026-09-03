@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-04",
+  "platform": "gfx1151 (AMD Radeon 8060S, Strix Halo, zbook host)",
+  "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN section 6 PF-4 lever 2",
+  "unit": "PF-4 lever 2 T0 fused weighted_lanes_sum + shared_gate_combine kernel-level A/B",
+  "kind": "kernel-level A/B, exact win verdict (not yet wired into the runner; whole-model A/B pending)",
+  "candidate": "weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w (inverse + fused sum-combine = 2 launches; preserves the BF16 rounding boundary of the routed sum exactly)",
+  "incumbent": "weighted_lanes_sum_out_bf16_f32w (inverse + sum = 2 launches) + shared_gate_combine_batch_out_bf16 (1 launch) = 3 launches",
+  "parity_method": "bit-exact vs unfused production chain at rows 1/16/64/512 (np.array_equal on uint16 outputs); also pinned by tests/test_qwen4_exp_pf4_lever2_fused_combine.py (5 tests, RED-first ImportError history c6919cd06)",
+  "timing_method": "50 warmup + 200 interleaved per-rep device_synchronize-timed chain calls, median",
+  "results": {
+    "1": {
+      "parity_bitexact": true,
+      "unfused_ms": 0.034305,
+      "fused_ms": 0.025358,
+      "delta_pct": -26.08
+    },
+    "16": {
+      "parity_bitexact": true,
+      "unfused_ms": 0.035677,
+      "fused_ms": 0.026996,
+      "delta_pct": -24.33
+    },
+    "64": {
+      "parity_bitexact": true,
+      "unfused_ms": 0.046357,
+      "fused_ms": 0.043551,
+      "delta_pct": -6.05
+    },
+    "512": {
+      "parity_bitexact": true,
+      "unfused_ms": 0.151365,
+      "fused_ms": 0.147938,
+      "delta_pct": -2.26
+    }
+  },
+  "verdict": "exact win at every tested shape: rows=1 -26.1%, rows=16 -24.3%, rows=64 -6.1%, rows=512 -2.3% (launch + routed BF16 round-trip saving; relative win shrinks as the values read dominates)",
+  "trace_smoke": "rocprofv3 --kernel-trace: weighted_lanes_inverse_kernel (2.4us, grid 512) + weighted_lanes_sum_shared_gate_combine_batch_out_kernel (kernel symbol 23) dispatched under expected names; HIPENGINE_COMPILER_VERSION_FILE + require_cached prebuild",
+  "next": "wire into qwen4_exp_runner grouped path behind the registry key with the unfused chain as strict fallback; whole-model same-session counterbalanced A/B per campaign section 6.5 before promotion"
+}
