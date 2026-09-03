@@ -4677,3 +4677,23 @@ should be boring.
   variant is admitted by the end of PF-1e. Measured losers m64x64 (0.89x) and
   m32n128 (0.35x) were removed after rejection; the cross-variant bit-parity
   gate in `tests/test_qwen4exp_pf1_dense_parity.py` is the readmission path.
+
+## Q8 MMQ `policy.planes` is variant-scoped (2026-09-03)
+
+- `Q8MMQPrefillPolicy.planes` (`gguf_q8_0_mmq_prefill.py:63`) is consulted only
+  for the `gemv_f32_f32_out` / `prefill_f32_f32_out` variants
+  (`hipengine/runtime/gguf_linear.py:5883`); `prefill_bf16_bf16_out` is
+  hard-wired to `d4x3` at line 5871. A gate that flips `planes` therefore
+  measures nothing on shapes that dispatch the BF16 variant, which is how the
+  18-prompt reconciliation run produced trajectories bit-identical between
+  `planes=2` and `planes=3` on the two prompts that *did* engage the route
+  (`2026-09-03-...-pf1-admission-suite-reconciliation.json`).
+- **Not yet traced.** The mechanism above is inferred from dispatch source, not
+  confirmed by `rocprofv3 --kernel-trace`. Confirm or refute it before any
+  further plane-family work.
+- **Removal trigger:** the d4x3 chain is final for this family (PF-1d closed
+  rejected). If no plane candidate is readmitted, delete the `planes` field and
+  the `d4x2` dispatch branch together with the `mmq128_prefill_q8_1_d4x2_*`
+  registrations, so no knob remains that silently applies to a subset of
+  variants. If a candidate is readmitted, make `planes` bind on every Q8 MMQ
+  variant or rename it to state its scope.
