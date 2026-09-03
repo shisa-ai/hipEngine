@@ -33,6 +33,7 @@ _SYMBOL_MMQ64_TILE_MAP = "hipengine_qwen35_moe_mmq64_tile_map"
 _SYMBOL_SCATTER = "hipengine_qwen35_moe_group_scatter"
 _SYMBOL_SCATTER_GATHER = "hipengine_qwen35_moe_group_scatter_gather_lowp"
 _SYMBOL_GATHER = "hipengine_qwen35_moe_gather_packed_hidden_lowp"
+_SYMBOL_GROUP_MAP_TOP10 = "hipengine_qwen35_moe_group_map_top10_parallel"
 
 
 def plan_qwen35_moe_group_scatter_build(
@@ -664,7 +665,63 @@ def qwen35_moe_gather_packed_hidden_lowp(
     _check_launch(runtime, err)
 
 
+def qwen35_moe_group_map_top10_parallel(
+    selected_experts_ptr: int,
+    routing_weights_ptr: int,
+    expert_start_ptr: int,
+    sorted_lanes_ptr: int,
+    sorted_experts_ptr: int,
+    sorted_weights_ptr: int,
+    total_lanes: int,
+    num_experts: int,
+    top_k: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the PF-4 M2 candidate: fused per-expert routing-map compaction.
+
+    Replaces the incumbent memset + group_count + group_prefix + memset +
+    map-scatter chain with one kernel (strict fallback: that chain stays
+    production and untouched). Requires ``top_k == 10`` and distinct experts
+    per token (production top-k semantics).
+    """
+
+    _check_positive(total_lanes, "total_lanes")
+    _check_num_experts(num_experts)
+    _check_positive(top_k, "top_k")
+    library = library or build_qwen35_moe_group_scatter(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _SYMBOL_GROUP_MAP_TOP10)
+    fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 3 + [ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(selected_experts_ptr),
+        ctypes.c_void_p(routing_weights_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(sorted_lanes_ptr),
+        ctypes.c_void_p(sorted_experts_ptr),
+        ctypes.c_void_p(sorted_weights_ptr),
+        ctypes.c_int64(total_lanes),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(top_k),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
 def register_qwen35_moe_group_scatter_kernels(*, replace: bool = True) -> None:
+    register(
+        KernelKey(
+            "hip_gfx1100",
+            "moe_group_map",
+            "generic",
+            "top10_parallel_i64",
+        ),
+        qwen35_moe_group_map_top10_parallel,
+        replace=replace,
+    )
     register(
         KernelKey("hip_gfx1100", "moe_group_count", "w4_paro", "qwen35"),
         qwen35_moe_group_count,

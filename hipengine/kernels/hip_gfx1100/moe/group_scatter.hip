@@ -492,6 +492,144 @@ int64_t next_power_of_two_i64(int64_t value) {
   return out;
 }
 
+// Packed (token, top-k slot) pair: 22 bits token + 10 bits slot, matching the
+// halo-box a7ad7b7f mmid.cu mm_ids_helper_store layout.
+struct moe_map_store {
+  uint32_t data;
+  __device__ moe_map_store(uint32_t it, uint32_t iex_used) {
+    data = (it & 0x003FFFFFu) | (iex_used << 22);
+  }
+  __device__ uint32_t it() const { return data & 0x003FFFFFu; }
+  __device__ uint32_t iex_used() const { return data >> 22; }
+};
+
+__device__ inline int moe_map_warp_any16(int x) {
+#pragma unroll
+  for (int offset = 8; offset > 0; offset >>= 1) {
+    x = __shfl_xor(x, offset, 16) || x;
+  }
+  return x;
+}
+
+__device__ inline int moe_map_warp_sum32(int x) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    x += __shfl_xor(x, offset, 32);
+  }
+  return x;
+}
+
+// PF-4 M2 candidate: fused per-expert routing-map compaction (port of the
+// halo-box a7ad7b7f mm_ids_helper_top10_parallel mechanism). One 256-thread
+// block (8 warps x 32 lanes) per expert; each warp walks its token slice two
+// tokens at a time (32 lanes / 16 padded top-k slots), builds the per-expert
+// compact list with a warp any-scan + shfl_up exclusive scan, and combines
+// the 8 warps through shared per-warp counts/prefixes. Replaces the
+// incumbent memset + group_count + group_prefix + memset + map-scatter chain;
+// all outputs are integer maps plus copied float weights (T0, no float
+// arithmetic). Requires top_k == 10 and at most one slot per token matching
+// any single expert (production top-k guarantees distinct experts per token).
+// expert_start semantics match the incumbent count+prefix exactly: only
+// lanes with 0 <= expert < num_experts are counted; expert_start[e] is the
+// exclusive prefix and expert_start[num_experts] the valid-lane total.
+__global__ void qwen35_moe_group_map_top10_parallel_kernel(
+    const int64_t* __restrict__ selected_experts,
+    const float* __restrict__ routing_weights,
+    int64_t* __restrict__ expert_start,
+    int64_t* __restrict__ sorted_lanes,
+    int64_t* __restrict__ sorted_experts,
+    float* __restrict__ sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    int64_t top_k) {
+  constexpr int warp_size = 32;
+  constexpr int nwarps = 8;
+  constexpr int n_expert_used = 10;
+  constexpr int neu_padded = 16;
+
+  const int64_t expert = blockIdx.x;
+  const int warp = threadIdx.x / warp_size;
+  const int lane = threadIdx.x % warp_size;
+  const int64_t n_tokens = total_lanes / top_k;
+  const int64_t tokens_per_warp = (n_tokens + nwarps - 1) / nwarps;
+  const int64_t token_begin = min(warp * tokens_per_warp, n_tokens);
+  const int64_t token_end = min(token_begin + tokens_per_warp, n_tokens);
+
+  extern __shared__ char data_moe_map[];
+  moe_map_store* store = reinterpret_cast<moe_map_store*>(data_moe_map);
+  __shared__ int64_t warp_counts[nwarps];
+  __shared__ int64_t warp_nex_prev[nwarps];
+
+  int64_t nex_prev = 0;
+  int64_t it_compact = 0;
+  for (int64_t it0 = token_begin; it0 < token_end; it0 += warp_size / neu_padded) {
+    const int64_t it = it0 + lane / neu_padded;
+    const int iex = lane % neu_padded;
+    const bool slot_valid = (iex < n_expert_used) && (it < token_end);
+    const int64_t expert_used = slot_valid ? selected_experts[it * top_k + iex] : INT64_MAX;
+    const int iex_used = (expert_used == expert) ? iex : -1;
+    if (slot_valid && expert_used >= 0 && expert_used < num_experts &&
+        expert_used < expert) {
+      nex_prev += 1;
+    }
+
+    const int it_compact_add_self = moe_map_warp_any16(iex_used != -1);
+    int it_compact_add_lower = 0;
+#pragma unroll
+    for (int offset = neu_padded; offset < warp_size; offset += neu_padded) {
+      const int tmp = __shfl_up(it_compact_add_self, offset, warp_size);
+      if (lane >= offset) {
+        it_compact_add_lower += tmp;
+      }
+    }
+    if (iex_used != -1) {
+      store[token_begin + it_compact + it_compact_add_lower] =
+          moe_map_store(static_cast<uint32_t>(it), static_cast<uint32_t>(iex_used));
+    }
+    it_compact += __shfl(it_compact_add_lower + it_compact_add_self,
+                              warp_size - 1, warp_size);
+  }
+
+  nex_prev = moe_map_warp_sum32(static_cast<int>(nex_prev));
+  if (lane == 0) {
+    warp_counts[warp] = it_compact;
+    warp_nex_prev[warp] = nex_prev;
+  }
+  __syncthreads();
+
+  int64_t compact_prefix = 0;
+  int64_t nex_prev_total = 0;
+#pragma unroll
+  for (int i = 0; i < nwarps; ++i) {
+    nex_prev_total += warp_nex_prev[i];
+    if (i < warp) {
+      compact_prefix += warp_counts[i];
+    }
+  }
+
+  for (int64_t itc = lane; itc < it_compact; itc += warp_size) {
+    const moe_map_store store_it = store[token_begin + itc];
+    const int64_t it = static_cast<int64_t>(store_it.it());
+    const int64_t iex_used = static_cast<int64_t>(store_it.iex_used());
+    const int64_t compact = nex_prev_total + compact_prefix + itc;
+    const int64_t lane_idx = it * top_k + iex_used;
+    sorted_lanes[compact] = lane_idx;
+    sorted_experts[compact] = expert;
+    sorted_weights[compact] = routing_weights[lane_idx];
+  }
+
+  if (threadIdx.x == 0) {
+    expert_start[expert] = nex_prev_total;
+    if (expert == static_cast<int64_t>(gridDim.x) - 1) {
+      int64_t total_count = 0;
+#pragma unroll
+      for (int i = 0; i < nwarps; ++i) {
+        total_count += warp_counts[i];
+      }
+      expert_start[num_experts] = nex_prev_total + total_count;
+    }
+  }
+}
 }  // namespace
 
 extern "C" int hipengine_qwen35_moe_group_count(
@@ -999,5 +1137,47 @@ extern "C" int hipengine_qwen35_moe_gather_packed_hidden_lowp(
       tokens,
       top_k,
       hidden_size);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen35_moe_group_map_top10_parallel(
+    const int64_t* selected_experts,
+    const float* routing_weights,
+    int64_t* expert_start,
+    int64_t* sorted_lanes,
+    int64_t* sorted_experts,
+    float* sorted_weights,
+    int64_t total_lanes,
+    int64_t num_experts,
+    int64_t top_k,
+    hipStream_t stream) {
+  if (!selected_experts || !routing_weights || !expert_start || !sorted_lanes ||
+      !sorted_experts || !sorted_weights || total_lanes <= 0 ||
+      num_experts <= 0 || top_k <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  if (top_k != 10 || total_lanes % top_k != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t n_tokens = total_lanes / top_k;
+  if (n_tokens >= (1 << 22)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int threads = 256;
+  hipLaunchKernelGGL(
+      qwen35_moe_group_map_top10_parallel_kernel,
+      dim3(static_cast<unsigned int>(num_experts)),
+      dim3(threads),
+      n_tokens * sizeof(moe_map_store),
+      stream,
+      selected_experts,
+      routing_weights,
+      expert_start,
+      sorted_lanes,
+      sorted_experts,
+      sorted_weights,
+      total_lanes,
+      num_experts,
+      top_k);
   return static_cast<int>(hipGetLastError());
 }

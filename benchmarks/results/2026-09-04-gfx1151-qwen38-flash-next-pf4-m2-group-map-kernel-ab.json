@@ -1,0 +1,71 @@
+{
+  "date": "2026-09-04",
+  "platform": "gfx1151 (AMD Radeon 8060S, Strix Halo, zbook host)",
+  "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN section 6 PF-4 lever 1 (M2 routing compaction)",
+  "unit": "PF-4 M2 qwen35_moe_group_map_top10_parallel kernel-level A/B",
+  "kind": "kernel-level A/B, loss verdict (no production change)",
+  "candidate": "hipengine_qwen35_moe_group_map_top10_parallel (map+gather, 2 launches; port of halo-box a7ad7b7f mm_ids_helper_top10_parallel)",
+  "incumbent": "memset(group_counts) + group_count + group_prefix + memset(scatter_offsets) + scatter_gather_lowp (5 launches, qwen4_exp_runner.py grouped_prefill block)",
+  "parity_method": "bit-exact vs incumbent chain: expert_start equality, sorted_lanes permutation, per-expert lane-set membership vs np.where(selected==e), sorted_weights bit-equal, packed_hidden gather bit-equal",
+  "timing_method": "50 warmup + interleaved reps (200 for rows<=512, 50 for 4096), median of per-rep device_synchronize-timed chain calls",
+  "fixture": "tests/test_qwen35_moe_pf4_m2_group_map.py _routed_lanes/_routing_weights (per-token distinct top-10 experts, skewed p, empty experts present), hidden 2560",
+  "shape_note": "production routing-map gate rows>=64; E=512 experts, top_k=10",
+  "results": {
+    "16": {
+      "parity": {
+        "expert_start_equal": true,
+        "lane_permutation": true,
+        "lane_sets_match": true,
+        "weights_bitexact": true,
+        "gather_bitexact": true
+      },
+      "incumbent_ms": 0.062337,
+      "candidate_ms": 0.046912,
+      "ratio_cand_over_inc": 0.7526,
+      "delta_pct": -24.74
+    },
+    "64": {
+      "parity": {
+        "expert_start_equal": true,
+        "lane_permutation": true,
+        "lane_sets_match": true,
+        "weights_bitexact": true,
+        "gather_bitexact": true
+      },
+      "incumbent_ms": 0.072682,
+      "candidate_ms": 0.095084,
+      "ratio_cand_over_inc": 1.3082,
+      "delta_pct": 30.82
+    },
+    "512": {
+      "parity": {
+        "expert_start_equal": true,
+        "lane_permutation": true,
+        "lane_sets_match": true,
+        "weights_bitexact": true,
+        "gather_bitexact": true
+      },
+      "incumbent_ms": 0.22338,
+      "candidate_ms": 0.409029,
+      "ratio_cand_over_inc": 1.8311,
+      "delta_pct": 83.11
+    },
+    "4096": {
+      "parity": {
+        "expert_start_equal": true,
+        "lane_permutation": true,
+        "lane_sets_match": true,
+        "weights_bitexact": true,
+        "gather_bitexact": true
+      },
+      "incumbent_ms": 1.669913,
+      "candidate_ms": 3.583964,
+      "ratio_cand_over_inc": 2.1462,
+      "delta_pct": 114.62
+    }
+  },
+  "verdict": "measured loss at production gate: +30.8% (rows=64), +83.1% (rows=512), +114.6% (rows=4096); only below-gate rows=16 wins (-24.7%, launch-count dominated). Bit-exact parity everywhere. Root cause: per-expert-block mechanism scales O(E x T) serialized warp-scan work (512 blocks each walking T/8 tokens); designed for llama-class E<=32 (halo-box parent).",
+  "decision": "keep incumbent 5-op chain as production; candidate stays registered as a strict variant with tests; no whole-model A/B warranted (kernel-level loss at gate shape, matching PF-2/Q4_K-M1 closure precedent)",
+  "trace_smoke": "rocprofv3 --kernel-trace: qwen35_moe_group_map_top10_parallel_kernel dispatched grid 512x256 workgroup, group_segment_size 2176B, duration ~111us cold; gather_packed_hidden_kernel dispatched; HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipcc_version_prof.txt, require_cached prebuild",
+  "tests": "tests/test_qwen35_moe_pf4_m2_group_map.py 7 passed (RED-first ImportError history in 44a654cfc)"
+}
