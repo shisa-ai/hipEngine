@@ -329,8 +329,8 @@ __device__ inline float warp_sum_f32(float value) {
   return value;
 }
 
-template <int ROWS_PER_LANE>
-__global__ void __launch_bounds__(128, 4)
+template <int WARPS_PER_BLOCK, int ROWS_PER_LANE>
+__global__ void __launch_bounds__(WARPS_PER_BLOCK * 32, WARPS_PER_BLOCK == 4 ? 4 : 1)
 qwen4_exp_gdn_prefill_columnwarps_f32_kernel(
     const float* __restrict__ conv,
     const float* __restrict__ alpha,
@@ -349,7 +349,7 @@ qwen4_exp_gdn_prefill_columnwarps_f32_kernel(
   const int64_t k_head = v_head % num_k_heads;
   const int warp_id = threadIdx.x >> 5;
   const int lane = threadIdx.x & 31;
-  const int64_t col = static_cast<int64_t>(blockIdx.y) * 4 + warp_id;
+  const int64_t col = static_cast<int64_t>(blockIdx.y) * WARPS_PER_BLOCK + warp_id;
   if (col >= head_v_dim) return;
   const int64_t key_width = num_k_heads * head_k_dim;
   const int64_t qkv_width = 2 * key_width + num_v_heads * head_v_dim;
@@ -714,10 +714,68 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_columnwarps_f32(
   }
   const int64_t col_blocks = head_v_dim / 4;  // 4 columns (warps) per block
   hipLaunchKernelGGL(
-      (qwen4_exp_gdn_prefill_columnwarps_f32_kernel<4>),
+      (qwen4_exp_gdn_prefill_columnwarps_f32_kernel<4, 4>),
       dim3(static_cast<uint32_t>(num_v_heads),
            static_cast<uint32_t>(col_blocks)),
       dim3(128), 0, stream,
+      static_cast<const float*>(conv),
+      static_cast<const float*>(alpha),
+      static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias),
+      static_cast<const float*>(a),
+      static_cast<float*>(recurrent_state),
+      static_cast<float*>(core),
+      tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  const int err = static_cast<int>(hipGetLastError());
+  if (err != 0) return err;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_core_norm_gate_f32_kernel,
+      dim3(static_cast<uint32_t>(tokens),
+           static_cast<uint32_t>(num_v_heads)),
+      dim3(32), 0, stream,
+      static_cast<float*>(core),
+      static_cast<const float*>(output_gate),
+      static_cast<const float*>(norm_weight),
+      tokens, core_width, num_v_heads, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+// 32-warp/block GDN prefill (PF-5 M6 port, lever 1; halo-box PR11
+// gated_delta_net.cu geometry): same column-warp layout and per-warp
+// arithmetic as the <4, 4> columnwarps owner, but 32 columns (warps) per
+// block (1024 threads), so one block covers a whole 128-wide head. State
+// rows stay sharded across 32 lanes in registers with warp-shuffle
+// reductions, so the accumulation order is unchanged from the columnwarps
+// owner (T0); only the block composition changes.
+extern "C" int hipengine_qwen4_exp_gdn_prefill_w32_f32(
+    const void* conv,
+    const void* output_gate,
+    const void* alpha,
+    const void* beta_logits,
+    const void* dt_bias,
+    const void* a,
+    const void* norm_weight,
+    void* recurrent_state,
+    void* core,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !core ||
+      tokens <= 0 || num_k_heads <= 0 || num_v_heads <= 0 ||
+      num_v_heads % num_k_heads || head_k_dim != 128 || head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const int64_t col_blocks = head_v_dim / 32;  // 32 columns (warps) per block
+  hipLaunchKernelGGL(
+      (qwen4_exp_gdn_prefill_columnwarps_f32_kernel<32, 4>),
+      dim3(static_cast<uint32_t>(num_v_heads),
+           static_cast<uint32_t>(col_blocks)),
+      dim3(1024), 0, stream,
       static_cast<const float*>(conv),
       static_cast<const float*>(alpha),
       static_cast<const float*>(beta_logits),
