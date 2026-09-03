@@ -1,0 +1,143 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p4_q6_dp4a_l4_numerics",
+ "date": "2026-09-04",
+ "status": "passed",
+ "decision": "C8-P4 L4 production-profile numerics PASSED for the grouped q8_1 dp4a planar-Q6 axis: paired strict-teacher sessions (exact BF16 decode vs session-enabled dp4a, decode regime WMMA-off per the retained profile) over 18 prompts (10 category suite + 8 heldouts), c8_k3_r32 (the exact production physical shape), 24 teacher-forced steps, 3 candidate repeats. kl_mean 0.000140 / kl_p95 0.000688 / kl_p99 0.001606 / kl_max 0.007267 (review boundary 0.02, ceiling 0.05); top1_agreement 0.99769 (431/432); teacher_nll_delta +0.000822; teacher_delta_p_mean -0.000445; max_abs_logit_delta 0.9038; repeat determinism 3/3 bit-identical; hard gates + tracked_clean true.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "axis": "q6_grouped_dp4a_only (HIPENGINE_C8_Q6_DP4A_GROUPED=1; fp32 state, exact Q4/Q5 routes on both sides)",
+ "evaluation": {
+  "evaluator": "build_batch_route_quality + EvaluationThresholds (campaign normative)",
+  "summary": {
+   "candidate_teacher_nll_mean": 0.17102284737996862,
+   "kl_max": 0.0072671595776557215,
+   "kl_mean": 0.00013973126655942577,
+   "kl_p50": 6.854456817737904e-06,
+   "kl_p95": 0.0006879683355366814,
+   "kl_p99": 0.0016059252344795853,
+   "max_abs_logit_delta": 0.9037787914276123,
+   "rows": 432,
+   "strict_margin_min": 0.000591278076171875,
+   "strict_teacher_nll_mean": 0.17020092296900696,
+   "teacher_delta_p_mean": -0.00044498804967170425,
+   "teacher_nll_delta": 0.0008219244109616552,
+   "top1_agreement": 0.9976851851851852,
+   "top1_matches": 431,
+   "topk_overlap_mean": 0.9861111111111112
+  },
+  "repeat_determinism": {
+   "mismatches": [],
+   "passed": true,
+   "runs": 3,
+   "trajectory_sha256_by_capture": [
+    [
+     "28f07597cbc1fddf567f1969a3bdef60b0b7548dfd813472990f489acbf6b696",
+     "28f07597cbc1fddf567f1969a3bdef60b0b7548dfd813472990f489acbf6b696",
+     "28f07597cbc1fddf567f1969a3bdef60b0b7548dfd813472990f489acbf6b696"
+    ],
+    [
+     "5399c74c3bad363e9353a49b2a16f7d5d7efb955f8b13360ad394cb0007ce559",
+     "5399c74c3bad363e9353a49b2a16f7d5d7efb955f8b13360ad394cb0007ce559",
+     "5399c74c3bad363e9353a49b2a16f7d5d7efb955f8b13360ad394cb0007ce559"
+    ],
+    [
+     "1b8b6ae1ed2d01e7852ab11f61f4b5a750ccb3a5aefc5dd3a091cecd23356e63",
+     "1b8b6ae1ed2d01e7852ab11f61f4b5a750ccb3a5aefc5dd3a091cecd23356e63",
+     "1b8b6ae1ed2d01e7852ab11f61f4b5a750ccb3a5aefc5dd3a091cecd23356e63"
+    ],
+    [
+     "4b2bb32ef67efe60406eeaa2fe8de500f64c52d551b862dd618a65683f7eac08",
+     "4b2bb32ef67efe60406eeaa2fe8de500f64c52d551b862dd618a65683f7eac08",
+     "4b2bb32ef67efe60406eeaa2fe8de500f64c52d551b862dd618a65683f7eac08"
+    ],
+    [
+     "cf11f91fbcec14fba511e424d8762a16640e27afae2c52264293f6537c897de5",
+     "cf11f91fbcec14fba511e424d8762a16640e27afae2c52264293f6537c897de5",
+     "cf11f91fbcec14fba511e424d8762a16640e27afae2c52264293f6537c897de5"
+    ],
+    [
+     "3195bb06fdfbfb6140f651c35e980ce1300babd68795455bf8b53012f3cc7205",
+     "3195bb06fdfbfb6140f651c35e980ce1300babd68795455bf8b53012f3cc7205",
+     "3195bb06fdfbfb6140f651c35e980ce1300babd68795455bf8b53012f3cc7205"
+    ],
+    [
+     "b4c06fee9e6288c0b657797a2a7e5595ce7b6ac3fd98db292435c67a4e8b7ee4",
+     "b4c06fee9e6288c0b657797a2a7e5595ce7b6ac3fd98db292435c67a4e8b7ee4",
+     "b4c06fee9e6288c0b657797a2a7e5595ce7b6ac3fd98db292435c67a4e8b7ee4"
+    ],
+    [
+     "044234f740a176926067f275358c88294adfdfdac0a9230248abc51c19997415",
+     "044234f740a176926067f275358c88294adfdfdac0a9230248abc51c19997415",
+     "044234f740a176926067f275358c88294adfdfdac0a9230248abc51c19997415"
+    ],
+    [
+     "4647180aabb5de3ef46f5532df63055dcfaf5b2cc7f10c087c5ea02360d48588",
+     "4647180aabb5de3ef46f5532df63055dcfaf5b2cc7f10c087c5ea02360d48588",
+     "4647180aabb5de3ef46f5532df63055dcfaf5b2cc7f10c087c5ea02360d48588"
+    ],
+    [
+     "83a54dab69f709dccb86d13d023e88e4cd87399278f7549833f0e709abc4c8a1",
+     "83a54dab69f709dccb86d13d023e88e4cd87399278f7549833f0e709abc4c8a1",
+     "83a54dab69f709dccb86d13d023e88e4cd87399278f7549833f0e709abc4c8a1"
+    ],
+    [
+     "de6cf6e018c9d807773ee24642aed56c95d86df7dc9c1bb107739174e216f771",
+     "de6cf6e018c9d807773ee24642aed56c95d86df7dc9c1bb107739174e216f771",
+     "de6cf6e018c9d807773ee24642aed56c95d86df7dc9c1bb107739174e216f771"
+    ],
+    [
+     "5cef2a1224423f0b4bc00771bf98ceb9e50794e33ebae70a726da47c8a83a2d7",
+     "5cef2a1224423f0b4bc00771bf98ceb9e50794e33ebae70a726da47c8a83a2d7",
+     "5cef2a1224423f0b4bc00771bf98ceb9e50794e33ebae70a726da47c8a83a2d7"
+    ],
+    [
+     "379b3c62677c682ad2af61152cfdae28b130973914e2ba19cc6ed24b39f342f3",
+     "379b3c62677c682ad2af61152cfdae28b130973914e2ba19cc6ed24b39f342f3",
+     "379b3c62677c682ad2af61152cfdae28b130973914e2ba19cc6ed24b39f342f3"
+    ],
+    [
+     "398cd597a9240df20f8601355626754a6e37460b53c8f1c675fb157743e1e12e",
+     "398cd597a9240df20f8601355626754a6e37460b53c8f1c675fb157743e1e12e",
+     "398cd597a9240df20f8601355626754a6e37460b53c8f1c675fb157743e1e12e"
+    ],
+    [
+     "0600616261a93219043d17328cde26dc68fd5100a1c04ebfd3ae2673ed42955a",
+     "0600616261a93219043d17328cde26dc68fd5100a1c04ebfd3ae2673ed42955a",
+     "0600616261a93219043d17328cde26dc68fd5100a1c04ebfd3ae2673ed42955a"
+    ],
+    [
+     "8ce9abc87e1daadd6256fada102bfb116628ee1257e7d6823d52b36dd7e44b46",
+     "8ce9abc87e1daadd6256fada102bfb116628ee1257e7d6823d52b36dd7e44b46",
+     "8ce9abc87e1daadd6256fada102bfb116628ee1257e7d6823d52b36dd7e44b46"
+    ],
+    [
+     "5a72c1b1b6bf8f6d92a78018773642b21256630482459d510d05ac3f1a94fe36",
+     "5a72c1b1b6bf8f6d92a78018773642b21256630482459d510d05ac3f1a94fe36",
+     "5a72c1b1b6bf8f6d92a78018773642b21256630482459d510d05ac3f1a94fe36"
+    ],
+    [
+     "674abff56d5f90047dae4d85c4cb5eff5e260048f56eb5298905bff3c8d6ae24",
+     "674abff56d5f90047dae4d85c4cb5eff5e260048f56eb5298905bff3c8d6ae24",
+     "674abff56d5f90047dae4d85c4cb5eff5e260048f56eb5298905bff3c8d6ae24"
+    ]
+   ]
+  },
+  "hard_gates_passed": true,
+  "rows": 432
+ },
+ "prompts": {
+  "suite": 10,
+  "heldouts": 8,
+  "total": 18
+ },
+ "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python3 scripts/qwen38_c8_p4_q6_dp4a_numerics.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --concurrency 8 --candidate-budget 3 --decode-steps 24 --repeat-runs 3 --output /tmp/dp4a_numerics_full.json",
+ "artifact_source": "scripts/qwen38_c8_p4_q6_dp4a_numerics.py",
+ "full_payload": "/tmp/dp4a_numerics_full.json (committed copy under benchmarks/results/ on the e2e gate)",
+ "next_gate": "tracked-clean ten-prompt e2e with candidate/control ordering (the retention gate)"
+}
