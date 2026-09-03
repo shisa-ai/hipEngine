@@ -44,9 +44,12 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
     QWEN4EXP_Q8_MMQ_PREFILL_POLICY,
     build_gguf_q8_0_mmq_prefill,
+    gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out,
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out,
+    gguf_q8_0_mmq128_quantize_f32_d4x2,
     gguf_q8_0_mmq128_quantize_f32_d4x3,
     gguf_q8_0_mmq128_sparse_exact_correct_f32,
+    q8_mmq_d4x2_nbytes,
     q8_mmq_d4x3_nbytes,
 )
 from tests.test_gguf_k_gemv import Q8_0_BLOCK_BYTES, make_q8_0_weight
@@ -108,6 +111,23 @@ PF1_COLTILE_SHAPES = ((2560, 96), (2560, 512), (2560, 2048), (2560, 2560))
 MMQ_CHAIN_VARIANTS = {
     "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out": (
         gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out
+    ),
+}
+
+# PF-1d plane-reduction candidates: different activation-quantization
+# arithmetic (not bit-identical to d4x3). Admission requires the production
+# numerics gate; these unit contracts only sanity-bound the chains.
+# d4 (single-plane) was measured and rejected at unit level (top-1
+# 507-510/512, max_abs 1.47-3.36; see the PF-1d plane worklog entry). d4x2
+# bounds are measured envelopes with headroom: max_abs 0.0059-0.0114,
+# mean_rel 1.2-1.6e-4, top-1 512/512 at all seven shapes.
+MMQ_PLANE_VARIANTS = {
+    "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out": (
+        gguf_q8_0_mmq128_quantize_f32_d4x2,
+        gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out,
+        q8_mmq_d4x2_nbytes,
+        2e-2,
+        5e-4,
     ),
 }
 
@@ -321,6 +341,121 @@ def test_pf1_mmq_chain_variants_bit_identical(hidden: int, out_features: int) ->
     reference = outputs[reference_name]
     for name, out in outputs.items():
         np.testing.assert_array_equal(out, reference, err_msg=f"{name} vs {reference_name}")
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("hidden,out_features", PF1_MMQ_SHAPES)
+@pytest.mark.parametrize("variant_name", sorted(MMQ_PLANE_VARIANTS))
+def test_pf1_mmq_plane_variants_bounded_contract(
+    hidden: int, out_features: int, variant_name: str
+) -> None:
+    """Plane-reduction candidate chains are deterministic and bounded.
+
+    d4/d4x2 change the activation-quantization arithmetic relative to the
+    production d4x3 chain, so the contract here is determinism, a looser
+    bounded envelope versus the exact F32 coltile owner, and top-1 agreement
+    at these fixture inputs. Whole-model admission evidence comes from the
+    production numerics gate, never from this unit test.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+
+    quantize, matmul, d4_nbytes, max_abs, mean_rel = MMQ_PLANE_VARIANTS[variant_name]
+    rows = 512
+    rng = np.random.default_rng(2026_09_06)
+    qweight = np.ascontiguousarray(
+        make_q8_0_weight_large(out_features, hidden), dtype=np.uint8
+    )
+    x = (rng.standard_normal((rows, hidden)) * 0.5).astype(np.float32)
+
+    runtime = get_hip_runtime()
+    mmq_library = build_gguf_q8_0_mmq_prefill(load=True)
+    bufs: list = []
+
+    def alloc(nbytes: int):
+        buf = malloc(nbytes, runtime=runtime)
+        bufs.append(buf)
+        return buf
+
+    try:
+        weight_dev = alloc(qweight.nbytes)
+        x_dev = alloc(x.nbytes)
+        exact_dev = alloc(rows * out_features * 4)
+        copy_host_to_device(weight_dev, host_array_ptr(qweight), runtime=runtime)
+        copy_host_to_device(x_dev, host_array_ptr(x), runtime=runtime)
+
+        gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out(
+            x_dev.ptr,
+            weight_dev.ptr,
+            exact_dev.ptr,
+            rows,
+            hidden,
+            out_features,
+            library=build_gguf_k_gemv(load=True),
+            runtime=runtime,
+        )
+        exact = np.empty((rows, out_features), dtype=np.float32)
+        copy_device_to_host(host_array_ptr(exact), exact_dev, runtime=runtime)
+
+        d4_dev = alloc(d4_nbytes(rows, hidden))
+        chain_dev = alloc(rows * out_features * 4)
+        count_dev = alloc(4)
+        indices_dev = alloc(rows * out_features * 4)
+
+        def run() -> np.ndarray:
+            quantize(
+                x_dev.ptr,
+                d4_dev.ptr,
+                rows,
+                hidden,
+                library=mmq_library,
+                runtime=runtime,
+            )
+            runtime.memset(count_dev.ptr, 0, count_dev.nbytes)
+            matmul(
+                d4_dev.ptr,
+                weight_dev.ptr,
+                chain_dev.ptr,
+                count_dev.ptr,
+                indices_dev.ptr,
+                rows * out_features,
+                QWEN4EXP_Q8_MMQ_PREFILL_POLICY.risk_threshold,
+                rows,
+                hidden,
+                out_features,
+                library=mmq_library,
+                runtime=runtime,
+            )
+            gguf_q8_0_mmq128_sparse_exact_correct_f32(
+                x_dev.ptr,
+                weight_dev.ptr,
+                chain_dev.ptr,
+                count_dev.ptr,
+                indices_dev.ptr,
+                rows * out_features,
+                rows,
+                hidden,
+                out_features,
+                library=mmq_library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            out = np.empty((rows, out_features), dtype=np.float32)
+            copy_device_to_host(host_array_ptr(out), chain_dev, runtime=runtime)
+            return out
+
+        first = run()
+        second = run()
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(first, second)
+    diff = np.abs(first - exact)
+    scale = np.maximum(np.abs(exact), 1e-6)
+    assert float(diff.max()) < max_abs, (hidden, out_features, float(diff.max()))
+    assert float((diff / scale).mean()) < mean_rel
+    np.testing.assert_array_equal(first.argmax(1), exact.argmax(1))
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
