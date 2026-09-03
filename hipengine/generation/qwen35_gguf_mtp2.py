@@ -1639,6 +1639,36 @@ class Qwen35GGUFMTP2Adapter:
             if request_id not in self._states:
                 self.owner._flush_row_owner(self.owner._row(request_id))
         self._ensure_request_states(ids)
+        self._ensure_active_singleton_target_verifier(ids)
+
+    def _ensure_active_singleton_target_verifier(
+        self,
+        request_ids: tuple[int, ...],
+    ) -> None:
+        """Keep a physical provider but use the exact C1 target when alone."""
+
+        if len(request_ids) != 1:
+            return
+        request_id = int(request_ids[0])
+        state = self._states[request_id]
+        if state.verifier is not None:
+            return
+        row = self.owner._row(request_id)
+        if row.lease is None:
+            raise RuntimeError("GGUF MTP2 singleton request has no target session")
+        target = row.lease.session
+        state.verifier = Qwen35GGUFTransactionalVerifier(
+            target,
+            max_candidate_budget=self.candidate_budget,
+            quant=self.quant,
+            target_verify_mode=_target_verify_mode_for_context(
+                self.target_verify_mode,
+                backend=self.generator.backend,
+                end_position=(
+                    int(target.position) + self.candidate_budget + 1
+                ),
+            ),
+        )
 
     def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
         missing = tuple(request_id for request_id in ids if request_id not in self._states)
