@@ -1,6 +1,6 @@
 # Qwen3.8 gfx1100 C8/K3 Optimization Campaign
 
-Status: **active; C8-P2 retained its first raw-Q5 MMQ owner at 89.377 tok/s; the remaining peer-derived Q5 layout gap is next.**
+Status: **active; C8-P2 retained both Q5 MMQ owners (raw D4S4 R24/R32 plus FP32-metadata source-layout R32) and the canonical C8 row is 90.139 tok/s, confirmed at 91.041 tok/s in a fresh single-arm run at `6d6b9c555`; the remaining peer-derived Q5 layout gap is next.**
 
 This campaign owns the sole remaining cell in the standardized W7900
 Qwen3.8-27B `Q4_K_M` cross-engine matrix where hipEngine trails the strongest
@@ -40,10 +40,17 @@ Current canonical rows:
 
 | Route | Aggregate tok/s | hipEngine gap |
 | --- | ---: | ---: |
-| hipEngine explicit C8/K3 | **89.377** | — |
-| llama.cpp current HIP C8/K3 | 94.735 | **+5.9946% required** |
-| llama.cpp Laurent HIP C8/K3 | 101.072 | **+13.0848% required** |
-| hipEngine true AR C8 | 83.939 | current K3 is 1.0648x |
+| hipEngine explicit C8/K3 | **90.139** | — |
+| llama.cpp current HIP C8/K3 | 94.735 | **+5.0986% required** |
+| llama.cpp Laurent HIP C8/K3 | 101.072 | **+12.1289% required** |
+| hipEngine true AR C8 | 83.939 | current K3 is 1.0739x |
+
+The 90.139 row is the retained controlled default-versus-rollback gate at
+`8c36a17e` (source-layout MMQ promotion, 20/20 prompt cells, both orders). A
+fresh single-arm confirmation at `6d6b9c555` — after the later T16-dense C1
+decode kernel work, which the C8 route does not dispatch — measured 91.041
+MTP / 88.033 AR aggregate tok/s with every cell exact; the canonical row is
+unchanged (benchmarks/results/2026-09-04-w7900-q4km-k3-c8-head-confirmation.json).
 
 Closure is staged:
 
