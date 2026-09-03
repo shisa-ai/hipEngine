@@ -210,7 +210,7 @@ def test_ordered_rows_variant_is_bit_exact_to_strict_rows() -> None:
             block_size=fx["block_size"], query_heads=fx["q_heads"],
             kv_heads=fx["kv_heads"], head_dim=fx["head_dim"], runtime=runtime,
         )
-        qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
+        qsa_module.qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
             d_query.ptr, d_key.ptr, d_value.ptr, d_selected.ptr, d_counts.ptr,
             d_output_strict.ptr, spans,
             rows=fx["rows"], selected_stride=fx["selected"].shape[1],
