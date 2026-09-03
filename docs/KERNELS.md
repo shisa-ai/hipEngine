@@ -949,6 +949,17 @@ A new or ported kernel lands only when all applicable checks pass:
 Four invocations failed before producing data; each is a property of the tool, not of the
 measurement, so record it instead of rediscovering it.
 
+0. **Raw MMQ32 consumers take the non-kmajor d4s4 producer; kmajor is source-layout-only.**
+   `gguf_q5_k_mmq32_*` / `gguf_q6_k_mmq32_*` raw owners (and their pipe/mb4 diagnostic
+   variants) are fed by `gguf_q8_1_d4s4_f32_quantize_bf16` + `q8_1_d4s4_f32_nbytes` in
+   production (`gguf_linear.py` routes kmajor only to the rows==32 source-layout owner).
+   Feeding a raw owner from `gguf_q8_1_d4s4_f32_quantize_bf16_kmajor` still runs and stays
+   self-consistent (pipe == serial bit-exact), but skews relative timing (measured 2026-09-04:
+   serial mb2 10.170 ms kmajor vs 9.109 ms correct layout per 48-weight R24 pass) and fails
+   the CPU-reference outer floor (KL ~46) because the activation bytes are interpreted in the
+   wrong layout. Any leaf A/B against a raw owner must use the non-kmajor producer. First
+   caught by the outer-floor assert in the C8 iter28 pipe contract test.
+
 1. **The self-contained wrappers cannot run on this host.** `gguf_mtp_verifier_rocprof.py`,
    `gguf_decode_rocprof.py`, `gguf_packed_ar_rocprof.py`, `gguf_mtp_draft_rocprof.py`,
    `gguf_continuous_owner_rocprof.py`, `gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py` and
