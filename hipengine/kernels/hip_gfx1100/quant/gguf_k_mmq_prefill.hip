@@ -8,7 +8,6 @@
 #include <hip/hip_runtime.h>
 #include <math.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 namespace {
 
@@ -1648,22 +1647,17 @@ int launch_q5_source_c8_mmq(
       out_features <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  // C8-P2 Q5 tile-policy default: the J16 minitile halves the per-block
-  // serial K chain and doubles the R32 workgroup count (160 vs 80) on the
-  // 48 ssm_out projections; the leaf measured 1.20x consumer-complete with
-  // bf16-identical outputs and 48/48 weight wins. The zero-valued
-  // HIPENGINE_GGUF_Q5_SOURCE_C8_J16 rollback restores the literal J32
-  // policy (J16 only below 32 rows).
-  const char* j16_env = getenv("HIPENGINE_GGUF_Q5_SOURCE_C8_J16");
-  if (j16_env != nullptr && j16_env[0] == '0') {
-    if (rows < SOURCE_C8_MMQ_J) {
-      return launch_q5_source_c8_mmq_tile<output_t, 16>(
-          xq, qweight, out, rows, hidden, out_features, stream);
-    }
-    return launch_q5_source_c8_mmq_tile<output_t, SOURCE_C8_MMQ_J>(
+  // Retained policy after the 8-run L3 gate (2026-09-04): the J16 minitile
+  // won the 48-weight leaf 1.20x with bit-identical outputs, but the e2e
+  // default-versus-rollback gate could not confirm it (pooled -0.20%, first
+  // position won 4/4 order pairs under ~0.6%/run host drift), so the literal
+  // J32 policy remains the default. The forced i64_j16 launchers stay
+  // registered for leaf/diagnostic use; see worklog entry for iteration 26.
+  if (rows < SOURCE_C8_MMQ_J) {
+    return launch_q5_source_c8_mmq_tile<output_t, 16>(
         xq, qweight, out, rows, hidden, out_features, stream);
   }
-  return launch_q5_source_c8_mmq_tile<output_t, 16>(
+  return launch_q5_source_c8_mmq_tile<output_t, SOURCE_C8_MMQ_J>(
       xq, qweight, out, rows, hidden, out_features, stream);
 }
 
