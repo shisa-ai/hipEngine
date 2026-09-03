@@ -1043,6 +1043,19 @@ measurement, so record it instead of rediscovering it.
    `verify_dense_q8_dp4a_f32` argument - the switch is the env var
    `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` - and that route stays closed to a q5 repack anyway.
 
+8. **Hardware PMC counters cannot be collected with `rocprofv3` on this stack.**
+   Every attempt (`--pmc SQ_INSTS ...`, or an input file with `pmc:` lines or
+   `{"jobs":[{"pmc": [...]}]}` JSON) hangs before the profiled application ever
+   starts: the app timer reads `0.000000 sec` and nothing is written to the
+   output directory. Worse, once hung, `timeout N` cannot kill it - rocprofv3
+   installs an error signal handler that catches SIGTERM and then blocks
+   forever "waiting for 1 children to exit". Always wrap such attempts as
+   `timeout -k 10 <seconds> rocprofv3 ...` (SIGKILL escalation), or clean up
+   with `pkill -9 -f rocprofv3`. Measured repeatedly on this host (2026-09-03)
+   with `rocprofv3 1.3.2` under the `therock` env. For resource inspection,
+   use code-object metadata (VGPR/LDS/workgroup) plus kernel-trace durations
+   instead, and compare walls against `docs/ROOFLINE.md` bandwidth bounds.
+
 For the server matrix itself: `gguf_mtp_c1c8_server_bench.py` accepts neither
 `--require-mtp`, `--tag` nor `--max-run-seconds`, and its `--model` default is
 `Qwen3.6-27B-Q4_K_M.gguf` - omitting `--model` benchmarks the wrong model and still produces
