@@ -47,6 +47,18 @@ GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES = (
     + GGUF_Q5_K_SUBBLOCKS * GGUF_Q5_K_SUBBLOCK * (GGUF_T16_COLS // 8)
 )
 
+# Planar Q5 qmicro: the qmicro ql/qh planes are reordered into the same
+# 12-byte dp4a record shape as the Q6 planar qmicro (per subblock x column
+# quartet x 4-quant pack: four col0/col1 low-nibble bytes, four col2/col3
+# bytes, then four bytes of packed per-column high bits). d/dmin planes and
+# the 24-bit scale/min metadata records are carried over unchanged.
+GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES = 12  # matches GGUF_Q6_K_T16_QMICRO_RECORD_BYTES
+GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES = (
+    GGUF_Q5_K_QMICRO_T16_QL_OFFSET
+    + GGUF_Q5_K_SUBBLOCKS * (GGUF_T16_COLS // 4) * (GGUF_Q5_K_SUBBLOCK // 4)
+    * GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES
+)
+
 GGUF_Q6_K_BLOCK_BYTES = 210
 GGUF_Q6_K_GROUPS = 16
 GGUF_Q6_K_T16_D_OFFSET = 0
@@ -512,6 +524,168 @@ def unpack_gguf_q5_k_qmicro_tile16(
     return unpack_gguf_q5_k_tile16(expanded, out_features=inferred_out)
 
 
+def convert_gguf_q5_k_qmicro_tile16_to_planar(
+    packed: GGUFQ5KQMicroTile16 | np.ndarray,
+) -> GGUFQ5KQMicroTile16:
+    """Reorder Q5 qmicro ql/qh planes into 12-byte planar dp4a records.
+
+    Each record covers one (subblock, column-quartet, 4-quant pack) and
+    stores four col0/col1 low-nibble bytes, four col2/col3 bytes, then four
+    bytes of packed per-column high bits - the same shape the Q6 planar
+    qmicro conversion produces, so the grouped dp4a kernel structure is
+    shared. Adjacent packs are adjacent records for coalesced u32 loads.
+    """
+
+    tiles = np.asarray(
+        packed.tiles if isinstance(packed, GGUFQ5KQMicroTile16) else packed,
+        dtype=np.uint8,
+    )
+    if tiles.ndim != 4 or tiles.shape[-1] != GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES:
+        raise ValueError(
+            "tiles must have shape [experts, out_tiles16, blocks_per_row, 2816]"
+        )
+    experts, out_tiles, blocks_per_row, _ = map(int, tiles.shape)
+    planar = np.empty(
+        (experts, out_tiles, blocks_per_row, GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES),
+        dtype=np.uint8,
+    )
+    planar[..., : GGUF_Q5_K_QMICRO_T16_QL_OFFSET] = tiles[
+        ..., : GGUF_Q5_K_QMICRO_T16_QL_OFFSET
+    ]
+
+    ql = tiles[..., GGUF_Q5_K_QMICRO_T16_QL_OFFSET : GGUF_Q5_K_QMICRO_T16_QH_OFFSET].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_Q5_K_SUBBLOCK, GGUF_T16_COLS // 2,
+    )
+    qh = tiles[..., GGUF_Q5_K_QMICRO_T16_QH_OFFSET :].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_Q5_K_SUBBLOCK, GGUF_T16_COLS // 8,
+    )
+    shifts = np.array([0, 4], dtype=np.uint8).reshape(1, 1, 1, 1, 1, 2, 1)
+    low = np.swapaxes((ql[..., None, :] >> shifts) & np.uint8(0x0F), -1, -2).reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_Q5_K_SUBBLOCK, GGUF_T16_COLS,
+    )
+    bit_shifts = np.arange(8, dtype=np.uint8).reshape(1, 1, 1, 1, 1, 8, 1)
+    high = np.swapaxes((qh[..., None, :] >> bit_shifts) & np.uint8(0x01), -1, -2).reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_Q5_K_SUBBLOCK, GGUF_T16_COLS,
+    )
+
+    subblocks = GGUF_Q5_K_SUBBLOCKS
+    lane32 = GGUF_Q5_K_SUBBLOCK
+    records = planar[..., GGUF_Q5_K_QMICRO_T16_QL_OFFSET:].reshape(
+        experts, out_tiles, blocks_per_row,
+        subblocks, GGUF_T16_COLS // 4, lane32 // 4,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES,
+    )
+    # record[..., sb, quartet, pack]: low01(4B) low23(4B) high(4B) where
+    # byte k holds that k's values (low nibbles) / high bits for the 4 cols.
+    cols = np.arange(GGUF_T16_COLS).reshape(4, 4)  # [quartet, col4]
+    for quartet in range(GGUF_T16_COLS // 4):
+        c = cols[quartet]
+        low01 = low[..., c[0]] | (low[..., c[1]] << np.uint8(4))  # [.., sb, lane32]
+        low23 = low[..., c[2]] | (low[..., c[3]] << np.uint8(4))
+        high4 = (
+            high[..., c[0]]
+            | (high[..., c[1]] << np.uint8(1))
+            | (high[..., c[2]] << np.uint8(2))
+            | (high[..., c[3]] << np.uint8(3))
+        )  # [.., sb, lane32] - 4 bits, one per col
+        # lane32 = 4*pack + k
+        low01_r = low01.reshape(
+            experts, out_tiles, blocks_per_row, subblocks, lane32 // 4, 4
+        )
+        low23_r = low23.reshape(
+            experts, out_tiles, blocks_per_row, subblocks, lane32 // 4, 4
+        )
+        high_r = high4.reshape(
+            experts, out_tiles, blocks_per_row, subblocks, lane32 // 4, 4
+        )
+        records[:, :, :, :, quartet, :, 0:4] = low01_r
+        records[:, :, :, :, quartet, :, 4:8] = low23_r
+        records[:, :, :, :, quartet, :, 8:12] = high_r
+    return GGUFQ5KQMicroTile16(
+        tiles=planar,
+        experts=experts,
+        out_features=out_tiles * GGUF_T16_COLS,
+        in_features=blocks_per_row * QK_K,
+    )
+
+
+def unpack_gguf_q5_k_qmicro_planar_tile16(
+    packed: GGUFQ5KQMicroTile16 | np.ndarray,
+    *,
+    out_features: int | None = None,
+) -> np.ndarray:
+    """Reconstruct raw GGUF Q5_K bytes from planar qmicro tiles."""
+
+    if isinstance(packed, GGUFQ5KQMicroTile16):
+        planar = np.asarray(packed.tiles, dtype=np.uint8)
+        expected_out = packed.out_features
+    else:
+        planar = np.asarray(packed, dtype=np.uint8)
+        expected_out = out_features
+    if (
+        planar.ndim != 4
+        or planar.shape[-1] != GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES
+    ):
+        raise ValueError(
+            "tiles must have shape [experts, out_tiles16, blocks_per_row, 3328]"
+        )
+    experts, out_tiles, blocks_per_row, _ = map(int, planar.shape)
+    qmicro = np.empty(
+        (experts, out_tiles, blocks_per_row, GGUF_Q5_K_QMICRO_T16_BLOCK_BYTES),
+        dtype=np.uint8,
+    )
+    qmicro[..., : GGUF_Q5_K_QMICRO_T16_QL_OFFSET] = planar[
+        ..., : GGUF_Q5_K_QMICRO_T16_QL_OFFSET
+    ]
+    records = planar[..., GGUF_Q5_K_QMICRO_T16_QL_OFFSET:].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_T16_COLS // 4, GGUF_Q5_K_SUBBLOCK // 4,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES,
+    )
+    low01 = records[..., 0:4].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_T16_COLS // 4, GGUF_Q5_K_SUBBLOCK,
+    )  # [..., sb, quartet, lane32]
+    low23 = records[..., 4:8].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_T16_COLS // 4, GGUF_Q5_K_SUBBLOCK,
+    )
+    high4 = records[..., 8:12].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, GGUF_T16_COLS // 4, GGUF_Q5_K_SUBBLOCK,
+    )
+    lane32 = GGUF_Q5_K_SUBBLOCK
+    ql_out = qmicro[..., GGUF_Q5_K_QMICRO_T16_QL_OFFSET : GGUF_Q5_K_QMICRO_T16_QH_OFFSET].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, lane32, GGUF_T16_COLS // 2,
+    )
+    qh_out = qmicro[..., GGUF_Q5_K_QMICRO_T16_QH_OFFSET :].reshape(
+        experts, out_tiles, blocks_per_row,
+        GGUF_Q5_K_SUBBLOCKS, lane32, GGUF_T16_COLS // 8,
+    )
+    # ql byte (sb, lane32, colpair): colpair even -> low01 of quartet colpair//2;
+    # colpair odd -> low23 of quartet colpair//2.
+    ql_out[..., :, :, 0::2] = np.moveaxis(low01, -2, -1)  # quartet axis -> colpair slot
+    ql_out[..., :, :, 1::2] = np.moveaxis(low23, -2, -1)
+    # qh byte (sb, lane32, colbyte): cols 8cb..8cb+7 = quartet 2cb in bits 0-3
+    # and quartet 2cb+1 in bits 4-7.
+    qh_out[..., :, :, 0] = high4[..., :, 0, :] | (high4[..., :, 1, :] << np.uint8(4))
+    qh_out[..., :, :, 1] = high4[..., :, 2, :] | (high4[..., :, 3, :] << np.uint8(4))
+    return unpack_gguf_q5_k_qmicro_tile16(
+        GGUFQ5KQMicroTile16(
+            tiles=qmicro,
+            experts=experts,
+            out_features=out_tiles * GGUF_T16_COLS,
+            in_features=blocks_per_row * QK_K,
+        ),
+        out_features=out_tiles * GGUF_T16_COLS,
+    )
+
+
 def repack_gguf_q6_k_tile16(raw_qweight: Any) -> GGUFQ6KTile16:
     """Repack rank-3 raw GGUF Q6_K expert weights into bit-lossless Q6T16 tiles."""
 
@@ -690,7 +864,7 @@ def convert_gguf_q6_k_tile16_to_qmicro(
         8,
         4,
         8,
-        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES,
     )
     records[..., :8] = ql.transpose(0, 1, 2, 3, 6, 4, 5, 7).reshape(
         experts,
@@ -746,7 +920,7 @@ def unpack_gguf_q6_k_tile16_qmicro(
         8,
         4,
         8,
-        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES,
     )
     legacy[..., GGUF_Q6_K_T16_QL_OFFSET:GGUF_Q6_K_T16_QH_OFFSET] = (
         records[..., :8]
@@ -797,7 +971,7 @@ def convert_gguf_q6_k_tile16_to_qmicro_planar(
         8,
         4,
         8,
-        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES,
     )
     ql = records[..., :8].copy()
     records[..., :4] = ql[..., 0::2]
@@ -836,7 +1010,7 @@ def unpack_gguf_q6_k_tile16_qmicro_planar(
         8,
         4,
         8,
-        GGUF_Q6_K_T16_QMICRO_RECORD_BYTES,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_RECORD_BYTES,
     )
     ql01 = records[..., :4].copy()
     ql23 = records[..., 4:8].copy()
