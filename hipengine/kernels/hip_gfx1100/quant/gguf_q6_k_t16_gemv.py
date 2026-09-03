@@ -7,8 +7,10 @@ P9.H3 extension for the qwen35moe Q6_K lm-head fallback.  The kernel consumes
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Mapping
 
@@ -87,6 +89,64 @@ _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_F32 = (
 _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out"
+)
+
+# C8-P4 reduced-dequantization owner context: when the runner exposes a
+# q8_1 workspace through ``q6_dp4a_grouped_target_session`` and the env
+# opt-in is set, the planar decode wrapper routes rows 8-64 to the grouped
+# integer-dp4a sibling (x quantized to q8_1 in the caller's workspace).
+# The BF16 grouped owner stays the exact default and strict fallback.
+_Q6_DP4A_GROUPED_TARGET_ENV = "HIPENGINE_C8_Q6_DP4A_GROUPED"
+
+
+class _Q6DP4AGroupedTargetSession:
+    __slots__ = ("workspace_ptr", "workspace_nbytes")
+
+    def __init__(self, *, workspace_ptr: int, workspace_nbytes: int) -> None:
+        self.workspace_ptr = int(workspace_ptr)
+        self.workspace_nbytes = int(workspace_nbytes)
+
+
+_Q6_DP4A_GROUPED_SESSION: ContextVar[_Q6DP4AGroupedTargetSession | None] = (
+    ContextVar("q6_dp4a_grouped_session", default=None)
+)
+
+
+@contextlib.contextmanager
+def q6_dp4a_grouped_target_session(
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+    enabled: bool = True,
+):
+    """Expose a q8_1 workspace for the C8 grouped-dp4a owner pass."""
+
+    selected = None
+    if enabled:
+        if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= 0:
+            raise ValueError(
+                "q6 dp4a grouped session requires a device workspace"
+            )
+        selected = _Q6DP4AGroupedTargetSession(
+            workspace_ptr=int(workspace_ptr),
+            workspace_nbytes=int(workspace_nbytes),
+        )
+    token = _Q6_DP4A_GROUPED_SESSION.set(selected)
+    try:
+        yield
+    finally:
+        _Q6_DP4A_GROUPED_SESSION.reset(token)
+
+
+def _q6_dp4a_grouped_target_env_enabled() -> bool:
+    raw = os.environ.get(_Q6_DP4A_GROUPED_TARGET_ENV, "1").strip().lower()
+    if raw in {"", "1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{_Q6_DP4A_GROUPED_TARGET_ENV} must be a boolean value")
 _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out"
 )
@@ -278,6 +338,46 @@ def gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
     runtime: HipRuntime | None = None,
 ) -> None:
     """Launch planar-qmicro Q6T16 GEMV with BF16 input/output."""
+
+    session = _Q6_DP4A_GROUPED_SESSION.get()
+    if (
+        session is not None
+        and _q6_dp4a_grouped_target_env_enabled()
+        and 8 <= int(rows) <= 64
+        and int(rows) % 8 == 0
+        and int(in_features) % 256 == 0
+    ):
+        required = int(rows) * (int(in_features) // 32) * 36
+        if required > int(session.workspace_nbytes):
+            raise ValueError(
+                "q6 dp4a grouped workspace is too small: "
+                f"required={required}, available={session.workspace_nbytes}"
+            )
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+            gguf_q4_k_quantize_bf16_q8_1,
+        )
+
+        gguf_q4_k_quantize_bf16_q8_1(
+            x_ptr,
+            session.workspace_ptr,
+            int(rows),
+            int(in_features),
+            stream=stream,
+            runtime=runtime,
+        )
+        _launch(
+            _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16,
+            session.workspace_ptr,
+            tiles_ptr,
+            out_ptr,
+            int(rows),
+            int(in_features),
+            int(out_features),
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+        return
 
     def launch_rowtile(x, tiles, out, row_count, in_f, out_f, **kw) -> None:
         _launch(

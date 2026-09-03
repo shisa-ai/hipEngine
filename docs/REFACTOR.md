@@ -5226,3 +5226,9 @@ other means and were not touched.
 - Remove the kernel, wrapper, registry entry, leaf
   (`scripts/qwen38_c8_p4_q6_dp4a_grouped_leaf.py`), and its tests if the L4
   campaign rejects the variant or the P4 bullet closes by another axis.
+
+- Owner-controlled dispatch route (added with the kernel): the planar decode
+  wrapper routes rows 8-64 to the grouped dp4a sibling only inside
+  `q6_dp4a_grouped_target_session` (runner workspace `moe_q8_1`) with env
+  `HIPENGINE_C8_Q6_DP4A_GROUPED=1` (default-off); the zero-valued env also
+  rolls back an active session. Same removal condition as above.

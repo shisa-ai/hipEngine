@@ -121,6 +121,9 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     weighted_sum_shared_gate_combine_residual_out_f32_f32w,
 )
 from hipengine.kernels.hip_gfx1100.linear.dense_gemv import dense_gemv_out_bf16
+from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+    q6_dp4a_grouped_target_session,
+)
 from hipengine.kernels.hip_gfx1100.linear.lm_head import (
     argmax_f32,
     argmax_f32_rows_i32,
@@ -10822,6 +10825,7 @@ _GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS_ENV = "HIPENGINE_GGUF_COMPACT_WMMA_
 _GGUF_MOE_GRAPH_ENV = "HIPENGINE_GGUF_MOE_GRAPH"
 _GGUF_C8_Q5_RAW_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_RAW_MMQ"
 _GGUF_C8_Q5_SOURCE_MMQ_ENV = "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ"
+_GGUF_C8_Q6_DP4A_GROUPED_ENV = "HIPENGINE_C8_Q6_DP4A_GROUPED"
 _GGUF_PREFILL_DEVICE_METADATA_ENV = "HIPENGINE_GGUF_PREFILL_DEVICE_METADATA"
 _GGUF_PREFILL_ROUTER_SELECT_THREADS_ENV = "HIPENGINE_GGUF_PREFILL_ROUTER_SELECT_THREADS"
 _QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM_ENV = "HIPENGINE_QWEN35_AOTRITON_ISOLATED_PREFILL_STREAM"
@@ -12722,6 +12726,17 @@ def _gguf_moe_graph_enabled() -> bool:
     # decode path. Experimental launch-count-reduction probe (task #15); promote to
     # default only after the B3 acceptance + AR-tok/s gate (docs/REFACTOR.md).
     return _env_flag(_GGUF_MOE_GRAPH_ENV, False)
+
+
+def _gguf_c8_q6_dp4a_grouped_enabled(
+    backend: str,
+    *,
+    request_count: int,
+) -> bool:
+    """Opt-in C8-P4 grouped-dp4a owner pass; default-off (L4 pending)."""
+
+    del backend, request_count
+    return _env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
 
 
 def _gguf_c8_q5_raw_mmq_enabled(
@@ -17683,6 +17698,24 @@ class Qwen35GGUFResidentSession:
             library=getattr(self, "_q8_mmq_prefill_library", None),
         )
 
+    def _q6_dp4a_grouped_target_context(self, scratch, *, request_count: int):
+        """Expose the C8-P4 grouped-dp4a q8_1 workspace to the Q6 decode."""
+
+        if self.runner is None:
+            raise RuntimeError("GGUF resident session is closed")
+        enabled = _gguf_c8_q6_dp4a_grouped_enabled(
+            self.runner.backend,
+            request_count=request_count,
+        )
+        if not enabled:
+            return q6_dp4a_grouped_target_session(enabled=False)
+        workspace = scratch.moe_q8_1
+        return q6_dp4a_grouped_target_session(
+            workspace_ptr=int(workspace.ptr),
+            workspace_nbytes=int(workspace.nbytes),
+            enabled=True,
+        )
+
     def _q5_raw_mmq_target_context(self, scratch, *, request_count: int):
         """Expose the C8 recurrent-Q5 MMQ workspace to linear dispatch."""
 
@@ -18808,6 +18841,10 @@ class Qwen35GGUFResidentSession:
                 self.target_verifier_production_q4_rowtile
             ),
             self._q5_raw_mmq_target_context(
+                packed_scratch,
+                request_count=len(job_list),
+            ),
+            self._q6_dp4a_grouped_target_context(
                 packed_scratch,
                 request_count=len(job_list),
             ),
