@@ -56,7 +56,6 @@ from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
     qwen4_exp_qsa_scatter_index_keys_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32,
-    qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32,
     qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32,
@@ -2691,40 +2690,15 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             stream,
         )
         sparse_attention_rows = qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
-        ordered_prefill = os.environ.get(
-            "HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL", "0"
-        ) not in {"", "0", "false", "False"}
         if (
-            not ordered_prefill
-            and head_dim == 128
+            head_dim == 128
             and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
             not in {"", "0", "false", "False"}
         ):
             sparse_attention_rows = (
                 qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32
             )
-        if ordered_prefill:
-            qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32(
-                scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
-                attention_state.key_cache.ptr,
-                attention_state.value_cache.ptr,
-                metadata.selected_positions.ptr
-                + dense_rows * metadata.selection_capacity * DType.INT64.itemsize,
-                metadata.selected_counts.ptr + dense_rows * DType.INT32.itemsize,
-                scratch.context.ptr + dense_rows * q_width * DType.FP32.itemsize,
-                metadata.spans(start_row=dense_rows, rows=sparse_rows, decode=True),
-                rows=sparse_rows,
-                selected_stride=metadata.selection_capacity,
-                block_size=attention_state.block_size,
-                query_heads=query_heads,
-                kv_heads=kv_heads,
-                head_dim=head_dim,
-                scale=head_dim ** -0.5,
-                stream=stream,
-                runtime=active_runtime,
-            )
-        else:
-            sparse_attention_rows(
+        sparse_attention_rows(
             scratch.query.ptr + dense_rows * q_width * DType.FP32.itemsize,
             attention_state.key_cache.ptr,
             attention_state.value_cache.ptr,
