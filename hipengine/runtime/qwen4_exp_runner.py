@@ -3599,9 +3599,10 @@ def run_qwen4_exp_moe(
                 hidden,
                 selected_ptr=scratch.group_sorted_experts.ptr,
             )
-        if rows == 1 or os.environ.get("HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE", "") == "1":
-            # Grouped rows==1 or forced unfused A/B arm: keep the unfused
-            # sum; the rows==1 combine tail uses the single-token
+        if rows == 1 or os.environ.get("HIPENGINE_QWEN4_EXP_FUSED_COMBINE", "") != "1":
+            # Grouped rows==1, or fused PF-4 lever-2 combine disabled
+            # (default after the whole-model A/B measured loss): keep the
+            # unfused sum; the rows==1 combine tail uses the single-token
             # shared_gate_combine_out below.
             weighted_lanes_sum_out_bf16_f32w(
                 scratch.expert_down.ptr,
@@ -3615,9 +3616,12 @@ def run_qwen4_exp_moe(
                 stream=stream,
                 runtime=active_runtime,
             )
-        # rows > 1: the fused PF-4 lever-2 candidate replaces this sum and
-        # the shared_gate_combine_batch tail in one kernel (see combine site
-        # below). The unfused chain stays registered as the strict fallback.
+        # rows > 1 with HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1: the fused
+        # PF-4 lever-2 candidate replaces this sum and the
+        # shared_gate_combine_batch tail in one kernel (see combine site
+        # below). The unfused chain stays registered as the strict
+        # fallback. Default is the unfused chain: whole-model counterbalanced
+        # A/B measured pp −1.69% mean (all 12 cases negative), tg −0.19%.
     else:
         gate_weight = weights["expert_gate"]
         up_weight = weights["expert_up"]
@@ -3858,12 +3862,13 @@ def run_qwen4_exp_moe(
             runtime=active_runtime,
         )
     elif grouped_prefill and os.environ.get(
-        "HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE", ""
-    ) not in {"1"}:
+        "HIPENGINE_QWEN4_EXP_FUSED_COMBINE", ""
+    ) == "1":
         # PF-4 lever 2 T0: fused routed-sum + gated shared combine (bit-exact
         # vs the unfused weighted_lanes_sum -> shared_gate_combine chain;
-        # kernel-level A/B 455e176ab). Unfused chain stays the strict
-        # fallback via weighted_lanes_sum+shared_add registry keys.
+        # kernel-level A/B 455e176ab). Opt-in only: whole-model A/B measured
+        # a prefill loss, so the unfused chain remains the default and the
+        # strict fallback via weighted_lanes_sum+shared_add registry keys.
         weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w(
             scratch.expert_down.ptr,
             scratch.group_sorted_weights.ptr,
