@@ -635,10 +635,28 @@ Current pool: **46.519 ms/cycle**.
 - [ ] For grouped R8, seek reduced weight traversal/dequantization or an exact
       reduction schedule with lower operation wall; WMMA capacity changes and
       WG256 pairing are closed.
-- [ ] For head-shaped work, measure weight traffic, output traffic, and top-1
+- [x] For head-shaped work, measure weight traffic, output traffic, and top-1
       ownership. Fusing exact argmax is admissible only if it removes material
       traffic or launches while preserving tie/finite behavior and full-vocab
       correctness.
+      Measured (iter30, qmicro block = 3,360 B per 16×256 tile): root
+      full-vocab head 248,320×5120 = 1,042.9 MB weight/call — direct F32
+      rows=1 call at 6.242 ms/cycle = **167.1 GB/s**; proposal selection head
+      131,072×5120 = 550.5 MB/call — F32 rowtile col8 at 3.667 calls/cycle,
+      9.924 ms = **203.4 GB/s**. Output traffic ≤ 7.95 MB/call (≤0.76%); top-1
+      ownership: the fused dp4a top-1 path is registered but env-gated off
+      (`_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV` default False, rows==1 only),
+      so the active route writes full F32 logits and consumes them with
+      separate `argmax_f32_rows_i32` (≤8 MB read — immaterial). Argmax fusion
+      removes ≤0.76% of call traffic + one small launch → **not material** by
+      this bullet's own criterion; fusion is not the lever. The pool is
+      weight-traversal-bound at the 167-203 GB/s latency-hiding band (same
+      class as the Q4 fused owner's 190); identified exact lever: rows-pooling
+      the root row into a rowtile call (rows=1 decodes each weight byte for
+      one row → half the per-byte work of the rows=8 rowtile, 167 vs 203
+      GB/s) — worth ~1.1 ms/cycle but requires the root hidden to be available
+      at the verify batch point (cycle-structure dependency, record before
+      screening).
 - [ ] Preserve full-head fallback and every mapped-ID/finite/tie guard.
 - [ ] Run L0→L3/L5 for exact work; L4 is mandatory for changed arithmetic.
 

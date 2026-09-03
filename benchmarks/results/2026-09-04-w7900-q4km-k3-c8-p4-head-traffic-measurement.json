@@ -1,0 +1,51 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p4_head_traffic_measurement",
+ "date": "2026-09-04",
+ "status": "measurement",
+ "decision": "C8-P4 head-shaped-work measurement complete. Root full-vocab head (248,320x5120, 1,042.9 MB weight/call): direct F32 rows=1 call at 6.242 ms/cycle = 167.1 GB/s. Proposal selection head (131,072x5120, 550.5 MB/call): F32 rowtile col8 at 3.667 calls/cycle, 9.924 ms = 203.4 GB/s. Output traffic <=7.95 MB/call (<=0.76%); top-1 ownership: fused dp4a top-1 registered but env-gated off, active route = full F32 logits + separate argmax_f32_rows_i32; argmax fusion removes <=0.76% of traffic + one small launch -> not material by the bullet criterion. Pool is weight-traversal-bound at the 167-203 GB/s latency-hiding band. Identified exact lever: rows-pooling the root row into a rowtile call (~1.1 ms/cycle) with a cycle-structure dependency recorded before screening.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "shapes": {
+  "vocab_size": 248320,
+  "hidden_size": 5120,
+  "proposal_selection_rows": 131072,
+  "q6_qmicro_t16_block_bytes": 3360
+ },
+ "root_direct_f32": {
+  "calls_per_cycle": 1.0,
+  "ms_per_cycle": 6.242,
+  "rows": 1,
+  "weight_mb_per_call": 1042.9,
+  "logits_out_mb": 0.993,
+  "achieved_gbps": 167.1
+ },
+ "proposal_rowtile_f32": {
+  "calls_per_cycle": 3.6666666666666665,
+  "ms_per_cycle": 9.924,
+  "weight_mb_per_call": 550.5,
+  "logits_out_mb_per_call": 7.946,
+  "achieved_gbps": 203.4
+ },
+ "top1_ownership": {
+  "fused_dp4a_top1": "registered (gguf_q6_k_x8_gemv_decode_q8_1_dp4a_top1_gather_f32) but env-gated off (_GGUF_VERIFY_LM_HEAD_Q6_TOP1_DP4A_ENV default False, rows==1 only)",
+  "active_route": "full F32 logits -> argmax_f32_rows_i32 (separate launch, <=8 MB read)",
+  "argmax_fusion_materiality": "removes <=0.76% of call traffic and one small launch -> not material per the bullet criterion"
+ },
+ "identified_lever": {
+  "name": "rows-pooling root row into rowtile head call",
+  "class": "exact (same math, same accumulation order per row)",
+  "upper_bound_ms_per_cycle": 1.1,
+  "dependency": "root hidden must be available at the verify batch point; cycle-structure change required before screening"
+ },
+ "sources": [
+  "benchmarks/results/2026-09-02-w7900-q4km-k3-c8-current-profile.json",
+  "hipengine/quant/gguf_t16.py layout constants",
+  "hipengine/runtime/qwen35_gguf_runner.py head routing (lines 26310-26380, 12221)",
+  "/tmp/q5j16_r1cand.json model metadata (vocab 248320, hidden 5120)"
+ ]
+}
