@@ -417,7 +417,7 @@ def _launch_q5_source_mmq(
         raise ValueError("hidden must be a positive multiple of 256")
     if out_features <= 0:
         raise ValueError("out_features must be positive")
-    if tile not in {"i128_j128", "i64_j32"}:
+    if tile not in {"i128_j128", "i64_j32", "i64_j16"}:
         raise ValueError(f"unsupported source MMQ tile: {tile}")
     library = library or build_gguf_q5_k_source_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
@@ -474,6 +474,19 @@ def gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out(
     *args, **kwargs
 ) -> None:
     _launch_q5_source_mmq("f32", *args, tile="i64_j32", **kwargs)
+
+
+def gguf_q5_k_mmq_i64_j16_forced_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    """Forced J16 minitile launch (C8-P2 Q5 candidate leaf)."""
+    _launch_q5_source_mmq("bf16", *args, tile="i64_j16", **kwargs)
+
+
+def gguf_q5_k_mmq_i64_j16_forced_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out(
+    *args, **kwargs
+) -> None:
+    _launch_q5_source_mmq("f32", *args, tile="i64_j16", **kwargs)
 
 
 def gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out(*args, **kwargs) -> None:
