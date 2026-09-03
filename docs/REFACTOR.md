@@ -18,6 +18,18 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-04 Qwen4Exp PF-4 lever 2 unfused-combine A/B flag
+
+`HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE=1` forces the unfused
+`weighted_lanes_sum` → `shared_gate_combine_batch` chain in the grouped
+prefill tail so the whole-model counterbalanced A/B can run incumbent arms
+in the same session against the fused default
+(`weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w`, commit
+455e176ab). Removal trigger: delete the flag and the two `os.environ.get`
+branches immediately after the whole-model A/B concludes — promoted default
+or reverted lever, either way the flag has no further use. The registered
+unfused kernels themselves stay (strict-fallback policy).
+
 ## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
 
 - `qwen4exp_gdn_w32_prefill` (`hipengine_qwen4_exp_gdn_prefill_w32_f32`,

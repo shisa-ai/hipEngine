@@ -3599,9 +3599,10 @@ def run_qwen4_exp_moe(
                 hidden,
                 selected_ptr=scratch.group_sorted_experts.ptr,
             )
-        if rows == 1:
-            # Grouped decode: keep the unfused sum; the rows==1 combine tail
-            # uses the single-token shared_gate_combine_out below.
+        if rows == 1 or os.environ.get("HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE", "") == "1":
+            # Grouped rows==1 or forced unfused A/B arm: keep the unfused
+            # sum; the rows==1 combine tail uses the single-token
+            # shared_gate_combine_out below.
             weighted_lanes_sum_out_bf16_f32w(
                 scratch.expert_down.ptr,
                 scratch.group_sorted_weights.ptr,
@@ -3856,7 +3857,9 @@ def run_qwen4_exp_moe(
             stream=stream,
             runtime=active_runtime,
         )
-    elif grouped_prefill:
+    elif grouped_prefill and os.environ.get(
+        "HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE", ""
+    ) not in {"1"}:
         # PF-4 lever 2 T0: fused routed-sum + gated shared combine (bit-exact
         # vs the unfused weighted_lanes_sum -> shared_gate_combine chain;
         # kernel-level A/B 455e176ab). Unfused chain stays the strict
