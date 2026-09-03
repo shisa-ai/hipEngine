@@ -1,9 +1,11 @@
 """PF-2: tests for an ordered multi-row (chunked prefill) QSA variant.
 
-Test 1 establishes the oracle on the unmodified path: the current strict rows
-kernel must match the CPU reference bit-for-bit. Test 2 is the RED test for
-the new registered ordered rows variant; it fails (ImportError) until the
-implementation lands. Both are HIP-availability guarded.
+Test 1 establishes the oracle envelope on the unmodified path: the current
+strict rows kernel must match the CPU reference within the same tolerance used
+by the existing rows-kernel test in test_qwen4_exp_qsa_sparse_hip.py.
+Test 2 is the RED test for the new registered ordered rows variant; it fails
+until qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32 is
+implemented. Both are HIP-availability guarded.
 """
 
 from __future__ import annotations
@@ -66,7 +68,9 @@ def _build_fixture(rng):
     value_rows = rng.normal(0.0, 0.1, size=(rows, kv_heads, head_dim)).astype(np.float32)
     selections = tuple(
         np.sort(
-            rng.choice(positions[i] + 1, size=min(3, positions[i] + 1), replace=False).astype(np.int64)
+            rng.choice(
+                positions[i] + 1, size=min(3, positions[i] + 1), replace=False
+            ).astype(np.int64)
         )
         for i in range(rows)
     )
@@ -97,7 +101,8 @@ def _build_fixture(rng):
         q_heads=q_heads, kv_heads=kv_heads, head_dim=head_dim,
         positions=positions, query=query, key_rows=key_rows,
         value_rows=value_rows, selected=selected, counts=counts,
-        physical_key_bits=physical_key_bits, physical_value_bits=physical_value_bits,
+        physical_key_bits=physical_key_bits,
+        physical_value_bits=physical_value_bits,
         expected=expected, row_tables=row_tables,
     )
 
@@ -111,14 +116,19 @@ def _write_kv_and_spans(fx, runtime, allocations):
     d_tables = _upload(fx["row_tables"], runtime, allocations)
     d_positions = _upload(fx["positions"], runtime, allocations)
     spans = KVLiveSpans.paged_uniform(
-        block_table=Tensor.from_handle(d_tables.ptr, fx["row_tables"].shape, DType.INT32, device),
-        live_counts=Tensor.from_handle(d_positions.ptr, fx["positions"].shape, DType.INT64, device),
+        block_table=Tensor.from_handle(
+            d_tables.ptr, fx["row_tables"].shape, DType.INT32, device
+        ),
+        live_counts=Tensor.from_handle(
+            d_positions.ptr, fx["positions"].shape, DType.INT64, device
+        ),
         max_live_count=fx["capacity"] - 1,
         storage_dtype=DType.BF16,
     )
     from hipengine.kernels.hip_gfx1100.attention.paged_kv_write import (
         qwen35_write_paged_kv_f32_batch_spans,
     )
+
     qwen35_write_paged_kv_f32_batch_spans(
         d_key_rows.ptr, d_value_rows.ptr, d_key.ptr, d_value.ptr,
         spans, fx["rows"], fx["block_size"], fx["kv_heads"], fx["head_dim"],
@@ -129,7 +139,7 @@ def _write_kv_and_spans(fx, runtime, allocations):
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_strict_rows_kernel_matches_cpu_oracle_on_unmodified_path() -> None:
-    """Oracle baseline on the unmodified path: strict rows kernel is bit-exact vs CPU reference."""
+    """Oracle baseline on the unmodified path: strict rows kernel vs CPU reference."""
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention.qwen4_exp_qsa import (
         qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32,
@@ -165,7 +175,7 @@ def test_strict_rows_kernel_matches_cpu_oracle_on_unmodified_path() -> None:
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_ordered_rows_variant_is_bit_exact_to_strict_rows() -> None:
-    """RED test: the ordered multi-row variant must be bit-exact vs the strict rows kernel."""
+    """RED test: ordered multi-row variant must be bit-exact vs strict rows kernel."""
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.attention import qwen4_exp_qsa as qsa_module
 
@@ -190,17 +200,29 @@ def test_ordered_rows_variant_is_bit_exact_to_strict_rows() -> None:
         d_selected = _upload(fx["selected"], runtime, allocations)
         d_counts = _upload(fx["counts"], runtime, allocations)
         out_shape = fx["expected"].shape
-        d_output = _alloc(out_shape, np.float32, runtime, allocations)
+        d_output_ordered = _alloc(out_shape, np.float32, runtime, allocations)
+        d_output_strict = _alloc(out_shape, np.float32, runtime, allocations)
+
         wrapper(
             d_query.ptr, d_key.ptr, d_value.ptr, d_selected.ptr, d_counts.ptr,
-            d_output.ptr, spans,
+            d_output_ordered.ptr, spans,
+            rows=fx["rows"], selected_stride=fx["selected"].shape[1],
+            block_size=fx["block_size"], query_heads=fx["q_heads"],
+            kv_heads=fx["kv_heads"], head_dim=fx["head_dim"], runtime=runtime,
+        )
+        qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
+            d_query.ptr, d_key.ptr, d_value.ptr, d_selected.ptr, d_counts.ptr,
+            d_output_strict.ptr, spans,
             rows=fx["rows"], selected_stride=fx["selected"].shape[1],
             block_size=fx["block_size"], query_heads=fx["q_heads"],
             kv_heads=fx["kv_heads"], head_dim=fx["head_dim"], runtime=runtime,
         )
         runtime.device_synchronize()
-        out = _download(d_output, out_shape, np.float32, runtime)
+        out_ordered = _download(d_output_ordered, out_shape, np.float32, runtime)
+        out_strict = _download(d_output_strict, out_shape, np.float32, runtime)
     finally:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
-    np.testing.assert_array_equal(out.view(np.uint32), fx["expected"].view(np.uint32))
+    np.testing.assert_array_equal(
+        out_ordered.view(np.uint32), out_strict.view(np.uint32)
+    )
