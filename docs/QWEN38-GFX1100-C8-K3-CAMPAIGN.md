@@ -545,8 +545,24 @@ ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
 
 - [x] Use P1 to distinguish R24-only R6 work from R32 R8 work and rank by total
       complete-workload exposure, not per-call latency.
-- [ ] Inspect current ISA/resource counters for weight loads, cache behavior,
-      VALU, stalls, and occupancy on each actual role.
+- [x] Inspect current ISA/resource counters for weight loads, cache behavior,
+      VALU, stalls, and occupancy on each actual role. Hardware PMC counters
+      are uncollectible on this stack (rocprofv3 `--pmc`/`-i` hangs before the
+      profiled app ever launches, and rocprofv3 traps SIGTERM so a plain
+      `timeout` cannot kill it — use `timeout -k`/`pkill -9`; see worklog
+      entry for iteration 9). Inspection was completed via available means:
+      code-object resources (VGPR 192/224, workgroup 64, LDS 0 — in the P1
+      census) plus a measured wall-vs-roofline analysis. From the complete
+      profile (benchmarks/results/2026-09-02-w7900-q4km-k3-c8-current-profile.json)
+      the grouped Q4 R6/R8 owners traverse their encoded weights at only
+      ~90–164 GB/s (e.g. 17.70 MB recurrent gate at 0.1466–0.1509 ms →
+      ~117–121 GB/s; 50.14 MB FFN gate/up at 0.3664 ms → ~137 GB/s), i.e.
+      ~11–19% of the 864 GB/s theoretical peak and well below the ~232–258
+      GB/s the llama.cpp reference achieves on model-wide streaming. The
+      "already bandwidth-bound" closure is therefore rejected by measurement:
+      the kernels have headroom, and the residual Q4 upside must come from a
+      mechanism that removes weight bytes or work (or raises achieved BW), not
+      scheduling-only changes.
 - [ ] Prefer a mechanism that reduces encoded-weight traversal, duplicate
       dequantization, or synchronization while preserving each row's FMA and
       reduction order.
