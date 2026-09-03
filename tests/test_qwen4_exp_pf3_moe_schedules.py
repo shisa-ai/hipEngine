@@ -52,8 +52,8 @@ from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32
 
 _Q4_K_IN_FEATURES = 2560
-_Q4_K_OUT_FEATURES = 7680
-_Q5_1_IN_FEATURES = 7680
+_Q4_K_OUT_FEATURES = 640
+_Q5_1_IN_FEATURES = 640
 _Q5_1_OUT_FEATURES = 2560
 _NUM_EXPERTS = 64
 
@@ -100,7 +100,10 @@ _Q4_K_BASE_CACHE: dict[tuple[int, int, int], np.ndarray] = {}
 def _base_q4_k_weight(out_features: int, in_features: int, seed: int) -> np.ndarray:
     key = (out_features, in_features, seed)
     if key not in _Q4_K_BASE_CACHE:
-        from tests.test_gguf_q4_k_gemv import make_q4_k_weight
+        # The int64-indexed helper is the documented large-shape equivalent of
+        # the legacy uint8-indexed generator, which overflows for
+        # out_features > 127 (production Q4_K gate/up rows = 640).
+        from tests._gguf_synthetic_weights import make_q4_k_weight
 
         _Q4_K_BASE_CACHE[key] = make_q4_k_weight(out_features, in_features)
     return _Q4_K_BASE_CACHE[key]
@@ -136,7 +139,8 @@ def _make_expert_q5_1_weights(
     qh = rng.integers(0, 256, size=(num_experts, out_features, blocks_per_row, 4), dtype=np.uint8)
     qs = rng.integers(0, 256, size=(num_experts, out_features, blocks_per_row, 16), dtype=np.uint8)
     raw = np.concatenate(
-        [d.view(np.uint8), dmin.view(np.uint8), qh, qs], axis=-1
+        [d.view(np.uint8).reshape(*d.shape, 2),
+         dmin.view(np.uint8).reshape(*dmin.shape, 2), qh, qs], axis=-1
     )
     assert raw.shape == (num_experts, out_features, blocks_per_row, 24)
     return np.ascontiguousarray(raw.reshape(num_experts, out_features, blocks_per_row * 24))
@@ -246,7 +250,8 @@ def test_pf3_q4_k_gate_up_m1_bit_exact_vs_incumbent(rows: int) -> None:
 
     Binding shape: rows=512 chunk (compact MoE rows, uneven expert counts with
     empty experts); anchor shapes: rows=16 and rows=64. Production widths:
-    in_features=2560 (hidden), gate/up out_features=7680 each.
+    in_features=2560 (hidden), gate/up out_features=640 each (ffn). Verified
+    from GGUF metadata + tensor shapes of the local model files.
 
     RED on the unmodified path: the candidate function does not exist, so the
     import fails before any GPU work runs.
@@ -341,7 +346,8 @@ def test_pf3_q5_1_down_m1_bit_exact_vs_incumbent(rows: int) -> None:
     """Q5_1 down M1 candidate must be bit-for-bit vs the incumbent owner (T0).
 
     Binding shape: rows=512 chunk; anchor shapes: rows=16 and rows=64.
-    Production widths: in_features=7680 (ffn), down out_features=2560.
+    Production widths: in_features=640 (ffn), down out_features=2560 (hidden).
+    Verified from GGUF metadata + tensor shapes of the local model files.
 
     RED on the unmodified path: the candidate function does not exist, so the
     import fails before any GPU work runs.
