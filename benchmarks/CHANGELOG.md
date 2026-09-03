@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-04 gfx1151 Qwen3.8-Flash-Next halo-box PF-4 lever 2] Implemented the T0 fused `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` (routed lanes-sum + gated shared combine in one kernel; preserves the routed BF16 rounding boundary exactly; 3 launches → 2). Kernel-level chain A/B: **bit-exact at all shapes and faster everywhere** (rows=1 −26.1%, rows=16 −24.3%, rows=64 −6.1%, rows=512 −2.3%). Not yet wired into the runner; whole-model counterbalanced A/B pending before promotion. `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json`.
+
 - [2026-09-04 gfx1151 Qwen3.8-Flash-Next halo-box PF-4 M2] Closed the PF-4 lever 1 (M2 parallel top-10 routing compaction) as a **measured loss**: the `top10_parallel_i64` candidate (port of halo-box `a7ad7b7f` `mm_ids_helper_top10_parallel`, 5-op chain → 2 launches) is bit-exact vs the incumbent chain at rows 16/64/512/4096 but slower at the production gate (rows=64 +30.8%, rows=512 +83.1%, rows=4096 +114.6%; only below-gate rows=16 wins at −24.7% via launch count). Root cause: per-expert-block O(E×T) warp-scan re-scan is designed for llama-class E≤32, not E=512. No production change; candidate stays registered as a strict variant with 7 RED-first tests; incumbent 5-op chain stays production. `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-m2-group-map-kernel-ab.json`.
 
 - [2026-09-04 gfx1151 Qwen3.8-Flash-Next halo-box PF-3] **Promoted** the fused

@@ -101,6 +101,24 @@ _SYMBOL_WEIGHTED_LANES_FP16 = "hipengine_weighted_lanes_sum_out_fp16_f32w"
 _SYMBOL_WEIGHTED_LANES_SHARED_ADD = (
     "hipengine_weighted_lanes_sum_shared_add_out_bf16_f32w"
 )
+_SYMBOL_WEIGHTED_LANES_SHARED_GATE_COMBINE_BATCH = (
+    "hipengine_weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w"
+)
+_ARGTYPES_WEIGHTED_LANES_SHARED_GATE_COMBINE_BATCH = (
+    # values, weights, sorted_lanes, lane_to_row, shared, gate_logits, out
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_void_p,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_int64,
+    ctypes.c_void_p,
+)
 _SYMBOL_WEIGHTED_SUM = "hipengine_weighted_sum_out_bf16_f32w"
 _SYMBOL_WEIGHTED_SUM_BATCH = "hipengine_weighted_sum_batch_out_bf16_f32w"
 _SYMBOL_LAGUNA_WEIGHTED_TOP10_ROUTED_HIDDEN = (
@@ -256,6 +274,59 @@ def weighted_lanes_sum_shared_add_out_bf16_f32w(
         sorted_lanes_ptr,
         lane_to_row_ptr,
         shared_ptr,
+        out_ptr,
+        tokens,
+        top_k,
+        features,
+        threads,
+        stream,
+    )
+    _check_launch(runtime, err)
+
+
+def weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w(
+    values_ptr: int,
+    weights_ptr: int,
+    sorted_lanes_ptr: int,
+    lane_to_row_ptr: int,
+    shared_ptr: int,
+    gate_logits_ptr: int,
+    out_ptr: int,
+    tokens: int,
+    top_k: int,
+    features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """PF-4 lever-2 T0 candidate: fused routed lanes-sum + gated shared combine.
+
+    Bit-identical to the unfused production chain
+    (``weighted_lanes_sum_out_bf16_f32w`` + ``shared_gate_combine_batch_out_bf16``)
+    including the intermediate BF16 rounding of the routed sum. Strict
+    fallback: that unfused chain (unchanged).
+    """
+
+    _check_positive(tokens, "tokens")
+    _check_positive(top_k, "top_k")
+    _check_vector_shape(features, threads)
+    library = library or build_paro_combine(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        _SYMBOL_WEIGHTED_LANES_SHARED_GATE_COMBINE_BATCH,
+        _ARGTYPES_WEIGHTED_LANES_SHARED_GATE_COMBINE_BATCH,
+        ctypes.c_int,
+    )
+    err = fn(
+        values_ptr,
+        weights_ptr,
+        sorted_lanes_ptr,
+        lane_to_row_ptr,
+        shared_ptr,
+        gate_logits_ptr,
         out_ptr,
         tokens,
         top_k,
@@ -1664,6 +1735,16 @@ def register_paro_combine_kernels(*, replace: bool = True) -> None:
                 "out",
             ),
             weighted_lanes_sum_shared_add_out_bf16_f32w,
+            replace=replace,
+        )
+        register(
+            KernelKey(
+                "hip_gfx1100",
+                "weighted_lanes_sum+shared_gate_combine",
+                quant,
+                "out",
+            ),
+            weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w,
             replace=replace,
         )
         register(
