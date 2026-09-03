@@ -9,6 +9,7 @@ from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip
 from hipengine.core.ctypes_cache import signed_kernel_fn
 from hipengine.core.dtype import DType
 from hipengine.core.hip import HIP_SUCCESS, HipRuntime, get_hip_runtime
+from hipengine.core.memory import malloc, free
 from hipengine.kernels.registry import KernelKey, register
 from hipengine.kvcache import KVLiveSpans
 
@@ -87,6 +88,11 @@ _ARGS_SPARSE_ATTN_ORDERED = (ctypes.c_void_p,) * 8 + (ctypes.c_int64,) * 6 + (
     ctypes.c_void_p,
 )
 _ARGS_SPARSE_ATTN_ROWS = (ctypes.c_void_p,) * 7 + (ctypes.c_int64,) * 7 + (
+    ctypes.c_float,
+    ctypes.c_void_p,
+)
+
+_ARGS_SPARSE_ATTN_ORDERED_ROWS = (ctypes.c_void_p,) * 9 + (ctypes.c_int64,) * 7 + (
     ctypes.c_float,
     ctypes.c_void_p,
 )
@@ -708,6 +714,75 @@ def qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32(
     )
 
 
+def qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32(
+    query_ptr: int,
+    key_cache_ptr: int,
+    value_cache_ptr: int,
+    selected_positions_ptr: int,
+    selected_counts_ptr: int,
+    output_ptr: int,
+    spans: KVLiveSpans,
+    *,
+    rows: int,
+    selected_stride: int,
+    block_size: int,
+    query_heads: int,
+    kv_heads: int,
+    head_dim: int,
+    scale: float | None = None,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Exact ordered three-pass sparse QSA attention for multi-row (chunked) prefill.
+
+    Preserves the exact ordered arithmetic of the retained decode reuse
+    (``strict_ordered_three_pass_spans``): no partial-softmax reassociation.
+    Invalid/padded selections are skipped deterministically. Score and
+    coefficient scratch buffers are allocated internally and released after a
+    device synchronization.
+    """
+    if spans.spans_mode != "uniform" or spans.storage_dtype != DType.BF16:
+        raise ValueError("sparse QSA attention requires uniform BF16 KVLiveSpans")
+    if rows <= 0 or selected_stride <= 0 or block_size <= 0:
+        raise ValueError("rows, selected_stride, and block_size must be positive")
+    if query_heads <= 0 or kv_heads <= 0 or query_heads % kv_heads:
+        raise ValueError("query heads must be divisible by positive KV heads")
+    if head_dim <= 0 or head_dim > 256:
+        raise ValueError("head_dim must be in 1..256")
+    if spans.live_counts.numel != rows or spans.base_offsets.numel % rows:
+        raise ValueError("row QSA spans must provide one table and live count per row")
+    block_table_len = spans.base_offsets.numel // rows
+    attention_scale = head_dim ** -0.5 if scale is None else float(scale)
+    library = library or build_qwen4_exp_qsa(load=True)
+    runtime = runtime or get_hip_runtime()
+
+    plane = rows * query_heads * selected_stride
+    scores = malloc(plane * DType.FP32.itemsize, runtime=runtime)
+    coefficients = malloc(2 * plane * DType.FP32.itemsize, runtime=runtime)
+    try:
+        fn = signed_kernel_fn(
+            library,
+            "hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32",
+            _ARGS_SPARSE_ATTN_ORDERED_ROWS,
+            ctypes.c_int,
+        )
+        _check_launch(
+            runtime,
+            fn(
+                query_ptr, key_cache_ptr, value_cache_ptr, selected_positions_ptr,
+                selected_counts_ptr, spans.base_offsets.ptr, scores.ptr,
+                coefficients.ptr, output_ptr, rows, selected_stride, block_size,
+                block_table_len, query_heads, kv_heads, head_dim, attention_scale,
+                stream,
+            ),
+        )
+        runtime.device_synchronize()
+    finally:
+        free(scores, runtime=runtime)
+        free(coefficients, runtime=runtime)
+
+
 def qwen4_exp_qsa_scatter_index_keys_f32(
     source_ptr: int,
     destination_ptr: int,
@@ -1072,6 +1147,12 @@ def register_qwen4_exp_qsa_kernels(*, replace: bool = True) -> None:
             "hip_gfx1100",
             "qsa_sparse_attention",
             "bf16_kv",
+            "strict_ordered_three_pass_rows_spans",
+        ): qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32,
+        KernelKey(
+            "hip_gfx1100",
+            "qsa_sparse_attention",
+            "bf16_kv",
             "strict_ordered_three_pass_spans",
         ): qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32,
         KernelKey(
@@ -1162,6 +1243,7 @@ __all__ = [
     "qwen4_exp_qsa_topk_expand_rows_f32_i64",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_f32",
+    "qwen4_exp_qsa_sparse_attention_paged_bf16_ordered_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_wave32_f32",
     "qwen4_exp_qsa_sparse_attention_paged_bf16_rows_wave32_f32",
