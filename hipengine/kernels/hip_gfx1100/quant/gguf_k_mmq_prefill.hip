@@ -516,8 +516,8 @@ __global__ void q8_1_d4s4_f32_quantize_bf16_kmajor_kernel(
   }
 }
 
-template <int qtype, typename output_t>
-__launch_bounds__(128, 2)
+template <int qtype, typename output_t, int kMinBlocksPerProcessor>
+__launch_bounds__(128, kMinBlocksPerProcessor)
 __global__ void gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel(
     const q8_1_d4s4_f32_block* __restrict__ xq,
     const uint8_t* __restrict__ qweight,
@@ -1761,7 +1761,43 @@ int launch_mmq(
       static_cast<unsigned int>((out_features + MMQ_COLS - 1) / MMQ_COLS),
       static_cast<unsigned int>((rows + MMQ_ROWS - 1) / MMQ_ROWS));
   hipLaunchKernelGGL(
-      (gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<qtype, output_t>),
+      (gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<qtype, output_t, 2>),
+      grid,
+      block,
+      0,
+      stream,
+      xq,
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(hidden),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+template <int qtype, typename output_t, int kMinBlocksPerProcessor>
+int launch_mmq_minblocks(
+    const q8_1_d4s4_f32_block* xq,
+    const uint8_t* qweight,
+    output_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || out == nullptr ||
+      rows <= 0 || hidden <= 0 || (hidden % QK_K) != 0 ||
+      out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(MMQ_THREADS);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + MMQ_COLS - 1) / MMQ_COLS),
+      static_cast<unsigned int>((rows + MMQ_ROWS - 1) / MMQ_ROWS));
+  hipLaunchKernelGGL(
+      (gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<
+          qtype,
+          output_t,
+          kMinBlocksPerProcessor>),
       grid,
       block,
       0,
@@ -2038,6 +2074,13 @@ extern "C" int hipengine_##NAME##_mmq32_q8_1_d4s4_f32_bf16_bf16_out( \
     const void* xq, const uint8_t* qweight, uint16_t* out, int64_t rows, \
     int64_t hidden, int64_t out_features, hipStream_t stream) { \
   return launch_mmq<QTYPE, uint16_t>( \
+      reinterpret_cast<const q8_1_d4s4_f32_block*>(xq), qweight, out, \
+      rows, hidden, out_features, stream); \
+} \
+extern "C" int hipengine_##NAME##_mmq32_mb4_q8_1_d4s4_f32_bf16_bf16_out( \
+    const void* xq, const uint8_t* qweight, uint16_t* out, int64_t rows, \
+    int64_t hidden, int64_t out_features, hipStream_t stream) { \
+  return launch_mmq_minblocks<QTYPE, uint16_t, 4>( \
       reinterpret_cast<const q8_1_d4s4_f32_block*>(xq), qweight, out, \
       rows, hidden, out_features, stream); \
 } \

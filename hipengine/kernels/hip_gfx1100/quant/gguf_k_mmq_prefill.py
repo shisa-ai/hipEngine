@@ -397,6 +397,70 @@ def _launch_mmq(
         runtime.check(int(error))
 
 
+def _launch_mmq_minblocks(
+    quant: str,
+    output_dtype: str,
+    minblocks: int,
+    xq_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Raw MMQ32 launch with a forced min-blocks-per-processor launch bound.
+
+    Diagnostic lever for the latency-serialized raw owner: the only variable
+    versus the registered default is the residency hint, so outputs must be
+    bit-identical.
+    """
+    if rows <= 0:
+        raise ValueError("rows must be positive")
+    if hidden <= 0 or hidden % 256 != 0:
+        raise ValueError("hidden must be a positive multiple of 256")
+    if out_features <= 0:
+        raise ValueError("out_features must be positive")
+    if minblocks not in {2, 4}:
+        raise ValueError("minblocks must be 2 or 4")
+    library = library or build_gguf_k_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    symbol = (
+        f"hipengine_{quant}_mmq32_mb{minblocks}_q8_1_d4s4_f32_"
+        f"bf16_{output_dtype}_out"
+    )
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    error = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(hidden),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
+def gguf_q5_k_mmq32_mb4_q8_1_d4s4_f32_bf16_bf16_out(*args, **kwargs) -> None:
+    """Forced minblocks=4 raw MMQ32 launch (C8-P2 R24 latency probe)."""
+    _launch_mmq_minblocks("gguf_q5_k", "bf16", 4, *args, **kwargs)
+
+
 def _launch_q5_source_mmq(
     output_dtype: str,
     xq_ptr: int,

@@ -1,0 +1,30 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_q5_raw_mmq32_minblocks_leaf",
+ "date": "2026-09-04",
+ "status": "rejected",
+ "decision": "minblocks=4 residency hint is neutral on the raw R24 owner (0.9986x, 25/48 weights, bf16 bit-exact). At mb2 the resident capacity (192 blocks) already exceeds the 160-block grid, so every block is concurrently resident and the raw owner is per-block-MLP limited (one global fetch in flight across 192 barrier-gated K32 iterations), not occupancy limited. The remaining lever is software pipelining (prefetch next K32 tile into registers before computing the current one, one barrier per iteration).",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+ },
+ "arms": {
+  "mb2": "launch_mmq<5,uint16_t,2> (registered raw owner)",
+  "mb4": "launch_mmq_minblocks<5,uint16_t,4>"
+ },
+ "mb2_sum_ms": 9.987510100007057,
+ "mb4_sum_ms": 9.973366111516953,
+ "mb4_ratio": 0.9985838323717846,
+ "mb4_wins": 25,
+ "mb2_wins": 23,
+ "all_bit_exact": true,
+ "rows": 24,
+ "weights": 48,
+ "timing": "HIP events, consumer-only bursts (shared producer excluded)"
+}
