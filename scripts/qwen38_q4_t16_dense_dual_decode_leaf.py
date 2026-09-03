@@ -15,7 +15,9 @@ from typing import Callable
 
 import numpy as np
 
+from hipengine.benchmark.provenance import detect_device_name
 from hipengine.core.hip import get_hip_runtime
+from hipengine.kernels.backends import detect_hip_target_arches
 from hipengine.core.memory import (
     copy_device_to_host,
     copy_host_to_device,
@@ -356,8 +358,8 @@ def main() -> int:
         "model": str(args.model.resolve()),
         "model_size_bytes": args.model.stat().st_size,
         "hardware": {
-            "device": "AMD Radeon 8060S Graphics",
-            "arch": "gfx1151",
+            "device": detect_device_name() or "unknown",
+            "arch": ",".join(detect_hip_target_arches()) or "unknown",
         },
         "protocol": {
             "layers": list(layers),
