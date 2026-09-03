@@ -69,13 +69,21 @@ def _hip_available() -> bool:
 
 
 def _routed_lanes(rows: int, seed: int) -> np.ndarray:
-    """Deterministic routed expert ids [rows * top_k], uneven with empty experts."""
+    """Deterministic routed expert ids [rows * top_k], uneven with empty experts.
+
+    Experts are sampled WITHOUT replacement within each token, matching the
+    production top-k invariant (distinct experts per token) that the M2
+    mechanism relies on.
+    """
     rng = np.random.default_rng(seed)
     # Skew the distribution so many experts get zero lanes and active experts
     # get uneven counts (binding shape: ~330/512 active at ~7-10 lanes each).
     weights = rng.uniform(0.0, 1.0, size=_NUM_EXPERTS) ** 4
     p = weights / weights.sum()
-    selected = rng.choice(_NUM_EXPERTS, size=rows * _TOP_K, p=p).astype(np.int64)
+    selected = np.stack(
+        [rng.choice(_NUM_EXPERTS, size=_TOP_K, replace=False, p=p)
+         for _ in range(rows)]
+    ).astype(np.int64).reshape(rows * _TOP_K)
     return selected
 
 
@@ -163,6 +171,10 @@ def _incumbent_chain(selected, routing, rows, runtime, allocations):
     d_selected = _upload(selected, runtime, allocations)
     d_routing = _upload(routing, runtime, allocations)
 
+    # Production chain includes both memsets (qwen4_exp_runner.py
+    # grouped_prefill block); they are no-ops on fresh zero host uploads but
+    # keep the fixture faithful for reuse.
+    runtime.memset(d_counts.ptr, 0, d_counts.nbytes)
     qwen35_moe_group_count(
         d_selected.ptr, d_counts.ptr, compact, _NUM_EXPERTS,
         runtime=runtime,
@@ -171,6 +183,7 @@ def _incumbent_chain(selected, routing, rows, runtime, allocations):
         d_counts.ptr, d_padded.ptr, d_expert_start.ptr, d_total_padded.ptr,
         _NUM_EXPERTS, 1, runtime=runtime,
     )
+    runtime.memset(d_offsets.ptr, 0, d_offsets.nbytes)
     qwen35_moe_group_scatter_gather_lowp(
         d_hidden.ptr, d_selected.ptr, d_routing.ptr, d_expert_start.ptr,
         d_offsets.ptr, d_sorted_lanes.ptr, d_sorted_experts.ptr,
@@ -294,7 +307,7 @@ def test_pf4_m2_group_map_bijection_and_content(rows: int) -> None:
         lo, hi = int(cand_es[expert]), int(cand_es[expert + 1])
         lanes = cand_sl[lo:hi]
         assert np.all(cand_se[lo:hi] == expert)
-        expected = np.sort(selected[selected == expert])
+        expected = np.sort(np.where(selected == expert)[0])
         np.testing.assert_array_equal(np.sort(lanes), expected)
         if lanes.size:
             np.testing.assert_array_equal(
@@ -305,7 +318,7 @@ def test_pf4_m2_group_map_bijection_and_content(rows: int) -> None:
     token_of_row = cand_sl // _TOP_K
     np.testing.assert_array_equal(
         cand_packed.reshape(compact, _HIDDEN),
-        incumbent["hidden"][token_of_row],
+        incumbent["hidden"].reshape(rows, _HIDDEN)[token_of_row],
     )
     # Same lane sets per expert as the incumbent (order-free comparison).
     for expert in range(_NUM_EXPERTS):
