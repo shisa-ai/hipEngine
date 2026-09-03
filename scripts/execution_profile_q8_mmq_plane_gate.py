@@ -104,6 +104,21 @@ def _set_policy(runner: Any, policy: Any) -> None:
     runner._q8_mmq_policy = policy
 
 
+def _warm_policy(runner: Any, warmup_tokens: Sequence[int]) -> None:
+    """Absorb the one-shot stale-dispatch replay after a policy flip.
+
+    Forensics (2026-09-03): the first decode-bearing request after switching
+    the MMQ policy replayed the previous chain once (x3-after-x2 repeat 0
+    hashed equal to the x2 trajectory; repeats 1-2 hashed to the true x3
+    chain; prefill-only switches were clean). Production never flips the
+    policy mid-session, so this is harness-scoped; one discarded warmup
+    request per flip absorbs it.
+    """
+
+    runner.reset()
+    runner.prefill([int(t) for t in warmup_tokens[:32]], capture_logits=False)
+
+
 def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     os.environ.setdefault("HIPENGINE_HIP_ARCH", "gfx1151")
     if args.require_cached_build:
@@ -192,9 +207,11 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             prompt_id = str(row["id"])
             tokens = [int(t) for t in row["prompt_token_ids"]]
             _set_policy(runner, None)
+            _warm_policy(runner, tokens)
             strict = _strict_trajectory(runner, tokens, decode_steps)
             forced = [step["token_id"] for step in strict[:-1]]
             _set_policy(runner, candidate_policy)
+            _warm_policy(runner, tokens)
             runs = tuple(
                 _forced_trajectory(runner, tokens, forced)
                 for _ in range(int(args.repeat_runs))
@@ -209,6 +226,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
             )
             if context_policy is not None:
                 _set_policy(runner, context_policy)
+                _warm_policy(runner, tokens)
                 context_runs = tuple(
                     _forced_trajectory(runner, tokens, forced)
                     for _ in range(int(args.repeat_runs))
@@ -350,6 +368,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         ],
         "route": {
             "surface": "runner _q8_mmq_policy (dense-pair-gate pattern)",
+            "warmup_request_after_policy_flip": True,
             "policy_restored_after_capture": True,
             "candidate_planes": int(args.planes),
             "context_planes": int(args.context_planes) if args.context_planes else None,
