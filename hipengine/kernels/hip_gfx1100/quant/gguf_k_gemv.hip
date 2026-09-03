@@ -1137,6 +1137,68 @@ __global__ void gguf_k_selected_prefill_out_kernel(
   }
 }
 
+// PF-1 fork (b) T0 candidate: grouped selected down prefill. One block serves
+// every selected lane of one (expert, out_col) pair and reads the expert's
+// weight row once, instead of one block per output element re-reading it per
+// lane. Per-output arithmetic is identical to
+// gguf_k_selected_prefill_out_kernel: the same per-thread k sequence
+// (k = threadIdx.x; k += blockDim.x), the same ordered ``acc += xv * wv``
+// accumulation, and the same reduce_block_sum wave-shuffle + serial wave
+// publication, so output bits must equal the block-per-output owner
+// (RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py). Rows whose
+// expert is invalid never appear in the group map and stay unwritten, exactly
+// like the owner's invalid-expert early return.
+template <typename scalar_t, typename out_t>
+__launch_bounds__(256, 2)
+__global__ void gguf_k_selected_grouped_prefill_out_kernel(
+    const scalar_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start,
+    const int64_t* __restrict__ lane_to_row,
+    const uint8_t* __restrict__ qweight,
+    out_t* __restrict__ out,
+    int x_rows,
+    int rows,
+    int num_experts,
+    int in_features,
+    int out_features) {
+  const int out_col = blockIdx.x;
+  const int expert_id = blockIdx.y;
+  if (out_col >= out_features || expert_id >= num_experts) return;
+  const int lane_begin = static_cast<int>(expert_start[expert_id]);
+  const int lane_end = static_cast<int>(expert_start[expert_id + 1]);
+  if (lane_begin >= lane_end) return;
+  const int lanes_per_x_row = rows / x_rows;
+  const int row_bytes = (in_features / Q8_0_BLOCK) * Q8_0_BLOCK_BYTES;
+  const int64_t expert_bytes = static_cast<int64_t>(out_features) * row_bytes;
+  const uint8_t* __restrict__ weight_row =
+      qweight + static_cast<int64_t>(expert_id) * expert_bytes +
+      static_cast<int64_t>(out_col) * row_bytes;
+
+  for (int lane = lane_begin; lane < lane_end; ++lane) {
+    const int row = static_cast<int>(lane_to_row[lane]);
+    const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
+    const scalar_t* __restrict__ x_row_ptr =
+        x + static_cast<int64_t>(x_row) * in_features;
+
+    float acc = 0.0f;
+    for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+      const float xv = scalar_to_float<scalar_t>(x_row_ptr[k]);
+      const float wv = q8_0_weight(weight_row, k);
+      acc += xv * wv;
+    }
+    const float total = reduce_block_sum(acc);
+    if (threadIdx.x == 0) {
+      store_output<out_t>(
+          out, static_cast<int64_t>(row) * out_features + out_col, total);
+    }
+    // reduce_block_sum reuses its shared wave_sums scratch across loop
+    // iterations; barrier before the next lane's lane-0 write so it cannot
+    // race with this lane's thread-0 read. Scheduling only — no arithmetic
+    // effect.
+    __syncthreads();
+  }
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_silu_prefill_out_kernel(
@@ -4329,6 +4391,46 @@ int launch_gguf_k_selected_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t, typename out_t>
+int launch_gguf_k_selected_grouped_gemv_out(
+    const scalar_t* x,
+    const int64_t* expert_start,
+    const int64_t* lane_to_row,
+    const uint8_t* qweight,
+    out_t* out,
+    int64_t x_rows,
+    int64_t rows,
+    int64_t num_experts,
+    int64_t in_features,
+    int64_t out_features,
+    int64_t threads,
+    hipStream_t stream) {
+  const bool valid_shape = (in_features % Q8_0_BLOCK) == 0;
+  if (x == nullptr || expert_start == nullptr || lane_to_row == nullptr ||
+      qweight == nullptr || out == nullptr || x_rows <= 0 || rows <= 0 ||
+      (rows % x_rows) != 0 || num_experts <= 0 || in_features <= 0 ||
+      out_features <= 0 || !valid_shape ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(static_cast<unsigned int>(threads));
+  const dim3 grid(
+      static_cast<unsigned int>(out_features),
+      static_cast<unsigned int>(num_experts));
+  gguf_k_selected_grouped_prefill_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
+      x,
+      expert_start,
+      lane_to_row,
+      qweight,
+      out,
+      static_cast<int>(x_rows),
+      static_cast<int>(rows),
+      static_cast<int>(num_experts),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 int launch_gguf_k_selected_silu_gemv_out(
     const scalar_t* gate,
@@ -4487,6 +4589,20 @@ extern "C" int hipengine_##NAME##_gemv_rowtile_f32_f32_out( \
 HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
+
+// PF-1 fork (b) T0 candidate: grouped selected down (Q8_0 only). Consumes the
+// per-expert group map (exclusive expert_start[num_experts+1] prefix plus the
+// sorted lane_to_row permutation) that the M2 routing infrastructure already
+// produces; per-output bits must equal selected_gemv_bf16_bf16_out.
+extern "C" int hipengine_gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* qweight, uint16_t* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t>(
+      x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
 
 #define HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(NAME, QTYPE, ROW_BATCH) \
 extern "C" int hipengine_##NAME##_gemv_rowbatch##ROW_BATCH##_bf16_bf16_out( \

@@ -71,13 +71,13 @@ def make_q8_0_weight_large(out_features: int, in_features: int) -> np.ndarray:
         np.float16
     )
     qs = rng.integers(-128, 128, size=(out_features, blocks, block), dtype=np.int8)
-    out = np.empty((out_features, blocks * 34), dtype=np.uint8)
-    out[:, :] = 0
     scales_u16 = scales.view(np.uint16)
-    out[:, 0::34] = scales_u16.view(np.uint8).reshape(out_features, blocks, 2)[:, :, 0]
-    out[:, 1::34] = scales_u16.view(np.uint8).reshape(out_features, blocks, 2)[:, :, 1]
-    out[:, 2::34] = qs.reshape(out_features, blocks * block).view(np.uint8)
-    return out
+    scale_bytes = scales_u16.view(np.uint8).reshape(out_features, blocks, 2)
+    layout = np.zeros((out_features, blocks, 34), dtype=np.uint8)
+    layout[:, :, 0] = scale_bytes[:, :, 0]
+    layout[:, :, 1] = scale_bytes[:, :, 1]
+    layout[:, :, 2:34] = qs.view(np.uint8)
+    return np.ascontiguousarray(layout.reshape(out_features, blocks * 34))
 
 
 def _build_group_map(
@@ -183,6 +183,7 @@ def test_pf1_forkb_grouped_selected_down_bit_parity(
                 lane_to_row_dev.ptr,
                 weight_dev.ptr,
                 out_grouped_dev.ptr,
+                x_rows,
                 rows,
                 num_experts,
                 in_features,
