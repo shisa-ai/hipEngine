@@ -811,6 +811,29 @@ extern "C" int hipengine_gguf_q8_0_mmq128_quantize_f32_d4x3(
   return static_cast<int>(hipGetLastError());
 }
 
+// PF-1d plane-reduction candidate: double-plane f32 residual quantize.
+extern "C" int hipengine_gguf_q8_0_mmq128_quantize_f32_d4x2(
+    const float* x,
+    void* out_d4,
+    int64_t rows,
+    int64_t hidden,
+    hipStream_t stream) {
+  if (x == nullptr || out_d4 == nullptr || rows <= 0 || hidden <= 0 ||
+      (hidden % 128) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(256);
+  const dim3 grid(
+      static_cast<unsigned int>(rows),
+      static_cast<unsigned int>((hidden + 1023) / 1024));
+  hipLaunchKernelGGL(
+      (q8_0_mmq128_quantize_f32_residual_d4_kernel<2>),
+      grid, block, 0, stream, x,
+      reinterpret_cast<block_q8_1_mmq_d4*>(out_d4),
+      static_cast<int>(rows), static_cast<int>(hidden));
+  return static_cast<int>(hipGetLastError());
+}
+
 extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     const void* x_d4,
     const uint8_t* qweight,
@@ -829,10 +852,26 @@ extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
       risk_count, risk_indices, max_risks, risk_threshold);
 }
 
-// PF-1d occupancy retile: 64x64 output/token tiles, 128 threads, 28,928 B
-// shared — two resident blocks per gfx1151 CU (64 KB LDS) instead of one.
-// Bit-identical to the 128x128 chain (same per-element fragment order).
-// PF-1d occupancy retile B: 32x128 output/token tiles, 64 threads, 28,672 B
+// PF-1d plane-reduction candidate: guarded f32 chain with two activation
+// planes. Not bit-identical to d4x3; admission requires the production
+// numerics gate.
+extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out(
+    const void* x_d4,
+    const uint8_t* qweight,
+    float* out,
+    int* risk_count,
+    int* risk_indices,
+    int64_t max_risks,
+    float risk_threshold,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_mmq<2, float, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
+      qweight, out, rows, hidden, out_features, stream,
+      risk_count, risk_indices, max_risks, risk_threshold);
+}
 // shared — two resident blocks per gfx1151 CU while keeping the 128-token
 // tile (weight global traffic unchanged vs the 128x128 reference).
 
