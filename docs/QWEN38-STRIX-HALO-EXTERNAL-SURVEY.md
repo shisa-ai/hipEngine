@@ -39,12 +39,13 @@ results and invalid state-contaminated output.
   matrix at C3-C6, with one named defect at C1:** the one-group route lifts
   C5-C8 to **37.280/41.048/44.492/50.893 tok/s** (+33.2/+25.1/+34.4/+43.6%
   over the reviewed K3 row) and C2-C4 measure
-  **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x own AR)** with 10/10 AR
-  equality. C8 is the first width where explicit MTP reaches own AR
-  (**1.0057x**); C5-C7 remain slightly below. C1 regressed after the B1
-  transfer — production explicit C1 K3 falls to **8.556 tok/s (0.743x AR)**
-  with acceptance 0.1523 and 0/10 AR equality; the registered opt-out
-  restores **18.168 tok/s (1.582x, 10/10)**. Automatic serving is unaffected;
+  **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x own AR)**
+  with 10/10 AR equality. C8 is the first width where explicit MTP reaches own AR
+  (**1.0057x**); C5-C7 remain slightly below. C1 collapses at resident capacity
+  >= 2 — **~8.5 tok/s (0.743x AR)** with acceptance 0.1523 and 0/10 AR
+  equality; a capacity x flag matrix shows this is independent of the B1/B2
+  owner switches, while capacity-1 width-1 is healthy (18.111, 1.6255x,
+  10/10). Automatic serving is unaffected at the confirmed strict C1 route;
   automatic C2-C8 remains K0.
 - **Laurent's ordinary built-in MTP path provides broad, usable gains:** it
   leads standardized MTP at C1-C2 in the pinned matrix. Stock HIP is stronger
@@ -82,7 +83,7 @@ equal model quality.
 
 | Route | Usable? | Decision |
 | --- | :---: | --- |
-| hipEngine reviewed baseline `b768516f2`, with B1/B2/B5 retentions through `3d48170a7` | **Yes** | The reviewed C1-C8 baseline passed its AR/MTP gates. Current head: explicit K3 reaches **30.094/32.819/37.985/37.280/41.048/44.492/50.893 tok/s at C2-C8** (C8 at 1.0057x own AR), leading the pinned fixed-K3 matrix at C3-C6; prefill leads six of eight widths. Production explicit C1 carries a named B1-owner defect with a registered opt-out (18.168 tok/s, 1.582x). Automatic C2-C8 remains K0. |
+| hipEngine reviewed baseline `b768516f2`, with B1/B2/B5 retentions through `3d48170a7` | **Yes** | The reviewed C1-C8 baseline passed its AR/MTP gates. Current head: explicit K3 reaches **30.094/32.819/37.985/37.280/41.048/44.492/50.893 tok/s at C2-C8** (C8 at 1.0057x own AR), leading the pinned fixed-K3 matrix at C3-C6; prefill leads six of eight widths. Production explicit C1 collapses at resident capacity >= 2 (flag-independent; capacity-1 is healthy at 18.111 tok/s, 1.6255x) — open investigation. Automatic C2-C8 remains K0. |
 | `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
 | Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Broad reusable llama.cpp route; it leads standardized MTP at C1-C2 and C6. |
 | Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |
@@ -192,13 +193,18 @@ versus Mainline Vulkan 32.713, +14.0%) and C6 (41.048 versus Laurent 37.154,
 9.48% behind stock HIP and 0.11% ahead of Laurent), and reaches 1.0057x own
 AR at C8. C3/C4 one-group cells measure 32.819/37.985 tok/s (1.314x/1.207x
 own AR) with 10/10 AR equality and acceptance unchanged from the pinned head;
-C2 measures 30.094 (1.564x). *C1 carries a named defect: production explicit
-C1 K3 regressed to 8.556 tok/s (0.743x own AR) with draft acceptance
-0.1523 and 0/10 AR equality — the B1 rows>1 production owner at the 4-row
-packed-verifier shape changes target logits enough to break greedy equality;
-the registered opt-out (`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0`)
-restores 18.168 tok/s (1.582x, acceptance 0.7889, 10/10 equality) at the same
-commit. Strict C1 automatic serving is a separate unchanged route.
+C2 measures 30.094 (1.564x). *C1 carries a named defect at resident capacity
+>= 2: the width-1 group collapses to ~8.5 tok/s (0.743x own AR) with draft
+acceptance 0.1523 and 0/10 AR equality. A capacity x flag matrix at the same
+head falsified the initial owner-family attribution: the collapse persists
+with the B1 serving flag off and with B2 F16 staging off, while capacity-1
+width-1 serving is healthy under both flag states (18.111 tok/s, 1.6255x,
+10/10). The measured root cause is therefore a numerics divergence in the
+packed batch verifier's 4-row dataflow (capacity >= 2 routes width-1 groups
+through `verify_target_blocks_batch`; capacity 1 uses the healthy
+single-block/native path), with regression window `b768516f2..HEAD`.
+No env opt-out is effective. The investigation is open; strict C1 automatic
+serving (confirmed at the B5 default) is a separate route.
 The one-group packed-verifier execution differs mechanically from the pinned
 subgroup route; protocol, prompts, and boundary are identical.
 
@@ -326,9 +332,9 @@ integer MMQ retentions ([L11], [L14]) then lifted the one-group K3 route to
 **37.280/41.048/44.492/50.893 tok/s at C5-C8** (C8 = 1.0057x own AR),
 leading the pinned external matrix at C3-C6 and ranking second at C7-C8
 (see the overlay row above); C2-C4 measure 30.094/32.819/37.985 tok/s
-(1.564x/1.314x/1.207x). Production explicit C1 carries the named B1-owner
-defect described below the MTP table; its opt-out arm measures 18.168 tok/s
-(1.582x). The C3/K3 production numerical gate previously passed 240/240
+(1.564x/1.314x/1.207x). Production explicit C1 carries the named
+capacity-gated defect described below the MTP table; capacity-1 width-1
+serving measures 18.111 tok/s (1.6255x). The C3/K3 production numerical gate previously passed 240/240
 canonical and 192/192 heldout top-1 checks, with maximum KL 8.69e-4 and 8.45e-4
 respectively ([L8]). Width-4 prompt streaming changed its acceptance
 trajectory, so that T3 scope remains an explicit diagnostic rather than an
@@ -768,11 +774,12 @@ The reviewed matrix and C=N screen narrow the remaining work:
 4. Target the remaining broad-MTP gaps directly: 3.45%/9.48% behind stock HIP
    at C7/C8 and the C1-C2 deficit to the llama.cpp forks. Do not return to
    serial per-request verification or acceptance-only tuning.
-5. Repair the production R4 packed-verifier owner: explicit C1 K3 fell to
-   0.743x own AR with broken greedy equality after the B1 transfer ([L15]).
-   Keep the `HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL=0` opt-out
-   registered until an exact R4 owner or an R4 dispatch floor lands behind a
-   RED test pinning C1 AR equality and acceptance.
+5. Repair the width-1 packed batch-verify divergence at resident capacity
+   >= 2 ([L15]): the group collapses to ~0.75x own AR with broken greedy
+   equality under every measured owner-family state; capacity-1 width-1 is
+   healthy. Capture batch-vs-single-block target logits on identical 4-token
+   inputs and bisect the `b768516f2..HEAD` window; an interim rows<8 dispatch
+   floor was reverted after measurements falsified its premise.
 
 Sequential ownership, lifecycle, and contamination gates are now part of the
 hipEngine correctness evidence. The external results still do not justify
