@@ -18,6 +18,25 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
+
+- `qwen4exp_gdn_w32_prefill` (`hipengine_qwen4_exp_gdn_prefill_w32_f32`,
+  a `WARPS_PER_BLOCK=32` instantiation of the templated columnwarps kernel in
+  `hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.hip`) is a measured
+  loss vs the production columnwarps `<4, 4>` owner at every shape >= 64 rows
+  (+1.6% to +6.8%, bit-exact parity; rows=16 within noise) and stays a
+  registered non-default strict variant with its exact-parity RED tests
+  (`tests/test_qwen4_exp_gdn_w32_prefill.py`). It is never selected by
+  dispatch; the default remains columnwarps `<4, 4>`.
+- Remove the variant registration, the `<32, 4>` instantiation, the host
+  wrapper, and the test file if a later campaign wants the registry back —
+  trigger: a named product decision that the w32 geometry will not be
+  revisited on gfx11 (e.g., at campaign closure), or if the tile-16 lever
+  (deferred behind PF-0) ever lands in a form that makes the 32-warp
+  geometry unreachable. Do not remove before that trigger: it is the only
+  device-side reproduction of the 1024-thread occupancy loss measured in
+  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
+
 ## 2026-09-02 Qwen4Exp P11 compact draft output — selector closed
 
 - The public `HIPENGINE_QWEN4_EXP_MTP_COMPACT_OUTPUT` selector and resident-hidden

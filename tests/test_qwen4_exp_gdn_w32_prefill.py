@@ -72,12 +72,18 @@ def test_qwen4_exp_gdn_w32_prefill_registry_contract() -> None:
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("v_heads", [32, 48, 64])
 def test_qwen4_exp_gdn_w32_prefill_exact_vs_strict_owner(v_heads: int) -> None:
-    """The w32 prefill variant must be bit-exact vs the strict owner (T0).
+    """The w32 prefill variant must be bit-exact vs the production owner (T0).
 
     Production-like geometry: multi-row prefill (rows=16), H in {32, 48, 64}
-    value heads with 16 key heads, S_k = S_v = 128. Oracle = the current
-    strict owner ``qwen4_exp_gdn_prefill_f32`` outputs and final recurrent
-    state, bit-for-bit.
+    value heads with 16 key heads, S_k = S_v = 128. The 32-warp lever is a
+    launch-geometry change inside the column-warp layout (one output column
+    per warp, state rows sharded across 32 lanes, warp-shuffle reductions),
+    so the binding T0 oracle is the **production columnwarps owner being
+    replaced** (``qwen4_exp_gdn_prefill_columnwarps_f32``): identical per-warp
+    arithmetic, only block composition changes. Measured 2026-09-03: that
+    owner is NOT bit-equal to the serial strict kernel at production geometry
+    (max abs diff 5.4e-7), so the serial strict kernel is covered by a
+    tolerance envelope (atol=1e-6), not by bit-equality.
 
     RED on the unmodified path: the candidate function does not exist, so the
     import fails before any GPU work runs.
@@ -85,6 +91,7 @@ def test_qwen4_exp_gdn_w32_prefill_exact_vs_strict_owner(v_heads: int) -> None:
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         build_qwen4_exp_gdn,
+        qwen4_exp_gdn_prefill_columnwarps_f32,
         qwen4_exp_gdn_prefill_f32,
         qwen4_exp_gdn_prefill_w32_f32,
     )
@@ -117,11 +124,14 @@ def test_qwen4_exp_gdn_w32_prefill_exact_vs_strict_owner(v_heads: int) -> None:
         d_dt = _upload(dt_bias, runtime, allocations)
         d_a = _upload(a, runtime, allocations)
         d_norm = _upload(norm, runtime, allocations)
+        d_colwarps_state = _upload(initial_state, runtime, allocations)
         d_strict_state = _upload(initial_state, runtime, allocations)
         d_w32_state = _upload(initial_state, runtime, allocations)
+        d_colwarps = _alloc((rows, core_width), np.float32, runtime, allocations)
         d_strict = _alloc((rows, core_width), np.float32, runtime, allocations)
         d_w32 = _alloc((rows, core_width), np.float32, runtime, allocations)
         for fn, d_state, d_out in (
+            (qwen4_exp_gdn_prefill_columnwarps_f32, d_colwarps_state, d_colwarps),
             (qwen4_exp_gdn_prefill_f32, d_strict_state, d_strict),
             (qwen4_exp_gdn_prefill_w32_f32, d_w32_state, d_w32),
         ):
@@ -144,8 +154,12 @@ def test_qwen4_exp_gdn_w32_prefill_exact_vs_strict_owner(v_heads: int) -> None:
                 runtime=runtime,
             )
         runtime.device_synchronize()
+        colwarps_out = _download(d_colwarps, (rows, core_width), np.float32, runtime)
         strict_out = _download(d_strict, (rows, core_width), np.float32, runtime)
         w32_out = _download(d_w32, (rows, core_width), np.float32, runtime)
+        colwarps_state = _download(
+            d_colwarps_state, initial_state.shape, np.float32, runtime
+        )
         strict_state = _download(
             d_strict_state, initial_state.shape, np.float32, runtime
         )
@@ -154,8 +168,15 @@ def test_qwen4_exp_gdn_w32_prefill_exact_vs_strict_owner(v_heads: int) -> None:
         for allocation in reversed(allocations):
             free(allocation, runtime=runtime)
 
-    np.testing.assert_array_equal(w32_out, strict_out)
-    np.testing.assert_array_equal(w32_state, strict_state)
+    # T0 geometry-only contract: identical per-warp arithmetic, only block
+    # composition changes, so parity vs the production owner is bit-exact.
+    np.testing.assert_array_equal(w32_out, colwarps_out)
+    np.testing.assert_array_equal(w32_state, colwarps_state)
+    # Serial strict kernel uses a different reduction layout; its divergence
+    # from the column-warp family is bounded (measured max abs 5.4e-7 at this
+    # geometry), so it is held to a tolerance envelope, not bit-equality.
+    np.testing.assert_allclose(w32_out, strict_out, rtol=0.0, atol=1e-6)
+    np.testing.assert_allclose(w32_state, strict_state, rtol=0.0, atol=1e-6)
 
 
 def _upload(array: np.ndarray, runtime, allocations):

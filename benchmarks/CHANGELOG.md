@@ -4,6 +4,21 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-04 gfx1151 Qwen3.8-Flash-Next halo-box PF-5] Closed the PF-5 GDN
+  32-warp/block (1024-thread) prefill lever as a **measured loss**:
+  interleaved counterbalanced kernel-level A/B vs the production columnwarps
+  owner (24 pairs, median-of-pairs, rows 16/64/256/1024/4096) shows w32
+  **slower at every shape >=64** (p64 +1.6%, p256 +6.4%, p1024 +4.0%, p4096
+  +3.4%) and noise-level -1.6% at p16, with w32-vs-colwarps parity bit-exact
+  (0.0 diff) at all shapes. 1024-thread blocks reduce occupancy to 1 block/CU
+  and the 8x block-count reduction does not recover the loss; the M6
+  mechanism does not transfer to this host. No promotion; the incumbent
+  columnwarps <4,4> route stays production. The tile-16 state-in-register
+  lever (lever 2) is deferred behind PF-0 per the binding T1 escalation rule
+  in declaration entry 55a7d9. w32 remains registered as a strict non-default
+  variant with exact-parity RED tests.
+  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
+
 
 
 - [2026-09-03 gfx1151 Qwen3.8-Flash-Next halo-box PF-2] Closed the PF-2 QSA ordered three-pass prefill lever as a **measured loss**: same-session counterbalanced whole-model A/B (1 warmup + 3 reps, canonical p512/p1024/p4096 fixture, 12 cases) shows the ordered-prefill candidate **slower at every shape** (p512 86.19→83.38 tok/s, 0.967x; p1024 85.56→83.22, 0.973x; p4096 70.93→68.67, 0.968x) with p4096 outputs **not bit-identical** to the incumbent production wave32 route (bit-exact only vs strict rows). Per the docs/REFACTOR.md removal trigger, the `HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL` flag and runner branch were deleted; the ordered rows kernels remain registered as a strict variant. No promotion; incumbent route stays production. `benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf2-qsa-ordered-prefill-ab.json`.
