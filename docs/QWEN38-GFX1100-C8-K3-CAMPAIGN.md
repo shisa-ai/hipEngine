@@ -632,24 +632,31 @@ Current pool: **46.519 ms/cycle**.
       rowtile/direct symbols (**16.166 ms combined**).
 - [x] Determine whether F32 symbols are target root/full-vocabulary heads,
       projection tails, or another boundary before editing them.
-- [ ] For grouped R8, seek reduced weight traversal/dequantization or an exact
+- [x] For grouped R8, seek reduced weight traversal/dequantization or an exact
       reduction schedule with lower operation wall; WMMA capacity changes and
       WG256 pairing are closed.
-      Inspected (iter31, offline ELF + role census): traversal is already 1×
-      per layer per call (census: unique_encoded = count × per-layer bytes
-      exactly; 73.1/43.0/4.3 MB per call for FFN-down/recurrent-QKV/V), so
-      reduced traversal is closed. Occupancy is not binding (VGPR 111 → 8
-      waves/CU = 25%). The binding resource is **decode-ALU throughput**:
-      disassembly shows 1,192 vector ops vs 24 VMEM and 1 barrier per body,
-      loads are already wide (b128/b64/u16 mix — no byte-granular widening
-      axis), and the ALU-residency model (2 active waves × 2 k-steps × ~500
-      ops ≈ 527 ns/block) matches the measured 394 ns/block residency within
-      ~30% while a DRAM-latency model would require an impossible 820 GB/s.
-      Achieved 101-134 GB/s. The live axis is therefore **reduced
-      dequantization**: the registered q8_1_dp4a Q6 sibling family (integer
-      decode) is the concrete next candidate — leaf-first on the three actual
-      shapes (FFN-down 5120×17408, recurrent-QKV 5120×10240, V 5120×1024) at
-      rows 8/24/32 before any whole-model numerics.
+      **CLOSED (iter31-36) via reduced dequantization.** The inspection
+      (census + ELF audit) proved the family decode-ALU-bound (traversal
+      already 1×, occupancy 25%, wide loads, ALU-residency model matches
+      measured block residency). The realized candidate: a NEW grouped
+      q8_1 dp4a planar-Q6 kernel (rows 8-64, integer decode, u32 record
+      loads; registered `linear_q8_1 /
+      t16_q8_1_dp4a_gemv_grouped_bf16_bf16_out`), leaf 9/9 wins at R8-R32
+      including the q8_1 quantize launch (FFN-down 1.28-1.33×, recurrent-QKV
+      1.25-1.31×), session-gated dispatch route
+      (`HIPENGINE_C8_Q6_DP4A_GROUPED`, default-off, exact owner as strict
+      fallback). **L4 production-profile numerics PASSED** (18 prompts = 10
+      category suite + 8 heldouts, c8_k3_r32, 24 teacher-forced steps, 3
+      repeats: kl_mean 0.000140, kl_p99 0.001606, kl_max 0.007267, top1
+      0.99769, determinism 3/3 bit-identical). **Retention e2e PASSED both
+      orders**: candidate 91.734/91.497 vs control 90.726/89.527 MTP
+      aggregate (+1.65% mean, candidate ≥ both controls in both orders),
+      40/40 cells exact (MTP == AR trajectories), accepted draft tokens
+      identical (1256), AR neutral (−0.20%). Pool projection 30.353 → ~25.2
+      ms/cycle is consistent with the measured e2e direction. The
+      default-path flip remains the separate product gate; the env stays
+      default-off. Evidence: benchmarks/results/2026-09-04-w7900-q4km-k3-
+      c8-p4-q6-dp4a-{screen,grouped-leaf,l4-numerics,retention-e2e}.json.
 - [x] For head-shaped work, measure weight traffic, output traffic, and top-1
       ownership. Fusing exact argmax is admissible only if it removes material
       traffic or launches while preserving tie/finite behavior and full-vocab
