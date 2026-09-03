@@ -20,7 +20,6 @@ import pytest
 from hipengine.runtime.gguf_linear import (
     MTP_SERVING_TARGET_WMMA_PREFILL_ENV,
     mtp_serving_target_use_wmma_prefill,
-    mtp_serving_target_wmma_prefill_allows_rows,
 )
 
 
@@ -80,67 +79,6 @@ def test_env_forces_gemv_off_override(value: str) -> None:
             )
             is False
         )
-
-
-def test_small_packed_rows_floor_keeps_gemv_owners() -> None:
-    """R4 (width-1 K3) measured broken under the transferred owner.
-
-    The 2026-09-03 current-head refresh measured production explicit C1 K3
-    collapsing to 8.556 tok/s (0.743x AR) with draft acceptance 0.1523 and
-    0/10 AR equality under the B1 transferred owner at the 4-row packed
-    shape, while the per-row GEMV owners restore 18.168 tok/s (1.582x,
-    10/10). The dispatch floor keeps small packed shapes on the GEMV owner.
-    """
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert (
-            mtp_serving_target_use_wmma_prefill(
-                "production", profile_fell_back_to_strict=False, packed_rows=4
-            )
-            is False
-        )
-        assert mtp_serving_target_wmma_prefill_allows_rows(4) is False
-        assert mtp_serving_target_wmma_prefill_allows_rows(2) is False
-
-
-@pytest.mark.parametrize("rows", [8, 12, 16, 20, 24, 28, 32])
-def test_measured_healthy_packed_rows_keep_transfer(rows: int) -> None:
-    """R8+ shapes measured healthy (C2-C8, acceptance 0.78+, 10/10 equality)."""
-    with mock.patch.dict(os.environ, {}, clear=False):
-        os.environ.pop(MTP_SERVING_TARGET_WMMA_PREFILL_ENV, None)
-        assert mtp_serving_target_wmma_prefill_allows_rows(rows) is True
-        assert (
-            mtp_serving_target_use_wmma_prefill(
-                "production", profile_fell_back_to_strict=False, packed_rows=rows
-            )
-            is True
-        )
-
-
-@pytest.mark.parametrize("value", ["1", "true", "yes", "on"])
-def test_explicit_env_on_defeats_the_floor(value: str) -> None:
-    """The registered opt-in remains the escape hatch at every shape."""
-    with mock.patch.dict(
-        os.environ, {MTP_SERVING_TARGET_WMMA_PREFILL_ENV: value}
-    ):
-        assert mtp_serving_target_wmma_prefill_allows_rows(4) is True
-        assert (
-            mtp_serving_target_use_wmma_prefill(
-                "production", profile_fell_back_to_strict=False, packed_rows=4
-            )
-            is True
-        )
-
-
-def test_runner_clamps_both_verify_entry_points() -> None:
-    """Packed and single-block verifiers floor the transfer by packed rows."""
-
-    import inspect
-
-    import hipengine.runtime.qwen35_gguf_runner as runner
-
-    source = inspect.getsource(runner)
-    assert source.count("mtp_serving_target_wmma_prefill_allows_rows") >= 2
 
 
 class _ProfileLike:

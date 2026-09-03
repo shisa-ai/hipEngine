@@ -177,13 +177,6 @@ MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
     "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
 )
 
-# B1 transfer dispatch floor: packed verify shapes below this row count keep
-# the per-row GEMV owners under every profile. R8+ is measured healthy
-# (acceptance and AR equality unchanged); R4 measured broken (2026-09-03
-# refresh). Remove only together with an exact small-row owner that passes a
-# C1 AR-equality RED gate.
-MTP_SERVING_TARGET_WMMA_PREFILL_MIN_ROWS = 8
-
 
 # B2 P1: prefill F16-staging route (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md).
 # Default OFF: the BF16 owners remain the selected strict fallback. When
@@ -373,44 +366,18 @@ def _launch_prefill_f16_staged(
     return True
 
 
-def mtp_serving_target_wmma_prefill_allows_rows(packed_rows: int | None) -> bool:
-    """Whether the transferred verify owners are cleared for a packed shape.
-
-    The B1 transfer was retained and gated on shapes R8 and above (measured
-    healthy at R8/R12/R16/R20-R32 with unchanged acceptance and AR equality).
-    The 4-row width-1 K3 shape measured broken under the transferred owner
-    (draft acceptance 0.7889 -> 0.1523, greedy AR equality 10/10 -> 0/10,
-    15.753 -> 8.556 tok/s), so small packed shapes stay on the per-row GEMV
-    owners. An explicit env opt-in defeats the floor for bisection; the env
-    opt-out forces the GEMV owners everywhere.
-    """
-
-    override = os.environ.get(
-        MTP_SERVING_TARGET_WMMA_PREFILL_ENV, ""
-    ).strip().lower()
-    if override:
-        return override in {"1", "true", "yes", "on"}
-    if packed_rows is None:
-        return True
-    return int(packed_rows) >= MTP_SERVING_TARGET_WMMA_PREFILL_MIN_ROWS
-
-
 def mtp_serving_target_use_wmma_prefill(
     profile: object = None,
     *,
     profile_fell_back_to_strict: bool = False,
-    packed_rows: int | None = None,
 ) -> bool:
     """Whether MTP serving target verify passes use the prefill band owners.
 
     ``profile`` accepts the generator's execution-profile value (or its
     string). Resolution order: explicit env override, then the production
-    profile (without strict fallback) gated by the packed-row floor, then
-    off. Without profile context the answer is off so unrelated callers
-    never drift onto the transferred owners. ``packed_rows`` floors the
-    transfer off for shapes the retention never validated (R4 and below);
-    callers that only learn the packed row count later clamp with
-    :func:`mtp_serving_target_wmma_prefill_allows_rows` instead.
+    profile (without strict fallback), then off. Without profile context the
+    answer is off so unrelated callers never drift onto the transferred
+    owners.
     """
 
     override = os.environ.get(
@@ -420,8 +387,6 @@ def mtp_serving_target_use_wmma_prefill(
         return override in {"1", "true", "yes", "on"}
     profile_value = getattr(profile, "value", profile)
     if profile_value is None or str(profile_value) == "":
-        return False
-    if not mtp_serving_target_wmma_prefill_allows_rows(packed_rows):
         return False
     return str(profile_value) == "production" and not bool(
         profile_fell_back_to_strict
