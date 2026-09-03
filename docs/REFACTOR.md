@@ -4730,3 +4730,23 @@ should be boring.
   variant or rename it to state its scope.
 
 
+
+## PF-4 lever 2 fused combine is opt-in after measured loss (2026-09-04)
+
+- `hipengine/runtime/qwen4_exp_runner.py` keeps the fused
+  `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` grouped-prefill
+  path reachable only via `HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`; the default
+  is the unfused `weighted_lanes_sum` + `shared_gate_combine` chain. The flag
+  was originally the inverse (`HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE=1` gating a
+  fused default) before the whole-model A/B measured pp −1.69% (all 12 cases
+  negative) and closed the lever.
+- The fused kernel and its registry entry
+  (`KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", <quant>, "out")`)
+  stay bit-exact and pinned by `tests/test_qwen4_exp_pf4_lever2_fused_combine.py`.
+- **Removal trigger:** unless a later unit (e.g. a PF-0-gated reassociation or
+  a scheduling change that removes the whole-model prefill interference)
+  reverses the verdict, delete the fused kernel, its wrapper/registry entry,
+  the `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` gate, and the lever-2 tests once the
+  PF-4 unit is formally closed and no follow-up candidate reuses the fused
+  chain. Keep the bit-exact-parity test file if the unfused chain ever changes
+  arithmetic.

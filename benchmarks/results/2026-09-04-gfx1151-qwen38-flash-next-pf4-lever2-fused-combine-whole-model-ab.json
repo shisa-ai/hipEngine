@@ -1,0 +1,154 @@
+{
+ "date": "2026-09-04",
+ "platform": "gfx1151 (AMD Radeon 8060S, Strix Halo, zbook host)",
+ "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN section 6 PF-4 lever 2",
+ "unit": "PF-4 lever 2 T0 fused combine whole-model same-session counterbalanced A/B",
+ "kind": "whole-model counterbalanced A/B, measured-loss verdict (lever closed; fused path demoted to opt-in)",
+ "protocol": {
+  "engine": "hipengine_candidate",
+  "surface": "synchronized_direct_runner",
+  "profile": {
+   "requested": "production",
+   "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+   "fell_back_to_strict": false
+  },
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "arms": [
+   "incumbent_a (UNFUSED_COMBINE=1)",
+   "candidate_a (default)",
+   "incumbent_b (UNFUSED_COMBINE=1)",
+   "candidate_b (default)"
+  ],
+  "note": "candidate arm in this run = fused combine enabled by the pre-flip default (HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE unset); incumbent forced the unfused chain. After this verdict the default flipped to unfused and the fused path is opt-in via HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1.",
+  "cases": "4 categories x 3 prompt widths (p512/p1024/p4096), 3 samples each, 36 samples per arm",
+  "counterbalance": "ABBA-style: incumbent_a, candidate_a, candidate_b, incumbent_b within one session"
+ },
+ "verdict": "MEASURED LOSS - lever closed",
+ "results": {
+  "per_case": {
+   "code-p1024": {
+    "incumbent_pp_tok_s": 86.209,
+    "candidate_pp_tok_s": 84.47,
+    "pp_delta_pct": -2.02,
+    "incumbent_tg_tok_s": 14.458,
+    "candidate_tg_tok_s": 14.498,
+    "tg_delta_pct": 0.28,
+    "deterministic_both_arms": true
+   },
+   "code-p4096": {
+    "incumbent_pp_tok_s": 71.311,
+    "candidate_pp_tok_s": 70.184,
+    "pp_delta_pct": -1.58,
+    "incumbent_tg_tok_s": 12.328,
+    "candidate_tg_tok_s": 12.259,
+    "tg_delta_pct": -0.56,
+    "deterministic_both_arms": true
+   },
+   "code-p512": {
+    "incumbent_pp_tok_s": 86.564,
+    "candidate_pp_tok_s": 85.065,
+    "pp_delta_pct": -1.73,
+    "incumbent_tg_tok_s": 14.565,
+    "candidate_tg_tok_s": 14.527,
+    "tg_delta_pct": -0.26,
+    "deterministic_both_arms": true
+   },
+   "general_en-p1024": {
+    "incumbent_pp_tok_s": 86.533,
+    "candidate_pp_tok_s": 85.069,
+    "pp_delta_pct": -1.69,
+    "incumbent_tg_tok_s": 14.429,
+    "candidate_tg_tok_s": 14.452,
+    "tg_delta_pct": 0.16,
+    "deterministic_both_arms": true
+   },
+   "general_en-p4096": {
+    "incumbent_pp_tok_s": 71.836,
+    "candidate_pp_tok_s": 70.741,
+    "pp_delta_pct": -1.52,
+    "incumbent_tg_tok_s": 12.337,
+    "candidate_tg_tok_s": 12.244,
+    "tg_delta_pct": -0.75,
+    "deterministic_both_arms": true
+   },
+   "general_en-p512": {
+    "incumbent_pp_tok_s": 86.714,
+    "candidate_pp_tok_s": 85.082,
+    "pp_delta_pct": -1.88,
+    "incumbent_tg_tok_s": 14.57,
+    "candidate_tg_tok_s": 14.511,
+    "tg_delta_pct": -0.41,
+    "deterministic_both_arms": true
+   },
+   "general_ja-p1024": {
+    "incumbent_pp_tok_s": 86.882,
+    "candidate_pp_tok_s": 85.39,
+    "pp_delta_pct": -1.72,
+    "incumbent_tg_tok_s": 14.439,
+    "candidate_tg_tok_s": 14.477,
+    "tg_delta_pct": 0.26,
+    "deterministic_both_arms": true
+   },
+   "general_ja-p4096": {
+    "incumbent_pp_tok_s": 71.884,
+    "candidate_pp_tok_s": 70.857,
+    "pp_delta_pct": -1.43,
+    "incumbent_tg_tok_s": 12.352,
+    "candidate_tg_tok_s": 12.265,
+    "tg_delta_pct": -0.71,
+    "deterministic_both_arms": true
+   },
+   "general_ja-p512": {
+    "incumbent_pp_tok_s": 87.42,
+    "candidate_pp_tok_s": 85.66,
+    "pp_delta_pct": -2.01,
+    "incumbent_tg_tok_s": 14.556,
+    "candidate_tg_tok_s": 14.482,
+    "tg_delta_pct": -0.51,
+    "deterministic_both_arms": true
+   },
+   "mixed_ja_en-p1024": {
+    "incumbent_pp_tok_s": 86.338,
+    "candidate_pp_tok_s": 84.834,
+    "pp_delta_pct": -1.74,
+    "incumbent_tg_tok_s": 14.389,
+    "candidate_tg_tok_s": 14.506,
+    "tg_delta_pct": 0.81,
+    "deterministic_both_arms": true
+   },
+   "mixed_ja_en-p4096": {
+    "incumbent_pp_tok_s": 71.043,
+    "candidate_pp_tok_s": 70.424,
+    "pp_delta_pct": -0.87,
+    "incumbent_tg_tok_s": 12.3,
+    "candidate_tg_tok_s": 12.267,
+    "tg_delta_pct": -0.27,
+    "deterministic_both_arms": true
+   },
+   "mixed_ja_en-p512": {
+    "incumbent_pp_tok_s": 86.807,
+    "candidate_pp_tok_s": 85.049,
+    "pp_delta_pct": -2.03,
+    "incumbent_tg_tok_s": 14.555,
+    "candidate_tg_tok_s": 14.508,
+    "tg_delta_pct": -0.32,
+    "deterministic_both_arms": true
+   }
+  },
+  "overall": {
+   "pp_delta_pct_sum": -1.71,
+   "tg_delta_pct_sum": -0.17,
+   "pp_delta_mean_pct": -1.68,
+   "pp_delta_min_pct": -2.03,
+   "pp_delta_max_pct": -0.87,
+   "tg_delta_mean_pct": -0.19,
+   "tg_delta_min_pct": -0.75,
+   "tg_delta_max_pct": 0.81,
+   "all_cases_deterministic": true
+  }
+ },
+ "interpretation": "Kernel-level exact win (rows=1 -26.1% ... rows=512 -2.3%) did not survive whole-model: prefill is negative in all 12/12 cases (sign-test p~2^-12 under a no-effect null), mean -1.69%. Decode is noise-level. The fused kernel saves one launch + a routed BF16 round-trip locally, but the whole-model prefill path regresses; mechanism not pursued (would require a separate investigation, and the campaign rule is: measured loss closes the lever).",
+ "decision": "Lever 2 closed as measured loss. Default remains the unfused weighted_lanes_sum + shared_gate_combine chain; fused variant stays registered and bit-exact, reachable only via HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1. Removal candidate tracked in docs/REFACTOR.md.",
+ "related_artifact": "2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json (kernel-level A/B, exact win, superseded as promotion evidence by this whole-model result)"
+}
