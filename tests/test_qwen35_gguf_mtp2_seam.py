@@ -2572,6 +2572,92 @@ def test_mtp2_singleton_only_capability_fails_closed_when_a_neighbor_arrives() -
     assert adapter.partition_max_requests((7, 8)) == 0
 
 
+def test_mtp2_wide_provider_lazily_adds_singleton_target_verifier(monkeypatch) -> None:
+    calls: list[tuple[object, ...]] = []
+
+    class FakeVerifier:
+        def __init__(
+            self,
+            target,
+            *,
+            max_candidate_budget: int,
+            quant: str,
+            target_verify_mode: str,
+        ) -> None:
+            calls.append(
+                (
+                    "verifier",
+                    target,
+                    int(max_candidate_budget),
+                    str(quant),
+                    str(target_verify_mode),
+                )
+            )
+
+    monkeypatch.setattr(
+        mtp2_module,
+        "Qwen35GGUFTransactionalVerifier",
+        FakeVerifier,
+    )
+    targets = {
+        request_id: SimpleNamespace(position=32)
+        for request_id in (7, 8)
+    }
+    rows = {
+        request_id: SimpleNamespace(lease=SimpleNamespace(session=targets[request_id]))
+        for request_id in targets
+    }
+    states = {
+        request_id: _MTP2RequestState(
+            request_id=request_id,
+            provider=SimpleNamespace(),
+            provider_pool_key=None,
+            provider_group_key=(7, 8),
+            verifier=None,
+            root_hidden_buffer=SimpleNamespace(ptr=request_id),
+        )
+        for request_id in targets
+    }
+    adapter = object.__new__(Qwen35GGUFMTP2Adapter)
+    adapter.owner = SimpleNamespace(
+        capacity=4,
+        _row=lambda request_id: rows[int(request_id)],
+        _flush_row_owner=lambda row: calls.append(("flush", row)),
+    )
+    adapter.generator = SimpleNamespace(backend="hip_gfx1151")
+    adapter.candidate_budget = 3
+    adapter.quant = "gguf_q4_k_m"
+    adapter.target_verify_mode = "native"
+    adapter._states = states
+    adapter._ensure_request_states = lambda ids: calls.append(("ensure", tuple(ids)))
+
+    adapter.prepare_requests(
+        SimpleNamespace(speculative_request_ids=(7,)),
+        (),
+    )
+
+    assert isinstance(states[7].verifier, FakeVerifier)
+    assert states[8].verifier is None
+    assert calls == [
+        ("ensure", (7,)),
+        ("verifier", targets[7], 3, "gguf_q4_k_m", "native"),
+    ]
+
+    # A neighbor still selects the existing physical C2 target branch; adding
+    # the singleton verifier must not decompose or serialize the group.
+    claims = object()
+    adapter._active_claims = claims
+    adapter._execute_target_frontier_batch = lambda *args, **kwargs: "packed-c2"
+    result = adapter.execute_target_frontier(
+        SimpleNamespace(speculative_request_ids=(7, 8)),
+        SimpleNamespace(target_batch=object(), candidate_graph=None),
+        claims,
+        commit=True,
+        cancelled_request_ids=lambda: (),
+    )
+    assert result == "packed-c2"
+
+
 def test_mtp2_physical_intent_allows_c1_before_or_after_c2() -> None:
     target = SimpleNamespace(
         runner=SimpleNamespace(fp16_recurrent_state=False),
