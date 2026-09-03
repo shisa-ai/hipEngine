@@ -247,7 +247,11 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
     evaluated = build_candidate_quality(
         captures,
         candidate_mode="candidate",
-        scenario_id=f"qwen4exp-ud-q4-k-xl-mmq-plane{args.planes}-c1-teacher-forced",
+        scenario_id=(
+            f"qwen4exp-ud-q4-k-xl-mmq-extra{args.extra_shape}-c1-teacher-forced"
+            if args.extra_shape
+            else f"qwen4exp-ud-q4-k-xl-mmq-plane{args.planes}-c1-teacher-forced"
+        ),
         thresholds=EvaluationThresholds(),
     )
     context_evaluated = (
@@ -277,9 +281,15 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
                     layer="linear",
                     scope="prefill_policy_qwen4exp_dense_q8_shapes",
                     selected_variant=(
-                        "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out"
-                        if int(args.planes) == 2
-                        else f"mmq128_prefill_q8_1_d4x{int(args.planes)}_guarded_f32_f32_out"
+                        # extra-shape mode keeps the incumbent d4x3 chain and
+                        # extends admission; plane mode swaps the chain.
+                        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+                        if args.extra_shape
+                        else (
+                            "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out"
+                            if int(args.planes) == 2
+                            else f"mmq128_prefill_q8_1_d4x{int(args.planes)}_guarded_f32_f32_out"
+                        )
                     ),
                     strict_fallback_variant="coltile8_rowbatch4_f32_f32_out",
                     registry_quant="gguf_q8_0",
@@ -386,7 +396,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--case-id", action="append", default=None)
     parser.add_argument("--limit", type=int, default=None)
-    parser.add_argument("--planes", type=int, default=2, choices=(2,))
+    parser.add_argument("--planes", type=int, default=2, choices=(2, 3))
+    parser.add_argument(
+        "--extra-shape",
+        default=None,
+        help="candidate adds one (hidden:out) min_rows row instead of a plane flip",
+    )
     parser.add_argument("--context-planes", type=int, default=None, choices=(3,))
     parser.add_argument("--decode-steps", type=int, default=24)
     parser.add_argument("--repeat-runs", type=int, default=3)
