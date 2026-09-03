@@ -89,11 +89,17 @@ should be removed or collapsed.
   with max KL below 3e-9 versus raw MMQ, while the bit-exact baseline build
   loses all 48 R32 weights by 4.34%.
 - The replacement passes its strict-teacher gate over 240 rows at 0.000158 mean
-  KL, 0.005678 max KL, and 99.583% top-1. Its counterbalanced task gate improves
-  pooled throughput 88.932→90.082 tok/s (+1.29%), with both orders and every
-  category/heldout slice positive, identical acceptance, and clean teardown.
-  Retain explicit zero for same-build rollback and remove the environment read
-  after the next stable milestone audit.
+  KL, 0.005678 max KL, and 99.583% top-1. Its staged counterbalanced task gate
+  improves pooled throughput 88.932→90.082 tok/s (+1.29%), and the
+  post-promotion same-build default-versus-explicit-zero gate confirms
+  88.953→90.139 tok/s (+1.33%). Both gates win every prompt cell and every
+  category/heldout slice in both orders with identical generated IDs, identical
+  acceptance ledgers, and clean teardown. Marker attribution for the retained
+  route is Q5 operation wall 12.794→10.940 ms/cycle (-14.49%) at identical
+  launch counts; the earlier 11.215→10.760 ms/cycle "complete wall" quote came
+  from proposal-phase kernel-family values and is superseded. Retain explicit
+  zero for same-build rollback and remove the environment read after the next
+  stable milestone audit.
 
 ## 2026-09-02 gfx1100 C8 raw-Q5 MMQ — closed
 
