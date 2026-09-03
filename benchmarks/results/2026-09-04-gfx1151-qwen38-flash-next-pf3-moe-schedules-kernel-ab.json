@@ -1,0 +1,64 @@
+{
+ "schema": 1,
+ "kind": "hipengine_qwen4exp_pf3_moe_schedules_kernel_ab",
+ "status": "q4_k_rejected_q5_1_kernel_win_pending_promotion",
+ "performance_claim": false,
+ "candidate": "PF-3 M1 candidates: Q4_K gate/up PAIR=false expertgrid64 instantiation; Q5_1 down fused single-loop logical256 variant",
+ "conclusion": "Q4_K gate/up M1 lever CLOSED as measured loss: the PAIR=false schedule (no shared-metadata predecode) is +57% to +123% slower than the production PAIR=true expertgrid64 owner at every compared shape at bit-exact parity; the halo-box M1 Q4_K mechanism does not transfer. Q5_1 down M1 lever: the fused single-loop logical256 variant is bit-exact vs the incumbent and ~10.5% faster at the rows=512 binding shape (9.42 -> 8.43 ms) with the win consistent across anchors; NOT promoted in this unit - the whole-model same-session counterbalanced A/B gate is deferred to the promotion decision unit, and incumbents stay production.",
+ "hardware": {
+  "device": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+  "arch": "gfx1151"
+ },
+ "software": {
+  "control_commit": "9b76ec6c08977b06aee76e27b665e29d6a2b4d17",
+  "candidate_dirty": true
+ },
+ "model": {
+  "family": "qwen4exp MoE expert GEMM (synthetic fixture, kernel-level A/B)",
+  "dtype": "bf16 activations, GGUF Q4_K gate/up + Q5_1 down weights",
+  "production_widths": {
+   "hidden": 2560,
+   "expert_ffn": 640,
+   "num_experts": 512,
+   "top_k": 10,
+   "provenance": "GGUF metadata + tensor shapes of both local model files; campaign doc's 7680 ffn value is wrong"
+  }
+ },
+ "protocol": {
+  "kind": "kernel-level interleaved counterbalanced A/B",
+  "pairs_per_shape": 24,
+  "statistic": "median of interleaved pairs; parity re-checked bit-exact vs incumbent after timing each shape",
+  "warmups": 3,
+  "rows": [16, 64, 512],
+  "expert_counts": "uneven over 512 experts with empties, summing to rows (rows=512 binding shape, median ~7 rows on active experts)",
+  "command": "uv run python /tmp/pf3_m1_ab.py 16 64 512 (run twice; second run reproduced within ~1-5 pp)",
+  "parity_check": "M1 == incumbent bit-exact (uint16 output bits) after timing at every shape; pytest T0 bit-exact parity suite tests/test_qwen4_exp_pf3_moe_schedules.py 7/7 green",
+  "default_changed": false,
+  "rocprof_smoke": "rocprofv3 --kernel-trace traced gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8,4,false> (5651305 ns) and q5_1_selected_grouped_prefill_logical256_m1_bf16_bf16_kernel<8,8> (2409433 ns) under prebuilt .so + HIPENGINE_COMPILER_VERSION_FILE + require_cached"
+ },
+ "results_us": {
+  "q4_k_rows_16": {"incumbent": 157.9, "m1": 251.9, "delta_pct": 59.6},
+  "q4_k_rows_64": {"incumbent": 522.0, "m1": 933.0, "delta_pct": 78.7},
+  "q4_k_rows_512": {"incumbent": 7432.6, "m1": 16213.2, "delta_pct": 118.1},
+  "q5_1_rows_16": {"incumbent": 200.4, "m1": 193.7, "delta_pct": -3.3},
+  "q5_1_rows_64": {"incumbent": 688.1, "m1": 616.3, "delta_pct": -10.4},
+  "q5_1_rows_512": {"incumbent": 9423.0, "m1": 8425.6, "delta_pct": -10.6},
+  "repeat_run_delta_pct": {
+   "q4_k_rows_16": 56.8,
+   "q4_k_rows_64": 78.5,
+   "q4_k_rows_512": 123.1,
+   "q5_1_rows_16": -3.2,
+   "q5_1_rows_64": -12.4,
+   "q5_1_rows_512": -10.5
+  }
+ },
+ "notes": [
+  "delta_pct = (m1 - incumbent) / incumbent * 100; positive = M1 slower.",
+  "Q4_K M1 loss mechanism: PAIR=false pays per-column global dequant and loses the per-(expert,out) shared-metadata predecode amortization that the PAIR=true owner reuses across row batches.",
+  "Q5_1 M1 win mechanism: one fused loop halves the per-thread loop schedule while preserving the exact per-accumulator column order and the 256-wide strict reduction tree (bit-exact).",
+  "No whole-model A/B in this unit: nothing promoted, incumbents stay production; the retained-win gate (same-session counterbalanced whole-model non-regression, p512/p1024 primary, p4096 recorded) belongs to the Q5_1 promotion decision unit.",
+  "Lineage: narrowed scripts/check_lineage.py --file mmq-config-rdna3-5.cuh GREEN (baseline a7ad7b7f, commits_since_baseline 0); missing manifest-tracked reference repo ~/amd-gpu-tuning/reference/atlas remains the named environment blocker.",
+  " rocprofv3 discipline note: without HIPENGINE_COMPILER_VERSION_FILE the profiled child's hipcc --version probe captures rocprofv3 stderr warnings into the cache-key version text and require_cached never hits; the version file is mandatory on this host."
+ ],
+ "created": "2026-09-04"
+}
