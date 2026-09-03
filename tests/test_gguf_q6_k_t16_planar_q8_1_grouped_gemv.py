@@ -185,6 +185,110 @@ def grouped_libraries():
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_decode_wrapper_session_routes_to_grouped_dp4a(grouped_libraries) -> None:
+    """The production decode wrapper honors the owner-controlled session."""
+
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+        gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out,
+        q6_dp4a_grouped_target_session,
+    )
+
+    q6_library, _q4_library = grouped_libraries
+    runtime = get_hip_runtime()
+    rows, in_features, out_features = 32, 512, 256
+    qweight = _weights(
+        "q6",
+        out_features=out_features,
+        in_features=in_features,
+        experts=1,
+    )
+    rng = np.random.default_rng(0x6A380200)
+    x_bits = _bf16_bits(
+        rng.normal(0.0, 0.1, size=(rows, in_features)).astype(np.float32) + 0.002
+    )
+    planar = np.ascontiguousarray(
+        repack_gguf_q6_k_tile16_qmicro_planar(qweight).tiles
+    )
+    buffers = []
+
+    try:
+        def upload(value: np.ndarray):
+            value = np.ascontiguousarray(value)
+            buffer = malloc(value.nbytes, runtime=runtime)
+            buffers.append(buffer)
+            from hipengine.core.memory import copy_host_to_device
+
+            copy_host_to_device(
+                buffer,
+                host_array_ptr(value),
+                value.nbytes,
+                runtime=runtime,
+            )
+            return buffer
+
+        x_buf = upload(x_bits)
+        tiles_buf = upload(planar)
+        out_buf = malloc(rows * out_features * 2, runtime=runtime)
+        workspace = malloc(rows * (in_features // 32) * 36, runtime=runtime)
+        buffers.extend((out_buf, workspace))
+
+        def run_default() -> np.ndarray:
+            gguf_q6_k_t16_qmicro_planar_gemv_decode_bf16_bf16_out(
+                x_buf.ptr,
+                tiles_buf.ptr,
+                out_buf.ptr,
+                rows,
+                in_features,
+                out_features,
+                library=q6_library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            host = np.empty((rows, out_features), dtype=np.uint16)
+            copy_device_to_host(
+                host_array_ptr(host), out_buf, host.nbytes, runtime=runtime
+            )
+            return host
+
+        exact = run_default()
+        with q6_dp4a_grouped_target_session(
+            workspace_ptr=int(workspace.ptr),
+            workspace_nbytes=int(workspace.nbytes),
+            enabled=True,
+        ):
+            candidate_first = run_default()
+            candidate_second = run_default()
+        exact_again = run_default()
+
+        np.testing.assert_array_equal(exact, exact_again)
+        np.testing.assert_array_equal(candidate_first, candidate_second)
+        assert int(np.count_nonzero(candidate_first != exact)) > 0
+        x_f32 = _bf16_to_f32(x_bits)
+        x_rows = np.arange(rows, dtype=np.int64)
+        selected = np.zeros(rows, dtype=np.int64)
+        q8_reference = _q8_oracle("q6", x_f32, x_rows, selected, qweight)
+        np.testing.assert_allclose(
+            _bf16_to_f32(candidate_first),
+            q8_reference,
+            rtol=2.0e-2,
+            atol=2.0e-2,
+        )
+    finally:
+        for buffer in reversed(buffers):
+            free(buffer, runtime=runtime)
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+def test_runner_dp4a_grouped_gate_defaults_off() -> None:
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _gguf_c8_q6_dp4a_grouped_enabled,
+    )
+
+    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", request_count=8) is False
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
 @pytest.mark.parametrize("rows", [8, 16, 32])
 def test_grouped_dp4a_matches_q8_oracle_with_outer_floor(
     rows: int, grouped_libraries
