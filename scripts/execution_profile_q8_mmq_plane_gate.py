@@ -191,14 +191,24 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         raise CalibrationError(
             "production profile did not bind a Q8 MMQ policy; gate is vacuous"
         )
-    candidate_policy = replace(original_policy, planes=int(args.planes))
+    if int(args.planes) == 3 and not args.extra_shape:
+        raise CalibrationError("candidate planes must differ from the incumbent 3")
+    if args.extra_shape:
+        extra_hidden, extra_out = (int(v) for v in args.extra_shape.split(":"))
+        if extra_hidden % 256 or extra_out % 16:
+            raise CalibrationError(
+                "extra shape must satisfy hidden%256==0 and out%16==0"
+            )
+        minimums = dict(original_policy.min_rows)
+        minimums[(extra_hidden, extra_out)] = 64
+        candidate_policy = replace(original_policy, min_rows=minimums)
+    else:
+        candidate_policy = replace(original_policy, planes=int(args.planes))
     context_policy = (
         replace(original_policy, planes=int(args.context_planes))
         if args.context_planes
         else None
     )
-    if int(args.planes) == 3:
-        raise CalibrationError("candidate planes must differ from the incumbent 3")
 
     captures: list[PromptCalibrationCapture] = []
     context_captures: list[PromptCalibrationCapture] = []
