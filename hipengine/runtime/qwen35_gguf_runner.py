@@ -323,7 +323,6 @@ from hipengine.runtime.gguf_linear import (
     gguf_gemv_decode_enabled,
     gguf_native_batch_decode_enabled,
     gguf_wmma_prefill_enabled,
-    mtp_serving_target_wmma_prefill_allows_rows,
     launch_gguf_linear,
     launch_gguf_linear_residual,
     launch_gguf_q4_t16_sidecar_decode,
@@ -18846,9 +18845,7 @@ class Qwen35GGUFResidentSession:
             layer_conv_states=linear_state_owner.layer_conv_states,
             layer_recurrent_states=linear_state_owner.layer_recurrent_states,
         )
-        block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True)) and (
-            mtp_serving_target_wmma_prefill_allows_rows(rows)
-        )
+        block_wmma_prefill = bool(job_list[0].get("use_wmma_prefill", True))
         with (
             wmma_prefill_session(block_wmma_prefill),
             gemv_decode_session(self.use_gemv_decode),
@@ -19265,7 +19262,7 @@ class Qwen35GGUFResidentSession:
             dst_f32 = verify_hidden_f32_b if use_f32_residual else None
             block_wmma_prefill = gguf_wmma_prefill_enabled(
                 self.use_wmma_prefill if use_wmma_prefill is None else use_wmma_prefill
-            ) and mtp_serving_target_wmma_prefill_allows_rows(rows)
+            )
             layer_types = self.runner.weights.config.layer_types
             f32_residual_layer_limit = _gguf_verify_f32_residual_layer_limit(
                 len(layer_types)
