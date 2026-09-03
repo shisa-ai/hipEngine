@@ -45,9 +45,11 @@ from hipengine.execution_profiles import (
     build_variant_manifest,
     resolve_runtime_profile,
 )
+from hipengine.benchmark.execution_profiles import compare_profile_logits
 from scripts.execution_profile_gdn_calibration import (
     CalibrationError,
     PromptCalibrationCapture,
+    RowDescriptor,
     build_candidate_quality,
 )
 
@@ -286,6 +288,40 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         else None
     )
 
+    incumbent_relative = None
+    if context_captures:
+        # P3 evidence class: candidate vs the incumbent production chain as
+        # teacher on the same captured rows (first repeat of each).
+        strict_rows = []
+        candidate_rows = []
+        descriptors = []
+        for capture, context in zip(captures, context_captures):
+            context_traj = context.candidate_runs["candidate"][0]
+            candidate_traj = capture.candidate_runs["candidate"][0]
+            for step, (teacher_row, candidate_row) in enumerate(
+                zip(context_traj, candidate_traj)
+            ):
+                strict_rows.append(teacher_row["logits"])
+                candidate_rows.append(candidate_row["logits"])
+                descriptors.append(
+                    RowDescriptor(
+                        scenario_id=capture.prompt_id,
+                        scenario_step=step,
+                        request_id=capture.prompt_id,
+                        teacher_step=step,
+                        category=capture.category,
+                        shape="c1",
+                        transition=f"t{step}",
+                        teacher_token_id=int(teacher_row["token_id"]),
+                    )
+                )
+        incumbent_relative = compare_profile_logits(
+            np.asarray(strict_rows),
+            np.asarray(candidate_rows),
+            descriptors,
+            thresholds=EvaluationThresholds(),
+        )
+
     manifests = {
         "candidate_evidentiary": build_variant_manifest(
             profile="production",
@@ -399,6 +435,7 @@ def run_gate(args: argparse.Namespace) -> dict[str, Any]:
         "context_quality": (
             context_evaluated["quality"] if context_evaluated else None
         ),
+        "incumbent_relative_quality": incumbent_relative,
         "context_repeat_determinism": (
             context_evaluated["repeat_determinism"] if context_evaluated else None
         ),
