@@ -1,0 +1,77 @@
+_FIELD_CLASSVAR = _FIELD_BASE('_FIELD_CLASSVAR')
+_FIELD_INITVAR = _FIELD_BASE('_FIELD_INITVAR')
+
+# The name of an attribute on the class where we store the Field
+# objects.  Also used to check if a class is a Data Class.
+_FIELDS = '__dataclass_fields__'
+
+# The name of an attribute on the class that stores the parameters to
+# @dataclass.
+_PARAMS = '__dataclass_params__'
+
+# The name of the function, that if it exists, is called at the end of
+
+# __init__.
+_POST_INIT_NAME = '__post_init__'
+
+# String regex that string annotations for ClassVar or InitVar must match.
+# Allows "identifier.identifier[" or "identifier[".
+# https://bugs.python.org/issue33453 for details.
+_MODULE_IDENTIFIER_RE = re.compile(r'^(?:\s*(\w+)\s*\.)?\s*(\w+)')
+
+# Atomic immutable types which don't require any recursive handling and for which deepcopy
+# returns the same object. We can provide a fast-path for these types in asdict and astuple.
+_ATOMIC_TYPES = frozenset({
+    # Common JSON Serializable types
+
+types.NoneType,
+    bool,
+    int,
+    float,
+    str,
+    # Other common types
+    complex,
+    bytes,
+    # Other types that are also unaffected by deepcopy
+    types.EllipsisType,
+    types.NotImplementedType,
+    types.CodeType,
+
+types.BuiltinFunctionType,
+    types.FunctionType,
+    type,
+    range,
+    property,
+})
+
+# This function's logic is copied from "recursive_repr" function in
+# reprlib module to avoid dependency.
+def _recursive_repr(user_function):
+    # Decorator to make a repr function return "..." for a recursive
+    # call.
+
+repr_running = set()
+
+    @functools.wraps(user_function)
+    def wrapper(self):
+        key = id(self), _thread.get_ident()
+        if key in repr_running:
+            return '...'
+        repr_running.add(key)
+        try:
+            result = user_function(self)
+        finally:
+            repr_running.discard(key)
+
+return result
+    return wrapper
+
+class InitVar:
+    __slots__ = ('type', )
+
+    def __init__(self, type):
+        self.type = type
+
+    def __repr__(self):
+        if isinstance(self.type, type):
+            type_name = self.type.__name__

@@ -1,0 +1,71 @@
+import re
+import sys
+import copy
+import types
+import inspect
+import keyword
+import functools
+import itertools
+import abc
+import _thread
+from types import FunctionType, GenericAlias
+
+__all__ = ['dataclass',
+           'field',
+           'Field',
+           'FrozenInstanceError',
+           'InitVar',
+           'KW_ONLY',
+           'MISSING',
+
+           # Helper functions.
+           'fields',
+           'asdict',
+
+'astuple',
+           'make_dataclass',
+           'replace',
+           'is_dataclass',
+           ]
+
+# Conditions for adding methods.  The boxes indicate what action the
+# dataclass decorator takes.  For all of these tables, when I talk
+# about init=, repr=, eq=, order=, unsafe_hash=, or frozen=, I'm
+# referring to the arguments to the @dataclass decorator.  When
+# checking if a dunder method already exists, I mean check for an
+# entry in the class's __dict__.  I never check to see if an attribute
+
+# Raised when an attempt is made to modify a frozen class.
+class FrozenInstanceError(AttributeError): pass
+
+# A sentinel object for default values to signal that a default
+# factory will be used.  This is given a nice repr() which will appear
+# in the function signature of dataclasses' constructors.
+class _HAS_DEFAULT_FACTORY_CLASS:
+    def __repr__(self):
+        return '<factory>'
+_HAS_DEFAULT_FACTORY = _HAS_DEFAULT_FACTORY_CLASS()
+
+# A sentinel object to detect if a parameter is supplied or not.  Use
+# a class to give it a better repr.
+class _MISSING_TYPE:
+    pass
+MISSING = _MISSING_TYPE()
+
+# A sentinel object to indicate that following fields are keyword-only by
+# default.  Use a class to give it a better repr.
+class _KW_ONLY_TYPE:
+    pass
+KW_ONLY = _KW_ONLY_TYPE()
+
+# Since most per-field metadata will be unused, create an empty
+# read-only proxy that can be shared among all fields.
+_EMPTY_METADATA = types.MappingProxyType({})
+
+# Markers for the various kinds of fields and pseudo-fields.
+class _FIELD_BASE:
+    def __init__(self, name):
+        self.name = name
+    def __repr__(self):
+        return self.name
+_FIELD = _FIELD_BASE('_FIELD')
