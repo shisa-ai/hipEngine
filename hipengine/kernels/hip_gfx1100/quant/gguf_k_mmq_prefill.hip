@@ -8,6 +8,7 @@
 #include <hip/hip_runtime.h>
 #include <math.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 namespace {
 
@@ -1647,11 +1648,22 @@ int launch_q5_source_c8_mmq(
       out_features <= 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  if (rows < SOURCE_C8_MMQ_J) {
-    return launch_q5_source_c8_mmq_tile<output_t, 16>(
+  // C8-P2 Q5 tile-policy default: the J16 minitile halves the per-block
+  // serial K chain and doubles the R32 workgroup count (160 vs 80) on the
+  // 48 ssm_out projections; the leaf measured 1.20x consumer-complete with
+  // bf16-identical outputs and 48/48 weight wins. The zero-valued
+  // HIPENGINE_GGUF_Q5_SOURCE_C8_J16 rollback restores the literal J32
+  // policy (J16 only below 32 rows).
+  const char* j16_env = getenv("HIPENGINE_GGUF_Q5_SOURCE_C8_J16");
+  if (j16_env != nullptr && j16_env[0] == '0') {
+    if (rows < SOURCE_C8_MMQ_J) {
+      return launch_q5_source_c8_mmq_tile<output_t, 16>(
+          xq, qweight, out, rows, hidden, out_features, stream);
+    }
+    return launch_q5_source_c8_mmq_tile<output_t, SOURCE_C8_MMQ_J>(
         xq, qweight, out, rows, hidden, out_features, stream);
   }
-  return launch_q5_source_c8_mmq_tile<output_t, SOURCE_C8_MMQ_J>(
+  return launch_q5_source_c8_mmq_tile<output_t, 16>(
       xq, qweight, out, rows, hidden, out_features, stream);
 }
 
@@ -1932,6 +1944,50 @@ hipengine_gguf_q5_k_mmq_i64_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_q5_source_c8_mmq<float>(
+      reinterpret_cast<const q8_1_d4s4_f32_block*>(xq),
+      qweight,
+      out,
+      rows,
+      hidden,
+      out_features,
+      stream);
+}
+
+// Forced J16 minitile launchers: the same d4s4_f32_kmajor producer layout and
+// the same per-(row, output) accumulation order as the J32 owner, but each
+// workgroup owns a 16-row minitile so R32 launches two grid.y blocks per
+// output tile (160 workgroups instead of 80 on gfx1100 C8 ssm_out shapes).
+// Candidate leaf for the C8-P2 Q5 pool; the J32 owner remains the registered
+// default and strict rollback.
+extern "C" int
+hipengine_gguf_q5_k_mmq_i64_j16_k256_q8_1_d4s4_f32_kmajor_bf16_bf16_out(
+    const void* xq,
+    const uint8_t* qweight,
+    uint16_t* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_source_c8_mmq_tile<uint16_t, 16>(
+      reinterpret_cast<const q8_1_d4s4_f32_block*>(xq),
+      qweight,
+      out,
+      rows,
+      hidden,
+      out_features,
+      stream);
+}
+
+extern "C" int
+hipengine_gguf_q5_k_mmq_i64_j16_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out(
+    const void* xq,
+    const uint8_t* qweight,
+    float* out,
+    int64_t rows,
+    int64_t hidden,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_source_c8_mmq_tile<float, 16>(
       reinterpret_cast<const q8_1_d4s4_f32_block*>(xq),
       qweight,
       out,
