@@ -61,6 +61,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import (
     Q8MMQPrefillPolicy,
     gguf_q8_0_mmq128_quantize_bf16_d4x3,
+    gguf_q8_0_mmq128_quantize_f32_d4x2,
     gguf_q8_0_mmq128_quantize_f32_d4x3,
     gguf_q8_0_mmq128_sparse_exact_correct_bf16,
     gguf_q8_0_mmq128_sparse_exact_correct_f32,
@@ -5733,6 +5734,89 @@ def _launch_raw_mmq_d4x3_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_
     )
 
 
+def _launch_raw_mmq_d4x2_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
+    """Guarded two-plane D4x2 MMQ over F32 activations (PF-1d candidate)."""
+
+    session = _q8_mmq_prefill_session.get()
+    if session is None:
+        raise RuntimeError("Q8 MMQ launch escaped its prefill workspace session")
+
+    max_risks = int(rows) * int(out_features)
+    required_risk_bytes = max_risks * ctypes.sizeof(ctypes.c_int32)
+    if required_risk_bytes > session.risk_indices_nbytes:
+        raise ValueError(
+            "Q8 MMQ risk-index queue is too small: "
+            f"required={required_risk_bytes}, available={session.risk_indices_nbytes}"
+        )
+
+    regions = {
+        "workspace": (session.workspace_ptr, session.workspace_nbytes),
+        "risk counter": (session.risk_count_ptr, session.risk_count_nbytes),
+        "risk-index queue": (session.risk_indices_ptr, session.risk_indices_nbytes),
+        "F32 activation input": (int(x_ptr), int(rows) * int(in_features) * 4),
+        "F32 output": (int(out_ptr), int(rows) * int(out_features) * 4),
+    }
+    names = tuple(regions)
+    for index, left_name in enumerate(names):
+        left_ptr, left_nbytes = regions[left_name]
+        for right_name in names[index + 1:]:
+            if {left_name, right_name} == {"F32 activation input", "F32 output"}:
+                continue
+            right_ptr, right_nbytes = regions[right_name]
+            if max(left_ptr, right_ptr) < min(
+                left_ptr + left_nbytes,
+                right_ptr + right_nbytes,
+            ):
+                raise ValueError(f"Q8 MMQ {left_name} overlaps {right_name}")
+
+    runtime = kwargs.get("runtime") or get_hip_runtime()
+    stream = int(kwargs.get("stream", 0))
+    runtime.memset_async(
+        session.risk_count_ptr,
+        0,
+        ctypes.sizeof(ctypes.c_int32),
+        stream,
+    )
+    mmq_kwargs = {
+        "stream": stream,
+        "runtime": runtime,
+        "library": session.library,
+    }
+    qweight_ptr = weight.allocation("raw").tensor.ptr
+    gguf_q8_0_mmq128_quantize_f32_d4x2(
+        x_ptr,
+        session.workspace_ptr,
+        rows,
+        in_features,
+        **mmq_kwargs,
+    )
+    fn(
+        session.workspace_ptr,
+        qweight_ptr,
+        out_ptr,
+        session.risk_count_ptr,
+        session.risk_indices_ptr,
+        max_risks,
+        session.policy.risk_threshold,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+    gguf_q8_0_mmq128_sparse_exact_correct_f32(
+        x_ptr,
+        qweight_ptr,
+        out_ptr,
+        session.risk_count_ptr,
+        session.risk_indices_ptr,
+        max_risks,
+        rows,
+        in_features,
+        out_features,
+        **mmq_kwargs,
+    )
+
+
 def _pack8_decode_dispatch(
     dispatch: GGUFLinearDispatch,
     *,
@@ -5796,6 +5880,16 @@ def _q8_mmq_prefill_dispatch(
             "raw_mmq_d4x3",
         )
     if dispatch.key.variant in ("gemv_f32_f32_out", "prefill_f32_f32_out"):
+        if getattr(session.policy, "planes", 3) == 2:
+            return GGUFLinearDispatch(
+                KernelKey(
+                    dispatch.key.backend,
+                    dispatch.key.layer,
+                    dispatch.key.quant,
+                    "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out",
+                ),
+                "raw_mmq_d4x2_f32",
+            )
         return GGUFLinearDispatch(
             KernelKey(
                 dispatch.key.backend,
@@ -6454,6 +6548,7 @@ _LAUNCH_ABI = {
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
     "raw_mmq_d4x3_f32": _launch_raw_mmq_d4x3_f32,
+    "raw_mmq_d4x2_f32": _launch_raw_mmq_d4x2_f32,
     "raw_k_f32_ordered": _launch_raw_k_f32_ordered,
     "raw_k_f32_ordered_activation_tile_k_row": (
         _launch_raw_k_f32_ordered_activation_tile_k_row

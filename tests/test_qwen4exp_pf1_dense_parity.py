@@ -603,3 +603,75 @@ def test_pf1_selected_q8_0_down_matches_cpu_reference(variant_name: str) -> None
             np.abs(expected).max()
         ), row_idx
         assert float((np.abs(actual - expected) / scale).mean()) < 2e-2, row_idx
+
+
+def test_pf1_mmq_plane_policy_binding() -> None:
+    """The session policy's plane count binds the dispatch route (pure Python).
+
+    planes=2 selects the registered d4x2 guarded f32 variant and its
+    ``raw_mmq_d4x2_f32`` route; the default (3) keeps the production d4x3
+    route. This is the binding the whole-model gate flips temporarily.
+    """
+
+    import hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill  # noqa: F401
+    from hipengine.kernels.registry import resolve
+    from hipengine.runtime.gguf_linear import (
+        GGUFLinearDispatch,
+        KernelKey,
+        Q8MMQPrefillPolicy,
+        _Q8MMQPrefillSession,
+        _q8_mmq_prefill_session,
+        _q8_mmq_prefill_dispatch,
+    )
+
+    base = QWEN4EXP_Q8_MMQ_PREFILL_POLICY
+    dispatch = GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "prefill_f32_f32_out"),
+        "raw",
+    )
+
+    for planes, variant, route in (
+        (3, "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out", "raw_mmq_d4x3_f32"),
+        (2, "mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out", "raw_mmq_d4x2_f32"),
+    ):
+        policy = Q8MMQPrefillPolicy(
+            min_rows=base.min_rows,
+            max_rows=base.max_rows,
+            risk_threshold=base.risk_threshold,
+            max_out_features=base.max_out_features,
+            planes=planes,
+        )
+        session = _Q8MMQPrefillSession(
+            workspace_ptr=1 << 40,
+            workspace_nbytes=q8_mmq_d4x3_nbytes(2048, 10240),
+            risk_count_ptr=1 << 44,
+            risk_count_nbytes=4,
+            risk_indices_ptr=1 << 48,
+            risk_indices_nbytes=policy.risk_indices_nbytes(2048),
+            library=None,
+            policy=policy,
+        )
+        token = _q8_mmq_prefill_session.set(session)
+        try:
+            selected = _q8_mmq_prefill_dispatch(
+                dispatch, rows=512, in_features=2560, out_features=10240
+            )
+        finally:
+            _q8_mmq_prefill_session.reset(token)
+        assert selected.key.variant == variant, (planes, selected.key.variant)
+        assert selected.abi == route, (planes, selected.abi)
+        resolved = resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q8_0",
+            variant=variant,
+        )
+        assert resolved is not None, variant
+
+    # Outside a session (strict path) the dispatch is untouched.
+    assert (
+        _q8_mmq_prefill_dispatch(
+            dispatch, rows=512, in_features=2560, out_features=10240
+        )
+        is dispatch
+    )

@@ -60,6 +60,11 @@ class Q8MMQPrefillPolicy:
     max_rows: int
     risk_threshold: float
     max_out_features: int
+    planes: int = 3
+
+    def __post_init__(self) -> None:
+        if self.planes not in (2, 3):
+            raise ValueError("planes must be 2 or 3 (registered chain surfaces)")
 
     def __call__(self, rows: int, hidden: int, out_features: int) -> bool:
         threshold = self.min_rows.get((int(hidden), int(out_features)))
