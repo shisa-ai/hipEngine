@@ -2248,6 +2248,148 @@ __global__ void q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_kernel(
   }
 }
 
+// Grouped-row sibling of the q8_1 dp4a planar kernel for production rows
+// 8-64: same q8_1 activation contract, same per-group decode/pack schedule
+// and record load widths as the registered rows 1-4 kernel, with the
+// grouped-R8 row-group grid (grid.y) and cross-subgroup reduction epilogue.
+// Arithmetic class: integer dp4a decode (changed vs the BF16 grouped owner).
+// Strict fallback: the registered BF16 grouped-R8 owner.
+template <int ROW_TILE>
+__global__ __launch_bounds__(128, 4)
+void q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_kernel(
+    const gguf_q8_1_block* __restrict__ xq,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int in_features,
+    int out_features,
+    int q8_blocks_per_row) {
+  constexpr int kTileCols = 8;
+  constexpr int kQuartetsPerBlock = kTileCols / 4;
+  const int out_group = blockIdx.x;
+  const int out_tile = out_group >> 1;
+  const int col_base = static_cast<int>(out_group & 1) * kTileCols;
+  const int row_base = blockIdx.y * ROW_TILE;
+  const gguf_q8_1_block* __restrict__ chunk_xq =
+      xq + static_cast<int64_t>(row_base) * q8_blocks_per_row;
+  uint16_t* __restrict__ chunk_out =
+      out + static_cast<int64_t>(row_base) * out_features;
+  const int tid = threadIdx.x;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int groups4 = in_features >> 2;
+
+  float acc[ROW_TILE][kTileCols];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r)
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col)
+      acc[r][local_col] = 0.0f;
+
+  for (int group = tid; group < groups4; group += blockDim.x) {
+    const int block_idx = group >> 6;
+    const int within4 = group & 63;
+    const int subblock = within4 >> 3;
+    const int pack = within4 & 7;
+    const int lane4 = pack << 2;
+    const int scale_index = within4 >> 2;
+    const int q8_index = block_idx * 8 + subblock;
+    const uint8_t* __restrict__ tile =
+        tiles +
+        (static_cast<int64_t>(out_tile) * blocks_per_row + block_idx) *
+            Q6_T16_BLOCK_BYTES;
+    const int8_t* __restrict__ scales =
+        reinterpret_cast<const int8_t*>(tile + Q6_T16_SCALE_OFFSET);
+
+    uint32_t qpack[kTileCols];
+#pragma unroll
+    for (int local_quartet = 0; local_quartet < kQuartetsPerBlock;
+         ++local_quartet) {
+      const int col_quartet = (col_base >> 2) + local_quartet;
+      const int record_index =
+          (subblock * (T16_COLS / 4) + col_quartet) * 8 + pack;
+      const uint8_t* __restrict__ record =
+          tile + Q6_T16_QMICRO_OFFSET +
+          record_index * Q6_T16_QMICRO_RECORD_BYTES;
+      const uint32_t low01 = *reinterpret_cast<const uint32_t*>(record + 0);
+      const uint32_t low23 = *reinterpret_cast<const uint32_t*>(record + 4);
+      const uint32_t high = *reinterpret_cast<const uint32_t*>(record + 8);
+#pragma unroll
+      for (int col4 = 0; col4 < 4; ++col4) {
+        qpack[local_quartet * 4 + col4] =
+            q6_planar_pack4_unsigned(low01, low23, high, col4);
+      }
+    }
+
+    float d[kTileCols];
+    float scale[kTileCols];
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      const int col = col_base + local_col;
+      d[local_col] =
+          fp16_bytes_to_float(tile + Q6_T16_D_OFFSET + col * 2);
+      scale[local_col] = static_cast<float>(
+          scales[scale_index * T16_COLS + col]);
+    }
+
+#pragma unroll
+    for (int row = 0; row < ROW_TILE; ++row) {
+      const gguf_q8_1_block* __restrict__ xb =
+          chunk_xq + static_cast<int64_t>(row) * q8_blocks_per_row + q8_index;
+      const uint32_t x_pack =
+          *reinterpret_cast<const uint32_t*>(xb->qs + lane4);
+      const int q8_sum =
+          q6_planar_dp4a_u8_s8(0x01010101u, x_pack, 0);
+      const float xd = static_cast<float>(xb->d);
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        const int dot =
+            q6_planar_dp4a_u8_s8(qpack[local_col], x_pack, 0) -
+            32 * q8_sum;
+        acc[row][local_col] +=
+            xd * d[local_col] * scale[local_col] *
+            static_cast<float>(dot);
+      }
+    }
+  }
+
+  __shared__ float xchg[4 * ROW_TILE * kTileCols];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r)
+#pragma unroll
+    for (int local_col = 0; local_col < kTileCols; ++local_col) {
+      GGUF_T16_WAVE_REDUCE(acc[r][local_col]);
+    }
+  if (sub_lane == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r)
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        xchg[(sub_id * ROW_TILE + r) * kTileCols + local_col] =
+            acc[r][local_col];
+      }
+  }
+  __syncthreads();
+
+  if (tid == 0) {
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      uint16_t* __restrict__ out_row =
+          chunk_out + static_cast<int64_t>(r) * out_features +
+          static_cast<int64_t>(out_group) * kTileCols;
+#pragma unroll
+      for (int local_col = 0; local_col < kTileCols; ++local_col) {
+        float total = 0.0f;
+#pragma unroll
+        for (int g = 0; g < 4; ++g) {
+          total += xchg[(g * ROW_TILE + r) * kTileCols + local_col];
+        }
+        out_row[local_col] = float_to_bf16_bits(total);
+      }
+    }
+  }
+}
+
 // Exact FFN-down plus rounded-BF16 residual sibling. The projection body is
 // intentionally separate from the registered unfused rowtile so that fallback
 // codegen remains frozen. Each output preserves the complete Q6 dot/reduction,
@@ -2478,6 +2620,39 @@ int launch_q6_t16_qmicro_planar_rowtile_col8_grouped(
       reinterpret_cast<const uint16_t*>(x),
       reinterpret_cast<const uint8_t*>(tiles),
       reinterpret_cast<out_t*>(out), rows, in_features, out_features);
+  return hipGetLastError();
+}
+
+int launch_q6_t16_qmicro_planar_q8_1_dp4a_grouped(
+    const void* xq,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (!xq || !tiles || !out || rows < 8 || (rows % 8) != 0 || rows > 64 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      (in_features % Q8_1_BLOCK) != 0 || out_features <= 0 ||
+      (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / 8),
+      static_cast<unsigned int>(rows / 8));
+  hipLaunchKernelGGL(
+      (q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_kernel<8>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const gguf_q8_1_block*>(xq),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<uint16_t*>(out),
+      static_cast<int>(in_features),
+      static_cast<int>(out_features),
+      static_cast<int>(in_features / Q8_1_BLOCK));
   return hipGetLastError();
 }
 
@@ -2814,6 +2989,19 @@ hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out(
       out_features,
       threads,
       stream);
+}
+
+extern "C" int
+hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out(
+    const void* xq,
+    const void* tiles,
+    void* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q6_t16_qmicro_planar_q8_1_dp4a_grouped(
+      xq, tiles, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int

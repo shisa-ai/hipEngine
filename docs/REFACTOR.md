@@ -5206,3 +5206,23 @@ other means and were not touched.
   1-3 (worklog `20260830T164432…`): AR -15.0% / -21.8% / -29.9% and explicit K3 -20.4% / -28.6% / -36.1%.
 - Verdict: the WMMA route is the better one and the knob stays diagnostic-only. Remove the knob once the
   small-row WMMA kernel itself is fixed; do not promote the GEMV route as a small-row fallback.
+
+### Grouped q8_1 DP4A planar-Q6 variant - default-off candidate pending L4
+
+- New kernel `q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_kernel<8>` (rows
+  8-64, integer dp4a decode over the planar-qmicro tiles, u32 record loads)
+  registered as `linear_q8_1 / t16_q8_1_dp4a_gemv_grouped_bf16_bf16_out`.
+  Leaf screen (2026-09-04, actual weights, quantize included): FFN-down and
+  recurrent-QKV 1.25-1.33x faster than the dispatched BF16 owners at
+  R8-R32; V launch-bound. Artifact
+  `benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-grouped-leaf.json`.
+- **Default-off by construction:** nothing dispatches it; the BF16
+  grouped-R8 owner remains the route default and the registered strict
+  fallback. Promotion to default requires the full L4 production-profile
+  campaign (the arms differ by the x -> q8_1 activation quantization):
+  strict-teacher mean/tail/max KL and top-1 by category/shape/transition,
+  BF16-relative gates, task gates, and the tracked-clean ten-prompt e2e
+  plus heldouts with candidate/control ordering.
+- Remove the kernel, wrapper, registry entry, leaf
+  (`scripts/qwen38_c8_p4_q6_dp4a_grouped_leaf.py`), and its tests if the L4
+  campaign rejects the variant or the P4 bullet closes by another axis.
