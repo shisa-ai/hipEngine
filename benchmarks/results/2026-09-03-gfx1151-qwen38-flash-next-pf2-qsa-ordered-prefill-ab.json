@@ -1,0 +1,318 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_pf2_qsa_ordered_prefill_whole_model_ab",
+  "date": "2026-09-03",
+  "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6 PF-2",
+  "lifecycle": {
+    "performance_claim": false,
+    "status": "closed_measured_loss",
+    "promotion": "none — incumbent route remains production"
+  },
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+  "fixture": "/home/lhl/hipEngine/benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+  "source": {
+    "head": "7d220ef5ea04f09311a06e697b1c1b497a0faf60",
+    "tracked_clean": true
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "harness": "scripts/qwen4exp_candidate_ar.py (diagnostic candidate runner, never a retained claim)",
+    "same_session": true,
+    "warmups_per_case": 1,
+    "measured_repetitions": 3,
+    "decode_transitions": 128,
+    "prefill_chunk_size": 512,
+    "arms": {
+      "incumbent": "flag off (production dispatch: strict rows / wave32 for head_dim==128)",
+      "candidate": "HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL=1 (strict_ordered_three_pass_rows_spans)"
+    },
+    "candidate_overrides_recorded": {
+      "incumbent": {},
+      "candidate": {
+        "HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL": "1"
+      }
+    }
+  },
+  "summary_by_shape": {
+    "p512": {
+      "cases": [
+        "code-p512",
+        "general_en-p512",
+        "general_ja-p512",
+        "mixed_ja_en-p512"
+      ],
+      "incumbent_prefill_tok_s": 86.19,
+      "candidate_prefill_tok_s": 83.38,
+      "candidate_over_incumbent_prefill": 0.9675,
+      "incumbent_decode_tok_s": 14.61,
+      "candidate_decode_tok_s": 14.13
+    },
+    "p1024": {
+      "cases": [
+        "code-p1024",
+        "general_en-p1024",
+        "general_ja-p1024",
+        "mixed_ja_en-p1024"
+      ],
+      "incumbent_prefill_tok_s": 85.56,
+      "candidate_prefill_tok_s": 83.22,
+      "candidate_over_incumbent_prefill": 0.9727,
+      "incumbent_decode_tok_s": 14.44,
+      "candidate_decode_tok_s": 14.22
+    },
+    "p4096": {
+      "cases": [
+        "code-p4096",
+        "general_en-p4096",
+        "general_ja-p4096",
+        "mixed_ja_en-p4096"
+      ],
+      "incumbent_prefill_tok_s": 70.93,
+      "candidate_prefill_tok_s": 68.67,
+      "candidate_over_incumbent_prefill": 0.9682,
+      "incumbent_decode_tok_s": 12.33,
+      "candidate_decode_tok_s": 12.19
+    }
+  },
+  "per_case": {
+    "code-p1024": {
+      "category": "code",
+      "prompt_tokens": 1024,
+      "incumbent_prefill_tok_s": {
+        "mean": 85.364,
+        "stdev": 2.965,
+        "min": 82.823,
+        "max": 89.522
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 82.76,
+        "stdev": 0.089,
+        "min": 82.68,
+        "max": 82.883
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "code-p4096": {
+      "category": "code",
+      "prompt_tokens": 4096,
+      "incumbent_prefill_tok_s": {
+        "mean": 70.845,
+        "stdev": 1.695,
+        "min": 69.123,
+        "max": 73.15
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 68.313,
+        "stdev": 0.012,
+        "min": 68.296,
+        "max": 68.324
+      },
+      "output_exact_across_arms": false,
+      "within_arm_deterministic": true
+    },
+    "code-p512": {
+      "category": "code",
+      "prompt_tokens": 512,
+      "incumbent_prefill_tok_s": {
+        "mean": 85.949,
+        "stdev": 3.338,
+        "min": 83.275,
+        "max": 90.655
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 82.955,
+        "stdev": 0.585,
+        "min": 82.132,
+        "max": 83.441
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "general_en-p1024": {
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "incumbent_prefill_tok_s": {
+        "mean": 85.759,
+        "stdev": 2.759,
+        "min": 83.346,
+        "max": 89.62
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 83.357,
+        "stdev": 0.07,
+        "min": 83.294,
+        "max": 83.455
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "general_en-p4096": {
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "incumbent_prefill_tok_s": {
+        "mean": 71.343,
+        "stdev": 1.434,
+        "min": 69.687,
+        "max": 73.184
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 68.887,
+        "stdev": 0.006,
+        "min": 68.88,
+        "max": 68.895
+      },
+      "output_exact_across_arms": false,
+      "within_arm_deterministic": true
+    },
+    "general_en-p512": {
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "incumbent_prefill_tok_s": {
+        "mean": 86.165,
+        "stdev": 3.27,
+        "min": 83.654,
+        "max": 90.783
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 83.401,
+        "stdev": 0.014,
+        "min": 83.387,
+        "max": 83.421
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "general_ja-p1024": {
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "incumbent_prefill_tok_s": {
+        "mean": 85.878,
+        "stdev": 2.543,
+        "min": 83.453,
+        "max": 89.39
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 83.614,
+        "stdev": 0.049,
+        "min": 83.572,
+        "max": 83.683
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "general_ja-p4096": {
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "incumbent_prefill_tok_s": {
+        "mean": 71.335,
+        "stdev": 1.267,
+        "min": 69.629,
+        "max": 72.662
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 68.909,
+        "stdev": 0.029,
+        "min": 68.879,
+        "max": 68.949
+      },
+      "output_exact_across_arms": false,
+      "within_arm_deterministic": true
+    },
+    "general_ja-p512": {
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "incumbent_prefill_tok_s": {
+        "mean": 86.471,
+        "stdev": 3.074,
+        "min": 84.165,
+        "max": 90.816
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 83.808,
+        "stdev": 0.155,
+        "min": 83.597,
+        "max": 83.967
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "mixed_ja_en-p1024": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "incumbent_prefill_tok_s": {
+        "mean": 85.223,
+        "stdev": 2.423,
+        "min": 82.949,
+        "max": 88.579
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 83.161,
+        "stdev": 0.074,
+        "min": 83.088,
+        "max": 83.263
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    },
+    "mixed_ja_en-p4096": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "incumbent_prefill_tok_s": {
+        "mean": 70.178,
+        "stdev": 1.105,
+        "min": 69.27,
+        "max": 71.734
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 68.584,
+        "stdev": 0.02,
+        "min": 68.556,
+        "max": 68.603
+      },
+      "output_exact_across_arms": false,
+      "within_arm_deterministic": true
+    },
+    "mixed_ja_en-p512": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "incumbent_prefill_tok_s": {
+        "mean": 86.157,
+        "stdev": 3.199,
+        "min": 83.521,
+        "max": 90.66
+      },
+      "candidate_prefill_tok_s": {
+        "mean": 83.368,
+        "stdev": 0.193,
+        "min": 83.148,
+        "max": 83.617
+      },
+      "output_exact_across_arms": true,
+      "within_arm_deterministic": true
+    }
+  },
+  "correctness": {
+    "all_cases_output_exact_across_arms": false,
+    "note": "p512/p1024 outputs are bit-identical across arms (QSA sparse route not engaged at those shapes). At p4096 the QSA sparse route engages and the candidate (ordered three-pass, bit-exact vs the strict rows kernel) differs from the incumbent production route, which dispatches the wave32 variant for head_dim==128. The ordered variant is therefore not bit-exact vs the shipped production incumbent at p4096."
+  },
+  "verdict": "MEASURED LOSS: the ordered three-pass prefill variant is slower than the incumbent at every shape (p4096 70.93->68.67 tok/s, 0.968x; p1024 85.56->83.22, 0.973x; p512 86.19->83.38, 0.967x) and its p4096 outputs are not bit-identical to the incumbent production (wave32) route. Per docs/REFACTOR.md removal trigger the HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL flag and runner branch were deleted; the ordered rows kernels remain registered as a strict variant. Lever closed."
+}
