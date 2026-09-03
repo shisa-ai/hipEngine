@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Leaf A/B: minblocks=4 raw MMQ32 versus the registered mb2 owner at R24.
+"""Leaf A/B: raw MMQ32 candidates versus the registered mb2 owner at R24.
 
-C8-P2 Q5 latency probe (iteration 27). The raw owner serializes 192 barrier
--gated K32 iterations with only one global fetch in flight and ~3.4 KB LDS;
-raising the residency hint to 4 blocks per processor should overlap the load
-latency across blocks. Both arms share the same kernel body and per-(row,
-output) accumulation order, so outputs must be bf16 bit-identical.
+C8-P2 Q5 latency probe (iterations 27-28). Arms: forced minblocks=4
+residency hint (iteration 27, measured neutral) and the software-pipelined
+variant (iteration 28: prefetch next K32 tile into registers, one barrier
+per iteration). All arms share the same kernel math and per-(row, output)
+accumulation order, so outputs must be bf16 bit-identical.
 """
 from __future__ import annotations
 
@@ -67,9 +67,10 @@ def main() -> int:
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
         build_gguf_k_mmq_prefill,
         gguf_q5_k_mmq32_mb4_q8_1_d4s4_f32_bf16_bf16_out,
+        gguf_q5_k_mmq32_pipe_q8_1_d4s4_f32_bf16_bf16_out,
         gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out,
-        gguf_q8_1_d4s4_f32_quantize_bf16_kmajor,
-        q8_1_d4s4_f32_kmajor_nbytes,
+        gguf_q8_1_d4s4_f32_quantize_bf16,
+        q8_1_d4s4_f32_nbytes,
     )
 
     rows = args.rows
@@ -113,6 +114,7 @@ def main() -> int:
     results = []
     mb2_wins = 0
     mb4_wins = 0
+    pipe_wins = 0
     for weight_index, name in enumerate(names):
         raw = np.ascontiguousarray(reader.tensor_data(name))
         raw_device = upload(raw)
@@ -123,14 +125,15 @@ def main() -> int:
                 rng.normal(0.0, 0.2, size=(rows, 6_144)).astype(np.float32)
             )
             x_device = upload(x)
-            q8_device = malloc(
-                q8_1_d4s4_f32_kmajor_nbytes(rows, 6_144), runtime=runtime
-            )
+            q8_device = malloc(q8_1_d4s4_f32_nbytes(rows, 6_144), runtime=runtime)
             mb2_device = malloc(rows * 5_120 * 2, runtime=runtime)
             mb4_device = malloc(rows * 5_120 * 2, runtime=runtime)
-            buffers.extend((x_device, q8_device, mb2_device, mb4_device))
+            pipe_device = malloc(rows * 5_120 * 2, runtime=runtime)
+            buffers.extend(
+                (x_device, q8_device, mb2_device, mb4_device, pipe_device)
+            )
 
-            gguf_q8_1_d4s4_f32_quantize_bf16_kmajor(
+            gguf_q8_1_d4s4_f32_quantize_bf16(
                 x_device.ptr,
                 q8_device.ptr,
                 rows,
@@ -163,33 +166,54 @@ def main() -> int:
                     runtime=runtime,
                 )
 
-            # Correctness first: bit-exactness of the forced-minblocks output.
+            def pipe() -> None:
+                gguf_q5_k_mmq32_pipe_q8_1_d4s4_f32_bf16_bf16_out(
+                    q8_device.ptr,
+                    raw_device.ptr,
+                    pipe_device.ptr,
+                    rows,
+                    6_144,
+                    5_120,
+                    library=library,
+                    runtime=runtime,
+                )
+
+            # Correctness first: bit-exactness of both candidate outputs.
             mb2()
             mb4()
+            pipe()
             mb2_out = download(mb2_device, (rows, 5_120))
             mb4_out = download(mb4_device, (rows, 5_120))
-            mismatches = int(np.count_nonzero(mb2_out != mb4_out))
-            exact = mismatches == 0
+            pipe_out = download(pipe_device, (rows, 5_120))
+            mb4_mismatches = int(np.count_nonzero(mb2_out != mb4_out))
+            pipe_mismatches = int(np.count_nonzero(mb2_out != pipe_out))
+            exact = mb4_mismatches == 0 and pipe_mismatches == 0
+            mismatches = mb4_mismatches + pipe_mismatches
 
             mb2_samples: list[float] = []
             mb4_samples: list[float] = []
+            pipe_samples: list[float] = []
             for sample in range(args.samples):
                 # Counterbalance arm order per weight and per sample.
                 if (weight_index + sample) % 2 == 0:
                     mb2_samples.append(event_ms(mb2))
                     mb4_samples.append(event_ms(mb4))
+                    pipe_samples.append(event_ms(pipe))
                 else:
+                    pipe_samples.append(event_ms(pipe))
                     mb4_samples.append(event_ms(mb4))
                     mb2_samples.append(event_ms(mb2))
             for _ in range(args.warmups):
                 mb2()
                 mb4()
+                pipe()
 
             mb2_med = statistics.median(mb2_samples)
             mb4_med = statistics.median(mb4_samples)
-            if mb4_med < mb2_med:
-                mb4_wins += 1
-            elif mb2_med < mb4_med:
+            pipe_med = statistics.median(pipe_samples)
+            if pipe_med < mb2_med:
+                pipe_wins += 1
+            elif mb2_med < pipe_med:
                 mb2_wins += 1
             results.append(
                 {
@@ -197,14 +221,17 @@ def main() -> int:
                     "rows": rows,
                     "bf16_bit_exact": exact,
                     "bf16_mismatches": mismatches,
-                    "kl_vs_mb2": _kl(mb2_out, mb4_out) if not exact else 0.0,
+                    "kl_vs_mb2": _kl(mb2_out, pipe_out)
+                    if pipe_mismatches
+                    else 0.0,
                     "mb2_ms": mb2_med,
                     "mb4_ms": mb4_med,
+                    "pipe_ms": pipe_med,
                 }
             )
             print(
                 f"[{weight_index + 1}/48] {name}: mb2 {mb2_med:.4f} ms "
-                f"mb4 {mb4_med:.4f} ms exact={exact}",
+                f"mb4 {mb4_med:.4f} ms pipe {pipe_med:.4f} ms exact={exact}",
                 flush=True,
             )
         finally:
@@ -213,9 +240,10 @@ def main() -> int:
 
     mb2_sum = sum(row["mb2_ms"] for row in results)
     mb4_sum = sum(row["mb4_ms"] for row in results)
+    pipe_sum = sum(row["pipe_ms"] for row in results)
     payload = {
         "schema": 1,
-        "kind": "w7900_qwen38_q4km_k3_c8_q5_raw_mmq32_minblocks_leaf",
+        "kind": "w7900_qwen38_q4km_k3_c8_q5_raw_mmq32_minblocks_pipe_leaf",
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "device": detect_device_name(),
         "target_arches": detect_hip_target_arches(),
@@ -225,12 +253,16 @@ def main() -> int:
         "arms": {
             "mb2": "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out (registered raw owner)",
             "mb4": "gguf_q5_k_mmq32_mb4_q8_1_d4s4_f32_bf16_bf16_out (forced minblocks=4)",
+            "pipe": "gguf_q5_k_mmq32_pipe_q8_1_d4s4_f32_bf16_bf16_out (software-pipelined)",
         },
         "mb2_sum_ms": mb2_sum,
         "mb4_sum_ms": mb4_sum,
+        "pipe_sum_ms": pipe_sum,
         "mb4_ratio": mb4_sum / mb2_sum,
+        "pipe_ratio": pipe_sum / mb2_sum,
         "mb2_wins": mb2_wins,
         "mb4_wins": mb4_wins,
+        "pipe_wins": pipe_wins,
         "all_bit_exact": all(row["bf16_bit_exact"] for row in results),
         "results": results,
         "timing": "HIP events, consumer-only bursts (shared producer excluded)",
@@ -240,7 +272,8 @@ def main() -> int:
         handle.write("\n")
     print(
         f"leaf complete: mb2 {mb2_sum:.3f} ms mb4 {mb4_sum:.3f} ms "
-        f"ratio {mb4_sum / mb2_sum:.4f} mb4_wins {mb4_wins}/48 "
+        f"pipe {pipe_sum:.3f} ms | pipe/mb2 {pipe_sum / mb2_sum:.4f} "
+        f"(pipe_wins {pipe_wins}/48) | mb4/mb2 {mb4_sum / mb2_sum:.4f} "
         f"all_exact={payload['all_bit_exact']}"
     )
     return 0

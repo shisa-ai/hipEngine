@@ -1,0 +1,41 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_q5_raw_mmq32_pipe_leaf",
+ "date": "2026-09-04",
+ "status": "rejected",
+ "decision": "The software-pipelined raw MMQ32 variant is bit-identical but measured neutral on the correctly fed (non-kmajor d4s4) raw owner: pipe 9.123 ms vs serial mb2 9.109 ms per 48-weight R24 pass (1.0015x, 22/48 wins). The initial 1.118x reading was a harness-layout artifact: both leaves first fed the kmajor source-layout activation buffer to all arms, slowing the serial mb2 arm (10.170 ms) relative to pipe (9.096 ms). The outer-floor reference check in the pipe contract test exposed the wrong feeding (KL ~46 vs reference), the producer was corrected, and the leaf rerun shows no retained win. The serial mb2 owner remains the registered default; the pipe and mb4 kernels remain exact diagnostics. The iter27 mb4-neutral conclusion was also measured under the wrong layout and is corrected: under the correct layout mb4 is 1.1164x SLOWER (10.170 vs 9.109 ms).",
+ "reopen_condition": "A pipelining variant that wins on the correctly fed owner (leaf >=1.05x, 48/48, bit-exact) would reopen the default.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+ },
+ "arms": {
+  "mb2": "launch_mmq<5,uint16_t,2> (registered raw owner)",
+  "mb4": "launch_mmq_minblocks<5,uint16_t,4>",
+  "pipe": "launch_mmq_pipe<5,uint16_t> (software-pipelined, double-buffered LDS)"
+ },
+ "kmajor_layout_run": {
+  "mb2_sum_ms": 10.169826596975327,
+  "mb4_sum_ms": 10.187351629137993,
+  "pipe_sum_ms": 9.095919758081436,
+  "pipe_ratio": 0.8944026401381034,
+  "note": "wrong producer layout; pipe-vs-serial bit-exactness still valid, timing invalid"
+ },
+ "correct_layout_run": {
+  "mb2_sum_ms": 9.108919709920883,
+  "mb4_sum_ms": 10.169590502977371,
+  "pipe_sum_ms": 9.122640520334244,
+  "pipe_ratio": 1.0015063049022614,
+  "pipe_wins": 22,
+  "all_bit_exact": true
+ },
+ "rows": 24,
+ "weights": 48,
+ "timing": "HIP events, consumer-only bursts (shared non-kmajor d4s4 producer excluded)"
+}

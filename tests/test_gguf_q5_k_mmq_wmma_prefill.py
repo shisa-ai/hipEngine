@@ -8,6 +8,7 @@ changing only MMQ dataflow.  The retained raw-Q5 path remains the oracle.
 from __future__ import annotations
 
 import ctypes
+import os
 from pathlib import Path
 
 import numpy as np
@@ -340,6 +341,8 @@ def _run_candidate(
     packed_nbytes = (
         mmq.q8_1_d4s4_f32_kmajor_nbytes(rows, hidden)
         if consumer in {"i64_j32", "i64_j16"}
+        else mmq.q8_1_d4s4_f32_nbytes(rows, hidden)
+        if consumer in {"mmq32", "mmq32_pipe"}
         else mmq.q8_1_ds4_kmajor_nbytes(rows, hidden)
     )
     out = np.empty(
@@ -347,7 +350,11 @@ def _run_candidate(
     )
     reference = gguf_q5_k_gemv(_bf16_to_f32(x_bf16), qweight)
     producer_library = mmq.build_gguf_k_mmq_prefill(load=True)
-    consumer_library = mmq.build_gguf_q5_k_source_mmq_prefill(load=True)
+    consumer_library = (
+        producer_library
+        if consumer in {"mmq32", "mmq32_pipe"}
+        else mmq.build_gguf_q5_k_source_mmq_prefill(load=True)
+    )
     from hipengine.core.hip import get_hip_runtime
 
     runtime = get_hip_runtime()
@@ -364,6 +371,8 @@ def _run_candidate(
         producer = (
             mmq.gguf_q8_1_d4s4_f32_quantize_bf16_kmajor
             if consumer in {"i64_j32", "i64_j16"}
+            else mmq.gguf_q8_1_d4s4_f32_quantize_bf16
+            if consumer in {"mmq32", "mmq32_pipe"}
             else mmq.gguf_q8_1_ds4_quantize_bf16_kmajor
         )
         producer(
@@ -392,6 +401,12 @@ def _run_candidate(
             ),
             ("i64_j16", "f32"): (
                 mmq.gguf_q5_k_mmq_i64_j16_forced_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out
+            ),
+            ("mmq32", "bf16"): (
+                mmq.gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out
+            ),
+            ("mmq32_pipe", "bf16"): (
+                mmq.gguf_q5_k_mmq32_pipe_q8_1_d4s4_f32_bf16_bf16_out
             ),
         }[(consumer, output_dtype)]
         fn(
@@ -481,6 +496,55 @@ def test_c8_q5_j16_minitile_outputs_match_j32_owner_bit_exact() -> None:
     )
     assert np.array_equal(default_out, forced_out), (
         "J16 minitile output differs from the J32 owner"
+    )
+    assert np.all(np.isfinite(default_out))
+    result = evaluate_logits(reference, default_out)
+    assert result.kl_mean <= 0.05, result
+    assert result.top1_agreement >= 0.90, result
+    assert result.passed, result
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_c8_q5_mmq32_pipe_outputs_match_serial_owner_bit_exact() -> None:
+    """Tile-schedule parity contract for the retained pipelined diagnostic.
+
+    The pipelined variant prefetches the next K32 tile while computing the
+    current one; the per-(row, output) accumulation order is unchanged, so
+    the bf16 outputs must be identical to the serial mb2 owner. The serial
+    owner remains the registered default after the correctly fed (non-kmajor
+    d4s4) leaf measured the pipelined variant neutral (1.0015x, 22/48).
+    """
+    rows, hidden, out_features = 24, 256, 128
+    default_out, reference = _run_candidate(
+        rows=rows,
+        hidden=hidden,
+        out_features=out_features,
+        output_dtype="bf16",
+        consumer="mmq32",
+    )
+    forced_out, _ = _run_candidate(
+        rows=rows,
+        hidden=hidden,
+        out_features=out_features,
+        output_dtype="bf16",
+        consumer="mmq32_pipe",
+    )
+    os.environ["HIPENGINE_GGUF_Q5_MMQ32_PIPE"] = "0"
+    try:
+        rollback_out, _ = _run_candidate(
+            rows=rows,
+            hidden=hidden,
+            out_features=out_features,
+            output_dtype="bf16",
+            consumer="mmq32",
+        )
+    finally:
+        os.environ.pop("HIPENGINE_GGUF_Q5_MMQ32_PIPE", None)
+    assert np.array_equal(default_out, forced_out), (
+        "pipelined output differs from the serial owner"
+    )
+    assert np.array_equal(default_out, rollback_out), (
+        "serial owner output changed under the rollback env"
     )
     assert np.all(np.isfinite(default_out))
     result = evaluate_logits(reference, default_out)
