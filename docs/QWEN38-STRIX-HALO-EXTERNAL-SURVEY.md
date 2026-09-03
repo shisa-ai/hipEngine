@@ -35,18 +35,17 @@ results and invalid state-contaminated output.
   Laurent) and C8 (-1.3% versus Laurent). The pinned baseline row remains in
   the table for provenance; the C2 dip and the marginal C8 gap keep their
   standing blockers.
-- **hipEngine explicit K3 MTP beats own AR at C2-C4 and leads the fixed-K3
-  matrix at C3-C6, with one named defect at C1:** the one-group route lifts
-  C5-C8 to **37.280/41.048/44.492/50.893 tok/s** (+33.2/+25.1/+34.4/+43.6%
-  over the reviewed K3 row) and C2-C4 measure
-  **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x own AR)**
-  with 10/10 AR equality. C8 is the first width where explicit MTP reaches own AR
-  (**1.0057x**); C5-C7 remain slightly below. C1 collapses at resident capacity
-  >= 2 — **~8.5 tok/s (0.743x AR)** with acceptance 0.1523 and 0/10 AR
-  equality; a capacity x flag matrix shows this is independent of the B1/B2
-  owner switches, while capacity-1 width-1 is healthy (18.111, 1.6255x,
-  10/10). Automatic serving is unaffected at the confirmed strict C1 route;
-  automatic C2-C8 remains K0.
+- **hipEngine explicit K3 MTP beats own AR at C1-C4 and leads the fixed-K3
+  matrix at C3-C6:** the one-group route lifts C5-C8 to
+  **37.280/41.048/44.492/50.893 tok/s** (+33.2/+25.1/+34.4/+43.6% over the
+  reviewed K3 row), and C2-C4 measure **30.094/32.919/37.985 tok/s
+  (1.564x/1.342x/1.207x own AR)** with 10/10 AR equality. C8 is the first
+  C2+ width where explicit MTP reaches own AR (**1.0057x**); C5-C7 remain
+  slightly below. The retained singleton-target route resolves the C1
+  capacity defect without reducing resident capacity: at capacity 3, C1 is
+  **19.428 tok/s (1.687x AR)** with acceptance 0.7889 and 10/10 equality.
+  Exactly one active request uses the transactional C1 target; C2+ keeps the
+  packed target path ([L17]). Automatic production C2-C8 remains K0.
 - **Laurent's ordinary built-in MTP path provides broad, usable gains:** it
   leads standardized MTP at C1-C2 in the pinned matrix. Stock HIP is stronger
   at C7-C8. This is separate from Laurent adaptive DFlash2, which remains
@@ -71,8 +70,9 @@ results and invalid state-contaminated output.
   all 40 control/candidate cells, and the current-head refresh passes
   mtp_self_exact at every re-measured width. At the current head it leads AR
   at C1 and C3-C8, prefill at C1 and C3-C7, and K3 MTP at C3-C6; C7/C8 MTP
-  trail stock HIP, and production explicit C1 MTP carries the named B1-owner
-  defect with its registered opt-out. Automatic production C2-C8 remains K0.
+  trail stock HIP. Production explicit C1 now uses the retained singleton
+  target under a wider resident owner while preserving the physical C2+ path.
+  Automatic production C2-C8 remains K0.
 
 ### Route decisions
 
@@ -83,7 +83,7 @@ equal model quality.
 
 | Route | Usable? | Decision |
 | --- | :---: | --- |
-| hipEngine reviewed baseline `b768516f2`, with B1/B2/B5 retentions through `3d48170a7` | **Yes** | The reviewed C1-C8 baseline passed its AR/MTP gates. Current head: explicit K3 reaches **30.094/32.819/37.985/37.280/41.048/44.492/50.893 tok/s at C2-C8** (C8 at 1.0057x own AR), leading the pinned fixed-K3 matrix at C3-C6; prefill leads six of eight widths. Production explicit C1 collapses at resident capacity >= 2 (flag-independent; capacity-1 is healthy at 18.111 tok/s, 1.6255x) — open investigation. Automatic C2-C8 remains K0. |
+| hipEngine reviewed baseline `b768516f2`, with retained successors through `b58a70c82` | **Yes** | Current explicit K3 reaches **19.428/30.094/32.919/37.985/37.280/41.048/44.492/50.893 tok/s at C1-C8**; C1 is 1.687x own AR at resident capacity 3, and C8 is 1.0057x. The singleton target resolves the former capacity-gated C1 defect while retaining the wide provider and packed C2+ target; C3 collateral is +0.15% with unchanged acceptance and 10/10 equality. Prefill leads six of eight widths. Automatic C2-C8 remains K0. |
 | `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
 | Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Broad reusable llama.cpp route; it leads standardized MTP at C1-C2 and C6. |
 | Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |
@@ -165,8 +165,10 @@ table.
 The first six rows are the fixed-K3 comparison. The K1 row is a
 width-specific overlay from the retained successor and is not a fixed-depth
 K3 result; blank cells were not re-measured under that successor protocol.
-The final row is the current-head one-group K3 overlay measured at
-`3d48170a7` after the B1/B2/B5 retentions.
+The final row combines the current-head one-group K3 overlay after the
+B1/B2/B5 retentions with the active-C1 singleton-target retention at
+`b58a70c82`; C1 and C3 were re-measured together at resident capacity 3
+([L17]).
 
 | Engine / route | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -177,7 +179,7 @@ The final row is the current-head one-group K3 overlay measured at
 | Nathan Vulkan `0eb528051` | 20.781 | 30.566 | 27.859 | 26.385 | 29.768 | 33.318 | 36.992 | 45.173 |
 | `q38rocm` normal Vulkan `5d097740` | 20.357 | 27.163 | 26.178 | 26.482 | 32.297 | 31.613 | 38.314 | 45.342 |
 | hipEngine K1 runtime `1f4687cab` | — | — | — | — | — | 37.074 | — | 43.421 |
-| hipEngine K3 one-group, current head `3d48170a7` (2026-09-03) | 8.556* | 30.094 | **32.819** | **37.985** | **37.280** | **41.048** | 44.492 | 50.893 |
+| hipEngine K3 one-group, retained through `b58a70c82` (2026-09-03) | 19.428 | 30.094 | **32.919** | **37.985** | **37.280** | **41.048** | 44.492 | 50.893 |
 
 At C6, the latest hipEngine K1 row ranks second of six at 37.074 tok/s, only
 0.080 tok/s (0.22%) behind Laurent's 37.154. At C8, hipEngine improves 22.6%
@@ -191,22 +193,16 @@ hipEngine's best explicit route: it leads the pinned matrix at C5 (37.280
 versus Mainline Vulkan 32.713, +14.0%) and C6 (41.048 versus Laurent 37.154,
 +10.5%), ranks second at C7 (44.492, 3.45% behind stock HIP) and C8 (50.893,
 9.48% behind stock HIP and 0.11% ahead of Laurent), and reaches 1.0057x own
-AR at C8. C3/C4 one-group cells measure 32.819/37.985 tok/s (1.314x/1.207x
+AR at C8. C3/C4 one-group cells measure 32.919/37.985 tok/s (1.342x/1.207x
 own AR) with 10/10 AR equality and acceptance unchanged from the pinned head;
-C2 measures 30.094 (1.564x). *C1 carries a named defect at resident capacity
->= 2: the width-1 group collapses to ~8.5 tok/s (0.743x own AR) with draft
-acceptance 0.1523 and 0/10 AR equality. A capacity x flag matrix at the same
-head falsified the initial owner-family attribution: the collapse persists
-with the B1 serving flag off and with B2 F16 staging off, while capacity-1
-width-1 serving is healthy under both flag states (18.111 tok/s, 1.6255x,
-10/10). The measured root cause is therefore a numerics divergence in the
-packed batch verifier's 4-row dataflow (capacity >= 2 routes width-1 groups
-through `verify_target_blocks_batch`; capacity 1 uses the healthy
-single-block/native path), with regression window `b768516f2..HEAD`.
-No env opt-out is effective. The investigation is open; strict C1 automatic
-serving (confirmed at the B5 default) is a separate route.
-The one-group packed-verifier execution differs mechanically from the pinned
-subgroup route; protocol, prompts, and boundary are identical.
+C2 measures 30.094 (1.564x). C1 now measures 19.428 tok/s (1.687x own AR) at
+resident capacity 3, with acceptance 0.7889 and 10/10 AR equality. This is a
+127.47% MTP improvement over the same-capacity broken row. The fix preserves
+the physical provider and dispatches only an active singleton through the
+existing transactional C1 target; C2+ remains packed. C3's same-run packed
+collateral is +0.15%, with acceptance and equality unchanged. The one-group
+packed-verifier execution differs mechanically from the pinned subgroup route;
+protocol, prompts, and boundary are identical.
 
 All llama.cpp outputs passed the character-window and word-trigram repetition
 guards. hipEngine passed 80/80 explicit-MTP generated-ID, route, and budget
@@ -308,9 +304,9 @@ The reviewed `b768516f2` baseline ran C1-C8 with production-profile BF16
 arithmetic. It led AR at C3-C8, reaching 23.879-47.194 complete-wall tok/s. It
 was 0.45% behind Nathan at C1 (11.112 versus 11.162) and 8.80% behind Laurent
 at C2. The latest C6/C8 K1 pair measures matched AR at 39.908/47.240 tok/s.
-The current-head refresh ([L15]) improves AR at every width — C1 11.511 now
-leads Nathan's frozen 11.162, and C3-C8 reach
-24.974/31.478/37.995/43.093/46.153/50.605 — leaving C2 (19.249, -3.0% versus
+The current retained rows ([L15], [L17]) improve AR at every width — C1
+11.518 now leads Nathan's frozen 11.162, and C3-C8 reach
+24.526/31.478/37.995/43.093/46.153/50.605 — leaving C2 (19.249, -3.0% versus
 Laurent) as the only AR deficit.
 
 Prefill reached 139.8-247.3 tok/s across C2-C8 (147.0 at C1) in the pinned
@@ -331,10 +327,10 @@ at 1,540/1,610. The 2026-09-02/03 B1 verifier-owner transfer and B5 planar-Q6
 integer MMQ retentions ([L11], [L14]) then lifted the one-group K3 route to
 **37.280/41.048/44.492/50.893 tok/s at C5-C8** (C8 = 1.0057x own AR),
 leading the pinned external matrix at C3-C6 and ranking second at C7-C8
-(see the overlay row above); C2-C4 measure 30.094/32.819/37.985 tok/s
-(1.564x/1.314x/1.207x). Production explicit C1 carries the named
-capacity-gated defect described below the MTP table; capacity-1 width-1
-serving measures 18.111 tok/s (1.6255x). The C3/K3 production numerical gate previously passed 240/240
+(see the overlay row above); C2-C4 measure 30.094/32.919/37.985 tok/s
+(1.564x/1.342x/1.207x). Production explicit C1 now measures 19.428 tok/s
+(1.687x) at resident capacity 3 through the retained singleton target. The
+C3/K3 production numerical gate previously passed 240/240
 canonical and 192/192 heldout top-1 checks, with maximum KL 8.69e-4 and 8.45e-4
 respectively ([L8]). Width-4 prompt streaming changed its acceptance
 trajectory, so that T3 scope remains an explicit diagnostic rather than an
@@ -772,14 +768,10 @@ The reviewed matrix and C=N screen narrow the remaining work:
    one-group K3 route now has retained exact owners through B1/B5; the K1
    width-specific route remains a fallback diagnostic.
 4. Target the remaining broad-MTP gaps directly: 3.45%/9.48% behind stock HIP
-   at C7/C8 and the C1-C2 deficit to the llama.cpp forks. Do not return to
-   serial per-request verification or acceptance-only tuning.
-5. Repair the width-1 packed batch-verify divergence at resident capacity
-   >= 2 ([L15]): the group collapses to ~0.75x own AR with broken greedy
-   equality under every measured owner-family state; capacity-1 width-1 is
-   healthy. Capture batch-vs-single-block target logits on identical 4-token
-   inputs and bisect the `b768516f2..HEAD` window; an interim rows<8 dispatch
-   floor was reverted after measurements falsified its premise.
+   at C7/C8 and the remaining C1-C2 deficit to the llama.cpp forks. Do not
+   return to packed R4 verification or acceptance-only tuning. The retained
+   active-singleton target already resolves C1 correctness and economics at
+   resident capacity greater than one.
 
 Sequential ownership, lifecycle, and contamination gates are now part of the
 hipEngine correctness evidence. The external results still do not justify
@@ -796,6 +788,7 @@ Current reviewed matrix and successor:
 - [B5 planar-Q6 integer MMQ retention][L14]
 - [current-head C1-C8 MTP refresh with C1 blocker][L15]
 - [current-head C1-C8 prefill refresh][L16]
+- [active-C1 singleton-target retention][L17]
 - [full C1-C8 hipEngine refresh and C=N review][L9]
 - [preserved same-host external matrix][L6]
 
@@ -838,6 +831,7 @@ Related hipEngine evidence uses different scopes or protocols:
 [L14]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json
 [L15]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json
 [L16]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json
+[L17]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-c1-singleton-target-retained.json
 [S1]: https://github.com/hogeheer499-commits/strix-halo-guide/blob/029320fb/QWEN38_STRIX_HALO.md
 [S2]: https://github.com/MikeVeerman/qwen38-27-Strix-Halo-bench/blob/cc52706409b0c550636ff068b06894d27079d734/README.md
 [S3]: https://github.com/julianmb/q38rocm/blob/5d0977403b0dac778598b1af499bf178b46c0b35/README.md
