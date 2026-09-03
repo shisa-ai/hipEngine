@@ -72,6 +72,7 @@ from hipengine.kernels.hip_gfx1100.fused.paro_combine import (
     shared_gate_combine_out_bf16,
     weighted_sum_batch_out_bf16_f32w,
     weighted_lanes_sum_out_bf16_f32w,
+    weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w,
     weighted_sum_out_bf16_f32w,
 )
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import (
@@ -3598,18 +3599,24 @@ def run_qwen4_exp_moe(
                 hidden,
                 selected_ptr=scratch.group_sorted_experts.ptr,
             )
-        weighted_lanes_sum_out_bf16_f32w(
-            scratch.expert_down.ptr,
-            scratch.group_sorted_weights.ptr,
-            scratch.group_sorted_lanes.ptr,
-            scratch.group_lane_to_row.ptr,
-            scratch.routed.ptr,
-            rows,
-            top_k,
-            hidden,
-            stream=stream,
-            runtime=active_runtime,
-        )
+        if rows == 1:
+            # Grouped decode: keep the unfused sum; the rows==1 combine tail
+            # uses the single-token shared_gate_combine_out below.
+            weighted_lanes_sum_out_bf16_f32w(
+                scratch.expert_down.ptr,
+                scratch.group_sorted_weights.ptr,
+                scratch.group_sorted_lanes.ptr,
+                scratch.group_lane_to_row.ptr,
+                scratch.routed.ptr,
+                rows,
+                top_k,
+                hidden,
+                stream=stream,
+                runtime=active_runtime,
+            )
+        # rows > 1: the fused PF-4 lever-2 candidate replaces this sum and
+        # the shared_gate_combine_batch tail in one kernel (see combine site
+        # below). The unfused chain stays registered as the strict fallback.
     else:
         gate_weight = weights["expert_gate"]
         up_weight = weights["expert_up"]
@@ -3845,6 +3852,25 @@ def run_qwen4_exp_moe(
             scratch.shared_down_bf16.ptr,
             scratch.shared_gate_logits.ptr,
             scratch.output.ptr,
+            hidden,
+            stream=stream,
+            runtime=active_runtime,
+        )
+    elif grouped_prefill:
+        # PF-4 lever 2 T0: fused routed-sum + gated shared combine (bit-exact
+        # vs the unfused weighted_lanes_sum -> shared_gate_combine chain;
+        # kernel-level A/B 455e176ab). Unfused chain stays the strict
+        # fallback via weighted_lanes_sum+shared_add registry keys.
+        weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w(
+            scratch.expert_down.ptr,
+            scratch.group_sorted_weights.ptr,
+            scratch.group_sorted_lanes.ptr,
+            scratch.group_lane_to_row.ptr,
+            scratch.shared_down_bf16.ptr,
+            scratch.shared_gate_logits.ptr,
+            scratch.output.ptr,
+            rows,
+            top_k,
             hidden,
             stream=stream,
             runtime=active_runtime,
