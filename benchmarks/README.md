@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-02**
+Last updated: **2026-09-04**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -249,6 +249,16 @@ HB-3 stops before timing: pinned operation harnesses pass their exposed cases,
 but **0/5 active families** currently share an identical cross-engine fixture,
 dtype/layout contract, and operation boundary. No mechanism ratio or candidate is
 reported. [`halo-box HB-3 blocker`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json).
+
+Campaign punchlist PF-3 promoted the fused single-loop logical256 Q5_1 MoE
+down-projection prefill as the production default on this graph: a same-session
+counterbalanced whole-model A/B (1 warmup + 3 reps per case, canonical
+p512/p1024/p4096 fixture, 12 cases) shows prefill gains of **+1.89% (p512),
++1.58% (p1024), +0.95% (p4096)** with decode unchanged within noise and all 36
+outputs bit-identical across all four arms. The previous grouped owner remains
+registered as the strict fallback. The Q4_K gate/up M1 retune lever was closed
+as a measured loss. [`PF-3 promotion A/B`](results/2026-09-04-gfx1151-qwen38-flash-next-pf3-q51-m1-promotion-ab.json),
+[`PF-3 kernel A/B`](results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json).
 
 The frozen p508 role/API profile still puts hipEngine versus llama HIP device
 kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90

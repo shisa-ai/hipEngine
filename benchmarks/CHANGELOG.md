@@ -4,6 +4,23 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-04 gfx1151 Qwen3.8-Flash-Next halo-box PF-3] **Promoted** the fused
+  single-loop logical256 Q5_1 MoE down-projection prefill as the production
+  default (exact_grouped_down expertgrid64 arm): same-session counterbalanced
+  whole-model A/B (1 warmup + 3 reps per case, canonical p512/p1024/p4096
+  fixture, 12 cases, 4 counterbalanced arms) shows prefill **p512 84.03→85.62
+  tok/s (+1.89%), p1024 83.97→85.29 (+1.58%), p4096 70.20→70.86 (+0.95%)**,
+  decode unchanged within noise, and all 144 output samples bit-identical
+  across arms (T0: per-accumulator order and 256-wide strict reduction tree
+  preserved). Kernel-level binding-shape A/B: 9,423.0→8,425.6 µs (−10.6%),
+  bit-exact. The previous grouped owner stays registered as the strict
+  fallback; the temporary `HIPENGINE_QWEN4_EXP_Q5_1_DOWN_M1` A/B flag was
+  deleted at promotion. The Q4_K gate/up M1 (PAIR=false) lever was **closed as
+  a measured loss** (+57% to +123% slower at rows 16/64/512, bit-exact) in the
+  same unit.
+  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf3-q51-m1-promotion-ab.json`,
+  `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json`.
+
 - [2026-09-04 gfx1151 Qwen3.8-Flash-Next halo-box PF-5] Closed the PF-5 GDN
   32-warp/block (1024-thread) prefill lever as a **measured loss**:
   interleaved counterbalanced kernel-level A/B vs the production columnwarps
