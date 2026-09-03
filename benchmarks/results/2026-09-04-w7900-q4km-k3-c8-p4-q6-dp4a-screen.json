@@ -1,0 +1,57 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p4_q6_dp4a_schedule_screen",
+ "date": "2026-09-04",
+ "status": "screen",
+ "decision": "C8-P4 reduced-dequantization screen: the registered q8_1+dp4a Q6 schedule beats the BF16 rowtile owner 3/3 at rows=4 on actual weights (FFN-down 0.5785x = 1.73x faster including the q8_1 quantize launch; recurrent-QKV 0.7245x; attention_v 0.9686x launch-bound). Axis validated; mismatches confirm changed arithmetic -> any production realization requires a NEW grouped dp4a kernel (registered variant caps at rows 1-4; route needs rows 8-32) plus the full L4 production-profile numerical campaign.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "arms": {
+  "control": "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_bf16_out (BF16 decode owner, rows 2-8 route)",
+  "dp4a": "gguf_q4_k_quantize_bf16_q8_1 + gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out (integer decode, quantize included)"
+ },
+ "rows": 4,
+ "threads": 128,
+ "screen": [
+  {
+   "role": "ffn_down",
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.13230487704277039,
+   "dp4a_incl_quantize_ms": 0.07653950154781342,
+   "dp4a_ratio": 0.5785085422291,
+   "mismatches_vs_control": 15954,
+   "kl_vs_control": NaN,
+   "finite": false
+  },
+  {
+   "role": "recurrent_qkv",
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.07623037695884705,
+   "dp4a_incl_quantize_ms": 0.05523024871945381,
+   "dp4a_ratio": 0.7245175863326748,
+   "mismatches_vs_control": 29724,
+   "kl_vs_control": NaN,
+   "finite": false
+  },
+  {
+   "role": "attention_v",
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.020545000210404396,
+   "dp4a_incl_quantize_ms": 0.0199001245200634,
+   "dp4a_ratio": 0.9686115510471294,
+   "mismatches_vs_control": 3286,
+   "kl_vs_control": NaN,
+   "finite": false
+  }
+ ],
+ "pool_projection_note": "rows=4 screen is a lower bound on the dp4a advantage at production rows 8-32 (fewer rows per weight byte shifts both arms toward memory). If the rows=4 ratios held at R32, the 30.353 ms/cycle grouped-R8 pool would drop by roughly 12 ms/cycle (~55%); this is a PROJECTION from the screen, not a measured e2e claim. Realization requires the new grouped kernel + L4 gates.",
+ "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python3 scripts/qwen38_c8_p4_q6_dp4a_leaf.py --output /tmp/q6_dp4a_leaf.json",
+ "artifact_source": "scripts/qwen38_c8_p4_q6_dp4a_leaf.py"
+}
