@@ -87,6 +87,9 @@ _Q6_T16_QMICRO_PLANAR_ROWTILE_COL8_BF16_F32 = (
 _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_BF16_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out"
 )
+_Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16 = (
+    "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out"
+)
 _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_BF16_RESIDUAL_BF16 = (
     "hipengine_gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_"
     "gemv_bf16_residual_bf16_out"
@@ -1260,6 +1263,57 @@ def gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out(
     )
 
 
+def gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out(
+    xq_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Launch the grouped q8_1 DP4A planar-Q6 sibling for rows 8-64.
+
+    Integer-decode candidate for the grouped-R8 route (changed arithmetic vs
+    the BF16 grouped owner; the owner remains the registered strict fallback
+    until a production-profile L4 campaign promotes this variant).
+    """
+
+    if rows < 8 or rows > 64 or rows % 8 != 0:
+        raise ValueError("grouped planar Q8_1 rows must be a multiple of 8 in [8, 64]")
+    if in_features <= 0 or in_features % 256 != 0:
+        raise ValueError("in_features must be a positive multiple of 256")
+    if out_features <= 0 or out_features % 16 != 0:
+        raise ValueError("out_features must be a positive multiple of 16")
+    library = library or _q6_k_t16_gemv_library()
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, _Q6_T16_QMICRO_PLANAR_Q8_1_DP4A_GROUPED_BF16_BF16)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(xq_ptr),
+        ctypes.c_void_p(tiles_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_void_p(stream),
+    )
+    if err != 0:
+        raise RuntimeError(f"grouped planar Q8_1 projection launch failed: {err}")
+
+
 def gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_residual_bf16_out(
     xq_ptr: int,
     tiles_ptr: int,
@@ -1653,6 +1707,16 @@ def register_gguf_q6_k_t16_gemv_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey(
             "hip_gfx1100",
+            "linear_q8_1",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_q8_1_dp4a_gemv_grouped_bf16_bf16_out",
+        ),
+        gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey(
+            "hip_gfx1100",
             "linear_q8_1+residual",
             "gguf_q6_k_t16_qmicro_planar_v1",
             "t16_q8_1_dp4a_gemv_bf16_residual_bf16_out",
@@ -1793,6 +1857,7 @@ __all__ = [
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_col8_bf16_f32_out",
     "gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_bf16_out",
+    "gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_bf16_residual_bf16_out",
     "gguf_q6_k_t16_qmicro_planar_q8_1_threads",
     "gguf_q6_k_t16_qmicro_planar_proposal_top1_exact_bf16",

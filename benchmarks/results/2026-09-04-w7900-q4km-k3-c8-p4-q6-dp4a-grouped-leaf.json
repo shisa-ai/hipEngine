@@ -1,0 +1,131 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p4_q6_dp4a_grouped_leaf",
+ "date": "2026-09-04",
+ "status": "screen",
+ "decision": "C8-P4 grouped dp4a kernel (new, rows 8-64) beats the dispatched BF16 owners 9/9 at production row counts including the q8_1 quantize launch: FFN-down 0.7529-0.7837x (1.28-1.33x faster), recurrent-QKV 0.7662-0.7977x, attention-V 0.9368-0.9982x (launch-bound). At R32 the 30.353 ms/cycle grouped-R8 pool projects to ~25.2 ms/cycle (~17%). Changed arithmetic (x -> q8_1): promotion requires the L4 production-profile campaign; the variant stays default-off with the BF16 owner as the registered strict fallback.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "arms": {
+  "control": "grouped_rows8 BF16 owner at rows>=16, rowtile_col8 BF16 owner at rows=8 (the dispatched owners)",
+  "dp4a": "gguf_q4_k_quantize_bf16_q8_1 + gguf_q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_bf16_bf16_out (new grouped integer decode, quantize included)"
+ },
+ "screen": [
+  {
+   "role": "ffn_down",
+   "rows": 8,
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.19376838207244873,
+   "dp4a_incl_quantize_ms": 0.149319127202034,
+   "dp4a_ratio": 0.7706062547717644,
+   "mismatches_vs_control": 29142,
+   "kl_vs_control": 5.9006374747317254e-05,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "rows": 24,
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.5472559928894043,
+   "dp4a_incl_quantize_ms": 0.4120256304740906,
+   "dp4a_ratio": 0.7528937751758114,
+   "mismatches_vs_control": 87520,
+   "kl_vs_control": 3.351654769486984e-05,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "rows": 32,
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.7214323878288269,
+   "dp4a_incl_quantize_ms": 0.5654016137123108,
+   "dp4a_ratio": 0.783720863175972,
+   "mismatches_vs_control": 116660,
+   "kl_vs_control": 4.36108233582748e-05,
+   "finite": true
+  },
+  {
+   "role": "recurrent_qkv",
+   "rows": 8,
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.10894062370061874,
+   "dp4a_incl_quantize_ms": 0.08690537512302399,
+   "dp4a_ratio": 0.7977315731351958,
+   "mismatches_vs_control": 59043,
+   "kl_vs_control": 7.78352353810071e-06,
+   "finite": true
+  },
+  {
+   "role": "recurrent_qkv",
+   "rows": 24,
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.34183162450790405,
+   "dp4a_incl_quantize_ms": 0.261906236410141,
+   "dp4a_ratio": 0.7661849215594885,
+   "mismatches_vs_control": 175498,
+   "kl_vs_control": 2.1071849474794938e-05,
+   "finite": true
+  },
+  {
+   "role": "recurrent_qkv",
+   "rows": 32,
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.4755527377128601,
+   "dp4a_incl_quantize_ms": 0.36809712648391724,
+   "dp4a_ratio": 0.7740406001114752,
+   "mismatches_vs_control": 234724,
+   "kl_vs_control": 2.8601109160284916e-05,
+   "finite": true
+  },
+  {
+   "role": "attention_v",
+   "rows": 8,
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.025380125269293785,
+   "dp4a_incl_quantize_ms": 0.025335125625133514,
+   "dp4a_ratio": 0.9982269731263024,
+   "mismatches_vs_control": 5790,
+   "kl_vs_control": 7.659193440009e-06,
+   "finite": true
+  },
+  {
+   "role": "attention_v",
+   "rows": 24,
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.03757524862885475,
+   "dp4a_incl_quantize_ms": 0.03702525049448013,
+   "dp4a_ratio": 0.9853627546205439,
+   "mismatches_vs_control": 17551,
+   "kl_vs_control": 2.360423234281693e-05,
+   "finite": true
+  },
+  {
+   "role": "attention_v",
+   "rows": 32,
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.05127524957060814,
+   "dp4a_incl_quantize_ms": 0.04803524911403656,
+   "dp4a_ratio": 0.9368116102075726,
+   "mismatches_vs_control": 23353,
+   "kl_vs_control": 3.107366282793584e-05,
+   "finite": true
+  }
+ ],
+ "r32_pool_projection_note": "PROJECTION from leaf medians, not a measured e2e claim: FFN-down 21.505 x 0.7837 + QKV 10.207 x 0.7740 + V 0.443 x 0.9368 = ~25.2 ms/cycle vs the retained 30.353. Realization requires the L4 campaign (strict-teacher KL/top-1 by category, task gates) and the e2e gate.",
+ "kernel_contracts": "tests/test_gguf_q6_k_t16_planar_q8_1_grouped_gemv.py: q8-oracle rtol 2e-2, exact-oracle KL<=0.05 + top1>=0.90 outer floor, determinism, registry, wrapper validation (rows 8/16/32)",
+ "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python3 scripts/qwen38_c8_p4_q6_dp4a_grouped_leaf.py --output /tmp/q6_dp4a_grouped_leaf.json",
+ "artifact_source": "scripts/qwen38_c8_p4_q6_dp4a_grouped_leaf.py"
+}
