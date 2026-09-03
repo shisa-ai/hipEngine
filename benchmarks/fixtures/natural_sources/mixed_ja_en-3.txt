@@ -1,0 +1,38 @@
+3.  (必要ならば)`include/ruby/defines.h` を編集する
+
+多分，必要無いと思います．
+
+4.  (必要ならば)`ext/Setup` に静的にリンクする拡張モジュールを指定する
+
+`ext/Setup` に記述したモジュールは静的にリンクされます．
+
+ダイナミックローディングをサポートしていないアーキテクチャでは `Setup` の1行目の「`option nodynamic`」という行のコ
+    メントを外す必要があります．
+    また，このアーキテクチャで拡張モジュールを利用するためには，あらかじめ静的にリンクをしておく必要があります．
+
+5.  `make` を実行してコンパイルする
+
+6.  `make check`でテストを行う．
+
+「`check succeeded`」と表示されれば成功です．ただしテストに成功しても完璧だと保証されている訳ではありません．
+
+7.  `make install`
+
+以下のディレクトリを作って，そこにファイルをインストー ルします．
+
+*   `${DESTDIR}${prefix}/bin`
+    *   `${DESTDIR}${prefix}/include/ruby-${MAJOR}.${MINOR}.${TEENY}`
+    *   `${DESTDIR}${prefix}/include/ruby-${MAJOR}.${MINOR}.${TEENY}/${PLATFORM}`
+    *   `${DESTDIR}${prefix}/lib`
+    *   `${DESTDIR}${prefix}/lib/ruby`
+    *   `${DESTDIR}${prefix}/lib/ruby/${MAJOR}.${MINOR}.${TEENY}`
+    *   `${DESTDIR}${prefix}/lib/ruby/${MAJOR}.${MINOR}.${TEENY}/${PLATFORM}`
+    *   `${DESTDIR}${prefix}/lib/ruby/site_ruby`
+    *   `${DESTDIR}${prefix}/lib/ruby/site_ruby/${MAJOR}.${MINOR}.${TEENY}`
+    *   `${DESTDIR}${prefix}/lib/ruby/site_ruby/${MAJOR}.${MINOR}.${TEENY}/${PLATFORM}`
+    *   `${DESTDIR}${prefix}/lib/ruby/vendor_ruby`
+    *   `${DESTDIR}${prefix}/lib/ruby/vendor_ruby/${MAJOR}.${MINOR}.${TEENY}`
+    *   `${DESTDIR}${prefix}/lib/ruby/vendor_ruby/${MAJOR}.${MINOR}.${TEENY}/${PLATFORM}`
+    *   `${DESTDIR}${prefix}/lib/ruby/gems/${MAJOR}.${MINOR}.${TEENY}`
+    *   `${DESTDIR}${prefix}/share/man/man1`
+    *   `${DESTDIR}${prefix}/share/ri/${MAJOR}.${MINOR}.${TEENY}/system`

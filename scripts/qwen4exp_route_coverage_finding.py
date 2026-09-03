@@ -104,15 +104,98 @@ def _measured_divergence(gate_path: Path) -> dict:
     }
 
 
+def _single_fixture_artifact(fixture_path: Path, decode_steps: int, output: Path) -> int:
+    """PF-0 mode: record route coverage for one fixture without gate inputs.
+
+    Pure dispatch arithmetic (prompt_tokens vs MMQ_MIN_ROWS); no measurement
+    and no claim.
+    """
+    cov = _fixture_coverage(fixture_path, decode_steps)
+    classification = (
+        "route_vacuous_for_scope"
+        if cov["route_engagement_coverage"] < 0.5
+        else "route_covering"
+    )
+    artifact = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": KIND,
+        "status": "accepted_diagnostic_finding",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "performance_claim": False,
+        "profile_qualification_claim": False,
+        "admits_or_rejects_candidate": False,
+        "subject": {
+            "route": "prefill_policy_qwen4exp_dense_q8_shapes",
+            "selected_variant": "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+            "strict_fallback_variant": "coltile8_rowbatch4_f32_f32_out",
+            "admission_threshold_rows": MMQ_MIN_ROWS,
+            "threshold_source": "hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.py:104 _QWEN4EXP_MIN_ROWS",
+        },
+        "decision_rule": {
+            "predeclared_in": "worklog/entries/20260903T033202.234656Z-lhl-qwen4exp-pf1-basis-predeclaration-6f6810.md",
+            "rule_b_coverage_floor": 0.5,
+        },
+        "coverage": {"single_fixture": cov},
+        "measured": None,
+        "measured_note": (
+            "single-fixture mode: dispatch-coverage diagnostic only; no "
+            "incumbent-vs-strict gate run is paired"
+        ),
+        "verdict": {
+            "single_fixture_classification": classification,
+        },
+    }
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(artifact, indent=1) + "\n")
+    print(json.dumps(
+        {
+            "output": str(output),
+            "single_fixture_classification": classification,
+            "coverage": cov["route_engagement_coverage"],
+            "cases": cov["cases"],
+            "compared_rows": cov["compared_rows"],
+        },
+        indent=1,
+    ))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--admission-fixture", type=Path, required=True)
-    parser.add_argument("--canonical-fixture", type=Path, required=True)
-    parser.add_argument("--admission-gate", type=Path, required=True)
-    parser.add_argument("--canonical-gate", type=Path, required=True)
+    parser.add_argument("--admission-fixture", type=Path, default=None)
+    parser.add_argument("--canonical-fixture", type=Path, default=None)
+    parser.add_argument("--admission-gate", type=Path, default=None)
+    parser.add_argument("--canonical-gate", type=Path, default=None)
     parser.add_argument("--decode-steps", type=int, default=24)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--single-fixture", type=Path, default=None,
+                        help="PF-0 mode: record coverage for one fixture only")
+    parser.add_argument("--single-output", type=Path, default=None,
+                        help="output path for the single-fixture artifact")
     args = parser.parse_args(argv)
+
+    if args.single_fixture:
+        if not args.single_output:
+            parser.error("--single-output is required with --single-fixture")
+        return _single_fixture_artifact(
+            args.single_fixture, args.decode_steps, args.single_output
+        )
+
+    missing = [
+        name
+        for name, value in (
+            ("--admission-fixture", args.admission_fixture),
+            ("--canonical-fixture", args.canonical_fixture),
+            ("--admission-gate", args.admission_gate),
+            ("--canonical-gate", args.canonical_gate),
+            ("--output", args.output),
+        )
+        if value is None
+    ]
+    if missing:
+        parser.error(
+            "the following arguments are required: " + ", ".join(missing)
+        )
 
     admission_cov = _fixture_coverage(args.admission_fixture, args.decode_steps)
     canonical_cov = _fixture_coverage(args.canonical_fixture, args.decode_steps)
