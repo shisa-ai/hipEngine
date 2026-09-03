@@ -4753,3 +4753,4 @@ Examples:
 - [smoke] Recorded `smoke_add` as a build/runtime correctness smoke only, not a throughput row.
 
 - [maple invalid historical] deepgrove/maple-preview-2bit-mlx / gfx1151 M6 helper: 223.2/275.6/321.1 tok/s rows were later invalidated because the artifact mislabeled Radeon 8060S/gfx1151 as W7900/gfx1151, gated only c=1, and overstated server integration; superseded by `benchmarks/results/2026-08-07-gfx1151-maple-m6-batch-decode-recertified.json`.
+- 2026-09-04: C8-P4 grouped-R8 reduced-dequantization closed — new grouped q8_1 dp4a planar-Q6 kernel (default-off, env `HIPENGINE_C8_Q6_DP4A_GROUPED`): L4 numerics passed (kl_max 0.007267, top1 0.99769, 18 prompts) and retention e2e passed both orders (MTP aggregate 91.734/91.497 candidate vs 90.726/89.527 control, +1.65% mean, 40/40 exact cells, acceptance preserved); default flip = separate product gate (artifacts: 2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-{l4-numerics,retention-e2e}.json).

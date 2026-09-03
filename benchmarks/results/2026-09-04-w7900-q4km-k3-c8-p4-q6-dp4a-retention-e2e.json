@@ -1,0 +1,103 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p4_q6_dp4a_retention_e2e",
+ "date": "2026-09-04",
+ "status": "passed",
+ "decision": "C8-P4 retention e2e PASSED both orders: dp4a-on candidate beats both dp4a-off controls in both orders (91.734/91.497 vs 90.726/89.527 MTP aggregate; +1.65% mean, +1.11% order OFF->ON, +2.21% order ON->OFF), 40/40 cells exact (MTP == AR reference trajectories), accepted draft tokens identical (1256), AR neutral (-0.20%, route does not dispatch the kernel). With the iter35 L4 numerics gate this closes the P4 grouped-R8 reduced-dequantization bullet. Default-path flip remains the separate product gate (env stays default-off).",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "protocol": {
+  "command_template": "gguf_mtp_c1c8_server_bench.py (canonical C8/K3 single-arm suite; see source.command in each arm packet)",
+  "arms": [
+   "p1_control(off)",
+   "p2_candidate(on)",
+   "p3_candidate(on)",
+   "p4_control(off)"
+  ],
+  "both_orders": true,
+  "prompts": 10,
+  "widths": [
+   8
+  ],
+  "candidate_budget": 3,
+  "max_tokens": 24,
+  "correctness_contract": "ar_exact"
+ },
+ "arms": {
+  "p1_control": {
+   "dp4a": "off",
+   "mtp_tok_s": 90.72561160849708,
+   "ar_tok_s": 87.93916849434068,
+   "exact_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256,
+   "draft_acceptance": 0.7889447236180904,
+   "passed": true
+  },
+  "p2_candidate": {
+   "dp4a": "on",
+   "mtp_tok_s": 91.73419791760973,
+   "ar_tok_s": 87.0865187194994,
+   "exact_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 10,
+   "cycles": 576,
+   "proposed": 1600,
+   "accepted": 1256,
+   "draft_acceptance": 0.785,
+   "passed": true
+  },
+  "p3_candidate": {
+   "dp4a": "on",
+   "mtp_tok_s": 91.49700353193559,
+   "ar_tok_s": 86.7990014324665,
+   "exact_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 10,
+   "cycles": 576,
+   "proposed": 1600,
+   "accepted": 1256,
+   "draft_acceptance": 0.785,
+   "passed": true
+  },
+  "p4_control": {
+   "dp4a": "off",
+   "mtp_tok_s": 89.52665105239865,
+   "ar_tok_s": 86.28811521103289,
+   "exact_cells": 10,
+   "cells": 10,
+   "mtp_engaged_cells": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256,
+   "draft_acceptance": 0.7889447236180904,
+   "passed": true
+  }
+ },
+ "aggregate": {
+  "control_mtp_mean": 90.12613133044786,
+  "candidate_mtp_mean": 91.61560072477266,
+  "candidate_vs_control_pct": 1.6526498722813754,
+  "control_ar_mean": 87.11364185268678,
+  "candidate_ar_mean": 86.94276007598295,
+  "accepted_draft_tokens_identical": true
+ },
+ "evidence_chain": [
+  "iter31 inspection (190ea004a): decode-ALU-bound diagnosis",
+  "iter32 screen (bacfcbf41): dp4a schedule wins 3/3 at rows=4",
+  "iter33 kernel (ef57b24b5): grouped dp4a kernel + contracts, leaf 9/9",
+  "iter34 dispatch (3c7b0728f): session-gated route, default-off",
+  "iter35 L4 numerics (1d75a19cf): all production thresholds passed",
+  "iter36 retention e2e (this artifact): both orders, exact cells"
+ ],
+ "arm_packets": "/tmp/dp4a_e2e_p{1,2,3,4}_*.json (canonical single-arm packets)",
+ "gate": "Default flip = separate production product gate (env HIPENGINE_C8_Q6_DP4A_GROUPED stays default-off)."
+}
