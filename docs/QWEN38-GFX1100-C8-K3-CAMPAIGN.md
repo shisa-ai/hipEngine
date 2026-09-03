@@ -635,6 +635,21 @@ Current pool: **46.519 ms/cycle**.
 - [ ] For grouped R8, seek reduced weight traversal/dequantization or an exact
       reduction schedule with lower operation wall; WMMA capacity changes and
       WG256 pairing are closed.
+      Inspected (iter31, offline ELF + role census): traversal is already 1×
+      per layer per call (census: unique_encoded = count × per-layer bytes
+      exactly; 73.1/43.0/4.3 MB per call for FFN-down/recurrent-QKV/V), so
+      reduced traversal is closed. Occupancy is not binding (VGPR 111 → 8
+      waves/CU = 25%). The binding resource is **decode-ALU throughput**:
+      disassembly shows 1,192 vector ops vs 24 VMEM and 1 barrier per body,
+      loads are already wide (b128/b64/u16 mix — no byte-granular widening
+      axis), and the ALU-residency model (2 active waves × 2 k-steps × ~500
+      ops ≈ 527 ns/block) matches the measured 394 ns/block residency within
+      ~30% while a DRAM-latency model would require an impossible 820 GB/s.
+      Achieved 101-134 GB/s. The live axis is therefore **reduced
+      dequantization**: the registered q8_1_dp4a Q6 sibling family (integer
+      decode) is the concrete next candidate — leaf-first on the three actual
+      shapes (FFN-down 5120×17408, recurrent-QKV 5120×10240, V 5120×1024) at
+      rows 8/24/32 before any whole-model numerics.
 - [x] For head-shaped work, measure weight traffic, output traffic, and top-1
       ownership. Fusing exact argmax is admissible only if it removes material
       traffic or launches while preserving tie/finite behavior and full-vocab

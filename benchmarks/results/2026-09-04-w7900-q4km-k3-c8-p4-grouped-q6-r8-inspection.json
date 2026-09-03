@@ -1,0 +1,73 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p4_grouped_q6_r8_inspection",
+ "date": "2026-09-04",
+ "status": "inspection",
+ "decision": "C8-P4 grouped-R8 binding-resource inspection: traversal already 1x per layer (census-proven, closed); occupancy not binding (VGPR 111 -> 8 waves/CU); the family is decode-ALU-bound (1,192 vector vs 24 VMEM ops, wide loads already, ALU-residency model matches measured 394 ns/block within ~30% while DRAM would require impossible 820 GB/s). Achieved 101-134 GB/s. Live axis: reduced dequantization via the registered q8_1_dp4a Q6 sibling family, leaf-first on the three actual shapes.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_grouped_kernel<unsigned short, 8, true>",
+ "elf_audit": {
+  "next_free_vgpr": 111,
+  "fixed_lds_bytes": 1024,
+  "workgroup": 128,
+  "waves_per_simd": 2,
+  "waves_per_cu": 8,
+  "occupancy_pct": 25.0
+ },
+ "instruction_mix": {
+  "total": 1621,
+  "vector_alu": 1192,
+  "vmem": 24,
+  "lds": 80,
+  "barrier": 1,
+  "scalar": 324,
+  "wmma": 0,
+  "global_loads": {
+   "b128": 1,
+   "b64": 1,
+   "u16": 8,
+   "u8": 6
+  },
+  "note": "loads already wide; no byte-granular widening axis"
+ },
+ "per_role_bandwidth": {
+  "ffn_down_5120x17408": {
+   "mb_per_call": 73.1,
+   "calls_per_cycle": 32,
+   "ms_per_cycle_r32": 21.505,
+   "achieved_gbps": 108.8
+  },
+  "recurrent_qkv_5120x10240": {
+   "mb_per_call": 43.0,
+   "calls_per_cycle": 24,
+   "ms_per_cycle_r32": 10.207,
+   "achieved_gbps": 101.1
+  },
+  "attention_v_5120x1024": {
+   "mb_per_call": 4.3,
+   "calls_per_cycle": 8,
+   "ms_per_cycle_r32": 0.443,
+   "achieved_gbps": 77.6
+  },
+  "pool_ms_per_cycle": 30.353
+ },
+ "residency_model": {
+  "blocks_per_call": 327680,
+  "resident_blocks": 192,
+  "measured_ns_per_block": 394,
+  "alu_model_ns_per_block": 527,
+  "dram_model_gbps_required": 820,
+  "conclusion": "ALU-throughput-bound; DRAM and occupancy excluded"
+ },
+ "live_axis": "reduced dequantization: q8_1_dp4a Q6 sibling family (registered), leaf-first on FFN-down/recurrent-QKV/V at rows 8/24/32",
+ "sources": [
+  "benchmarks/results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json",
+  "offline hipcc -S ELF audit of gguf_q6_k_t16_gemv.hip (gfx1100)",
+  "docs/KERNELS.md rejected-axes record (WG256 0.860-0.907x, WMMA capacity closed, col4, dual-R6, pair-major, permlanex16)"
+ ]
+}
