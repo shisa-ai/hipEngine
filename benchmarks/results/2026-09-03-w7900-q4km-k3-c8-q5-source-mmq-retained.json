@@ -1,0 +1,631 @@
+{
+ "candidate": {
+  "arithmetic_class": "T2 versus the strict teacher: K-major D4S4-FP32 activation producer, FP32 LDS weight scale/min metadata, and fast-math DP4A MMQ accumulation",
+  "kernels": {
+   "consumer": "gguf_q5_k_mmq_i64_j32_k256_q8_1_d4s4_f32_kernel",
+   "producer": "q8_1_d4s4_f32_quantize_bf16_kmajor_kernel"
+  },
+  "rejected_predecessor": {
+   "measured": {
+    "cycle_device_union_ms_per_cycle": 149.138,
+    "delta_pct": -25.707,
+    "packet": "/tmp/he-c8-q5-source-marker2 recomputed with the committed classifier",
+    "q5_operation_wall_ms_per_cycle": 9.513974,
+    "raw_control_ms_per_cycle": 12.805991
+   },
+   "reason": "It changed one acceptance decision (1,256->1,248 accepted drafts) and regressed general_en by 1.38%/1.90% across orders, so it failed the every-slice-non-regressive rule. The FP32-metadata replacement costs 1.426 ms/cycle of Q5 operation wall against it and is the retained owner.",
+   "route": "source-faithful DS4 FP16-metadata I64/J16-J32 packing (commit 52f47172e)"
+  },
+  "rollback_env": "HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=0",
+  "scope": {
+   "in_features": 6144,
+   "inherits_raw_gate": "HIPENGINE_GGUF_C8_Q5_RAW_MMQ capability plus request_count == 8",
+   "out_features": 5120,
+   "request_count": 8,
+   "roles": 48,
+   "rows": [
+    32
+   ],
+   "weight": "ssm_out"
+  },
+  "strict_fallback": "qualified raw D4S4 MMQ at R32 and R24; exact T16 grouped rows6/rows8 when the raw owner is disabled"
+ },
+ "date": "2026-09-03",
+ "decision": "Promote the K-major D4S4-FP32 I64/J32 source-Q5 MMQ for the gfx1100 eight-request R32 exact K6144/N5120 recurrent ssm_out projection. Explicit HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=0, physical R24, request counts other than eight, peer backends, shape/layout misses, and workspace misses retain the qualified raw D4S4 MMQ; disabling HIPENGINE_GGUF_C8_Q5_RAW_MMQ retains exact grouped T16.",
+ "hardware": {
+  "compute_units": 96,
+  "cpu": "AMD Ryzen 9 5950X",
+  "gpu": "AMD Radeon Pro W7900",
+  "physical_host": "epyc",
+  "rocm": "7.2.4",
+  "target_arch": "gfx1100"
+ },
+ "kind": "w7900_qwen38_q4km_k3_c8_q5_source_mmq_retention",
+ "l1_actual_weights": {
+  "decision": "R32 wins 48/48 weights; R24 wins 0/48 and retains the raw MMQ owner.",
+  "protocol": {
+   "burst": 8,
+   "candidate": "K-major D4S4-FP32 producer + I64/J32 source MMQ",
+   "cells": 96,
+   "control": "qualified raw D4S4 MMQ (current default owner)",
+   "rows": [
+    24,
+    32
+   ],
+   "samples": 5,
+   "sha256": "c326f5b3ea3f571d8f4443dde70f1cf8c4267886ee3bf97cff8b08190618a9bb",
+   "timing": "counterbalanced HIP events",
+   "warmups": 4,
+   "weights": 48
+  },
+  "summary": {
+   "24": {
+    "candidate_sum_ms": 10.5647252202034,
+    "control_sum_ms": 10.289644241333008,
+    "max_kl": 2.7684896709154637e-09,
+    "mean_kl": 4.999800552122994e-11,
+    "speedup": 0.9739623158069135,
+    "top1": 1.0,
+    "winning_weights": 0
+   },
+   "32": {
+    "candidate_sum_ms": 11.02482496201992,
+    "control_sum_ms": 11.330017000436783,
+    "max_kl": 2.979914543512028e-09,
+    "mean_kl": 5.5728745741501e-11,
+    "speedup": 1.0276822570397477,
+    "top1": 1.0,
+    "winning_weights": 48
+   }
+  }
+ },
+ "l2_marker": {
+  "attribution_correction": "The promotion checkpoint quoted 11.215->10.760 ms/cycle complete wall and 11.018->10.404 ms/cycle target device union. Those values do not reproduce from the retained packet's child/marker/CSV hash set and are superseded: recomputing the same packet with the committed classifier gives 185.902->183.902 ms/cycle cycle wall, 138.680->135.468 ms/cycle target device union, and 12.794->10.940 ms/cycle Q5 operation wall. The retention decision does not depend on the corrected magnitudes; every quoted gate still passes.",
+  "candidate_source_q5": {
+   "activation_quantizer_launches": 144,
+   "activation_quantizer_wall_ms": 0.17257433333333336,
+   "candidate_d2h_after_target": 0,
+   "child_commit": "3637a7fd156479bce30ada759146ed4521544696",
+   "child_sha256": "576fe87aaf7dc7336d19e1e469349430a5c04a5519b392e864b690cefa56feb5",
+   "complete_wall_seconds": 1.2356001436710358,
+   "cycle_device_union_ms": 150.26306133333335,
+   "cycle_wall_ms": 183.90248933333334,
+   "generated_tokens": 96,
+   "kernel_csv_sha256": "f9949621d05c96b9da8b951fada04aefd6465032bd9d0e9738ef86268a33da12",
+   "marker_csv_sha256": "5c2919db572dd045aa515ea9c9ae5bf87eca67861183f2d181d955918a1c5add",
+   "q5_mmq_launches": 144,
+   "q5_mmq_wall_ms": 10.767283333333333,
+   "q5_operation_wall_ms": 10.939857666666667,
+   "recoverable_failures": 0,
+   "target_device_union_ms": 135.46759966666664,
+   "target_rows": [
+    32,
+    32,
+    24
+   ],
+   "target_wall_ms": 161.83455066666664
+  },
+  "control_raw_q5": {
+   "activation_quantizer_launches": 144,
+   "activation_quantizer_wall_ms": 0.16922700000000002,
+   "candidate_d2h_after_target": 0,
+   "child_commit": "3637a7fd156479bce30ada759146ed4521544696",
+   "child_sha256": "9eb38e9f06d5a4882a00dd912f2832d8810c0ccb749ce8f670c7beaa380baaad",
+   "complete_wall_seconds": 1.2459756387397647,
+   "cycle_device_union_ms": 154.194929,
+   "cycle_wall_ms": 185.90218733333333,
+   "generated_tokens": 96,
+   "kernel_csv_sha256": "0f7af5f87a9c4c6169567632d5ae5184bcf3adc2ef5036c81093fd32f0a74603",
+   "marker_csv_sha256": "2bacaa1d2c2bd6584459192c05267ac7b875ea0c1cb6fc743c4228e9993e8911",
+   "q5_mmq_launches": 144,
+   "q5_mmq_wall_ms": 12.624439666666667,
+   "q5_operation_wall_ms": 12.793666666666667,
+   "recoverable_failures": 0,
+   "target_device_union_ms": 138.679648,
+   "target_rows": [
+    32,
+    32,
+    24
+   ],
+   "target_wall_ms": 163.87965666666665
+  },
+  "cumulative_q5_track": {
+   "grouped_provenance": "15.052 ms/cycle comes from the 2026-09-02 current-C8 profile artifact (commit b920ead8ee), not from this packet. This packet's own grouped control in the raw-Q5 retention gate measured 15.171 ms/cycle, so the ladder is cross-packet and quoted as a range.",
+   "grouped_t16_ms_per_cycle": 15.052,
+   "peer_derived_target_ms_per_cycle": 11.392,
+   "raw_q5_ms_per_cycle": 12.793666666666667,
+   "realized_fraction_of_target_max": 0.3714134772940075,
+   "realized_fraction_of_target_min": 0.3609675503277153,
+   "saving_vs_grouped_ms_per_cycle_max": 4.231142333333333,
+   "saving_vs_grouped_ms_per_cycle_min": 4.112142333333333,
+   "source_q5_ms_per_cycle": 10.939857666666667
+  },
+  "delta": {
+   "complete_wall_pct": -0.8327205401241322,
+   "cycle_device_union_pct": -2.549933186626807,
+   "cycle_wall_pct": -1.0756721202071828,
+   "q5_operation_wall_pct": -14.490052369662077,
+   "q5_saving_ms_per_cycle": 1.853809,
+   "target_device_union_pct": -2.316164181014757,
+   "target_wall_pct": -1.2479315868715646
+  },
+  "launch_attribution": "Both arms keep 144 Q5 consumer launches and 144 activation quantizers per cycle. The candidate's 144 consumers are 96 K-major I64/J32 launches (the two R32 target rounds) plus 48 raw D4S4 launches (the R24 accepted tail); the producer names q8_1_d4s4_f32_quantize_bf16_kmajor_kernel and q8_1_d4s4_f32_quantize_bf16_kernel.",
+  "ownership": {
+   "candidate_d2h_after_target": 0,
+   "generated_tokens_equal": true,
+   "launch_counts_identical": true,
+   "recoverable_failures": 0,
+   "target_rows": [
+    32,
+    32,
+    24
+   ]
+  },
+  "protocol": "One train prompt, D12, target rows [32,32,24], cached-only rocprofv3 kernel+ROCTx, three target cycles, committed classifier."
+ },
+ "l3_task_pre_promotion": {
+  "acceptance_per_run": {
+   "r1cand": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   },
+   "r1ctrl": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   },
+   "r2cand": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   },
+   "r2ctrl": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   }
+  },
+  "category_delta_pct_by_order": {
+   "code": [
+    1.9954267784238366,
+    0.904533456945722
+   ],
+   "general_en": [
+    1.9657358598367702,
+    0.6096812076030966
+   ],
+   "general_ja": [
+    2.0582824086679663,
+    0.6318817137113797
+   ],
+   "heldout": [
+    1.896868143225272,
+    0.5308126836736093
+   ],
+   "mixed_ja_en": [
+    1.5548253298068637,
+    0.38621521092199185
+   ]
+  },
+  "commit": {
+   "r1cand": "3637a7fd156479bce30ada759146ed4521544696",
+   "r1ctrl": "3637a7fd156479bce30ada759146ed4521544696",
+   "r2cand": "3637a7fd156479bce30ada759146ed4521544696",
+   "r2ctrl": "3637a7fd156479bce30ada759146ed4521544696"
+  },
+  "orders": [
+   {
+    "category_delta_pct": {
+     "code": 1.9954267784238366,
+     "general_en": 1.9657358598367702,
+     "general_ja": 2.0582824086679663,
+     "heldout": 1.896868143225272,
+     "mixed_ja_en": 1.5548253298068637
+    },
+    "cells": 10,
+    "first_arm": "cand",
+    "median_delta_pct": 2.025068002538555,
+    "minimum_delta_pct": 1.4287094418712343,
+    "order": "r1: cand arm ran first",
+    "wins": 10
+   },
+   {
+    "category_delta_pct": {
+     "code": 0.904533456945722,
+     "general_en": 0.6096812076030966,
+     "general_ja": 0.6318817137113797,
+     "heldout": 0.5308126836736093,
+     "mixed_ja_en": 0.38621521092199185
+    },
+    "cells": 10,
+    "first_arm": "ctrl",
+    "median_delta_pct": 0.6460299422888949,
+    "minimum_delta_pct": 0.22306806119509748,
+    "order": "r2: ctrl arm ran first",
+    "wins": 10
+   }
+  ],
+  "protocol": {
+   "batch_window_ms": 20.0,
+   "candidate_budget": 3,
+   "categories": [
+    "code",
+    "general_en",
+    "general_ja",
+    "mixed_ja_en"
+   ],
+   "execution_profile": "production",
+   "heldouts": 4,
+   "max_tokens": 24,
+   "orders": [
+    "r1: cand arm ran first",
+    "r2: ctrl arm ran first"
+   ],
+   "prompt_count": 10,
+   "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "repetitions": 2,
+   "resident_capacity": 8,
+   "timing": "blocking barrier-to-last-completion complete wall",
+   "width": 8
+  },
+  "runs": {
+   "r1cand": "d7888918485351344f35226c0bfbf8ce073a3fa64c921802ffb15f8297683369",
+   "r1ctrl": "253b71b52fe50f8a5a1ad2c95b908c200e017913c5d46329d678358928ca5dfc",
+   "r2cand": "b52ae1b18d6b27913b4195289cfa5a50b7810552d1fc3f808a3610762676d9a9",
+   "r2ctrl": "160c0b19c2b335daa4c2a9d2c1d9b22e6154460e3bb4abbdf3ac1da5975cdd5a"
+  },
+  "runtime_profile": {
+   "production_manifest_sha256": "a7e5ad33b4af17707b1a375ecb706c369b7f0f35e6532456dd507ef13be1bc35",
+   "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb"
+  },
+  "summary": {
+   "acceptance_equal": true,
+   "all_packets_passed": true,
+   "default_tok_s": 90.08235725359064,
+   "default_wall_seconds": 42.62765892315656,
+   "delta_pct": 1.2937248303632076,
+   "final_allocations": 0,
+   "generated_ids_equal": true,
+   "generated_rows": 7680,
+   "generated_tokens_per_arm": 3840,
+   "prompt_cells": 20,
+   "prompt_wins": 20,
+   "rollback_tok_s": 88.93182416230792,
+   "rollback_wall_seconds": 43.17914353124797
+  }
+ },
+ "l3_task_promoted_default": {
+  "acceptance_per_run": {
+   "r1cand": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   },
+   "r1ctrl": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   },
+   "r2cand": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   },
+   "r2ctrl": {
+    "accepted_draft_tokens": 1256,
+    "cycles": 568,
+    "draft_acceptance": 0.7889447236180904,
+    "proposed_draft_tokens": 1592
+   }
+  },
+  "category_delta_pct_by_order": {
+   "code": [
+    1.91305759011402,
+    0.9288627492055612
+   ],
+   "general_en": [
+    1.9142000875869147,
+    0.816072149349556
+   ],
+   "general_ja": [
+    1.7898573150369579,
+    0.8486102718911148
+   ],
+   "heldout": [
+    1.9534568923773366,
+    0.7968670437178194
+   ],
+   "mixed_ja_en": [
+    1.5901133537546297,
+    0.7850903154268396
+   ]
+  },
+  "commit": {
+   "r1cand": "8c36a17e407ffead9b27c503855920359a439917",
+   "r1ctrl": "8c36a17e407ffead9b27c503855920359a439917",
+   "r2cand": "8c36a17e407ffead9b27c503855920359a439917",
+   "r2ctrl": "8c36a17e407ffead9b27c503855920359a439917"
+  },
+  "orders": [
+   {
+    "category_delta_pct": {
+     "code": 1.91305759011402,
+     "general_en": 1.9142000875869147,
+     "general_ja": 1.7898573150369579,
+     "heldout": 1.9534568923773366,
+     "mixed_ja_en": 1.5901133537546297
+    },
+    "cells": 10,
+    "first_arm": "cand",
+    "median_delta_pct": 1.7506561041538693,
+    "minimum_delta_pct": 1.3906843758503262,
+    "order": "r1: cand arm ran first",
+    "wins": 10
+   },
+   {
+    "category_delta_pct": {
+     "code": 0.9288627492055612,
+     "general_en": 0.816072149349556,
+     "general_ja": 0.8486102718911148,
+     "heldout": 0.7968670437178194,
+     "mixed_ja_en": 0.7850903154268396
+    },
+    "cells": 10,
+    "first_arm": "ctrl",
+    "median_delta_pct": 0.848926069906597,
+    "minimum_delta_pct": 0.7378068107060765,
+    "order": "r2: ctrl arm ran first",
+    "wins": 10
+   }
+  ],
+  "protocol": {
+   "batch_window_ms": 20.0,
+   "candidate_budget": 3,
+   "categories": [
+    "code",
+    "general_en",
+    "general_ja",
+    "mixed_ja_en"
+   ],
+   "execution_profile": "production",
+   "heldouts": 4,
+   "max_tokens": 24,
+   "orders": [
+    "r1: cand arm ran first",
+    "r2: ctrl arm ran first"
+   ],
+   "prompt_count": 10,
+   "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "repetitions": 2,
+   "resident_capacity": 8,
+   "timing": "blocking barrier-to-last-completion complete wall",
+   "width": 8
+  },
+  "runs": {
+   "r1cand": "a8a75633b1c0c7fbe8cadd5c2dc909643198ae44ff6e564afe1e1a1a4cb12e3d",
+   "r1ctrl": "1875e5bd857d25e489f3236e55a8d42fc2854d4ae1a250d840adc11cf01a07e2",
+   "r2cand": "659a1645fe7f3d29d7dde86eb2435eb4520bf755e88edd85a52a59ec3034ae11",
+   "r2ctrl": "22952a9667e58caf6efda2d9f0e4e9e30ae36ce1bb127642503b6bd239c60bc1"
+  },
+  "runtime_profile": {
+   "production_manifest_sha256": "a7e5ad33b4af17707b1a375ecb706c369b7f0f35e6532456dd507ef13be1bc35",
+   "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb"
+  },
+  "summary": {
+   "acceptance_equal": true,
+   "all_packets_passed": true,
+   "default_tok_s": 90.1391248500631,
+   "default_wall_seconds": 42.600812980905175,
+   "delta_pct": 1.3338901615235432,
+   "final_allocations": 0,
+   "generated_ids_equal": true,
+   "generated_rows": 7680,
+   "generated_tokens_per_arm": 3840,
+   "prompt_cells": 20,
+   "prompt_wins": 20,
+   "rollback_tok_s": 88.95259493776832,
+   "rollback_wall_seconds": 43.16906103398651
+  }
+ },
+ "l4_numerics": {
+  "R24": {
+   "reason": "The promoted route is R32-only; the retained raw-Q5 R24 gate remains the binding R24 evidence.",
+   "status": "not_applicable"
+  },
+  "R32": {
+   "all_category_shape_transition_scopes_passed": true,
+   "candidate_repeats": 3,
+   "commit": "3637a7fd156479bce30ada759146ed4521544696",
+   "kl_max": 0.005677895182256424,
+   "kl_mean": 0.00015829216965059103,
+   "kl_p95": 0.0008367012381143594,
+   "kl_p99": 0.0015351544345294805,
+   "minimum_category_top1": 0.9791666666666666,
+   "repeat_determinism_passed": true,
+   "rows": 240,
+   "status": "passed",
+   "teardown_exact": true,
+   "top1_agreement": 0.9958333333333333,
+   "topk_overlap_mean": 0.9850000000000001
+  },
+  "protocol": {
+   "candidate": "FP16 state, production Q4 rowtiles, and K-major source Q5 at R32",
+   "candidate_repeats": 3,
+   "prompt_count": 10,
+   "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+   "sha256": "e932bc4824aacacbc308059affe18260d1a13c9e78101b62651e080d5b3dc6bf",
+   "strict": "FP32 recurrent state plus strict small-M Q4 and grouped T16 Q5",
+   "strict_teacher_rows_per_shape": 240
+  }
+ },
+ "l5": {
+  "focused_tests": "tests/test_gguf_q5_k_mmq_wmma_prefill.py, tests/test_gguf_linear_dispatch.py, tests/test_qwen38_q4_verifier_numerics.py, and tests/test_specdec2_rocprof_summary.py cover producer/consumer parity, R32-only eligibility, request-count scoping, default/rollback resolution, and the K-major producer classifier.",
+  "shared_scope": "The route inherits the raw owner's request_count == 8 predicate and additionally requires rows == 32, so C1-C7, non-verifier roles, R24 accepted tails, peer backends, and shape misses cannot reach it."
+ },
+ "model": {
+  "kv": "BF16",
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "sampled_fingerprint": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+  "size_bytes": 17106773984
+ },
+ "per_prompt_promoted_default": {
+  "code_lru_cache": {
+   "cand_tok_s": [
+    94.55770923916148,
+    93.03805093955023
+   ],
+   "category": "code",
+   "heldout": false,
+   "mean_delta_pct": 1.5978154127127109,
+   "rollback_tok_s": [
+    92.52715206546563,
+    92.11831439132422
+   ]
+  },
+  "code_markdown_table": {
+   "cand_tok_s": [
+    100.55134243973109,
+    98.9165553549864
+   ],
+   "category": "code",
+   "heldout": true,
+   "mean_delta_pct": 1.472185749103927,
+   "rollback_tok_s": [
+    98.42631152423571,
+    98.14765238732707
+   ]
+  },
+  "code_merge_intervals": {
+   "cand_tok_s": [
+    89.83534626466458,
+    88.61482280884229
+   ],
+   "category": "code",
+   "heldout": false,
+   "mean_delta_pct": 1.3424243762894639,
+   "rollback_tok_s": [
+    88.34715863102272,
+    87.73918444965246
+   ]
+  },
+  "code_topological_sort": {
+   "cand_tok_s": [
+    88.74465466688117,
+    87.82550469904216
+   ],
+   "category": "code",
+   "heldout": false,
+   "mean_delta_pct": 1.2599586432685772,
+   "rollback_tok_s": [
+    87.37373869717244,
+    86.99939134524351
+   ]
+  },
+  "general_en_explain": {
+   "cand_tok_s": [
+    95.59415740086254,
+    93.90104660782784
+   ],
+   "category": "general_en",
+   "heldout": true,
+   "mean_delta_pct": 1.2185130009998657,
+   "rollback_tok_s": [
+    94.00066491477202,
+    93.21331244015961
+   ]
+  },
+  "general_en_plan": {
+   "cand_tok_s": [
+    100.81774203664455,
+    99.52692233669877
+   ],
+   "category": "general_en",
+   "heldout": false,
+   "mean_delta_pct": 1.506607733167642,
+   "rollback_tok_s": [
+    98.72213452702034,
+    98.64892224200617
+   ]
+  },
+  "general_ja_explain": {
+   "cand_tok_s": [
+    85.22443025559778,
+    83.82990339048112
+   ],
+   "category": "general_ja",
+   "heldout": true,
+   "mean_delta_pct": 1.5125261412207713,
+   "rollback_tok_s": [
+    83.43592556146028,
+    83.09951599665469
+   ]
+  },
+  "general_ja_plan": {
+   "cand_tok_s": [
+    86.70139990670327,
+    85.56234312343366
+   ],
+   "category": "general_ja",
+   "heldout": false,
+   "mean_delta_pct": 1.1328378389937388,
+   "rollback_tok_s": [
+    85.46678704397651,
+    84.86734646900331
+   ]
+  },
+  "mixed_ja_en_review": {
+   "cand_tok_s": [
+    81.6489056335548,
+    80.85235856761717
+   ],
+   "category": "mixed_ja_en",
+   "heldout": true,
+   "mean_delta_pct": 1.3014910069870433,
+   "rollback_tok_s": [
+    80.20039079494063,
+    80.21310616924899
+   ]
+  },
+  "mixed_ja_en_translate": {
+   "cand_tok_s": [
+    88.07491594216782,
+    86.96043460672526
+   ],
+   "category": "mixed_ja_en",
+   "heldout": false,
+   "mean_delta_pct": 1.0834014243414458,
+   "rollback_tok_s": [
+    86.86687192649612,
+    86.29246786867581
+   ]
+  }
+ },
+ "performance_claim": true,
+ "published": {
+  "c8_k3_row_tok_s": 90.139,
+  "exact_peer_tok_s": 94.735,
+  "previous_c8_k3_row_tok_s": 89.377,
+  "same_build_rollback_tok_s": 88.953,
+  "strongest_fresh_peer_tok_s": 101.072
+ },
+ "schema": 1,
+ "source": {
+  "classifier_commit": "98ea03616",
+  "no_jit_compile_during_profile": true,
+  "note": "Marker, strict-teacher, pre-promotion task, and post-promotion task packets all report a clean worktree at the stated commits.",
+  "precision_commit": "3637a7fd1",
+  "promotion_commit": "8c36a17e4",
+  "staging_commit": "52f47172e",
+  "tracked_clean": true
+ },
+ "status": "retained_default"
+}

@@ -450,9 +450,13 @@ strict fallback.
       projected operation-complete cycle wall below the incumbent 15.052 ms.
 - [x] Keep exact grouped R6/R8 registered as strict fallback and declare any
       changed reduction/activation arithmetic as T2 rather than relabeling it.
-- [~] Run L2→L5 if the actual-weight screen survives; the first retained owner
-      passed every gate but saves 2.496 ms/cycle, so the 11.392 ms/cycle
-      peer-derived target remains open before changing priority.
+- [x] Run L2→L5 whenever the actual-weight screen survives. Both surviving Q5
+      owners completed the ladder and are retained: raw D4S4 MMQ at R24/R32 and
+      the FP32-metadata source-layout MMQ at R32, together
+      **15.052→10.940 ms/cycle** of Q5 operation wall.
+- [ ] Close the remaining **7.280 ms/cycle** gap to the peer-derived 11.392
+      ms/cycle Q5 target, or record the measured resource/roofline reason it
+      cannot close, before changing C8 priority.
 
 The first actual-weight screen now covers both available arithmetic families
 and a peer-derived geometry prototype. On W7900 GPU0 with
@@ -501,15 +505,39 @@ in every category/heldout slice in both orders. This scope repair preserves the
 eight-request R24 accepted tail without claiming non-C8 performance.
 
 The follow-up source-layout reproduction fixes the rejected prototype's two
-mechanical defects without copying its bad geometry: R24 uses two J16 tiles,
-R32 uses J32, packed-Q5 loads are coalesced to one high-bit word plus four low
-words per lane/output block, and the four K32 subblocks are partially unrolled.
-Fast variants compile at 83/115 VGPR with zero scratch instead of the fixed-J32
-prototype's 206 VGPR. Against the retained raw owner, all 48 actual weights win
-at R24 (10.253→9.648 ms, 1.063x, -0.606 ms) and R32 (11.321→9.597 ms, 1.180x,
--1.724 ms). This is a T2 staging candidate behind
-`HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=1`; the retained D4S4 owner and grouped T16
-remain fallbacks until L2-L5 pass.
+mechanical defects without copying its bad geometry: packed-Q5 loads are
+coalesced to one high-bit word plus four low words per lane/output block, the
+four K32 subblocks are partially unrolled, and the fast variants compile at
+83/115 VGPR with zero scratch instead of the fixed-J32 prototype's 206 VGPR.
+The source-faithful FP16-metadata build was the fastest variant - its retained
+marker packet moves Q5 operation wall **12.806→9.514 ms/cycle (-25.71%)** - and
+won every actual weight, but it failed the campaign's slice rule: its task gate
+changed one acceptance decision (1,256→1,248 accepted drafts) and regressed
+`general_en` by 1.38%/1.90% across orders. Keeping the same I64/J32 K-major
+tiling while storing weight scale/min and activation metadata in **FP32**
+removed that independent precision downgrade at a measured cost of **1.426
+ms/cycle** of Q5 operation wall. Against the retained raw owner, all 48 actual
+R32 weights win (11.330→11.025 ms, 1.028x) with mean/max KL 5.57e-11/2.98e-9
+and 100% top-1, while R24 becomes 0.974x with zero winning weights and
+therefore keeps the qualified raw MMQ. The route is retained as a T2 R32-only
+owner behind the zero-valued `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` rollback;
+grouped T16 remains the fallback underneath it.
+
+Its retained ladder measures Q5 operation wall **12.794→10.940 ms/cycle
+(-14.49%)**, cycle device union **-2.55%**, target marker wall **-1.25%**, and
+target device union **-2.32%** with identical 144-consumer/144-producer launch
+counts, 96 generated tokens, zero candidate D2H, and zero recoverable failures.
+Across the two retained-owner packets the Q5 pool has gone
+**15.052/15.171→12.794→10.940 ms/cycle**, realizing **36.10-37.14%** of the
+peer-derived 11.392 ms/cycle target; the two grouped controls come from
+different packets, so the ladder is quoted as a range. The R32 strict-teacher
+packet passes 240 rows at mean/p95/p99/max KL
+**0.000158/0.000837/0.001535/0.005678**, 99.583% top-1 (minimum category
+97.917%), three bit-deterministic repeats, and exact teardown. The promoted
+default is 88.953→**90.139 tok/s (+1.33%)** with 20/20 prompt cells, every
+category/heldout slice positive in both orders, identical generated IDs *and*
+identical acceptance ledgers (568 cycles / 1,592 proposed / 1,256 accepted),
+and a clean drain.
 
 Second pool: **48.237 ms/cycle** across grouped Q4 R6 and R8 symbols. P1
 ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
