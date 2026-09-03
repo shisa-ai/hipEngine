@@ -1,0 +1,210 @@
+"""PF-1 fork (b) RED gates: grouped selected Q8_0 down prefill candidate.
+
+Campaign context: docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6.3
+fork (b) — a bit-exact (T0) faster dense kernel for the coltile/selected-served
+shapes. The declared candidate (worklog entry
+``20260903T234843.026834Z-lhl-pf-1-forkb-declaration-a7057c``) is a grouped
+selected down that serves every lane of one ``(expert, out_col)`` pair in a
+single block (weight row read once per pair instead of once per lane) while
+keeping, per output, the exact incumbent arithmetic:
+
+- per-thread ``k = tid; k += blockDim.x`` strided ordered-``fmaf`` accumulation
+- the wave32 ``__shfl_down`` reduce of ``reduce_block_sum``
+- the serial ``wave_sums[0..waves-1]`` publication by thread 0
+
+The registered strict fallback is ``selected_gemv_bf16_bf16_out``
+(``gguf_k_selected_prefill_out_kernel<unsigned short, unsigned short, 8>``,
+block-per-output). Any candidate must be bit-identical to it on every tested
+shape before a runner wiring or whole-model A/B is admitted.
+"""
+
+from __future__ import annotations
+
+import ctypes
+
+import numpy as np
+import pytest
+
+from hipengine.core.memory import (
+    copy_device_to_host,
+    copy_host_to_device,
+    free,
+    host_array_ptr,
+    malloc,
+)
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    build_gguf_k_gemv,
+    gguf_q8_0_selected_gemv_bf16_bf16_out,
+)
+from hipengine.core.hip import get_hip_runtime
+
+
+def _hip_available() -> bool:
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        return False
+    return True
+
+
+def _f32_to_bf16_bits(values: np.ndarray) -> np.ndarray:
+    f32 = np.ascontiguousarray(values, dtype=np.float32)
+    bits = f32.view(np.uint32)
+    # Round-to-nearest-even BF16, matching scalar_to_float/round_to_bf16_float
+    # round trips used by the production chain fixtures.
+    rounded = ((bits + 0x7FFF + ((bits >> 16) & 1)) >> 16).astype(np.uint16)
+    return rounded.astype(np.uint16)
+
+
+def _bf16_bits_to_f32(bits: np.ndarray) -> np.ndarray:
+    return (np.ascontiguousarray(bits, dtype=np.uint16).astype(np.uint32) << 16).view(
+        np.float32
+    )
+
+
+def make_q8_0_weight_large(out_features: int, in_features: int) -> np.ndarray:
+    """Vectorized Q8_0 weight fixture for large ``out_features``."""
+    block = 32
+    blocks = in_features // block
+    rng = np.random.default_rng(2026_09_04 + out_features)
+    scales = (rng.random((out_features, blocks)).astype(np.float32) * 0.05 + 0.01).astype(
+        np.float16
+    )
+    qs = rng.integers(-128, 128, size=(out_features, blocks, block), dtype=np.int8)
+    out = np.empty((out_features, blocks * 34), dtype=np.uint8)
+    out[:, :] = 0
+    scales_u16 = scales.view(np.uint16)
+    out[:, 0::34] = scales_u16.view(np.uint8).reshape(out_features, blocks, 2)[:, :, 0]
+    out[:, 1::34] = scales_u16.view(np.uint8).reshape(out_features, blocks, 2)[:, :, 1]
+    out[:, 2::34] = qs.reshape(out_features, blocks * block).view(np.uint8)
+    return out
+
+
+def _build_group_map(
+    selected: np.ndarray, num_experts: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Host-side per-expert group map: exclusive starts + sorted lane->row."""
+    counts = np.bincount(selected, minlength=num_experts)
+    starts = np.zeros(num_experts + 1, dtype=np.int64)
+    np.cumsum(counts, out=starts[1:])
+    order = np.argsort(selected, kind="stable").astype(np.int64)
+    return starts, order
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_pf1_forkb_grouped_selected_down_imports() -> None:
+    """RED on the unmodified path: the candidate wrapper does not exist yet."""
+
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv_module
+
+    wrapper = getattr(gemv_module, "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out")
+    assert callable(wrapper)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize(
+    "x_rows,top_k,num_experts,in_features,out_features",
+    [
+        (8, 10, 16, 512, 1024),  # PF-1b selected-fixture shape
+        (64, 10, 512, 640, 2560),  # production down shape (ffn->hidden, top-10)
+    ],
+)
+def test_pf1_forkb_grouped_selected_down_bit_parity(
+    x_rows: int, top_k: int, num_experts: int, in_features: int, out_features: int
+) -> None:
+    """The grouped candidate is bit-identical to the block-per-output owner."""
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+    )
+
+    rows = x_rows * top_k
+    rng = np.random.default_rng(2026_09_04)
+    qweight = np.ascontiguousarray(
+        make_q8_0_weight_large(num_experts * out_features, in_features),
+        dtype=np.uint8,
+    )
+    x_float = (rng.standard_normal((x_rows, in_features)) * 0.5).astype(np.float32)
+    x_bf16 = _f32_to_bf16_bits(x_float)
+    selected = rng.integers(0, num_experts, size=rows).astype(np.int64)
+    # Guarantee every expert in range is exercised unevenly (boundary case):
+    # force the first num_experts lanes to cover all experts exactly once.
+    selected[:num_experts] = np.arange(num_experts, dtype=np.int64)
+    expert_start, lane_to_row = _build_group_map(selected, num_experts)
+
+    runtime = get_hip_runtime()
+    library = build_gguf_k_gemv(load=True)
+    bufs: list = []
+
+    def alloc(nbytes: int):
+        buf = malloc(nbytes, runtime=runtime)
+        bufs.append(buf)
+        return buf
+
+    try:
+        x_dev = alloc(x_bf16.nbytes)
+        selected_dev = alloc(selected.nbytes)
+        starts_dev = alloc(expert_start.nbytes)
+        lane_to_row_dev = alloc(lane_to_row.nbytes)
+        weight_dev = alloc(qweight.nbytes)
+        out_owner_dev = alloc(rows * out_features * 2)
+        out_grouped_dev = alloc(rows * out_features * 2)
+        copy_host_to_device(x_dev, host_array_ptr(x_bf16), runtime=runtime)
+        copy_host_to_device(selected_dev, host_array_ptr(selected), runtime=runtime)
+        copy_host_to_device(starts_dev, host_array_ptr(expert_start), runtime=runtime)
+        copy_host_to_device(
+            lane_to_row_dev, host_array_ptr(lane_to_row), runtime=runtime
+        )
+        copy_host_to_device(weight_dev, host_array_ptr(qweight), runtime=runtime)
+
+        def run_owner() -> np.ndarray:
+            gguf_q8_0_selected_gemv_bf16_bf16_out(
+                x_dev.ptr,
+                selected_dev.ptr,
+                weight_dev.ptr,
+                out_owner_dev.ptr,
+                x_rows,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            out = np.empty((rows, out_features), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(out), out_owner_dev, runtime=runtime)
+            return out
+
+        def run_grouped() -> np.ndarray:
+            gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
+                x_dev.ptr,
+                starts_dev.ptr,
+                lane_to_row_dev.ptr,
+                weight_dev.ptr,
+                out_grouped_dev.ptr,
+                rows,
+                num_experts,
+                in_features,
+                out_features,
+                library=library,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            out = np.empty((rows, out_features), dtype=np.uint16)
+            copy_device_to_host(host_array_ptr(out), out_grouped_dev, runtime=runtime)
+            return out
+
+        owner = run_owner()
+        grouped_first = run_grouped()
+        grouped_second = run_grouped()
+    finally:
+        for buf in reversed(bufs):
+            free(buf, runtime=runtime)
+
+    np.testing.assert_array_equal(
+        grouped_first, grouped_second, err_msg="grouped run-to-run determinism"
+    )
+    np.testing.assert_array_equal(
+        grouped_first, owner, err_msg="grouped vs block-per-output owner bits"
+    )
