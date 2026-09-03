@@ -384,6 +384,112 @@ gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out = _make_pack8_wrapper(
     "gguf_q8_0", _symbol("gguf_q8_0", "exact_prefill_tile16x4_bf16_bf16_out")
 )
 gguf_q8_0_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_gemv_bf16_bf16_out"))
+
+
+def _make_selected_grouped_wrapper(quant: str, symbol: str):
+    def wrapper(
+        x_ptr: int,
+        expert_start_ptr: int,
+        lane_to_row_ptr: int,
+        qweight_ptr: int,
+        out_ptr: int,
+        x_rows: int,
+        rows: int,
+        num_experts: int,
+        in_features: int,
+        out_features: int,
+        *,
+        threads: int = 128,
+        stream: int = 0,
+        library: ctypes.CDLL | None = None,
+        runtime: "HipRuntime | None" = None,
+    ) -> None:
+        _launch_selected_grouped(
+            quant,
+            symbol,
+            x_ptr,
+            expert_start_ptr,
+            lane_to_row_ptr,
+            qweight_ptr,
+            out_ptr,
+            x_rows,
+            rows,
+            num_experts,
+            in_features,
+            out_features,
+            threads=threads,
+            stream=stream,
+            library=library,
+            runtime=runtime,
+        )
+
+    return wrapper
+
+
+def _launch_selected_grouped(
+    quant: str,
+    symbol: str,
+    x_ptr: int,
+    expert_start_ptr: int,
+    lane_to_row_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    x_rows: int,
+    rows: int,
+    num_experts: int,
+    in_features: int,
+    out_features: int,
+    *,
+    threads: int = 128,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: "HipRuntime | None" = None,
+) -> None:
+    if x_rows <= 0:
+        raise ValueError("x_rows must be positive")
+    if rows <= 0 or rows % x_rows != 0:
+        raise ValueError("rows must be positive and divisible by x_rows")
+    if num_experts <= 0:
+        raise ValueError("num_experts must be positive")
+    _validate(quant, rows, in_features, out_features, threads)
+    library = library or build_gguf_k_gemv(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, symbol)
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    err = fn(
+        ctypes.c_void_p(x_ptr),
+        ctypes.c_void_p(expert_start_ptr),
+        ctypes.c_void_p(lane_to_row_ptr),
+        ctypes.c_void_p(qweight_ptr),
+        ctypes.c_void_p(out_ptr),
+        ctypes.c_int64(x_rows),
+        ctypes.c_int64(rows),
+        ctypes.c_int64(num_experts),
+        ctypes.c_int64(in_features),
+        ctypes.c_int64(out_features),
+        ctypes.c_int64(threads),
+        ctypes.c_void_p(stream),
+    )
+    _check_launch(runtime, err)
+
+
+gguf_q8_0_selected_grouped_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_gemv_bf16_bf16_out")
+)
 gguf_q8_0_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_pack8_gemv_bf16_bf16_out"))
 gguf_q8_0_prefill_f32_f32_out = gguf_q8_0_gemv_f32_f32_out
 gguf_q8_0_prefill_f32_fp16_out = gguf_q8_0_gemv_f32_fp16_out
@@ -1432,6 +1538,7 @@ _WRAPPERS = {
         "exact_prefill_tile8x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile8x4_bf16_bf16_out,
         "exact_prefill_tile16x4_bf16_bf16_out": gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q8_0_selected_gemv_bf16_bf16_out,
+        "selected_grouped_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q8_0_selected_pack8_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q8_0_prefill_f32_f32_out,
         "prefill_f32_fp16_out": gguf_q8_0_prefill_f32_fp16_out,
@@ -1545,6 +1652,7 @@ register_gguf_k_gemv_kernels()
 
 __all__ = [
     "build_gguf_k_gemv",
+    "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out",
     "gguf_q8_0_gemv_rowbatch4_f32_f32_out",
     "gguf_q8_0_gemv_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_rowbatch16_f32_f32_out",
