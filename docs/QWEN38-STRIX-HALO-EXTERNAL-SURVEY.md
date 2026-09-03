@@ -1,413 +1,267 @@
 # Qwen3.8-27B on Strix Halo: external implementation survey
 
-Many public Qwen3.8-27B implementations report impressive performance on Strix
-Halo, but the reported numbers mix different models, quantizations, draft
-methods, prompts, and timing boundaries ([overview][S1]). We independently
-reproduced the major claims on one Ryzen AI MAX+ 395 system, checked the
-outputs—not only the speed—and ran a shared multilingual prompt suite where the
-implementations allowed it. For direct engine comparisons, we use the same
-standard `Q4_K_M` file and compare each compatible route with both stock
-llama.cpp and the current hipEngine implementation. Routes that require another
-model format remain source-claim reproductions, not direct engine rankings.
-This report separates reproducible, usable performance from narrow replay
-results and invalid state-contaminated output.
+Updated: 2026-09-03
 
-## Conclusions
+Many public Qwen3.8-27B implementations report impressive performance on
+Strix Halo, but the numbers use different models, quantizations, prompts, and
+timing boundaries ([overview][S1]).
 
-- **No engine wins every standardized workload:** in the pinned 2026-08-30/31
-  matrix on standard `Q4_K_M`, Nathan leads prefill and AR at C1; Laurent
-  leads prefill at C2-C3 and C6-C8, AR at C2, and fixed-K3 MTP at C1-C2 and
-  C6; stock HIP leads prefill at C4-C5 and fixed-K3 MTP at C7-C8; mainline
-  Vulkan leads fixed-K3 MTP at C5. The retained current-head overlays
-  (2026-09-03, below) move the leadership: hipEngine now leads AR at C1 and
-  C3-C8, prefill at C1 and C3-C7, and fixed-K3 MTP at C3-C6; Laurent keeps
-  prefill C2/C8, AR C2, and MTP C1-C2; stock HIP keeps MTP C7-C8.
-- **hipEngine AR now leads seven of eight widths:** the current-head overlay
-  measures C1 11.511 (+3.1% versus Nathan's frozen 11.162), C2 19.249
-  (-3.0% versus Laurent's 19.835), and C3-C8
-  24.974/31.478/37.995/43.093/46.153/50.605, improving on the pinned row at
-  every width. C2 remains the only AR deficit.
-- **hipEngine prefill now leads six of eight widths at the current head:** the
-  2026-09-03 refresh (after the B2 input-F16 and related retentions) measures
-  **201.0/181.9/207.2/233.1/258.2/285.1/291.3/301.8 prefill-dominant tok/s at
-  C1-C8**, leading the frozen external matrix at C1 (+31.0% versus Nathan)
-  and C3-C7 (+7.7% to +16.3%) and trailing only at C2 (-14.2% versus
-  Laurent) and C8 (-1.3% versus Laurent). The pinned baseline row remains in
-  the table for provenance; the C2 dip and the marginal C8 gap keep their
-  standing blockers.
-- **hipEngine explicit K3 MTP beats own AR at C1-C4 and leads the fixed-K3
-  matrix at C3-C6:** the one-group route lifts C5-C8 to
-  **37.280/41.048/44.492/50.893 tok/s** (+33.2/+25.1/+34.4/+43.6% over the
-  reviewed K3 row), and C2-C4 measure **30.094/32.919/37.985 tok/s
-  (1.564x/1.342x/1.207x own AR)** with 10/10 AR equality. C8 is the first
-  C2+ width where explicit MTP reaches own AR (**1.0057x**); C5-C7 remain
-  slightly below. The retained singleton-target route resolves the C1
-  capacity defect without reducing resident capacity: at capacity 3, C1 is
-  **19.428 tok/s (1.687x AR)** with acceptance 0.7889 and 10/10 equality.
-  Exactly one active request uses the transactional C1 target; C2+ keeps the
-  packed target path ([L17]). Automatic production C2-C8 remains K0.
-- **Laurent's ordinary built-in MTP path provides broad, usable gains:** it
-  leads standardized MTP at C1-C2 in the pinned matrix. Stock HIP is stronger
-  at C7-C8. This is separate from Laurent adaptive DFlash2, which remains
-  unsafe across sequential requests.
-- **Strongest reproduced specialized result:** `q38rocm` strict MTP K4 reached
-  **38.85 decode tok/s** under its published protocol and **35.575 arithmetic /
-  32.969 token-weighted decode tok/s** on our shared prompt suite. It requires
-  the custom `ROCmFP4_FAST` model and exactly one server slot, so it is not part
-  of the standard-`Q4_K_M` engine ranking and has no C2-C8 result.
-- **Fastest valid single task:** Laurent adaptive DFlash2 reached **56.532 decode
-  tok/s** for complete structured JSON in a fresh server process.
-- **Laurent adaptive DFlash2 is not usable as a sequential server:** its 66.838
-  tok/s JSON row repeated prose from the previous request. That result is
-  invalid. Laurent's ordinary built-in MTP path did not show this defect.
-- **The highest raw number is workload-specific:** Kyanite reached **167.64
-  tok/s** by replaying a warm count-to-30 sequence, not by generating novel
-  text.
-- **MTP must be routed by concurrency:** Mike's Q8 result was 2.23x AR at C1,
-  neutral at C3, and 0.84x AR at C4.
-- **hipEngine is usable with the standard `Q4_K_M`:** the reviewed C1-C8 run
-  passed 80/80 explicit-K3 exact/route/budget cells, the C6/C8 K1 pair passed
-  all 40 control/candidate cells, and the current-head refresh passes
-  mtp_self_exact at every re-measured width. At the current head it leads AR
-  at C1 and C3-C8, prefill at C1 and C3-C7, and K3 MTP at C3-C6; C7/C8 MTP
-  trail stock HIP. Production explicit C1 now uses the retained singleton
-  target under a wider resident owner while preserving the physical C2+ path.
-  Automatic production C2-C8 remains K0.
+We independently reproduced the major claims on one Ryzen AI MAX+ 395 system.
+We checked outputs as well as speed and used a shared multilingual prompt suite
+when the implementation supported the same model and protocol.
 
-### Route decisions
+For direct engine comparisons, we use the same standard `Q4_K_M` file with
+stock llama.cpp and the hipEngine build measured here. Routes that require
+another model format are reported separately as source reproductions.
 
-**Yes** means the locally tested route produced valid output and showed no
-server-lifecycle correctness blocker. **No** means the tested route exposed a
-correctness blocker. A Yes does not mean that different quantizations have
-equal model quality.
+`C` means active requests. `K` means draft tokens per speculative cycle.
 
-| Route | Usable? | Decision |
-| --- | :---: | --- |
-| hipEngine reviewed baseline `b768516f2`, with retained successors through `b58a70c82` | **Yes** | Current explicit K3 reaches **19.428/30.094/32.919/37.985/37.280/41.048/44.492/50.893 tok/s at C1-C8**; C1 is 1.687x own AR at resident capacity 3, and C8 is 1.0057x. The singleton target resolves the former capacity-gated C1 defect while retaining the wide provider and packed C2+ target; C3 collateral is +0.15% with unchanged acceptance and 10/10 equality. Prefill leads six of eight widths. Automatic C2-C8 remains K0. |
-| `q38rocm` v1.5.2, `ROCmFP4_FAST`, strict MTP K4 | **Yes, C1 only** | Strong specialized result. Strict mode requires exactly one server slot and a custom model, so it is not ranked against standard-`Q4_K_M` engines. |
-| Laurent built-in MTP K3, standard `Q4_K_M` | **Yes** | Broad reusable llama.cpp route; it leads standardized MTP at C1-C2 and C6. |
-| Laurent adaptive DFlash2 fork `c28d538df` | **No** | Fast in a fresh process, but unsafe for sequential requests because speculative state leaks between requests. |
-| `q38rocm` normal MTP K3, standard `Q4_K_M` | **Yes** | Supports C1-C8, but did not lead any standardized cell. |
-| KyaniteLabs HIP MTP+ngram | **Yes** | Correct output. The 160+ tok/s result applies only to warm repetition replay. |
-| PieBru recipes on Nathanw fork `0eb528051` | **Yes** | Q5/Q6/Q8 speed claims reproduced. Latest mainline is slightly faster in decode. |
-| MikeVeerman stock llama.cpp pin `152d337fa`, Q8 MTP | **Yes** | Use MTP at low concurrency. Disable it for dense parallel work. |
+## Executive summary
 
-### Source-claim reproduction
+### Standard `Q4_K_M` leaders
 
-This table answers whether we could reproduce each source's result under its
-own protocol. The rows use different models, workloads, output lengths, and
-timing boundaries. **Do not use this table to rank engines.** The standardized
-`mtp-bench` comparison below provides the apples-to-apples ranking.
+- **Autoregressive generation**
+  - hipEngine leads at C1 and C3-C8.
+  - Laurent Vulkan leads at C2.
+- **Prefill-dominant throughput**
+  - hipEngine leads at C1 and C3-C7.
+  - Laurent Vulkan leads at C2 and C8.
+- **MTP-enabled throughput**
+  - Laurent Vulkan leads at C1-C2.
+  - hipEngine's MTP-enabled route leads at C3-C7.
+  - Stock llama.cpp HIP leads at C8.
 
-| Route | Published claim | Local measurement |
-| --- | --- | --- |
-| `q38rocm` strict MTP K4 | 14.02 AR; 30.56-36.04 MTP decode tok/s | 14.31 AR; **38.85** MTP on the source protocol. Common suite: **35.575 arithmetic / 32.969 token-weighted decode tok/s**. |
-| Laurent adaptive DFlash2 | 65.6 structured; 26.1 prose decode tok/s | Valid complete JSON: **56.532**. Prose: 25.618. Fresh-process common suite: **37.752 arithmetic / 34.483 token-weighted decode tok/s**. |
-| Kyanite MTP+ngram | 59.7 cold; 148-163 warm count-to-30; 11-24 real traffic | 60.95 cold; **164.13-167.64** warm count-to-30. Common suite: **24.867 decode / 20.518 complete-wall tok/s**. |
-| PieBru Q5/Q6/Q8 | About 23-24 / 17-21 / 15-18 served tok/s | **24.706 / 20.549 / 18.197 complete-wall tok/s** on Nathan. |
-| MikeVeerman Q8 concurrency | MTP is 2.19x AR at C1 and 0.78x at C4 | **2.23x** at C1, 1.01x at C3, and **0.84x** at C4. |
+The full measurements are in the [standard comparison](#standard-q4_k_m-comparison).
 
-### Standardized `Q4_K_M` comparison
+### hipEngine at a glance
 
-These tables provide the apples-to-apples engine comparison. Every row uses the
-same standard `Q4_K_M` file, ten `mtp-bench` prompts, greedy sampling, disabled
-prompt caching, 24 generated tokens per request, and one physical host. Values
-are aggregate complete-wall tok/s; higher is better. The comparison uses each
-engine's production/default KV precision—BF16 for hipEngine and default F16 for
-the llama.cpp routes—so it compares deployable engine configurations rather
-than forcing identical internal arithmetic.
+- Active C1 reaches **19.428 tok/s**, or **1.687x** its matched
+  autoregressive rate.
+- The server had three request slots, with one request active.
+  - K3 generated the same tokens as matched AR on all ten prompts.
+- At C3, K3 reaches **32.919 tok/s**, or **1.342x** matched autoregressive
+  generation.
 
-The prefill pass generated one token per request and reports prompt tokens divided
-by barrier-to-last-completion wall time. It therefore includes one generated
-token and API overhead. We use this common end-to-end boundary because llama.cpp
-exposes internal prompt timing but hipEngine does not expose an equivalent field.
-The external rows below remain the same-host measurements recorded on
-2026-08-30 ([L6]). The full C1-C8 hipEngine rows were re-run from tracked-clean
-`b768516f2` on the same physical host and protocol on 2026-08-31 ([L9]). The
-C6/C8 K1 successor was measured on the same host, model, prompt suite, D24
-budget, and complete-wall boundary through runtime `1f4687cab` on 2026-09-01
-([L10]). The current-head one-group K3 overlay and C2 depth decision were
-measured on the same host, model, prompt suite, D24 budget, and complete-wall
-boundary through `6d6fb3ed3` on 2026-09-03 ([L13], [L14]); the full C1-C8
-overlay and the prefill refresh were measured at `3d48170a7` on 2026-09-03 on
-the same protocol ([L15], [L16]). Rates are total
-tokens divided by summed wall across **all ten
-prompts**. The M3/M4 compact headlines (15.646 and 35.618 tok/s) are
-six-non-heldout arithmetic means and are not substituted into this aggregate
-table.
+When MTP is enabled, hipEngine uses K3 through C4. At C5-C8, it uses one
+full-batch autoregressive pass instead.
 
-#### Prefill-dominant throughput
+## Summary table
 
-| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine `b768516f2` | 147.0 | 139.8 | 169.9 | 188.9 | 211.8 | 227.7 | 237.1 | 247.3 |
-| Mainline Vulkan `4e97ac86` | 111.2 | 133.6 | 127.0 | 127.0 | 137.6 | 146.8 | 148.1 | 162.3 |
-| Stock HIP `9d57ce456` | 146.2 | 186.9 | 190.3 | **200.5** | **226.1** | 250.1 | 250.3 | 283.5 |
-| Laurent Vulkan `c28d538df` | 149.1 | **211.9** | **192.4** | 191.9 | 222.1 | **250.4** | **252.3** | **305.8** |
-| Nathan Vulkan `0eb528051` | **153.4** | 200.8 | 186.1 | 186.3 | 208.2 | 227.5 | 228.6 | 263.9 |
-| `q38rocm` normal Vulkan `5d097740` | 146.9 | 186.5 | 181.3 | 184.2 | 206.1 | 229.7 | 233.0 | 273.5 |
-| hipEngine current head `3d48170a7` (2026-09-03) | **201.0** | 181.9 | **207.2** | **233.1** | **258.2** | **285.1** | **291.3** | 301.8 |
+| Usable | Implementation | Main result | Constraint or routing |
+| --- | --- | --- | --- |
+| Yes | hipEngine `Q4_K_M` | Leads most standard comparison cells | Automatic K3 for eligible C1; AR at C2-C8 |
+| Yes | Laurent built-in K3 | Leads MTP at C1-C2 | Standard GGUF route |
+| C1-only | `q38rocm` strict K4 | 38.85 decode tok/s | Custom model and one server slot |
+| No | Laurent adaptive DFlash2 | 56.532 decode tok/s in a fresh process | Request state leaks when the server is reused |
+| Yes | Kyanite MTP+ngram | 167.64 tok/s on warm replay | Large ngram gain requires earlier output to replay |
+| Yes | PieBru recipes and Nathanw fork | Q5, Q6, and Q8 claims reproduced | llama.cpp mainline is slightly faster in DFlash decode |
+| Yes | MikeVeerman Q8 MTP | 2.23x AR at C1 | 0.84x AR at C4 |
 
-#### Autoregressive complete-wall throughput
+## Test method
 
-| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine `b768516f2` | 11.112 | 18.090 | **23.879** | **30.150** | **35.778** | **40.343** | **43.974** | **47.194** |
-| Mainline Vulkan `4e97ac86` | 10.226 | 17.471 | 14.905 | 13.246 | 18.086 | 24.083 | 29.342 | 35.376 |
-| Stock HIP `9d57ce456` | 10.635 | 17.681 | 15.266 | 13.537 | 18.271 | 23.296 | 26.544 | 30.325 |
-| Laurent Vulkan `c28d538df` | 11.047 | **19.835** | 16.359 | 14.255 | 20.294 | 28.322 | 35.896 | 45.614 |
-| Nathan Vulkan `0eb528051` | **11.162** | 19.662 | 16.341 | 14.321 | 20.099 | 27.575 | 34.317 | 41.511 |
-| `q38rocm` normal Vulkan `5d097740` | 10.582 | 18.645 | 15.663 | 13.866 | 19.054 | 24.970 | 29.576 | 35.021 |
-| hipEngine current head `3d48170a7` (2026-09-03) | **11.511** | 19.249 | **24.974** | **31.478** | **37.995** | **43.093** | **46.153** | **50.605** |
+### Standard comparison
 
-#### Explicit MTP complete-wall throughput
+Every compatible route used:
 
-The first six rows are the fixed-K3 comparison. The K1 row is a
-width-specific overlay from the retained successor and is not a fixed-depth
-K3 result; blank cells were not re-measured under that successor protocol.
-The final row combines the current-head one-group K3 overlay after the
-B1/B2/B5 retentions with the active-C1 singleton-target retention at
-`b58a70c82`; C1 and C3 were re-measured together at resident capacity 3
-([L17]).
+- the same 17,106,775,008-byte Qwen3.8-27B `Q4_K_M` file;
+- ten shared prompts across four language/task categories;
+- greedy sampling and no prompt cache;
+- 24 generated tokens per request;
+- the same physical host;
+- complete request-wall timing.
 
-| Engine / route | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine K3 `b768516f2` | 15.753 | 28.441 | **30.541** | **35.474** | 27.980 | 32.807 | 33.106 | 35.423 |
-| Mainline Vulkan `4e97ac86` | 21.022 | 30.840 | 27.283 | 26.955 | **32.713** | 32.307 | 38.282 | 45.458 |
-| Stock HIP `9d57ce456` | 17.351 | 23.530 | 23.087 | 25.287 | 22.293 | 25.212 | **46.084** | **56.222** |
-| Laurent Vulkan `c28d538df` | **21.126** | **32.221** | 28.067 | 26.184 | 31.737 | **37.154** | 43.888 | 50.837 |
-| Nathan Vulkan `0eb528051` | 20.781 | 30.566 | 27.859 | 26.385 | 29.768 | 33.318 | 36.992 | 45.173 |
-| `q38rocm` normal Vulkan `5d097740` | 20.357 | 27.163 | 26.178 | 26.482 | 32.297 | 31.613 | 38.314 | 45.342 |
-| hipEngine K1 runtime `1f4687cab` | — | — | — | — | — | 37.074 | — | 43.421 |
-| hipEngine K3 one-group, retained through `b58a70c82` (2026-09-03) | 19.428 | 30.094 | **32.919** | **37.985** | **37.280** | **41.048** | 44.492 | 50.893 |
+The model hash and exact commands are in the [evidence artifacts](#evidence).
 
-At C6, the latest hipEngine K1 row ranks second of six at 37.074 tok/s, only
-0.080 tok/s (0.22%) behind Laurent's 37.154. At C8, hipEngine improves 22.6%
-over its reviewed K3 row but remains sixth at 43.421 tok/s: 3.88% behind the
-nearest external route (Nathan, 45.173) and 22.77% behind stock HIP's 56.222.
-This overlay compares each route's measured throughput, not equal draft depth.
-The current-head one-group overlay (2026-09-03, measured after the B1
-verifier-owner transfer and B5 planar-Q6 integer MMQ retentions on the same
-host, suite, D24 budget, and complete-wall boundary) supersedes the K1 row as
-hipEngine's best explicit route: it leads the pinned matrix at C5 (37.280
-versus Mainline Vulkan 32.713, +14.0%) and C6 (41.048 versus Laurent 37.154,
-+10.5%), ranks second at C7 (44.492, 3.45% behind stock HIP) and C8 (50.893,
-9.48% behind stock HIP and 0.11% ahead of Laurent), and reaches 1.0057x own
-AR at C8. C3/C4 one-group cells measure 32.919/37.985 tok/s (1.342x/1.207x
-own AR) with 10/10 AR equality and acceptance unchanged from the pinned head;
-C2 measures 30.094 (1.564x). C1 now measures 19.428 tok/s (1.687x own AR) at
-resident capacity 3, with acceptance 0.7889 and 10/10 AR equality. This is a
-127.47% MTP improvement over the same-capacity broken row. The fix preserves
-the physical provider and dispatches only an active singleton through the
-existing transactional C1 target; C2+ remains packed. C3's same-run packed
-collateral is +0.15%, with acceptance and equality unchanged. The one-group
-packed-verifier execution differs mechanically from the pinned subgroup route;
-protocol, prompts, and boundary are identical.
+The engines used their deployable default key-value cache precision:
 
-All llama.cpp outputs passed the character-window and word-trigram repetition
-guards. hipEngine passed 80/80 explicit-MTP generated-ID, route, and budget
-cells in the pinned matrix, and the current-head refresh passes mtp_self_exact
-with 10/10 engaged/budget cells at every re-measured width. The pinned K3 route
-reached 1.418x/1.572x/1.279x/1.177x own AR at C1-C4 and 0.782x/0.813x/0.753x/
-0.751x at C5-C8; the current-head overlay reaches 0.743x*/1.564x/1.314x/
-1.207x/0.981x/0.953x/0.964x/1.006x at C1-C8. hipEngine's AR row leads the AR
-matrix at C1 and C3-C8 at the current head. The
-MTP rows are explicit K3 diagnostics, not automatic-admission claims;
-automatic production C2-C8 remains K0.
+- hipEngine: BF16;
+- llama.cpp routes: F16.
 
-## 1. Test method
+The comparison therefore holds the model file and workload constant. It does
+not force identical internal arithmetic.
 
-### Comparison framework
-
-Every route is evaluated in two separate tracks where its model support allows
-it:
-
-1. **Claim reproduction:** run the source's model, engine, and protocol. This
-   track tests whether the source's claim reproduces; it does not rank engines.
-2. **Standardized `mtp-bench` comparison:** run the standard Qwen3.8-27B
-   `Q4_K_M` artifact on our shared ten-prompt suite. This track ranks compatible
-   engines using the same model file, prompts, output length, host, and timing
-   boundary, with stock llama.cpp and hipEngine as controls.
-
-The standardized comparison model is
-`/models/gguf/Qwen3.8-27B-Q4_K_M.gguf`, SHA-256
-`7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`.
-Custom-format routes such as `ROCmFP4_FAST`, and quant-specific Q5/Q6/Q8
-recipes, cannot participate in that 1:1 table unless the implementation also
-supports this standard file. Their exact-artifact results remain useful for
-verifying the source claim.
-
-### Host and common suite
+### Host and prompt suite
 
 | Item | Value |
 | --- | --- |
-| APU | AMD Ryzen AI MAX+ 395 |
-| GPU | Radeon 8060S / `gfx1151` |
+| System | AMD Ryzen AI MAX+ 395 |
+| GPU | Radeon 8060S (`gfx1151`) |
 | Unified memory | 128 GB |
-| Theoretical memory bandwidth | 256 GB/s |
+| Theoretical bandwidth | 256 GB/s |
 | Kernel | Linux 7.1.6-1-cachyos |
-| Common suite | `benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
-| Suite SHA-256 | `fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a` |
-| Prompt coverage | 10 prompts: code, general English, general Japanese, and mixed Japanese/English; four heldouts |
-| Common sampling | Greedy; prompt cache disabled |
-
-The [reviewed matrix][L9] records the full C1-C8 hipEngine baseline, raw hashes,
-commands, rates, and C=N follow-up. The [C6/C8 K1 closeout][L10] records the
-latest retained runtime, ten-iteration ledger, clean endpoint, and named
-blocker. The preserved [external matrix][L6] records the external commits and
-shared protocol. The [source-reproduction artifact][L0] records the additional
-model sizes, commands, acceptance, and route decisions.
-Raw logs stay outside Git because the repository does not
-retain model files, binaries, or raw server logs.
+| Prompt suite | `benchmarks/prompts/mtpbench-code-general-ja.jsonl` |
+| Prompt count | 10 |
+| Categories | Code, English, Japanese, mixed Japanese/English |
+| Heldout prompts | 4 of 10 |
+| Sampling | Greedy; prompt cache disabled |
 
 ### Timing terms
 
-- **Decode tok/s:** generated tokens divided by server-reported decode time.
-- **Arithmetic decode tok/s:** the simple mean of per-request decode rates.
-- **Token-weighted decode tok/s:** total generated tokens divided by total
-  decode time. This prevents short, fast responses from dominating the result.
-- **Complete-wall tok/s:** generated tokens divided by request wall time. It
-  includes prompt evaluation and request overhead, but not model loading.
-- **Prefill-dominant tok/s:** prompt tokens divided by complete wall for a
-  one-output-token request. It includes one generated token and API overhead.
+- **Decode tok/s** uses the server-reported decode interval.
+- **Arithmetic decode tok/s** is the mean of per-request decode rates.
+- **Token-weighted decode tok/s** divides all output tokens by all decode time.
+- **Complete-wall tok/s** divides output tokens by elapsed request time.
+- **Prefill-dominant tok/s** divides prompt tokens by complete wall for a
+  one-output-token request.
 
-Compare two rates directly only when the model, backend, workload, output
-length, and timing boundary match.
+Compare rates only when model, workload, output length, and timing boundary
+match.
 
 ### Correctness checks
 
-The campaign used the checks available for each route:
+We used the strongest correctness checks available for each route:
 
-- exact task contracts, such as a complete 12-object JSON array or `1…30`;
-- retained output with character-window and word-trigram repetition checks;
-- fresh-server controls when request-state leakage was suspected;
-- token equality between Nathan and latest mainline;
+- exact expected structures for JSON and count-to-30 output;
+- repetition checks based on character windows and word trigrams;
+- fresh-server controls when request leakage was suspected;
+- token equality for matched engine variants;
 - category and heldout coverage on the common suite.
 
-These checks establish generation validity. They do not establish equal model
+These checks establish generation validity. They do not prove equal model
 quality across quantizations.
 
-## 2. Standard comparison model
+## Standard `Q4_K_M` comparison
 
-Every engine in the standardized tables used the same 17,106,775,008-byte
-`Q4_K_M` file, SHA-256
-`7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169`.
-The [compact artifact][L0] retains hashes for the additional models used only
-to reproduce source-specific claims.
+The external rows were measured on 2026-08-30 ([L6]). The hipEngine rows were
+measured on 2026-09-03 ([L14]-[L17]).
 
-## 3. hipEngine
+Values are aggregate complete-wall tok/s; higher is better. The best value in
+each column is bold.
 
-**Verdict: Yes.** hipEngine runs the standard `Q4_K_M` baseline used by every
-row in the standardized comparison.
+### Leadership by workload
 
-The reviewed `b768516f2` baseline ran C1-C8 with production-profile BF16
-arithmetic. It led AR at C3-C8, reaching 23.879-47.194 complete-wall tok/s. It
-was 0.45% behind Nathan at C1 (11.112 versus 11.162) and 8.80% behind Laurent
-at C2. The latest C6/C8 K1 pair measures matched AR at 39.908/47.240 tok/s.
-The current retained rows ([L15], [L17]) improve AR at every width — C1
-11.518 now leads Nathan's frozen 11.162, and C3-C8 reach
-24.526/31.478/37.995/43.093/46.153/50.605 — leaving C2 (19.249, -3.0% versus
-Laurent) as the only AR deficit.
+| Workload | C1 | C2 | C3-C6 | C7 | C8 |
+| --- | --- | --- | --- | --- | --- |
+| Prefill | hipEngine | Laurent | hipEngine | hipEngine | Laurent |
+| Autoregressive | hipEngine | Laurent | hipEngine | hipEngine | hipEngine |
+| MTP-enabled | Laurent | Laurent | hipEngine | hipEngine | Stock HIP |
 
-Prefill reached 139.8-247.3 tok/s across C2-C8 (147.0 at C1) in the pinned
-baseline and trailed the best engine at every width. The retained B2 input-F16
-prefill route (2026-09-02, [L12]) raised matched same-host one-output
-complete-wall prefill to **209.391/334.704 prompt tok/s at C2/C8**, 6.38%/
-12.57% above Laurent's frozen matched rows. The standardized prefill-dominant
-refresh ([L16]) measures **201.0/181.9/207.2/233.1/258.2/285.1/291.3/301.8
-tok/s at C1-C8**, leading the frozen external matrix at C1 and C3-C7 and
-trailing only at C2 (-14.2%) and C8 (-1.3%) versus Laurent.
+### Prefill-dominant throughput
 
-Explicit K3 MTP is strong at C1-C4 and weak at C5-C8. It led C3-C4 at
-30.541/35.474 tok/s and beat matched AR at every width C1-C4. The retained K1
-successor raises C6 to 37.074 tok/s and C8 to 43.421, reducing their gaps to the
-external leaders to 0.22% and 22.77%. All 80 reviewed K3 cells passed; the
-latest K1 control/candidate pair passed all 40 cells with acceptance unchanged
-at 1,540/1,610. The 2026-09-02/03 B1 verifier-owner transfer and B5 planar-Q6
-integer MMQ retentions ([L11], [L14]) then lifted the one-group K3 route to
-**37.280/41.048/44.492/50.893 tok/s at C5-C8** (C8 = 1.0057x own AR),
-leading the pinned external matrix at C3-C6 and ranking second at C7-C8
-(see the overlay row above); C2-C4 measure 30.094/32.919/37.985 tok/s
-(1.564x/1.342x/1.207x). Production explicit C1 now measures 19.428 tok/s
-(1.687x) at resident capacity 3 through the retained singleton target. The
-C3/K3 production numerical gate previously passed 240/240
-canonical and 192/192 heldout top-1 checks, with maximum KL 8.69e-4 and 8.45e-4
-respectively ([L8]). Width-4 prompt streaming changed its acceptance
-trajectory, so that T3 scope remains an explicit diagnostic rather than an
-automatic production promotion.
+| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| llama.cpp mainline Vulkan | 111.2 | 133.6 | 127.0 | 127.0 | 137.6 | 146.8 | 148.1 | 162.3 |
+| llama.cpp stock HIP | 146.2 | 186.9 | 190.3 | 200.5 | 226.1 | 250.1 | 250.3 | 283.5 |
+| Laurent Vulkan | 149.1 | **211.9** | 192.4 | 191.9 | 222.1 | 250.4 | 252.3 | **305.8** |
+| Nathan Vulkan | 153.4 | 200.8 | 186.1 | 186.3 | 208.2 | 227.5 | 228.6 | 263.9 |
+| `q38rocm` Vulkan | 146.9 | 186.5 | 181.3 | 184.2 | 206.1 | 229.7 | 233.0 | 273.5 |
+| hipEngine | **201.0** | 181.9 | **207.2** | **233.1** | **258.2** | **285.1** | **291.3** | 301.8 |
 
-Automatic serving remains narrower than the diagnostic table. Strict/BF16
-C1/K3/context1-67 remains automatic at **18.191 versus 11.062 AR tok/s**
-([L7]). Production C2-C8 remain automatic K0 pending their width-specific
-numerical/task/serving gates; the explicit rows above do not change that policy.
+Key points:
 
-### C=N MTP execution review (2026-08-31)
+- hipEngine leads six widths.
+- C2 trails Laurent by 14.2%.
+- C8 trails Laurent by 1.3%.
 
-hipEngine does use the Qwen NextN draft module, but “NextN” does not mean one
-model call predicts all K tokens. Draft depth is autoregressive: K draft steps
-run serially, while each step batches every request in the physical group. For
-C1-C4, verification is already flattened: one call to
-`verify_target_blocks_batch()` packs each request's root plus K candidates and
-runs one target-model forward. The production server caps explicit MTP groups
-at four, so C5-C8 still execute serial complete subgroups.
+### Autoregressive complete-wall throughput
 
-The full-width verifier mechanism is implemented and has passed one-target-pass
-correctness through C8; K3 remains slower because R20-R32 and wide proposal /
-accept paths miss their best owners. The initial one-pass K1 screen identified
-C6/R12 and C8/R16 as the only positive wide frontiers ([L9]). The retained
-successor then removed redundant verifier-state imports and added exact Q4
-owners for C6/R12 plus two C8/R16 shapes, reaching **37.074/43.421 tok/s** with
-all 40 control/candidate cells passing ([L10]). C6 is now 0.22% behind the
-external leader, but both widths still lose own AR and remain automatic K0.
+| Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| llama.cpp mainline Vulkan | 10.226 | 17.471 | 14.905 | 13.246 | 18.086 | 24.083 | 29.342 | 35.376 |
+| llama.cpp stock HIP | 10.635 | 17.681 | 15.266 | 13.537 | 18.271 | 23.296 | 26.544 | 30.325 |
+| Laurent Vulkan | 11.047 | **19.835** | 16.359 | 14.255 | 20.294 | 28.322 | 35.896 | 45.614 |
+| Nathan Vulkan | 11.162 | 19.662 | 16.341 | 14.321 | 20.099 | 27.575 | 34.317 | 41.511 |
+| `q38rocm` Vulkan | 10.582 | 18.645 | 15.663 | 13.866 | 19.054 | 24.970 | 29.576 | 35.021 |
+| hipEngine | **11.518** | 19.249 | **24.526** | **31.478** | **37.995** | **43.093** | **46.153** | **50.605** |
 
-The bounded loop initially closed on a multi-family packed-verifier dataflow
-blocker; that reopen condition was then satisfied by the B1 owner transfer
-plus B5 planar-Q6 integer MMQ (2026-09-02/03), which lift one-group K3 to
-**37.280/41.048/44.492/50.893 tok/s at C5-C8** with C8 at 1.0057x own AR
-([L11], [L14]). Remaining gaps are the 3.45%/9.48% C7/C8 deficit to stock
-HIP and the C1-C2 MTP deficit to the llama.cpp forks.
+Key points:
 
-## 4. `q38rocm` / ROCmFPX
+- hipEngine leads seven widths.
+- C2 is the only hipEngine deficit.
+- C2 trails Laurent by 3.0%.
 
-**Verdict: Yes as a specialized C1 route.** Strict MTP reproduced the source
-claim, but it requires a custom model and exactly one server slot.
+### MTP-enabled throughput
 
-### What we tested
+The first hipEngine row shows routing after MTP is enabled. It uses K3 through
+C4 and one full-batch AR pass at C5-C8.
 
-- `q38rocm` source commit `5d097740` ([S3])
-- Verified `q38rocm` v1.5.2 prebuilt runtime
-- ROCmFPX source lineage `0fc9568e`
-- Vulkan/RADV on Radeon 8060S
-- Exact `ROCmFP4_FAST` target
-- Built-in MTP, strict maximum depth 4 at C1
-- Normal MTP K3 with the standard `Q4_K_M` at C1-C8
+The second hipEngine row forces K3 at every width. The external rows also use
+fixed K3.
 
-The repository installer contained a stale checksum. We verified the v1.5.2
-binary against the GitHub release digest instead of disabling checksum
-validation.
+| Engine or route | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine after MTP opt-in | 19.428 | 30.094 | **32.919** | **37.985** | **37.995 AR** | **43.093 AR** | **46.153 AR** | 50.605 AR |
+| hipEngine forced K3 | 19.428 | 30.094 | **32.919** | **37.985** | 37.280 | 41.048 | 44.492 | 50.893 |
+| llama.cpp mainline Vulkan K3 | 21.022 | 30.840 | 27.283 | 26.955 | 32.713 | 32.307 | 38.282 | 45.458 |
+| llama.cpp stock HIP K3 | 17.351 | 23.530 | 23.087 | 25.287 | 22.293 | 25.212 | 46.084 | **56.222** |
+| Laurent Vulkan K3 | **21.126** | **32.221** | 28.067 | 26.184 | 31.737 | 37.154 | 43.888 | 50.837 |
+| Nathan Vulkan K3 | 20.781 | 30.566 | 27.859 | 26.385 | 29.768 | 33.318 | 36.992 | 45.173 |
+| `q38rocm` Vulkan K3 | 20.357 | 27.163 | 26.178 | 26.482 | 32.297 | 31.613 | 38.314 | 45.342 |
 
-### Source-protocol results
+#### hipEngine routing
+
+- C1 verifies the draft as a single request, even when the server reserves
+  capacity for more requests.
+  - Throughput: **19.428 tok/s**, or **1.687x** matched AR.
+  - Acceptance: 78.89%.
+  - Generated tokens matched AR on all ten prompts ([L17]).
+- C2-C4 use K3 and beat matched AR.
+- C5-C8 use the full-batch AR fallback after MTP opt-in.
+- Forced K3 is slower than AR at C5-C7.
+- Forced K3 and AR are effectively tied at C8, at 1.0057x AR.
+
+The C3 quality test compared K3 output with hipEngine's strict reference path:
+
+- the highest-probability token matched in all 240 standard cases;
+- the highest-probability token matched in all 192 heldout cases;
+- maximum Kullback-Leibler divergence was 8.69e-4 and 8.45e-4,
+  respectively ([L8]).
+
+### Public automatic admission
+
+Automatic serving uses MTP more narrowly than the table above:
+
+- One active request uses strict K3 for context lengths 1-67.
+  - K3 reaches **18.191 tok/s**, versus **11.062 tok/s** for AR ([L7]).
+- C2-C8 use K0, which means autoregressive generation.
+- Unsupported context lengths, draft depths, or sampling modes also use K0.
+
+## Source-specific reproductions
+
+These sections use each project's own model and protocol. Compare a local
+result only with the published result in the same section.
+
+## `q38rocm` / ROCmFPX
+
+**Verdict: usable as a specialized C1 route.**
+
+### Tested configuration
+
+- `q38rocm` v1.5.2 and the pinned source report ([S3]);
+- Vulkan/RADV on Radeon 8060S;
+- `ROCmFP4_FAST` target;
+- strict MTP K4;
+- one server slot.
+
+The repository installer contained a stale checksum. We verified the prebuilt
+binary against the GitHub release digest.
+
+### Published-protocol result
 
 | Metric | Published | Local |
 | --- | ---: | ---: |
-| AR decode tok/s | 14.02 | 14.31 |
-| MTP decode tok/s | 30.56-36.04 | **38.85 mean** |
+| AR decode | 14.02 | 14.31 |
+| MTP decode | 30.56-36.04 | **38.85 mean** |
 | MTP acceptance | — | 78.1% |
-| Repetition guard | Reported clean | Passed |
+| Repetition guard | Clean | Passed |
+
+#### Prompt breakdown
 
 | Prompt | Decode tok/s | Acceptance |
 | --- | ---: | ---: |
-| Binary search tree / code | 41.44 | 88.6% |
-| Widget factory / reasoning | 38.73 | 75.7% |
-| JSON entity extraction | 48.49 | 100.0% |
+| Binary search tree | 41.44 | 88.6% |
+| Widget factory | 38.73 | 75.7% |
+| JSON extraction | 48.49 | 100.0% |
 | Unified versus discrete memory | 26.75 | 48.0% |
 
-### Common-suite results
+### Common-suite result
 
 | Mode | Arithmetic decode | Token-weighted decode | Complete wall | Acceptance |
 | --- | ---: | ---: | ---: | ---: |
 | AR | 14.782 | 14.782 | 12.803 | — |
 | Strict MTP K4 | **35.575** | **32.969** | **24.294** | 62.35% |
+
+#### Category breakdown
 
 | Category | MTP decode tok/s |
 | --- | ---: |
@@ -416,71 +270,64 @@ validation.
 | General Japanese | 26.47 |
 | Mixed Japanese/English | 33.42 |
 
-### Concurrency limitation
-
-Strict Qwen MTP enforces one server slot. Starting it with `-np 8` fails during
-model load with:
+Strict MTP refuses more than one server slot:
 
 ```text
 Qwen strict MTP requires a single server slot/sequence
 ```
 
-The 38.85 tok/s result is therefore C1-only. It is not evidence for multi-user
-throughput. Normal MTP K3 supports C1-C8, but the final standard-`Q4_K_M`
-refresh measured 20.357, 27.163, 26.178, 26.482, 32.297, 31.613, 38.314, and
-45.342 complete-wall tok/s. It did not lead any cell in the standardized matrix.
+The result is therefore C1-only. It is not evidence for multi-user throughput.
 
-### What this means
+Normal K3 with standard `Q4_K_M` supports C1-C8. It did not lead any cell in
+the standard comparison.
 
-- All four source-protocol repetition guards passed.
-- All ten common-suite requests completed, and every category improved.
-- The compact strict common-suite harness did not retain response text.
-- No request failure or contamination symptom appeared at C1.
-- This route uses a custom model format. Do not present its speed advantage as
-  an engine-only comparison against Q4/Q5/Q6/Q8 GGUF files.
+The strict common-suite harness recorded rates and pass/fail checks, but it did
+not save response text. No failure or contamination appeared in the C1 run.
 
-## 5. Laurent adaptive DFlash2 fork
+## Laurent adaptive DFlash2
 
-**Verdict: No for sequential serving.** The implementation is fast in a fresh
-process, but request state leaks between sequential prompts.
+**Verdict: not usable for sequential serving.**
 
-### What we tested
+The route is fast in a fresh process. Reused-server requests can inherit stale
+speculative state.
 
-- Laurent fork commit `c28d538df`, build 10681 ([S5])
-- Vulkan/RADV
-- Exact `ROCmFP4_FAST` target
-- Exact FP4 DFlash2 `Q4_0` sidecar
-- Adaptive draft depth 3-7
-- Published 300-token prose-then-JSON sequence
+### Tested configuration
 
-### Published-sequence reproduction
+- pinned Laurent fork and implementation ([S5]);
+- Vulkan/RADV;
+- `ROCmFP4_FAST` target and FP4 DFlash2 draft model;
+- adaptive draft depth K3-K7;
+- published prose-then-JSON request sequence.
+
+### Sequential request result
 
 | Policy | Prose decode | JSON decode | JSON result |
 | --- | ---: | ---: | --- |
-| Bare | 14.148 | 14.128 | On-task, truncated at 300 tokens |
+| AR | 14.148 | 14.128 | On-task; truncated |
 | Fixed K3 | 25.842 | 42.532 | On-task |
-| Fixed K7 | 24.481 | 20.859 | Wrong-task prose in the JSON position |
-| Adaptive K3-K7 | 25.618 | **66.838** | **Invalid: repeated prose from the previous prompt** |
+| Fixed K7 | 24.481 | 20.859 | Wrong-task prose |
+| Adaptive K3-K7 | 25.618 | **66.838** | **Invalid stale prose** |
 
-The 66.838 tok/s result numerically reproduces the 65.6 claim, but it is not a
-valid result. The JSON request repeated “the rhythms of the tides” from the
-preceding prose request. The fork's degeneration guard still passed because it
-checked output length rather than task content.
+The 66.838 tok/s row reproduces the published speed. It is invalid because the
+JSON request repeated content from the preceding prose request.
 
-### Fresh-server controls
+The fork's own validity check measured output length. It did not check whether
+the response answered the current request.
 
-Restarting the server before each JSON request removed the stale prose:
+### Fresh-server result
+
+Restarting the server before each JSON request removed the stale prose.
 
 | Test | Decode tok/s | Result |
 | --- | ---: | --- |
-| Fresh server, 300 tokens, trial 1 | 56.948 | Clean JSON, truncated at object 9 |
-| Fresh server, 300 tokens, trial 2 | 56.699 | Same output hash, truncated at object 9 |
-| Fresh server, 300 tokens, trial 3 | 56.991 | Same output hash, truncated at object 9 |
-| Fresh server, 420 tokens, bare | 14.180 | Complete valid 12-object JSON |
-| Fresh server, 420 tokens, adaptive | **56.532** | **Complete valid 12-object JSON** |
+| 300 tokens, trial 1 | 56.948 | Clean JSON; truncated at object 9 |
+| 300 tokens, trial 2 | 56.699 | Same output hash |
+| 300 tokens, trial 3 | 56.991 | Same output hash |
+| 420 tokens, AR | 14.180 | Complete 12-object JSON |
+| 420 tokens, adaptive | **56.532** | **Complete 12-object JSON** |
 
 Use **56.532 tok/s** as the valid structured-output result. It is 3.99x the
-matched bare route. Do not use the sequential 65.6/66.838 row.
+matched AR route.
 
 ### Fresh-process common suite
 
@@ -498,61 +345,29 @@ Each prompt used a new server process.
 
 All ten outputs were substantive and non-repetitive.
 
-### Earlier built-in-MTP transfer test
+### Required fix
 
-Before the FP4+DFlash2 files were available, we tested Laurent's adaptive
-controller with the older local `Q4_K_M` and its built-in MTP head ([L4]).
+The adaptive DFlash2 path must reset or repair speculative state at every
+request boundary. It also needs a sequential multi-prompt correctness test.
 
-| Arm | Decode tok/s | Versus own AR | Acceptance |
-| --- | ---: | ---: | ---: |
-| Mainline AR | 11.37 | 1.000x | — |
-| Mainline fixed K3 | 16.02 | 1.409x | 63.41% |
-| Mainline fixed K7 | 14.83 | 1.304x | 38.43% |
-| Laurent AR | 11.35 | 1.000x | — |
-| Laurent fixed K3 | **18.93** | **1.668x** | 63.86% |
-| Laurent fixed K7 | 14.87 | 1.310x | 38.58% |
-| Laurent adaptive K3-K7 | 17.66 | 1.556x | 61.70% |
+## KyaniteLabs MTP+ngram
 
-Direct conclusions from this transfer test:
+**Verdict: usable with a workload caveat.**
 
-- adaptive sizing recovered 18.8% over fixed K7;
-- adaptive sizing was 6.7% slower than fixed K3;
-- mainline `n_max=7,n_min=3` behaved like fixed K7, not Laurent adaptive;
-- Laurent fixed K3 was about 18% faster than b10438 mainline, but the build
-  gap prevents attributing the difference without a bisect.
+The output is correct. The 160+ tok/s peak measures warm replay rather than
+novel generation.
 
-Adaptive depth is therefore useful for avoiding a bad deep draft, but it is
-not always the fastest policy.
+### Tested configuration
 
-### Standardized built-in-MTP result
+- pinned Kyanite configuration ([S4]);
+- llama.cpp HIP;
+- Unsloth `UD-Q4_K_XL`;
+- one slot and 98,304-token context;
+- MTP K12 and a minimum ngram replay match of 24 tokens.
 
-The final standard-`Q4_K_M` matrix tested Laurent's ordinary built-in MTP K3,
-not adaptive DFlash2. That route passed every repetition guard and led MTP at
-C1-C2 and C6. Laurent also led prefill at C2-C3 and C6-C8 and AR at C2. This is
-a broad, reusable fork result; the adaptive DFlash2 request-state failure does
-not apply to this ordinary built-in-MTP path.
+### Count-to-30 result
 
-### What must be fixed
-
-Laurent must reset or repair speculative state at every request boundary. The
-route needs a sequential multi-prompt correctness gate before it can be used as
-a reusable server. Fresh-process speed does not remove this blocker.
-
-## 6. KyaniteLabs MTP+ngram
-
-**Verdict: Yes, with a workload caveat.** The output is correct. The 160+ tok/s
-peak measures warm replay, not novel generation.
-
-### What we tested
-
-- KyaniteLabs source profile `7fa3ca81` ([S4])
-- llama.cpp HIP `9d57ce456`, build 10438
-- Exact Unsloth `UD-Q4_K_XL`
-- `HSA_ENABLE_SDMA=0`, `HSA_XNACK=1`
-- 98,304 context, one slot, thinking disabled
-- MTP maximum depth 12; ngram minimum 24
-
-### Count-to-30 results
+Cold is the first request. Warm repeats the same count sequence.
 
 | Mode | Cold decode | Warm decode | Output |
 | --- | ---: | ---: | --- |
@@ -560,18 +375,17 @@ peak measures warm replay, not novel generation.
 | MTP K12 | 61.09 | 59.42-59.49 | Exact `1…30` |
 | MTP K12 + ngram | 60.95 | **164.13-167.64** | Exact `1…30` |
 
-MTP provides the cold speedup. Ngram provides no cold benefit. Its entire
-160+ tok/s gain comes from replaying the previously generated count sequence.
+MTP provides the cold speedup. Ngram adds no cold benefit.
 
-### Common-suite results
+### Common-suite result
 
 | Mode | Arithmetic decode | Complete wall |
 | --- | ---: | ---: |
 | AR | 11.964 | 11.679 |
 | MTP K12 | 24.390 | 20.450 |
-| MTP K12 + ngram | **24.867** | **20.518** |
+| MTP K12 + ngram | 24.867 | 20.518 |
 
-Production category rates were:
+#### Category breakdown
 
 | Category | Decode tok/s |
 | --- | ---: |
@@ -580,141 +394,121 @@ Production category rates were:
 | General Japanese | 15.45 |
 | Mixed Japanese/English | 21.15 |
 
-Ngram improved arithmetic decode by 1.96% over MTP-only, but complete-wall
-speed improved by only 0.33%. That difference is noise-scale for one run.
+Ngram improved arithmetic decode by 1.96%. Complete-wall speed improved by
+0.33%, which is too small to claim from one run.
 
 All diverse-suite outputs were substantive and non-repetitive.
 
-### hipEngine ngram follow-up
+### hipEngine implication
 
-The separate hipEngine ngram-composition route remains default-off ([L5]). In
-a repetition-heavy strict C2/K3 D80 control, it improved 2.425% over MTP-only
-but reached only 0.9875x true AR. D96 and D120 retained correctness or
-economics blockers. Kyanite's narrow replay result does not justify enabling
-ngram globally in hipEngine.
+hipEngine keeps its ngram replay option off by default ([L5]). A
+repetition-heavy C2 test improved 2.425% over MTP alone, but reached only
+0.9875x the matched autoregressive throughput.
 
-## 7. PieBru recipes and Nathanw fork
+Kyanite's replay result does not justify enabling ngram globally.
 
-**Verdict: Yes.** The Q5/Q6/Q8 served-speed claims reproduced. Current
-mainline is slightly faster in decode.
+## PieBru recipes and Nathanw fork
 
-### What we tested
+**Verdict: usable.**
 
-- PieBru recipe commit `66cfceae` ([S6])
-- Nathanw fork `0eb528051a56f34567312ce63ab4e14a3fc71d89`, build 10580
-- Matched mainline `4e97ac86ebe2c4cb8212d98d2641ad6768810896`
-- Vulkan/RADV
-- Exact Unsloth Q5/Q6/Q8 XL targets
-- Exact DFlash2 `Q8_0` sidecar
-- Ten prompts, up to 128 tokens, thinking disabled
+The Q5, Q6, and Q8 served-speed claims reproduced. The tested mainline build
+is slightly faster in DFlash decode.
 
-### Served-speed claims
+### Tested configuration
 
-| Quant | Published band | Nathan local | Mainline local |
+- pinned PieBru recipes ([S6]);
+- Nathanw fork and matched mainline;
+- Vulkan/RADV;
+- Unsloth Q5, Q6, and Q8 XL targets;
+- DFlash2 Q8 sidecar;
+- ten prompts with up to 128 output tokens.
+
+### End-to-end request throughput
+
+| Quant | Published tok/s | Nathan local | Mainline local |
 | --- | ---: | ---: | ---: |
-| Q5 | about 23-24 | **24.706** | **24.886** |
-| Q6 | 17-21 | **20.549** | **20.343** |
-| Q8 | 15-18 | **18.197** | **18.092** |
+| Q5 | about 23-24 | 24.706 | 24.886 |
+| Q6 | 17-21 | 20.549 | 20.343 |
+| Q8 | 15-18 | 18.197 | 18.092 |
 
 All three claims are confirmed or conservative.
 
-### Decode results
+### Decode result
 
 | Quant | Engine | AR decode | DFlash decode | Acceptance |
 | --- | --- | ---: | ---: | ---: |
 | Q5 | Nathan | 10.695 | 30.659 | 53.19% |
 | Q5 | Mainline | 10.691 | **31.119** | 53.19% |
 | Q6 | Nathan | 8.778 | 26.470 | 42.92% |
-| Q6 | Mainline | **8.803** | **26.867** | 42.92% |
+| Q6 | Mainline | 8.803 | **26.867** | 42.92% |
 | Q8 | Nathan | 7.275 | 23.044 | 43.94% |
-| Q8 | Mainline | **7.276** | **23.374** | 43.94% |
+| Q8 | Mainline | 7.276 | **23.374** | 43.94% |
 
-| Quant / engine | Code | General English | General Japanese | Mixed Japanese/English |
-| --- | ---: | ---: | ---: | ---: |
-| Q5 Nathan | 40.11 | 25.25 | 18.08 | 29.73 |
-| Q5 mainline | 40.94 | 25.79 | 18.11 | 29.82 |
-| Q6 Nathan | 36.48 | 19.36 | 13.54 | 26.50 |
-| Q6 mainline | 37.32 | 19.44 | 13.59 | 26.67 |
-| Q8 Nathan | 31.64 | 15.33 | 13.01 | 23.59 |
-| Q8 mainline | 32.37 | 15.40 | 13.06 | 23.68 |
+The matched outputs were token-exact and non-repetitive. Mainline was about
+1.4-1.5% faster in DFlash decode.
 
-### What this means
+Nathan sometimes had faster prefill. That explains its small Q6/Q8
+complete-wall lead.
 
-- Nathan and mainline produced token-exact outputs in every matched arm.
-- All outputs were substantive and non-repetitive.
-- Mainline was about 1.4-1.5% faster in DFlash decode.
-- Nathan sometimes had faster prefill, which explains its small Q6/Q8
-  complete-wall lead.
-- The speedup comes from the model, sidecar, and configuration—not from a
-  current Nathan decode advantage.
+Category-level rates are available in the [reproduction artifact][L0].
 
-## 8. MikeVeerman Q8 concurrency
+## MikeVeerman Q8 concurrency
 
-**Verdict: Yes, with concurrency-aware routing.** MTP is valuable at low
-concurrency and harmful at C4.
+**Verdict: usable with concurrency-aware routing.**
 
-### What we tested
+MTP is valuable at low concurrency. It loses to batched autoregressive
+generation at C4.
 
-- MikeVeerman benchmark source `cc527064` ([S2])
-- Exact stock llama.cpp pin `152d337fadb93c2a099653c4072d5512c92c5bfd`
-- Vulkan/RADV
-- Exact Unsloth `UD-Q8_K_XL`
-- 131,072 total context; four 32,768-token slots
-- Greedy 256-token generations at C1-C4
+### Tested configuration
 
-The pinned build reported that `--cache-reuse 256` was unsupported for this
-context and disabled it in both AR and MTP arms.
+- pinned MikeVeerman benchmark ([S2]);
+- stock llama.cpp;
+- Vulkan/RADV;
+- Unsloth `UD-Q8_K_XL`;
+- four 32,768-token slots;
+- greedy 256-token generations.
 
-### Results
+The pinned build disabled unsupported cache reuse in both arms.
 
-| Concurrency | Published AR | Published MTP | Published ratio | Local AR | Local MTP | Local ratio |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| C1 | 7.10 | 15.53 | 2.19x | 7.21 | **16.07** | **2.23x** |
-| C2 | 13.01 | 16.63 | 1.28x | 13.35 | **17.48** | **1.31x** |
-| C3 | 17.52 | 18.15 | 1.04x | 18.00 | **18.21** | **1.01x** |
-| C4 | **21.75** | 16.94 | 0.78x | **21.03** | 17.58 | **0.84x** |
+### Result
 
-| Concurrency | MTP acceptance |
-| ---: | ---: |
-| C1 | 72.9% |
-| C2 | 71.4% |
-| C3 | 71.6% |
-| C4 | 66.4% |
+| C | Local AR | Local MTP | MTP / AR | Acceptance |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 7.21 | **16.07** | 2.23x | 72.9% |
+| 2 | 13.35 | **17.48** | 1.31x | 71.4% |
+| 3 | 18.00 | 18.21 | 1.01x | 71.6% |
+| 4 | **21.03** | 17.58 | 0.84x | 66.4% |
 
-At C4, per-request throughput was 5.87 tok/s AR and 4.89 tok/s MTP.
+At C4, per-request throughput was 5.87 tok/s for autoregressive generation.
+MTP reached 4.89 tok/s per request.
 
-### What this means
+The loss is caused by saturation, not failed drafting. Acceptance alone is not
+enough to decide whether MTP should run.
 
-- MTP is a large C1 win.
-- MTP is approximately neutral at C3.
-- MTP loses at C4 even though acceptance remains 66.4%.
-- The loss comes from saturation, not failed drafting. Batched AR uses compute
-  that was otherwise available to speculative work at C1.
-- Admission must account for physical concurrency. Acceptance alone is not
-  enough.
+## Cross-route findings
 
-## 9. Cross-route analysis
+### Source protocols are not one leaderboard
 
-### Source-protocol results are not one leaderboard
+Specialized routes differ in:
 
-Use the standardized `Q4_K_M` tables to rank compatible engines. The
-source-protocol routes differ in:
+- target format;
+- draft method;
+- output length;
+- timing boundary;
+- prompt type;
+- server reuse.
 
-- target format: FP4, Q4, Q5, Q6, or Q8;
-- draft method: MTP, DFlash2, or ngram;
-- output budget: 24, 128, 256, 300, 420, or 1,024 tokens;
-- timing boundary: decode or complete wall;
-- workload: code, prose, structured output, multilingual prompts, or replay.
+Use the standard `Q4_K_M` tables for engine ranking.
 
-For the one shared FP4 target, Laurent fresh-process adaptive DFlash2 was
-faster than `q38rocm` strict MTP K4 on the common suite: 34.483 versus 32.969
-token-weighted decode tok/s. Laurent still loses the deployment decision
-because sequential requests are incorrect.
+On the shared FP4 target, Laurent fresh-process DFlash2 reached 34.483
+weighted decode tok/s. `q38rocm` strict MTP K4 reached 32.969.
 
-### Plain AR is memory-bound
+Laurent adaptive DFlash2 is not deployable because sequential requests are
+incorrect.
 
-Multiplying model-file bytes by plain-AR decode rate gives these screening
-estimates:
+### Plain autoregressive generation is memory-bound
+
+Model size multiplied by decode rate gives this rough bandwidth estimate:
 
 | Target | Approximate implied bandwidth |
 | --- | ---: |
@@ -723,111 +517,88 @@ estimates:
 | Q6 | 223 GB/s |
 | Q8 | 229 GB/s |
 
-These are not hardware-counter measurements. Embeddings, metadata, and non-AR
-tensors are not necessarily read for every token. The estimates show that a
-claimed plain dense-AR rate above the physical 256 GB/s ceiling needs another
-explanation.
+These rates were not measured with hardware counters. The estimate omits some
+tensors and metadata.
+
+A claimed dense autoregressive rate above the 256 GB/s physical ceiling needs
+another explanation.
 
 ### Prompt type changes speculative speed
 
-Code and structured output generally accept more draft tokens than explanatory
-prose or Japanese heldouts. Report every speculative rate with:
+Code and structured output often accept more draft tokens than explanatory
+prose or Japanese heldouts.
+
+Report speculative results with:
 
 - prompt category;
 - acceptance;
 - output length;
 - timing boundary.
 
-An aggregate without those fields does not transfer to another prompt mix.
+### Replay and contamination are different
 
-### Replay and contamination are different failures of interpretation
+- Kyanite's 167.64 tok/s output is correct warm replay.
+- Laurent's 66.838 tok/s output is incorrect stale state.
 
-- **Kyanite 167.64 tok/s:** correct output on a narrow warm-replay workload.
-  The number is real, but it is not novel-generation speed.
-- **Laurent 66.838 tok/s:** incorrect output caused by stale request state. The
-  number is not a valid result at all.
+The first is narrow but valid. The second is not a valid result.
 
 ### Concurrency changes the best policy
 
-At C1, drafting can use compute that would otherwise sit idle during weight
-reads. At C4, batched AR uses that compute for real requests. This explains
-Mike's 2.23x C1 gain and 0.84x C4 loss.
+At C1, speculative work can use compute left idle during weight reads. At C4,
+batched autoregressive generation uses that compute for real requests.
 
-A scheduler must use measured physical concurrency and cycle cost. Acceptance
-alone cannot decide whether to enable speculation.
+A scheduler must use physical concurrency and the cost of each speculative
+cycle. Acceptance alone is not enough.
 
-### hipEngine follow-up
+## What the results mean for hipEngine
 
-The reviewed matrix and C=N screen narrow the remaining work:
+- Preserve autoregressive generation.
+  - It leads the standard comparison at C1 and C3-C8.
+- Improve prefill at C2 and C8.
+  - The gaps to Laurent are 14.2% and 1.3%, respectively.
+- Improve K3 at C1-C2.
+  - Both widths trail the llama.cpp leaders.
+- Keep the AR fallback at C5-C7.
+  - Forced K3 is slower than matched AR at those widths.
+- Keep public C2-C8 admission on AR until each width passes the full
+  correctness and serving tests.
 
-1. Preserve the AR path. It leads C3-C8; C1-C2 need different
-   operation-complete dataflows rather than broad retuning.
-2. Treat prefill as a concentrated kernel gap. C2 and C8 retain measured Q4
-   prefill-owner blockers; scheduling changes were measured null.
-3. Keep automatic C2-C8 on K0 until the complete profile gates pass. The
-   one-group K3 route now has retained exact owners through B1/B5; the K1
-   width-specific route remains a fallback diagnostic.
-4. Target the remaining broad-MTP gaps directly: 3.45%/9.48% behind stock HIP
-   at C7/C8 and the remaining C1-C2 deficit to the llama.cpp forks. Do not
-   return to packed R4 verification or acceptance-only tuning. The retained
-   active-singleton target already resolves C1 correctness and economics at
-   resident capacity greater than one.
+## Evidence
 
-Sequential ownership, lifecycle, and contamination gates are now part of the
-hipEngine correctness evidence. The external results still do not justify
-copying an entire fork.
+### hipEngine measurements
 
-## 10. Evidence
+- [Active-C1 measurement][L17]
+- [C1-C8 MTP measurements][L15]
+- [C1-C8 prefill measurements][L16]
+- [Forced-K3 C5-C8 measurements][L14]
 
-Current reviewed matrix and successor:
+### Comparison and reproduction
 
-- [C6/C8 K1 ten-iteration closeout][L10]
-- [B1 verifier owner-transfer retention][L11]
-- [B2 input-F16 prefill retention][L12]
-- [B4 C2 depth screen][L13]
-- [B5 planar-Q6 integer MMQ retention][L14]
-- [current-head C1-C8 MTP refresh with C1 blocker][L15]
-- [current-head C1-C8 prefill refresh][L16]
-- [active-C1 singleton-target retention][L17]
-- [full C1-C8 hipEngine refresh and C=N review][L9]
-- [preserved same-host external matrix][L6]
+- [External source reproductions][L0]
+- [Same-host six-engine comparison][L6]
+- [hipEngine ngram experiment][L5]
+- [Strict C1 result][L7]
+- [C3 K3 quality test][L8]
 
-Source-claim reproduction artifact:
+The compact artifacts contain commands, model identities, hashes, rates, and
+correctness results. Raw server logs are not tracked in Git.
 
-- [`2026-08-28-gfx1151-qwen38-external-reproduction-survey.json`][L0]
+## External sources
 
-Related hipEngine evidence uses different scopes or protocols:
+- [S1] Strix Halo implementation overview.
+- [S2] MikeVeerman Q8 concurrency benchmark.
+- [S3] `q38rocm` report.
+- [S4] KyaniteLabs MTP+ngram report.
+- [S5] Laurent adaptive DFlash2 implementation.
+- [S6] PieBru Q5/Q6/Q8 recipes.
 
-- [current strict-C1 and production baseline][L7]
-- [current C3/K3 production correctness gate][L8]
-- [older-model fork transfer test][L4]
-- [hipEngine ngram/MTP closeout][L5]
-
-## 11. Sources
-
-- **[S1]** hogeheer499-commits, *Qwen3.8 27B on AMD Strix Halo*, commit
-  `029320fb`: [pinned guide][S1].
-- **[S2]** MikeVeerman, *Qwen3.8-27B on AMD Strix Halo: what MTP speculative
-  decoding gives you*, commit `cc527064`: [pinned benchmark][S2].
-- **[S3]** julianmb, `q38rocm`, commit `5d097740`: [pinned report][S3].
-- **[S4]** KyaniteLabs, `qwen38-27b-strix-halo`, commit `7fa3ca81`:
-  [pinned report][S4].
-- **[S5]** LaurentZuijdwijk adaptive DFlash2 llama.cpp fork, commit
-  `c28d538df`: [pinned implementation][S5].
-- **[S6]** PieBru Qwen3.8 Strix Halo evidence, commit `66cfceae`:
-  [pinned repository][S6].
+Pinned commits are encoded in the links below.
 
 [L0]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-external-reproduction-survey.json
-[L4]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-fork-claim-generalization.json
 [L5]: ../benchmarks/results/2026-08-28-gfx1151-qwen38-ngram-mtp-composition-closeout.json
 [L6]: ../benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json
 [L7]: ../benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json
 [L8]: ../benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-e5-combined-correctness.json
-[L9]: ../benchmarks/results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json
-[L10]: ../benchmarks/results/2026-09-01-gfx1151-qwen38-c6c8-k1-ten-iteration-closeout.json
-[L11]: ../benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json
-[L12]: ../benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json
-[L13]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json
 [L14]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json
 [L15]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json
 [L16]: ../benchmarks/results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json
