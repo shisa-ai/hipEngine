@@ -1,0 +1,173 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_head_confirmation",
+ "date": "2026-09-04",
+ "status": "retained_confirmation",
+ "decision": "Single-arm current-HEAD confirmation of the binding C8/K3 metric. No candidate/rollback A/B: the only code delta since the 90.139 controlled gate (uint32 vectorized packed loads in the Q4 T16 dense rows=1 decode GEMV kernels, commit 6d6b9c555) is not dispatched by the C8 route, which keeps grouped Q4 rowtiles R8/R6, fused row32, planar Q6, and Q5 MMQ owners. The run confirms the canonical 90.139 row stands (fresh 91.041 MTP aggregate, +1.00%, within same-config noise).",
+ "hardware": {
+  "physical_host": "epyc",
+  "cpu": "AMD Ryzen 9 5950X",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "compute_units": 96,
+  "rocm": "7.2.4"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "size_bytes": 17106773984,
+  "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "quant": "GGUF Q4_K_M",
+  "kv": "BF16"
+ },
+ "source": {
+  "commit": "6d6b9c5550a8cc4fda6ccf244ed5a949537b33e3",
+  "tracked_clean": true
+ },
+ "protocol": {
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 8 --resident-capacity 8 --expected-mtp-widths 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --generation2-diagnostic --capture-prefill-attribution --correctness-contract ar_exact --output /tmp/c8-head-confirm-packet.json",
+  "prompts": [
+   "code_merge_intervals",
+   "code_topological_sort",
+   "code_lru_cache",
+   "code_markdown_table",
+   "general_en_plan",
+   "general_en_explain",
+   "general_ja_plan",
+   "general_ja_explain",
+   "mixed_ja_en_translate",
+   "mixed_ja_en_review"
+  ],
+  "width": 8,
+  "resident_capacity": 8,
+  "max_tokens": 24,
+  "candidate_budget": 3,
+  "batch_window_ms": 20.0,
+  "execution_profile": "production",
+  "timing": "blocking barrier-to-last-completion complete wall"
+ },
+ "results": {
+  "mtp_aggregate_tok_s": 91.04092472038981,
+  "ar_aggregate_tok_s": 88.03288180730294,
+  "mtp_vs_ar_ratio": 1.0341695381467944,
+  "canonical_row_tok_s": 90.1391248500631,
+  "delta_vs_canonical_pct": 1.000453323489392,
+  "generated_tokens_per_arm": 1920,
+  "cells": 10,
+  "engaged_cells": 10,
+  "budget_conformed_cells": 10
+ },
+ "correctness": {
+  "contract": "ar_exact",
+  "all_cells_passed": true,
+  "failure_reasons": [],
+  "per_cell": [
+   {
+    "prompt_id": "code_merge_intervals",
+    "category": "code",
+    "heldout": false,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "code_topological_sort",
+    "category": "code",
+    "heldout": false,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "code_lru_cache",
+    "category": "code",
+    "heldout": false,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "code_markdown_table",
+    "category": "code",
+    "heldout": true,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "general_en_plan",
+    "category": "general_en",
+    "heldout": false,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "general_en_explain",
+    "category": "general_en",
+    "heldout": true,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "general_ja_plan",
+    "category": "general_ja",
+    "heldout": false,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "general_ja_explain",
+    "category": "general_ja",
+    "heldout": true,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "mixed_ja_en_translate",
+    "category": "mixed_ja_en",
+    "heldout": false,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   },
+   {
+    "prompt_id": "mixed_ja_en_review",
+    "category": "mixed_ja_en",
+    "heldout": true,
+    "ar_self_exact": true,
+    "mtp_self_exact": true,
+    "ar_mtp_equal": true,
+    "passed": true
+   }
+  ]
+ },
+ "acceptance": {
+  "cycles": 568,
+  "proposed_draft_tokens": 1592,
+  "accepted_draft_tokens": 1256,
+  "draft_acceptance": 0.7889447236180904,
+  "position_acceptance": [
+   0.9295774647887324,
+   0.7727272727272727,
+   0.6451612903225806
+  ],
+  "matches_retained_gate_ledger": true
+ },
+ "full_packet": "/tmp/c8-head-confirm-packet.json (outside git; 2.9 MB)",
+ "relation_to_canonical": {
+  "canonical_retained_gate": "benchmarks/results/2026-09-03-w7900-q4km-k3-c8-q5-source-mmq-retained.json",
+  "interpretation": "confirmation only; canonical row and peer gaps computed from the controlled gate remain binding"
+ }
+}
