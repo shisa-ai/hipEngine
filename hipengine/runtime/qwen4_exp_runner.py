@@ -123,6 +123,7 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
@@ -3464,8 +3465,13 @@ def run_qwen4_exp_moe(
                     library=scratch.q5_1_mmq_library,
                 )
             elif exact_grouped_down:
+                # PF-3 promoted default: fused single-loop logical256 Q5_1
+                # down prefill (bit-exact vs the previous owner; whole-model
+                # counterbalanced A/B p512 +1.9% / p1024 +1.6% / p4096 +0.9%,
+                # outputs bit-identical across all four arms). The previous
+                # owner stays registered as the strict fallback variant.
                 grouped_q5_down = (
-                    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out
+                    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out
                     if os.environ.get(
                         "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
                     )

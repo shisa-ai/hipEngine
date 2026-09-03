@@ -1,0 +1,84 @@
+{
+ "schema": 1,
+ "kind": "hipengine_qwen4exp_pf3_q51_m1_promotion_ab",
+ "date": "2026-09-04",
+ "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6 PF-3",
+ "lifecycle": {
+  "status": "promoted",
+  "performance_claim": true,
+  "promotion": "fused single-loop logical256 Q5_1 down prefill (selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out) is the production default in the exact_grouped_down expertgrid64 arm; previous owner qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out stays registered as the strict fallback; the temporary HIPENGINE_QWEN4_EXP_Q5_1_DOWN_M1 A/B flag was deleted"
+ },
+ "host": {
+  "hostname": "zbook",
+  "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+  "kernel": "6.18.42-1-cachyos-lts",
+  "rocm_platform": "10.0.0",
+  "hipcc_version_file": "HIPENGINE_COMPILER_VERSION_FILE pinned for all arms"
+ },
+ "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+ "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+ "protocol": {
+  "harness": "scripts/qwen4exp_candidate_ar.py",
+  "same_session": true,
+  "counterbalanced_order": ["incumbent_a", "candidate_a", "candidate_b", "incumbent_b"],
+  "warmups_per_case": 1,
+  "measured_repetitions": 3,
+  "decode_transitions": 128,
+  "prefill_chunk_size": 512,
+  "statistic": "per-case median of 3 reps; per-shape mean over 4 category cases; drift-cancelled ratio = mean(pair1 C_a/I_a, pair2 C_b/I_b)",
+  "candidate_arm_flag": "HIPENGINE_QWEN4_EXP_Q5_1_DOWN_M1=1 (temporary A/B gate, deleted at promotion)",
+  "incumbent_arm_flag": "none (production dispatch)"
+ },
+ "outputs": {
+  "cross_arm_exactness": "all 12 cases x 4 arms identical output_token_ids_sha256 (144 samples)",
+  "determinism": "bit-identical across counterbalanced arms; exact control/ownership determinism holds"
+ },
+ "summary_by_shape": {
+  "p512": {
+   "incumbent_prefill_tok_s": 84.03,
+   "candidate_prefill_tok_s": 85.62,
+   "drift_cancelled_prefill_ratio": 1.0189,
+   "pair1_ratio": 1.0139,
+   "pair2_ratio": 1.0239,
+   "incumbent_decode_tok_s": 14.38,
+   "candidate_decode_tok_s": 14.19
+  },
+  "p1024": {
+   "incumbent_prefill_tok_s": 83.97,
+   "candidate_prefill_tok_s": 85.29,
+   "drift_cancelled_prefill_ratio": 1.0158,
+   "pair1_ratio": 1.0078,
+   "pair2_ratio": 1.0237,
+   "incumbent_decode_tok_s": 14.36,
+   "candidate_decode_tok_s": 14.27
+  },
+  "p4096": {
+   "incumbent_prefill_tok_s": 70.20,
+   "candidate_prefill_tok_s": 70.86,
+   "drift_cancelled_prefill_ratio": 1.0095,
+   "pair1_ratio": 0.999,
+   "pair2_ratio": 1.0199,
+   "incumbent_decode_tok_s": 12.27,
+   "candidate_decode_tok_s": 12.20
+  }
+ },
+ "incumbent_drift_check": {
+  "note": "incumbent arm a vs b mean prefill (thermal drift, cancelled by counterbalancing)",
+  "p512_pct": -0.84,
+  "p1024_pct": -1.43,
+  "p4096_pct": -1.95
+ },
+ "supporting_kernel_evidence": {
+  "kernel_level_ab": "benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json",
+  "binding_shape_kernel_delta_pct": -10.6,
+  "bit_exact_parity_suite": "tests/test_qwen4_exp_pf3_moe_schedules.py 7/7 green (rows 16/64/512, uneven expert counts with empty experts, 64- and 512-expert fixtures)",
+  "rocprof_smoke": "q5_1_selected_grouped_prefill_logical256_m1_bf16_bf16_kernel<8,8> traced under prebuilt .so + require_cached"
+ },
+ "notes": [
+  "T0 lever: bit-exact vs the previous owner by construction (per-accumulator column order and 256-wide strict reduction tree preserved); confirmed at kernel level and end-to-end (144-sample hash equality).",
+  "Q4_K gate/up M1 lever closed as a measured loss in the same campaign unit; no dispatch change for it.",
+  "Expert-count invariance: parity suite covers uneven counts with empty experts at rows 16/64/512; the A/B routed the full 512-expert production graph.",
+  "No new env selector remains: the temporary A/B flag was deleted at promotion per the REFACTOR removal trigger."
+ ],
+ "created": "2026-09-04"
+}
