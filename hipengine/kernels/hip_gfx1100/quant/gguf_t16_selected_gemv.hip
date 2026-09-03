@@ -2190,12 +2190,25 @@ void q4_k_t16_dense_dual_local32_silu_gemv_kernel(
         const int local_col0 = local_pair * 2;
         const int local_col1 = local_col0 + 1;
         const int col0 = col_base + local_col0;
-        const int q_index =
+        const int q_word =
             Q4_T16_Q_OFFSET +
             (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
-            (col0 >> 1);
-        const uint8_t packed_a = tile_a[q_index];
-        const uint8_t packed_b = tile_b[q_index];
+            (col_base >> 1);
+        // One aligned uint32 load per buffer replaces four byte loads
+        // per buffer: the thread's four packed nibble bytes for cols
+        // [col_base, col_base+8) are consecutive and 4-byte aligned
+        // (Q4_T16_Q_OFFSET and the row stride are multiples of four;
+        // col_base>>1 is 0 or 4). Little-endian byte extraction
+        // preserves the exact nibble order: byte i carries column 2i
+        // in its low nibble and column 2i+1 in its high nibble.
+        const uint32_t packed_word_a = *reinterpret_cast<const uint32_t*>(
+            tile_a + q_word);
+        const uint32_t packed_word_b = *reinterpret_cast<const uint32_t*>(
+            tile_b + q_word);
+        const uint8_t packed_a = static_cast<uint8_t>(
+            (packed_word_a >> (8 * local_pair)) & 0xFFu);
+        const uint8_t packed_b = static_cast<uint8_t>(
+            (packed_word_b >> (8 * local_pair)) & 0xFFu);
         acc_a[local_col0] = fmaf(
             xv,
             static_cast<float>(packed_a & 0x0Fu) *
@@ -2337,11 +2350,21 @@ void q4_k_t16_dense_single_local32_gemv_kernel(
         const int local_col0 = local_pair * 2;
         const int local_col1 = local_col0 + 1;
         const int col0 = col_base + local_col0;
-        const int q_index =
+        const int q_word =
             Q4_T16_Q_OFFSET +
             (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
-            (col0 >> 1);
-        const uint8_t packed = tile[q_index];
+            (col_base >> 1);
+        // One aligned uint32 load replaces four byte loads: the
+        // thread's four packed nibble bytes for cols [col_base,
+        // col_base+8) are consecutive and 4-byte aligned
+        // (Q4_T16_Q_OFFSET and the row stride are multiples of four;
+        // col_base>>1 is 0 or 4). Little-endian byte extraction
+        // preserves the exact nibble order: byte i carries column 2i
+        // in its low nibble and column 2i+1 in its high nibble.
+        const uint32_t packed_word = *reinterpret_cast<const uint32_t*>(
+            tile + q_word);
+        const uint8_t packed = static_cast<uint8_t>(
+            (packed_word >> (8 * local_pair)) & 0xFFu);
         acc[local_col0] = fmaf(
             xv,
             static_cast<float>(packed & 0x0Fu) *
@@ -2451,11 +2474,21 @@ void q4_k_t16_dense_single_local32_residual_gemv_kernel(
         const int local_col0 = local_pair * 2;
         const int local_col1 = local_col0 + 1;
         const int col0 = col_base + local_col0;
-        const int q_index =
+        const int q_word =
             Q4_T16_Q_OFFSET +
             (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) +
-            (col0 >> 1);
-        const uint8_t packed = tile[q_index];
+            (col_base >> 1);
+        // One aligned uint32 load replaces four byte loads: the
+        // thread's four packed nibble bytes for cols [col_base,
+        // col_base+8) are consecutive and 4-byte aligned
+        // (Q4_T16_Q_OFFSET and the row stride are multiples of four;
+        // col_base>>1 is 0 or 4). Little-endian byte extraction
+        // preserves the exact nibble order: byte i carries column 2i
+        // in its low nibble and column 2i+1 in its high nibble.
+        const uint32_t packed_word = *reinterpret_cast<const uint32_t*>(
+            tile + q_word);
+        const uint8_t packed = static_cast<uint8_t>(
+            (packed_word >> (8 * local_pair)) & 0xFFu);
         acc[local_col0] = fmaf(
             xv,
             static_cast<float>(packed & 0x0Fu) *
