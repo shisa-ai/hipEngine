@@ -8,7 +8,6 @@ changing only MMQ dataflow.  The retained raw-Q5 path remains the oracle.
 from __future__ import annotations
 
 import ctypes
-import os
 from pathlib import Path
 
 import numpy as np
@@ -456,43 +455,33 @@ def test_c8_q5_i64_j32_source_mmq_passes_production_outer_floor(rows: int) -> No
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-def test_c8_q5_j16_default_matches_j32_rollback_bit_exact() -> None:
-    """Parent-parity contract for the J16-at-R32 tile policy.
+def test_c8_q5_j16_minitile_outputs_match_j32_owner_bit_exact() -> None:
+    """Tile-policy parity contract for the retained J16 diagnostic path.
 
-    Both policies keep the same per-(row, output) accumulation order, so the
-    bf16 outputs must be identical. The default path (env unset) must resolve
-    to the J16 minitile; HIPENGINE_GGUF_Q5_SOURCE_C8_J16=0 restores the
-    literal J32 rollback.
+    Both launch geometries keep the same per-(row, output) accumulation
+    order, so the bf16 outputs must be identical even though the J16
+    minitile doubles the R32 workgroup count. The J32 policy remains the
+    registered default after the 8-run e2e gate could not confirm the leaf
+    win end to end.
     """
     rows, hidden, out_features = 32, 256, 128
-    os.environ.pop("HIPENGINE_GGUF_Q5_SOURCE_C8_J16", None)
-    try:
-        default_out, reference = _run_candidate(
-            rows=rows,
-            hidden=hidden,
-            out_features=out_features,
-            output_dtype="bf16",
-            consumer="i64_j32",
-        )
-        os.environ["HIPENGINE_GGUF_Q5_SOURCE_C8_J16"] = "0"
-        rollback_out, _ = _run_candidate(
-            rows=rows,
-            hidden=hidden,
-            out_features=out_features,
-            output_dtype="bf16",
-            consumer="i64_j32",
-        )
-        forced_out, _ = _run_candidate(
-            rows=rows,
-            hidden=hidden,
-            out_features=out_features,
-            output_dtype="bf16",
-            consumer="i64_j16",
-        )
-    finally:
-        os.environ.pop("HIPENGINE_GGUF_Q5_SOURCE_C8_J16", None)
-    assert np.array_equal(default_out, rollback_out), "J16 default differs from J32 rollback"
-    assert np.array_equal(default_out, forced_out), "default policy differs from forced J16"
+    default_out, reference = _run_candidate(
+        rows=rows,
+        hidden=hidden,
+        out_features=out_features,
+        output_dtype="bf16",
+        consumer="i64_j32",
+    )
+    forced_out, _ = _run_candidate(
+        rows=rows,
+        hidden=hidden,
+        out_features=out_features,
+        output_dtype="bf16",
+        consumer="i64_j16",
+    )
+    assert np.array_equal(default_out, forced_out), (
+        "J16 minitile output differs from the J32 owner"
+    )
     assert np.all(np.isfinite(default_out))
     result = evaluate_logits(reference, default_out)
     assert result.kl_mean <= 0.05, result

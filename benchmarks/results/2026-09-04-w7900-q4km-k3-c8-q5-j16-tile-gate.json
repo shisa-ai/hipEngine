@@ -1,0 +1,137 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_q5_j16_tile_gate",
+ "date": "2026-09-04",
+ "status": "rejected",
+ "decision": "The forced-J16 minitile won the 48-weight leaf 1.2007x (bit-exact, 48/48) but the binding full C8/K3/D24 default-versus-rollback gate fails the both-orders rule: only 1 of 4 order pairs positive, the first-position arm won 4/4 pairs under a ~0.6%/run monotonic host drift, and the pooled aggregate is -0.20%. The literal J32 launch policy remains the registered default; the forced i64_j16 launchers, leaf script, and tile-parity test remain as retained exact diagnostics.",
+ "reopen_condition": "A drift-controlled interleaved protocol (same-session alternating arms with position-balanced pairing beyond two orders) that demonstrates a pooled paired candidate advantage at or above the leaf-implied ~+1% would reopen the default.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+ },
+ "source": {
+  "commit": "163dc8cd4",
+  "candidate_fn": "gguf_q5_k_mmq_i64_j16_k256_q8_1_d4s4_f32_kmatrix",
+  "rollback": "literal J32 policy (rows<32 J16, rows>=32 J32)"
+ },
+ "leaf_evidence": {
+  "j32_sum_ms": 11.506,
+  "j16_sum_ms": 9.581,
+  "ratio": 0.8327,
+  "j16_wins": "48/48",
+  "bf16_bit_exact": true
+ },
+ "protocol": {
+  "harness": "scripts/gguf_mtp_c1c8_server_bench.py (campaign section 9.3 flags)",
+  "widths": [
+   8
+  ],
+  "resident_capacity": 8,
+  "max_tokens": 24,
+  "candidate_budget": 3,
+  "batch_window_ms": 20.0,
+  "orders": "r1 cand-first, r2 ctrl-first, r3 ctrl-first, r4 cand-first",
+  "decision_rule_predeclared": "retain if >=3 of 4 orders positive with no regressive slice"
+ },
+ "runs": {
+  "r1cand": {
+   "mtp_tok_s": 91.04679746810193,
+   "ar_tok_s": 88.13020682399716,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r1ctrl": {
+   "mtp_tok_s": 90.35422303589486,
+   "ar_tok_s": 87.23792810567228,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r2ctrl": {
+   "mtp_tok_s": 89.76937768725705,
+   "ar_tok_s": 86.7273200410391,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r2cand": {
+   "mtp_tok_s": 89.38106908846498,
+   "ar_tok_s": 86.46705880780515,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r3ctrl": {
+   "mtp_tok_s": 90.57285193231259,
+   "ar_tok_s": 87.52248232596853,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r3cand": {
+   "mtp_tok_s": 89.58238312903511,
+   "ar_tok_s": 86.51431179227858,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r4cand": {
+   "mtp_tok_s": 89.4449105672922,
+   "ar_tok_s": 86.34119713665126,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  },
+  "r4ctrl": {
+   "mtp_tok_s": 89.4726654160501,
+   "ar_tok_s": 86.4185246727442,
+   "passed": true,
+   "cells": 10,
+   "engaged": 10,
+   "cycles": 568,
+   "proposed": 1592,
+   "accepted": 1256
+  }
+ },
+ "order_deltas_pct": {
+  "r1_cand_first": 0.7665103068087209,
+  "r2_ctrl_first": -0.43256242696131375,
+  "r3_ctrl_first": -1.0935603573769326,
+  "r4_cand_first": -0.0310204782978607
+ },
+ "pooled": {
+  "cand_mean_tok_s": 89.86379006322355,
+  "ctrl_mean_tok_s": 90.04227951787865,
+  "delta_pct": -0.19822849400393805,
+  "orders_positive": 1
+ },
+ "acceptance_ledger_identical_across_all_runs": true
+}
