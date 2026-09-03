@@ -4698,14 +4698,3 @@ should be boring.
   variants. If a candidate is readmitted, make `planes` bind on every Q8 MMQ
   variant or rename it to state its scope.
 
-## `HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL` flag (2026-09-03)
-
-- Added in `hipengine/runtime/qwen4_exp_runner.py` (`run_qwen4_exp_qsa_prefill_token_mixer`):
-  when set, the sparse-rows prefill attention dispatches the new
-  `strict_ordered_three_pass_rows_spans` ordered three-pass variant instead of
-  `strict_rows_spans` / `production_rows_wave32_h128_spans`. Default-off; the
-  incumbent path is unchanged.
-- **Removal trigger:** once the whole-model p4096 prefill A/B (section 6.5 item
-  5) is run for PF-2, either promote the variant (flip the default, delete the
-  incumbent branch after bisection value is exhausted) or delete the flag and
-  branch entirely if the variant is rejected.
