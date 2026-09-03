@@ -614,6 +614,66 @@ def gguf_q5_k_mmq_i64_j16_forced_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out(
     _launch_q5_source_mmq("f32", *args, tile="i64_j16", **kwargs)
 
 
+def gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_bf16_out(
+    *args, **kwargs
+) -> None:
+    """Direct-load dp4a Q5_K MMQ32 candidate (C8-P2 residual leaf)."""
+    _launch_mmq_symbol(
+        "gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_bf16_out",
+        *args,
+        **kwargs,
+    )
+
+
+def gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_f32_out(
+    *args, **kwargs
+) -> None:
+    _launch_mmq_symbol(
+        "gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_f32_out",
+        *args,
+        **kwargs,
+    )
+
+
+def _launch_mmq_symbol(
+    symbol: str,
+    xq_ptr: int,
+    qweight_ptr: int,
+    out_ptr: int,
+    rows: int,
+    hidden: int,
+    out_features: int,
+    stream: int = 0,
+    *,
+    library=None,
+    runtime=None,
+) -> None:
+    library = library or build_gguf_k_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = getattr(library, f"hipengine_{symbol}")
+    fn.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_int64,
+        ctypes.c_void_p,
+    ]
+    fn.restype = ctypes.c_int
+    rc = fn(
+        xq_ptr,
+        qweight_ptr,
+        out_ptr,
+        rows,
+        hidden,
+        out_features,
+        stream,
+    )
+    if rc != 0:
+        raise RuntimeError(f"{symbol} launch failed: hip error {rc}")
+
+
 def gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out(*args, **kwargs) -> None:
     _launch_mmq("gguf_q5_k", "bf16", *args, **kwargs)
 
@@ -798,6 +858,8 @@ __all__ = [
     "gguf_q5_k_mmq_i64_j16_j32_k256_q8_1_d4s4_f32_kmajor_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_bf16_out",
     "gguf_q5_k_mmq32_q8_1_d4s4_f32_bf16_f32_out",
+    "gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_bf16_out",
+    "gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_bf16_out",
     "gguf_q5_k_mmq32_q8_1_d8r8s8_f32_bf16_f32_out",
     "gguf_q5_k_mmq32_q8_1_d8s8_f32_bf16_bf16_out",

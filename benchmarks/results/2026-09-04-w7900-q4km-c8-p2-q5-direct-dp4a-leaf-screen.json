@@ -1,0 +1,187 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_c8_p2_q5_direct_dp4a_leaf_screen",
+ "date": "2026-09-03",
+ "status": "completed",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "protocol": {
+  "arms": "raw mmq32 d4s4 (retained owner) vs direct-load dp4a candidate; both include the q8_1 quantize launch (operation-complete)",
+  "samples": 3,
+  "burst": 4,
+  "warmups": 2,
+  "order": "alternating by weight index",
+  "weights": "actual model ssm_out Q5_K tensors"
+ },
+ "results": [
+  {
+   "rows": 32,
+   "cases": [
+    {
+     "tensor": "blk.0.ssm_out.weight",
+     "rows": 32,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.22746625542640686,
+     "direct_ms": 0.35300299525260925,
+     "ratio_raw_over_direct": 0.6443748593793993,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.014668330550193787,
+     "finite": true
+    },
+    {
+     "tensor": "blk.1.ssm_out.weight",
+     "rows": 32,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.25210073590278625,
+     "direct_ms": 0.3605007529258728,
+     "ratio_raw_over_direct": 0.6993070995183855,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.0912696123123169,
+     "finite": true
+    },
+    {
+     "tensor": "blk.2.ssm_out.weight",
+     "rows": 32,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.23975050449371338,
+     "direct_ms": 0.3626309931278229,
+     "ratio_raw_over_direct": 0.6611417916206747,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.024503005668520927,
+     "finite": true
+    },
+    {
+     "tensor": "blk.4.ssm_out.weight",
+     "rows": 32,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.2450210005044937,
+     "direct_ms": 0.35683149099349976,
+     "ratio_raw_over_direct": 0.6866574466908728,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.07490762323141098,
+     "finite": true
+    },
+    {
+     "tensor": "blk.5.ssm_out.weight",
+     "rows": 32,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.23381100594997406,
+     "direct_ms": 0.3552815020084381,
+     "ratio_raw_over_direct": 0.6581007021987341,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.08754432201385498,
+     "finite": true
+    },
+    {
+     "tensor": "blk.6.ssm_out.weight",
+     "rows": 32,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.23145100474357605,
+     "direct_ms": 0.3496617376804352,
+     "ratio_raw_over_direct": 0.6619283147162789,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.027144407853484154,
+     "finite": true
+    }
+   ],
+   "raw_wins": 6,
+   "direct_wins": 0,
+   "geomean_ratio": 0.6683297039814347
+  },
+  {
+   "rows": 24,
+   "cases": [
+    {
+     "tensor": "blk.0.ssm_out.weight",
+     "rows": 24,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.21561099588871002,
+     "direct_ms": 0.28999149799346924,
+     "ratio_raw_over_direct": 0.7435079903396536,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.031166518107056618,
+     "finite": true
+    },
+    {
+     "tensor": "blk.1.ssm_out.weight",
+     "rows": 24,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.21584099531173706,
+     "direct_ms": 0.29802149534225464,
+     "ratio_raw_over_direct": 0.7242464006291236,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.12293457984924316,
+     "finite": true
+    },
+    {
+     "tensor": "blk.2.ssm_out.weight",
+     "rows": 24,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.21429100632667542,
+     "direct_ms": 0.3021414875984192,
+     "ratio_raw_over_direct": 0.7092405880105178,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.023283230140805244,
+     "finite": true
+    },
+    {
+     "tensor": "blk.4.ssm_out.weight",
+     "rows": 24,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.20902125537395477,
+     "direct_ms": 0.3011017441749573,
+     "ratio_raw_over_direct": 0.6941881255011977,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.025488248094916344,
+     "finite": true
+    },
+    {
+     "tensor": "blk.5.ssm_out.weight",
+     "rows": 24,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.20612099766731262,
+     "direct_ms": 0.30132150650024414,
+     "ratio_raw_over_direct": 0.6840567076055875,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.09728867560625076,
+     "finite": true
+    },
+    {
+     "tensor": "blk.6.ssm_out.weight",
+     "rows": 24,
+     "out_features": 5120,
+     "in_features": 6144,
+     "raw_ms": 0.21376125514507294,
+     "direct_ms": 0.28460174798965454,
+     "ratio_raw_over_direct": 0.7510890451482515,
+     "winner": "raw",
+     "max_rel_vs_raw": 0.010294237174093723,
+     "finite": true
+    }
+   ],
+   "raw_wins": 6,
+   "direct_wins": 0,
+   "geomean_ratio": 0.717305862231468
+  }
+ ],
+ "decision": "Direct-load dp4a Q5_K schedule REJECTED at the leaf: loses to the retained raw mmq32 owner on every actual weight screened (geomean raw/direct 0.64x at R32, 0.72x at R24 over 6 weights x 5 samples, alternating order, operation-complete incl. quantize). Correctness vs the raw owner is clean (KL 4.5e-15 on blk.0 R32; max_rel entries with large magnitude are near-zero-denominator artifacts, abs diff max 6.7e-6). Two variants measured: per-thread scale recompute (best, this artifact) and a pack-lane __shfl_up scale broadcast (slower, 0.537x R32). Root cause per the iter37 inspection class: the raw GGUF Q5_K layout has no record structure permitting coalesced direct loads - each thread reads 8 columns at 4224 B stride (uncoalesced sectors), which is why the retained owners stage through LDS and why the source-layout owner exists. The mechanism-backed remaining axis is a Q5 analogue of the proven T16 qmicro-planar repack + dp4a kernel family (the schedule that reaches 101-134 GB/s on this regime).",
+ "variants": {
+  "recompute": "per-thread scale/min recompute each group (best; recorded ratios)",
+  "shuffled": "pack-lane-0 computes + uniform __shfl_up broadcast (measured 0.537x R32 / 0.688x R24 - rejected)"
+ }
+}

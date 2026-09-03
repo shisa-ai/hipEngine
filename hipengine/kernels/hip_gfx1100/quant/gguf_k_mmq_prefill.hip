@@ -2172,7 +2172,197 @@ int launch_mmq_d8r8(
   return static_cast<int>(hipGetLastError());
 }
 
+// ---------------------------------------------------------------------------
+// Direct-load dp4a Q5_K MMQ32 (C8-P2 residual candidate, iter38).
+//
+// Same ABI and weight/activation formats as the raw mmq32 d4s4 owner, but
+// no LDS weight/activation staging and no per-k barriers: each thread owns
+// one 4-k group across an 8-column output tile, loads the weight quants as
+// u32 records straight from global memory (ql u32 + qh u32 per column),
+// and accumulates per-row partials with dp4a. The Q5_K minimum correction
+// is linear in the raw owner's per-subblock math, so each 4-k thread adds
+//   act.d * (d*scale) * dot4 - act.(dmin*scale_min) * sum4
+// where sum4 = dp4a(0x01010101, x_pack4) is the exact integer byte sum of
+// the activation's 4 quants. Every accumulated term is an exact integer
+// (or an exact integer scaled once) in f32, matching the raw owner's
+// integer-exactness class; only the f32 accumulation order differs (T2).
+// ---------------------------------------------------------------------------
+template <typename output_t, int ROW_TILE>
+__global__ __launch_bounds__(128, 4) void
+gguf_k_mmq32_direct_dp4a_q5_kernel(
+    const q8_1_d4s4_f32_block* __restrict__ xq,
+    const uint8_t* __restrict__ qweight,
+    output_t* __restrict__ out,
+    int rows,
+    int hidden,
+    int out_features) {
+  constexpr int kCols = 8;
+  const int tid = static_cast<int>(threadIdx.x);
+  const int col_base = static_cast<int>(blockIdx.x) * kCols;
+  const int row_base = static_cast<int>(blockIdx.y) * ROW_TILE;
+  const int64_t blocks_per_row = hidden / QK_K;
+  const int64_t weight_row_bytes =
+      blocks_per_row * static_cast<int64_t>(Q5_K_BLOCK_BYTES);
+  const int k_groups4 = hidden >> 2;  // 4-k groups total
+
+  float acc[ROW_TILE][kCols];
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r)
+#pragma unroll
+    for (int c = 0; c < kCols; ++c) acc[r][c] = 0.0f;
+
+  for (int group = tid; group < k_groups4; group += blockDim.x) {
+    const int k4 = (group & 7) << 2;          // within 32-quant subblock
+    const int subblock = (group >> 3) & 7;    // 32-quant subblock in 256
+    const int64_t block_idx = group >> 6;     // Q5_K block (256 quants)
+    const uint8_t* __restrict__ block_base =
+        qweight + block_idx * Q5_K_BLOCK_BYTES;
+
+    // Weight quants: u32 ql record + u32 qh record per column; scale/min
+    // recomputed per thread (L1-cached, barrier-free). A shuffled variant
+    // (pack_lane 0 computes, __shfl_up broadcast) measured slower than this
+    // recompute form (0.537x vs 0.637x at R32) and is recorded in the leaf
+    // screen artifact.
+    uint32_t wpack[kCols];
+    float wscale[kCols];
+    float wmin[kCols];
+#pragma unroll
+    for (int c = 0; c < kCols; ++c) {
+      const int col = col_base + c;
+      if (col < out_features) {
+        const uint8_t* __restrict__ block =
+            qweight + static_cast<int64_t>(col) * weight_row_bytes +
+            block_idx * Q5_K_BLOCK_BYTES;
+        wpack[c] = q5_pack4_unsigned(block, subblock, k4);
+        const float d = fp16_bytes_to_float(block);
+        const float dmin = fp16_bytes_to_float(block + 2);
+        wscale[c] = d * static_cast<float>(q45_scale(block + 4, subblock));
+        wmin[c] = dmin * static_cast<float>(q45_min(block + 4, subblock));
+      } else {
+        wpack[c] = 0u;
+        wscale[c] = 0.0f;
+        wmin[c] = 0.0f;
+      }
+    }
+
+#pragma unroll
+    for (int r = 0; r < ROW_TILE; ++r) {
+      const int row = row_base + r;
+      if (row >= rows) break;
+      const q8_1_d4s4_f32_block* __restrict__ xb =
+          xq + static_cast<int64_t>(row) * (hidden / Q8_BLOCK) +
+          (group >> 5);  // Q8_BLOCK=128 quants per activation block
+      const int g32 = (group >> 3) & 3;   // 32-group within the 128 block
+      const int8_t* __restrict__ group_qs = xb->qs + g32 * Q8_GROUP;
+      const uint32_t x_pack =
+          *reinterpret_cast<const uint32_t*>(group_qs + k4);
+      const float xd = xb->d4[g32];
+      // The minimum correction uses the producer's f32 sum of the ORIGINAL
+      // (pre-quantization) group values, exactly like the raw owner; the
+      // quantized integer sum would carry the quantization residual.
+      const float s4_row = xb->s4[g32];
+      const bool apply_min = (k4 == 0);
+#pragma unroll
+      for (int c = 0; c < kCols; ++c) {
+        const int dot = dp4a_u8_s8(wpack[c], x_pack, 0);
+        float term = xd * wscale[c] * static_cast<float>(dot);
+        if (apply_min) term -= wmin[c] * s4_row;
+        acc[r][c] += term;
+      }
+    }
+  }
+
+  // Wave-level reduce first: the 32 lanes of each wave accumulated disjoint
+  // k-group partials, so sum them before the cross-wave exchange (the Q6
+  // grouped dp4a reduction structure).
+  __shared__ float xchg[4 * ROW_TILE * kCols];
+  const int sub_id = tid >> 5;
+  const int sub_lane = tid & 31;
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r)
+#pragma unroll
+    for (int c = 0; c < kCols; ++c) {
+      float v = acc[r][c];
+      v += __shfl_down(v, 16);
+      v += __shfl_down(v, 8);
+      v += __shfl_down(v, 4);
+      v += __shfl_down(v, 2);
+      v += __shfl_down(v, 1);
+      if (sub_lane == 0) xchg[(sub_id * ROW_TILE + r) * kCols + c] = v;
+    }
+  __syncthreads();
+#pragma unroll
+  for (int r = 0; r < ROW_TILE; ++r)
+#pragma unroll
+    for (int c = 0; c < kCols; ++c) {
+      float v = 0.0f;
+#pragma unroll
+      for (int s = 0; s < 4; ++s)
+        v += xchg[(s * ROW_TILE + r) * kCols + c];
+      const int row = row_base + r;
+      const int col = col_base + c;
+      if (sub_id == 0 && row < rows && col < out_features) {
+        store_output<output_t>(
+            out,
+            static_cast<int64_t>(row) * out_features + col,
+            v);
+      }
+    }
+}
+
 }  // namespace
+
+extern "C" int hipengine_gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_bf16_out(
+    const void* xq, const uint8_t* qweight, uint16_t* out, int64_t rows,
+    int64_t hidden, int64_t out_features, hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      hidden <= 0 || out_features <= 0 || (hidden % 256) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 7) / 8),
+      static_cast<unsigned int>((rows + 7) / 8));
+  hipLaunchKernelGGL(
+      (gguf_k_mmq32_direct_dp4a_q5_kernel<uint16_t, 8>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const q8_1_d4s4_f32_block*>(xq),
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(hidden),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q5_k_mmq32_direct_dp4a_q8_1_d4s4_f32_bf16_f32_out(
+    const void* xq, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t hidden, int64_t out_features, hipStream_t stream) {
+  if (xq == nullptr || qweight == nullptr || out == nullptr || rows <= 0 ||
+      hidden <= 0 || out_features <= 0 || (hidden % 256) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(128);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + 7) / 8),
+      static_cast<unsigned int>((rows + 7) / 8));
+  hipLaunchKernelGGL(
+      (gguf_k_mmq32_direct_dp4a_q5_kernel<float, 8>),
+      grid,
+      block,
+      0,
+      stream,
+      reinterpret_cast<const q8_1_d4s4_f32_block*>(xq),
+      qweight,
+      out,
+      static_cast<int>(rows),
+      static_cast<int>(hidden),
+      static_cast<int>(out_features));
+  return static_cast<int>(hipGetLastError());
+}
 
 extern "C" int hipengine_gguf_q8_1_ds4_quantize_bf16_kmajor(
     const uint16_t* x,
