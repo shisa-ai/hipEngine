@@ -565,7 +565,15 @@ ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
       scheduling-only changes.
 - [ ] Prefer a mechanism that reduces encoded-weight traversal, duplicate
       dequantization, or synchronization while preserving each row's FMA and
-      reduction order.
+      reduction order. Kernel-body inspection (iteration 15) confirms there is
+      no duplicate traversal or dequantization to remove within a call: the
+      two waves of a T16 tile own disjoint column halves so each packed byte
+      is read once, scale/min metadata is read once per block, and the
+      dequantized weights are reused across all ROW_TILE rows. The measured
+      gap to the roofline band is therefore latency/occupancy-bound
+      (VGPR 224 at workgroup 64 caps resident waves), so an exact candidate
+      must cut work or bytes (e.g. narrower metadata, lower VGPR pressure),
+      not merely reschedule loads.
 - [ ] Do not repeat col4, grouped-R12, singleton-WMMA, pair-major, or unchanged
       grouped-R8 policy screens.
 - [ ] Admit a multi-output or cross-role owner only if it reduces actual work;
