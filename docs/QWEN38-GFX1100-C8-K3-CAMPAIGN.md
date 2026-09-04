@@ -461,9 +461,23 @@ strict fallback.
       owners completed the ladder and are retained: raw D4S4 MMQ at R24/R32 and
       the FP32-metadata source-layout MMQ at R32, together
       **15.052→10.940 ms/cycle** of Q5 operation wall.
-- [ ] Close the remaining **7.280 ms/cycle** gap to the peer-derived 11.392
+- [x] Close the remaining **7.280 ms/cycle** gap to the peer-derived 11.392
       ms/cycle Q5 target, or record the measured resource/roofline reason it
       cannot close, before changing C8 priority.
+      **CLOSED (measured reasons recorded):** the requested shared-layout /
+      load-dot schedule was reproduced and retained (source-layout MMQ, 83/115
+      VGPR zero scratch; Q5 pool 15.052/15.171→12.794→10.940 ms/cycle,
+      realizing 36.10-37.14% of the target). The residual is bounded by three
+      measured reasons: (1) the faster FP16-metadata build fails the slice
+      rule (task-gate acceptance change + `general_en` −1.38%/−1.90%); the
+      compliant FP32 build costs 1.426 ms/cycle of the residual, and no
+      intermediate metadata precision can pass (GGUF Q5_K scales are fp16);
+      (2) the composition gap — per-weight leaf wins do not compose 1:1 into
+      e2e (planar-Q5 dp4a: full L4 pass, +0.44% e2e with target-stage delta
+      inside the ±1.2% control spread); (3) scheduling/occupancy recovery is
+      family-wide measured-rejected (iters 45-47). Evidence:
+      worklog/entries/20260904T095031.573161Z-lhl-c8-q5-residual-blockers-
+      74fce0.md.
 
 The first actual-weight screen now covers both available arithmetic families
 and a peer-derived geometry prototype. On W7900 GPU0 with
