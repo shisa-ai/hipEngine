@@ -3544,10 +3544,13 @@ def run_qwen4_exp_moe(
             if os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "1") not in {
                 "", "0", "false", "False",
             }:
+                # x (expert_intermediate) and out (expert_down) are already in
+                # sorted-lane order here, so the kernel serves row = sorted
+                # position directly (lane_to_row=nullptr).
                 gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
                     scratch.expert_intermediate.ptr,
                     scratch.group_expert_start.ptr,
-                    scratch.group_sorted_lanes.ptr,
+                    None,
                     weights["expert_down"].allocation("raw").tensor.ptr,
                     scratch.expert_down.ptr,
                     compact,

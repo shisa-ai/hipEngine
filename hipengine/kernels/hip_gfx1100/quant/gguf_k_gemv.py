@@ -390,7 +390,7 @@ def _make_selected_grouped_wrapper(quant: str, symbol: str):
     def wrapper(
         x_ptr: int,
         expert_start_ptr: int,
-        lane_to_row_ptr: int,
+        lane_to_row_ptr: int | None,
         qweight_ptr: int,
         out_ptr: int,
         x_rows: int,
@@ -431,7 +431,7 @@ def _launch_selected_grouped(
     symbol: str,
     x_ptr: int,
     expert_start_ptr: int,
-    lane_to_row_ptr: int,
+    lane_to_row_ptr: int | None,
     qweight_ptr: int,
     out_ptr: int,
     x_rows: int,
@@ -473,7 +473,7 @@ def _launch_selected_grouped(
     err = fn(
         ctypes.c_void_p(x_ptr),
         ctypes.c_void_p(expert_start_ptr),
-        ctypes.c_void_p(lane_to_row_ptr),
+        ctypes.c_void_p(lane_to_row_ptr) if lane_to_row_ptr else None,
         ctypes.c_void_p(qweight_ptr),
         ctypes.c_void_p(out_ptr),
         ctypes.c_int64(x_rows),

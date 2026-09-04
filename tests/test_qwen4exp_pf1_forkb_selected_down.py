@@ -255,7 +255,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     shared_down = rng.normal(0.0, 0.1, size=(hidden, ffn)).astype(np.float32)
     shared_scalar = rng.normal(0.0, 0.1, size=(hidden,)).astype(np.float32)
 
-    def run(flag_value: str) -> np.ndarray:
+    def run(flag_value: str) -> tuple[np.ndarray, np.ndarray]:
         monkeypatch.setenv("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", flag_value)
         allocations = []
         scratch = None
@@ -289,17 +289,74 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
                 runtime=runtime,
             )
             runtime.device_synchronize()
-            return _download(result.output, (rows, hidden), np.uint16, runtime)
+            output = _download(result.output, (rows, hidden), np.uint16, runtime)
+            down = _download(
+                scratch.expert_down, (rows * top_k, hidden), np.uint16, runtime
+            )
+            return output, down
         finally:
             if scratch is not None:
                 scratch.close()
             for allocation in reversed(allocations):
                 free(allocation, runtime=runtime)
 
-    default_bits = run("1")
-    strict_bits = run("0")
+    default_bits, default_down = run("1")
+    strict_bits, strict_down = run("0")
+    # NOTE: expert_down buffers are NOT compared across the two runs: the
+    # group scatter uses atomicAdd, so the within-expert lane order (and thus
+    # the down row layout) varies run to run even for identical math. The
+    # combine re-syncs through the same scatter state, so the final MoE output
+    # is deterministic and bit-identical, which is the binding gate here.
     np.testing.assert_array_equal(
         default_bits,
         strict_bits,
         err_msg="fork-b default MoE output bits vs FORKB_GROUPED_DOWN=0 strict",
     )
+    # Value gate vs the CPU oracle for the fork-b default path (catches wrong
+    # row/expert pairing that a bit-comparison against a scattered run cannot).
+    from hipengine.kernels.cpu_reference.qwen4_exp import (
+        Qwen4ExpMoEWeights,
+        qwen4_exp_moe,
+    )
+    from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+
+    def dequant(raw, ggml_type):
+        return np.stack([dequantize_gguf_data(v, ggml_type) for v in raw])
+
+    expected = qwen4_exp_moe(
+        mixed,
+        Qwen4ExpMoEWeights(
+            router=router,
+            expert_gate=dequant(gate_raw, GGMLQuantizationType.Q4_K),
+            expert_up=dequant(up_raw, GGMLQuantizationType.Q4_K),
+            expert_down=dequant(down_raw, GGMLQuantizationType.Q8_0),
+            shared_gate=shared_gate,
+            shared_up=shared_up,
+            shared_down=shared_down,
+            shared_gate_weight=shared_scalar,
+            experts_used=top_k,
+        ),
+    )
+    got = (default_bits.astype(np.uint32) << 16).view(np.float32)
+    got_strict = (strict_bits.astype(np.uint32) << 16).view(np.float32)
+    # The strict incumbent itself deviates from the float64 oracle through bf16
+    # MoE accumulation and output rounding (identical bit pattern to fork-b).
+    # Gate: fork-b may not deviate from the oracle more than the incumbent
+    # strict path does on the same fixture.
+    dev_forkb = np.abs(got - expected.output)
+    dev_strict = np.abs(got_strict - expected.output)
+    np.testing.assert_array_less(
+        dev_forkb,
+        dev_strict + 1e-3 + 1e-3 * np.abs(expected.output),
+        err_msg="fork-b default MoE oracle deviation vs incumbent strict deviation",
+    )
+    # Run-to-run determinism of the fork-b default final output.
+    default_bits_again, _ = run("1")
+    np.testing.assert_array_equal(
+        default_bits,
+        default_bits_again,
+        err_msg="fork-b default MoE output run-to-run determinism",
+    )
+    # The down buffers must at least be finite and fully written (the
+    # historical P1 regression left expert_down unwritten).
+    assert np.all(np.isfinite((strict_down.astype(np.uint32) << 16).view(np.float32)))
