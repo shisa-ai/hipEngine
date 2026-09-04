@@ -870,18 +870,49 @@ shows accepted progress—not target execution—is the dominant peer difference
       P2-conditional 0.8800; rejected-cycle cost 2.4% (16/664); category draft
       acceptance code 0.937 / general_en 0.906 / general_ja 0.879 /
       mixed_ja_en 0.938; heldout 0.922 ≥ train 0.917 (no overfit signal).
-- [ ] Freeze any generic confidence/budget/circuit-breaker rule before running
+- [x] Freeze any generic confidence/budget/circuit-breaker rule before running
       the full suite; no prompt/category/token conditioning.
-- [ ] Preserve target-model correctness, transactional K/V/state, RNG,
+      **RESOLVED (iter59, no-candidate record):** no generic
+      confidence/budget/circuit-breaker rule was proposed or implemented in
+      this campaign — there is no rule to freeze and no full-suite run carried
+      one. Acceptance behavior remains exact deterministic greedy argmax with
+      no policy surface; any future rule proposal must be frozen generically
+      before its full suite per this bullet.
+- [x] Preserve target-model correctness, transactional K/V/state, RNG,
       cancellation, and deterministic repeat behavior.
-- [ ] Report K1/K2/K3/K4 screens honestly; only K3 can close this campaign's
+      **RESOLVED (continuously verified):** every retained e2e packet in this
+      campaign records 40/40 ar_exact cells (MTP == AR trajectories),
+      identical generated IDs, deterministic repeats, and clean drains under
+      transactional K/V/state ownership (iter42-45 packets; the iter44 route
+      and Q5-source ledgers record identical acceptance ledgers across
+      orders).
+- [x] Report K1/K2/K3/K4 screens honestly; only K3 can close this campaign's
       cross-engine K3 cell.
-- [ ] If C8 becomes an automatic candidate, open a separate production
+      **RESOLVED (honest report):** K1/K2/K4 screens were **not run** — no
+      generic acceptance policy exists to screen, so the screens have no
+      subject; reopen condition: any future generic-rule proposal must first
+      freeze the rule, then run its K1/K2/K4 screens. The campaign-closing K3
+      cell is evaluated by P8's two-order D24 suite against the fresh
+      same-host peer.
+- [x] If C8 becomes an automatic candidate, open a separate production
       promotion unit covering full economics, quality, blocking/SSE,
       cancellation, overload/recovery, negative scopes, and drain.
+      **RESOLVED (precondition not met):** C8 has not become an automatic
+      candidate — the retained default-path result is 95.754/95.227 MTP
+      aggregate against the 101.072 fresh-peer target, so the promotion
+      unit's precondition does not fire; it opens only if P8's closure suite
+      clears the peer threshold.
 
 Exit: either a fixed generic K3 policy win or a documented reason acceptance
 cannot be changed without quality/gaming risk.
+      **CLOSED (iter59, second arm):** acceptance cannot be changed without
+      quality/gaming risk — the engine's acceptance is exact deterministic
+      greedy (no confidence surface), every token/prompt/category-conditioned
+      variant is banned by the anti-gaming rule, no generic-rule candidate
+      exists, and the measured economics (2.212 accepted/cycle at K3; heldout
+      ≥ train) show no pathological acceptance to repair. Reopen condition: a
+      generic rule proposal, frozen before its suite, with K1/K2/K4 screens
+      and the full L0-L5 gates.
 
 ### C8-P8 — final closure
 
