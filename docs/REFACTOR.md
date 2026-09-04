@@ -97,6 +97,24 @@ unfused kernels themselves stay (strict-fallback policy).
   > default until a re-audited tile/grid version (weight reuse + output tiling
   > + empty-expert skip) beats `strict_ms`; see worklog entry 20260830T202256.
 
+## 2026-09-04 Qwen4Exp PF-1 fork-b grouped selected down (T0)
+
+- `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` (default on) routes the Qwen4-exp
+  grouped-prefill Q8_0 down through
+  `gguf_q8_0_selected_grouped_gemv_bf16_bf16_out` (one block per
+  (expert, out_col) pair, weight row read once, consuming the existing
+  `group_expert_start` + `group_sorted_lanes` map). Setting the flag to `0`
+  restores the strict per-expert selected gemv. The bit-parity contract is
+  pinned by `tests/test_qwen4exp_pf1_forkb_selected_down.py`.
+- Removal trigger: once the fork-b default passes the whole-model
+  same-session counterbalanced A/B plus the applicable profile gate, remove
+  the flag and keep only the grouped path; if the whole-model A/B measures a
+  loss, flip the default back to the strict gemv, demote the fork-b branch to
+  opt-in for one campaign cycle, and then delete it together with this entry
+  unless a new shape-level hypothesis revives it. The legacy
+  `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags above remain governed by their own
+  entry.
+
 ## 2026-08-31 Qwen4Exp P1 layer-2 grouped Q5_K
 
 - `HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL=1` now changes only the layer-2
