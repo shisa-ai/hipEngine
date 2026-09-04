@@ -7023,3 +7023,27 @@ def test_q5_planar_dp4a_session_requires_planar_library() -> None:
             planar_dp4a=True,
         ):
             pass
+
+
+def test_q5_planar_dp4a_variant_registers_at_module_import() -> None:
+    """Regression: the planar variant must be dispatchable without ensure.
+
+    The dispatch branch requires ``is_registered(planar_key)`` before the
+    first rows=24 launch, but ``_ensure_linear_kernel_registered`` only
+    fires when a RESOLVED key is unregistered — a fallback-gated variant
+    can never trigger it. The raw mmq family solves this with
+    module-import registration; the planar family must do the same
+    (iter42 engagement fix: 0 launches through the runner verify path
+    before this).
+    """
+
+    from hipengine.kernels.registry import KernelKey, is_registered
+
+    assert is_registered(
+        KernelKey(
+            "hip_gfx1100",
+            "linear",
+            "gguf_q5_k",
+            "q8_1_dp4a_grouped_bf16_bf16_out",
+        )
+    )

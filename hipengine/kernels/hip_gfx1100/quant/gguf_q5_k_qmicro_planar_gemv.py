@@ -206,3 +206,10 @@ def register_gguf_q5_k_qmicro_planar_gemv_kernels(*, replace: bool = True) -> No
         gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_f32_out,
         replace=replace,
     )
+
+
+# Module-import registration, mirroring the raw mmq family: the dispatch
+# branch requires the key to be registered before the first rows=24 launch,
+# and `_ensure_linear_kernel_registered` only fires when a RESOLVED key is
+# unregistered, which never happens for a fallback-gated variant.
+register_gguf_q5_k_qmicro_planar_gemv_kernels()
