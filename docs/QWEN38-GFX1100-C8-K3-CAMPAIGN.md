@@ -797,10 +797,28 @@ Current pool: **22.286 ms/cycle**, including Q6 10.406 ms and Q4 5.398 ms.
 Target work remains higher priority until P2–P4 are exhausted or P1 proves a
 peer proposal advantage.
 
-- [ ] Profile proposal roles and selected-head traffic separately from provider
+- [x] Profile proposal roles and selected-head traffic separately from provider
       state update.
-- [ ] Optimize the exact current 131,072-row model-bound head/kernel before
+      **RESOLVED (committed packets):** current-profile.json measures the
+      phases separately at 3 calls each — proposal host wall 22.286 ms/call
+      (kernel sum 18.136, device union 16.464, 288.3 launches) decomposed Q6
+      10.406 + Q4 5.398; target_accept_commit_provider 167.862 ms/call =
+      88.21% of the 190.307 ms cycle wall (kernel sum 154.974, commit_repair
+      4.662 ms / 24 calls). Selected-head traffic per role from the iter30
+      census: root full-vocab head 1,042.9 MB/call at 6.242 ms (167 GB/s);
+      proposal selection head 550.5 MB/call, 3.667 calls/cycle at 9.924 ms
+      (203 GB/s).
+- [x] Optimize the exact current 131,072-row model-bound head/kernel before
       considering a new vocabulary representation.
+      **RESOLVED (iter44 retained route + iter45/46 roofline):** the proposal
+      selection head's rows 2-8 calls moved to the bit-exact col8 rowtile
+      (+5.71% e2e both orders, 40/40 exact, AR neutral; 2026-09-04-w7900-
+      q4km-k3-c8-q6-head-rowtile-route-retained.json); the route sits at the
+      DRAM roofline (~790 GB/s effective on the col8 split, ~96% of peak;
+      every alternative shape measured slower), and the root rows=1 sibling
+      is serialization/geometry-bound (iter51 blocker). The current
+      head/kernel is at its measured floor, meeting this bullet's
+      precondition.
 - [ ] Reopen vocabulary selection only with a materially different immutable
       artifact and a four-category feasibility screen that clears recall,
       Japanese acceptance, and mapped-ID guards before the full suite.
