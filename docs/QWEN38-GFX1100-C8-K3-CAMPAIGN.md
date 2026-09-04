@@ -740,6 +740,21 @@ Current pool: **46.519 ms/cycle**.
       GB/s) — worth ~1.1 ms/cycle but requires the root hidden to be available
       at the verify batch point (cycle-structure dependency, record before
       screening).
+      **BLOCKER RECORDED (iter51, code-grounded): the rows-pooling lever is
+      closed.** The root hidden IS available at the verify batch point
+      (`_last_target_hidden_ptr` holds the provider catch-up root hidden and
+      is valid until the next target forward overwrites the scratch), but the
+      root-head call is a serial cycle dependency — its sample output is the
+      committed root token and proposal generation conditions on that token,
+      so it cannot be deferred to or merged with the verify batch. Pooling
+      with the proposal-batch head (rows 2-8 → 3-9) requires a rows=9 single
+      launch (measured-blocked: rowtile primitive max_rows 8, 16-col shape
+      0.81-0.82x, chunk-interleave 0.36-0.73x, iters 45-46) or [8,1]
+      chunking, which is arithmetic-neutral (2.5 + 6.242 ms either way). The
+      rows=1 kernel at 167 GB/s is the measured floor for a single-row
+      traversal; the dp4a top1 fused path removes ≤0.76% of call traffic
+      (not material). Evidence: worklog/entries/20260904T095519.453822Z-lhl-
+      c8-root-head-pooling-blocker-e99be7.md.
 - [ ] Preserve full-head fallback and every mapped-ID/finite/tie guard.
 - [ ] Run L0→L3/L5 for exact work; L4 is mandatory for changed arithmetic.
 - [x] **RESOLVED (iter44, differently and larger than this bullet's
