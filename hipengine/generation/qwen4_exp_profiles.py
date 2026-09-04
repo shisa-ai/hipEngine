@@ -19,6 +19,7 @@ QWEN4_EXP_MODEL = "qwen4_exp_gguf"
 QWEN4_EXP_BACKEND = "hip_gfx1151"
 QWEN4_EXP_QUANTS = ("gguf_q4_k_m", "gguf_ud_q4_k_xl")
 PRODUCTION_MOE_PREFILL_ENV = "HIPENGINE_QWEN4_EXP_PRODUCTION_MOE_PREFILL"
+PROFILE_Q5_1_DOWN_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
 PRODUCTION_GDN_PEER_PREFILL_LAYERS = tuple(range(35, 48))
 PRODUCTION_GDN_COLWARPS_PREFILL_LAYERS = tuple(range(27, 48))
 PRODUCTION_QSA_FLASH_PREFILL_LAYERS = tuple(range(35, 48))
@@ -73,8 +74,6 @@ _QSA_ORDERED_DECODE_EVIDENCE = (
     "benchmarks/results/"
     "2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json"
 )
-
-
 def _selection(
     layer: str,
     scope: str,
@@ -156,6 +155,20 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
+        ),
+        _selection(
+            "moe_linear",
+            "prefill_rows_ge2_exact_grouped_q5_1_down",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "gguf_q5_1",
+        ),
+        _selection(
+            "linear",
+            "grouped_prefill_q8_0_expert_down",
+            "selected_gemv_bf16_bf16_out",
+            "selected_gemv_bf16_bf16_out",
+            "gguf_q8_0",
         ),
         _selection(
             "linear",
@@ -248,6 +261,20 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             evidence=_MOE_WMMA_EVIDENCE,
         ),
         _selection(
+            "moe_linear",
+            "prefill_rows_ge2_exact_grouped_q5_1_down",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "gguf_q5_1",
+        ),
+        _selection(
+            "linear",
+            "grouped_prefill_q8_0_expert_down",
+            "selected_gemv_bf16_bf16_out",
+            "selected_gemv_bf16_bf16_out",
+            "gguf_q8_0",
+        ),
+        _selection(
             "linear",
             "prefill_policy_qwen4exp_dense_q8_shapes",
             "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
@@ -281,7 +308,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
     # The WMMA route covers MoE layers 27-47 via the backend capability
     # constant; the ds4-MMQ envs stay off so they cannot preempt it, and the
     # exact-grouped guards (`not production_grouped_moe`) keep layers 0-26 on
-    # the strict owners.
+    # their separately manifested exact grouped owners.
     for key, value in {
         "HIPENGINE_GGUF_WMMA_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL": "0",
@@ -289,6 +316,11 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
+        # The review remeasurement harness opts into the candidate routes
+        # after construction. Profiles stay on their strict owners until that
+        # one-residency A/B restores valid promotion evidence.
+        PROFILE_Q5_1_DOWN_M1_ENV: "0",
+        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
@@ -415,6 +447,7 @@ def qwen4_exp_gfx1151_profiles_registered() -> bool:
 __all__ = [
     "PRODUCTION_GDN_PEER_PREFILL_LAYERS",
     "PRODUCTION_MOE_PREFILL_ENV",
+    "PROFILE_Q5_1_DOWN_M1_ENV",
     "PRODUCTION_Q4_DP4A_DECODE_LAYERS",
     "PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS",
     "PRODUCTION_Q5_1_MMQ_PREFILL_LAYERS",

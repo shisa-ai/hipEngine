@@ -212,7 +212,7 @@ prefix:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
-| hipEngine production (`37d59564…`, HB-1 retained arm) | **83.37 / 14.32** | **82.91 / 14.27** | **69.20 / 12.18** | 12/12 deterministic; cross-arm exact |
+| hipEngine pre-PF baseline (`37d59564…`, HB-1 retained arm) | **83.37 / 14.32** | **82.91 / 14.27** | **69.20 / 12.18** | 12/12 deterministic; cross-arm exact |
 | Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; noisy p512/p1024 rows |
 | Patched-upstream HIP `f1793c1c4` | 235.89 / 17.75 | 306.51 / 16.99 | 283.73 / 14.89 | 12/12 deterministic; cross-arm exact; non-stock loader |
 | Halo-box base `6c84c7d5` + loader patches | 223.89 / 17.66 | 308.28 / 16.88 | 301.62 / 14.90 | 12/12 deterministic; cross-arm exact; short-shape drift |
@@ -250,15 +250,18 @@ but **0/5 active families** currently share an identical cross-engine fixture,
 dtype/layout contract, and operation boundary. No mechanism ratio or candidate is
 reported. [`halo-box HB-3 blocker`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json).
 
-Campaign punchlist PF-3 promoted the fused single-loop logical256 Q5_1 MoE
-down-projection prefill as the production default on this graph: a same-session
-counterbalanced whole-model A/B (1 warmup + 3 reps per case, canonical
-p512/p1024/p4096 fixture, 12 cases) shows prefill gains of **+1.89% (p512),
-+1.58% (p1024), +0.95% (p4096)** with decode unchanged within noise and all 36
-outputs bit-identical across all four arms. The previous grouped owner remains
-registered as the strict fallback. The Q4_K gate/up M1 retune lever was closed
-as a measured loss. [`PF-3 promotion A/B`](results/2026-09-04-gfx1151-qwen38-flash-next-pf3-q51-m1-promotion-ab.json),
-[`PF-3 kernel A/B`](results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json).
+The 2026-09-04 review preserves the campaign's bit-exact kernel findings but
+withdraws its retained whole-model claims: each purported A/B arm ran in a new
+Python process and model residency through a harness explicitly marked
+"never a retained claim." PF-3 Q5_1 M1 remains a bit-exact **−10.6%**
+binding-shape kernel candidate, and PF-1 grouped Q8_0 remains a bit-exact
+**−31.6%** kernel / **−6.9% to −8.7%** layer candidate. The production profile
+has returned to their strict owners until the committed one-residency
+before/after gate finishes. PF-4's fused-combine whole-model rejection is also
+provisional; PF-5's tile-16 lever was never attempted. The Q4_K M1 and PF-5
+w32 kernel losses remain valid. [`Review plan`](../worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md),
+[`PF-3 kernel A/B`](results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json),
+[`PF-1 historical packet`](results/2026-09-04-gfx1151-qwen38-flash-next-pf1-forkb-grouped-down-whole-model-ab.json).
 
 The frozen p508 role/API profile still puts hipEngine versus llama HIP device
 kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90

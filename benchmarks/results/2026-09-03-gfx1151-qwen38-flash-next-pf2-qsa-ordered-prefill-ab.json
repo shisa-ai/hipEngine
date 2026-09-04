@@ -5,7 +5,7 @@
   "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6 PF-2",
   "lifecycle": {
     "performance_claim": false,
-    "status": "closed_measured_loss",
+    "status": "rejected_correctness_invalid_timing_protocol",
     "promotion": "none — incumbent route remains production"
   },
   "host": {
@@ -35,7 +35,9 @@
   },
   "protocol": {
     "harness": "scripts/qwen4exp_candidate_ar.py (diagnostic candidate runner, never a retained claim)",
-    "same_session": true,
+    "same_session": false,
+    "python_processes": 4,
+    "model_residencies": 4,
     "warmups_per_case": 1,
     "measured_repetitions": 3,
     "decode_transitions": 128,
@@ -314,5 +316,5 @@
     "all_cases_output_exact_across_arms": false,
     "note": "p512/p1024 outputs are bit-identical across arms (QSA sparse route not engaged at those shapes). At p4096 the QSA sparse route engages and the candidate (ordered three-pass, bit-exact vs the strict rows kernel) differs from the incumbent production route, which dispatches the wave32 variant for head_dim==128. The ordered variant is therefore not bit-exact vs the shipped production incumbent at p4096."
   },
-  "verdict": "MEASURED LOSS: the ordered three-pass prefill variant is slower than the incumbent at every shape (p4096 70.93->68.67 tok/s, 0.968x; p1024 85.56->83.22, 0.973x; p512 86.19->83.38, 0.967x) and its p4096 outputs are not bit-identical to the incumbent production (wave32) route. Per docs/REFACTOR.md removal trigger the HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL flag and runner branch were deleted; the ordered rows kernels remain registered as a strict variant. Lever closed."
+  "verdict": "REJECTED ON CORRECTNESS: the process-separated timing diagnostic is slower at every shape, but is not binding performance evidence. Independently, p4096 outputs are not bit-identical to the incumbent production wave32 route, so the T0 candidate fails its declared contract. Per docs/REFACTOR.md removal trigger the HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL flag and runner branch were deleted; the ordered rows kernels remain registered as a strict variant. Lever closed."
 }
