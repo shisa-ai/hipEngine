@@ -12,25 +12,26 @@
   "heldouts": 8,
   "total": 18
  },
- "decision": "C8-P2 L4 production-profile numerics PASSED for the grouped q8_1 dp4a planar-Q5 axis: paired strict-teacher sessions (retained raw MMQ owner vs session-enabled planar dp4a, decode regime WMMA-off per the retained profile) over 18 prompts (10 category suite + 8 heldouts), c8_k2_r24 (the exact production physical-row shape of the R24-only route), 24 teacher-forced steps, 3 candidate repeats. BIT-EXACT outputs: kl_mean 0.0, kl_p99 0.0, kl_max 0.0, max_abs_logit_delta 0.0, top1 agreement 1.0 (432/432), top-5 overlap 1.0, teacher NLL delta 0.0; minimum strict margin 0.00965; determinism 3/3; hard gates passed; tracked clean. The ~6e-05 f32 accumulation-order delta vs the owner rounds away under the BF16 output at every logit. Retention e2e (two-order ten-prompt suite) is the next gate; the env stays default-off.",
+ "supersedes": "iter41 bit-exact artifact (route was not engaging; see worklog 20260904T032356)",
+ "decision": "C8-P2 L4 production-profile numerics PASSED for the grouped q8_1 dp4a planar-Q5 axis, WITH ENGAGEMENT VERIFIED (launch counter: 144 planar launches = 3 candidate passes x 48 Q5 weights; the iter41 bit-exact artifact was vacuous - both sides ran the raw owner). Paired strict-teacher sessions (retained raw MMQ owner vs session-enabled planar dp4a, decode regime WMMA-off per the retained profile) over 18 prompts (10 category suite + 8 heldouts), c8_k2_r24 (the exact production physical-row shape of the R24-only route), 24 teacher-forced steps, 3 candidate repeats: kl_mean 0.000102, kl_p99 0.000968, kl_max 0.002605, top1 agreement 0.9977 (1 of 432 near-tie flip; min strict margin 0.00965), max_abs_logit_delta 0.834 (bf16 ULP on large logits), determinism 3/3, hard gates passed, tracked clean. Retention e2e (two-order ten-prompt suite at k2) is the next gate; the env stays default-off.",
  "evaluation": {
   "evaluator": "build_batch_route_quality + EvaluationThresholds (campaign normative)",
   "summary": {
-   "candidate_teacher_nll_mean": 0.17093141152002153,
-   "kl_max": 0.0,
-   "kl_mean": 0.0,
-   "kl_p50": 0.0,
-   "kl_p95": 0.0,
-   "kl_p99": 0.0,
-   "max_abs_logit_delta": 0.0,
+   "candidate_teacher_nll_mean": 0.1699560586013462,
+   "kl_max": 0.002604771351875181,
+   "kl_mean": 0.00010161306471354249,
+   "kl_p50": 4.839305488918395e-06,
+   "kl_p95": 0.0005473288827252327,
+   "kl_p99": 0.0009683399612866355,
+   "max_abs_logit_delta": 0.8343766927719116,
    "rows": 432,
    "strict_margin_min": 0.009654045104980469,
    "strict_teacher_nll_mean": 0.17093141152002153,
-   "teacher_delta_p_mean": 0.0,
-   "teacher_nll_delta": 0.0,
-   "top1_agreement": 1.0,
-   "top1_matches": 432,
-   "topk_overlap_mean": 1.0
+   "teacher_delta_p_mean": 0.0005412762715692665,
+   "teacher_nll_delta": -0.0009753529186753429,
+   "top1_agreement": 0.9976851851851852,
+   "top1_matches": 431,
+   "topk_overlap_mean": 0.9921296296296297
   },
   "hard_gates_passed": true,
   "eligible_for_automatic_admission": true,
@@ -38,6 +39,11 @@
   "repeat_determinism": {
    "passed": true,
    "runs": 3
+  },
+  "engagement": {
+   "method": "in-process launch counter through the runner verify path",
+   "planar_launches": 144,
+   "expected": "3 candidate passes x 48 Q5 ssm_out weights"
   }
  },
  "hardware": {
@@ -47,8 +53,8 @@
   "rocm": "7.2.4"
  },
  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
- "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python3 scripts/qwen38_c8_p2_q5_planar_dp4a_numerics.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --concurrency 8 --candidate-budget 2 --decode-steps 24 --repeat-runs 3 --output /tmp/q5_planar_numerics_full.json",
+ "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python3 scripts/qwen38_c8_p2_q5_planar_dp4a_numerics.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --concurrency 8 --candidate-budget 2 --decode-steps 24 --repeat-runs 3 --output /tmp/q5_planar_numerics_full_v3.json",
  "artifact_source": "scripts/qwen38_c8_p2_q5_planar_dp4a_numerics.py",
- "full_payload": "/tmp/q5_planar_numerics_full.json",
- "next_gate": "tracked-clean ten-prompt e2e with candidate/control ordering (the retention gate)"
+ "full_payload": "/tmp/q5_planar_numerics_full_v3.json",
+ "next_gate": "tracked-clean ten-prompt e2e with candidate/control ordering at k2 (the retention gate)"
 }
