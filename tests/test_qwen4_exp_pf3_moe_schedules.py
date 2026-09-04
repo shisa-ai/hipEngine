@@ -434,6 +434,122 @@ def test_pf3_q5_1_down_m1_bit_exact_vs_incumbent(rows: int) -> None:
         )
 
 
+def test_q5_1_m2_variant_key_registry_contract() -> None:
+    """The M2 key must resolve exactly, with M1 retained as fallback.
+
+    RED on the unmodified path: the M2 function does not exist, so the import
+    fails before any GPU work runs.
+    """
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out,
+        register_qwen4_exp_q5_1_kernels,
+    )
+    from hipengine.kernels.registry import resolve
+
+    register_qwen4_exp_q5_1_kernels()
+    resolved = resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_q5_1",
+        variant=(
+            "selected_grouped_prefill_compact_rowbatch8_out8_"
+            "expertgrid64_m2_bf16_bf16_out"
+        ),
+        missing="none",
+    )
+    fallback = resolve(
+        backend="hip_gfx1100",
+        layer="moe_linear",
+        quant="gguf_q5_1",
+        variant=(
+            "selected_grouped_prefill_compact_rowbatch8_out8_"
+            "expertgrid64_m1_bf16_bf16_out"
+        ),
+        missing="none",
+    )
+    assert (
+        resolved
+        is qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out
+    )
+    assert (
+        fallback
+        is qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out
+    )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [16, 512])
+def test_q5_1_down_m2_hierarchical_reduction_bit_exact_vs_m1(rows: int) -> None:
+    """M2 must preserve every M1 logical partial and strict tree addition.
+
+    M2 may fold only the strict stride-128 add into registers, use shared
+    memory for the stride-64/32 cross-wave steps, and use wave shuffles for
+    the unchanged stride-16..1 additions. The binding production shape is a
+    512-row chunk; 16 rows covers sparse experts and empty-expert handling.
+
+    RED on the unmodified path: the M2 function does not exist, so the import
+    fails before any GPU work runs.
+    """
+    from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
+        build_qwen4_exp_q5_1,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out,
+        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out,
+    )
+
+    runtime = get_hip_runtime()
+    library = build_qwen4_exp_q5_1(load=True)
+    counts = _expert_counts(rows, seed=8300 + rows)
+    x_bits, _ = _make_activation(rows, _Q5_1_IN_FEATURES, seed=8400 + rows)
+    qweights = _make_expert_q5_1_weights(
+        num_experts=_NUM_EXPERTS,
+        out_features=_Q5_1_OUT_FEATURES,
+        in_features=_Q5_1_IN_FEATURES,
+        seed=8501,
+    )
+    expert_start = _expert_start(counts)
+    out_shape = (rows, _Q5_1_OUT_FEATURES)
+
+    allocations = []
+    try:
+        d_x = _upload(x_bits, runtime, allocations)
+        d_expert_start = _upload(expert_start, runtime, allocations)
+        d_qweights = _upload(qweights, runtime, allocations)
+        d_m1 = _alloc(out_shape, np.uint16, runtime, allocations)
+        d_m2 = _alloc(out_shape, np.uint16, runtime, allocations)
+        for function, output in (
+            (
+                qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out,
+                d_m1,
+            ),
+            (
+                qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out,
+                d_m2,
+            ),
+        ):
+            function(
+                d_x.ptr,
+                d_expert_start.ptr,
+                d_qweights.ptr,
+                output.ptr,
+                rows,
+                _NUM_EXPERTS,
+                _Q5_1_IN_FEATURES,
+                _Q5_1_OUT_FEATURES,
+                library=library,
+                runtime=runtime,
+            )
+        runtime.device_synchronize()
+        m1 = _download(d_m1, out_shape, np.uint16, runtime)
+        m2 = _download(d_m2, out_shape, np.uint16, runtime)
+    finally:
+        for allocation in reversed(allocations):
+            free(allocation, runtime=runtime)
+
+    np.testing.assert_array_equal(m2, m1)
+
+
 def _upload(array: np.ndarray, runtime, allocations):
     host = np.ascontiguousarray(array)
     device = malloc(host.nbytes, runtime=runtime)
