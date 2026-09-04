@@ -5255,6 +5255,23 @@ other means and were not touched.
   the decode, sharing the d4s4 activation producer; owner-parity 1e-4 and
   outer KL/top-1 contracts already registered) plus the tracked-clean
   ten-prompt e2e plus heldouts with candidate/control ordering.
+- **Engagement deadlock fix (iter42, 7e03b150c):** the iter40 dispatch gate
+  never fired (session.source_layout conflation + registration deadlock);
+  the leaf/e2e "bit-exact" evidence before this fix was vacuous. Post-fix
+  engagement is evidenced by launch counter (144 launches / 3 verify
+  passes), and the leaf artifact above must be re-read as
+  owner-vs-owner (route never fired).
+- **L4 + retention outcome (engaged, iter42):** full L4 gate PASSED (18
+  prompts, kl_mean 1.02e-4, kl_max 2.6e-3, top-1 0.9977, determinism 3/3;
+  artifact
+  `benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-l4-numerics.json`);
+  k2/R24 retention e2e +0.44% MTP aggregate, positive both orders, IDs
+  identical, 40/40 exact
+  (`benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-retention-e2e.json`).
+  The route STAYS default-off: +1.23 GB persistent sidecar for a target-stage
+  delta inside control spread does not justify promotion; the env pair
+  remains the operator opt-in for k2-shaped runs.
 - Remove the kernel, wrapper, registry entry, session/runner/env wiring,
-  loader sidecar, leaf script, and tests if the L4 campaign rejects the
-  variant or the P2 residual closes by another axis.
+  loader sidecar, leaf script, and tests if the P2 residual closes by
+  another axis AND the flag pair has had no operator use for a full
+  campaign cycle, or if a later owner-parity regression voids the axis.
