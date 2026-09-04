@@ -649,9 +649,20 @@ Current pool: **23.461 ms/cycle**, WG128, VGPR248, LDS 32 KiB.
       limiter. A lower-VGPR sibling is the live axis; the ~209 non-accumulator
       VGPRs are decode temporaries, so the authorized instruction-layout axis
       must narrow decode state (accumulator floor is 32 VGPRs: 2×float8×2).
-- [ ] Screen a lower-pressure or lower-barrier row32 sibling only when its
+- [x] Screen a lower-pressure or lower-barrier row32 sibling only when its
       arithmetic boundary is declared. Candidate axes may include LDS lifetime,
       gate/up staging order, active-wave scheduling, or instruction layout.
+      **CLOSED (iter47, measured):** the decode-branch `#pragma unroll 2` test
+      through the JIT build path lost 10% (row32 0.4947 vs 0.4479 ms on
+      layers.0 gate/up [5120→17408] at rows=32); reverted with baseline
+      recovery confirmed (0.4511). Shape re-validation at rows=32: row32 is
+      the right-sized owner (row48 0.6083, row64 0.8074, default-4w 1.2292 —
+      all bit-identical; row48/64 win per-row only at their own larger
+      shapes). Occupancy arithmetic: 241 VGPR → 1 wave/SIMD; 2 waves/SIMD
+      requires ≤128, structurally unreachable with WMMA staging + decode
+      pipeline; the same-family scheduling levers were measured-negative in
+      iter46. Evidence: worklog/entries/20260904T094922.956518Z-lhl-c8-
+      iter47-p3-row32-floor-39325b.md.
 - [ ] Compare against the current two-active-wave fused owner on actual gate/up
       weights before whole-model numerics.
 - [ ] Exact/parent-parity candidates follow L0→L3. Reassociated T2 candidates
