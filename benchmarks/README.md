@@ -110,35 +110,41 @@ standardized complete-wall server protocol.
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | **22.854** | **37.903** | **52.296** | **63.613** | **70.994** | **77.046** | **81.256** | **83.939** |
-| llama.cpp current HIP | 21.657 | 34.649 | 30.367 | 27.748 | 36.248 | 45.343 | 51.757 | 57.687 |
-| llama.cpp Laurent HIP | 21.298 | 34.151 | 30.635 | 27.850 | 36.695 | 46.091 | 52.681 | 58.840 |
+| hipEngine | **23.636** | **39.064** | **53.141** | **63.889** | **72.821** | **79.508** | **83.197** | **85.891** |
+| llama.cpp current HIP | 20.997 | 34.361 | 30.595 | 27.737 | 36.662 | 46.351 | 52.132 | 58.429 |
+| llama.cpp Laurent HIP | 20.913 | 35.273 | 31.042 | 27.852 | 37.031 | 47.309 | 53.235 | 59.378 |
 
 **Explicit K3 MTP decode diagnostic**
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | **34.623** | **51.769** | **54.590** | **55.780** | **68.513** | **76.623** | **81.641** | 90.139 |
-| llama.cpp current HIP | 32.553 | 41.042 | 45.324 | 49.977 | 59.644 | 72.195 | 75.354 | 94.735 |
-| llama.cpp Laurent HIP | 32.733 | 40.808 | 45.947 | 51.054 | 61.013 | 74.628 | **78.281** | **101.072** |
-| hipEngine K3 / published AR | 1.5150x | 1.3658x | 1.0439x | 0.8769x | 0.9651x | 0.9945x | 1.0047x | 1.0739x |
+| hipEngine | **36.872** | **57.700** | **65.922** | **68.106** | **70.541** | **80.714** | **85.263** | 94.080 |
+| llama.cpp current HIP | 30.658 | 39.435 | 45.065 | 48.014 | 59.269 | 68.046 | 73.500 | 92.345 |
+| llama.cpp Laurent HIP | 31.446 | 39.172 | 45.457 | 45.946 | 60.427 | 74.465 | 77.420 | **95.830** |
+| hipEngine K3 / published AR | 1.5599x | 1.4771x | 1.2405x | 1.0660x | 0.9687x | 1.0152x | 1.0248x | 1.0953x |
 
 **Prefill**
 
 | Engine | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| hipEngine | **189.074** | **289.870** | **370.318** | **405.343** | **440.200** | **457.406** | **469.752** | **473.754** |
-| llama.cpp current HIP | 179.035 | 206.603 | 207.636 | 258.750 | 308.960 | 330.059 | 360.231 | 405.406 |
-| llama.cpp Laurent HIP | 184.024 | 225.730 | 221.227 | 259.929 | 316.711 | 357.259 | 365.592 | 404.240 |
+| hipEngine | 188.124 | **290.890** | **366.704** | **408.710** | **439.451** | **457.617** | **473.896** | **475.561** |
+| llama.cpp current HIP | **192.834** | 232.181 | 246.710 | 268.236 | 313.218 | 351.989 | 362.168 | 408.393 |
+| llama.cpp Laurent HIP | 192.229 | 232.667 | 247.092 | 268.799 | 317.570 | 351.067 | 367.582 | 395.080 |
 
 The ten-prompt suite includes four heldouts and uses raw greedy sampling, a
 20 ms batch window, capacity 8, and a 1,024-token session limit. Prefill is D1;
-AR and K3 are D24. AR and peer-prefill values are counterbalanced two-run means;
-current hipEngine prefill C1-C3 and K3 cells roll forward later retained exact
-same-build gates. All named source gates pass their trajectory, ownership,
-category/heldout, provenance, and clean-drain contracts. hipEngine uses BF16 KV;
-the peers use F16 KV. K3 is forced and measures an engine path, not the
-capacity-8 automatic product route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C7 retention`](results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json); [`exact C8 row32 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json); [`latest C8 Q5 retention`](results/2026-09-03-w7900-q4km-k3-c8-q5-source-mmq-retained.json); [`raw-Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json); [`Q6 head-rowtile route retention`](results/2026-09-04-w7900-q4km-k3-c8-q6-head-rowtile-route-retained.json); [`accepted-tail K/V-only retention`](results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json). The remaining C8 peer gap is organized by the [`current profile`](results/2026-09-02-w7900-q4km-k3-c8-current-profile.json) and [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
+AR and K3 are D24. Every row is a counterbalanced two-run mean from the
+[2026-09-04 P8 final-closure recapture](results/2026-09-04-w7900-q4km-k3-c8-p8-final-closure-matrix.json)
+on one physical host; the recapture found and fixed a width-1 K3 exactness
+regression (single-session direct-resident verify route scope, commit
+29b06611f) before recording these rows. The binding two-order D24 suite in the
+same packet puts the retained C8 candidate at **95.240 tok/s mean**
+(+5.49% vs its control, positive in both orders, 40/40 ar_exact cells):
+above both the published (94.735) and fresh (92.345) current-llama.cpp
+exact-peer rows, below both the published (101.072) and fresh (95.830)
+Laurent strongest-peer rows. hipEngine uses BF16 KV; the peers use F16 KV. K3
+is forced and measures an engine path, not the capacity-8 automatic product
+route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C7 retention`](results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json); [`exact C8 row32 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json); [`latest C8 Q5 retention`](results/2026-09-03-w7900-q4km-k3-c8-q5-source-mmq-retained.json); [`raw-Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json); [`Q6 head-rowtile route retention`](results/2026-09-04-w7900-q4km-k3-c8-q6-head-rowtile-route-retained.json); [`accepted-tail K/V-only retention`](results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json). The remaining C8 peer gap is organized by the [`current profile`](results/2026-09-02-w7900-q4km-k3-c8-current-profile.json) and [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
 On Strix Halo, Qwen3.8 `Q4_K_M` automatic MTP retains strict C1/B3 at
 **15.609 vs 9.807 tok/s (1.5916x)** and production C2/K3 at **17.031 tok/s
