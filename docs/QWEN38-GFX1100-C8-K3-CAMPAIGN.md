@@ -602,6 +602,21 @@ ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
       2-byte-per-k-row loads defeat coalescing, so the ALU saving does not
       repay the load penalty. The retained owner's 224 VGPR occupancy cap
       and the narrow-metadata axis remain the open levers.
+      **OPEN LEVERS CLOSED (iter46, measured):** ROW_TILE=8 full-unroll
+      compiles at 134 VGPR in scratch; `__launch_bounds__(64,4)` occupancy
+      forcing leaves it unchanged (hint ignored, 2 waves/SIMD unreachable);
+      `#pragma unroll 2/4` reshaping reaches 138/148 VGPR and loses or ties
+      full-unroll, and the fair in-tree JIT test (`#pragma unroll 2`) measured
+      rows=16 **-14%** (0.0884 vs 0.0762 ms on layers.0.attn_gate [6144→5120])
+      with rows=24/32 neutral — reverted with baseline recovery confirmed
+      (0.0764/0.1074/0.1460 ms at rows 16/24/32). Grid-swap co-residency
+      (row chunks in the fast grid dimension) gains 1-4% in scratch, inside
+      the ±10-20% run band — mirrors the iter45 Q6 interleave rejection. The
+      registered owner streams ~477 GB/s effective including the structural
+      per-chunk tile re-read (~58% of peak); the residual is latency-class
+      and every measured recovery scheme fails.
+      Evidence: worklog/entries/20260904T094347.676867Z-lhl-c8-iter46-q4-
+      grouped-lever-screen-c835cf.md (scratch screens; no tree changes).
 - [ ] Do not repeat col4, grouped-R12, singleton-WMMA, pair-major, or unchanged
       grouped-R8 policy screens.
 - [ ] Admit a multi-output or cross-role owner only if it reduces actual work;
