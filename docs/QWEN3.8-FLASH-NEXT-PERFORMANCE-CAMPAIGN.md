@@ -1,11 +1,17 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
-Status: **active plan, fully impact-profiled 2026-09-01.** The retained
-category-balanced screening baseline remains **83.70/83.16/69.10 tok/s**
-prefill and **14.40/14.42/10.42 tok/s** decode at p512/p1024/p4096. A clean
-current diagnostic packet measures **86.21/85.71/70.95** and
-**14.70/14.65/10.59**, but strong repetition-order drift prevents silently
-promoting those rates as the closure baseline. Exact matched profiling now
+Status: **active plan, fully impact-profiled 2026-09-01; production refreshed
+2026-09-04.** The historical category-balanced screening baseline remains
+**83.70/83.16/69.10 tok/s** prefill and **14.40/14.42/10.42 tok/s** decode at
+p512/p1024/p4096. The latest retained PF-1/PF-3 T0 package measures
+**89.34/88.54/72.58** and **14.84/14.79/12.40** in a committed
+one-process/one-residency packet. Its direct before→after prefill deltas are
+**+3.13%/+3.09%/+2.51%**, all 12 category/shape cases improve, and all 72
+measured trajectories are exact across modes. This updates current production,
+not the section-6 closure baseline; five same-thermal competitor pairs remain
+open. Evidence:
+[`halo PF-1/PF-3 production refresh`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json).
+Exact matched profiling now
 attributes **100%** of hipEngine device time at all three prefills and at live
 513/1025/4097 decode; both hipEngine and pinned patched llama.cpp have zero
 generic family remainder. The old **41.6% unattributed** row was incomplete

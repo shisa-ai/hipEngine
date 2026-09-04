@@ -74,6 +74,12 @@ _QSA_ORDERED_DECODE_EVIDENCE = (
     "benchmarks/results/"
     "2026-09-02-gfx1151-qwen38-flash-next-p6-qsa-ordered-decode.json"
 )
+_HALO_PF13_EVIDENCE = (
+    "benchmarks/results/"
+    "2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json"
+)
+
+
 def _selection(
     layer: str,
     scope: str,
@@ -263,16 +269,18 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         _selection(
             "moe_linear",
             "prefill_rows_ge2_exact_grouped_q5_1_down",
-            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
+            evidence=_HALO_PF13_EVIDENCE,
         ),
         _selection(
             "linear",
             "grouped_prefill_q8_0_expert_down",
-            "selected_gemv_bf16_bf16_out",
+            "selected_grouped_gemv_bf16_bf16_out",
             "selected_gemv_bf16_bf16_out",
             "gguf_q8_0",
+            evidence=_HALO_PF13_EVIDENCE,
         ),
         _selection(
             "linear",
@@ -316,11 +324,11 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA": "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE": "0",
-        # The review remeasurement harness opts into the candidate routes
-        # after construction. Profiles stay on their strict owners until that
-        # one-residency A/B restores valid promotion evidence.
-        PROFILE_Q5_1_DOWN_M1_ENV: "0",
-        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "0",
+        # PF-3 Q5_1 M1 and PF-1 grouped Q8_0 down are T0 exact production
+        # owners after the one-process/one-residency canonical gate. Strict
+        # keeps the preceding owners as registered fallbacks.
+        PROFILE_Q5_1_DOWN_M1_ENV: "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",

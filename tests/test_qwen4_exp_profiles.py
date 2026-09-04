@@ -171,20 +171,24 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
         ("moe_linear", "prefill_rows_ge2_exact_grouped_q5_1_down")
     ]
     assert q5_m1["selected_variant"].endswith(
-        "expertgrid64_bf16_bf16_out"
+        "expertgrid64_m1_bf16_bf16_out"
     )
     assert q5_m1["strict_fallback_variant"].endswith(
         "expertgrid64_bf16_bf16_out"
     )
-    assert q5_m1["evidence_artifact"] is None
+    assert q5_m1["evidence_artifact"].endswith(
+        "halo-pf13-production-refresh.json"
+    )
     q8_grouped = selections[("linear", "grouped_prefill_q8_0_expert_down")]
     assert q8_grouped["selected_variant"] == (
-        "selected_gemv_bf16_bf16_out"
+        "selected_grouped_gemv_bf16_bf16_out"
     )
     assert q8_grouped["strict_fallback_variant"] == (
         "selected_gemv_bf16_bf16_out"
     )
-    assert q8_grouped["evidence_artifact"] is None
+    assert q8_grouped["evidence_artifact"].endswith(
+        "halo-pf13-production-refresh.json"
+    )
     q8 = selections[("linear", "prefill_policy_qwen4exp_dense_q8_shapes")]
     assert q8["selected_variant"] == (
         "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
@@ -227,8 +231,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
-    assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "0"
-    assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "0"
+    assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "1"
     # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
     # route; their envs stay off so they cannot preempt it.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"

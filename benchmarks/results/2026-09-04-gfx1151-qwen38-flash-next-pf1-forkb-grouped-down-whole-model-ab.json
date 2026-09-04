@@ -66,14 +66,15 @@
   "decode_note": "fork-b does not touch the decode path (rows=1 uses the strict selected gemv); combined decode delta is noise"
  },
  "invalidated_prior_run": "the first whole-model A/B (2026-09-04 ~00:07-01:03Z) is INVALID: the wiring passed group_sorted_lanes as lane_to_row while the runner buffers are sorted-position-indexed, corrupting the down math (all 36 tokens diverged). Fixed in commit 2cfd2f16e; RCA in worklog entry 20260904T020734.",
- "verdict": "REVIEW PENDING - bit-exact kernel (-31.6%) and layer (-6.9/-8.2/-8.7%) evidence remains valid, but the process-separated whole-model combined -0.15% diagnostic cannot support promotion under the stated one-residency protocol",
+ "verdict": "WITHDRAWN INVALID WHOLE-MODEL PROTOCOL - kernel/layer evidence remains valid; the later one-residency package in review.resolved_by independently restores promotion",
  "flags": {
-  "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "review-only candidate (=1); production and strict profiles use =0 pending the one-residency rerun; removal trigger tracked in docs/REFACTOR.md"
+  "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "historical withdrawal state; a later valid one-residency package restored production =1 while strict remains =0; see review.resolved_by"
  },
  "tests": "tests/test_qwen4exp_pf1_forkb_selected_down.py 4/4; test_qwen4_exp_runner_moe.py + test_qwen4_exp_q8_0_grouped_down.py 8/8",
  "review": {
   "date": "2026-09-04",
   "finding": "The kernel/layer measurements and exactness gates stand. The whole-model arms were separate process invocations, contrary to the artifact's original same-session label.",
-  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md"
+  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md",
+  "resolved_by": "benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json"
  }
 }
