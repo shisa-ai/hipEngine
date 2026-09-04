@@ -18,18 +18,6 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-04 Qwen4Exp PF-4 lever 2 unfused-combine A/B flag
-
-`HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE=1` forces the unfused
-`weighted_lanes_sum` → `shared_gate_combine_batch` chain in the grouped
-prefill tail so the whole-model counterbalanced A/B can run incumbent arms
-in the same session against the fused default
-(`weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w`, commit
-455e176ab). Removal trigger: delete the flag and the two `os.environ.get`
-branches immediately after the whole-model A/B concludes — promoted default
-or reverted lever, either way the flag has no further use. The registered
-unfused kernels themselves stay (strict-fallback policy).
-
 ## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
 
 - `qwen4exp_gdn_w32_prefill` (`hipengine_qwen4_exp_gdn_prefill_w32_f32`,
@@ -43,9 +31,8 @@ unfused kernels themselves stay (strict-fallback policy).
 - Remove the variant registration, the `<32, 4>` instantiation, the host
   wrapper, and the test file if a later campaign wants the registry back —
   trigger: a named product decision that the w32 geometry will not be
-  revisited on gfx11 (e.g., at campaign closure), or if the tile-16 lever
-  (deferred behind PF-0) ever lands in a form that makes the 32-warp
-  geometry unreachable. Do not remove before that trigger: it is the only
+  revisited on gfx11 (for example, at campaign closure), or if the still-open
+  tile-16 lever lands in a form that makes the 32-warp geometry unreachable. Do not remove before that trigger: it is the only
   device-side reproduction of the 1024-thread occupancy loss measured in
   `benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json`.
 
@@ -99,22 +86,21 @@ unfused kernels themselves stay (strict-fallback policy).
 
 ## 2026-09-04 Qwen4Exp PF-1 fork-b grouped selected down (T0)
 
-- `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN` (default on) routes the Qwen4-exp
+- `HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=1` routes the Qwen4-exp
   grouped-prefill Q8_0 down through
   `gguf_q8_0_selected_grouped_gemv_bf16_bf16_out` (one block per
   (expert, out_col) pair, weight row read once, consuming the existing
   `group_expert_start` + `group_sorted_lanes` map). Setting the flag to `0`
   restores the strict per-expert selected gemv. The bit-parity contract is
   pinned by `tests/test_qwen4exp_pf1_forkb_selected_down.py`.
-- Removal trigger: **outcome recorded 2026-09-04 — RETAINED.** The whole-model
-  same-session counterbalanced A/B was run twice with opposite arm orders
-  (fresh-first-arm slot bias canceled): combined prefill −0.15%, non-regressive,
-  0/36 token mismatches both runs, with kernel-level −31.6% and layer-level
-  −6.9/−8.2/−8.7% sub-window wins. The grouped path stays the default. Keep the
-  `=0` opt-out for rollback/bisection until campaign cleanup (the whole-model
-  margin is small and order-sensitive, so the strict fallback must stay one
-  env flip away); then remove the flag and keep only the grouped path. The
-  legacy `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags above remain governed by
+- Review status (2026-09-04): the kernel-level −31.6% and layer-level
+  −6.9/−8.2/−8.7% exact wins remain valid, but the claimed same-session
+  whole-model runs actually used four fresh model processes. The production
+  profile therefore keeps the strict path (`=0`) while the committed
+  one-residency A/B reruns. If that gate passes, promote `=1` and retain a
+  one-release rollback; otherwise delete the candidate flag/path and keep the
+  strict owner. The legacy `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags above
+  remain governed by
   their own entry.
 
 ## 2026-08-31 Qwen4Exp P1 layer-2 grouped Q5_K
@@ -4751,22 +4737,22 @@ should be boring.
 
 
 
-## PF-4 lever 2 fused combine is opt-in after measured loss (2026-09-04)
+## PF-4 lever 2 fused combine is opt-in pending valid A/B (2026-09-04)
 
 - `hipengine/runtime/qwen4_exp_runner.py` keeps the fused
   `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` grouped-prefill
   path reachable only via `HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`; the default
   is the unfused `weighted_lanes_sum` + `shared_gate_combine` chain. The flag
   was originally the inverse (`HIPENGINE_QWEN4_EXP_UNFUSED_COMBINE=1` gating a
-  fused default) before the whole-model A/B measured pp −1.69% (all 12 cases
-  negative) and closed the lever.
+  fused default) before a process-separated diagnostic measured pp −1.69%
+  (all 12 cases negative). That run cannot close the lever under the required
+  one-residency protocol.
 - The fused kernel and its registry entry
   (`KernelKey("hip_gfx1100", "weighted_lanes_sum+shared_gate_combine", <quant>, "out")`)
   stay bit-exact and pinned by `tests/test_qwen4_exp_pf4_lever2_fused_combine.py`.
-- **Removal trigger:** unless a later unit (e.g. a PF-0-gated reassociation or
-  a scheduling change that removes the whole-model prefill interference)
-  reverses the verdict, delete the fused kernel, its wrapper/registry entry,
-  the `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` gate, and the lever-2 tests once the
-  PF-4 unit is formally closed and no follow-up candidate reuses the fused
-  chain. Keep the bit-exact-parity test file if the unfused chain ever changes
+- **Removal trigger:** repeat the whole-model comparison in one process and
+  one model residency. Promote only if that run is exact and non-regressive;
+  otherwise delete the fused kernel, its wrapper/registry entry, the
+  `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` gate, and the lever-2 tests once PF-4 is
+  formally closed and no follow-up candidate reuses the fused chain. Keep the bit-exact-parity test file if the unfused chain ever changes
   arithmetic.

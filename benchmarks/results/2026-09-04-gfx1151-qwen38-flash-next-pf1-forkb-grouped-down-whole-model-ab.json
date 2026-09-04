@@ -1,5 +1,11 @@
 {
+ "schema": 1,
  "date": "2026-09-04",
+ "lifecycle": {
+  "status": "withdrawn_invalid_whole_model_protocol",
+  "performance_claim": false,
+  "promotion": "rolled back pending the committed one-residency campaign A/B"
+ },
  "platform": "gfx1151 (AMD Radeon 8060S, Strix Halo, zbook host)",
  "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN section 6 PF-1 fork (b)",
  "unit": "PF-1 fork-b grouped selected Q8_0 down (T0 bit-exact) - kernel, layer, and whole-model evidence; verdict RETAINED as production default",
@@ -33,7 +39,10 @@
   "rows_4096": {"on_ms": 971.36, "off_ms": 1063.83, "delta_pct": -8.69, "bit_exact": true}
  },
  "whole_model_ab": {
-  "protocol": "scripts/qwen4exp_candidate_ar.py, canonical p512/p1024/p4096 fixture, 12 cases x 4 categories, 1 warmup + 3 reps per case; TWO full counterbalanced runs with opposite arm orders to cancel the fresh-first-arm slot bias",
+  "protocol": "scripts/qwen4exp_candidate_ar.py, canonical p512/p1024/p4096 fixture, 12 cases x 4 categories, 1 warmup + 3 reps per case; TWO process-counterbalanced diagnostics with opposite process orders; each arm constructed a fresh Python process/model residency",
+  "same_session": false,
+  "python_processes_per_run": 4,
+  "model_residencies_per_run": 4,
   "run1_order": "incumbent_a (FORKB=0), candidate_a, candidate_b, incumbent_b (FORKB=0)",
   "run2_order": "candidate_a, incumbent_a (FORKB=0), incumbent_b (FORKB=0), candidate_b",
   "run1_pair_delta_pct_by_case": {
@@ -57,9 +66,14 @@
   "decode_note": "fork-b does not touch the decode path (rows=1 uses the strict selected gemv); combined decode delta is noise"
  },
  "invalidated_prior_run": "the first whole-model A/B (2026-09-04 ~00:07-01:03Z) is INVALID: the wiring passed group_sorted_lanes as lane_to_row while the runner buffers are sorted-position-indexed, corrupting the down math (all 36 tokens diverged). Fixed in commit 2cfd2f16e; RCA in worklog entry 20260904T020734.",
- "verdict": "RETAINED - bit-exact T0 kernel promoted as the Qwen4-exp grouped-prefill Q8_0 down default; kernel -31.6%, layer -6.9/-8.2/-8.7%, whole-model combined -0.15% (non-regressive, launch-count and weight-traffic reduction verified at kernel and layer level)",
+ "verdict": "REVIEW PENDING - bit-exact kernel (-31.6%) and layer (-6.9/-8.2/-8.7%) evidence remains valid, but the process-separated whole-model combined -0.15% diagnostic cannot support promotion under the stated one-residency protocol",
  "flags": {
-  "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "default on (=1); =0 restores the strict per-expert selected gemv for rollback/bisection; removal trigger tracked in docs/REFACTOR.md"
+  "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "review-only candidate (=1); production and strict profiles use =0 pending the one-residency rerun; removal trigger tracked in docs/REFACTOR.md"
  },
- "tests": "tests/test_qwen4exp_pf1_forkb_selected_down.py 4/4; test_qwen4_exp_runner_moe.py + test_qwen4_exp_q8_0_grouped_down.py 8/8"
+ "tests": "tests/test_qwen4exp_pf1_forkb_selected_down.py 4/4; test_qwen4_exp_runner_moe.py + test_qwen4_exp_q8_0_grouped_down.py 8/8",
+ "review": {
+  "date": "2026-09-04",
+  "finding": "The kernel/layer measurements and exactness gates stand. The whole-model arms were separate process invocations, contrary to the artifact's original same-session label.",
+  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md"
+ }
 }
