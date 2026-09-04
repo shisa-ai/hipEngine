@@ -1148,6 +1148,10 @@ __global__ void gguf_k_selected_prefill_out_kernel(
 // (RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py). Rows whose
 // expert is invalid never appear in the group map and stay unwritten, exactly
 // like the owner's invalid-expert early return.
+//
+// lane_to_row maps each sorted group position to the x/out row it serves.
+// When the caller's x and out buffers are already in sorted-lane order (the
+// qwen4-exp grouped-prefill scratch layout), pass nullptr and row = lane.
 template <typename scalar_t, typename out_t>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_grouped_prefill_out_kernel(
@@ -1175,7 +1179,8 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
       static_cast<int64_t>(out_col) * row_bytes;
 
   for (int lane = lane_begin; lane < lane_end; ++lane) {
-    const int row = static_cast<int>(lane_to_row[lane]);
+    const int row =
+        lane_to_row != nullptr ? static_cast<int>(lane_to_row[lane]) : lane;
     const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
     const scalar_t* __restrict__ x_row_ptr =
         x + static_cast<int64_t>(x_row) * in_features;
@@ -4406,10 +4411,10 @@ int launch_gguf_k_selected_grouped_gemv_out(
     int64_t threads,
     hipStream_t stream) {
   const bool valid_shape = (in_features % Q8_0_BLOCK) == 0;
-  if (x == nullptr || expert_start == nullptr || lane_to_row == nullptr ||
-      qweight == nullptr || out == nullptr || x_rows <= 0 || rows <= 0 ||
-      (rows % x_rows) != 0 || num_experts <= 0 || in_features <= 0 ||
-      out_features <= 0 || !valid_shape ||
+  if (x == nullptr || expert_start == nullptr || qweight == nullptr ||
+      out == nullptr || x_rows <= 0 ||
+      rows <= 0 || (rows % x_rows) != 0 || num_experts <= 0 ||
+      in_features <= 0 || out_features <= 0 || !valid_shape ||
       (threads != 64 && threads != 128 && threads != 256)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
