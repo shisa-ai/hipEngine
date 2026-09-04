@@ -163,6 +163,49 @@ def test_gguf_resident_reset_invalidates_packed_state_metadata(monkeypatch) -> N
     assert session._packed_decode_positions == ()
 
 
+def test_gguf_direct_resident_verify_route_requires_multi_session(monkeypatch) -> None:
+    """The direct resident verify route is qualified for multi-lane batches only.
+
+    The 2026-09-02 direct-resident promotion (7daa03723) was gated on C5-C8
+    multi-lane packed verification. The single-session (width-1) shape was
+    never qualified: the iter60 C1-C8 matrix recapture bisected the C1 K3
+    regression (ar_mtp_exact loss, acceptance 0.789 -> 0.166, 34.7 -> 21.5
+    tok/s) to exactly this route engaging at width 1. The single-session
+    shape must keep the exact fused resident-to-packed import.
+    """
+
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.backend = "hip_gfx1100"
+    slab = SimpleNamespace(slot_count=17)
+    owner._target_scratch_owner = slab
+    peer = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    peer._resident_batch_owner = owner
+    peer._target_scratch_owner = slab
+    peer._resident_slot_index = 5
+    monkeypatch.setattr(
+        gguf_runner,
+        "backend_package_capability",
+        lambda backend, name, default: (
+            {
+                "enabled_env": "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE",
+                "enabled_default": True,
+            }
+            if name == "GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY"
+            else False
+        ),
+    )
+    monkeypatch.delenv(
+        "HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE", raising=False
+    )
+
+    # Single-session (width-1) verify jobs must not take the direct route.
+    assert owner._direct_resident_verify_linear_state(({"session": owner},)) is None
+    # Multi-session batches keep the qualified direct-route mapping.
+    assert owner._direct_resident_verify_linear_state(
+        ({"session": owner}, {"session": peer})
+    ) == ((0, 5), slab)
+
+
 def test_gguf_direct_resident_linear_state_maps_owner_slots(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner.backend = "hip_gfx1100"
