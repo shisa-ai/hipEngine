@@ -861,8 +861,15 @@ launch-only ceiling cannot repay complexity.
 This track begins only after engine-cost work is exhausted or comparative P1
 shows accepted progress—not target execution—is the dominant peer difference.
 
-- [ ] Measure accepted visible tokens per cycle, conditional P1/P2/P3
+- [x] Measure accepted visible tokens per cycle, conditional P1/P2/P3
       acceptance, rejected-cycle cost, and category/heldout distribution.
+      **RESOLVED (committed ledgers):** K3 shape (iter44 route/Q5-source
+      evidence): 568 cycles, 1,592 proposed, 1,256 accepted = **2.212
+      accepted/cycle**, draft rate 0.790. Full schema (K2/R24 planar retention
+      raw arms): accepted/cycle 1.771 candidate vs 1.759 control; P1 0.9759;
+      P2-conditional 0.8800; rejected-cycle cost 2.4% (16/664); category draft
+      acceptance code 0.937 / general_en 0.906 / general_ja 0.879 /
+      mixed_ja_en 0.938; heldout 0.922 ≥ train 0.917 (no overfit signal).
 - [ ] Freeze any generic confidence/budget/circuit-breaker rule before running
       the full suite; no prompt/category/token conditioning.
 - [ ] Preserve target-model correctness, transactional K/V/state, RNG,
