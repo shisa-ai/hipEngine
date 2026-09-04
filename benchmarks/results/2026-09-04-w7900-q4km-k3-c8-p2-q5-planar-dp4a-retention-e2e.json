@@ -1,0 +1,104 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p2_q5_planar_dp4a_retention_e2e",
+ "date": "2026-09-04",
+ "status": "passed",
+ "decision": "C8-P2 Q5 planar-dp4a retention e2e PASSED at the engaged k2/R24 shape: candidate 85.813/85.744 vs control 85.486/85.319 MTP aggregate (+0.44% mean, positive in both orders: +0.38% OFF->ON, +0.50% ON->OFF), 9/10 per-prompt best-of-order wins, 40/40 cells exact under the ar_exact contract, cross-arm generated IDs identical 10/10 (lossless MTP recovery). The acceptance ledger shifts with the target near-tie flip allowed by the L4 gate (candidate 1280 proposed / 1176 accepted vs control 1288/1168; the campaign's identical-ledger observation on the Q6 axis does not carry over because this axis's teacher-forced gate is 0.9977 top-1, not 1.0). Engagement evidence in-arm: candidate arms hold exactly +1,226,833,920 device bytes and +48 allocations (the qmicro_planar sidecar); the launch-counter probe shows 144 planar launches per 3 verify passes. AR aggregate neutral (-0.06%). The k3 default shape is structurally unaffected (the route is rows==24-gated; at k3 the pre-fix chain measured -0.16% aggregate with the sidecar resident and the route dormant). Default-path flip remains the separate product gate (env stays default-off).",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "protocol": {
+  "command_template": "gguf_mtp_c1c8_server_bench.py (canonical C8/K3 single-arm suite; see source.command in each arm packet)",
+  "arms": [
+   "p1_control(off)",
+   "p2_candidate(on)",
+   "p3_candidate(on)",
+   "p4_control(off)"
+  ],
+  "both_orders": true,
+  "prompts": 10,
+  "widths": [
+   8
+  ],
+  "candidate_budget": 2,
+  "max_tokens": 24,
+  "batch_window_ms": 20,
+  "correctness_contract": "ar_exact"
+ },
+ "arms": {
+  "p1_control": {
+   "dp4a": "off",
+   "mtp_tok_s": 85.48575266244175,
+   "ar_tok_s": 86.70550053160346,
+   "mtp_vs_ar_ratio": 0.9859322896277253,
+   "exact_cells": 10,
+   "cells": 10,
+   "target_stage_ms": 22323.244005441666,
+   "acceptance": {
+    "proposed": 1288,
+    "accepted": 1168,
+    "cycles": 664
+   },
+   "device_bytes_current": 30067721040
+  },
+  "p2_candidate": {
+   "dp4a": "on",
+   "mtp_tok_s": 85.81321090954954,
+   "ar_tok_s": 86.66642050261903,
+   "mtp_vs_ar_ratio": 0.9901552459635308,
+   "exact_cells": 10,
+   "cells": 10,
+   "target_stage_ms": 22579.50261235237,
+   "acceptance": {
+    "proposed": 1280,
+    "accepted": 1176,
+    "cycles": 664
+   },
+   "device_bytes_current": 31294554960
+  },
+  "p3_candidate": {
+   "dp4a": "on",
+   "mtp_tok_s": 85.74428112104151,
+   "ar_tok_s": 86.5692304891164,
+   "mtp_vs_ar_ratio": 0.9904706399327575,
+   "exact_cells": 10,
+   "cells": 10,
+   "target_stage_ms": 22095.811277627945,
+   "acceptance": {
+    "proposed": 1280,
+    "accepted": 1176,
+    "cycles": 664
+   },
+   "device_bytes_current": 31294554960
+  },
+  "p4_control": {
+   "dp4a": "off",
+   "mtp_tok_s": 85.31852164797088,
+   "ar_tok_s": 86.39758808484054,
+   "mtp_vs_ar_ratio": 0.9875104564746642,
+   "exact_cells": 10,
+   "cells": 10,
+   "target_stage_ms": 22102.26372629404,
+   "acceptance": {
+    "proposed": 1288,
+    "accepted": 1168,
+    "cycles": 664
+   },
+   "device_bytes_current": 30067721040
+  }
+ },
+ "engagement": {
+  "sidecar_bytes_delta": 1226833920,
+  "sidecar_allocations_delta": 48,
+  "launch_counter_probe": "144 planar launches per 3 verify passes (3 x 48 weights)"
+ },
+ "artifacts": {
+  "arm_packets": "/tmp/q5planar_e2e_p{1_control,2_candidate,3_candidate,4_control}.json",
+  "chain_log": "/tmp/q5_planar_e2e_k2_v3.log",
+  "l4_numerics": "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q5-planar-dp4a-l4-numerics.json"
+ }
+}
