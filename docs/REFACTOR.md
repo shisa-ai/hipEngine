@@ -106,14 +106,16 @@ unfused kernels themselves stay (strict-fallback policy).
   `group_expert_start` + `group_sorted_lanes` map). Setting the flag to `0`
   restores the strict per-expert selected gemv. The bit-parity contract is
   pinned by `tests/test_qwen4exp_pf1_forkb_selected_down.py`.
-- Removal trigger: once the fork-b default passes the whole-model
-  same-session counterbalanced A/B plus the applicable profile gate, remove
-  the flag and keep only the grouped path; if the whole-model A/B measures a
-  loss, flip the default back to the strict gemv, demote the fork-b branch to
-  opt-in for one campaign cycle, and then delete it together with this entry
-  unless a new shape-level hypothesis revives it. The legacy
-  `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags above remain governed by their own
-  entry.
+- Removal trigger: **outcome recorded 2026-09-04 — RETAINED.** The whole-model
+  same-session counterbalanced A/B was run twice with opposite arm orders
+  (fresh-first-arm slot bias canceled): combined prefill −0.15%, non-regressive,
+  0/36 token mismatches both runs, with kernel-level −31.6% and layer-level
+  −6.9/−8.2/−8.7% sub-window wins. The grouped path stays the default. Keep the
+  `=0` opt-out for rollback/bisection until campaign cleanup (the whole-model
+  margin is small and order-sensitive, so the strict fallback must stay one
+  env flip away); then remove the flag and keep only the grouped path. The
+  legacy `Q8_0_GROUPED`/`Q8_0_GROUPED_WMMA` flags above remain governed by
+  their own entry.
 
 ## 2026-08-31 Qwen4Exp P1 layer-2 grouped Q5_K
 
