@@ -3465,10 +3465,10 @@ def run_qwen4_exp_moe(
                     library=scratch.q5_1_mmq_library,
                 )
             elif exact_grouped_down:
-                # PF-3 candidate: fused single-loop logical256 Q5_1 down
-                # prefill, bit-exact vs the strict owner. The production
-                # profile keeps the strict owner until the review's
-                # one-residency whole-model A/B restores promotion evidence.
+                # PF-3 production: fused single-loop logical256 Q5_1 down
+                # prefill, bit-exact vs the strict owner. Production selects
+                # M1 after the one-process/one-residency canonical gate;
+                # strict selects the preceding expertgrid64 owner.
                 if os.environ.get(
                     "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
                 ) in {"64", "q5"}:
@@ -3554,8 +3554,9 @@ def run_qwen4_exp_moe(
             # kernel-level paired A/B at the p4096 compact shape measured
             # 32.42 vs 47.42 ms median (-31.6%). The incumbent strict selected
             # gemv and the legacy P1 grouped/WMMA owners stay available below.
-            # The production profile keeps strict until the review's
-            # one-residency whole-model A/B restores promotion evidence.
+            # Production selects the grouped owner after the exact
+            # one-process/one-residency canonical gate; strict keeps the
+            # per-expert selected gemv.
             if os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "0") not in {
                 "", "0", "false", "False",
             }:

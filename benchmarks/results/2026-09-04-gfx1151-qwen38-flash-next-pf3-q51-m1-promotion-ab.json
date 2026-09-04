@@ -6,7 +6,7 @@
  "lifecycle": {
   "status": "withdrawn_invalid_whole_model_protocol",
   "performance_claim": false,
-  "promotion": "rolled back by the 2026-09-04 review: each arm constructed a fresh Python process/model residency, so this packet cannot support the claimed same-session promotion; kernel exactness and kernel timing remain diagnostic evidence pending the committed one-residency rerun"
+  "promotion": "this packet remains withdrawn because each arm constructed a fresh Python process/model residency; a later valid one-residency package restored the production route, as recorded by review.resolved_by"
  },
  "host": {
   "hostname": "zbook",
@@ -85,7 +85,8 @@
  "review": {
   "date": "2026-09-04",
   "finding": "The four arms were separate script invocations and separate model residencies, not one same-session A/B. Absolute and delta fields are preserved as historical diagnostics only.",
-  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md"
+  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md",
+  "resolved_by": "benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json"
  },
  "created": "2026-09-04"
 }

@@ -1,0 +1,488 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_halo_pf13_production_refresh",
+  "date": "2026-09-04",
+  "status": "retained_production_promotion",
+  "performance_claim": true,
+  "campaign": "docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6 PF-1/PF-3 review remediation",
+  "host": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "auto"
+    },
+    "rocm_platform": "10.0.0",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/lib/python3.13/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model": {
+    "id": "Qwen/Qwen3.8-Flash-Next",
+    "quant": "Unsloth UD-Q4_K_XL",
+    "model_revision": "f5d08274bafd880402bd16f5e3e6c514136ec06c",
+    "quant_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "tensor_bytes": 111323630080,
+    "kv": "BF16",
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+  },
+  "fixture": {
+    "path": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "shapes": [
+      512,
+      1024,
+      4096
+    ],
+    "decode_transitions": 128
+  },
+  "hipengine_ab": {
+    "source": {
+      "path": "/tmp/hipengine-halo-review",
+      "head": "07d5e9b4eb9cb9ce84edb0c801e1ac20a9c421f7",
+      "tracked_clean": true
+    },
+    "raw_capture": {
+      "path": "/tmp/qwen4exp-halo-campaign-same-residency-ab.json",
+      "sha256": "b95d08ba405f6767fde9fbfb81c153c817cdae33eb5f4f3f1bd67b74d5452da7",
+      "committed": false
+    },
+    "command": "/tmp/hipengine-halo-review/.venv/bin/python3 /tmp/hipengine-halo-review/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --output /tmp/qwen4exp-halo-campaign-same-residency-ab.json --warmups-per-mode 1 --repetitions-per-mode 3 --prefill-chunk-size 512 --compiler-version-file /tmp/hipengine-halo-review-hipcc-version.txt --require-cached-build",
+    "protocol": {
+      "one_model_residency": true,
+      "one_python_process": true,
+      "case_ids": [
+        "code-p512",
+        "code-p1024",
+        "code-p4096",
+        "general_en-p512",
+        "general_en-p1024",
+        "general_en-p4096",
+        "general_ja-p512",
+        "general_ja-p1024",
+        "general_ja-p4096",
+        "mixed_ja_en-p512",
+        "mixed_ja_en-p1024",
+        "mixed_ja_en-p4096"
+      ],
+      "case_order": "fixture order",
+      "arm_order_even_case": [
+        "before",
+        "after",
+        "after",
+        "before",
+        "before",
+        "after"
+      ],
+      "arm_order_odd_case": [
+        "after",
+        "before",
+        "before",
+        "after",
+        "after",
+        "before"
+      ],
+      "warmups_per_mode_per_case": 1,
+      "measured_repetitions_per_mode_per_case": 3,
+      "decode_transitions": 128,
+      "visible_output_tokens": 129,
+      "prefill_chunk_size": 512,
+      "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+    },
+    "arms": {
+      "before": {
+        "reference_commit": "0436e138b5fe6a43b1b1bae5df6c33fff2110148",
+        "q5_1_down": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+        "q8_0_down": "selected_gemv_bf16_bf16_out"
+      },
+      "after": {
+        "q5_1_down": "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
+        "q8_0_down": "selected_grouped_gemv_bf16_bf16_out"
+      }
+    },
+    "profile_at_measurement": {
+      "requested": "production",
+      "manifest_sha256": "6e62a63688925f90d3e022f8c4e8870aa0cf21a36f9fa77b6b026f669607c7ae",
+      "strict_manifest_sha256": "0499701275d719398a1426a5922768394045f0b23b427c0b8dd7e4ee134bc92b",
+      "fell_back_to_strict": false
+    },
+    "new_production_profile": {
+      "quant": "gguf_ud_q4_k_xl",
+      "manifest_sha256": "86e5c619d932ca7fe6e0edfd4eb524c54e6a678defc9d7d5546f847d351ab7a3",
+      "strict_manifest_sha256": "0499701275d719398a1426a5922768394045f0b23b427c0b8dd7e4ee134bc92b",
+      "note": "manifest now names both selected variants; benchmark after arm used the identical runtime routes through explicit profile flags on clean source 07d5e9b4e"
+    },
+    "correctness": {
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "mismatched_case_ids": [],
+      "measured_samples": 72,
+      "warmup_samples": 24,
+      "prefill_positive_cases": 12,
+      "total_cases": 12
+    },
+    "case_deltas": {
+      "code-p1024": {
+        "category": "code",
+        "prompt_tokens": 1024,
+        "prefill_delta_pct": 3.326973746173989,
+        "decode_delta_pct": 0.04834022015478556,
+        "cross_mode_output_exact": true
+      },
+      "code-p4096": {
+        "category": "code",
+        "prompt_tokens": 4096,
+        "prefill_delta_pct": 2.4368808892349048,
+        "decode_delta_pct": -0.5192491199311866,
+        "cross_mode_output_exact": true
+      },
+      "code-p512": {
+        "category": "code",
+        "prompt_tokens": 512,
+        "prefill_delta_pct": 3.3596704687839596,
+        "decode_delta_pct": 0.10098169971410886,
+        "cross_mode_output_exact": true
+      },
+      "general_en-p1024": {
+        "category": "general_en",
+        "prompt_tokens": 1024,
+        "prefill_delta_pct": 3.0438952524724394,
+        "decode_delta_pct": 0.9883840278360978,
+        "cross_mode_output_exact": true
+      },
+      "general_en-p4096": {
+        "category": "general_en",
+        "prompt_tokens": 4096,
+        "prefill_delta_pct": 2.576540937237337,
+        "decode_delta_pct": -0.007032304027698721,
+        "cross_mode_output_exact": true
+      },
+      "general_en-p512": {
+        "category": "general_en",
+        "prompt_tokens": 512,
+        "prefill_delta_pct": 3.0283149006399945,
+        "decode_delta_pct": 0.03274052391204485,
+        "cross_mode_output_exact": true
+      },
+      "general_ja-p1024": {
+        "category": "general_ja",
+        "prompt_tokens": 1024,
+        "prefill_delta_pct": 3.1355098906925116,
+        "decode_delta_pct": -0.44904732041807227,
+        "cross_mode_output_exact": true
+      },
+      "general_ja-p4096": {
+        "category": "general_ja",
+        "prompt_tokens": 4096,
+        "prefill_delta_pct": 2.5427555416856817,
+        "decode_delta_pct": 0.15068058526981343,
+        "cross_mode_output_exact": true
+      },
+      "general_ja-p512": {
+        "category": "general_ja",
+        "prompt_tokens": 512,
+        "prefill_delta_pct": 3.0357040228529586,
+        "decode_delta_pct": -0.8659938599260952,
+        "cross_mode_output_exact": true
+      },
+      "mixed_ja_en-p1024": {
+        "category": "mixed_ja_en",
+        "prompt_tokens": 1024,
+        "prefill_delta_pct": 2.88351782403633,
+        "decode_delta_pct": -0.06379084268729462,
+        "cross_mode_output_exact": true
+      },
+      "mixed_ja_en-p4096": {
+        "category": "mixed_ja_en",
+        "prompt_tokens": 4096,
+        "prefill_delta_pct": 2.4834768087828474,
+        "decode_delta_pct": 0.07425969372421015,
+        "cross_mode_output_exact": true
+      },
+      "mixed_ja_en-p512": {
+        "category": "mixed_ja_en",
+        "prompt_tokens": 512,
+        "prefill_delta_pct": 3.132519753917462,
+        "decode_delta_pct": 0.1653302097195164,
+        "cross_mode_output_exact": true
+      }
+    }
+  },
+  "fresh_halo_box_pr11": {
+    "source": {
+      "path": "/home/lhl/halo-box-strix-llama/hb-pr11",
+      "head": "a7ad7b7f508746870e03d0da60cca420295a04b9",
+      "tracked_clean": false
+    },
+    "server_binary": "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+    "server_binary_sha256": "22f1f8e634ff0cc4ae83b7323c15508c82f9e02b62d4c31704ed33f22b414c58",
+    "loader_patch_sha256": [
+      "aca70db134d0e65be7a250cf1eb4237bb739d9d586f5c5153ce972372f67b4de",
+      "971d428de98ecdf59941946bb391c257e82501ce98b7c71cc1f34803181fe133"
+    ],
+    "raw_capture": {
+      "path": "/tmp/qwen4exp-halo-box-pr11-fresh-20260904.json",
+      "sha256": "856fb308bd7da1c600ef6480a1a3d786613811cb1b5d9a70a94478c8fee324db",
+      "committed": false
+    },
+    "server_log_sha256": "552b5f3a291063a44e353930cdbfc8c40004ae8e584679ecd4c8b4d1e67359a1",
+    "command": [
+      "/home/lhl/halo-box-strix-llama/hb-pr11/build-hip-patched/bin/llama-server",
+      "-m",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "18080",
+      "--parallel",
+      "1",
+      "--no-webui",
+      "-ngl",
+      "999",
+      "-fa",
+      "on",
+      "-ctk",
+      "bf16",
+      "-ctv",
+      "bf16",
+      "-c",
+      "4352",
+      "-b",
+      "8192",
+      "-ub",
+      "2048",
+      "-t",
+      "4",
+      "-lm",
+      "mmap"
+    ],
+    "protocol": {
+      "warmups_per_case": 1,
+      "measured_repetitions": 3,
+      "decode_transitions": 128,
+      "visible_output_tokens": 129,
+      "temperature": 0.0,
+      "top_k": 1,
+      "ignore_eos": true,
+      "cache_prompt": false,
+      "timing_boundary": "llama.cpp prompt_ms for exact prefill; request N+1 visible outputs and normalize predicted_ms to N post-first-output AR transitions"
+    },
+    "status": "completed",
+    "server_returncode": 0,
+    "all_cases_deterministic": true,
+    "cross_engine_output_exact_cases": 0,
+    "cross_engine_output_exact_total": 12,
+    "stability_note": "p512/p1024 exceed the <=2% per-case CV closure criterion and are screening rows; p4096 is stable. Cross-engine output equality is diagnostic, not an accuracy gate."
+  },
+  "shape_results": {
+    "p512": {
+      "hipengine_before": {
+        "prefill_tok_s_weighted": 86.62320573943269,
+        "decode_tok_s_weighted": 14.860077966903361
+      },
+      "hipengine_after": {
+        "prefill_tok_s_weighted": 89.33865594832642,
+        "decode_tok_s_weighted": 14.838399946468833,
+        "max_per_case_prefill_cv": 0.00459335184464413,
+        "max_per_case_decode_cv": 0.008067466583663592
+      },
+      "one_residency_ab": {
+        "prefill_ratio": 1.031347837865317,
+        "prefill_delta_pct": 3.134783786531692,
+        "decode_ratio": 0.9985411906665086,
+        "decode_delta_pct": -0.14588093334914065,
+        "mean_case_prefill_delta_pct": 3.1390522865485937,
+        "case_ratio_t95_interval_pct": [
+          2.8931260352822914,
+          3.384978537814896
+        ],
+        "all_four_category_cases_prefill_positive": true,
+        "mean_prefill_wall_s_before": 5.91065633775,
+        "mean_prefill_wall_s_after": 5.731001821833333
+      },
+      "halo_box_pr11_fresh": {
+        "prefill_tok_s_weighted": 240.10862101327947,
+        "decode_tok_s_weighted": 18.044507765211915,
+        "max_per_case_prefill_cv": 0.09995811007208885,
+        "max_per_case_decode_cv": 0.015482182113228285
+      },
+      "fresh_competitor_over_hipengine_after": {
+        "prefill_ratio": 2.6876229384081913,
+        "decode_ratio": 1.2160682978157664,
+        "prefill_wall_reduction_needed_pct": 62.79239971838185,
+        "decode_latency_reduction_needed_pct": 17.767776547078505
+      }
+    },
+    "p1024": {
+      "hipengine_before": {
+        "prefill_tok_s_weighted": 85.8842576136367,
+        "decode_tok_s_weighted": 14.774661267437834
+      },
+      "hipengine_after": {
+        "prefill_tok_s_weighted": 88.54015032588667,
+        "decode_tok_s_weighted": 14.79387275565305,
+        "max_per_case_prefill_cv": 0.0034378017877700734,
+        "max_per_case_decode_cv": 0.008254477031354995
+      },
+      "one_residency_ab": {
+        "prefill_ratio": 1.0309240923313083,
+        "prefill_delta_pct": 3.092409233130833,
+        "decode_ratio": 1.001300299740716,
+        "decode_delta_pct": 0.13002997407161043,
+        "mean_case_prefill_delta_pct": 3.0974741783438176,
+        "case_ratio_t95_interval_pct": [
+          2.8029692063603964,
+          3.3919791503272387
+        ],
+        "all_four_category_cases_prefill_positive": true,
+        "mean_prefill_wall_s_before": 11.923023246083334,
+        "mean_prefill_wall_s_after": 11.56537453608333
+      },
+      "halo_box_pr11_fresh": {
+        "prefill_tok_s_weighted": 324.64455608621756,
+        "decode_tok_s_weighted": 17.239407251265067,
+        "max_per_case_prefill_cv": 0.09691379709703567,
+        "max_per_case_decode_cv": 0.009566421251236364
+      },
+      "fresh_competitor_over_hipengine_after": {
+        "prefill_ratio": 3.666636603747673,
+        "decode_ratio": 1.165307254969969,
+        "prefill_wall_reduction_needed_pct": 72.72704911695097,
+        "decode_latency_reduction_needed_pct": 14.185722629370323
+      }
+    },
+    "p4096": {
+      "hipengine_before": {
+        "prefill_tok_s_weighted": 70.80398904103457,
+        "decode_tok_s_weighted": 12.405566674579758
+      },
+      "hipengine_after": {
+        "prefill_tok_s_weighted": 72.58171323526756,
+        "decode_tok_s_weighted": 12.396712346608625,
+        "max_per_case_prefill_cv": 0.01635847898742825,
+        "max_per_case_decode_cv": 0.010671929573901034
+      },
+      "one_residency_ab": {
+        "prefill_ratio": 1.0251076841617315,
+        "prefill_delta_pct": 2.510768416173148,
+        "decode_ratio": 0.999286261707877,
+        "decode_delta_pct": -0.07137382921229563,
+        "mean_case_prefill_delta_pct": 2.509913544235193,
+        "case_ratio_t95_interval_pct": [
+          2.4111787097769866,
+          2.6086483786933994
+        ],
+        "all_four_category_cases_prefill_positive": true,
+        "mean_prefill_wall_s_before": 57.84984794608333,
+        "mean_prefill_wall_s_after": 56.43294732825
+      },
+      "halo_box_pr11_fresh": {
+        "prefill_tok_s_weighted": 349.4930768309747,
+        "decode_tok_s_weighted": 15.10010722255824,
+        "max_per_case_prefill_cv": 0.012581173766246356,
+        "max_per_case_decode_cv": 0.009252182821583846
+      },
+      "fresh_competitor_over_hipengine_after": {
+        "prefill_ratio": 4.8151670889625064,
+        "decode_ratio": 1.2180735343664875,
+        "prefill_wall_reduction_needed_pct": 79.23228869269698,
+        "decode_latency_reduction_needed_pct": 17.903150196913696
+      }
+    }
+  },
+  "historical_context": {
+    "campaign_start_hipengine_hb1_retained_arm": {
+      "source_artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json",
+      "p512": {
+        "prefill_tok_s": 83.37,
+        "decode_tok_s": 14.32
+      },
+      "p1024": {
+        "prefill_tok_s": 82.91,
+        "decode_tok_s": 14.27
+      },
+      "p4096": {
+        "prefill_tok_s": 69.2,
+        "decode_tok_s": 12.18
+      },
+      "comparison_class": "cross-date progress diagnostic only, not a paired optimization A/B"
+    },
+    "halo_box_pr11_hb1_retained_arm": {
+      "source_artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json",
+      "p512": {
+        "prefill_tok_s": 246.546206,
+        "decode_tok_s": 18.124806
+      },
+      "p1024": {
+        "prefill_tok_s": 343.484625,
+        "decode_tok_s": 17.28368
+      },
+      "p4096": {
+        "prefill_tok_s": 354.209105,
+        "decode_tok_s": 15.232083
+      },
+      "note": "fresh result is -2.61%/-5.49%/-1.33% in prefill; short-shape instability is reproduced while p4096 remains stable"
+    },
+    "other_same_host_screening_rows": {
+      "source": "benchmarks/README.md canonical exact-token screening; see referenced artifacts for identities and validity",
+      "upstream_vulkan": {
+        "p512": "200.01/24.39",
+        "p1024": "241.84/21.33",
+        "p4096": "266.58/18.98",
+        "repeatability": "12/12; short rows noisy"
+      },
+      "patched_upstream_hip": {
+        "p512": "235.89/17.75",
+        "p1024": "306.51/16.99",
+        "p4096": "283.73/14.89",
+        "repeatability": "12/12; non-stock loader"
+      },
+      "engramhalo_hip": {
+        "p512": "234.84/17.44",
+        "p1024": "314.98/17.04",
+        "p4096": "381.17/15.99",
+        "repeatability": "p4096 invalid"
+      },
+      "nathan_vulkan": {
+        "p512": "360.23/24.34",
+        "p1024": "357.61/21.10",
+        "p4096": "351.85/19.01",
+        "repeatability": "0/12; diagnostic"
+      },
+      "apepojken_vulkan": {
+        "p512": "291.73/23.21",
+        "p1024": "375.23/22.42",
+        "p4096": "397.43/22.25",
+        "repeatability": "8/12; diagnostic"
+      }
+    }
+  },
+  "discarded_attempts": [
+    {
+      "background_task": "bg-10",
+      "status": "stopped_before_measured_samples",
+      "reason": "configuration mismatch: F16 K/V, load-mode none, ctx 8192, threads 16, and no binding batch/ubatch values; excluded from all results"
+    }
+  ],
+  "validation": {
+    "review_focus": "review parity/runner bundle => 37 passed; review GREEN bundle => 25 passed on commit 07d5e9b4e",
+    "promotion_focus": "uv run pytest -q tests/test_qwen4_exp_profiles.py tests/test_qwen4exp_halo_box_campaign_ab.py tests/test_qwen4_exp_runner_moe.py tests/test_qwen4_exp_q8_0_grouped_down.py tests/test_qwen4_exp_pf3_moe_schedules.py tests/test_qwen4exp_pf1_forkb_selected_down.py => 25 passed",
+    "final_full_suite": "clean ambient env, 10,942 selected: 10,726 passed, 191 skipped, 4 xfailed, 21 failed; zero failures in Qwen4Exp or touched files",
+    "full_suite_failure_classification": "13 Laguna source-immutability/hash failures reproduce on detached clean 07d5e9b4e; 8 Qwen3.5 state/layout failures pass as an isolated bundle and are order/global-state dependent; pre-existing README 696-line vs <460 assertion was independently deselected"
+  },
+  "verdict": {
+    "promotion": "PF-3 Q5_1 M1 and PF-1 grouped Q8_0 selected-down are restored together as production defaults; preceding bit-exact owners remain strict fallbacks",
+    "why": "all 12 category/shape cases improve prefill; shape-level gain is 2.51-3.13%; outputs are exact across modes; decode is unchanged within +/-0.15%",
+    "competitor_position": "hipEngine remains 2.69x/3.67x/4.82x slower in prefill and 1.22x/1.17x/1.22x slower in decode than the fresh matched halo-box PR11 screen at p512/p1024/p4096; only the fresh p4096 row satisfies the <=2% stability criterion",
+    "not_campaign_closure": "five same-thermal comparator pairs, 4K MTP, PF-4 one-residency adjudication, PF-5 tile-16, and owner decision D1 remain open"
+  }
+}
