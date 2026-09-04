@@ -2790,6 +2790,11 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
         )
+        dispatch = _q6_planar_rowtile_dispatch(
+            dispatch,
+            rows=rows,
+            use_wmma=use_wmma,
+        )
         # The small-B row-tile path is the weight-amortized replacement for the
         # per-row (non-WMMA) prefill alias. It does not override an explicit WMMA
         # opt-in: only fires when WMMA is off (e.g. the small-B target verifier).
@@ -6645,6 +6650,46 @@ def _t16_c1_variant_dispatch(
         variant,
     )
     _ensure_linear_kernel_registered(key)
+    if not is_registered(key):
+        return dispatch
+    return GGUFLinearDispatch(key, dispatch.abi)
+
+
+def _q6_planar_rowtile_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    use_wmma: bool,
+) -> GGUFLinearDispatch:
+    """Weight-amortized small-B rowtile leaf for the planar-Q6 t16 quant.
+
+    The per-row decode kernel re-reads the full tile set once per row
+    (grid_y = rows); the registered planar rowtile reads each tile once for all
+    rows and is bit-identical to it
+    (tests/test_gguf_q6_planar_rowtile_dispatch_route.py). Fires only for rows
+    2-8 on the decode leaves and never overrides an explicit WMMA opt-in —
+    ``_wmma_prefill_dispatch`` runs after this step for that precedence.
+    """
+
+    if use_wmma or not 2 <= int(rows) <= 8:
+        return dispatch
+    if (
+        dispatch.abi != "t16"
+        or dispatch.key.quant != "gguf_q6_k_t16_qmicro_planar_v1"
+    ):
+        return dispatch
+    rowtile_variant = {
+        "t16_gemv_decode_bf16_f32_out": "t16_gemv_rowtile_bf16_f32_out",
+        "t16_gemv_decode_bf16_bf16_out": "t16_gemv_rowtile_bf16_bf16_out",
+    }.get(dispatch.key.variant)
+    if rowtile_variant is None:
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        rowtile_variant,
+    )
     if not is_registered(key):
         return dispatch
     return GGUFLinearDispatch(key, dispatch.abi)
