@@ -594,7 +594,14 @@ ranks the R24-only R6 tail slightly above the two R32 R8 cycles:
       gap to the roofline band is therefore latency/occupancy-bound
       (VGPR 224 at workgroup 64 caps resident waves), so an exact candidate
       must cut work or bytes (e.g. narrower metadata, lower VGPR pressure),
-      not merely reschedule loads.
+      not merely reschedule loads. The grouped dp4a mechanism class is now
+      measured-rejected for Q4 (iteration 43, 0/12 cells, 1.205-1.638x
+      slower than the retained rowtile16-w2 owner on actual weights;
+      benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p2-q4-qmicro-dp4a-grouped-leaf.json):
+      4-bit codes minimize the byte advantage and the qmicro q section's
+      2-byte-per-k-row loads defeat coalescing, so the ALU saving does not
+      repay the load penalty. The retained owner's 224 VGPR occupancy cap
+      and the narrow-metadata axis remain the open levers.
 - [ ] Do not repeat col4, grouped-R12, singleton-WMMA, pair-major, or unchanged
       grouped-R8 policy screens.
 - [ ] Admit a multi-output or cross-role owner only if it reduces actual work;

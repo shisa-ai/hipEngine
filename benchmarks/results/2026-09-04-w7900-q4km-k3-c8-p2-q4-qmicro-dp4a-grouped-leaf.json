@@ -1,0 +1,196 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_k3_c8_p2_q4_qmicro_dp4a_grouped_leaf",
+ "date": "2026-09-04",
+ "status": "rejected",
+ "decision": "C8-P2 Q4 grouped-dp4a mechanism REJECTED at the leaf screen: 0/12 weight x rows cells, candidate 1.21-1.64x SLOWER than the retained grouped rowtile16-w2 owner (operation-complete, both arms sharing the same plain q8_1 quantize producer). The Q4_K 4-bit codes give the dp4a mechanism the smallest encoded-byte advantage of the K quants, and the qmicro q section's [subblock][k][col-pair] layout forces 2-byte-per-k-row loads (16 u16 loads per subblock per 8-col tile) versus the owner's wide vectorized T16 loads - the load-granularity penalty outweighs the ALU saving. Unlike the Q6 (9/9, retained +1.65% e2e) and Q5 (9/9, retained +0.44% engaged e2e) siblings, the Q4 axis is closed: the grouped dp4a mechanism does not transfer. Kernel/test/leaf retained as committed evidence; no dispatch route; the P2 Q4 bullet (reduce encoded traversal/bytes, not reschedule) remains open with this mechanism class now measured-rejected.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.4"
+ },
+ "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+ "protocol": {
+  "rows": [
+   8,
+   24,
+   32
+  ],
+  "samples": 5,
+  "burst": 8,
+  "warmups": 4,
+  "alternating_order": true,
+  "roles": [
+   "ffn_down",
+   "recurrent_qkv",
+   "attention_v",
+   "attention_q"
+  ]
+ },
+ "summary": {
+  "control_wins": 12,
+  "candidate_wins": 0
+ },
+ "results": [
+  {
+   "role": "ffn_down",
+   "tensor": "blk.8.ffn_down.weight",
+   "rows": 8,
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.15275375545024872,
+   "candidate_ms": 0.18414324522018433,
+   "candidate_ratio": 1.205490789260229,
+   "mismatches_vs_control": 29148,
+   "kl_vs_control": 1.155841066200777e-05,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "tensor": "blk.8.ffn_down.weight",
+   "rows": 24,
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.319084495306015,
+   "candidate_ms": 0.48479923605918884,
+   "candidate_ratio": 1.5193443842962242,
+   "mismatches_vs_control": 87635,
+   "kl_vs_control": 3.4694631072325544e-05,
+   "finite": true
+  },
+  {
+   "role": "ffn_down",
+   "tensor": "blk.8.ffn_down.weight",
+   "rows": 32,
+   "in_features": 17408,
+   "out_features": 5120,
+   "control_ms": 0.4466697573661804,
+   "candidate_ms": 0.6582995057106018,
+   "candidate_ratio": 1.473794665643609,
+   "mismatches_vs_control": 116425,
+   "kl_vs_control": 4.6049864037693e-05,
+   "finite": true
+  },
+  {
+   "role": "recurrent_qkv",
+   "tensor": "blk.8.attn_qkv.weight",
+   "rows": 8,
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.06762012839317322,
+   "candidate_ms": 0.0982501283288002,
+   "candidate_ratio": 1.452971632315317,
+   "mismatches_vs_control": 58155,
+   "kl_vs_control": 6.895879803272637e-06,
+   "finite": true
+  },
+  {
+   "role": "recurrent_qkv",
+   "tensor": "blk.8.attn_qkv.weight",
+   "rows": 24,
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.18480011820793152,
+   "candidate_ms": 0.2961152493953705,
+   "candidate_ratio": 1.6023542206947645,
+   "mismatches_vs_control": 174868,
+   "kl_vs_control": 2.0590861850245933e-05,
+   "finite": true
+  },
+  {
+   "role": "recurrent_qkv",
+   "tensor": "blk.8.attn_qkv.weight",
+   "rows": 32,
+   "in_features": 5120,
+   "out_features": 10240,
+   "control_ms": 0.2548305094242096,
+   "candidate_ms": 0.4036257565021515,
+   "candidate_ratio": 1.5838988722902343,
+   "mismatches_vs_control": 233026,
+   "kl_vs_control": 2.7547916827420666e-05,
+   "finite": true
+  },
+  {
+   "role": "attention_v",
+   "tensor": "blk.11.attn_v.weight",
+   "rows": 8,
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.01999500021338463,
+   "candidate_ms": 0.026979999616742134,
+   "candidate_ratio": 1.3493373007659062,
+   "mismatches_vs_control": 5812,
+   "kl_vs_control": 7.1992101249112934e-06,
+   "finite": true
+  },
+  {
+   "role": "attention_v",
+   "tensor": "blk.11.attn_v.weight",
+   "rows": 24,
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.027559999376535416,
+   "candidate_ms": 0.03925500065088272,
+   "candidate_ratio": 1.4243469353741869,
+   "mismatches_vs_control": 17486,
+   "kl_vs_control": 2.075106974640125e-05,
+   "finite": true
+  },
+  {
+   "role": "attention_v",
+   "tensor": "blk.11.attn_v.weight",
+   "rows": 32,
+   "in_features": 5120,
+   "out_features": 1024,
+   "control_ms": 0.035989999771118164,
+   "candidate_ms": 0.052834998816251755,
+   "candidate_ratio": 1.468046656078382,
+   "mismatches_vs_control": 23289,
+   "kl_vs_control": 2.8278396338083293e-05,
+   "finite": true
+  },
+  {
+   "role": "attention_q",
+   "tensor": "blk.11.attn_q.weight",
+   "rows": 8,
+   "in_features": 5120,
+   "out_features": 12288,
+   "control_ms": 0.07709512859582901,
+   "candidate_ms": 0.11081012338399887,
+   "candidate_ratio": 1.4373167981198998,
+   "mismatches_vs_control": 69998,
+   "kl_vs_control": 7.4759726609483106e-06,
+   "finite": true
+  },
+  {
+   "role": "attention_q",
+   "tensor": "blk.11.attn_q.weight",
+   "rows": 24,
+   "in_features": 5120,
+   "out_features": 12288,
+   "control_ms": 0.23217549920082092,
+   "candidate_ms": 0.36384063959121704,
+   "candidate_ratio": 1.5670931723786752,
+   "mismatches_vs_control": 210064,
+   "kl_vs_control": 2.282768925015332e-05,
+   "finite": true
+  },
+  {
+   "role": "attention_q",
+   "tensor": "blk.11.attn_q.weight",
+   "rows": 32,
+   "in_features": 5120,
+   "out_features": 12288,
+   "control_ms": 0.28517061471939087,
+   "candidate_ms": 0.4670110046863556,
+   "candidate_ratio": 1.6376547252103673,
+   "mismatches_vs_control": 280533,
+   "kl_vs_control": 3.0031738360735692e-05,
+   "finite": true
+  }
+ ],
+ "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 PYTHONPATH=. uv run python3 scripts/qwen38_c8_p2_q4_qmicro_dp4a_leaf.py --output /tmp/q4_dp4a_leaf.json",
+ "artifact_source": "scripts/qwen38_c8_p2_q4_qmicro_dp4a_leaf.py",
+ "full_payload": "/tmp/q4_dp4a_leaf.json"
+}
