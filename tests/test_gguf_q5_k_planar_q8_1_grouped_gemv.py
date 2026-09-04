@@ -209,7 +209,16 @@ def test_wrapper_rejects_bad_rows() -> None:
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [8, 16, 32])
+def test_runner_planar_dp4a_gate_defaults_off() -> None:
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _gguf_c8_q5_planar_dp4a_enabled,
+    )
+
+    assert _gguf_c8_q5_planar_dp4a_enabled("hip_gfx1100", request_count=8) is False
+
+
+@pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
+@pytest.mark.parametrize("rows", [8, 16, 24, 32])
 def test_grouped_dp4a_matches_bf16_reference_with_outer_floor(
     rows: int, mmq_library, planar_library
 ) -> None:

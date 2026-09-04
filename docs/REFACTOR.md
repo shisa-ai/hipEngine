@@ -5232,3 +5232,29 @@ other means and were not touched.
   `q6_dp4a_grouped_target_session` (runner workspace `moe_q8_1`) with env
   `HIPENGINE_C8_Q6_DP4A_GROUPED=1` (default-off); the zero-valued env also
   rolls back an active session. Same removal condition as above.
+
+### C8-P2 Q5 planar-dp4a grouped route (default-off; added 2026-09-04, iter40)
+
+- **What exists:** grouped integer-dp4a planar-Q5 sibling
+  (`kernels/hip_gfx1100/quant/gguf_q5_k_qmicro_planar_gemv.*`), a
+  session-gated R24 dispatch route in `gguf_linear.py`
+  (`t16_q5_planar_dp4a`; rows 24 only, R32 keeps the retained source-layout
+  owner), a resident `qmicro_planar` weight sidecar (loader flag
+  `dense_q5_qmicro_planar_ssm_out`, env `HIPENGINE_C8_Q5_PLANAR_DP4A=1`
+  + `GGUF_C8_Q5_RAW_MMQ_SSM_OUT` capability), runner session wiring, and
+  the leaf script `scripts/qwen38_c8_grouped_q5_planar_dp4a_leaf.py`.
+  The zero-valued env rolls the route back at both layers.
+- **Why:** leaf screen (2026-09-04, actual Qwen3.8-27B-Q4_K_M Q5_K ssm_out
+  weights, shared quantize included): candidate 0.77-0.84x of the retained
+  R24 raw MMQ owner, wins 9/9 across rows 8/24/32; artifact
+  `benchmarks/results/2026-09-04-w7900-qwen38-q4km-c8-q5-planar-dp4a-grouped-leaf.json`.
+- **Default-off by construction:** nothing dispatches it without the env;
+  the retained raw (R24) / source-layout (R32) MMQ owners remain the route
+  defaults and registered strict fallbacks. Promotion requires the full L4
+  production-profile campaign (arms differ by bf16-reassociation only at
+  the decode, sharing the d4s4 activation producer; owner-parity 1e-4 and
+  outer KL/top-1 contracts already registered) plus the tracked-clean
+  ten-prompt e2e plus heldouts with candidate/control ordering.
+- Remove the kernel, wrapper, registry entry, session/runner/env wiring,
+  loader sidecar, leaf script, and tests if the L4 campaign rejects the
+  variant or the P2 residual closes by another axis.

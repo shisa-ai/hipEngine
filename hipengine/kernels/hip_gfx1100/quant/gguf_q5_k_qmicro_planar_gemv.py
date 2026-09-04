@@ -16,6 +16,7 @@ from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
 from hipengine.core.hip import HipRuntime, get_hip_runtime
+from hipengine.kernels.registry import KernelKey, register
 
 _SOURCE = Path(__file__).with_name("gguf_q5_k_qmicro_planar_gemv.hip")
 _OUTPUT_NAME = "gguf_q5_k_qmicro_planar_gemv.so"
@@ -173,7 +174,6 @@ def gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_f32_out(
     runtime: HipRuntime | None = None,
 ) -> None:
     """F32-output variant for oracle comparisons."""
-
     _validate_shape(rows, in_features, out_features)
     _launch(
         _Q5_QMICRO_PLANAR_DP4A_GROUPED_BF16_F32,
@@ -186,4 +186,23 @@ def gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_f32_out(
         stream=stream,
         library=library,
         runtime=runtime,
+    )
+
+
+_Q5_PLANAR_DP4A_VARIANT_BF16 = "q8_1_dp4a_grouped_bf16_bf16_out"
+_Q5_PLANAR_DP4A_VARIANT_F32 = "q8_1_dp4a_grouped_bf16_f32_out"
+
+
+def register_gguf_q5_k_qmicro_planar_gemv_kernels(*, replace: bool = True) -> None:
+    """Register the grouped dp4a planar-Q5 variants on the linear axis."""
+
+    register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q5_k", _Q5_PLANAR_DP4A_VARIANT_BF16),
+        gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q5_k", _Q5_PLANAR_DP4A_VARIANT_F32),
+        gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_f32_out,
+        replace=replace,
     )
