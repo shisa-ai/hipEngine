@@ -4,6 +4,7 @@ import ctypes
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from hipengine.core.dtype import DType
@@ -797,6 +798,119 @@ def test_qwen38_dense_q5_ssm_out_materializes_default_raw_mmq_sidecar(
         assert weight.spec.allocation_names == ("tiles", "raw")
         assert tuple(weight.allocations) == ("tiles", "raw")
         assert weight.allocation("raw").buffer.nbytes == 21_626_880
+    finally:
+        resident.free(runtime=runtime)
+
+
+def test_qwen38_dense_q5_ssm_out_plan_can_add_qmicro_planar_sidecar() -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    model_map = build_qwen35_gguf_tensor_map(GGUFReader(QWEN38_DENSE_MODEL).info)
+    plan = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q5_raw_mmq_ssm_out=True,
+        dense_q5_qmicro_planar_ssm_out=True,
+    )
+    q5_specs = tuple(
+        spec
+        for spec in plan.specs
+        if spec.source.ggml_type_name == "Q5_K"
+        and spec.slot_path.endswith(".ssm_out")
+    )
+
+    assert len(q5_specs) == 48
+    assert all(spec.layout == LAYOUT_GGUF_Q5_K_T16 for spec in q5_specs)
+    assert all(
+        spec.allocation_names == ("tiles", "raw", "qmicro_planar")
+        for spec in q5_specs
+    )
+
+    plan_without = plan_qwen35_gguf_materialization(
+        model_map,
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q5_raw_mmq_ssm_out=True,
+    )
+    without_specs = tuple(
+        spec
+        for spec in plan_without.specs
+        if spec.source.ggml_type_name == "Q5_K"
+        and spec.slot_path.endswith(".ssm_out")
+    )
+    assert all(
+        spec.allocation_names == ("tiles", "raw") for spec in without_specs
+    )
+
+
+def test_qwen38_dense_q5_ssm_out_materializes_qmicro_planar_sidecar(
+    monkeypatch,
+) -> None:
+    if not QWEN38_DENSE_MODEL.exists():
+        pytest.skip(f"local GGUF fixture not found: {QWEN38_DENSE_MODEL}")
+    try:
+        ctypes.CDLL("libamdhip64.so")
+    except OSError:
+        pytest.skip("HIP runtime is not available")
+    monkeypatch.setenv("HIPENGINE_C8_Q5_PLANAR_DP4A", "1")
+    runtime = get_hip_runtime()
+    resident = materialize_qwen35_gguf_weights(
+        QWEN38_DENSE_MODEL,
+        selected_slots=("layers.0.ssm_out",),
+        decode_repack=True,
+        backend="hip_gfx1100",
+        runtime=runtime,
+    )
+    try:
+        weight = resident.layer(0).weight("ssm_out")
+        assert weight.spec.layout == LAYOUT_GGUF_Q5_K_T16
+        assert weight.spec.allocation_names == (
+            "tiles",
+            "raw",
+            "qmicro_planar",
+        )
+        assert sorted(weight.allocations) == [
+            "qmicro_planar",
+            "raw",
+            "tiles",
+        ]
+        assert weight.allocation("qmicro_planar").buffer.nbytes == 25_559_040
+
+        from hipengine.core.memory import copy_device_to_host, host_array_ptr
+        from hipengine.quant.gguf_t16 import (
+            convert_gguf_q5_k_qmicro_tile16_to_planar,
+            repack_gguf_q5_k_qmicro_tile16,
+        )
+
+        raw = np.empty(
+            weight.allocation("raw").buffer.nbytes, dtype=np.uint8
+        )
+        copy_device_to_host(
+            host_array_ptr(raw),
+            weight.allocation("raw").buffer,
+            raw.nbytes,
+            runtime=runtime,
+        )
+        expected = convert_gguf_q5_k_qmicro_tile16_to_planar(
+            repack_gguf_q5_k_qmicro_tile16(
+                np.frombuffer(raw.tobytes(), dtype=np.uint8).reshape(
+                    1, 5_120, -1
+                )
+            )
+        ).tiles
+        actual = np.empty(
+            weight.allocation("qmicro_planar").buffer.nbytes, dtype=np.uint8
+        )
+        copy_device_to_host(
+            host_array_ptr(actual),
+            weight.allocation("qmicro_planar").buffer,
+            actual.nbytes,
+            runtime=runtime,
+        )
+        np.testing.assert_array_equal(
+            actual.reshape(expected.shape), expected
+        )
     finally:
         resident.free(runtime=runtime)
 

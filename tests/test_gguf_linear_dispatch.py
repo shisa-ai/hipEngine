@@ -6805,3 +6805,221 @@ def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor() -> None:
         register(key, original, replace=True)
 
     assert len(calls) == 4
+
+
+def _q5_planar_fake_weight(with_planar: bool = True):
+    allocations = {
+        "raw": SimpleNamespace(tensor=SimpleNamespace(ptr=10)),
+        "tiles": SimpleNamespace(tensor=SimpleNamespace(ptr=14)),
+    }
+    if with_planar:
+        allocations["qmicro_planar"] = SimpleNamespace(
+            tensor=SimpleNamespace(ptr=17)
+        )
+
+    class Weight:
+        def __init__(self) -> None:
+            self.spec = SimpleNamespace(
+                layout=LAYOUT_GGUF_Q5_K_T16,
+                quant_key="gguf_q5_k_t16_v1",
+            )
+            self.allocations = allocations
+
+        def allocation(self, name: str = "raw"):
+            return allocations[name]
+
+    return Weight()
+
+
+_Q5_PLANAR_DP4A_BF16 = KernelKey(
+    "hip_gfx1100",
+    "linear",
+    "gguf_q5_k",
+    "q8_1_dp4a_grouped_bf16_bf16_out",
+)
+
+
+def _capture_q5_planar_launch(
+    monkeypatch,
+    *,
+    rows: int,
+    with_planar: bool = True,
+    env: str | None,
+    planar_dp4a: bool,
+    source_layout: bool = False,
+):
+    """Drive the Q5 raw-mmq target dispatch with a captured planar kernel."""
+
+    planar_calls = []
+
+    def fake_planar(*args, **kwargs):
+        planar_calls.append((args, kwargs))
+
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_1_d4s4_f32_quantize_bf16",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q8_1_d4s4_f32_quantize_bf16_kmajor",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_bf16_out",
+        fake_planar,
+    )
+    if env is None:
+        monkeypatch.delenv("HIPENGINE_C8_Q5_PLANAR_DP4A", raising=False)
+    else:
+        monkeypatch.setenv("HIPENGINE_C8_Q5_PLANAR_DP4A", env)
+
+    weight = _q5_planar_fake_weight(with_planar=with_planar)
+    captured: dict[str, object] = {"key": None, "args": None, "kwargs": None}
+    keys = (_Q5_RAW_MMQ_BF16, _Q5_SOURCE_MMQ_BF16, _Q5_PLANAR_DP4A_BF16)
+    originals = {
+        k: resolve(backend=k.backend, layer=k.layer, quant=k.quant, variant=k.variant)
+        for k in keys
+    }
+
+    def make_fake(key: KernelKey):
+        def fake(*args, **kwargs):
+            captured["key"] = key
+            captured["args"] = args
+            captured["kwargs"] = kwargs
+
+        return fake
+
+    try:
+        for k in keys:
+            register(k, make_fake(k), replace=True)
+        with q5_raw_mmq_target_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=245_760,
+            library=object(),  # type: ignore[arg-type]
+            quant_library=object(),  # type: ignore[arg-type]
+            source_layout=source_layout,
+            planar_dp4a=planar_dp4a,
+            planar_library=(object() if planar_dp4a else None),  # type: ignore[arg-type]
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=200,
+                rows=rows,
+                in_features=6_144,
+                out_features=5_120,
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for k in keys:
+            register(k, originals[k], replace=True)
+    return captured["key"], captured["args"], captured["kwargs"], planar_calls
+
+
+def test_q5_planar_dp4a_route_defaults_off(monkeypatch) -> None:
+    """Without the env opt-in the dispatch keeps the retained raw MMQ owner."""
+
+    key, args, kwargs, planar_calls = _capture_q5_planar_launch(
+        monkeypatch,
+        rows=24,
+        env=None,
+        planar_dp4a=True,
+    )
+    assert key == _Q5_RAW_MMQ_BF16
+    assert args == (10_000_000, 10, 200, 24, 6_144, 5_120)
+    assert planar_calls == []
+
+
+def test_q5_planar_dp4a_route_selects_variant_and_launches(monkeypatch) -> None:
+    """Env + session + resident planar sidecar select the dp4a R24 route."""
+
+    key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
+        monkeypatch,
+        rows=24,
+        env="1",
+        planar_dp4a=True,
+    )
+    # The planar launcher bypasses the registered fake fn (key stays None) and
+    # calls the planar wrapper directly; a captured key would mean the raw or
+    # source MMQ fake fired instead.
+    assert key is None
+    assert len(planar_calls) == 1
+    planar_args, planar_kwargs = planar_calls[0]
+    # (xq workspace, planar tiles, out, rows, in_f, out_f)
+    assert planar_args == (10_000_000, 17, 200, 24, 6_144, 5_120)
+    assert planar_kwargs["stream"] == 7
+    assert planar_kwargs["runtime"] == "runtime-sentinel"
+
+
+def test_q5_planar_dp4a_variant_is_registered() -> None:
+    """The planar dp4a linear variant resolves to the real wrapper."""
+
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_qmicro_planar_gemv import (
+        gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_bf16_out as wrapper,
+        register_gguf_q5_k_qmicro_planar_gemv_kernels,
+    )
+
+    register_gguf_q5_k_qmicro_planar_gemv_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant="gguf_q5_k",
+            variant="q8_1_dp4a_grouped_bf16_bf16_out",
+        )
+        is wrapper
+    )
+
+
+def test_q5_planar_dp4a_route_requires_resident_sidecar(monkeypatch) -> None:
+    """A missing qmicro_planar allocation falls back to the raw MMQ owner."""
+
+    key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
+        monkeypatch,
+        rows=24,
+        with_planar=False,
+        env="1",
+        planar_dp4a=True,
+    )
+    assert key == _Q5_RAW_MMQ_BF16
+    assert planar_calls == []
+
+
+def test_q5_planar_dp4a_route_env_off_rolls_back(monkeypatch) -> None:
+    """A zero-valued env rolls the route back at the dispatch layer too."""
+
+    key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
+        monkeypatch,
+        rows=24,
+        env="0",
+        planar_dp4a=True,
+    )
+    assert key == _Q5_RAW_MMQ_BF16
+    assert planar_calls == []
+
+
+def test_q5_planar_dp4a_route_r32_keeps_source_owner(monkeypatch) -> None:
+    """R32 keeps the retained source-layout owner; the dp4a route is R24-only."""
+
+    key, _args, _kwargs, planar_calls = _capture_q5_planar_launch(
+        monkeypatch,
+        rows=32,
+        env="1",
+        planar_dp4a=True,
+        source_layout=True,
+    )
+    assert key == _Q5_SOURCE_MMQ_BF16
+    assert planar_calls == []
+
+
+def test_q5_planar_dp4a_session_requires_planar_library() -> None:
+    with pytest.raises(ValueError, match="planar library"):
+        with q5_raw_mmq_target_session(
+            workspace_ptr=10_000_000,
+            workspace_nbytes=245_760,
+            planar_dp4a=True,
+        ):
+            pass

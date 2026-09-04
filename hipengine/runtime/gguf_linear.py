@@ -59,6 +59,10 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q5_k_qmicro_planar_gemv import (
+    gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_bf16_out,
+    register_gguf_q5_k_qmicro_planar_gemv_kernels,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     gguf_q8_1_d4s4_f32_quantize_bf16,
     gguf_q8_1_d4s4_f32_quantize_bf16_kmajor,
@@ -344,6 +348,8 @@ class _Q5RawMMQTargetSession:
     library: ctypes.CDLL | None
     quant_library: ctypes.CDLL | None
     source_layout: bool
+    planar_dp4a: bool = False
+    planar_library: ctypes.CDLL | None = None
 
 
 _q5_raw_mmq_target_session: ContextVar[_Q5RawMMQTargetSession | None] = (
@@ -1036,6 +1042,8 @@ def q5_raw_mmq_target_session(
     quant_library: ctypes.CDLL | None = None,
     enabled: bool = True,
     source_layout: bool = False,
+    planar_dp4a: bool = False,
+    planar_library: ctypes.CDLL | None = None,
 ) -> Iterator[None]:
     """Expose bounded Q8_1 storage for the C8 recurrent-Q5 owner."""
 
@@ -1043,12 +1051,18 @@ def q5_raw_mmq_target_session(
     if enabled:
         if int(workspace_ptr) <= 0 or int(workspace_nbytes) <= 0:
             raise ValueError("Q5 raw MMQ target session requires a device workspace")
+        if planar_dp4a and planar_library is None:
+            raise ValueError(
+                "Q5 planar dp4a target session requires the planar library"
+            )
         selected = _Q5RawMMQTargetSession(
             workspace_ptr=int(workspace_ptr),
             workspace_nbytes=int(workspace_nbytes),
             library=library,
             quant_library=quant_library,
             source_layout=bool(source_layout),
+            planar_dp4a=bool(planar_dp4a),
+            planar_library=planar_library,
         )
     token = _q5_raw_mmq_target_session.set(selected)
     try:
@@ -6178,6 +6192,58 @@ def _launch_t16_q5_raw_mmq(
     )
 
 
+def _launch_t16_q5_planar_dp4a(
+    fn,
+    weight,
+    x_ptr,
+    out_ptr,
+    rows,
+    in_features,
+    out_features,
+    kwargs,
+) -> None:
+    """Shared d4s4 producer + grouped integer-dp4a planar-Q5 decode (R24)."""
+
+    del fn
+    session = _q5_raw_mmq_target_session.get()
+    if session is None:
+        raise RuntimeError("Q5 planar dp4a launch escaped its target session")
+    if session.planar_library is None:
+        raise RuntimeError("Q5 planar dp4a session is missing its library")
+    required = q8_1_d4s4_f32_nbytes(rows, in_features)
+    if required > session.workspace_nbytes:
+        raise ValueError(
+            "Q5 planar dp4a workspace is too small: "
+            f"required={required}, available={session.workspace_nbytes}"
+        )
+    planar_ptr = int(weight.allocation("qmicro_planar").tensor.ptr)
+    runtime = kwargs.get("runtime") or get_hip_runtime()
+    stream = int(kwargs.get("stream", 0))
+    quant_kwargs = {
+        "stream": stream,
+        "runtime": runtime,
+        "library": session.quant_library or session.library,
+    }
+    gguf_q8_1_d4s4_f32_quantize_bf16(
+        x_ptr,
+        session.workspace_ptr,
+        rows,
+        in_features,
+        **quant_kwargs,
+    )
+    gguf_q5_k_qmicro_planar_q8_1_dp4a_grouped_bf16_bf16_out(
+        session.workspace_ptr,
+        planar_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stream=stream,
+        runtime=runtime,
+        library=session.planar_library,
+    )
+
+
 def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     session = _q8_mmq_prefill_session.get()
     if session is None:
@@ -6284,6 +6350,23 @@ def _pack8_decode_dispatch(
     return dispatch
 
 
+_Q5_PLANAR_DP4A_TARGET_ENV = "HIPENGINE_C8_Q5_PLANAR_DP4A"
+_Q5_PLANAR_DP4A_VARIANT = "q8_1_dp4a_grouped_bf16_bf16_out"
+
+
+def _q5_planar_dp4a_target_enabled(session: _Q5RawMMQTargetSession) -> bool:
+    """Opt-in C8-P2 planar-dp4a owner pass at R24; default-off (L4 pending)."""
+
+    if not session.planar_dp4a:
+        return False
+    raw = os.environ.get(_Q5_PLANAR_DP4A_TARGET_ENV, "0").strip().lower()
+    if raw in {"", "1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{_Q5_PLANAR_DP4A_TARGET_ENV} must be a boolean value")
+
+
 def _q5_raw_mmq_target_eligible(
     weight: GGUFDeviceWeight,
     *,
@@ -6328,6 +6411,24 @@ def _q5_raw_mmq_target_dispatch(
     ):
         return dispatch
     source_layout = bool(session.source_layout and rows == 32)
+    if (
+        _q5_planar_dp4a_target_enabled(session)
+        and rows == 24
+        and not source_layout
+    ):
+        try:
+            planar_allocation = weight.allocation("qmicro_planar")
+        except KeyError:
+            planar_allocation = None
+        if planar_allocation is not None:
+            key = KernelKey(
+                dispatch.key.backend,
+                dispatch.key.layer,
+                "gguf_q5_k",
+                _Q5_PLANAR_DP4A_VARIANT,
+            )
+            if is_registered(key):
+                return GGUFLinearDispatch(key, "t16_q5_planar_dp4a")
     required = (
         q8_1_d4s4_f32_kmajor_nbytes(rows, in_features)
         if source_layout
@@ -7028,6 +7129,7 @@ def _ensure_linear_kernel_registered(key: KernelKey) -> None:
     register_gguf_q4_k_prefill_kernels()
     register_gguf_q4_k_pack8_gemv_kernels()
     register_gguf_q5_k_f32_rocblas_prefill_kernels()
+    register_gguf_q5_k_qmicro_planar_gemv_kernels()
     register_gguf_q6_k_f16_rocblas_prefill_kernels()
     register_gguf_q6_k_pack8_gemv_kernels()
     register_gguf_q6_k_t16_gemv_kernels()
@@ -7054,6 +7156,7 @@ _LAUNCH_ABI = {
     "raw": _launch_raw,
     "raw_mmq_d4x3": _launch_raw_mmq_d4x3,
     "t16_q5_raw_mmq": _launch_t16_q5_raw_mmq,
+    "t16_q5_planar_dp4a": _launch_t16_q5_planar_dp4a,
     "raw_k_f32_ordered": _launch_raw_k_f32_ordered,
     "raw_k_f32_ordered_activation_tile_k_row": (
         _launch_raw_k_f32_ordered_activation_tile_k_row

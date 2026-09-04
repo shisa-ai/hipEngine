@@ -44,6 +44,7 @@ from hipengine.quant.gguf_t16 import (
     GGUF_Q8_0_BLOCK_BYTES,
     GGUF_Q8_0_T16_BLOCK_BYTES,
     GGUF_T16_COLS,
+    convert_gguf_q5_k_qmicro_tile16_to_planar,
     repack_gguf_q5_k_qmicro_tile16,
     repack_gguf_q5_k_tile16,
     repack_gguf_q6_k_tile16,
@@ -62,6 +63,7 @@ LAYOUT_GGUF_Q4_K_QMICRO_T16 = "gguf_q4_k_qmicro_t16_v1"
 LAYOUT_GGUF_Q4_K_X8 = "gguf_q4_k_x8_v1"
 LAYOUT_GGUF_Q5_K_T16 = "gguf_q5_k_t16_v1"
 LAYOUT_GGUF_Q5_K_QMICRO_T16 = "gguf_q5_k_qmicro_t16_v1"
+LAYOUT_GGUF_Q5_K_QMICRO_PLANAR = "gguf_q5_k_qmicro_planar_v1"
 LAYOUT_GGUF_Q6_K_T16 = "gguf_q6_k_t16_v1"
 LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR = "gguf_q6_k_t16_qmicro_planar_v1"
 LAYOUT_GGUF_Q8_0_T16 = "gguf_q8_0_t16_v1"
@@ -267,6 +269,7 @@ def plan_qwen35_gguf_materialization(
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_raw_mmq_ssm_out: bool = False,
+    dense_q5_qmicro_planar_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -302,6 +305,7 @@ def plan_qwen35_gguf_materialization(
             dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
+            dense_q5_qmicro_planar_ssm_out=bool(dense_q5_qmicro_planar_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
@@ -320,6 +324,7 @@ def plan_qwen35_gguf_materialization(
             dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
             dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
             dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
+            dense_q5_qmicro_planar_ssm_out=bool(dense_q5_qmicro_planar_ssm_out),
             dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
             dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
             dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
@@ -669,6 +674,19 @@ def materialize_qwen35_gguf_weights(
                 )
             )
         ),
+        dense_q5_qmicro_planar_ssm_out=(
+            os.environ.get("HIPENGINE_C8_Q5_PLANAR_DP4A", "0")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"}
+            and bool(
+                backend_package_capability(
+                    backend,
+                    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
+                    False,
+                )
+            )
+        ),
         dense_q5_t16_ssm_out_08b=bool(
             backend_package_capability(
                 backend,
@@ -844,6 +862,7 @@ def _plan_layer(
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_raw_mmq_ssm_out: bool = False,
+    dense_q5_qmicro_planar_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -861,6 +880,7 @@ def _plan_layer(
             dense_q4_t16_attn_q_08b=dense_q4_t16_attn_q_08b,
             dense_q5_t16_ssm_out=dense_q5_t16_ssm_out,
             dense_q5_raw_mmq_ssm_out=dense_q5_raw_mmq_ssm_out,
+            dense_q5_qmicro_planar_ssm_out=dense_q5_qmicro_planar_ssm_out,
             dense_q5_t16_ssm_out_08b=dense_q5_t16_ssm_out_08b,
             dense_q5_t16_qkv=dense_q5_t16_qkv,
             dense_q5_t16_h5120=dense_q5_t16_h5120,
@@ -1006,6 +1026,7 @@ def plan_qwen35_gguf_weight_spec(
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_raw_mmq_ssm_out: bool = False,
+    dense_q5_qmicro_planar_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -1023,6 +1044,7 @@ def plan_qwen35_gguf_weight_spec(
         dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
         dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
         dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
+        dense_q5_qmicro_planar_ssm_out=bool(dense_q5_qmicro_planar_ssm_out),
         dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
         dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
         dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
@@ -1044,6 +1066,7 @@ def _spec_for_tensor(
     dense_q4_t16_attn_q_08b: bool = False,
     dense_q5_t16_ssm_out: bool = False,
     dense_q5_raw_mmq_ssm_out: bool = False,
+    dense_q5_qmicro_planar_ssm_out: bool = False,
     dense_q5_t16_ssm_out_08b: bool = False,
     dense_q5_t16_qkv: bool = False,
     dense_q5_t16_h5120: bool = False,
@@ -1178,10 +1201,16 @@ def _spec_for_tensor(
                 quant_key="gguf_q5_k_t16_v1",
                 layout=LAYOUT_GGUF_Q5_K_T16,
                 allocation_names=(
-                    ("tiles", "raw")
+                    ("tiles", "raw", "qmicro_planar")
                     if dense_q5_raw_mmq_ssm_out
+                    and dense_q5_qmicro_planar_ssm_out
                     and _is_dense_q5_t16_ssm_out_tensor(slot_path, tensor)
-                    else ("tiles",)
+                    else (
+                        ("tiles", "raw")
+                        if dense_q5_raw_mmq_ssm_out
+                        and _is_dense_q5_t16_ssm_out_tensor(slot_path, tensor)
+                        else ("tiles",)
+                    )
                 ),
             )
         if decode_repack and _is_selected_expert_tensor(slot_path, tensor):
@@ -1752,6 +1781,22 @@ def _materialize_spec(
                 device=device,
                 runtime=runtime,
             )
+        if "qmicro_planar" in spec.allocation_names:
+            if spec.layout != LAYOUT_GGUF_Q5_K_T16:
+                raise ValueError(
+                    "qmicro_planar sidecar is only supported for Q5_K T16 residents"
+                )
+            planar = convert_gguf_q5_k_qmicro_tile16_to_planar(
+                repack_gguf_q5_k_qmicro_tile16(raw if raw.ndim == 3 else raw[None, ...])
+            )
+            allocations["qmicro_planar"] = load_host_array_to_device_as_dtype(
+                f"{spec.source.name}.qmicro_planar",
+                planar.tiles,
+                DType.INT8,
+                source_dtype="I8",
+                device=device,
+                runtime=runtime,
+            )
         if "raw" in spec.allocation_names:
             allocations["raw"] = load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.raw_sidecar",
@@ -1824,6 +1869,7 @@ __all__ = [
     "LAYOUT_GGUF_Q4_K_QMICRO_T16",
     "LAYOUT_GGUF_Q4_K_T16",
     "LAYOUT_GGUF_Q4_K_X8",
+    "LAYOUT_GGUF_Q5_K_QMICRO_PLANAR",
     "LAYOUT_GGUF_Q5_K_QMICRO_T16",
     "LAYOUT_GGUF_Q5_K_T16",
     "LAYOUT_GGUF_Q5_K_X8",
