@@ -1,0 +1,65 @@
+{
+ "date": "2026-09-04",
+ "platform": "gfx1151 (AMD Radeon 8060S, Strix Halo, zbook host)",
+ "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN section 6 PF-1 fork (b)",
+ "unit": "PF-1 fork-b grouped selected Q8_0 down (T0 bit-exact) - kernel, layer, and whole-model evidence; verdict RETAINED as production default",
+ "kind": "T0 bit-exact kernel promotion packet (kernel A/B + layer A/B + two-order counterbalanced whole-model A/B)",
+ "kernel": {
+  "name": "gguf_k_selected_grouped_prefill_out_kernel<unsigned short, unsigned short>",
+  "wrapper": "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out",
+  "strict_fallback": "gguf_q8_0_selected_gemv_bf16_bf16_out (selected_gemv_bf16_bf16_out, block-per-output owner)",
+  "arithmetic_class": "T0 (per-output arithmetic identical: same k = tid; k += blockDim.x sequence, ordered acc += xv * wv, same reduce_block_sum wave reduction and serial wave publication)",
+  "mechanism": "one block per (expert, out_col) pair serves every selected lane of the pair, reading the expert weight row once; consumes the existing group_expert_start + group_sorted_lanes map; rows indexed by sorted position (lane_to_row=nullptr)",
+  "geometry": {"grid": "(out_features=2560, active experts ~330-512)", "threads": 128}
+ },
+ "kernel_level_ab": {
+  "shape": {"x_rows": 256, "compact_rows": 2560, "experts": 512, "in_features": 640, "out_features": 2560},
+  "protocol": "same-session paired alternation, 12 windows x 3 reps per kernel, medians; two independent runs",
+  "owner_median_ms": 47.42,
+  "grouped_median_ms": [32.42, 32.44],
+  "delta_pct": -31.6,
+  "bit_exact": true,
+  "note": "fixed-order 10-rep windows showed a 32/47 ms clock sawtooth independent of kernel identity; strictly paired alternation with medians resolved it. Small shape (x_rows=64, ~1.25 lanes/expert) is a wash (+0.58%, arms overlapping)."
+ },
+ "rocprof_trace": {
+  "kernel_symbol": "_ZN12_GLOBAL__N_142gguf_k_selected_grouped_prefill_out_kernelIttEEvPKT_PKlS5_PKh",
+  "duration_ns_single_launch_production_shape": 14778099,
+  "discipline": "prebuilt .so, JIT cache warm outside the profiler"
+ },
+ "layer_level_ab": {
+  "harness": "real run_qwen4_exp_moe, production geometry (E=512, hidden=2560, ffn=640, top_k=10, Q4_K gate/up + Q8_0 down), flag on/off, paired alternation 12 windows x 3 reps, medians",
+  "rows_512": {"on_ms": 132.68, "off_ms": 142.48, "delta_pct": -6.88, "bit_exact": true},
+  "rows_1024": {"on_ms": 250.81, "off_ms": 273.30, "delta_pct": -8.23, "bit_exact": true},
+  "rows_4096": {"on_ms": 971.36, "off_ms": 1063.83, "delta_pct": -8.69, "bit_exact": true}
+ },
+ "whole_model_ab": {
+  "protocol": "scripts/qwen4exp_candidate_ar.py, canonical p512/p1024/p4096 fixture, 12 cases x 4 categories, 1 warmup + 3 reps per case; TWO full counterbalanced runs with opposite arm orders to cancel the fresh-first-arm slot bias",
+  "run1_order": "incumbent_a (FORKB=0), candidate_a, candidate_b, incumbent_b (FORKB=0)",
+  "run2_order": "candidate_a, incumbent_a (FORKB=0), incumbent_b (FORKB=0), candidate_b",
+  "run1_pair_delta_pct_by_case": {
+   "code-p512": 0.63, "code-p1024": 0.64, "code-p4096": 0.53,
+   "general_en-p512": 0.68, "general_en-p1024": 0.61, "general_en-p4096": 0.49,
+   "general_ja-p512": 0.60, "general_ja-p1024": 0.75, "general_ja-p4096": 0.46,
+   "mixed_ja_en-p512": 0.57, "mixed_ja_en-p1024": 0.58, "mixed_ja_en-p4096": -0.11
+  },
+  "run1_mean_pair_delta_pct": 0.536,
+  "run2_pair_delta_pct_by_case": {
+   "code-p512": -1.15, "code-p1024": -0.96, "code-p4096": -0.65,
+   "general_en-p512": -0.82, "general_en-p1024": -0.84, "general_en-p4096": -0.61,
+   "general_ja-p512": -1.06, "general_ja-p1024": -0.80, "general_ja-p4096": -0.60,
+   "mixed_ja_en-p512": -1.06, "mixed_ja_en-p1024": -0.77, "mixed_ja_en-p4096": -0.67
+  },
+  "run2_mean_pair_delta_pct": -0.832,
+  "combined_mean_pair_delta_pct": -0.148,
+  "slot_bias_note": "run1 shows +0.54% and run2 -0.83% with mirror-image case-level signs; the fresh first arm is systematically fastest (incumbent drift +2.7% across arms in run1, candidate drift ~0%), so the single-order deltas are slot artifacts and the two-order combined -0.15% is the debiased estimate",
+  "token_parity": "0/36 output-token mismatches incumbent vs candidate in BOTH runs (greedy harness is deterministic; the down kernel is bit-exact)",
+  "decode_delta_pct_combined": 0.286,
+  "decode_note": "fork-b does not touch the decode path (rows=1 uses the strict selected gemv); combined decode delta is noise"
+ },
+ "invalidated_prior_run": "the first whole-model A/B (2026-09-04 ~00:07-01:03Z) is INVALID: the wiring passed group_sorted_lanes as lane_to_row while the runner buffers are sorted-position-indexed, corrupting the down math (all 36 tokens diverged). Fixed in commit 2cfd2f16e; RCA in worklog entry 20260904T020734.",
+ "verdict": "RETAINED - bit-exact T0 kernel promoted as the Qwen4-exp grouped-prefill Q8_0 down default; kernel -31.6%, layer -6.9/-8.2/-8.7%, whole-model combined -0.15% (non-regressive, launch-count and weight-traffic reduction verified at kernel and layer level)",
+ "flags": {
+  "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "default on (=1); =0 restores the strict per-expert selected gemv for rollback/bisection; removal trigger tracked in docs/REFACTOR.md"
+ },
+ "tests": "tests/test_qwen4exp_pf1_forkb_selected_down.py 4/4; test_qwen4_exp_runner_moe.py + test_qwen4_exp_q8_0_grouped_down.py 8/8"
+}
