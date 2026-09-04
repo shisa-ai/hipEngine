@@ -834,8 +834,19 @@ bounded artifact-research handoff.
 Current exposed upper bounds: target wall-minus-device-union **24.924 ms** and
 launch API **6.062 ms/cycle**. These overlap GPU work and are not additive.
 
-- [ ] Reprofile after P2–P5; proceed only if exposed non-device wall grows or a
+- [x] Reprofile after P2–P5; proceed only if exposed non-device wall grows or a
       source-grounded device-driven mechanism is available.
+      **RESOLVED (iter56, defer):** the reprofile ran on the post-P2–P5 source
+      (b167343fe, one-cell child + `specdec2_rocprof_summary.py`): cycle host
+      wall 190.307→171.224 ms (−10.03%), proposal 22.286→15.595 (busy union
+      16.464→8.957), provider 167.862→155.472 (busy 142.938→130.622); exposed
+      non-device wall (provider wall-minus-union) 24.924→**24.850 ms — did not
+      grow**; hipLaunchKernel API 6.911 ms/cycle (overlapping, not additive).
+      **P6 defers** per its own criterion: the launch-only ceiling cannot repay
+      persistent-stream complexity. Evidence:
+      benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p6-reprofile-{summary,
+      child}.json; worklog/entries/20260904T102044.661556Z-lhl-c8-p6-reprofile-
+      defer-bcafbd.md.
 - [ ] Do not retry dynamic host graphs or API packing.
 - [ ] A persistent/device command stream must support R24/R32 geometry,
       argument updates, cancellation/failure, strict fallback, and clean close

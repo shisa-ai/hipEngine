@@ -1,0 +1,3036 @@
+{
+  "command": [
+    "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+    "scripts/specdec2_rocprof_summary.py",
+    "--lane",
+    "8",
+    "/tmp/p6_reprofile_child4.json",
+    "/tmp/p6_reprofile_trace4/epyc",
+    "--output",
+    "/tmp/p6_reprofile_summary.json"
+  ],
+  "created_at": "2026-09-04T10:19:13.528761+00:00",
+  "kind": "specdec2_rocprof_stage_summary",
+  "lanes": {
+    "8": {
+      "concurrency": 8,
+      "group": {
+        "candidate_d2h_after_target": 0,
+        "complete_wall_seconds": 1.320242304354906,
+        "generated_tokens": 96,
+        "operation_ledger": {
+          "call_counts": {
+            "ar_decode": 1,
+            "arm_complete": 1,
+            "cycle_total": 3,
+            "nextn_prompt_prime": 8,
+            "proposal": 3,
+            "provider_k0_attach": 1,
+            "provider_open": 3,
+            "provider_streaming_open": 1,
+            "resident_owner_transition": 32,
+            "target_accept_commit_provider": 3,
+            "target_prefill": 1,
+            "terminal_reclaim": 8
+          },
+          "totals_ms": {
+            "ar_decode": 1.1449754238128662,
+            "arm_complete": 1320.2191647142172,
+            "cycle_total": 513.6578278616071,
+            "nextn_prompt_prime": 271.9280254095793,
+            "proposal": 46.77558224648237,
+            "provider_k0_attach": 0.025399960577487946,
+            "provider_open": 0.043161213397979736,
+            "provider_streaming_open": 0.30366331338882446,
+            "resident_owner_transition": 0.02496875822544098,
+            "target_accept_commit_provider": 466.40205569565296,
+            "target_prefill": 742.4407685175538,
+            "terminal_reclaim": 47.72522393614054
+          }
+        },
+        "per_cycle_ms": {
+          "accept_enqueue_ms": 0.3953088695804278,
+          "accept_tail_ms": 0.13737504680951437,
+          "accept_upload_ms": 0.11558861782153447,
+          "accept_window_ms": 98.20416010916233,
+          "candidate_readback_ms": 0.0,
+          "nonoverlap_named_sum_ms": 169.8294123634696,
+          "proposal_ms": 14.795185998082161,
+          "provider_update_ms": 3.4034494310617447,
+          "selected_commit_ms": 64.14781790226698,
+          "target_readback_ms": 33.65809346238772,
+          "target_submit_ms": 53.426616825163364
+        },
+        "physical_cycles": 3,
+        "proposal_physical_rows": [
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8,
+          8
+        ],
+        "recoverable_failures": 0,
+        "request_rows": 8,
+        "service_capacity": 8,
+        "target_physical_rows": [
+          32,
+          32,
+          24
+        ]
+      },
+      "phases": {
+        "cycle_total": {
+          "allocated_bytes": 0,
+          "allocation_ops": 0,
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls": 9126,
+          "hip_api_calls_per_call": 3042.0,
+          "hip_api_sum_ms": 342.27939,
+          "hip_api_sum_ms_per_call": 114.09313,
+          "host_marker_ms_per_call": 171.22447233333335,
+          "host_marker_wall_ms": 513.673417,
+          "kernel_calls": 5586,
+          "kernel_calls_per_call": 1862.0,
+          "kernel_families": [
+            {
+              "calls": 971,
+              "calls_per_phase_call": 323.6666666666667,
+              "ms_per_phase_call": 91.28297666666667,
+              "name": "q4_t16",
+              "total_ms": 273.84893,
+              "us_per_call": 282.0277342945417
+            },
+            {
+              "calls": 1192,
+              "calls_per_phase_call": 397.3333333333333,
+              "ms_per_phase_call": 20.353589333333336,
+              "name": "other",
+              "total_ms": 61.060768,
+              "us_per_call": 51.22547651006711
+            },
+            {
+              "calls": 19,
+              "calls_per_phase_call": 6.333333333333333,
+              "ms_per_phase_call": 15.550199333333333,
+              "name": "q6_t16",
+              "total_ms": 46.650598,
+              "us_per_call": 2455.2946315789472
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 10.463875333333332,
+              "name": "q5_t16",
+              "total_ms": 31.391626,
+              "us_per_call": 217.99740277777778
+            },
+            {
+              "calls": 288,
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 8.179370333333333,
+              "name": "gdn_linear_attention",
+              "total_ms": 24.538111,
+              "us_per_call": 85.20177430555556
+            },
+            {
+              "calls": 72,
+              "calls_per_phase_call": 24.0,
+              "ms_per_phase_call": 4.658318666666667,
+              "name": "commit_repair",
+              "total_ms": 13.974956,
+              "us_per_call": 194.09661111111112
+            },
+            {
+              "calls": 498,
+              "calls_per_phase_call": 166.0,
+              "ms_per_phase_call": 1.9659163333333334,
+              "name": "norm_rope",
+              "total_ms": 5.897749,
+              "us_per_call": 11.842869477911647
+            },
+            {
+              "calls": 2049,
+              "calls_per_phase_call": 683.0,
+              "ms_per_phase_call": 1.450017,
+              "name": "copy_fill",
+              "total_ms": 4.350051,
+              "us_per_call": 2.123011713030747
+            },
+            {
+              "calls": 115,
+              "calls_per_phase_call": 38.333333333333336,
+              "ms_per_phase_call": 0.5839536666666666,
+              "name": "attention",
+              "total_ms": 1.751861,
+              "us_per_call": 15.233573913043477
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 0.17314966666666667,
+              "name": "q5_activation_quant",
+              "total_ms": 0.519449,
+              "us_per_call": 3.607284722222222
+            },
+            {
+              "calls": 22,
+              "calls_per_phase_call": 7.333333333333333,
+              "ms_per_phase_call": 0.112055,
+              "name": "sampler",
+              "total_ms": 0.336165,
+              "us_per_call": 15.280227272727272
+            },
+            {
+              "calls": 72,
+              "calls_per_phase_call": 24.0,
+              "ms_per_phase_call": 0.10641466666666667,
+              "name": "combine_silu",
+              "total_ms": 0.319244,
+              "us_per_call": 4.433944444444444
+            }
+          ],
+          "kernel_interval_union_ms": 418.738601,
+          "kernel_interval_union_ms_per_call": 139.57953366666666,
+          "kernel_sum_ms": 464.639508,
+          "kernel_sum_ms_per_call": 154.879836,
+          "memory_copy_directions": [],
+          "memory_copy_ops": 0,
+          "memory_copy_ops_per_call": 0.0,
+          "memory_copy_sum_ms": 0.0,
+          "memory_copy_sum_ms_per_call": 0.0,
+          "top_hip_api": [
+            {
+              "calls": 401,
+              "name": "hipMemcpy",
+              "total_ms": 311.80131
+            },
+            {
+              "calls": 3537,
+              "name": "hipLaunchKernel",
+              "total_ms": 22.789125
+            },
+            {
+              "calls": 1648,
+              "name": "hipMemcpyAsync",
+              "total_ms": 5.622759
+            },
+            {
+              "calls": 3,
+              "name": "hipDeviceSynchronize",
+              "total_ms": 1.693274
+            },
+            {
+              "calls": 3537,
+              "name": "hipGetLastError",
+              "total_ms": 0.372922
+            }
+          ],
+          "top_kernels": [
+            {
+              "calls": 424,
+              "calls_per_phase_call": 141.33333333333334,
+              "geometries": [
+                [
+                  4096,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  20480,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  24576,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  40960,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  49152,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 31.30923266666667,
+              "name": "q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>",
+              "total_ms": 93.927698,
+              "us_per_call": 221.5275896226415
+            },
+            {
+              "calls": 340,
+              "calls_per_phase_call": 113.33333333333333,
+              "geometries": [
+                [
+                  4096,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  20480,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  24576,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  40960,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  49152,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  69632,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 28.234913666666667,
+              "name": "q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>",
+              "total_ms": 84.704741,
+              "us_per_call": 249.1315911764706
+            },
+            {
+              "calls": 128,
+              "calls_per_phase_call": 42.666666666666664,
+              "geometries": [
+                [
+                  69632,
+                  1,
+                  1,
+                  128,
+                  248,
+                  0,
+                  32768
+                ]
+              ],
+              "ms_per_phase_call": 22.288019000000002,
+              "name": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 1, 2>",
+              "total_ms": 66.864057,
+              "us_per_call": 522.3754453125
+            },
+            {
+              "calls": 36,
+              "calls_per_phase_call": 12.0,
+              "geometries": [
+                [
+                  1024,
+                  32,
+                  1,
+                  8,
+                  32,
+                  0,
+                  1536
+                ],
+                [
+                  5120,
+                  32,
+                  1,
+                  8,
+                  32,
+                  0,
+                  1536
+                ],
+                [
+                  10240,
+                  32,
+                  1,
+                  8,
+                  32,
+                  0,
+                  1536
+                ]
+              ],
+              "ms_per_phase_call": 16.484143333333332,
+              "name": "dense_prefill_gemm_out_kernel<unsigned short, 32, 8, 16>",
+              "total_ms": 49.45243,
+              "us_per_call": 1373.678611111111
+            },
+            {
+              "calls": 19,
+              "calls_per_phase_call": 6.333333333333333,
+              "geometries": [
+                [
+                  3973120,
+                  1,
+                  1,
+                  128,
+                  112,
+                  0,
+                  1024
+                ]
+              ],
+              "ms_per_phase_call": 15.550199333333333,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>",
+              "total_ms": 46.650598,
+              "us_per_call": 2455.2946315789472
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "geometries": [
+                [
+                  1024,
+                  48,
+                  1,
+                  128,
+                  80,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 7.274238333333333,
+              "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, true>",
+              "total_ms": 21.822715,
+              "us_per_call": 151.54663194444444
+            },
+            {
+              "calls": 96,
+              "calls_per_phase_call": 32.0,
+              "geometries": [
+                [
+                  2560,
+                  4,
+                  1,
+                  32,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 6.5775656666666675,
+              "name": "gguf_q5_k_mmq_i64_j32_k256_q8_1_d4s4_f32_kernel<unsigned short, false, 32>",
+              "total_ms": 19.732697,
+              "us_per_call": 205.54892708333335
+            },
+            {
+              "calls": 38,
+              "calls_per_phase_call": 12.666666666666666,
+              "geometries": [
+                [
+                  2816,
+                  1,
+                  1,
+                  128,
+                  256,
+                  0,
+                  24576
+                ],
+                [
+                  13696,
+                  1,
+                  1,
+                  128,
+                  256,
+                  0,
+                  24576
+                ]
+              ],
+              "ms_per_phase_call": 5.522114999999999,
+              "name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+              "total_ms": 16.566345,
+              "us_per_call": 435.9564473684211
+            },
+            {
+              "calls": 24,
+              "calls_per_phase_call": 8.0,
+              "geometries": [
+                [
+                  12288,
+                  2,
+                  48,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 4.294527666666666,
+              "name": "linear_state_pair_commit_chunked_i32_kernel",
+              "total_ms": 12.883583,
+              "us_per_call": 536.8159583333334
+            },
+            {
+              "calls": 27,
+              "calls_per_phase_call": 9.0,
+              "geometries": [
+                [
+                  8192,
+                  1,
+                  1,
+                  32,
+                  248,
+                  0,
+                  0
+                ],
+                [
+                  11616,
+                  1,
+                  1,
+                  32,
+                  248,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 3.9107896666666666,
+              "name": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4>",
+              "total_ms": 11.732369,
+              "us_per_call": 434.53218518518514
+            },
+            {
+              "calls": 48,
+              "calls_per_phase_call": 16.0,
+              "geometries": [
+                [
+                  20480,
+                  1,
+                  1,
+                  128,
+                  48,
+                  0,
+                  3072
+                ]
+              ],
+              "ms_per_phase_call": 3.886309666666667,
+              "name": "gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<5, unsigned short, 2>",
+              "total_ms": 11.658929,
+              "us_per_call": 242.89435416666666
+            },
+            {
+              "calls": 288,
+              "calls_per_phase_call": 96.0,
+              "geometries": [
+                [
+                  12288,
+                  24,
+                  1,
+                  256,
+                  24,
+                  0,
+                  1024
+                ],
+                [
+                  12288,
+                  32,
+                  1,
+                  256,
+                  24,
+                  0,
+                  1024
+                ]
+              ],
+              "ms_per_phase_call": 2.082865,
+              "name": "dense_gemv_bf16_f32w_bf16_out_kernel",
+              "total_ms": 6.248595,
+              "us_per_call": 21.69651041666667
+            },
+            {
+              "calls": 2049,
+              "calls_per_phase_call": 683.0,
+              "geometries": [
+                [
+                  512,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  1,
+                  1,
+                  1024,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  4096,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  4608,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  5120,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  5632,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 1.450017,
+              "name": "__amd_rocclr_copyBuffer",
+              "total_ms": 4.350051,
+              "us_per_call": 2.123011713030747
+            },
+            {
+              "calls": 200,
+              "calls_per_phase_call": 66.66666666666667,
+              "geometries": [
+                [
+                  2048,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.9636243333333333,
+              "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+              "total_ms": 2.890873,
+              "us_per_call": 14.454365
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "geometries": [
+                [
+                  245760,
+                  8,
+                  1,
+                  256,
+                  32,
+                  20,
+                  0
+                ],
+                [
+                  327680,
+                  8,
+                  1,
+                  256,
+                  32,
+                  20,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.905132,
+              "name": "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel",
+              "total_ms": 2.715396,
+              "us_per_call": 18.856916666666667
+            },
+            {
+              "calls": 236,
+              "calls_per_phase_call": 78.66666666666667,
+              "geometries": [
+                [
+                  2048,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.852703,
+              "name": "gguf_rmsnorm_bf16_f32_weight_kernel",
+              "total_ms": 2.558109,
+              "us_per_call": 10.839444915254237
+            },
+            {
+              "calls": 11,
+              "calls_per_phase_call": 3.6666666666666665,
+              "geometries": [
+                [
+                  81920,
+                  2,
+                  1,
+                  128,
+                  72,
+                  0,
+                  512
+                ]
+              ],
+              "ms_per_phase_call": 0.7798219999999999,
+              "name": "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 4>",
+              "total_ms": 2.339466,
+              "us_per_call": 212.67872727272726
+            },
+            {
+              "calls": 56,
+              "calls_per_phase_call": 18.666666666666668,
+              "geometries": [
+                [
+                  6144,
+                  8,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  24,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  32,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.5132586666666666,
+              "name": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>",
+              "total_ms": 1.539776,
+              "us_per_call": 27.496
+            },
+            {
+              "calls": 48,
+              "calls_per_phase_call": 16.0,
+              "geometries": [
+                [
+                  256,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.363791,
+              "name": "dflash_commit_chain_i32_kernel",
+              "total_ms": 1.091373,
+              "us_per_call": 22.7369375
+            },
+            {
+              "calls": 200,
+              "calls_per_phase_call": 66.66666666666667,
+              "geometries": [
+                [
+                  40960,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  122880,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  163840,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.2786703333333333,
+              "name": "gguf_bf16_add_kernel",
+              "total_ms": 0.836011,
+              "us_per_call": 4.180055
+            },
+            {
+              "calls": 59,
+              "calls_per_phase_call": 19.666666666666668,
+              "geometries": [
+                [
+                  49152,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  147456,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  196608,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.21300333333333332,
+              "name": "qwen35_split_qgate_bf16_kernel",
+              "total_ms": 0.63901,
+              "us_per_call": 10.830677966101696
+            },
+            {
+              "calls": 203,
+              "calls_per_phase_call": 67.66666666666667,
+              "geometries": [
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  24576,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  32768,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  245760,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  327680,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.20825433333333332,
+              "name": "bf16_to_f32_kernel",
+              "total_ms": 0.624763,
+              "us_per_call": 3.077650246305419
+            },
+            {
+              "calls": 59,
+              "calls_per_phase_call": 19.666666666666668,
+              "geometries": [
+                [
+                  7168,
+                  8,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  7168,
+                  24,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  7168,
+                  32,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.14153566666666667,
+              "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>",
+              "total_ms": 0.424607,
+              "us_per_call": 7.1967288135593215
+            },
+            {
+              "calls": 96,
+              "calls_per_phase_call": 32.0,
+              "geometries": [
+                [
+                  8192,
+                  6,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.118109,
+              "name": "q8_1_d4s4_f32_quantize_bf16_kmajor_kernel",
+              "total_ms": 0.354327,
+              "us_per_call": 3.69090625
+            },
+            {
+              "calls": 72,
+              "calls_per_phase_call": 24.0,
+              "geometries": [
+                [
+                  139264,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  417792,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.10641466666666667,
+              "name": "silu_mul_separate_out_kernel<unsigned short>",
+              "total_ms": 0.319244,
+              "us_per_call": 4.433944444444444
+            },
+            {
+              "calls": 11,
+              "calls_per_phase_call": 3.6666666666666665,
+              "geometries": [
+                [
+                  62080,
+                  8,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  62080,
+                  24,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  62080,
+                  32,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.09846766666666668,
+              "name": "argmax_rows_stage1_i32_kernel",
+              "total_ms": 0.295403,
+              "us_per_call": 26.85481818181818
+            },
+            {
+              "calls": 176,
+              "calls_per_phase_call": 58.666666666666664,
+              "geometries": [
+                [
+                  1,
+                  1,
+                  1,
+                  1,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.092321,
+              "name": "set_decode_position_i64_kernel",
+              "total_ms": 0.276963,
+              "us_per_call": 1.5736534090909091
+            },
+            {
+              "calls": 136,
+              "calls_per_phase_call": 45.333333333333336,
+              "geometries": [
+                [
+                  256,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.09165533333333332,
+              "name": "copy_i32_to_i64_kernel",
+              "total_ms": 0.274966,
+              "us_per_call": 2.021808823529412
+            },
+            {
+              "calls": 56,
+              "calls_per_phase_call": 18.666666666666668,
+              "geometries": [
+                [
+                  49152,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  147456,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  196608,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.07417433333333333,
+              "name": "qwen35_full_attn_gate_mul_bf16_kernel",
+              "total_ms": 0.222523,
+              "us_per_call": 3.973625
+            },
+            {
+              "calls": 59,
+              "calls_per_phase_call": 19.666666666666668,
+              "geometries": [
+                [
+                  1024,
+                  8,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  24,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  32,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.070695,
+              "name": "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>",
+              "total_ms": 0.212085,
+              "us_per_call": 3.594661016949152
+            },
+            {
+              "calls": 48,
+              "calls_per_phase_call": 16.0,
+              "geometries": [
+                [
+                  6144,
+                  6,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.05504066666666666,
+              "name": "q8_1_d4s4_f32_quantize_bf16_kernel",
+              "total_ms": 0.165122,
+              "us_per_call": 3.4400416666666667
+            },
+            {
+              "calls": 3,
+              "calls_per_phase_call": 1.0,
+              "geometries": [
+                [
+                  128,
+                  1,
+                  1,
+                  128,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.03156,
+              "name": "dflash_accept_chain_i32_kernel",
+              "total_ms": 0.09468,
+              "us_per_call": 31.56
+            }
+          ],
+          "uncovered_marker_wall_ms": 94.934816,
+          "uncovered_marker_wall_ms_per_call": 31.64493866666667
+        },
+        "proposal": {
+          "allocated_bytes": 0,
+          "allocation_ops": 0,
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls": 1403,
+          "hip_api_calls_per_call": 467.6666666666667,
+          "hip_api_sum_ms": 22.370766,
+          "hip_api_sum_ms_per_call": 7.456922,
+          "host_marker_ms_per_call": 15.594570666666666,
+          "host_marker_wall_ms": 46.783712,
+          "kernel_calls": 852,
+          "kernel_calls_per_call": 284.0,
+          "kernel_families": [
+            {
+              "calls": 55,
+              "calls_per_phase_call": 18.333333333333332,
+              "ms_per_phase_call": 6.398058,
+              "name": "q4_t16",
+              "total_ms": 19.194174,
+              "us_per_call": 348.98498181818184
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 3.674787333333333,
+              "name": "q6_t16",
+              "total_ms": 11.024362,
+              "us_per_call": 2204.8723999999997
+            },
+            {
+              "calls": 152,
+              "calls_per_phase_call": 50.666666666666664,
+              "ms_per_phase_call": 0.6016473333333333,
+              "name": "other",
+              "total_ms": 1.804942,
+              "us_per_call": 11.87461842105263
+            },
+            {
+              "calls": 571,
+              "calls_per_phase_call": 190.33333333333334,
+              "ms_per_phase_call": 0.373071,
+              "name": "copy_fill",
+              "total_ms": 1.119213,
+              "us_per_call": 1.9600928196147112
+            },
+            {
+              "calls": 41,
+              "calls_per_phase_call": 13.666666666666666,
+              "ms_per_phase_call": 0.13818933333333333,
+              "name": "norm_rope",
+              "total_ms": 0.414568,
+              "us_per_call": 10.111414634146342
+            },
+            {
+              "calls": 13,
+              "calls_per_phase_call": 4.333333333333333,
+              "ms_per_phase_call": 0.036814,
+              "name": "attention",
+              "total_ms": 0.110442,
+              "us_per_call": 8.49553846153846
+            },
+            {
+              "calls": 10,
+              "calls_per_phase_call": 3.3333333333333335,
+              "ms_per_phase_call": 0.033854,
+              "name": "sampler",
+              "total_ms": 0.101562,
+              "us_per_call": 10.1562
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "ms_per_phase_call": 0.0051333333333333335,
+              "name": "combine_silu",
+              "total_ms": 0.0154,
+              "us_per_call": 3.08
+            }
+          ],
+          "kernel_interval_union_ms": 26.872286,
+          "kernel_interval_union_ms_per_call": 8.957428666666667,
+          "kernel_sum_ms": 33.784663,
+          "kernel_sum_ms_per_call": 11.261554333333335,
+          "memory_copy_directions": [],
+          "memory_copy_ops": 0,
+          "memory_copy_ops_per_call": 0.0,
+          "memory_copy_sum_ms": 0.0,
+          "memory_copy_sum_ms_per_call": 0.0,
+          "top_hip_api": [
+            {
+              "calls": 283,
+              "name": "hipMemcpy",
+              "total_ms": 19.014104
+            },
+            {
+              "calls": 368,
+              "name": "hipLaunchKernel",
+              "total_ms": 2.055091
+            },
+            {
+              "calls": 384,
+              "name": "hipMemcpyAsync",
+              "total_ms": 1.269631
+            },
+            {
+              "calls": 368,
+              "name": "hipGetLastError",
+              "total_ms": 0.03194
+            }
+          ],
+          "top_kernels": [
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  3973120,
+                  1,
+                  1,
+                  128,
+                  112,
+                  0,
+                  1024
+                ]
+              ],
+              "ms_per_phase_call": 3.674787333333333,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>",
+              "total_ms": 11.024362,
+              "us_per_call": 2204.8723999999997
+            },
+            {
+              "calls": 27,
+              "calls_per_phase_call": 9.0,
+              "geometries": [
+                [
+                  2816,
+                  1,
+                  1,
+                  128,
+                  256,
+                  0,
+                  24576
+                ],
+                [
+                  13696,
+                  1,
+                  1,
+                  128,
+                  256,
+                  0,
+                  24576
+                ]
+              ],
+              "ms_per_phase_call": 3.5731336666666667,
+              "name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+              "total_ms": 10.719401,
+              "us_per_call": 397.01485185185186
+            },
+            {
+              "calls": 20,
+              "calls_per_phase_call": 6.666666666666667,
+              "geometries": [
+                [
+                  8192,
+                  1,
+                  1,
+                  32,
+                  248,
+                  0,
+                  0
+                ],
+                [
+                  11616,
+                  1,
+                  1,
+                  32,
+                  248,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 2.8160710000000004,
+              "name": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4>",
+              "total_ms": 8.448213,
+              "us_per_call": 422.41065000000003
+            },
+            {
+              "calls": 8,
+              "calls_per_phase_call": 2.6666666666666665,
+              "geometries": [
+                [
+                  81920,
+                  2,
+                  1,
+                  128,
+                  72,
+                  0,
+                  512
+                ]
+              ],
+              "ms_per_phase_call": 0.519726,
+              "name": "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 4>",
+              "total_ms": 1.559178,
+              "us_per_call": 194.89725
+            },
+            {
+              "calls": 571,
+              "calls_per_phase_call": 190.33333333333334,
+              "geometries": [
+                [
+                  512,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  1,
+                  1,
+                  1024,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  4608,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  5120,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  5632,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.373071,
+              "name": "__amd_rocclr_copyBuffer",
+              "total_ms": 1.119213,
+              "us_per_call": 1.9600928196147112
+            },
+            {
+              "calls": 29,
+              "calls_per_phase_call": 9.666666666666666,
+              "geometries": [
+                [
+                  2048,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.09936166666666667,
+              "name": "gguf_rmsnorm_bf16_f32_weight_kernel",
+              "total_ms": 0.298085,
+              "us_per_call": 10.278793103448276
+            },
+            {
+              "calls": 80,
+              "calls_per_phase_call": 26.666666666666668,
+              "geometries": [
+                [
+                  1,
+                  1,
+                  1,
+                  1,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.03885366666666667,
+              "name": "set_decode_position_i64_kernel",
+              "total_ms": 0.116561,
+              "us_per_call": 1.4570125
+            },
+            {
+              "calls": 7,
+              "calls_per_phase_call": 2.3333333333333335,
+              "geometries": [
+                [
+                  2048,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.030867000000000002,
+              "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+              "total_ms": 0.092601,
+              "us_per_call": 13.228714285714286
+            },
+            {
+              "calls": 6,
+              "calls_per_phase_call": 2.0,
+              "geometries": [
+                [
+                  6144,
+                  8,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.029627333333333335,
+              "name": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>",
+              "total_ms": 0.088882,
+              "us_per_call": 14.813666666666666
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  62080,
+                  8,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.028106999999999997,
+              "name": "argmax_rows_stage1_i32_kernel",
+              "total_ms": 0.084321,
+              "us_per_call": 16.8642
+            },
+            {
+              "calls": 40,
+              "calls_per_phase_call": 13.333333333333334,
+              "geometries": [
+                [
+                  256,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.020933666666666666,
+              "name": "copy_i32_to_i64_kernel",
+              "total_ms": 0.062801,
+              "us_per_call": 1.570025
+            },
+            {
+              "calls": 8,
+              "calls_per_phase_call": 2.6666666666666665,
+              "geometries": [
+                [
+                  49152,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.009400333333333333,
+              "name": "qwen35_split_qgate_bf16_kernel",
+              "total_ms": 0.028201,
+              "us_per_call": 3.525125
+            },
+            {
+              "calls": 8,
+              "calls_per_phase_call": 2.6666666666666665,
+              "geometries": [
+                [
+                  5120,
+                  8,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.008853333333333333,
+              "name": "gguf_q4_k_embedding_bf16_out_kernel",
+              "total_ms": 0.02656,
+              "us_per_call": 3.32
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  7168,
+                  8,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.007960666666666666,
+              "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>",
+              "total_ms": 0.023882,
+              "us_per_call": 4.7764
+            },
+            {
+              "calls": 7,
+              "calls_per_phase_call": 2.3333333333333335,
+              "geometries": [
+                [
+                  1024,
+                  8,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.007186666666666667,
+              "name": "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>",
+              "total_ms": 0.02156,
+              "us_per_call": 3.08
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  1024,
+                  1,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.0057469999999999995,
+              "name": "argmax_rows_stage2_i32_kernel",
+              "total_ms": 0.017241,
+              "us_per_call": 3.4482
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  40960,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.005347,
+              "name": "gguf_bf16_add_kernel",
+              "total_ms": 0.016041,
+              "us_per_call": 3.2081999999999997
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  139264,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.0051333333333333335,
+              "name": "silu_mul_separate_out_kernel<unsigned short>",
+              "total_ms": 0.0154,
+              "us_per_call": 3.08
+            },
+            {
+              "calls": 6,
+              "calls_per_phase_call": 2.0,
+              "geometries": [
+                [
+                  49152,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.00456,
+              "name": "qwen35_full_attn_gate_mul_bf16_kernel",
+              "total_ms": 0.01368,
+              "us_per_call": 2.28
+            },
+            {
+              "calls": 5,
+              "calls_per_phase_call": 1.6666666666666667,
+              "geometries": [
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.0028266666666666666,
+              "name": "bf16_to_f32_kernel",
+              "total_ms": 0.00848,
+              "us_per_call": 1.696
+            }
+          ],
+          "uncovered_marker_wall_ms": 19.911426,
+          "uncovered_marker_wall_ms_per_call": 6.637142
+        },
+        "target_accept_commit_provider": {
+          "allocated_bytes": 0,
+          "allocation_ops": 0,
+          "allocation_ops_per_call": 0.0,
+          "calls": 3,
+          "hip_api_calls": 7723,
+          "hip_api_calls_per_call": 2574.3333333333335,
+          "hip_api_sum_ms": 319.908624,
+          "hip_api_sum_ms_per_call": 106.636208,
+          "host_marker_ms_per_call": 155.47173866666665,
+          "host_marker_wall_ms": 466.415216,
+          "kernel_calls": 4734,
+          "kernel_calls_per_call": 1578.0,
+          "kernel_families": [
+            {
+              "calls": 916,
+              "calls_per_phase_call": 305.3333333333333,
+              "ms_per_phase_call": 84.88491866666666,
+              "name": "q4_t16",
+              "total_ms": 254.654756,
+              "us_per_call": 278.0073755458515
+            },
+            {
+              "calls": 1040,
+              "calls_per_phase_call": 346.6666666666667,
+              "ms_per_phase_call": 19.751942,
+              "name": "other",
+              "total_ms": 59.255826,
+              "us_per_call": 56.97675576923077
+            },
+            {
+              "calls": 14,
+              "calls_per_phase_call": 4.666666666666667,
+              "ms_per_phase_call": 11.875411999999999,
+              "name": "q6_t16",
+              "total_ms": 35.626236,
+              "us_per_call": 2544.731142857143
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 10.463875333333332,
+              "name": "q5_t16",
+              "total_ms": 31.391626,
+              "us_per_call": 217.99740277777778
+            },
+            {
+              "calls": 288,
+              "calls_per_phase_call": 96.0,
+              "ms_per_phase_call": 8.179370333333333,
+              "name": "gdn_linear_attention",
+              "total_ms": 24.538111,
+              "us_per_call": 85.20177430555556
+            },
+            {
+              "calls": 72,
+              "calls_per_phase_call": 24.0,
+              "ms_per_phase_call": 4.658318666666667,
+              "name": "commit_repair",
+              "total_ms": 13.974956,
+              "us_per_call": 194.09661111111112
+            },
+            {
+              "calls": 457,
+              "calls_per_phase_call": 152.33333333333334,
+              "ms_per_phase_call": 1.827727,
+              "name": "norm_rope",
+              "total_ms": 5.483181,
+              "us_per_call": 11.998207877461708
+            },
+            {
+              "calls": 1478,
+              "calls_per_phase_call": 492.6666666666667,
+              "ms_per_phase_call": 1.076946,
+              "name": "copy_fill",
+              "total_ms": 3.230838,
+              "us_per_call": 2.185952638700947
+            },
+            {
+              "calls": 102,
+              "calls_per_phase_call": 34.0,
+              "ms_per_phase_call": 0.5471396666666667,
+              "name": "attention",
+              "total_ms": 1.641419,
+              "us_per_call": 16.0923431372549
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "ms_per_phase_call": 0.17314966666666667,
+              "name": "q5_activation_quant",
+              "total_ms": 0.519449,
+              "us_per_call": 3.607284722222222
+            },
+            {
+              "calls": 67,
+              "calls_per_phase_call": 22.333333333333332,
+              "ms_per_phase_call": 0.10128133333333333,
+              "name": "combine_silu",
+              "total_ms": 0.303844,
+              "us_per_call": 4.534985074626865
+            },
+            {
+              "calls": 12,
+              "calls_per_phase_call": 4.0,
+              "ms_per_phase_call": 0.078201,
+              "name": "sampler",
+              "total_ms": 0.234603,
+              "us_per_call": 19.55025
+            }
+          ],
+          "kernel_interval_union_ms": 391.866315,
+          "kernel_interval_union_ms_per_call": 130.622105,
+          "kernel_sum_ms": 430.854845,
+          "kernel_sum_ms_per_call": 143.61828166666666,
+          "memory_copy_directions": [],
+          "memory_copy_ops": 0,
+          "memory_copy_ops_per_call": 0.0,
+          "memory_copy_sum_ms": 0.0,
+          "memory_copy_sum_ms_per_call": 0.0,
+          "top_hip_api": [
+            {
+              "calls": 118,
+              "name": "hipMemcpy",
+              "total_ms": 292.787206
+            },
+            {
+              "calls": 3169,
+              "name": "hipLaunchKernel",
+              "total_ms": 20.734034
+            },
+            {
+              "calls": 1264,
+              "name": "hipMemcpyAsync",
+              "total_ms": 4.353128
+            },
+            {
+              "calls": 3,
+              "name": "hipDeviceSynchronize",
+              "total_ms": 1.693274
+            },
+            {
+              "calls": 3169,
+              "name": "hipGetLastError",
+              "total_ms": 0.340982
+            }
+          ],
+          "top_kernels": [
+            {
+              "calls": 424,
+              "calls_per_phase_call": 141.33333333333334,
+              "geometries": [
+                [
+                  4096,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  20480,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  24576,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  40960,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ],
+                [
+                  49152,
+                  4,
+                  1,
+                  64,
+                  224,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 31.30923266666667,
+              "name": "q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 8>",
+              "total_ms": 93.927698,
+              "us_per_call": 221.5275896226415
+            },
+            {
+              "calls": 340,
+              "calls_per_phase_call": 113.33333333333333,
+              "geometries": [
+                [
+                  4096,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  20480,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  24576,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  40960,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  49152,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ],
+                [
+                  69632,
+                  4,
+                  1,
+                  64,
+                  192,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 28.234913666666667,
+              "name": "q4_k_t16_dense_rowtile16_w2_grouped_gemv_kernel<unsigned short, 6>",
+              "total_ms": 84.704741,
+              "us_per_call": 249.1315911764706
+            },
+            {
+              "calls": 128,
+              "calls_per_phase_call": 42.666666666666664,
+              "geometries": [
+                [
+                  69632,
+                  1,
+                  1,
+                  128,
+                  248,
+                  0,
+                  32768
+                ]
+              ],
+              "ms_per_phase_call": 22.288019000000002,
+              "name": "gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel<false, false, 1, 2>",
+              "total_ms": 66.864057,
+              "us_per_call": 522.3754453125
+            },
+            {
+              "calls": 36,
+              "calls_per_phase_call": 12.0,
+              "geometries": [
+                [
+                  1024,
+                  32,
+                  1,
+                  8,
+                  32,
+                  0,
+                  1536
+                ],
+                [
+                  5120,
+                  32,
+                  1,
+                  8,
+                  32,
+                  0,
+                  1536
+                ],
+                [
+                  10240,
+                  32,
+                  1,
+                  8,
+                  32,
+                  0,
+                  1536
+                ]
+              ],
+              "ms_per_phase_call": 16.484143333333332,
+              "name": "dense_prefill_gemm_out_kernel<unsigned short, 32, 8, 16>",
+              "total_ms": 49.45243,
+              "us_per_call": 1373.678611111111
+            },
+            {
+              "calls": 14,
+              "calls_per_phase_call": 4.666666666666667,
+              "geometries": [
+                [
+                  3973120,
+                  1,
+                  1,
+                  128,
+                  112,
+                  0,
+                  1024
+                ]
+              ],
+              "ms_per_phase_call": 11.875411999999999,
+              "name": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>",
+              "total_ms": 35.626236,
+              "us_per_call": 2544.731142857143
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "geometries": [
+                [
+                  1024,
+                  48,
+                  1,
+                  128,
+                  80,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 7.274238333333333,
+              "name": "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, float, true>",
+              "total_ms": 21.822715,
+              "us_per_call": 151.54663194444444
+            },
+            {
+              "calls": 96,
+              "calls_per_phase_call": 32.0,
+              "geometries": [
+                [
+                  2560,
+                  4,
+                  1,
+                  32,
+                  128,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 6.5775656666666675,
+              "name": "gguf_q5_k_mmq_i64_j32_k256_q8_1_d4s4_f32_kernel<unsigned short, false, 32>",
+              "total_ms": 19.732697,
+              "us_per_call": 205.54892708333335
+            },
+            {
+              "calls": 24,
+              "calls_per_phase_call": 8.0,
+              "geometries": [
+                [
+                  12288,
+                  2,
+                  48,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 4.294527666666666,
+              "name": "linear_state_pair_commit_chunked_i32_kernel",
+              "total_ms": 12.883583,
+              "us_per_call": 536.8159583333334
+            },
+            {
+              "calls": 48,
+              "calls_per_phase_call": 16.0,
+              "geometries": [
+                [
+                  20480,
+                  1,
+                  1,
+                  128,
+                  48,
+                  0,
+                  3072
+                ]
+              ],
+              "ms_per_phase_call": 3.886309666666667,
+              "name": "gguf_k_raw_mmq32_q8_1_d4s4_f32_kernel<5, unsigned short, 2>",
+              "total_ms": 11.658929,
+              "us_per_call": 242.89435416666666
+            },
+            {
+              "calls": 288,
+              "calls_per_phase_call": 96.0,
+              "geometries": [
+                [
+                  12288,
+                  24,
+                  1,
+                  256,
+                  24,
+                  0,
+                  1024
+                ],
+                [
+                  12288,
+                  32,
+                  1,
+                  256,
+                  24,
+                  0,
+                  1024
+                ]
+              ],
+              "ms_per_phase_call": 2.082865,
+              "name": "dense_gemv_bf16_f32w_bf16_out_kernel",
+              "total_ms": 6.248595,
+              "us_per_call": 21.69651041666667
+            },
+            {
+              "calls": 11,
+              "calls_per_phase_call": 3.6666666666666665,
+              "geometries": [
+                [
+                  2816,
+                  1,
+                  1,
+                  128,
+                  256,
+                  0,
+                  24576
+                ],
+                [
+                  13696,
+                  1,
+                  1,
+                  128,
+                  256,
+                  0,
+                  24576
+                ]
+              ],
+              "ms_per_phase_call": 1.9489813333333332,
+              "name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel",
+              "total_ms": 5.846944,
+              "us_per_call": 531.5403636363636
+            },
+            {
+              "calls": 7,
+              "calls_per_phase_call": 2.3333333333333335,
+              "geometries": [
+                [
+                  8192,
+                  1,
+                  1,
+                  32,
+                  248,
+                  0,
+                  0
+                ],
+                [
+                  11616,
+                  1,
+                  1,
+                  32,
+                  248,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 1.0947186666666666,
+              "name": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 4>",
+              "total_ms": 3.284156,
+              "us_per_call": 469.1651428571428
+            },
+            {
+              "calls": 1478,
+              "calls_per_phase_call": 492.6666666666667,
+              "geometries": [
+                [
+                  512,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  1,
+                  1,
+                  1024,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  4096,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  4608,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  5120,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  5632,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  512,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 1.076946,
+              "name": "__amd_rocclr_copyBuffer",
+              "total_ms": 3.230838,
+              "us_per_call": 2.185952638700947
+            },
+            {
+              "calls": 193,
+              "calls_per_phase_call": 64.33333333333333,
+              "geometries": [
+                [
+                  2048,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.9327573333333333,
+              "name": "gguf_add_rmsnorm_bf16_f32_weight_kernel",
+              "total_ms": 2.798272,
+              "us_per_call": 14.49881865284974
+            },
+            {
+              "calls": 144,
+              "calls_per_phase_call": 48.0,
+              "geometries": [
+                [
+                  245760,
+                  8,
+                  1,
+                  256,
+                  32,
+                  20,
+                  0
+                ],
+                [
+                  327680,
+                  8,
+                  1,
+                  256,
+                  32,
+                  20,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.905132,
+              "name": "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel",
+              "total_ms": 2.715396,
+              "us_per_call": 18.856916666666667
+            },
+            {
+              "calls": 207,
+              "calls_per_phase_call": 69.0,
+              "geometries": [
+                [
+                  2048,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.7533413333333333,
+              "name": "gguf_rmsnorm_bf16_f32_weight_kernel",
+              "total_ms": 2.260024,
+              "us_per_call": 10.91799033816425
+            },
+            {
+              "calls": 50,
+              "calls_per_phase_call": 16.666666666666668,
+              "geometries": [
+                [
+                  6144,
+                  8,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  24,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ],
+                [
+                  6144,
+                  32,
+                  1,
+                  256,
+                  32,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.4836313333333333,
+              "name": "qwen35_paged_full_attn_decode_context_tensor_batch_kernel<true, 2, false>",
+              "total_ms": 1.450894,
+              "us_per_call": 29.01788
+            },
+            {
+              "calls": 48,
+              "calls_per_phase_call": 16.0,
+              "geometries": [
+                [
+                  256,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.363791,
+              "name": "dflash_commit_chain_i32_kernel",
+              "total_ms": 1.091373,
+              "us_per_call": 22.7369375
+            },
+            {
+              "calls": 195,
+              "calls_per_phase_call": 65.0,
+              "geometries": [
+                [
+                  40960,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  122880,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  163840,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.2733233333333333,
+              "name": "gguf_bf16_add_kernel",
+              "total_ms": 0.81997,
+              "us_per_call": 4.20497435897436
+            },
+            {
+              "calls": 3,
+              "calls_per_phase_call": 1.0,
+              "geometries": [
+                [
+                  81920,
+                  2,
+                  1,
+                  128,
+                  72,
+                  0,
+                  512
+                ]
+              ],
+              "ms_per_phase_call": 0.260096,
+              "name": "gguf_q8_0_exact_prefill_tiled_out_kernel<unsigned short, unsigned short, 8, 4>",
+              "total_ms": 0.780288,
+              "us_per_call": 260.096
+            },
+            {
+              "calls": 198,
+              "calls_per_phase_call": 66.0,
+              "geometries": [
+                [
+                  8192,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  24576,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  32768,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  245760,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  327680,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.20542766666666668,
+              "name": "bf16_to_f32_kernel",
+              "total_ms": 0.616283,
+              "us_per_call": 3.1125404040404043
+            },
+            {
+              "calls": 51,
+              "calls_per_phase_call": 17.0,
+              "geometries": [
+                [
+                  49152,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  147456,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ],
+                [
+                  196608,
+                  1,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.203603,
+              "name": "qwen35_split_qgate_bf16_kernel",
+              "total_ms": 0.610809,
+              "us_per_call": 11.976647058823529
+            },
+            {
+              "calls": 54,
+              "calls_per_phase_call": 18.0,
+              "geometries": [
+                [
+                  7168,
+                  8,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  7168,
+                  24,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  7168,
+                  32,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.133575,
+              "name": "gguf_head_rmsnorm_partial_rotary_positions_f32_weight_kernel<false>",
+              "total_ms": 0.400725,
+              "us_per_call": 7.420833333333333
+            },
+            {
+              "calls": 96,
+              "calls_per_phase_call": 32.0,
+              "geometries": [
+                [
+                  8192,
+                  6,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.118109,
+              "name": "q8_1_d4s4_f32_quantize_bf16_kmajor_kernel",
+              "total_ms": 0.354327,
+              "us_per_call": 3.69090625
+            },
+            {
+              "calls": 67,
+              "calls_per_phase_call": 22.333333333333332,
+              "geometries": [
+                [
+                  139264,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  417792,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.10128133333333333,
+              "name": "silu_mul_separate_out_kernel<unsigned short>",
+              "total_ms": 0.303844,
+              "us_per_call": 4.534985074626865
+            },
+            {
+              "calls": 96,
+              "calls_per_phase_call": 32.0,
+              "geometries": [
+                [
+                  256,
+                  1,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.07072166666666667,
+              "name": "copy_i32_to_i64_kernel",
+              "total_ms": 0.212165,
+              "us_per_call": 2.2100520833333337
+            },
+            {
+              "calls": 6,
+              "calls_per_phase_call": 2.0,
+              "geometries": [
+                [
+                  62080,
+                  8,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  62080,
+                  24,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  62080,
+                  32,
+                  1,
+                  128,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.07036066666666667,
+              "name": "argmax_rows_stage1_i32_kernel",
+              "total_ms": 0.211082,
+              "us_per_call": 35.18033333333334
+            },
+            {
+              "calls": 50,
+              "calls_per_phase_call": 16.666666666666668,
+              "geometries": [
+                [
+                  49152,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  147456,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ],
+                [
+                  196608,
+                  1,
+                  1,
+                  256,
+                  16,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.06961433333333333,
+              "name": "qwen35_full_attn_gate_mul_bf16_kernel",
+              "total_ms": 0.208843,
+              "us_per_call": 4.17686
+            },
+            {
+              "calls": 52,
+              "calls_per_phase_call": 17.333333333333332,
+              "geometries": [
+                [
+                  1024,
+                  8,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  24,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ],
+                [
+                  1024,
+                  32,
+                  1,
+                  256,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.06350833333333333,
+              "name": "qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel<unsigned short>",
+              "total_ms": 0.190525,
+              "us_per_call": 3.6639423076923077
+            },
+            {
+              "calls": 48,
+              "calls_per_phase_call": 16.0,
+              "geometries": [
+                [
+                  6144,
+                  6,
+                  1,
+                  256,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.05504066666666666,
+              "name": "q8_1_d4s4_f32_quantize_bf16_kernel",
+              "total_ms": 0.165122,
+              "us_per_call": 3.4400416666666667
+            },
+            {
+              "calls": 96,
+              "calls_per_phase_call": 32.0,
+              "geometries": [
+                [
+                  1,
+                  1,
+                  1,
+                  1,
+                  8,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.05346733333333333,
+              "name": "set_decode_position_i64_kernel",
+              "total_ms": 0.160402,
+              "us_per_call": 1.6708541666666668
+            },
+            {
+              "calls": 3,
+              "calls_per_phase_call": 1.0,
+              "geometries": [
+                [
+                  128,
+                  1,
+                  1,
+                  128,
+                  24,
+                  0,
+                  0
+                ]
+              ],
+              "ms_per_phase_call": 0.03156,
+              "name": "dflash_accept_chain_i32_kernel",
+              "total_ms": 0.09468,
+              "us_per_call": 31.56
+            }
+          ],
+          "uncovered_marker_wall_ms": 74.548901,
+          "uncovered_marker_wall_ms_per_call": 24.84963366666667
+        }
+      },
+      "source": {
+        "child": "/tmp/p6_reprofile_child4.json",
+        "child_command": [
+          "/home/lhl/mambaforge/envs/therock/bin/python3.12",
+          "/home/lhl/hipEngine-main/scripts/specdec2_perf_bridge.py",
+          "--backend",
+          "hip_gfx1100",
+          "--target-arch",
+          "gfx1100",
+          "--execution-profile",
+          "production",
+          "--concurrency",
+          "8",
+          "--service-capacity",
+          "8",
+          "--budgets",
+          "3",
+          "--max-tokens",
+          "12",
+          "--runs",
+          "1",
+          "--limit",
+          "1",
+          "--require-cached-build",
+          "--roctx-markers",
+          "--compiler-version-file",
+          "/tmp/hipengine-hipcc-version.txt",
+          "--output",
+          "/tmp/p6_reprofile_child4.json"
+        ],
+        "child_sha256": "b6cde636e39841fb034eb2938f1e371455263e10bbbfe009e94b6feb2404d18f",
+        "hip_api_csv": "/tmp/p6_reprofile_trace4/epyc/1117949_hip_api_trace.csv",
+        "hipengine_commit": "b167343fe7a9c623f2a0b92800e191e824a6ad41",
+        "kernel_csv": "/tmp/p6_reprofile_trace4/epyc/1117949_kernel_trace.csv",
+        "kernel_csv_sha256": "83146b43ad9abec955d5974c3b40e4ec39161773caa37a429daf13770c02b823",
+        "marker_csv": "/tmp/p6_reprofile_trace4/epyc/1117949_marker_api_trace.csv",
+        "marker_csv_sha256": "2b0dc03b1fe3a29dcfdc6233da13c8a52430244becd16ae5c032d1aaec9c46c3",
+        "memory_allocation_csv": "/tmp/p6_reprofile_trace4/epyc/1117949_memory_allocation_trace.csv",
+        "memory_copy_csv": "/tmp/p6_reprofile_trace4/epyc/1117949_memory_copy_trace.csv",
+        "trace_dir": "/tmp/p6_reprofile_trace4/epyc",
+        "tracked_clean": true
+      }
+    }
+  },
+  "limitations": [
+    "Single canonical prompt and profiler instrumentation: attribution only, never a retained throughput row.",
+    "Summed kernel duration may exceed wall under stream overlap; interval-union time is the non-overlapping device-busy lower bound.",
+    "HIP API durations overlap device work and are not additive savings.",
+    "Accept commit/readback counters decompose the accept dependency window and are not added to it."
+  ],
+  "performance_claim": false,
+  "schema": 1,
+  "status": "diagnostic"
+}
