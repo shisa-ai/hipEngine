@@ -212,11 +212,12 @@ prefix:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
-| hipEngine pre-PF baseline (`37d59564…`, HB-1 retained arm) | **83.37 / 14.32** | **82.91 / 14.27** | **69.20 / 12.18** | 12/12 deterministic; cross-arm exact |
+| hipEngine current production (PF-1/PF-3 after arm) | **89.34 / 14.84** | **88.54 / 14.79** | **72.58 / 12.40** | 12/12 deterministic; one-residency cross-mode exact |
+| hipEngine pre-PF baseline (`37d59564…`, HB-1 retained arm) | 83.37 / 14.32 | 82.91 / 14.27 | 69.20 / 12.18 | 12/12 deterministic; cross-arm exact; historical |
 | Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; noisy p512/p1024 rows |
 | Patched-upstream HIP `f1793c1c4` | 235.89 / 17.75 | 306.51 / 16.99 | 283.73 / 14.89 | 12/12 deterministic; cross-arm exact; non-stock loader |
 | Halo-box base `6c84c7d5` + loader patches | 223.89 / 17.66 | 308.28 / 16.88 | 301.62 / 14.90 | 12/12 deterministic; cross-arm exact; short-shape drift |
-| Halo-box PR11 `a7ad7b7f` + loader patches | **246.55 / 18.12** | **343.48 / 17.28** | **354.21 / 15.23** | 12/12 deterministic; cross-arm exact |
+| Halo-box PR11 `a7ad7b7f` + loader patches, fresh matched-BF16 screen | **240.11 / 18.04** | **324.64 / 17.24** | **349.49 / 15.10** | 12/12 deterministic; p512/p1024 prefill unstable; p4096 stable |
 | EngramHalo HIP `1423f689` | 234.84 / 17.44 | 314.98 / 17.04 | 381.17 / 15.99 | p512/p1024 exact; p4096 fails |
 | Nathan Vulkan `ad914eb`, queue/repack/fit-off | 360.23 / 24.34 | 357.61 / 21.10 | 351.85 / 19.01 | diagnostic: 0/12 exact |
 | apepojken Vulkan `843d575` | 291.73 / 23.21 | 375.23 / 22.42 | 397.43 / 22.25 | diagnostic: 8/12 exact |
@@ -225,13 +226,20 @@ Nathan produced 16 different outputs from 16 identical-prompt requests;
 apepojken varies on four canonical cases; EngramHalo varies on one p4096 case.
 Their affected rates remain diagnostics rather than correctness-valid targets.
 Pristine upstream HIP did not finish loading in two 1,800-second attempts, so the
-measured patched-upstream lane is explicitly non-stock. This is not section-6 closure: comparator rows are not paired with the current
-hipEngine snapshot in one thermal window, and five paired runs plus 4K MTP
-remain open. Current production's maximum per-case CV is 0.71%; current strict
-is deterministic but exceeds 2% CV in several rows. The Vulkan rows were
-refreshed with their entitled graphics queue, repack, and fit-off configuration;
-upstream p512 prefill/decode and p1024 prefill remain too noisy to freeze the
-closure target.
+measured patched-upstream lane is explicitly non-stock. The fresh halo-box
+screen exactly matches the HB-1 BF16 configuration and binary; its maximum
+per-case prefill CV is **10.0%/9.7%/1.26%** at p512/p1024/p4096, so only the
+p4096 row satisfies the ≤2% stability rule. The previous retained halo-box arm
+was 246.55/343.48/354.21 pp/s; the fresh −2.61%/−5.49%/−1.33% shift confirms
+that short-shape absolute comparisons need counterbalanced thermal pairs.
+
+This remains a screening refresh, not section-6 closure: five same-thermal
+competitor pairs and 4K MTP remain open. Current production's maximum per-case
+CV in the one-residency packet is **1.64% prefill / 1.07% decode**. The Vulkan
+rows were refreshed with their entitled graphics queue, repack, and fit-off
+configuration; upstream p512 prefill/decode and p1024 prefill also remain too
+noisy to freeze the closure target.
+[`PF-1/PF-3 production refresh`](results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json),
 [`halo-box HB-1 comparison`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json),
 [`current P12 packet`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-packet.json),
 [`generated report`](results/2026-09-02-gfx1151-qwen38-flash-next-p12-validation-report.md),
@@ -250,18 +258,18 @@ but **0/5 active families** currently share an identical cross-engine fixture,
 dtype/layout contract, and operation boundary. No mechanism ratio or candidate is
 reported. [`halo-box HB-3 blocker`](results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json).
 
-The 2026-09-04 review preserves the campaign's bit-exact kernel findings but
-withdraws its retained whole-model claims: each purported A/B arm ran in a new
-Python process and model residency through a harness explicitly marked
-"never a retained claim." PF-3 Q5_1 M1 remains a bit-exact **−10.6%**
-binding-shape kernel candidate, and PF-1 grouped Q8_0 remains a bit-exact
-**−31.6%** kernel / **−6.9% to −8.7%** layer candidate. The production profile
-has returned to their strict owners until the committed one-residency
-before/after gate finishes. PF-4's fused-combine whole-model rejection is also
-provisional; PF-5's tile-16 lever was never attempted. The Q4_K M1 and PF-5
-w32 kernel losses remain valid. [`Review plan`](../worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md),
-[`PF-3 kernel A/B`](results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json),
-[`PF-1 historical packet`](results/2026-09-04-gfx1151-qwen38-flash-next-pf1-forkb-grouped-down-whole-model-ab.json).
+The 2026-09-04 remediation resolves the PF-1/PF-3 review blocker. One committed
+harness kept a single generator resident and toggled both exact routes in ABBA
+orders reversed across adjacent cases. Weighted prefill improves
+**86.62→89.34 (+3.13%)**, **85.88→88.54 (+3.09%)**, and
+**70.80→72.58 tok/s (+2.51%)** at p512/p1024/p4096; all 12 cases improve and
+all 72 measured trajectories are exact across modes. Decode changes
+−0.15%/+0.13%/−0.07%. Production again selects PF-3 Q5_1 M1 and PF-1 grouped
+Q8_0 down; strict retains the preceding registered owners. PF-4's fused-combine
+whole-model rejection remains provisional, PF-5's tile-16 lever remains open,
+and the Q4_K M1/PF-5 w32 kernel losses remain valid.
+[`Production refresh`](results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json),
+[`Review plan`](../worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md).
 
 The frozen p508 role/API profile still puts hipEngine versus llama HIP device
 kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90
