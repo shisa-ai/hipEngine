@@ -24085,6 +24085,14 @@ class Qwen35GGUFResidentSession:
             isinstance(session, Qwen35GGUFResidentSession) for session in sessions
         ):
             return None
+        if len(sessions) < 2:
+            # Single-session (width-1) packed verification is outside the
+            # qualified multi-lane scope of this route. The iter60 C1-C8
+            # matrix recapture bisected the C1 K3 exactness/acceptance
+            # regression to this route engaging at width 1 (7daa03723); the
+            # single-session shape keeps the exact fused
+            # resident-to-packed import instead.
+            return None
         return self._direct_resident_linear_state(
             sessions,
             allow_unqualified=True,
