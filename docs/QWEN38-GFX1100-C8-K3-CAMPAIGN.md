@@ -723,6 +723,18 @@ Current pool: **46.519 ms/cycle**.
       w7900-q4km-k3-c8-q6-head-rowtile-route-retained.json.
 
 Exit: retained Q6 target-wall reduction, or measured bandwidth/reuse floor.
+      **CLOSED (iter44-45) at the measured bandwidth/reuse floor.** iter44
+      retained the col8 rowtile route (+5.71% e2e). iter45 screened the
+      remaining chunk-shape alternatives to the col8 kernel's 2× tile split
+      (8-row chunks × 16 cols cannot hold per-CTA accumulators at full
+      occupancy): 16-col single-read ROW_TILE=8 at (128,2)/(128,3) → 349/335
+      GB/s = 0.82×/0.81× (VGPR spill floor); col8 (128,8) → 1.02× noise;
+      chunk-interleaved single launch with co-resident tile sharing → 0.36-0.73×
+      (L2 thrash, same DRAM bytes). Verify head measured at ~790 GB/s effective
+      on 5×2×1,042.9 MB = ~96% of W7900 peak — the 2× split is structural and
+      the col8 shape is roofline-optimal. No further head-shaped Q6 lever.
+      Evidence: worklog/entries/20260904T091928.024303Z-lhl-c8-iter45-q6-head-
+      chunkshape-screen-94d556.md (scratch screens, no tree changes).
 
 ### C8-P5 — proposal track
 
