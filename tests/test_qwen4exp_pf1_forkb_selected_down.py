@@ -209,3 +209,97 @@ def test_pf1_forkb_grouped_selected_down_bit_parity(
     np.testing.assert_array_equal(
         grouped_first, owner, err_msg="grouped vs block-per-output owner bits"
     )
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
+    """Runner wiring gate: the fork-b grouped down default is bit-identical to
+    the incumbent strict selected gemv (flag off) at the whole-MoE level.
+
+    The fork-b kernel is bit-exact per output and everything downstream of
+    ``expert_down`` in ``run_qwen4_exp_moe`` is deterministic given the same
+    input bits, so the full MoE output bits must match exactly between the
+    default (fork-b) and ``HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=0`` runs.
+    """
+
+    from hipengine.core.hip import get_hip_runtime
+    from tests._gguf_synthetic_weights import make_q4_k_weight, make_q8_0_weight
+    from tests.test_qwen4_exp_runner_moe import (
+        _dense_f32_weight,
+        _download,
+        _q4_weight,
+        _q8_0_weight,
+        _upload,
+    )
+    from hipengine.core.memory import free
+    from hipengine.runtime.qwen4_exp_runner import (
+        Qwen4ExpMoEScratch,
+        run_qwen4_exp_moe,
+    )
+
+    runtime = get_hip_runtime()
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", raising=False)
+
+    rng = np.random.default_rng(2026_09_04)
+    hidden, ffn, experts, top_k = 256, 256, 4, 2
+    rows = 16
+    mixed = rng.normal(0.0, 0.1, size=(rows, hidden)).astype(np.float32)
+    router = rng.normal(0.0, 0.1, size=(experts, hidden)).astype(np.float32)
+    gate_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    up_raw = np.stack([make_q4_k_weight(ffn, hidden) for _ in range(experts)])
+    down_raw = np.stack([make_q8_0_weight(hidden, ffn) for _ in range(experts)])
+    shared_gate = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_up = rng.normal(0.0, 0.1, size=(ffn, hidden)).astype(np.float32)
+    shared_down = rng.normal(0.0, 0.1, size=(hidden, ffn)).astype(np.float32)
+    shared_scalar = rng.normal(0.0, 0.1, size=(hidden,)).astype(np.float32)
+
+    def run(flag_value: str) -> np.ndarray:
+        monkeypatch.setenv("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", flag_value)
+        allocations = []
+        scratch = None
+        try:
+            d_mixed = _upload(mixed, runtime, allocations)
+            weights = {
+                "router": _dense_f32_weight("router", router, runtime, allocations),
+                "expert_gate": _q4_weight("expert_gate", gate_raw, runtime, allocations),
+                "expert_up": _q4_weight("expert_up", up_raw, runtime, allocations),
+                "expert_down": _q8_0_weight("expert_down", down_raw, runtime, allocations),
+                "shared_gate": _dense_f32_weight("shared_gate", shared_gate, runtime, allocations),
+                "shared_up": _dense_f32_weight("shared_up", shared_up, runtime, allocations),
+                "shared_down": _dense_f32_weight("shared_down", shared_down, runtime, allocations),
+                "shared_gate_weight": _dense_f32_weight(
+                    "shared_gate_weight", shared_scalar.reshape(1, hidden), runtime, allocations,
+                ),
+            }
+            scratch = Qwen4ExpMoEScratch.allocate(
+                rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=top_k,
+                runtime=runtime,
+            )
+            result = run_qwen4_exp_moe(
+                d_mixed.ptr,
+                weights,
+                scratch=scratch,
+                rows=rows,
+                hidden=hidden,
+                ffn=ffn,
+                experts=experts,
+                top_k=top_k,
+                runtime=runtime,
+            )
+            runtime.device_synchronize()
+            return _download(result.output, (rows, hidden), np.uint16, runtime)
+        finally:
+            if scratch is not None:
+                scratch.close()
+            for allocation in reversed(allocations):
+                free(allocation, runtime=runtime)
+
+    default_bits = run("1")
+    strict_bits = run("0")
+    np.testing.assert_array_equal(
+        default_bits,
+        strict_bits,
+        err_msg="fork-b default MoE output bits vs FORKB_GROUPED_DOWN=0 strict",
+    )

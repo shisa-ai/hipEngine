@@ -107,6 +107,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+    gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
@@ -3528,12 +3531,39 @@ def run_qwen4_exp_moe(
                     runtime=active_runtime,
                 )
         elif weights["expert_down"].spec.quant_key == "gguf_q8_0":
+            # PF-1 fork (b) T0 candidate (default): grouped selected down, one
+            # block per (expert, out_col) pair serving every lane of the pair so
+            # the expert's weight row is read once. Per-output arithmetic is
+            # identical to the strict per-expert selected gemv (bit-exact,
+            # RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py);
+            # kernel-level paired A/B at the p4096 compact shape measured
+            # 32.42 vs 47.42 ms median (-31.6%). The incumbent strict selected
+            # gemv and the legacy P1 grouped/WMMA owners stay available below
+            # via HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=0 for rollback /
+            # bisection.
+            if os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "1") not in {
+                "", "0", "false", "False",
+            }:
+                gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
+                    scratch.expert_intermediate.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_sorted_lanes.ptr,
+                    weights["expert_down"].allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,
+                    compact,
+                    compact,
+                    experts,
+                    ffn,
+                    hidden,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
             # P1: device-driven grouped Q8_0 down owner (no D2H, no Python loop
             # over 512 experts). Reads expert_start on device via a fixed worker
             # grid. The legacy per-expert D2H+WMMA loop and the strict per-expert
             # selected gemv remain available as explicit opt-outs for rollback /
             # bisection until the P1 full packet gate passes.
-            if os.environ.get("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", "") not in {"", "0", "false", "False"}:
+            elif os.environ.get("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED_WMMA", "") not in {"", "0", "false", "False"}:
                 expert_start_host = np.empty(experts + 1, dtype=np.int64)
                 copy_device_to_host(
                     host_array_ptr(expert_start_host),
