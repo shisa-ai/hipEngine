@@ -702,6 +702,25 @@ Current pool: **46.519 ms/cycle**.
       screening).
 - [ ] Preserve full-head fallback and every mapped-ID/finite/tie guard.
 - [ ] Run L0→L3/L5 for exact work; L4 is mandatory for changed arithmetic.
+- [x] **RESOLVED (iter44, differently and larger than this bullet's
+      projection):** the profile re-read showed the rows-pooling lever was
+      aimed at the wrong call. The root rows=1 call is rare; the real sink is
+      the **proposal batch top-1 and accept-commit sampling** launching the
+      full-vocab head at rows 2-8 through `launch_gguf_linear`, which resolved
+      the per-row decode kernel (grid_y = rows → the 1,042.9 MB tile set
+      re-read once per row: 11.8-14.1 ms / ~88 GB/s per launch, ~3
+      launches/cycle). `_q6_planar_rowtile_dispatch` now routes planar-Q6 rows
+      2-8 to the registered **bit-identical** rowtile leaf (explicit WMMA
+      opt-in keeps precedence; rows 1 and >8 unchanged). L1 leaf screen
+      **4.37x** (decode 11.777/11.809/14.055 ms vs rowtile
+      2.693/3.682/3.475 ms, alternating rounds); L2 trace: decode kernel has
+      zero remaining launches, the full-vocab rows=8 leaf runs ~1.53 ms
+      (4.1x vs 6.25 ms decode in the same profile conditions). Retention e2e
+      **PASSED both orders**: rollback 90.926/89.746 vs candidate
+      95.754/95.227 MTP aggregate (**+5.71% mean; +5.31% OFF→ON, +6.11%
+      ON→OFF**), 40/40 cells ar_exact, AR neutral (−0.57%). Bit-exact T1
+      routing, default-on, no flag. Evidence: benchmarks/results/2026-09-04-
+      w7900-q4km-k3-c8-q6-head-rowtile-route-retained.json.
 
 Exit: retained Q6 target-wall reduction, or measured bandwidth/reuse floor.
 

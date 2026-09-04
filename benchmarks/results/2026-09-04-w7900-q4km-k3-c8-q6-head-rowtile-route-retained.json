@@ -1,0 +1,67 @@
+{
+  "schema": 1,
+  "kind": "qwen38_gfx1100_c8_k3_retention_e2e",
+  "date": "2026-09-04",
+  "status": "retained",
+  "title": "Planar-Q6 full-vocab head rows 2-8 rowtile dispatch route (iter44)",
+  "hardware": {
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm": "7.15.0",
+    "host": "lhl-w7900"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "head": "q6_k_t16_qmicro_planar_v1 5120x248320 (1042.9 MB tiles)"
+  },
+  "workload": {
+    "protocol": "gguf_mtp_c1c8_server_bench production, ten-prompt mtpbench-code-general-ja suite, widths 8, candidate-budget 3 (R32), max-tokens 24, batch-window-ms 20, ar_exact contract",
+    "arms": "rollback(4e7611363) -> candidate(7a6422aee) -> candidate(7a6422aee) -> rollback(4e7611363), fresh process per arm, both orders"
+  },
+  "change": {
+    "commit": "7a6422aee",
+    "summary": "_q6_planar_rowtile_dispatch in launch_gguf_linear routes planar-Q6 rows 2-8 decode leaves to the registered bit-identical rowtile leaf; explicit WMMA opt-in keeps precedence; rows 1 and >8 unchanged",
+    "arithmetic_class": "T1 routing, bit-exact (no arithmetic change)",
+    "correctness_evidence": "synthetic + full launch_gguf_linear rows=8 bit-exact vs per-row decode; 26/26 route tests; e2e 40/40 cells ar_exact"
+  },
+  "measurements": {
+    "mtp_aggregate_tok_s": {
+      "rollback": [90.926, 89.746],
+      "candidate": [95.754, 95.227]
+    },
+    "mtp_mean_delta_percent": 5.71,
+    "order_off_to_on_percent": 5.31,
+    "order_on_to_off_percent": 6.11,
+    "ar_aggregate_tok_s": {
+      "rollback": [88.253, 86.653],
+      "candidate": [87.217, 86.699],
+      "note": "-0.57% mean, within the iter42-established single-chain control spread"
+    }
+  },
+  "leaf_screen": {
+    "shape": "rows=8 full-vocab head, real tiles, HIP events, 3 alternating rounds",
+    "decode_best_ms": [11.777, 11.809, 14.055],
+    "rowtile_best_ms": [2.693, 3.682, 3.475],
+    "speedup": 4.37,
+    "bandwidth": {"decode_GB_s": [88.6, 88.3, 74.2], "rowtile_GB_s": [387.3, 283.3, 300.1]}
+  },
+  "l2_trace": {
+    "command": "rocprofv3 --kernel-trace --marker-trace on a 24-token production child, prewarmed JIT, HIPENGINE_REQUIRE_CACHED_BUILD=1",
+    "finding": "planar decode kernel (previously 11 full-vocab launches in the current profile) has zero launches; the full-vocab rows=8 launches run q6_k_t16_qmicro_planar_gemv_rowtile_kernel grid=(1986560,1) at ~1.53 ms each (4.1x vs the 6.25 ms decode in the same profile conditions)"
+  },
+  "correctness": {
+    "cells": "40/40 ar_exact passed",
+    "status": "all four arms complete, zero failures"
+  },
+  "scope_note": "Retention screen, not a topline recapture: C8/K3 topline row (90.139 vs Laurent 101.072) unchanged; projected ~95.3 remains below the peer threshold, so no L5 peer recapture is triggered.",
+  "commands": {
+    "chain": "/tmp/q6_rowtile_e2e_chain.sh (4 arms, exit 0, 2026-09-04 16:26-16:34 JST)",
+    "leaf_screen": "HIP-event A/B on the real head via Qwen35GGUFFullStackRunner, decode vs rowtile, 3 alternating rounds x 10 reps"
+  },
+  "artifacts": {
+    "arm_packets": "/tmp/q6rowtile_e2e_{r1,c1,c2,r2}.json",
+    "chain_log": "/tmp/q6rowtile_e2e_chain.log",
+    "l2_trace": "/tmp/q6rowtile_l2_trace/epyc/749557_kernel_trace.csv"
+  }
+}
