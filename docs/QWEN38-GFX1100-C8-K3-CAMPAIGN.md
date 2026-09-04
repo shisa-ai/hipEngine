@@ -502,6 +502,20 @@ change priority yet. `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0`, request counts other
 than eight, peer backends, and scope misses retain exact grouped R6/R8
 ownership.
 
+A third retained Q5 mechanism, grouped dp4a planar-Q5 (T16 qmicro sidecar,
+iteration 42), engaged only at the R24 rows with the loader flag on and
+measured-rejected in the leaf and e2e screens relative to its cost: the
+direct-load variant lost 9/9 and 2/2 weights, and the surviving plain-recompute
+variant, while passing the full L4 gate engaged (18 prompts, kl_mean 1.02e-4,
+kl_max 2.6e-3, top-1 0.9977) and winning its k2/R24 retention e2e (+0.44%
+MTP aggregate, positive in both orders, identical generated IDs, 40/40 exact
+cells), costs 1,226,833,920 persistent sidecar bytes and 48 extra allocations
+for a +0.44% aggregate whose target-stage delta (+0.56%) sits inside the
++/-1.2% control spread. The route is retained default-off behind
+`HIPENGINE_C8_Q5_PLANAR_DP4A` (+ loader flag) with the engagement deadlock
+documentation; it does not update the 7.280 ms/cycle residual, which remains
+bounded by the composition gap between per-weight leaf wins and e2e effect.
+
 An initial all-width L5 audit caught that row-only R24 selection also reached
 C5-C7. Although C5/C6 improved, C6 had a -0.04% reverse-order category and C7
 was noise-flat with several negative slices, so that broad policy was rejected.
