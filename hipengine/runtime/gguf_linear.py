@@ -6411,11 +6411,10 @@ def _q5_raw_mmq_target_dispatch(
     ):
         return dispatch
     source_layout = bool(session.source_layout and rows == 32)
-    if (
-        _q5_planar_dp4a_target_enabled(session)
-        and rows == 24
-        and not source_layout
-    ):
+    if _q5_planar_dp4a_target_enabled(session) and rows == 24:
+        # The planar branch is R24-only by shape; the source-layout owner
+        # keeps R32 because this branch never matches rows == 32
+        # (source_layout only applies at rows == 32 downstream).
         try:
             planar_allocation = weight.allocation("qmicro_planar")
         except KeyError:
