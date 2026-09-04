@@ -36,13 +36,15 @@ profile. Throughput is measured from the blocking barrier to the last request
 completion; prompt processing, target verification, acceptance, publication,
 and reclaim remain inside the boundary.
 
-Current canonical rows:
+Current canonical rows (fresh 2026-09-04 P8 recapture, two-run means; binding
+metric row from the two-order D24 suite in the same packet):
 
 | Route | Aggregate tok/s | hipEngine gap |
 | --- | ---: | ---: |
-| hipEngine explicit C8/K3 | **90.139** | — |
-| llama.cpp current HIP C8/K3 | 94.735 | **+5.0986% required** |
-| llama.cpp Laurent HIP C8/K3 | 101.072 | **+12.1289% required** |
+| hipEngine binding C8/K3 D24 candidate | **95.240** | — |
+| hipEngine explicit C8/K3 (matrix row) | 94.080 | — |
+| llama.cpp current HIP C8/K3 | 92.345 (94.735 published) | **closed** |
+| llama.cpp Laurent HIP C8/K3 | 95.830 (101.072 published) | **−0.62% (−5.77% vs published)** |
 | hipEngine true AR C8 | 83.939 | current K3 is 1.0739x |
 
 The 90.139 row is the retained controlled default-versus-rollback gate at
@@ -916,18 +918,65 @@ cannot be changed without quality/gaming risk.
 
 ### C8-P8 — final closure
 
-- [ ] Run the final tracked-clean C8 candidate/control two-order D24 suite.
-- [ ] Run all affected focused tests and the applicable execution-profile gate.
-- [ ] Recapture the standardized hipEngine/current/Laurent C1-C8 matrix in
+Status: **complete at `29b06611f` (2026-09-04).** Exact-peer closure achieved;
+strongest-peer remains open as the quantified structural blocker.
+
+- [x] Run the final tracked-clean C8 candidate/control two-order D24 suite.
+      **DONE (iter60):** rollback `4e7611363` (/tmp/hipengine-rollback) vs
+      candidate `f242f509a`, fresh process per arm, both orders:
+      control 90.944/89.630 vs candidate 95.449/95.032; candidate mean
+      **95.240** vs control mean 90.287 = **+5.49%**, positive in both orders
+      (+4.95% / +6.03%), 40/40 ar_exact cells, AR −0.40% neutral. Packet:
+      `benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p8-final-closure-matrix.json`.
+- [x] Run all affected focused tests and the applicable execution-profile
+      gate.
+      **DONE:** every arm ran the production execution profile; the guard
+      bundle (test_gguf_mtp_c1c8_server_bench, test_llamacpp_c1c8_engine_matrix,
+      test_specdec2_perf_bridge, test_specdec2_rocprof_summary — 57 passed)
+      plus worklog/README-sync/diff checks ran at the closure commits; the
+      C1 fix added the RED-first scope contract (packed-verify-layout 62/62).
+- [x] Recapture the standardized hipEngine/current/Laurent C1-C8 matrix in
       counterbalanced order on the same physical host.
-- [ ] Require hipEngine C8 >94.735 for exact-peer closure and >101.072 for
+      **DONE (iter60):** two-run means, r1 hipEngine→current→Laurent, r2
+      reversed; peer K3 arms (spec-draft-n-max 3) and peer AR+prefill arms
+      both counterbalanced. All rows recorded in the packet; the recapture's
+      K3 gate exposed the width-1 regression (fixed at `29b06611f`, K3 rows
+      re-captured post-fix, 80/80 exact cells both orders).
+- [x] Require hipEngine C8 >94.735 for exact-peer closure and >101.072 for
       strongest-peer closure, using fresh peer rows if they moved.
-- [ ] Confirm C1-C7 non-regression for shared changes and preserve the automatic
-      capacity-8 K0 policy unless separately promoted.
-- [ ] Update scoreboard, changelog, artifacts, kernel catalog, refactor ledger,
-      plan, worklog, and commit.
-- [ ] Mark the campaign complete, or record the quantified structural blocker
+      **RESOLVED (iter60):** fresh peer rows moved down (current 94.735 →
+      92.345; Laurent 101.072 → 95.830). Both thresholds evaluated, no
+      best-of selection: binding candidate 95.240 is **above both exact-peer
+      rows** (+0.53% published, +3.13% fresh) — exact-peer closure achieved;
+      and **below both strongest-peer rows** (−5.77% published, −0.62%
+      fresh) — strongest-peer closure not achieved.
+- [x] Confirm C1-C7 non-regression for shared changes and preserve the
+      automatic capacity-8 K0 policy unless separately promoted.
+      **DONE (iter60):** fresh hipEngine rows vs the published rollup: AR
+      C1-C7 +0.43%..+3.42%, K3 C1-C7 +3.92%..+22.10%, prefill C1-C7
+      −0.98%..+0.88% — no regression. AR automatic runs recorded
+      engaged=false at every width; the capacity-8 K0 product policy is
+      preserved and no automatic-MTP promotion was made.
+- [x] Update scoreboard, changelog, artifacts, kernel catalog, refactor
+      ledger, plan, worklog, and commit.
+      **DONE (iter60):** `benchmarks/README.md` C1-C8 tables replaced with
+      the fresh rows + provenance; `benchmarks/CHANGELOG.md` dated one-liner;
+      result packet with raw-source hashes; `docs/REFACTOR.md` entry for the
+      C1 scope defect; worklog entries committed with the unit.
+- [x] Mark the campaign complete, or record the quantified structural blocker
       and the exact condition that would reopen it.
+      **CAMPAIGN CLOSED (iter60) — exact-peer closure achieved; strongest-peer
+      recorded as the quantified structural blocker.** Residual: binding
+      candidate 95.240 vs fresh Laurent 95.830 (−0.62%) and published 101.072
+      (−5.77%). Structural finding (P6): the 24.850 ms/cycle non-device wall
+      did not grow through P2-P5 device work (cycle 190.307 → 171.224 ms,
+      −10.03%); the launch-only ceiling cannot repair host-side wall. Exact
+      reopen conditions: (1) a host-side wall reduction (batch window /
+      scheduler / publication) showing wall-minus-union below 24.850 ms at
+      equal device work under the P6 pinned-pipeline protocol; (2) a
+      Laurent-source mechanism port with an exact strict fallback passing the
+      campaign L0-L5 gates; (3) a fresh peer row moving below the retained
+      binding candidate under the same two-order protocol.
 
 ---
 

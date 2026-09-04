@@ -5275,3 +5275,24 @@ other means and were not touched.
   loader sidecar, leaf script, and tests if the P2 residual closes by
   another axis AND the flag pair has had no operator use for a full
   campaign cycle, or if a later owner-parity regression voids the axis.
+
+## C8: direct-resident verify route scope (added 2026-09-04, iter60)
+
+The 2026-09-02 direct-resident promotion (7daa03723) enabled
+`GGUF_DIRECT_RESIDENT_VERIFY_LINEAR_STATE_POLICY` for all packed target
+verification, but its gate evidence covered only C5-C8 multi-lane shapes. The
+iter60 P8 matrix recapture found the single-session (width-1) shape reads a
+wrong/stale initial Conv/GDN state through the direct mapping: ar_mtp_equal
+lost on all 10 prompts, acceptance 0.789→0.166, w1 K3 34.7→21.5 tok/s, while
+widths 2-8 stayed exact. Fix 29b06611f scopes the route to multi-session
+batches (len(sessions) >= 2) with a RED-first contract
+(`test_gguf_direct_resident_verify_route_requires_multi_session`).
+
+- Root cause is scoped, not root-caused: why the single-slot mapping diverges
+  (slot-index vs layout interplay at one packed slot) is unknown. If anyone
+  re-widens the route, first reproduce the width-1 divergence with a
+  device-level trace of `layout.state_indices` vs the captured-row reads and
+  fix the mapping, then re-run the width-1 explicit-K3 e2e probe
+  (ar_exact 10/10 required) plus the C1-C2 two-order gate.
+- Remove this entry only when the route is either root-caused and re-qualified
+  for the single-session shape, or the policy is deleted outright.

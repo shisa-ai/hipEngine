@@ -1,0 +1,283 @@
+{
+ "schema": 1,
+ "kind": "w7900_q4km_k3_c8_p8_final_closure_matrix",
+ "date": "2026-09-04",
+ "status": "retained_exact_default",
+ "performance_claim": true,
+ "decision": "P8 final closure. Fresh counterbalanced two-run C1-C8 matrix on one physical host: hipEngine exact-peer closure achieved (binding two-order D24 candidate mean 95.240 tok/s above both the published 94.735 (+0.53%) and fresh 92.345 (+3.13%) current-llama.cpp rows); strongest-peer closure NOT achieved (95.240 below published Laurent 101.072 by 5.77% and below fresh Laurent 95.830 by 0.62%). The residual is quantified by the P6 reprofile: 24.850 ms/cycle non-device wall that the launch-only ceiling cannot repair. Campaign closes with the quantified strongest-peer blocker and exact reopen conditions; C1-C7 non-regression passes and the automatic capacity-8 K0 product policy is preserved.",
+ "hardware": {
+  "host": "epyc",
+  "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.53211-3d9ef42 (HIP version file /tmp/hipengine-hipcc-version.txt)",
+  "visible_device": "0"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "kv": "BF16 (hipEngine) / F16 (peers)"
+ },
+ "protocol": {
+  "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+  "prompts": 10,
+  "heldouts": 4,
+  "widths": [
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ],
+  "resident_capacity": 8,
+  "batch_window_ms": 20.0,
+  "max_sequence_length": 1024,
+  "sampling": "raw greedy",
+  "timing": "per-prompt barrier-to-last-completion complete wall, summed across ten prompts; aggregate tok/s across all active requests; prefill numerator = prompt tokens",
+  "aggregation": "arithmetic mean of two independently aggregated full-suite process rates per arm",
+  "counterbalanced_process_order": [
+   "matrix r1: hipEngine (D24-AR, K3, D1) -> llama.cpp current (K3) -> llama.cpp Laurent (K3)",
+   "matrix r2: llama.cpp Laurent (K3) -> llama.cpp current (K3) -> hipEngine (D24-AR, K3, D1)",
+   "peer AR+prefill r1: current -> laurent; r2: laurent -> current",
+   "hipEngine K3 re-runs (post C1 fix): r1 then r2"
+  ],
+  "llamacpp_server": "-c 8192 -b 2048 -ub 512 -ngl 999 -np 8 --no-mmap -fa on -ctk f16 -ctv f16 -t 16",
+  "llamacpp_spec": "draft-mtp K3 (--spec-draft-n-max 3), D24",
+  "peer_commits": {
+   "current": "b19cbe925be361d229f0fe03435affe4a2717f37 (0.3.0-dev build10671)",
+   "laurent": "c28d538df5c02643e701a8004db84dbf1bb0ffb2 (0.3.0-dev build10681)"
+  }
+ },
+ "source": {
+  "hipengine_commit_recapture_ar_d1_peers": "f242f509a (docs: close P7)",
+  "hipengine_commit_k3_rows_and_c1_fix": "29b06611f (fix: scope direct-resident verify route to multi-session batches)",
+  "tracked_clean": true
+ },
+ "rows_tok_s": {
+  "prefill_d1": {
+   "he_d1": [
+    188.124,
+    290.89,
+    366.704,
+    408.71,
+    439.451,
+    457.617,
+    473.896,
+    475.561
+   ],
+   "current_prefill": [
+    192.834,
+    232.181,
+    246.71,
+    268.236,
+    313.218,
+    351.989,
+    362.168,
+    408.393
+   ],
+   "laurent_prefill": [
+    192.229,
+    232.667,
+    247.092,
+    268.799,
+    317.57,
+    351.067,
+    367.582,
+    395.08
+   ]
+  },
+  "true_ar_d24": {
+   "he_ar": [
+    23.636,
+    39.064,
+    53.141,
+    63.889,
+    72.821,
+    79.508,
+    83.197,
+    85.891
+   ],
+   "current_ar": [
+    20.997,
+    34.361,
+    30.595,
+    27.737,
+    36.662,
+    46.351,
+    52.132,
+    58.429
+   ],
+   "laurent_ar": [
+    20.913,
+    35.273,
+    31.042,
+    27.852,
+    37.031,
+    47.309,
+    53.235,
+    59.378
+   ]
+  },
+  "explicit_k3_d24": {
+   "he_k3": [
+    36.872,
+    57.7,
+    65.922,
+    68.106,
+    70.541,
+    80.714,
+    85.263,
+    94.08
+   ],
+   "current_mtp": [
+    30.658,
+    39.435,
+    45.065,
+    48.014,
+    59.269,
+    68.046,
+    73.5,
+    92.345
+   ],
+   "laurent_mtp": [
+    31.446,
+    39.172,
+    45.457,
+    45.946,
+    60.427,
+    74.465,
+    77.42,
+    95.83
+   ]
+  }
+ },
+ "row_mapping": {
+  "he_d1": "hipengine",
+  "he_ar": "hipengine",
+  "he_k3": "hipengine",
+  "current_prefill": "llama_cpp_current_hip",
+  "current_ar": "llama_cpp_current_hip",
+  "current_mtp": "llama_cpp_current_hip",
+  "laurent_prefill": "llama_cpp_laurent_hip",
+  "laurent_ar": "llama_cpp_laurent_hip",
+  "laurent_mtp": "llama_cpp_laurent_hip"
+ },
+ "binding_two_order_d24_suite": {
+  "role": "the only closure metric (campaign section 1.1); run before the matrix recapture at f242f509a",
+  "control_commit": "4e7611363 (/tmp/hipengine-rollback worktree)",
+  "order_A_control_then_candidate": {
+   "control_mtp": 90.944,
+   "candidate_mtp": 95.449
+  },
+  "order_B_candidate_then_control": {
+   "candidate_mtp": 95.032,
+   "control_mtp": 89.63
+  },
+  "candidate_mean": 95.24,
+  "control_mean": 90.287,
+  "delta_percent": 5.49,
+  "order_A_delta_percent": 4.95,
+  "order_B_delta_percent": 6.03,
+  "ar_delta_percent": -0.4,
+  "correctness": "40/40 ar_exact cells (MTP == AR trajectories), 10/10 engaged and budget-conformed per arm, all four arms complete, both trees tracked-clean"
+ },
+ "c1_regression_found_and_fixed": {
+  "discovery": "matrix recapture K3 gate failed width 1 only (ar_mtp_equal=false 10/10; widths 2-8 exact)",
+  "bisect": "2585cb7dc (last green C1-C2 gate 2026-08-31) -> 4e7611363; probes 2e3664c4f FAIL, 26be5b87f PASS, 2864d9720 FAIL, 00ea15c04 PASS, 86c92a784 PASS, 180df7843 FAIL, 58f6889ab PASS -> regression commit 7daa03723 (direct resident verifier state, 2026-09-02)",
+  "mechanism_evidence": "HEAD with HIPENGINE_GGUF_VERIFY_DIRECT_RESIDENT_LINEAR_STATE=0 restores w1 exact 10/10, acceptance 157/199 (identical to pre-regression), mtp 37.007 tok/s; default HEAD acceptance 73/440",
+  "fix_commit": "29b06611f",
+  "fix_validation": "RED-first scope contract unit test; e2e w1 probe exact 10/10 mtp 37.067; refreshed K3 C1-C8 runs 80/80 exact cells in both orders"
+ },
+ "c1_c7_non_regression": {
+  "he_ar_delta_percent_vs_published": [
+   3.42,
+   3.06,
+   1.62,
+   0.43,
+   2.57,
+   3.2,
+   2.39
+  ],
+  "he_k3_delta_percent_vs_published": [
+   6.49,
+   11.46,
+   20.76,
+   22.1,
+   3.92,
+   6.17,
+   15.55
+  ],
+  "he_d1_delta_percent_vs_published": [
+   -0.5,
+   0.35,
+   -0.98,
+   0.83,
+   -0.17,
+   0.05,
+   0.88
+  ],
+  "automatic_capacity8_k0_policy": "preserved - AR automatic runs recorded engaged=false at every width; no automatic-MTP promotion was made"
+ },
+ "threshold_evaluation": {
+  "exact_peer_published_94_735": {
+   "candidate": 95.24,
+   "delta_percent": 0.53,
+   "closed": true
+  },
+  "exact_peer_fresh_92_345": {
+   "candidate": 95.24,
+   "delta_percent": 3.13,
+   "closed": true
+  },
+  "strongest_peer_published_101_072": {
+   "candidate": 95.24,
+   "delta_percent": -5.77,
+   "closed": false
+  },
+  "strongest_peer_fresh_95_830": {
+   "candidate": 95.24,
+   "delta_percent": -0.62,
+   "closed": false
+  },
+  "note": "fresh peer rows moved down (current MTP C8 94.735->92.345, Laurent 101.072->95.830); both thresholds evaluated, no best-of selection"
+ },
+ "quantified_strongest_peer_blocker": {
+  "residual": "binding candidate 95.240 vs fresh Laurent 95.830 (-0.62%) and published 101.072 (-5.77%)",
+  "structural": "P6 reprofile (docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md): non-device wall 24.850 ms/cycle did not grow through P2-P5 device work (190.307->171.224 ms cycle, -10.03%); the launch-only ceiling cannot repair host-side wall",
+  "reopen_conditions": [
+   "a host-side wall reduction (batch window / scheduler / publication path) with the P6 pinned-pipeline protocol showing wall-minus-union below 24.850 ms at equal device work",
+   "or a Laurent-source mechanism port with an exact strict fallback passing the campaign L0-L5 gates",
+   "or a fresh peer row moving below the retained hipEngine binding candidate under the same two-order protocol"
+  ]
+ },
+ "raw_sources": {
+  "r1-hipengine-d24.json": "28dc26e95c6cce12ce41fcf3256aceb1f7521a30cc56bca7767ed4837855eea0",
+  "r2-hipengine-d24.json": "db3cf347341dbf3f13cb3df9b8b67362f8e7944c809af8b867a66aec5f65fe73",
+  "r1-hipengine-k3-fixed.json": "6656502ab47860615c7a9f9f37b02b7fea27cc4646dcaec38b117c73c75f9d04",
+  "r2-hipengine-k3-fixed.json": "0723aa774155ceb770eeede600abbfc5ae801294fbb9ddf81838da7f6f5493c0",
+  "r1-hipengine-d1.json": "f0c8347380c646dde4e6841855bc42534f33c86edebd1c9ca4f779ea77434b4f",
+  "r2-hipengine-d1.json": "3e7ab4d7153afaae087344e4fe6910bea8ec45d1a46d72f758f621b113a34675",
+  "r1-current.json": "d3ec51bd6e1e08490503185c00d2b4c9c2f33b77f689b0b0289ee0a35121751c",
+  "r2-current.json": "2a801f0360eb89677974d00ba91fc5049098409e6c2254a4fe3d3318a9a384f7",
+  "r1-laurent.json": "9ca9984d398ca470bfcb836ee2a1e5c41f3faeaa5df59f2dd67fc8dde7284c22",
+  "r2-laurent.json": "2e8324a905a24b3a667872b3b277cef1459ef0592e232756f40e0f01efe359d8",
+  "r1-current-ar.json": "4ef1e0e2c326f3d98cc5a763c786297e0c35f39ebe6bd559ef6fd24d02022f75",
+  "r2-current-ar.json": "bda29dac843e5b9b31503432b339834f1d2af9a41c15abc5ed602814835260d4",
+  "r1-laurent-ar.json": "2bd666271621fa912536e25fbca55d2250d066a268530034a423fb5aee28ef37",
+  "r2-laurent-ar.json": "4faa490d250af45329872c873284ca2ee0a9feb653c04a3c2519ed86024c85f4",
+  "w1probe-rollback.json": "0f808f043dcaed18e6ebd7e48e957b14b0a9c1147e24df94c592122e4279daff",
+  "w1probe-mid-7daa03723.json": "8a1baa1f2cac86688dff7e1df572b4885c325df719f52da3745447e5e2199527",
+  "w1probe-head-disabled.json": "e498783405820d1113d56009dacb117fec3d5a3baa4e1afb9ce8fe7837283755",
+  "w1probe-head-fixed.json": "7c83bb6ee586615d4dcf750087880770f67eb2274ba2331268e8401a5392b872"
+ },
+ "limitations": [
+  "hipEngine K3 rows were re-captured after the C1 scope fix (29b06611f); AR and prefill rows and all peer rows were captured at f242f509a (the fix touches only the single-session MTP verify route)",
+  "llama.cpp uses F16 KV while hipEngine uses BF16 KV; deployable-configuration comparison",
+  "explicit K3 is a forced engine path, not the capacity-8 automatic product route",
+  "fresh peer rows are measured with the in-tree harness; the published peer rows came from the 2026-09-02 scoreboard rollup"
+ ]
+}
