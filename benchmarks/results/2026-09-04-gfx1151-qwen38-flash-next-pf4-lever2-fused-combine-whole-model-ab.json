@@ -1,12 +1,21 @@
 {
+ "schema": 1,
  "date": "2026-09-04",
+ "lifecycle": {
+  "status": "provisional_invalid_whole_model_protocol",
+  "performance_claim": false,
+  "promotion": "none; unfused strict owner remains production"
+ },
  "platform": "gfx1151 (AMD Radeon 8060S, Strix Halo, zbook host)",
  "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN section 6 PF-4 lever 2",
  "unit": "PF-4 lever 2 T0 fused combine whole-model same-session counterbalanced A/B",
  "kind": "whole-model counterbalanced A/B, measured-loss verdict (lever closed; fused path demoted to opt-in)",
  "protocol": {
   "engine": "hipengine_candidate",
-  "surface": "synchronized_direct_runner",
+  "surface": "synchronized_direct_runner in four separate Python processes/model residencies",
+  "same_session": false,
+  "python_processes": 4,
+  "model_residencies": 4,
   "profile": {
    "requested": "production",
    "manifest_sha256": "37d595645b376083c2c2045687b76fa51b3bdf3c74e511af4f7831a180e16779",
@@ -24,7 +33,7 @@
   "cases": "4 categories x 3 prompt widths (p512/p1024/p4096), 3 samples each, 36 samples per arm",
   "counterbalance": "ABBA-style: incumbent_a, candidate_a, candidate_b, incumbent_b within one session"
  },
- "verdict": "MEASURED LOSS - lever closed",
+ "verdict": "PROVISIONAL PROCESS-SEPARATED LOSS - lever reopened for one-residency A/B",
  "results": {
   "per_case": {
    "code-p1024": {
@@ -149,6 +158,11 @@
   }
  },
  "interpretation": "Kernel-level exact win (rows=1 -26.1% ... rows=512 -2.3%) did not survive whole-model: prefill is negative in all 12/12 cases (sign-test p~2^-12 under a no-effect null), mean -1.69%. Decode is noise-level. The fused kernel saves one launch + a routed BF16 round-trip locally, but the whole-model prefill path regresses; mechanism not pursued (would require a separate investigation, and the campaign rule is: measured loss closes the lever).",
- "decision": "Lever 2 closed as measured loss. Default remains the unfused weighted_lanes_sum + shared_gate_combine chain; fused variant stays registered and bit-exact, reachable only via HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1. Removal candidate tracked in docs/REFACTOR.md.",
- "related_artifact": "2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json (kernel-level A/B, exact win, superseded as promotion evidence by this whole-model result)"
+ "decision": "Keep the unfused weighted_lanes_sum + shared_gate_combine chain as production. The fused variant stays registered, bit-exact, and opt-in via HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1 until a one-process/one-residency A/B confirms or overturns the provisional loss.",
+ "related_artifact": "2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json (kernel-level A/B, exact win)",
+ "review": {
+  "date": "2026-09-04",
+  "finding": "The purported same-session arms were separate qwen4exp_candidate_ar.py invocations with fresh model residencies. Stored deltas remain historical diagnostics, not a binding rejection.",
+  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md"
+ }
 }

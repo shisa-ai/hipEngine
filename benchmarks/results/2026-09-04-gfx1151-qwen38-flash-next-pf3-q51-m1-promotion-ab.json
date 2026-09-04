@@ -4,9 +4,9 @@
  "date": "2026-09-04",
  "campaign": "QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md section 6 PF-3",
  "lifecycle": {
-  "status": "promoted",
-  "performance_claim": true,
-  "promotion": "fused single-loop logical256 Q5_1 down prefill (selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out) is the production default in the exact_grouped_down expertgrid64 arm; previous owner qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out stays registered as the strict fallback; the temporary HIPENGINE_QWEN4_EXP_Q5_1_DOWN_M1 A/B flag was deleted"
+  "status": "withdrawn_invalid_whole_model_protocol",
+  "performance_claim": false,
+  "promotion": "rolled back by the 2026-09-04 review: each arm constructed a fresh Python process/model residency, so this packet cannot support the claimed same-session promotion; kernel exactness and kernel timing remain diagnostic evidence pending the committed one-residency rerun"
  },
  "host": {
   "hostname": "zbook",
@@ -18,8 +18,10 @@
  "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
  "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
  "protocol": {
-  "harness": "scripts/qwen4exp_candidate_ar.py",
-  "same_session": true,
+  "harness": "scripts/qwen4exp_candidate_ar.py (self-described diagnostic-only harness; not eligible for a retained claim)",
+  "same_session": false,
+  "python_processes": 4,
+  "model_residencies": 4,
   "counterbalanced_order": ["incumbent_a", "candidate_a", "candidate_b", "incumbent_b"],
   "warmups_per_case": 1,
   "measured_repetitions": 3,
@@ -80,5 +82,10 @@
   "Expert-count invariance: parity suite covers uneven counts with empty experts at rows 16/64/512; the A/B routed the full 512-expert production graph.",
   "No new env selector remains: the temporary A/B flag was deleted at promotion per the REFACTOR removal trigger."
  ],
+ "review": {
+  "date": "2026-09-04",
+  "finding": "The four arms were separate script invocations and separate model residencies, not one same-session A/B. Absolute and delta fields are preserved as historical diagnostics only.",
+  "superseded_by": "worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md"
+ },
  "created": "2026-09-04"
 }

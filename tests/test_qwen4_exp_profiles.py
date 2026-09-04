@@ -15,6 +15,7 @@ from hipengine.generation.qwen4_exp_profiles import (
     PRODUCTION_QSA_FLASH_PREFILL_LAYERS,
     PRODUCTION_GDN_PEER_PREFILL_LAYERS,
     PRODUCTION_MOE_PREFILL_ENV,
+    PROFILE_Q5_1_DOWN_M1_ENV,
     PRODUCTION_Q4_DP4A_DECODE_LAYERS,
     PRODUCTION_Q4_IU8_PREFILL_LAYERS,
     PRODUCTION_Q4_K_MMQ_PREFILL_LAYERS,
@@ -36,6 +37,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
     clear_runtime_profile_registry_for_tests()
     environment_names = (
         PRODUCTION_MOE_PREFILL_ENV,
+        PROFILE_Q5_1_DOWN_M1_ENV,
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE",
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL",
@@ -48,6 +50,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64",
         "HIPENGINE_QWEN4_EXP_Q4_DP4A64_LAYERS",
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
+        "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
     )
     for name in environment_names:
@@ -106,6 +109,24 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     ]
     assert strict_gr["selected_variant"] == "strict"
     assert strict_gr["strict_fallback_variant"] == "strict_unfused"
+    strict_q5_m1 = _selection_map(strict)[
+        ("moe_linear", "prefill_rows_ge2_exact_grouped_q5_1_down")
+    ]
+    assert strict_q5_m1["selected_variant"].endswith(
+        "expertgrid64_bf16_bf16_out"
+    )
+    assert strict_q5_m1["strict_fallback_variant"].endswith(
+        "expertgrid64_bf16_bf16_out"
+    )
+    strict_q8_grouped = _selection_map(strict)[
+        ("linear", "grouped_prefill_q8_0_expert_down")
+    ]
+    assert strict_q8_grouped["selected_variant"] == (
+        "selected_gemv_bf16_bf16_out"
+    )
+    assert strict_q8_grouped["strict_fallback_variant"] == (
+        "selected_gemv_bf16_bf16_out"
+    )
     assert strict.manifest_sha256 == strict.strict_manifest_sha256
     assert production.manifest_sha256 != production.strict_manifest_sha256
     assert not production.fell_back_to_strict
@@ -146,6 +167,24 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert down["evidence_artifact"].endswith(
         "wmma-moe27-production.json"
     )
+    q5_m1 = selections[
+        ("moe_linear", "prefill_rows_ge2_exact_grouped_q5_1_down")
+    ]
+    assert q5_m1["selected_variant"].endswith(
+        "expertgrid64_bf16_bf16_out"
+    )
+    assert q5_m1["strict_fallback_variant"].endswith(
+        "expertgrid64_bf16_bf16_out"
+    )
+    assert q5_m1["evidence_artifact"] is None
+    q8_grouped = selections[("linear", "grouped_prefill_q8_0_expert_down")]
+    assert q8_grouped["selected_variant"] == (
+        "selected_gemv_bf16_bf16_out"
+    )
+    assert q8_grouped["strict_fallback_variant"] == (
+        "selected_gemv_bf16_bf16_out"
+    )
+    assert q8_grouped["evidence_artifact"] is None
     q8 = selections[("linear", "prefill_policy_qwen4exp_dense_q8_shapes")]
     assert q8["selected_variant"] == (
         "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
@@ -188,6 +227,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
+    assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "0"
     # The ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
     # route; their envs stay off so they cannot preempt it.
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
@@ -249,6 +290,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_ATTN_GATE"] == "0"
+    assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"

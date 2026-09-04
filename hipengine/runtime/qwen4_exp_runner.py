@@ -107,9 +107,6 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
     gguf_q5_k_selected_wmma_prefill_compact_bf16_bf16_out,
 )
-from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
-    gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
-)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_prefill import (
     gguf_q8_0_selected_grouped_prefill_compact_bf16_bf16_out,
     gguf_q8_0_wmma_prefill_bf16_bf16_out,
@@ -127,7 +124,6 @@ from hipengine.kernels.hip_gfx1100.quant.qwen4_exp_q5_1 import (
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out,
-    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out,
     qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
@@ -3469,21 +3465,40 @@ def run_qwen4_exp_moe(
                     library=scratch.q5_1_mmq_library,
                 )
             elif exact_grouped_down:
-                # PF-3 promoted default: fused single-loop logical256 Q5_1
-                # down prefill (bit-exact vs the previous owner; whole-model
-                # counterbalanced A/B p512 +1.9% / p1024 +1.6% / p4096 +0.9%,
-                # outputs bit-identical across all four arms). The previous
-                # owner stays registered as the strict fallback variant.
-                grouped_q5_down = (
-                    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out
-                    if os.environ.get(
-                        "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+                # PF-3 candidate: fused single-loop logical256 Q5_1 down
+                # prefill, bit-exact vs the strict owner. The production
+                # profile keeps the strict owner until the review's
+                # one-residency whole-model A/B restores promotion evidence.
+                if os.environ.get(
+                    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+                ) in {"64", "q5"}:
+                    grouped_q5_variant = (
+                        "selected_grouped_prefill_compact_rowbatch8_out8_"
+                        "expertgrid64_m1_bf16_bf16_out"
+                        if os.environ.get(
+                            "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1", "0"
+                        )
+                        not in {"", "0", "false", "False"}
+                        else "selected_grouped_prefill_compact_rowbatch8_out8_"
+                        "expertgrid64_bf16_bf16_out"
                     )
-                    in {"64", "q5"}
-                    else qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out
-                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q5_1_OUT8", "1")
-                    not in {"", "0", "false", "False"}
-                    else qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_bf16_bf16_out
+                elif os.environ.get(
+                    "HIPENGINE_QWEN4_EXP_Q5_1_OUT8", "1"
+                ) not in {"", "0", "false", "False"}:
+                    grouped_q5_variant = (
+                        "selected_grouped_prefill_compact_rowbatch8_"
+                        "out8_bf16_bf16_out"
+                    )
+                else:
+                    grouped_q5_variant = (
+                        "selected_grouped_prefill_compact_rowbatch8_"
+                        "bf16_bf16_out"
+                    )
+                grouped_q5_down = resolve(
+                    backend=backend,
+                    layer="moe_linear",
+                    quant=weights["expert_down"].spec.quant_key,
+                    variant=grouped_q5_variant,
                 )
                 grouped_q5_down(
                     (
@@ -3531,23 +3546,29 @@ def run_qwen4_exp_moe(
                     runtime=active_runtime,
                 )
         elif weights["expert_down"].spec.quant_key == "gguf_q8_0":
-            # PF-1 fork (b) T0 candidate (default): grouped selected down, one
+            # PF-1 fork (b) T0 candidate: grouped selected down, one
             # block per (expert, out_col) pair serving every lane of the pair so
             # the expert's weight row is read once. Per-output arithmetic is
             # identical to the strict per-expert selected gemv (bit-exact,
             # RED-pinned in tests/test_qwen4exp_pf1_forkb_selected_down.py);
             # kernel-level paired A/B at the p4096 compact shape measured
             # 32.42 vs 47.42 ms median (-31.6%). The incumbent strict selected
-            # gemv and the legacy P1 grouped/WMMA owners stay available below
-            # via HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN=0 for rollback /
-            # bisection.
-            if os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "1") not in {
+            # gemv and the legacy P1 grouped/WMMA owners stay available below.
+            # The production profile keeps strict until the review's
+            # one-residency whole-model A/B restores promotion evidence.
+            if os.environ.get("HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN", "0") not in {
                 "", "0", "false", "False",
             }:
                 # x (expert_intermediate) and out (expert_down) are already in
                 # sorted-lane order here, so the kernel serves row = sorted
                 # position directly (lane_to_row=nullptr).
-                gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
+                grouped_q8_down = resolve(
+                    backend=backend,
+                    layer="linear",
+                    quant=weights["expert_down"].spec.quant_key,
+                    variant="selected_grouped_gemv_bf16_bf16_out",
+                )
+                grouped_q8_down(
                     scratch.expert_intermediate.ptr,
                     scratch.group_expert_start.ptr,
                     None,
