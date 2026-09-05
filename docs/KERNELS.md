@@ -79,11 +79,12 @@ Catalog maintenance rules:
 
 ### gfx1151 source sharing is not backend equivalence
 
-The raw `quant/gguf_k_gemv.{hip,py}` family also exposes a diagnostic exact
+The raw `quant/gguf_k_gemv.{hip,py}` family also exposes an exact
 Q5_K selected grouped-row4 owner. It accepts exclusive expert starts and an
 optional sorted-lane-to-original-row map, preserves selected GEMV reduction
 order, and keeps `selected_gemv_bf16_bf16_out` as its strict fallback.
-Registration alone does not select this candidate in a model runtime.
+Qwen4Exp gfx1151 production selects it for ungrouped gate/up rows>=64;
+strict, short rows and missing registry capabilities keep selected GEMV.
 
 `hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code objects and registers a peer backend key. `hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions, thresholds, and architecture-specific defaults. A gfx1100 variant is not a gfx1151 default merely because the source compiles there; each promotion needs its own correctness and performance gate.
 

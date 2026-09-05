@@ -1046,6 +1046,11 @@ are not cross-host deltas. The performance campaign's active contract records
 native FP8 as the remote full-model reference and llama.cpp as the same-Q4
 implementation reference; production does not require cross-engine generated
 output equality.
+Exact Q5_K grouped-row4 gate/up is now production after the clean Framework
+12-case A/B: p512/p1024/p4096 prefill 122.575/121.472/97.850 tok/s
+(+3.07%/+3.19%/+2.55% against its same-residency parent), all 72 trajectories
+exact and decode flat. Strict retains selected GEMV. This incremental win
+does not close the Vulkan gap; remaining MoE/dense/QSA owners need reranking.
 The historical Q8 admission packet's route-coverage finding and subsequent
 natural-text failure leave D1 re-qualification/scope/fallback with the owner;
 the status row above records historical admission, not resolution of that audit.

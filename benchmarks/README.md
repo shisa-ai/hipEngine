@@ -193,6 +193,7 @@ BF16 K/V, one warmup, and three measured requests per canonical case:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
+| hipEngine production + exact Q5_K row4, HIP (later same-residency A/B) | **122.57 / 19.97** | **121.47 / 19.25** | **97.85 / 15.29** | **12/12**, cross-arm exact |
 | hipEngine production `c0cfdc3ef`, HIP | 118.44 / 19.92 | 117.79 / 19.22 | 95.14 / 15.21 | **12/12** |
 | Upstream llama.cpp `4d9176092`, HIP | 283.85 / 21.06 | 367.97 / 20.79 | 395.02 / 19.63 | **11/12** |
 | Upstream llama.cpp `4d9176092`, Vulkan | 230.35 / 24.94 | 305.47 / 24.59 | 357.44 / 23.53 | **11/12** |
@@ -205,6 +206,12 @@ so this is a screening result, not a frozen closure target. Do not compare
 these rates as old-to-new deltas against `zbook`. Exact commands, binary and
 model hashes, per-sample rates, and output hashes are in the
 [Framework comparator packet](results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json).
+
+The row4 row is a later same-host internal A/B, not a paired rerun against
+the external lanes. Its own parent rates are 118.92/117.72/95.42 pp/s:
+prefill improves 3.07%/3.19%/2.55%, all 72 measured trajectories are exact,
+max per-case prefill CV is 0.23%, and teardown is clean.
+[Production evidence](results/2026-09-05-framework-qwen4exp-row4-production.json).
 
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
