@@ -855,9 +855,22 @@ def test_q6_t16_f16_rocblas_actual_shapes_use_bounded_workspace_and_pass_quality
     x_bits = _bf16_bits(
         rng.normal(0.0, 0.2, size=(rows, in_features)).astype(np.float32)
     )
+    model = next(
+        (
+            path
+            for path in (
+                Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf"),
+                Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"),
+            )
+            if path.is_file()
+        ),
+        None,
+    )
+    if model is None:
+        pytest.skip("local dense Q4_K_M GGUF fixture not found")
     reader = __import__(
         "hipengine.loading.gguf", fromlist=["GGUFReader"]
-    ).GGUFReader("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+    ).GGUFReader(model)
     tensor_name = (
         "blk.0.ffn_down.weight"
         if (out_features, in_features) == (5_120, 17_408)

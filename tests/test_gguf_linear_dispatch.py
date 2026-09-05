@@ -6727,7 +6727,9 @@ def test_gfx1100_grouped_q4_pair_rows6_policy_defaults_on_and_is_shape_scoped(
         gguf_linear_module._rowtile_variant_policy_env_cache.clear()
 
 
-def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor() -> None:
+def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor(
+    monkeypatch,
+) -> None:
     """The dense Q4T16 bulk FFN fused SiLU owner stays admitted from 33 rows.
 
     The floor moved 512 -> 33 on 2026-08-30: a same-process gate ladder measured
@@ -6786,6 +6788,11 @@ def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor() -> None:
         )
 
     try:
+        # Retile owners now take precedence at rows 33-128. Disable them here
+        # so this contract continues to pin the parent's independent rows33
+        # admission floor rather than accidentally asserting registry order.
+        monkeypatch.setenv("HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE", "0")
+        gguf_linear_module._Q4_T16_DUAL_SILU_RETILE_RESOLVED = None
         with wmma_prefill_session(True):
             for rows in (33, 45, 192, 512):
                 before = len(calls)
@@ -6802,6 +6809,7 @@ def test_w7900_q4_k_t16_ffn_pair_silu_scope_pins_the_rows33_floor() -> None:
             # owner). Rows and shape are therefore the only scope controls, which is
             # exactly why this test pins both.
     finally:
+        gguf_linear_module._Q4_T16_DUAL_SILU_RETILE_RESOLVED = None
         register(key, original, replace=True)
 
     assert len(calls) == 4

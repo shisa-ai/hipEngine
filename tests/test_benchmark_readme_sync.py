@@ -219,28 +219,45 @@ def test_benchmark_readme_is_a_compact_current_scoreboard() -> None:
     _assert_local_markdown_links_exist(scoreboard, scoreboard_path.parent)
 
 
-def test_qwen38_c1c8_current_rollup_matches_scoreboard() -> None:
+def test_qwen38_c1c8_final_recapture_matches_scoreboard() -> None:
     repo_root = Path(__file__).resolve().parents[1]
     scoreboard = (repo_root / "benchmarks/README.md").read_text(encoding="utf-8")
     artifact = json.loads(
         (
             repo_root
-            / "benchmarks/results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json"
+            / "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p8-final-closure-matrix.json"
         ).read_text(encoding="utf-8")
     )
 
     headings = {
-        "**True AR decode**": "true_ar",
-        "**Explicit K3 MTP decode diagnostic**": "explicit_k3",
-        "**Prefill**": "prefill",
-    }
-    labels = {
-        "hipEngine": "hipengine",
-        "llama.cpp current HIP": "llama_cpp_current_hip",
-        "llama.cpp Laurent HIP": "llama_cpp_laurent_hip",
+        "**True AR decode**": (
+            "true_ar_d24",
+            {
+                "hipEngine": "he_ar",
+                "llama.cpp current HIP": "current_ar",
+                "llama.cpp Laurent HIP": "laurent_ar",
+            },
+        ),
+        "**Explicit K3 MTP decode diagnostic**": (
+            "explicit_k3_d24",
+            {
+                "hipEngine": "he_k3",
+                "llama.cpp current HIP": "current_mtp",
+                "llama.cpp Laurent HIP": "laurent_mtp",
+            },
+        ),
+        "**Prefill**": (
+            "prefill_d1",
+            {
+                "hipEngine": "he_d1",
+                "llama.cpp current HIP": "current_prefill",
+                "llama.cpp Laurent HIP": "laurent_prefill",
+            },
+        ),
     }
     markers = list(headings)
     for index, marker in enumerate(markers):
+        artifact_axis, labels = headings[marker]
         begin = scoreboard.index(marker)
         end = (
             scoreboard.index(markers[index + 1], begin)
@@ -253,18 +270,15 @@ def test_qwen38_c1c8_current_rollup_matches_scoreboard() -> None:
                 row for row in section.splitlines() if row.startswith(f"| {label} |")
             )
             cells = [cell.strip().strip("*") for cell in line.strip("|").split("|")[1:]]
-            assert [float(cell) for cell in cells] == artifact["rows_tok_s"][headings[marker]][role]
+            assert [float(cell) for cell in cells] == artifact["rows_tok_s"][artifact_axis][role]
 
-    assert artifact["performance_claim"] is False
-    for source in artifact["source_artifacts"]:
-        assert (repo_root / source["path"]).is_file()
-    assert artifact["rows_tok_s"]["explicit_k3_divided_by_published_true_ar"] == [
-        round(mtp / ar, 4)
-        for mtp, ar in zip(
-            artifact["rows_tok_s"]["explicit_k3"]["hipengine"],
-            artifact["rows_tok_s"]["true_ar"]["hipengine"],
-        )
-    ]
+    assert artifact["performance_claim"] is True
+    assert artifact["source"]["tracked_clean"] is True
+    assert artifact["raw_sources"]
+    assert all(
+        re.fullmatch(r"[0-9a-f]{64}", digest)
+        for digest in artifact["raw_sources"].values()
+    )
 
 
 def test_compact_mtp_scoreboard_uses_true_ar_artifacts() -> None:

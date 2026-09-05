@@ -173,7 +173,6 @@ reading the input. Text generation is the speed of producing new tokens.
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests (total tok/s across all active requests)
-
 | Model and interface | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (engine) | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
@@ -186,6 +185,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **36.726 tok/s** | **1.1970x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K3 D24 explicit | **51.769 tok/s** | **1.3376x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C8/K3 D24 automatic | **98.643 tok/s** | **1.1178x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
@@ -242,7 +242,7 @@ reading the input. Text generation is the speed of producing new tokens.
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The W7900 C8/K3 row is automatic only for its exact production Qwen3.8 `Q4_K_M` capacity-8 D24 key; misses use K0. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 Full commands, software versions, model hashes, memory use, and correctness

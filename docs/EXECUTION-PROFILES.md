@@ -174,10 +174,42 @@ category/shape/transition scope, and three candidate runs are bit-exact. The
 tracked-clean counterbalanced server gate improves **76.510 -> 81.641 tok/s
 (+6.71%)**, wins all 20 prompt-order cells and every category/heldout slice,
 and preserves all generated IDs, acceptance sequences, and lifecycle
-accounting. The production/strict manifest hashes are
-`a7e5ad33b4af17707b1a375ecb706c369b7f0f35e6532456dd507ef13be1bc35` and
+accounting. The current production/strict manifest hashes are
+`2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960` and
+`52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`;
+the production hash advanced when §2.7 added its independent C8 Q6 scope, not
+because this C7 schedule changed. Evidence:
+[`periodic-strict fused R28`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json)
+and [`manifest continuity`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
+
+### 2.7 Qwen3.8 gfx1100 production C8 grouped-Q6 DP4A decision
+
+The W7900 Qwen3.8 `Q4_K_M` production plan admits the grouped q8_1 DP4A
+planar-Q6 owner only at physical C8/K3. This is T1 implementation arithmetic:
+activations are quantized to q8_1 per call while the model representation,
+algorithm, target ownership, and acceptance policy remain unchanged. The
+strict profile and explicit zero retain the registered grouped BF16 chain.
+Runtime admission additionally requires gfx1100, model metadata containing
+`Qwen3.8`, file type `MOSTLY_Q4_K_M`, and request count 8; C1-C7 and scope
+misses cannot enter the candidate context.
+
+The 18-prompt, 432-row strict-teacher gate passes at mean/p95/p99/max KL
+`0.000140/0.000688/0.001606/0.007267`, 99.769% top-1, and three deterministic
+candidate repeats. A fresh final-stack two-order task/economics gate improves
+**95.708 -> 97.674 tok/s (+2.05%)**, with both orders and every
+category/heldout slice positive and all 160 request trajectories returning the
+same final IDs. `general_en_plan` needs one extra rejected proposal cycle per
+request (overall acceptance `0.788945 -> 0.785000`), but its throughput remains
+positive in both orders (+0.36%/+1.05%) and no task output changes. The clean
+post-promotion automatic route measures **98.643 vs 88.250 AR tok/s
+(1.1178x)** with 10/10 exact, engaged, and budget-conformed cells.
+
+Automatic serving is narrower than kernel admission: production/BF16
+`Q4_K_M`, resident capacity 8, realized C8, K3, context 4-95, D24, and greedy
+sampling. Every miss remains K0. The production/strict manifest hashes are
+`2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960` and
 `52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`.
-Evidence: [`periodic-strict fused R28`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json).
+Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
 
 ## 3. Profile is orthogonal to model representation
 

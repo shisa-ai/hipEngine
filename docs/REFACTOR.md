@@ -5207,31 +5207,26 @@ other means and were not touched.
 - Verdict: the WMMA route is the better one and the knob stays diagnostic-only. Remove the knob once the
   small-row WMMA kernel itself is fixed; do not promote the GEMV route as a small-row fallback.
 
-### Grouped q8_1 DP4A planar-Q6 variant - default-off candidate pending L4
+### Grouped q8_1 DP4A planar-Q6 variant - retained C8 default with temporary rollback
 
-- New kernel `q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_kernel<8>` (rows
-  8-64, integer dp4a decode over the planar-qmicro tiles, u32 record loads)
+- Kernel `q6_k_t16_qmicro_planar_q8_1_dp4a_gemv_grouped_kernel<8>` (rows
+  8-64, integer dp4a decode over planar-qmicro tiles, u32 record loads) is
   registered as `linear_q8_1 / t16_q8_1_dp4a_gemv_grouped_bf16_bf16_out`.
-  Leaf screen (2026-09-04, actual weights, quantize included): FFN-down and
-  recurrent-QKV 1.25-1.33x faster than the dispatched BF16 owners at
-  R8-R32; V launch-bound. Artifact
-  `benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-grouped-leaf.json`.
-- **Default-off by construction:** nothing dispatches it; the BF16
-  grouped-R8 owner remains the route default and the registered strict
-  fallback. Promotion to default requires the full L4 production-profile
-  campaign (the arms differ by the x -> q8_1 activation quantization):
-  strict-teacher mean/tail/max KL and top-1 by category/shape/transition,
-  BF16-relative gates, task gates, and the tracked-clean ten-prompt e2e
-  plus heldouts with candidate/control ordering.
-- Remove the kernel, wrapper, registry entry, leaf
-  (`scripts/qwen38_c8_p4_q6_dp4a_grouped_leaf.py`), and its tests if the L4
-  campaign rejects the variant or the P4 bullet closes by another axis.
-
-- Owner-controlled dispatch route (added with the kernel): the planar decode
-  wrapper routes rows 8-64 to the grouped dp4a sibling only inside
-  `q6_dp4a_grouped_target_session` (runner workspace `moe_q8_1`) with env
-  `HIPENGINE_C8_Q6_DP4A_GROUPED=1` (default-off); the zero-valued env also
-  rolls back an active session. Same removal condition as above.
+  The L4 gate and fresh final-stack composition gate passed; production
+  Qwen3.8 `Q4_K_M` physical C8/K3 now defaults on at `c1bb38d49`. Artifact:
+  `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
+- The runner still carries the temporary `q6_dp4a_grouped_target_session`
+  ContextVar and `HIPENGINE_C8_Q6_DP4A_GROUPED` env. The production profile
+  binds one; strict and explicit zero bind zero. Runtime admission is fail
+  closed to gfx1100 + request count 8 + `Qwen3.8` model metadata +
+  `MOSTLY_Q4_K_M`, so C1-C7, Qwen3.6, Q4_K_S, and peer backends keep grouped
+  BF16.
+- **Removal condition:** after one release/bake interval without a production
+  regression, replace the env/ContextVar experiment plumbing with a packaged
+  model/profile-qualified dispatch policy and remove the rollback variable.
+  Keep the registered DP4A kernel and strict BF16 fallback. If the default is
+  rolled back during that interval, revert the production binding and retain
+  this entry with the concrete failure artifact.
 
 ### C8-P2 Q5 planar-dp4a grouped route (default-off; added 2026-09-04, iter40)
 

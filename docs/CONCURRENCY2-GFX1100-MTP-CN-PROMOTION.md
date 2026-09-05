@@ -1,8 +1,10 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
-- Status: **Qwen3.6 lanes complete; 27B Dense and 35B MoE physical C2 promoted
-  automatically. Qwen3.8 P7-P12, P13 recovery, and the post-recovery prefill/AR
-  repeats are complete; cross-engine parity continuation remains open**
+- Status: **complete. Qwen3.6 Dense/MoE physical C2 and Qwen3.8 physical C2
+  remain automatic; the dedicated Qwen3.8 C8 campaign closed exact-peer parity
+  and its post-closure product review promoted the exact production C8/K3 key.
+  Capacity-8 C1-C7 remain K0; the published Laurent threshold remains the
+  quantified blocker.**
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -915,9 +917,11 @@ its bounded key; C3/C4 and every scope miss remain K0. Evidence:
 
 Opened **2026-08-31** after reviewing all 28 commits after the fresh-coder
 handoff (`01dba507d..dbf5d263c`). P7-P12 remain complete: the bounded
-capacity-2/C2/K2 automatic product key is retained. P13 is a separate recovery
-and parity lane for the standardized capacity-8 C1-C8 matrix. It does not reopen
-or weaken P12's product gate.
+capacity-2/C2/K2 automatic product key is retained. P13 was a separate recovery
+and parity lane for the standardized capacity-8 C1-C8 matrix. Its later
+C8-specific continuation and automatic product review are closed in
+[`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md); they do
+not reopen or weaken P12's product gate.
 
 ### 12.1 Operator and evidence provenance
 
@@ -1373,6 +1377,10 @@ Completed recovery work has no hidden “remaining #22/#23/#11/#12” tail:
   near-parity cells and require the same counterbalanced same-host repeat before
   becoming optimization targets.
 
-Product truth is unchanged: only the bounded capacity-2/C2/K2 automatic key is
-promoted. Capacity-8 automatic requests and every scope miss remain ordinary
-K0; every K3 number above is an explicit engine diagnostic.
+At P13 closure, product truth was unchanged: only the bounded
+capacity-2/C2/K2 key was automatic and the K3 table above was an explicit
+engine diagnostic. The dedicated continuation supersedes only that capacity-8
+sentence: the exact production/BF16 Qwen3.8 `Q4_K_M` capacity-8 C8/K3/D24
+greedy key is now automatic at **98.643 vs 88.250 AR tok/s (1.1178x)**.
+Capacity-8 C1-C7 and every scope miss remain K0. Evidence:
+[`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
