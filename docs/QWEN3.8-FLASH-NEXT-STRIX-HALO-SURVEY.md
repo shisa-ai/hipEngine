@@ -1,31 +1,17 @@
 # Qwen3.8-Flash-Next Strix Halo engine survey
 
 Status: **Framework Desktop comparator screen completed 2026-09-05 on Ryzen
-AI Max+ 395 / Radeon 8060S (`gfx1151`)**. The active overview tracks only
-upstream llama.cpp HIP/Vulkan and halo-box HIP/Vulkan. All four fresh lanes
-completed the same canonical packet; halo-box repeated 12/12 cases exactly,
-while each upstream lane varied on `mixed_ja_en-p4096`. No lane is frozen as a
-closure target because every lane exceeded the 2% per-case variance rule on at
-least one metric.
-
-The Framework Desktop is a separate physical benchmark lane from the earlier
-power- and heat-limited `zbook`. Do not report old-to-new rate deltas across
-these hosts. The 2026-08-31 through 2026-09-01 multi-engine survey remains at
-the bottom as historical analysis because its model, fork, accuracy, and
-failure-mode comparisons are still useful but no longer define the active
-comparator set.
+AI Max+ 395 / Radeon 8060S (`gfx1151`)**. The active topline compares current
+hipEngine with upstream llama.cpp and halo-box master on HIP and Vulkan.
 
 ## 1. Active comparator set
 
-All four lanes used the same Qwen3.8-Flash-Next target artifact and were
-measured on the Framework Desktop.
-
-| Engine | Backend | Source commit | Fresh Release build | Current status |
-| --- | --- | --- | --- | --- |
-| Upstream llama.cpp | HIP | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release-4d917609/bin/` | 36/36 samples; 11/12 cases repeat exactly |
-| Upstream llama.cpp | Vulkan | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release-4d917609/bin/` | 36/36 samples; 11/12 cases repeat exactly |
-| halo-box | HIP | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/` | 36/36 samples; 12/12 cases repeat exactly |
-| halo-box | Vulkan | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/` | 36/36 samples; 12/12 cases repeat exactly |
+| Engine | Backend | Source commit | Release build |
+| --- | --- | --- | --- |
+| Upstream llama.cpp | HIP | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release-4d917609/bin/` |
+| Upstream llama.cpp | Vulkan | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release-4d917609/bin/` |
+| halo-box | HIP | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/` |
+| halo-box | Vulkan | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/` |
 
 The HIP builds use the existing ROCm/HIP 7.15 `therock` environment,
 `AMDGPU_TARGETS=gfx1151`, HIP graphs, MMQ MFMA, and no virtual memory
@@ -36,25 +22,22 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
-No prior `zbook` rate is copied into this table. Cells report weighted prompt
-processing / decode tokens per second from one warmup and three measured
-requests per case.
+Weighted tokens per second for prompt processing (PP) and generation (TG); one
+warmup and three measured requests per case.
 
-| Engine and backend | p512 | p1024 | p4096 | Output repeatability |
-| --- | ---: | ---: | ---: | --- |
-| Upstream llama.cpp HIP `4d9176092` | 283.85 / 21.06 | 367.97 / 20.79 | 395.02 / 19.63 | **11/12**; `mixed_ja_en-p4096` varies |
-| Upstream llama.cpp Vulkan `4d9176092` | 230.35 / 24.94 | 305.47 / 24.59 | 357.44 / 23.53 | **11/12**; `mixed_ja_en-p4096` varies |
-| halo-box HIP `b212548e0` | 265.69 / 21.02 | 368.90 / 20.50 | 356.62 / 18.63 | **12/12** |
-| halo-box Vulkan `b212548e0` | **298.97 / 24.92** | **369.72 / 24.52** | **402.46 / 23.47** | **12/12** |
+| Engine and backend | p512 PP | p512 TG | p1024 PP | p1024 TG | p4096 PP | p4096 TG | Repeatability |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| hipEngine production `c0cfdc3ef`, HIP | 118.44 | 19.92 | 117.79 | 19.22 | 95.14 | 15.21 | **12/12** |
+| Upstream llama.cpp `4d9176092`, HIP | 283.85 | 21.06 | 367.97 | 20.79 | 395.02 | 19.63 | **11/12**; `mixed_ja_en-p4096` varies |
+| Upstream llama.cpp `4d9176092`, Vulkan | 230.35 | 24.94 | 305.47 | 24.59 | 357.44 | 23.53 | **11/12**; `mixed_ja_en-p4096` varies |
+| halo-box master `b212548e0`, HIP | 265.69 | 21.02 | 368.90 | 20.50 | 356.62 | 18.63 | **12/12** |
+| halo-box master `b212548e0`, Vulkan | **298.97** | **24.92** | **369.72** | **24.52** | **402.46** | **23.47** | **12/12** |
 
-The halo-box Vulkan row is the fastest repeatable raw row at all three shapes.
-Its maximum per-case coefficient of variation is 19.8%/8.0%/4.3% for prefill
-and 4.0%/3.8%/3.6% for decode, however, so it remains a screening result rather
-than a frozen target. halo-box HIP likewise reaches 30.9% maximum p512 prefill
-variation. Both upstream rows are diagnostic because repeated greedy output
-fails one case. Exact commands, binary hashes, per-sample rates, output hashes,
-and teardown results are in the
-[Framework comparator artifact](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json).
+halo-box Vulkan is the fastest repeatable raw lane, but its maximum per-case
+coefficient of variation is 19.8%/8.0%/4.3% for PP and 4.0%/3.8%/3.6% for TG.
+halo-box HIP reaches 30.9% p512 PP variation. The two upstream lanes fail
+repeatability on one case. No external lane is frozen as a closure target.
+[Artifact](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json).
 
 ## 3. Framework Desktop comparison protocol
 
@@ -70,44 +53,24 @@ and teardown results are in the
 - Workload: code, English, Japanese, and mixed Japanese/English at
   p512/p1024/p4096, greedy sampling, disabled prompt reuse, and 128 decode
   transitions.
-- Reporting: record source and binary hashes, exact command, runtime and driver
+- Reporting: source and binary hashes, exact command, runtime and driver
   identity, per-sample rates, output hashes, variance, and teardown status.
-  Compare absolute rates only within this Framework Desktop packet.
-
-MTP remains a separate protocol. If measured, every lane must use its stated
-sidecar and compare complete messages with its own true autoregressive control;
-acceptance alone is not a correctness result.
+- MTP is a separate protocol with a stated sidecar, complete-message comparison,
+  and a same-lane autoregressive control.
 
 ## 4. Promotion and comparison rules
 
-1. Keep HIP and Vulkan as separate lanes even when they share a source commit.
-2. Require exact repeated output for every canonical case before treating a
-   rate as a correctness-valid comparator.
-3. Do not average a failing or unstable case into a promoted topline.
-4. Do not compare Framework Desktop absolute rates with `zbook` absolute rates
-   as an old-to-new improvement. Both machines are `gfx1151`, but their power,
-   thermal, kernel, and runtime conditions differ.
-5. Keep model-quality, alternate-quant, old-fork, and author-reported results in
-   the historical section unless they are rerun under the active protocol.
+1. Keep HIP and Vulkan as separate lanes.
+2. Require exact repeated output for every canonical case.
+3. Freeze a closure target only after five counterbalanced matched pairs satisfy
+   the variance rule.
 
-## 5. Completed packet and follow-up
+## 5. Historical survey and model analysis
 
-1. All four binaries loaded the verified four-shard artifact and detected the
-   Radeon 8060S through their intended backend.
-2. All four completed 12 warmups and 36 measured samples; each server exited
-   cleanly.
-3. halo-box HIP/Vulkan repeated all 12 outputs. Upstream HIP/Vulkan each varied
-   once in `mixed_ja_en-p4096`, at output indices 54 and 19 respectively.
-4. The next closure packet should counterbalance lane order and run five matched
-   pairs because this screen exposed substantial thermal/time-order variance.
-5. Full-logit and MTP packets remain separate comparisons with their own
-   correctness gates.
-
-## 6. Historical survey and model analysis
-
-The remainder is the 2026-08-31 through 2026-09-01 `zbook` survey. Terms such
-as “current” and “today” below refer to that snapshot, not the active Framework
-Desktop builds in sections 1–5.
+The remainder is the 2026-08-31 through 2026-09-01 survey from the power- and
+heat-limited `zbook`. It is a separate physical benchmark lane from the
+Framework Desktop; do not report old-to-new rate deltas across these hosts.
+Terms such as “current” and “today” below refer to that historical snapshot.
 
 Historical status: external lanes were surveyed 2026-08-31 and hipEngine
 evidence was refreshed 2026-09-01 on `zbook` / Ryzen AI Max+ Pro 395 / Radeon
