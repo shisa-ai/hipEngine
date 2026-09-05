@@ -3048,6 +3048,18 @@ def qwen4_exp_q4_bundle_prefill_selected(backend: str, quant: str) -> bool:
     )
 
 
+def qwen4_exp_q4_pair_prefill_selected(
+    backend: str, quant: str, *, rows: int, in_features: int
+) -> bool:
+    return (
+        rows >= 64 and 0 < in_features <= 4096 and in_features % 256 == 0
+        and os.environ.get("HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and is_registered(KernelKey(
+            backend, "moe_linear", quant, "selected_dual_grouped_pair2_bf16_bf16_out"))
+    )
+
+
 def qwen4_exp_q51_pair_prefill_selected(
     backend: str, quant: str, *, rows: int, in_features: int
 ) -> bool:
@@ -3396,7 +3408,15 @@ def run_qwen4_exp_moe(
                 not in {"", "0", "false", "False"}
                 else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
             )
-            if expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
+            if expert_grid64 and qwen4_exp_q4_pair_prefill_selected(
+                backend, weights["expert_gate"].spec.quant_key,
+                rows=rows, in_features=hidden,
+            ):
+                grouped_q4_gate = resolve(
+                    backend=backend, layer="moe_linear",
+                    quant=weights["expert_gate"].spec.quant_key,
+                    variant="selected_dual_grouped_pair2_bf16_bf16_out")
+            elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
                 backend, weights["expert_gate"].spec.quant_key
             ):
                 grouped_q4_gate = resolve(
