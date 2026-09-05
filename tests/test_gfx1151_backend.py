@@ -2557,7 +2557,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS == 4096
     assert GFX1100_GGUF_GDN_INDEXED_SINGLETON_DECODE is True
     assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
-    assert GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 0
+    assert GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 8
     assert GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
     assert GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
@@ -2787,7 +2787,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
         )
-        == 0
+        == 8
     )
     assert (
         backend_package_capability(

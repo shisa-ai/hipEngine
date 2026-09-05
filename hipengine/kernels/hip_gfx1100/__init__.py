@@ -213,8 +213,11 @@ GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
 # Zero keeps the width-scoped all-projection policy disabled on gfx1100.
 GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 0
 # The exact 128-thread c8 pair schedule is admitted only on independently
-# measured backends. Zero disables automatic pair rowtiling on gfx1100.
-GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 0
+# measured backends; gfx1100 qualified it at physical c8 on the W7900
+# (2026-09-05 audit packet C2: +2.51% native_c8, exact trajectories,
+# arm-identical state/lifecycle differentials). Rows below the floor keep
+# the per-row dual owner.
+GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 8
 # Dynamic selected-expert pair reuse remains disabled until independently
 # measured on W7900. Zero preserves the existing gfx1100 route.
 GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
