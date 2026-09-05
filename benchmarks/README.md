@@ -186,6 +186,18 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
+Next standalone screen: actual Q4 gate/up+SiLU at tokens512, with shared
+activation loads across two outputs:
+
+| Weight bank / routing | Parent (ms) | Pair2 (ms) | Speedup |
+| --- | ---: | ---: | ---: |
+| Layer0 / uniform | 25.155 | 18.696 | 1.345x |
+| Layer4 / skewed | 26.412 | 18.344 | 1.440x |
+
+All outputs exact,16 focused tests pass, trace has zero scratch. Model admission
+remains pending; these are kernel measurements, not new model rates.
+[Q4 pair screen](results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json).
+
 Latest full-suite production retention adds exact register-state serial GDN:
 
 | Shape | Parent prefill | Register GDN prefill | Gain | Decode before -> after |

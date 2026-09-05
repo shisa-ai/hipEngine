@@ -805,6 +805,16 @@ gate/up row sums in one LDS phase. The existing owner remains strict
 fallback. Qwen4Exp production selects bundled publication in its exact
 grouped-Q4 prefill branch; the WMMA suffix and c1 decode remain separate.
 
+Its `selected_dual_grouped_pair2_bf16_bf16_out` sibling concurrently accumulates
+two output columns with shared original-BF16 activation loads, preserving
+each128-lane K sequence, wave reduction and BF16 gate/up boundary. The actual
+Q4 gate/up+SiLU screen at tokens512 measures25.155->18.696 ms (1.345x);
+an independent layer4 skewed map measures26.412->18.344 ms (1.440x).
+gfx1151 trace:88 VGPR,4608-byte LDS, zero scratch. The bundled parent stays
+the model default until invocation-verified state/KV/logit and full A/B
+admission; no arithmetic scope or runtime flag is added by this kernel unit.
+Evidence: `2026-09-05-framework-qwen4exp-q4-pair-reuse.json`.
+
 The Qwen4Exp `attention/qwen4_exp_qsa.{hip,py}` family registers a separate
 `strict_h256_wave_rows_spans` candidate for D=256 paged BF16 sparse rows.
 Eight coordinates per lane preserve the parent 256-element score tree;
