@@ -40,6 +40,25 @@ one-residency validation. The remaining GDN target is the serial prefix,
 not repeating the completed suffix admission. The next portfolio is routed
 MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
+## Current-host owner refresh
+
+Current-host follow-up:
+the [Framework owner refresh](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json)
+at `cf9c55920` measures code-p512/p4096 unprofiled prefill at 4.306/43.046 s.
+Both role traces have 100% coverage and exact final logits against the
+unprofiled capture. Routed MoE owns 2.402/19.024 s of device time; QSA
+0.042/8.983 s; GDN 0.489/3.906 s. These are endpoint diagnostics, not an
+all-category speedup or fresh paired Vulkan verdict. Layer-2 Q5_K gate/up
+plus Q8 down is the first bounded grouped-traversal hypothesis; its speedup
+is unknown and the rejected WMMA arithmetic stays off.
+
+Remote-reference capability check: the authenticated pool advertises
+`Qwen3.8-Flash-Next`, but a request to `local/Qwen3.8-Flash-Next` returned
+`model=qwen38-flash-next-nvfp4` and top-5 log probabilities. Native FP8
+deployment identity remains unverified; do not use this response as an FP8
+quality oracle or infer full KLD from truncated probabilities. This does not
+block exact same-artifact work.
+
 ## Historical campaign record
 
 Status: **active plan, fully impact-profiled 2026-09-01; production refreshed
