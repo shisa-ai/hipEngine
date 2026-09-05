@@ -247,6 +247,20 @@ def _qwen4_exp_gdn_peer_layer_allowed(
     )
 
 
+def qwen4_exp_gdn_register_prefill_selected(
+    *, backend: str, rows: int, num_k_heads: int, num_v_heads: int, head_dim: int,
+) -> bool:
+    return (
+        rows >= 2 and (num_k_heads, num_v_heads, head_dim) == (16, 48, 128)
+        and os.environ.get("HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and is_registered(KernelKey(
+            backend, "gdn_recurrence_norm_gate", "f32_state",
+            "qwen4exp_sigmoid_register_prefill",
+        ))
+    )
+
+
 def qwen4_exp_gdn_tile16_prefill_selected(
     *,
     rows: int,
@@ -4772,7 +4786,17 @@ def run_qwen4_exp_gdn_token_mixer(
                 runtime=active_runtime,
             )
         else:
-            qwen4_exp_gdn_prefill_f32(
+            serial_prefill = qwen4_exp_gdn_prefill_f32
+            backend = str(weights["attn_qkv"].backend)
+            if qwen4_exp_gdn_register_prefill_selected(
+                backend=backend, rows=rows, num_k_heads=num_k_heads,
+                num_v_heads=num_v_heads, head_dim=head_dim,
+            ):
+                serial_prefill = resolve(
+                    backend=backend, layer="gdn_recurrence_norm_gate",
+                    quant="f32_state", variant="qwen4exp_sigmoid_register_prefill",
+                )
+            serial_prefill(
                 scratch.conv.ptr,
                 scratch.gate.ptr,
                 scratch.alpha.ptr,
