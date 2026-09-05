@@ -186,6 +186,12 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
+The promoted combination remeasures at121.14 pp/s on the code-p4096
+diagnostic (not an all-category refresh). The next standalone Q5_1 output-
+pair candidate reduces two actual down banks at tokens512 from about54.5
+to43.5 ms (1.253x), exact outputs; whole-model candidate admission is pending.
+[Combined profile and Q5_1 screen](results/2026-09-05-framework-qwen4exp-q51-pair.json).
+
 Production retains exact page256 QSA and bundled-Q4 prefill under the
 2026-09-05 owner decision to take the prefill gains and optimize decode next.
 Strict keeps the prior owners. Separate component A/B measurements are:

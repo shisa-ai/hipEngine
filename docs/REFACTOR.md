@@ -4807,3 +4807,10 @@ Production selects bundled Q4 publication through
 accepted the measured decode tradeoff. Keep the old exact grouped owner as
 strict fallback. Replace the environment selector with direct profile-owned
 selection when that runtime boundary is migrated; keep rollback capability.
+
+## Qwen4Exp Q5_1 output-pair reuse (2026-09-05)
+
+The pair2 grouped-down leaf is separately registered and not yet a runtime
+default. Remove it if complete-model validation rejects it; otherwise
+promote through the profile and retain M1 as strict fallback. No new runtime
+flag is introduced by this standalone unit.
