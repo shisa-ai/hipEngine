@@ -102,6 +102,12 @@ def _selection(
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            "moe_linear", "prefill_rows_ge64_exact_grouped_q5_1_down",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "gguf_q5_1",
+        ),
+        _selection(
             "moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
@@ -181,7 +187,7 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "moe_linear",
-            "prefill_rows_ge2_exact_grouped_q5_1_down",
+            "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
@@ -219,6 +225,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "moe_linear", "prefill_rows_ge64_exact_grouped_q5_1_down",
+            "selected_grouped_prefill_pair2_bf16_bf16_out",
+            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
+            "gguf_q5_1",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json",
+        ),
         _selection(
             "moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
@@ -305,7 +318,7 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "moe_linear",
-            "prefill_rows_ge2_exact_grouped_q5_1_down",
+            "prefill_rows_ge2_lt64_exact_grouped_q5_1_down",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
@@ -368,6 +381,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.

@@ -53,6 +53,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 pair2 retention:** the clean full-category A/B at `e60061201`
+improves prefill **126.88->132.13 (+4.14%)**, **125.37->130.60 (+4.17%)**,
+and **118.40->122.82 tok/s (+3.73%)** at p512/p1024/p4096, on top of
+retained QSA/page256, bundled-Q4 and Q5_K row4. All72 trajectories are exact,
+all12 cases improve, and final ownership is zero. Maximum prefill per-case
+CV is0.64%; decode has time-order drift in both arms (max CV3.02%) and
+aggregate paired changes remain within0.04%. No absolute decode or
+external parity claim is made. Production selects pair2 at rows>=64;
+short rows keep M1 and strict retains its original exact parent.
+[Pair2 evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json).
+
 **QSA followup (2026-09-05):** the exact H256 wave candidate passes all72
 canonical trajectories and improves p4096 prefill about19-20%, but late
 2900-MHz-requested runs lose about0.5-0.6% decode. Page256 addressing is

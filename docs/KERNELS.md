@@ -782,8 +782,8 @@ Fallback requirements:
 The Qwen4Exp Q5_1 selected family registers an exact output-pair prefill
 candidate that reuses BF16 activation loads across two output columns.
 It preserves separate logical256 accumulations and reuses one LDS reduction
-arena sequentially. M1 remains the registered parent and production owner
-until complete-model admission.
+arena sequentially. Qwen4Exp production selects pair2 at rows>=64; M1 remains
+the small-row and opt-out parent, and strict retains its original exact owner.
 
 The Q4_K selected-prefill family has a separately registered exact bundled
 publication sibling of its row8/output4/expertgrid64 owner. It preserves

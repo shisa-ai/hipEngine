@@ -1045,6 +1045,11 @@ about19-20% for p4096 QSA and 2.45-3.47% for bundled-Q4. Do not add those
 ratios or claim a combined rate without measurement. Correctness gates are
 unchanged, and decode optimization, D1, and comparator closure remain open.
 See the [promotion packet](../benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
+The subsequent exact Q5_1 output-pair route is production at rows>=64 after
+its full12-case A/B: prefill132.13/130.60/122.82 tok/s at p512/p1024/p4096,
+an incremental4.14%/4.17%/3.73% gain with all72 trajectories exact.
+Decode remains a noisy, separate optimization target. Short rows keep M1
+and strict keeps the original exact down owner.
 The GDN tile-16 Hv=48 owner was promoted in `22dc56268` after live-route
 one-residency validation. Active execution now uses Framework Desktop host
 `gfx1151` (machine ID `55ea6c509d0b49eea8de7094a1023668`) and targets
