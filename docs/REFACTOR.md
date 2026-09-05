@@ -4811,7 +4811,9 @@ value and a separately counted A/B arm; the flag's default remains off.
 ## Qwen4Exp Q4 bundled publication (2026-09-05)
 
 The separately registered exact Q4 gate/up bundle variant is a standalone
-candidate. Promote only after complete-owner and full-model validation;
+candidate with default-off `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` wiring.
+Promote only after complete-owner and full-model validation;
 remove the alternative if it fails that gate. Preserve the prior exact
-grouped-Q4 owner as strict fallback. No runtime flag is introduced by this
-leaf unit.
+grouped-Q4 owner as strict fallback. The real-model full-logit/full-KV
+state gate passes; full 12-case tg128 timing is still pending. Remove the
+flag on rejection, or replace it with profile-owned selection after promotion.

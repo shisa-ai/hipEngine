@@ -3024,6 +3024,16 @@ def qwen4_exp_grouped_row4_prefill_selected(
     )
 
 
+def qwen4_exp_q4_bundle_prefill_selected(backend: str, quant: str) -> bool:
+    return (
+        os.environ.get("HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and is_registered(KernelKey(
+            backend, "moe_linear", quant,
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"))
+    )
+
+
 def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -3360,6 +3370,13 @@ def run_qwen4_exp_moe(
                 not in {"", "0", "false", "False"}
                 else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
             )
+            if expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
+                backend, weights["expert_gate"].spec.quant_key
+            ):
+                grouped_q4_gate = resolve(
+                    backend=backend, layer="moe_linear",
+                    quant=weights["expert_gate"].spec.quant_key,
+                    variant="selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
             grouped_q4_gate(
                 scratch.expert_down.ptr,
                 scratch.group_expert_start.ptr,

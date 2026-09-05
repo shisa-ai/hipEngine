@@ -40,6 +40,7 @@ FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
 Q5_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
 ROW4_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
 QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
+Q4_BUNDLE_ENV = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
 _BASE_SEQUENCE = ("before", "after", "after", "before", "before", "after")
 
 
@@ -188,10 +189,12 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
+        if route_package == "q4-bundle":
+            flag = Q4_BUNDLE_ENV
         environment[flag] = "1" if mode == "after" else "0"
         if route_package == "qsa-h256-page256" and mode == "after":
             environment[flag] = "page256"
@@ -230,7 +233,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -354,7 +357,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -363,6 +366,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
                 "strict_h256_page256_wave_rows_spans" if args.route_package == "qsa-h256-page256"
                 else "strict_h256_wave_rows_spans"))
+        if args.route_package == "q4-bundle":
+            row4_key = KernelKey(
+                "hip_gfx1151", "moe_linear", "gguf_q4_k",
+                "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -380,6 +387,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact["arms"] = {
                 "before": {"sparse_prefill": "strict_rows_spans"},
                 "after": {"sparse_prefill": row4_key.variant},
+            }
+        elif args.route_package == "q4-bundle":
+            artifact["arms"] = {
+                "before": {"q4_gate_up": "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out"},
+                "after": {"q4_gate_up": row4_key.variant},
             }
     artifact["route_package"] = args.route_package
     artifact["diagnostic_subset"] = bool(args.case_id)

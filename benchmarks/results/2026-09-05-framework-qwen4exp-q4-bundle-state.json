@@ -1,0 +1,283 @@
+{
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "a66c63cec862d49110486259e2f73258d543b811",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_row4_state_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--route-package",
+    "q4-bundle",
+    "--full-kv",
+    "--output",
+    "/tmp/qwen4exp-q4-bundle-model-state.json"
+  ],
+  "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+  "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "cases": [
+    {
+      "id": "code-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "9821d3f20988bba3ab8a04151aa9337491c6ac0275213adbba6ef615e8f2f7d6",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "step_logits_sha256": "5c079c1681494d59508d051cfbfe246e26872ef657d98bf96981038d507f299e",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.32487416197545826
+          ],
+          "full_kv_sha256": "7e9c1f59cc37d3ee88ad6a8eba7675b040f3b06944c7c57eb700438b4678d100"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "9821d3f20988bba3ab8a04151aa9337491c6ac0275213adbba6ef615e8f2f7d6",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "step_logits_sha256": "5c079c1681494d59508d051cfbfe246e26872ef657d98bf96981038d507f299e",
+          "candidate_calls": 26,
+          "step_seconds": [
+            0.04979489301331341
+          ],
+          "full_kv_sha256": "7e9c1f59cc37d3ee88ad6a8eba7675b040f3b06944c7c57eb700438b4678d100"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "9821d3f20988bba3ab8a04151aa9337491c6ac0275213adbba6ef615e8f2f7d6",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "e9483d7456ed2643377c6d9701231a99fd6e06ebb2e88d86683ada03cec89c99",
+          "step_logits_sha256": "5c079c1681494d59508d051cfbfe246e26872ef657d98bf96981038d507f299e",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.049743225099518895
+          ],
+          "full_kv_sha256": "7e9c1f59cc37d3ee88ad6a8eba7675b040f3b06944c7c57eb700438b4678d100"
+        }
+      ]
+    },
+    {
+      "id": "code-p4096",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.06554373679682612
+          ],
+          "full_kv_sha256": "e90542207201e3366864a6eba69bc4cee539f5423f353b9563e8101fc4564fa4"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "candidate_calls": 208,
+          "step_seconds": [
+            0.06559495301917195
+          ],
+          "full_kv_sha256": "e90542207201e3366864a6eba69bc4cee539f5423f353b9563e8101fc4564fa4"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "cc9aea4b3518d5c3d30525dfd35d2c4d577b22bf3cc01eb0d5d7ebe7b09ee4fd",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "0b361e7db968b63ae88a78a87f0f7139ef62a61e351d7ca062640e75abfb3087",
+          "step_logits_sha256": "def91ca6373e27e526b1637e436e3d9afe9850b7e93b0f209b05c9d56bc9826e",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.06551536405459046
+          ],
+          "full_kv_sha256": "e90542207201e3366864a6eba69bc4cee539f5423f353b9563e8101fc4564fa4"
+        }
+      ]
+    },
+    {
+      "id": "general_en-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "468e267b8c78c4d0be6b7e4db7c506893741a9a1ba291c6d7a5c73581cb90843",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "bad3a801bb659414e46f2265f77277776e6c2c4c259b7e74cd5ac385027d7d2b",
+          "step_logits_sha256": "26be8028351eda6c1498a0d10b9d1609080d7a9bdd2bc25593ea8069777b7b83",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.04973525204695761
+          ],
+          "full_kv_sha256": "7b95c3c1bb51516369e0fe6a60af6db5a3d035c9d300850ebd335b45edb291bf"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "468e267b8c78c4d0be6b7e4db7c506893741a9a1ba291c6d7a5c73581cb90843",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "bad3a801bb659414e46f2265f77277776e6c2c4c259b7e74cd5ac385027d7d2b",
+          "step_logits_sha256": "26be8028351eda6c1498a0d10b9d1609080d7a9bdd2bc25593ea8069777b7b83",
+          "candidate_calls": 26,
+          "step_seconds": [
+            0.04989333916455507
+          ],
+          "full_kv_sha256": "7b95c3c1bb51516369e0fe6a60af6db5a3d035c9d300850ebd335b45edb291bf"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "468e267b8c78c4d0be6b7e4db7c506893741a9a1ba291c6d7a5c73581cb90843",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "bad3a801bb659414e46f2265f77277776e6c2c4c259b7e74cd5ac385027d7d2b",
+          "step_logits_sha256": "26be8028351eda6c1498a0d10b9d1609080d7a9bdd2bc25593ea8069777b7b83",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.04975367593578994
+          ],
+          "full_kv_sha256": "7b95c3c1bb51516369e0fe6a60af6db5a3d035c9d300850ebd335b45edb291bf"
+        }
+      ]
+    },
+    {
+      "id": "general_ja-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "8954bba0da6374fd13fec4481dca726300609ad636910bb27e4b785060a397cf",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "3f32adcf69b30a3e2908b5b3ecf527f4a264547ce601b0dc936e1700dba68c04",
+          "step_logits_sha256": "838ccdb306e630581668ba5d64e37b1490229a04045220e56304e5c4315abc2d",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.049711398081853986
+          ],
+          "full_kv_sha256": "29ca4ea7871fda5dbc44cf1a6efab1a8bc24e196e57b36a82ec36f62bbe5df57"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "8954bba0da6374fd13fec4481dca726300609ad636910bb27e4b785060a397cf",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "3f32adcf69b30a3e2908b5b3ecf527f4a264547ce601b0dc936e1700dba68c04",
+          "step_logits_sha256": "838ccdb306e630581668ba5d64e37b1490229a04045220e56304e5c4315abc2d",
+          "candidate_calls": 26,
+          "step_seconds": [
+            0.04966858704574406
+          ],
+          "full_kv_sha256": "29ca4ea7871fda5dbc44cf1a6efab1a8bc24e196e57b36a82ec36f62bbe5df57"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "8954bba0da6374fd13fec4481dca726300609ad636910bb27e4b785060a397cf",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "3f32adcf69b30a3e2908b5b3ecf527f4a264547ce601b0dc936e1700dba68c04",
+          "step_logits_sha256": "838ccdb306e630581668ba5d64e37b1490229a04045220e56304e5c4315abc2d",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.04977024788968265
+          ],
+          "full_kv_sha256": "29ca4ea7871fda5dbc44cf1a6efab1a8bc24e196e57b36a82ec36f62bbe5df57"
+        }
+      ]
+    },
+    {
+      "id": "mixed_ja_en-p512",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "c4f10405d2e5cb8e81e062ba245570b220954c4b6d5bb56915736b0856e3ba64",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "24e1e8f68397a6de8a527bab000868962394242087951e1bf233c09dca8c38dc",
+          "step_logits_sha256": "cbc53a88bcf00a06cf68c88495debee90aee5919557920d9088daaad08dabbc4",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.04973795707337558
+          ],
+          "full_kv_sha256": "3551fa280c5e136729f9c1ef44908c6d643abba9a7431c97af47b9fdd1ef5c87"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "c4f10405d2e5cb8e81e062ba245570b220954c4b6d5bb56915736b0856e3ba64",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "24e1e8f68397a6de8a527bab000868962394242087951e1bf233c09dca8c38dc",
+          "step_logits_sha256": "cbc53a88bcf00a06cf68c88495debee90aee5919557920d9088daaad08dabbc4",
+          "candidate_calls": 26,
+          "step_seconds": [
+            0.049740713089704514
+          ],
+          "full_kv_sha256": "3551fa280c5e136729f9c1ef44908c6d643abba9a7431c97af47b9fdd1ef5c87"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "c4f10405d2e5cb8e81e062ba245570b220954c4b6d5bb56915736b0856e3ba64",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "24e1e8f68397a6de8a527bab000868962394242087951e1bf233c09dca8c38dc",
+          "step_logits_sha256": "cbc53a88bcf00a06cf68c88495debee90aee5919557920d9088daaad08dabbc4",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.049885022919625044
+          ],
+          "full_kv_sha256": "3551fa280c5e136729f9c1ef44908c6d643abba9a7431c97af47b9fdd1ef5c87"
+        }
+      ]
+    }
+  ],
+  "route_package": "q4-bundle",
+  "decode_steps": 1,
+  "full_kv": true,
+  "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; full KV payload included",
+  "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83546258180,
+    "total_allocated_bytes": 83556743940,
+    "total_freed_bytes": 83556743940,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_q4_bundle_model_state_gate",
+  "status": "accepted_state_gate_default_off",
+  "performance_claim": false,
+  "runtime_default_changed": false,
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL BF16 KV",
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "cwd": "/home/lhl/hipEngine",
+  "python": ".venv/bin/python",
+  "raw_sha256": "72d3720bb839572d21c1cba9dcd8c9b95db1fe1e48ec442896b4fcb9b4716ba3",
+  "source_sha256": {
+    "hipengine/runtime/qwen4_exp_runner.py": "923e3339f3c631b0faeb505582dd06878e833f389e504163d85b8d2472670a1f",
+    "scripts/qwen4exp_row4_state_gate.py": "2541a3a88d49dc8029c20e3df4d724ebcc9ec6a83adae7f80e5f76f1621b18ab"
+  },
+  "limitations": [
+    "One decode transition after each prefill, not complete tg128 timing admission.",
+    "Development-tree source hashes pinned; no production default change or power claim."
+  ]
+}
