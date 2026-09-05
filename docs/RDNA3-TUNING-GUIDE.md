@@ -11,6 +11,11 @@ hipEngine and its `amd-gpu-tuning` lineage through 2026-09-03. It is a method an
 design guide, not a benchmark scoreboard. Use [BENCHMARK.md](BENCHMARK.md) and
 [benchmarks/README.md](../benchmarks/README.md) for current results.
 
+It is also the entry point for the accumulated tuning lessons of both trees. The
+rules are consolidated here; the case studies, derivations, and campaign
+evidence behind each one remain in the documents listed in section 14, starting
+with [LESSONS-LEARNED.md](LESSONS-LEARNED.md).
+
 ## Contents
 
 1. [The short version](#1-the-short-version)
@@ -64,6 +69,13 @@ Use these rules until measurements prove an exception:
     wall time. Merge timestamp intervals to calculate GPU coverage and overlap.
 12. **Promote only operation-complete paths.** A new resident layout or staging
     buffer must support every required owner before the old copy is removed.
+13. **Bound the prize before building.** A component's share of complete wall
+    multiplied by its plausible speedup is the ceiling on the end-to-end gain.
+    Compute it, and run the cheapest probe that could disprove the premise,
+    before implementing.
+14. **Confirm the work volume held constant.** Non-finite outputs, collapsed
+    routing, repeated tokens, and silent fallback all produce speedups by
+    removing real work. Gate the comparison on work volume, not only on time.
 
 ## 2. Hardware model
 
@@ -236,6 +248,12 @@ Typical properties:
 Treat `17-32`, `33-48`, and `49-64`, for example, as distinct candidates if the
 kernel processes rows in 16- or 32-row units. Do not label all of them
 "small batch" and force one owner.
+
+Distinguish rows that arrive from independent concurrent requests from rows that
+arrive from speculative verification of one sequence. Both present as a wider
+`M` to the kernel, but only the first amortizes weight reads into useful
+throughput unconditionally. Section 6.7 covers when the second is worth doing at
+all.
 
 ### 3.3 Prefill
 
@@ -414,6 +432,74 @@ Follow [EXECUTION-PROFILES.md](EXECUTION-PROFILES.md) and
 Reduction order, conversion points, and softmax chronology are semantics, not
 mere implementation detail. A faster kernel that changes one mandatory token or
 fails a category gate is not an optimization for that profile.
+
+### 4.7 Confirm that work volume held constant
+
+The two largest false results in this lineage were both speedups produced by
+doing less real work, and both were visible in signals the harness already
+recorded but did not gate on.
+
+A prefill baseline measured 4,509 tok/s while emitting entirely non-finite
+logits; NaN propagation had collapsed expert routing, so the model skipped most
+of its matrix work. That baseline was the comparator for a WMMA kernel, which
+therefore looked like a 6% to 44% regression across shapes. Re-gating the
+comparison on finite outputs reversed the verdict: WMMA was ahead by 78% at 512
+tokens and behind by 9% at 4K. Separately, an incorrect RoPE configuration made
+4K prefill measure 3,231 tok/s while routing to roughly 24 active experts per
+layer instead of roughly 213, and generating a repeated token.
+
+Before comparing two speed rows, confirm the candidate performed the same
+quantity of work:
+
+- outputs are finite, with NaN and Inf counted rather than only detected;
+- route diversity or active experts per layer, or the equivalent fan-out
+  measure for the model;
+- unique generated tokens, and agreement with a known seed row;
+- graph-versus-eager token agreement wherever replay is involved;
+- for speculative paths, the share of work that ran as ordinary autoregressive
+  fallback;
+- peak memory, since a row that fits differently is not the same row.
+
+Put these in the summary table, not only in the raw record. Both failures above
+sat in saved JSON for weeks while the summary column a reviewer actually reads
+showed throughput alone.
+
+Top-1 agreement does not certify calibration. One smoke found native and
+reference tokenization matching exactly across a long document while perplexity
+was about 1.97e6 against 9.054. Use top-1 as a cheap tripwire and KL,
+perplexity, or the profile gate for the numerical claim itself.
+
+### 4.8 Keep the evaluator separate from the candidate
+
+An optimization loop is most dangerous when it can modify both the candidate and
+the scorer. Freeze the evaluation surface before the first candidate, and record
+or hash the benchmark and profiler scripts, the objective extractor, prompt and
+shape fixtures with their train and heldout split, oracles and profile
+thresholds, baseline and comparator commands, timing boundaries, and the
+required route manifest. The loop may read those files; it must not edit them
+while optimizing.
+
+If the evaluator proves wrong or is missing a field, stop the exploration, fix
+and commit the evaluator as its own logical unit, refresh the baseline, and
+reopen against the new evaluator identity. Never repair the scorer and the
+candidate inside one keep-or-revert iteration, because the result cannot then be
+attributed to either.
+
+Long adaptive searches overfit their own measurements without any deliberate
+gaming. Where the workload permits, separate three surfaces:
+
+| Surface | Used for | Rule |
+| --- | --- | --- |
+| Discovery | fast iteration on representative shapes | chooses what to investigate; never supports publication |
+| Qualification | all production roles, boundary and tail shapes, full suites | a candidate may displace an incumbent only after this |
+| Confirmation | one frozen finalist, fresh process, counterbalanced order | no candidate edits after the run begins |
+
+If a confirmation failure leads to further tuning, that surface has become
+development evidence and the modified candidate needs a new clean confirmation.
+A set repeatedly tuned against is no longer a heldout set, whatever it is
+called. Not every exact leaf kernel needs three separate files; the principle is
+separation of selection from final evidence. For sampling, speculative, routing,
+and adaptive policies the committed train and heldout suites are mandatory.
 
 ## 5. Core kernel-tuning rules
 
@@ -692,6 +778,32 @@ Once a state invariant is proven, compile it into a specialization:
 Keep the generic path for eviction, partial rings, non-standard block sizes, and
 unlisted shapes. State specialization must never weaken ownership semantics.
 
+### 5.13 Treat a vendor library as one banded candidate
+
+A vendor or third-party library is a candidate owner with a shape band and an
+architecture gate. It is neither a default nor a floor, and two retained results
+point in opposite directions.
+
+Default rocBLAS beat `TORCH_BLAS_PREFER_HIPBLASLT=1` on tested BF16 GEMM shapes
+on this W7900 stack: 84.8 against 71.2 TFLOP/s at `4096^3`, and 71.0 against
+51.7 TFLOP/s at `8192^3`. Guidance carried from another architecture or an older
+ROCm release does not survive here, and this comparison should be repeated when
+the stack changes. When a library route is retained, pin the exact solution
+index so the result depends on recorded evidence rather than on the library's
+own heuristics.
+
+AOTriton's tiled flash attention wins on `gfx1100` above 512 prefill tokens and
+loses below it, which is where the retained 512-token threshold comes from. On
+`gfx1151` there is no crossover: the native scan is 2-5% faster at every prefill
+length from 64 to 2048, because the library's tiling targets larger GPUs and its
+wrapper adds a query conversion, a head-major KV copy, and a stream bridge that
+a 40-CU part cannot amortize. The same library and the same model produced
+opposite verdicts on two RDNA3 architectures.
+
+Measure the library against the native owner on the real shape band and the real
+architecture, keep whichever wins behind an explicit threshold, and record that
+threshold as measured evidence rather than as a policy preference.
+
 ## 6. Workload-specific patterns
 
 ### 6.1 Quantized decode GEMV
@@ -851,6 +963,91 @@ Do not fuse merely to reduce a kernel count if the result raises VGPR/LDS enough
 to slow the dominant operation. Every fused composite needs a registered strict
 unfused chain.
 
+### 6.7 Speculative decode and verification economics
+
+Speculative decoding, multi-token prediction, and tree drafting are throughput
+trades, not kernel optimizations. Their outcome is decided by one measurable
+property of the target model, and that property should be measured before any
+drafter or verifier kernel work begins.
+
+Define verification efficiency:
+
+```text
+eta = Verify(B) / (B * AR_cost)
+```
+
+`Verify(B)` is the cost of verifying `B` candidate positions in one pass, and
+`AR_cost` is one ordinary autoregressive decode step on the same host, model,
+quantization, and context. A target that streams the same weights once for all
+`B` positions approaches `eta ~ 1/B`. A target whose verification cost grows
+with `B` approaches `eta ~ 1`, at which point verifying is no cheaper than
+decoding. Break-even follows directly:
+
+```text
+speedup = committed_per_step * AR_cost / (draft_cost + B * eta * AR_cost)
+speedup > 1  requires  committed_per_step > draft_cost / AR_cost + B * eta
+```
+
+Measured bands and what they imply at `B=8`:
+
+| `eta` | Decision | Typical class |
+| --- | --- | --- |
+| below 0.20 | speculate; expect 2.5-4x | dense 7B-70B, strongly bandwidth-bound |
+| 0.20-0.40 | probably speculate; 1.5-2.5x | small MoE, dense hybrids |
+| 0.40-0.60 | marginal; requires high acceptance | large MoE, 64-128 experts |
+| 0.60-0.80 | probably not; requires above 85% acceptance at every position | high-cardinality MoE with sequential state |
+| above 0.80 | do not speculate; verification costs more than decoding | effectively sequential verification |
+
+Four properties drive `eta`: expert count and routing diversity, top-k,
+sequential state layers such as linear attention or Mamba that force
+per-position processing, and how bandwidth-bound the target already is. Larger
+and more compressed dense targets have better `eta` because their autoregressive
+step is already dominated by a single weight stream.
+
+This produces a result that is easy to get backwards. A 35B-A3B target with 256
+experts, top-8 routing, and 30 of 40 layers recurrent measured `eta = 0.736`,
+and its speculative path ran at 0.7-0.85x its own autoregressive baseline, while
+a dense 27-32B target on the same card projects 2.5-4x. Sparsity had already
+made the autoregressive step cheap and simultaneously made verification
+expensive. A sparse model has less to gain from speculation and pays more to get
+it. Tree drafting amplifies both directions, because every tree node still
+requires its own sequential expert evaluation.
+
+Break-even is often unreachable rather than merely distant. At `eta = 0.72` with
+`B = 8`, even a free drafter needs roughly 6.9 accepted tokens out of 8, about
+86% acceptance at every position, while acceptance decays with depth by
+construction. Compute that requirement before tuning acceptance.
+
+An equivalent formulation helps when the drafter is fixed: express one verify
+cycle in autoregressive-token-equivalents, `C_B = cycle wall / AR_cost`, and
+require `C_B` to fall below the visible tokens the cycle emits. One B=3 verifier
+at `C_B = 4.67` emitting 2.38 visible tokens per cycle needed its 45.1 ms cycle
+to reach about 17.9 ms, which turned an open-ended tuning problem into a
+launch-budget problem.
+
+Report three ledgers, never one:
+
+- **acceptance economics:** proposed, accepted draft, correction, bonus or root,
+  and committed tokens per iteration;
+- **verified throughput:** same-session autoregressive tok/s, speculative tok/s,
+  verifier time, drafter time, proposal or tree time, commit and restore time,
+  and synchronization counts;
+- **fallback coverage:** how much work silently ran as ordinary autoregressive
+  decode.
+
+The third ledger exists because of a specific failure mode: a speculative path
+can appear faster by degrading into mostly autoregressive fallback. Acceptance
+alone never proves speed, and a verifier-derived `off` or `B0` row is
+diagnostic. A speedup claim requires a true no-speculation autoregressive
+baseline measured under the same protocol.
+
+One further diagnostic separates kernel work from cycle economics. Measure the
+wall reduction required on a short fixed cell and on the full prompt suite
+separately. When the short cell needs 25% and the full suite needs 57% for the
+same target speedup, the binding cost is prompt activation and repeated
+partial-accept cycle behavior, and no amount of verifier kernel tuning will
+close it.
+
 ## 7. Host, memory, and dispatch tuning
 
 ### 7.1 Keep JIT work out of launch wrappers
@@ -951,9 +1148,17 @@ file mapping corrupted trajectories while an immutable copied mapping was safe.
 
 ### 7.7 Treat graphs as stateful executables
 
-HIP graph replay reduces repeated submission overhead, but capture and
-instantiation must amortize over enough transitions. A graph key must include
-all state that affects pointer identity or kernel arguments, including:
+HIP graph replay reduces repeated submission overhead, but the effect on this
+stack is small and capture and instantiation must amortize over enough
+transitions. Section 7.10 gives the measured per-launch numbers. In production
+terms, graph replay improved a matched `gfx1151` Q4_K_M wall by 1.00% at 512
+tokens, 0.86% at 4K, and 0.36% in a bounded 128K confirmation, and was neutral
+to worse on a `gfx1100` verifier at over 900 nodes. Treat replay as a modest,
+measured saving that carries a state contract, not as the remedy for a
+launch-bound path.
+
+A graph key must include all state that affects pointer identity or kernel
+arguments, including:
 
 - batch/packed width and physical rows;
 - sequence/KV state generation;
@@ -1006,6 +1211,96 @@ stall and is documented as risk reduction only: the stall still reproduces with
 one queue, with SDMA disabled, and under both tested HIP 7.13 and 7.15
 user-space stacks. A later full `gfx1151` matrix selected two queues for an
 independent MoE branch. Neither is a universal RDNA3 setting.
+
+### 7.10 Model the dispatch floor
+
+Launch cost on this platform is large, measurable, and only partly removable.
+Measured on W7900 with a graph-node microbenchmark:
+
+| Grid blocks | Direct (us/launch) | Graph (us/launch) | Graph speedup |
+| ---: | ---: | ---: | ---: |
+| 1-64 | 5.61 | 5.61 | 1.00x |
+| 1024 | 7.25 | 6.32 | 1.15x |
+| 2048 | 7.95 | 7.09 | 1.12x |
+| 4096 | 9.36 | 8.50 | 1.10x |
+| 8192 | 12.34 | 11.31 | 1.09x |
+
+Three facts follow. Per-launch cost is roughly 5.6 microseconds plus a term that
+grows with grid size, because the cost is command-processor and workgroup
+scheduling rather than submission alone. It is independent of argument count:
+moving from 2 to 16 kernel arguments added 0.0 microseconds, so it is not
+argument marshaling. And HIP graph replay is close to neutral in steady state,
+because graphs amortize PM4, doorbell, and MES work but not the per-dispatch MEC
+and SPI cost. That last point is a platform difference rather than a tuning gap.
+CUDA graph node replay costs roughly 1-2 microseconds per node; ROCm 7.x replay
+costs about what a direct launch costs. Do not carry a CUDA graph expectation
+onto this stack.
+
+Dispatch cost does not appear in a kernel trace. `rocprofv3 --kernel-trace` sums
+GPU-active `DurationNs` only, so the interval between kernels is invisible in
+the CSV while being real on the wall clock. Measure it as a replay delta,
+complete wall minus summed kernel time over a marker-scoped window, or with a
+dedicated dispatch microbenchmark. Never infer it by attaching an assumed
+per-launch model to a `DurationNs` sum.
+
+Turn the floor into a budget. For a target step wall `W` and a measured
+per-launch cost `c`, `W / c` is the launch ceiling even at zero kernel time. One
+verifier at roughly 20 microseconds per launch against a 17.9 ms target could
+afford about 500 launches while issuing 971, which made launch count rather than
+kernel time the binding constraint. A budget computed this way tells you whether
+to tune kernels or restructure the path.
+
+Measure launch reductions in one batch. Removing 30 to 80 launches at a time
+sits inside run-to-run noise, so a sequence of individually unmeasurable commits
+produces no attributable evidence. Consolidate the change and land it against
+one measurement.
+
+Finally, different regimes usually run different code. An autoregressive decode
+path consolidated into fused decode-shaped kernels does not confer that
+consolidation on a verifier path running the `tokens > 1` shapes; one measured
+971 launches per pass while the other could not have afforded more than a few
+hundred. Take a launch and kernel census per path, not per model.
+
+### 7.11 Evaluate persistent kernels by working set
+
+A persistent kernel that replaces `N` launches with `N` in-kernel stages is an
+attractive answer to the dispatch floor, and it is the right answer for exactly
+one class of stage.
+
+A cooperative-launch grid barrier is cheap. Measured on W7900 with a
+cache-resident stage, `grid.sync()` costs about 1 microsecond, well below a
+dispatch boundary. The decision therefore turns entirely on whether the stage is
+dispatch-bound or memory-bound, which the last-level cache boundary decides:
+
+| Stage working set | Regime | Persistent versus N launches |
+| --- | --- | ---: |
+| 0.5-2 MB | sub-cache, dispatch-bound | 6-13x |
+| 16 MB | sub-cache | 1.48x |
+| 64 MB | cache edge | 1.08x |
+| 128-256 MB | beyond last-level cache, external-memory-bound | 0.93-0.96x |
+
+A microbenchmark that re-reads one buffer overstates the win. Repeating the test
+so each stage streams a distinct fresh slice, which is what weight-streaming
+decode actually does, gives 1.27x at a 3 MB slice, 1.15x at 6 MB, and 1.08x at
+12 MB. That is the recoverable dispatch gap, not a transformative speedup.
+
+The consequence is specific. Fuse or eliminate the small-grid glue, the
+rotations, norms, router steps, and format casts whose working sets sit inside
+cache. Do not consolidate the large memory-bound projections into a megakernel:
+they already run near effective streaming bandwidth, and a persistent form would
+pay barrier and lost-launch-overlap cost to consolidate work that is already
+efficient. Ordinary fusion reaches the same glue with far less ABI and lifecycle
+risk.
+
+This also corrects a common reading of a low utilization number. When a decode
+path shows a small fraction of peak bandwidth, the big-grid kernels are usually
+not the underutilized part. The token wall is, because of the dispatch intervals
+between kernels. Attribute the shortfall before designing around it.
+
+One structural constraint bounds the design space: HIP does not support dynamic
+parallelism for this use, so a persistent kernel cannot device-launch existing
+`__global__` kernels. Every inner loop it needs must be extracted or rewritten
+as a device-callable helper, which is the real cost of the approach.
 
 ## 8. `gfx1100`: discrete Navi 31
 
@@ -1216,6 +1511,14 @@ specific mechanism before another sweep.
 | "Reorder `blockIdx` to get cache locality" | Grid dimensions do not control block scheduling order on RDNA3; the reshape measured 59% slower | Does the schedule need a cooperative launch, a persistent work queue, or separate launches? |
 | "A fast row is a fast row" | Non-finite logits and collapsed expert routing each produced large apparent speedups by removing real work | Did work volume hold constant: finite outputs, route diversity, unique tokens, fallback share? |
 
+One cross-backend comparison did survive matched controls and should be kept
+separate from the rest. On `gfx1100`, Vulkan command-buffer replay holds a
+measured 2.44x-10.12x advantage over HIP graph replay for serialized tiny
+dispatches. That is a submission result, not a shader-compiler result, and it is
+consistent with the dispatch model in section 7.10: the gap is in how work is
+submitted, not in the code the two backends generate. Production-shaped Q4 and
+Q6 quantize-and-dot controls on the same hardware favor HIP.
+
 ## 12. A repeatable tuning procedure
 
 ### Step 1: Establish the contract
@@ -1224,6 +1527,27 @@ specific mechanism before another sweep.
 - Identify strict versus production arithmetic requirements.
 - Trace the registered owner and fallback.
 - Add a RED fixture before changing math or state when practical.
+- State the maximum prize: the component's measured share of complete wall, the
+  roofline or Amdahl ceiling that share implies, and the expected end-to-end
+  range. Mark every value as measured, derived, or estimated.
+- Fix the GO and STOP thresholds, the required matrix cells, and the variant or
+  time budget before seeing any candidate result.
+
+The prize check is `bucket_fraction * expected_speedup`. If that product is not
+worth the work, the bucket is the wrong target however improvable the kernel is.
+Rank competing candidates by milliseconds recoverable from complete wall rather
+than by leaf speedup: a call-weighted family saving that does not survive the
+complete step is not a priority. Before the audit was enforced in the parent
+lineage, roughly a hundred iterations went into micro-optimizing a paged
+attention kernel that launched on 16 of 96 CUs while a different family owned
+the majority of decode time.
+
+Where a cheap probe can disprove the premise, run it first. If removing an
+entire cost class from the path cannot move the target by a meaningful margin,
+that cost class is not the bottleneck, and the probe costs far less than the
+implementation it avoids. If a threshold must change later, log a dated
+correction naming the invalid premise and rerun the control; do not reinterpret
+an old result under a newly convenient bar.
 
 ### Step 2: Record a trustworthy baseline
 
@@ -1247,6 +1571,13 @@ Ask in order:
 5. Are resident waves limited by VGPR, LDS, or scratch?
 6. Does the layout coalesce encoded bytes?
 7. Is there cross-row, cross-query, or cross-expert reuse?
+8. Is the block actually parallel inside? A reduction, scan, or top-k guarded by
+   `if (threadIdx.x == 0)` in a hot kernel is a defect, not a style choice, and
+   it leaves the grid looking populated while the work is serial.
+9. Are the per-thread loops long enough for the compiler to schedule? Below
+   roughly 64 iterations per thread, expect to unroll manually.
+10. Is synchronization density excessive? A `__syncthreads()` inside a token or
+    tile loop can degrade scheduling well beyond the kernel's own share of time.
 
 Do not choose a kernel technique until this classification has evidence.
 
@@ -1308,6 +1639,26 @@ Rerun focused sweeps for:
 Do not rerun every historical idea. Reopen only parameters whose mechanism the
 structural change affected.
 
+### Step 8: Know when to stop
+
+An optimization loop needs a termination rule as much as a starting point. Pivot
+to a different lane when retained wins fall into the 1% range while larger
+structural lanes remain open, or after roughly three consecutive non-improving
+attempts on the same mechanism. A run of correct, memory-neutral, sub-1% keeps
+is acceptable polish, but it does not substitute for the structural lane that
+would change the bottleneck class.
+
+Maintain three to five conceptually distinct hypothesis families rather than a
+single-incumbent hill climb: one low-risk improvement close to the incumbent,
+one that changes dataflow, layout, ownership, or algorithm, and at least one
+that would invalidate the current framing if it succeeded. Preserve the concept
+behind a rejected candidate and record the new fact that would reopen it; do not
+preserve candidate debris.
+
+Stopping a design does not discard its parts. An exact, measured, same-suite
+non-regressive component win is retained and promoted on its own merits even
+when the larger design or the headline target is abandoned.
+
 ## 13. hipEngine implementation map
 
 Use these paths when applying the guide:
@@ -1324,6 +1675,12 @@ Use these paths when applying the guide:
 | General accumulated lessons | [LESSONS-LEARNED.md](LESSONS-LEARNED.md) |
 | Prefill design | [PREFILL.md](PREFILL.md) |
 | PM4 transport | [PM4.md](PM4.md) |
+| Speculative-decode economics and gates | [SPECULATIVE-DECODE.md](SPECULATIVE-DECODE.md), [MTP.md](MTP.md), [DFLASH.md](DFLASH.md) |
+| Dispatch floor, launch census, persistent kernels | [MEGAKERNEL.md](MEGAKERNEL.md) |
+| Sprint contracts, prize framing, and stop rules | [PROCESS-IMPROVEMENT.md](PROCESS-IMPROVEMENT.md) |
+| Exploration firewall and evaluation-set discipline | [PROCESS-EXPLORATION.md](PROCESS-EXPLORATION.md) |
+| Concurrent serving, admission, and c=N economics | [CONCURRENCY2.md](CONCURRENCY2.md) |
+| Tuning knobs and their measured defaults | [ENVS.md](ENVS.md) |
 | Backend policy and selectors | `hipengine/kernels/hip_gfx1100/__init__.py`, `hipengine/kernels/hip_gfx1151/__init__.py` |
 | HIP kernel bodies | `hipengine/kernels/hip_gfx1100/` and architecture-specific siblings under `hipengine/kernels/hip_gfx1151/` |
 | Torch-free JIT and cache keys | `hipengine/core/build.py` |
@@ -1362,7 +1719,44 @@ Start with these documents for details deliberately omitted here:
 - [VLLM_RDNA3.md](VLLM_RDNA3.md): external implementation patterns that were
   evaluated for transfer.
 
+For the topics this guide compresses to a page or two:
+
+- [SPECULATIVE-DECODE.md](SPECULATIVE-DECODE.md): the full `eta` decomposition,
+  break-even derivation, per-architecture projections, and the procedure for
+  measuring `eta` on a new model.
+- [MTP.md](MTP.md) and [DFLASH.md](DFLASH.md): the multi-token-prediction and
+  draft-verify campaigns, their launch budgets, and their do-not-chase lists.
+- [MEGAKERNEL.md](MEGAKERNEL.md): the launch census, the measured dispatch
+  model, the grid-reduction analysis, and the persistent-barrier microbenchmark
+  that closed the megakernel program.
+- [PROCESS-IMPROVEMENT.md](PROCESS-IMPROVEMENT.md): the sprint brief and
+  measure-first experiment contract behind step 1.
+- [PROCESS-EXPLORATION.md](PROCESS-EXPLORATION.md): the evaluation firewall,
+  discovery/qualification/confirmation sets, hypothesis beam, and stagnation
+  triggers behind sections 4.8 and step 8.
+- [CONCURRENCY2.md](CONCURRENCY2.md) and [CONCURRENCY.md](CONCURRENCY.md):
+  batched serving, scheduler ownership, admission policy, and the c=N scaling
+  interpretation used in section 2.4.
+- [GFX1151-TUNING-LANDSCAPE.md](GFX1151-TUNING-LANDSCAPE.md) and
+  [TUNING-gfx1151.md](TUNING-gfx1151.md): the inherited-constant audit, the
+  AOTriton crossover measurements, and the ranked `gfx1151` candidate ledger.
+- [TUNING-gguf.md](TUNING-gguf.md) and
+  [GGUF_DECODE_REPACK.md](GGUF_DECODE_REPACK.md): the GGUF tuning lanes and the
+  tile-major decode slab layouts behind the row-amortized owners.
+- [LLAMACPP-HIP-PARITY.md](LLAMACPP-HIP-PARITY.md) and
+  [HIP-vs-VULKAN.md](HIP-vs-VULKAN.md): matched cross-implementation evidence,
+  including which structural deltas transferred and which did not.
+- [DEBUG-GFX1151-STALL.md](DEBUG-GFX1151-STALL.md): the open long-prefill
+  no-progress hazard, its controls, and its containment path.
+- [QUANTS.md](QUANTS.md) and [KVCACHE.md](KVCACHE.md): format coverage, quality
+  cliffs, capacity math, and KV precision policy.
+- [OOM.md](OOM.md): startup accounting, runtime reserves, and capacity failure
+  modes.
+- [PM4.md](PM4.md): the transport contract and the qualification bar an
+  alternative submission path must clear.
+
 The durable lesson across all of them is simple: tune the bytes, ownership,
 layout, and resident execution of the real operation first. Architecture
 intrinsics and submission mechanisms become valuable only after that foundation
-is measured and correct.
+is measured and correct, and a speedup is only real once the work it performed
+has been shown to be unchanged.
