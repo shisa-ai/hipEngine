@@ -4778,3 +4778,11 @@ should be boring.
   `HIPENGINE_QWEN4_EXP_FUSED_COMBINE` gate, and the lever-2 tests once PF-4 is
   formally closed and no follow-up candidate reuses the fused chain. Keep the bit-exact-parity test file if the unfused chain ever changes
   arithmetic.
+
+## Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)
+
+`selected_grouped_row4_gemv_bf16_bf16_out` is registered but not selected by
+runtime. Remove the standalone candidate if complete-owner/whole-model
+validation rejects it; otherwise promote through the existing registry
+boundary and keep the selected-GEMV strict fallback. No environment flag
+has been added for this primitive.
