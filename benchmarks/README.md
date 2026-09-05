@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-05**
+Last updated: **2026-09-06**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -33,7 +33,7 @@ The root README exports this compact retained summary verbatim.
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **36.726 tok/s** | **1.1970x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K3 D24 explicit | **51.769 tok/s** | **1.3376x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C8/K3 D24 automatic | **98.643 tok/s** | **1.1178x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C8/K3 D24 automatic (under review) | 98.643 tok/s | 1.1178x |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
@@ -99,10 +99,20 @@ W7900 automatic MTP is deliberately narrow. Qwen3.6 enables only its qualified
 C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
 production/BF16 C2/K2 only at resident capacity 2, context 4-95, and D24
 (**36.726 vs 30.720 tok/s, 1.1970x AR**) and now also enables the exact
-resident-capacity-8 C8/K3/D24 key (**98.643 vs 88.250 tok/s, 1.1178x AR**).
+resident-capacity-8 C8/K3/D24 key (98.643 vs 88.250 tok/s, 1.1178x AR).
 Capacity-8 C1-C7 and every model/quant/profile/budget/context/horizon/sampling
 miss remain K0. The exact evidence links are carried in the model sections
 below.
+
+The C8/K3 rate above is **under review and should not be relied on**. Re-running
+its own source commit on the same W7900 on 2026-09-06, under the same protocol
+and with an identical model fingerprint, runtime-profile manifest, and
+acceptance ledger, measured 91.884 MTP against 92.631 AR — MTP slightly below
+AR rather than 1.1178x above it. The route is unchanged and still produces
+exact tokens, so this is a measurement-reproduction question, not a correctness
+one, and it is not a regression from any later change: the original commit and
+the current one measure the same today. Cause unresolved. See
+[`MTP width/depth policy unchanged`](results/2026-09-06-gfx1100-mtp-width-depth-policy-unchanged.json).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
