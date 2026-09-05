@@ -779,6 +779,13 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+The Qwen4Exp `attention/qwen4_exp_qsa.{hip,py}` family registers a separate
+`strict_h256_wave_rows_spans` candidate for D=256 paged BF16 sparse rows.
+Eight coordinates per lane preserve the parent 256-element score tree;
+an explicit product register boundary prevents compiler contraction across
+the parent's rounding point. `strict_rows_spans` remains its fallback.
+The candidate is not selected by runtime until whole-model admission.
+
 External repositories are references, never the development tree. Before porting an externally derived family:
 
 ```bash
