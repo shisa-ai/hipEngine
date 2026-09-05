@@ -3,7 +3,7 @@
   "kind": "qwen4exp_framework_family_refresh_queue",
   "date": "2026-09-05",
   "date_basis": "UTC",
-  "status": "queued_not_run",
+  "status": "instrumentation_smoke_passed_full_refresh_pending",
   "performance_claim": false,
   "priority": "before further kernel optimization",
   "host": {
@@ -34,7 +34,8 @@
   "stages": [
     {
       "id": "instrumentation",
-      "status": "queued",
+      "status": "implemented_smoke_passed",
+      "evidence": "benchmarks/results/2026-09-05-framework-qwen4exp-vulkan-owner-instrumentation.json",
       "deliverable": "Commit scripts/qwen4exp_framework_family_refresh.py with shared-taxonomy import, capture orchestration, provenance/coverage tests and generated tables.",
       "requirements": [
         "Reuse parse_perf_log from scripts/llamacpp_vulkan_perf_summary.py, not its coarse family labels as semantic owners.",
@@ -75,7 +76,7 @@
       "status": "queued",
       "depends_on": ["owner_profiles"],
       "requirements": [
-        "One versioned taxonomy with exclusive routed MoE, non-routed linear, GR, QSA, GDN, PLE and boundary ownership.",
+        "One versioned taxonomy with exclusive MoE/FFN (routed plus shared), non-FFN linear, GR, QSA, GDN, PLE and boundary ownership. Preserve finer original tags.",
         "Reconcile every timestamp exactly once; disclose unclassified and mixed-family fused cost and fail matched-gap publication when unresolved.",
         "Reject host/model/fixture/phase/context mismatches; never join zbook to Framework.",
         "Emit starting/current/comparator tables, per-case/category/shape data, device and wall ceilings, and raw hashes.",

@@ -496,7 +496,7 @@ still be established by their retained same-session A/B packets.
 
 **Owner-requested next priority: rerun on Framework before further tuning.**
 The [machine-readable queue](../benchmarks/results/2026-09-05-framework-qwen4exp-family-refresh-queue.json)
-is **queued, not run**. It freezes the combined Q4-pair production default,
+has **instrumentation smoke passed; full refresh pending**. It freezes the combined Q4-pair production default,
 then measures halo-box **Vulkan `b212548e0`** as the target and HIP as a
 separate diagnostic. GPU stages run serially.
 
@@ -511,6 +511,26 @@ honest alignment is:
 | QSA prefill, including its non-projection preparation | 1,921.000 | Queued | Not established |
 | GDN recurrence/Conv/norm-gate | 779.854 | Queued | Not established |
 | PLE + boundary | 88.459 | Queued | Not established |
+
+**Collector implementation update:** `scripts/qwen4exp_framework_family_refresh.py`
+now captures request-bounded Vulkan logs, runs serial baseline commands,
+captures HIP roles, rejects identity/coverage mismatches and renders joined
+tables. `scripts/qwen4exp_vulkan_owner_build.py` builds owned host-library
+copies against pinned halo-box; the original source and shader objects stay
+unchanged. Metadata-only graph scopes and fused-node IDs give the p512/p4096
+smokes 100% semantic coverage for prefill and one-token decode. Both return
+the same greedy prefix as the original uninstrumented binary. This is
+instrumentation validation, **not the full frozen baseline refresh**.
+[Instrumentation evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-vulkan-owner-instrumentation.json).
+
+The versioned comparison taxonomy uses **complete MoE/FFN, including shared
+projections**, because HIP decode's MoE graph includes those projections
+while HIP prefill exposes them as nested linear roles. The collector
+normalizes shared projection slots/weight names into MoE on both sides,
+preserving their original tags. Consequently these older routed-only
+snapshot numbers are not directly interchangeable with the new complete-FFN
+table. GR up projection remains GR read on both sides; GR down/inject are
+non-FFN linear. Unknown/mixed fusions block matched-gap publication.
 
 The quoted llama.cpp 3.63/1.93/0.53/1.85-second values belong to the older
 **zbook patched-upstream HIP** classifier. They are not current halo-box
