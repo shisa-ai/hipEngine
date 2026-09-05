@@ -226,6 +226,11 @@ the candidate stays default-off pending focused decode followup. An English
 replacement for the original timing protocol.
 [Full-suite audit](results/2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json).
 
+The isolated English rerun has flat decode, but its subset initially reversed
+the original arm order. That diagnostic does not waive the full-suite finding;
+the harness now preserves original fixture indices for focused comparisons.
+[Subset-order audit](results/2026-09-05-framework-qwen4exp-qsa-subset-order-audit.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 

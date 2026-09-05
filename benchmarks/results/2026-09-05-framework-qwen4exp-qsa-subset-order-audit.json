@@ -1,0 +1,456 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_qsa_english_focused_counterbalance_diagnostic",
+  "status": "diagnostic_original_case_order_not_preserved",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "05b9065be0de265606588826fc72a471d9fcad05",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+    "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+    "fell_back_to_strict": false
+  },
+  "arms": {
+    "before": {
+      "sparse_prefill": "strict_rows_spans"
+    },
+    "after": {
+      "sparse_prefill": "strict_h256_wave_rows_spans"
+    }
+  },
+  "protocol": {
+    "one_model_residency": true,
+    "one_python_process": true,
+    "case_ids": [
+      "general_en-p4096"
+    ],
+    "case_order": "fixture order",
+    "arm_order_even_case": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "arm_order_odd_case": [
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before"
+    ],
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 512,
+    "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+  },
+  "commands": {
+    "argv": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "/home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--route-package",
+      "qsa-h256-wave",
+      "--case-id",
+      "general_en-p4096",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-qsa-english-original-protocol.json"
+    ],
+    "shell": "/home/lhl/hipEngine/.venv/bin/python /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --route-package qsa-h256-wave --case-id general_en-p4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-qsa-english-original-protocol.json"
+  },
+  "summary": {
+    "correctness": {
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "mismatched_case_ids": []
+    },
+    "by_case": {
+      "general_en-p4096": {
+        "category": "general_en",
+        "prompt_tokens": 4096,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 98.19436937704572,
+        "after_prefill_tok_s_weighted": 118.08442865557144,
+        "after_over_before_prefill": 1.2025580428359601,
+        "before_decode_tok_s_weighted": 15.289282777592458,
+        "after_decode_tok_s_weighted": 15.289830593292645,
+        "after_over_before_decode": 1.0000358300456702,
+        "within_mode_deterministic": true,
+        "cross_mode_output_exact": true,
+        "output_token_ids_sha256": {
+          "before": [
+            "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+          ],
+          "after": [
+            "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+          ]
+        }
+      }
+    },
+    "by_shape": {
+      "4096": {
+        "case_count": 1,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 98.19436937704572,
+        "after_prefill_tok_s_weighted": 118.08442865557144,
+        "after_over_before_prefill": 1.2025580428359601,
+        "before_decode_tok_s_weighted": 15.289282777592458,
+        "after_decode_tok_s_weighted": 15.289830593292645,
+        "after_over_before_decode": 1.0000358300456702
+      }
+    },
+    "by_category": {
+      "general_en": {
+        "case_count": 1,
+        "samples_per_mode": 3,
+        "before_prefill_tok_s_weighted": 98.19436937704572,
+        "after_prefill_tok_s_weighted": 118.08442865557144,
+        "after_over_before_prefill": 1.2025580428359601,
+        "before_decode_tok_s_weighted": 15.289282777592458,
+        "after_decode_tok_s_weighted": 15.289830593292645,
+        "after_over_before_decode": 1.0000358300456702
+      }
+    },
+    "before": {
+      "sample_count": 3,
+      "all_cases_deterministic": true,
+      "cases": {
+        "general_en-p4096": {
+          "sample_count": 3,
+          "case_count": 1,
+          "prefill_tok_s_weighted": 98.19436937704572,
+          "decode_tok_s_weighted": 15.289282777592458,
+          "client_wall_s_total": 150.255190198,
+          "prefill_tok_s": {
+            "samples": [
+              98.11193504773748,
+              98.29094683487526,
+              98.18039239402674
+            ],
+            "median": 98.18039239402674,
+            "mean": 98.19442475887982,
+            "p95": 98.29094683487526,
+            "min": 98.11193504773748,
+            "max": 98.29094683487526,
+            "stdev": 0.09032710241723228,
+            "coefficient_of_variation": 0.0009198801524529926
+          },
+          "decode_tok_s": {
+            "samples": [
+              15.286140370703837,
+              15.291521248366381,
+              15.29018774094168
+            ],
+            "median": 15.29018774094168,
+            "mean": 15.289283120003967,
+            "p95": 15.291521248366381,
+            "min": 15.286140370703837,
+            "max": 15.291521248366381,
+            "stdev": 0.002802180469835988,
+            "coefficient_of_variation": 0.00018327742692982854
+          },
+          "category": "general_en",
+          "prompt_tokens": 4096,
+          "deterministic": true,
+          "output_token_ids_sha256": [
+            "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+          ]
+        }
+      },
+      "shapes": {
+        "4096": {
+          "sample_count": 3,
+          "case_count": 1,
+          "prefill_tok_s_weighted": 98.19436937704572,
+          "decode_tok_s_weighted": 15.289282777592458,
+          "client_wall_s_total": 150.255190198,
+          "prefill_tok_s": {
+            "samples": [
+              98.11193504773748,
+              98.29094683487526,
+              98.18039239402674
+            ],
+            "median": 98.18039239402674,
+            "mean": 98.19442475887982,
+            "p95": 98.29094683487526,
+            "min": 98.11193504773748,
+            "max": 98.29094683487526,
+            "stdev": 0.09032710241723228,
+            "coefficient_of_variation": 0.0009198801524529926
+          },
+          "decode_tok_s": {
+            "samples": [
+              15.286140370703837,
+              15.291521248366381,
+              15.29018774094168
+            ],
+            "median": 15.29018774094168,
+            "mean": 15.289283120003967,
+            "p95": 15.291521248366381,
+            "min": 15.286140370703837,
+            "max": 15.291521248366381,
+            "stdev": 0.002802180469835988,
+            "coefficient_of_variation": 0.00018327742692982854
+          }
+        }
+      },
+      "categories": {
+        "general_en": {
+          "sample_count": 3,
+          "case_count": 1,
+          "prefill_tok_s_weighted": 98.19436937704572,
+          "decode_tok_s_weighted": 15.289282777592458,
+          "client_wall_s_total": 150.255190198,
+          "prefill_tok_s": {
+            "samples": [
+              98.11193504773748,
+              98.29094683487526,
+              98.18039239402674
+            ],
+            "median": 98.18039239402674,
+            "mean": 98.19442475887982,
+            "p95": 98.29094683487526,
+            "min": 98.11193504773748,
+            "max": 98.29094683487526,
+            "stdev": 0.09032710241723228,
+            "coefficient_of_variation": 0.0009198801524529926
+          },
+          "decode_tok_s": {
+            "samples": [
+              15.286140370703837,
+              15.291521248366381,
+              15.29018774094168
+            ],
+            "median": 15.29018774094168,
+            "mean": 15.289283120003967,
+            "p95": 15.291521248366381,
+            "min": 15.286140370703837,
+            "max": 15.291521248366381,
+            "stdev": 0.002802180469835988,
+            "coefficient_of_variation": 0.00018327742692982854
+          }
+        }
+      }
+    },
+    "after": {
+      "sample_count": 3,
+      "all_cases_deterministic": true,
+      "cases": {
+        "general_en-p4096": {
+          "sample_count": 3,
+          "case_count": 1,
+          "prefill_tok_s_weighted": 118.08442865557144,
+          "decode_tok_s_weighted": 15.289830593292645,
+          "client_wall_s_total": 129.175869932,
+          "prefill_tok_s": {
+            "samples": [
+              117.92104598266324,
+              118.22620048850757,
+              118.10643997545255
+            ],
+            "median": 118.10643997545255,
+            "mean": 118.08456214887445,
+            "p95": 118.22620048850757,
+            "min": 117.92104598266324,
+            "max": 118.22620048850757,
+            "stdev": 0.15374913847274008,
+            "coefficient_of_variation": 0.0013020257320250019
+          },
+          "decode_tok_s": {
+            "samples": [
+              15.293143114284907,
+              15.291507191139955,
+              15.284844002622982
+            ],
+            "median": 15.291507191139955,
+            "mean": 15.289831436015948,
+            "p95": 15.293143114284907,
+            "min": 15.284844002622982,
+            "max": 15.293143114284907,
+            "stdev": 0.004396012968702536,
+            "coefficient_of_variation": 0.00028751219312644037
+          },
+          "category": "general_en",
+          "prompt_tokens": 4096,
+          "deterministic": true,
+          "output_token_ids_sha256": [
+            "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+          ]
+        }
+      },
+      "shapes": {
+        "4096": {
+          "sample_count": 3,
+          "case_count": 1,
+          "prefill_tok_s_weighted": 118.08442865557144,
+          "decode_tok_s_weighted": 15.289830593292645,
+          "client_wall_s_total": 129.175869932,
+          "prefill_tok_s": {
+            "samples": [
+              117.92104598266324,
+              118.22620048850757,
+              118.10643997545255
+            ],
+            "median": 118.10643997545255,
+            "mean": 118.08456214887445,
+            "p95": 118.22620048850757,
+            "min": 117.92104598266324,
+            "max": 118.22620048850757,
+            "stdev": 0.15374913847274008,
+            "coefficient_of_variation": 0.0013020257320250019
+          },
+          "decode_tok_s": {
+            "samples": [
+              15.293143114284907,
+              15.291507191139955,
+              15.284844002622982
+            ],
+            "median": 15.291507191139955,
+            "mean": 15.289831436015948,
+            "p95": 15.293143114284907,
+            "min": 15.284844002622982,
+            "max": 15.293143114284907,
+            "stdev": 0.004396012968702536,
+            "coefficient_of_variation": 0.00028751219312644037
+          }
+        }
+      },
+      "categories": {
+        "general_en": {
+          "sample_count": 3,
+          "case_count": 1,
+          "prefill_tok_s_weighted": 118.08442865557144,
+          "decode_tok_s_weighted": 15.289830593292645,
+          "client_wall_s_total": 129.175869932,
+          "prefill_tok_s": {
+            "samples": [
+              117.92104598266324,
+              118.22620048850757,
+              118.10643997545255
+            ],
+            "median": 118.10643997545255,
+            "mean": 118.08456214887445,
+            "p95": 118.22620048850757,
+            "min": 117.92104598266324,
+            "max": 118.22620048850757,
+            "stdev": 0.15374913847274008,
+            "coefficient_of_variation": 0.0013020257320250019
+          },
+          "decode_tok_s": {
+            "samples": [
+              15.293143114284907,
+              15.291507191139955,
+              15.284844002622982
+            ],
+            "median": 15.291507191139955,
+            "mean": 15.289831436015948,
+            "p95": 15.293143114284907,
+            "min": 15.284844002622982,
+            "max": 15.293143114284907,
+            "stdev": 0.004396012968702536,
+            "coefficient_of_variation": 0.00028751219312644037
+          }
+        }
+      }
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83545265060,
+    "total_allocated_bytes": 83555750820,
+    "total_freed_bytes": 83555750820,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "samples": [
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "sequence_slot": 0,
+      "prefill_ms": 41748.23377,
+      "decode_ms": 8373.598364,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "sequence_slot": 1,
+      "prefill_ms": 34735.10573,
+      "decode_ms": 8369.764086,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "sequence_slot": 2,
+      "prefill_ms": 34645.450696,
+      "decode_ms": 8370.659504,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 48
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "sequence_slot": 3,
+      "prefill_ms": 41672.200054,
+      "decode_ms": 8370.651809,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "sequence_slot": 4,
+      "prefill_ms": 41719.12436,
+      "decode_ms": 8371.381841,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 0
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "sequence_slot": 5,
+      "prefill_ms": 34680.581354,
+      "decode_ms": 8374.308562,
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6",
+      "candidate_calls": 48
+    }
+  ],
+  "raw_sha256": "5c1c1663ef1957f9ecf4510436c7b5d828a3cac91812d055a6d0606f08806a61",
+  "raw_path": "/tmp/qwen4exp-qsa-english-original-protocol.json",
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "finding": "Isolated English prefill +20.26%, decode +0.0036%, all six exact. But filtering reindexed original case5 to case0 and reversed both warmup and measured arm order. Do not use this to waive original adverse rows. Harness repaired to preserve original indices for future focused packets.",
+  "runtime_default_changed": false
+}
