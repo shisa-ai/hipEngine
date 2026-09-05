@@ -563,6 +563,7 @@ __global__ void qsa_sparse_attention_paged_bf16_rows_f32_kernel(
 }
 
 // Eight coordinates per lane reproduce the 256-thread parent tree exactly.
+template <bool PAGE256>
 __global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_kernel(
     const float* __restrict__ query,
     const uint16_t* __restrict__ key_cache,
@@ -587,10 +588,11 @@ __global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_ke
   float maximum = -INFINITY, denominator = 0.0f;
   for (int s = 0; s < count; ++s) {
     const int64_t pos = selected_positions[row * selected_stride + s];
-    const int64_t logical = pos / block_size;
+    const int64_t logical = PAGE256 ? (pos >> 8) : pos / block_size;
     if (pos < 0 || logical >= block_table_len) continue;
     const int64_t physical = block_tables[row * block_table_len + logical];
-    const int64_t token = physical * block_size + pos % block_size;
+    const int64_t token = PAGE256
+        ? (physical * 256 + (pos & 255)) : physical * block_size + pos % block_size;
     const int64_t offset = (token * kv_heads + kv_head) * 256;
     float p[8];
 #pragma unroll
@@ -1461,7 +1463,32 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_row
       query_heads <= 0 || kv_heads <= 0 || query_heads % kv_heads || head_dim != 256) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  hipLaunchKernelGGL(qsa_sparse_attention_h256_wave_rows_f32_kernel,
+  hipLaunchKernelGGL((qsa_sparse_attention_h256_wave_rows_f32_kernel<false>),
+      dim3(static_cast<uint32_t>(query_heads), static_cast<uint32_t>(rows)),
+      dim3(32), 0, stream,
+      static_cast<const float*>(query), static_cast<const uint16_t*>(key_cache),
+      static_cast<const uint16_t*>(value_cache),
+      static_cast<const int64_t*>(selected_positions),
+      static_cast<const int32_t*>(selected_counts),
+      static_cast<const int32_t*>(block_tables), static_cast<float*>(output),
+      rows, selected_stride, block_size, block_table_len, query_heads, kv_heads, scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32(
+    const void* query, const void* key_cache, const void* value_cache,
+    const void* selected_positions, const void* selected_counts,
+    const void* block_tables, void* output,
+    int64_t rows, int64_t selected_stride, int64_t block_size,
+    int64_t block_table_len, int64_t query_heads, int64_t kv_heads,
+    int64_t head_dim, float scale, hipStream_t stream) {
+  if (!query || !key_cache || !value_cache || !selected_positions ||
+      !selected_counts || !block_tables || !output || rows <= 0 ||
+      selected_stride <= 0 || block_size != 256 || block_table_len <= 0 ||
+      query_heads <= 0 || kv_heads <= 0 || query_heads % kv_heads || head_dim != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL((qsa_sparse_attention_h256_wave_rows_f32_kernel<true>),
       dim3(static_cast<uint32_t>(query_heads), static_cast<uint32_t>(rows)),
       dim3(32), 0, stream,
       static_cast<const float*>(query), static_cast<const uint16_t*>(key_cache),

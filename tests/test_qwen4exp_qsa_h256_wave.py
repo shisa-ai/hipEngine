@@ -41,11 +41,20 @@ def test_h256_wave_registration_and_reject_wrong_dimension():
                   SimpleNamespace(spans_mode="uniform", storage_dtype=DType.BF16),
                   rows=1, selected_stride=1, block_size=256,
                   query_heads=24, kv_heads=2, head_dim=128)
+    page = resolve(
+        backend="hip_gfx1151", layer="qsa_sparse_attention",
+        quant="bf16_kv", variant="strict_h256_page256_wave_rows_spans")
+    with pytest.raises(ValueError, match="block_size=256"):
+        page(1, 1, 1, 1, 1, 1,
+             SimpleNamespace(spans_mode="uniform", storage_dtype=DType.BF16),
+             rows=1, selected_stride=1, block_size=128,
+             query_heads=24, kv_heads=2, head_dim=256)
 
 
 class Fixture:
-    def __init__(self, rows, stride, edge=False):
+    def __init__(self, rows, stride, edge=False, page256=False):
         self.rows, self.stride = rows, stride
+        self.page256 = page256
         self.runtime = get_hip_runtime()
         self.allocations = []
         rng = np.random.default_rng(506)
@@ -86,6 +95,8 @@ class Fixture:
     def run(self, candidate):
         fn = (qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32
               if candidate else qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32)
+        if candidate and self.page256:
+            fn = qsa.qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32
         target = self.output if candidate else self.parent
         fn(self.dq.ptr, self.dk.ptr, self.dv.ptr, self.ds.ptr, self.dc.ptr,
            target.ptr, self.spans, rows=self.rows, selected_stride=self.stride,
@@ -104,13 +115,16 @@ class Fixture:
 
 
 @pytest.mark.skipif(not hip_available(), reason="HIP unavailable")
+@pytest.mark.parametrize("page256", [False, True])
 @pytest.mark.parametrize("rows,stride,edge,query_scale", [
     (1,1,False,1), (3,33,True,1), (4,2051,False,1),
     (2,257,False,128), (2,2048,False,0.00001),
 ])
-def test_h256_wave_exact(rows, stride, edge, query_scale):
+def test_h256_wave_exact(rows, stride, edge, query_scale, page256):
     assert hasattr(qsa, "qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32")
-    f = Fixture(rows, stride, edge)
+    if page256:
+        assert hasattr(qsa, "qwen4_exp_qsa_sparse_attention_paged_bf16_h256_page256_wave_rows_f32")
+    f = Fixture(rows, stride, edge, page256=page256)
     try:
         if query_scale != 1:
             f.query *= np.float32(query_scale)

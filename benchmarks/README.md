@@ -237,6 +237,11 @@ are exact. A 2880 MHz clock snapshot during the affected section is a
 lead, not a causal diagnosis. QSA remains default-off.
 [Corrected followup](results/2026-09-05-framework-qwen4exp-qsa-corrected-followup.json).
 
+The standalone page256-addressing sibling reduces rows512 attention from
+28.13→27.56 ms versus the generic wave candidate, with both arms exact.
+This does not establish a power benefit or clear the whole-model decode gate.
+[Page256 screen](results/2026-09-05-framework-qwen4exp-qsa-page256.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 
