@@ -5,7 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from hipengine.execution_profiles import resolve_runtime_profile
 from hipengine.generation.qwen35_gguf import Qwen35GGUFBringupGenerator
+from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
+    QWEN36_DENSE_GGUF_BACKEND,
+    QWEN36_DENSE_GGUF_MODEL,
+    QWEN36_DENSE_GGUF_QUANT,
+    register_qwen36_dense_gguf_gfx1100_profiles,
+)
 from hipengine.llm import LLM
 from hipengine.models.qwen35 import Qwen35GGUFModel, Qwen35MoeGGUFModel
 from hipengine.speculative.serving import (
@@ -20,7 +27,7 @@ _MODEL_SHA256 = "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe16
 _STRICT_MANIFEST_SHA256 = "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
 _PRODUCTION_MANIFEST_SHA256 = "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
 _W7900_MODEL_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
-_W7900_PRODUCTION_MANIFEST_SHA256 = "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+_W7900_PRODUCTION_MANIFEST_SHA256 = "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
 
 
 def _key(**changes) -> SpeculativeMTPServingKey:
@@ -157,8 +164,12 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
     assert decision.selected_candidate_count == 2
     assert decision.reason == "qualified_automatic_gfx1100_production_c2_k2_d24"
     assert decision.static_eligibility.max_realized_group_rows == 2
+    assert any(
+        path.endswith("2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json")
+        for path in decision.evidence_artifacts
+    )
     assert decision.evidence_artifacts[-1].endswith(
-        "2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json"
+        "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
     )
 
     for changes, reason in (
@@ -181,6 +192,63 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
         assert rejected.admitted is False
         assert rejected.automatic_eligible is False
         assert rejected.reason == reason
+
+
+def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        artifact_sha256=_W7900_MODEL_SHA256,
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        execution_profile="production",
+        execution_profile_manifest_sha256=_W7900_PRODUCTION_MANIFEST_SHA256,
+        realized_group_rows=8,
+        resident_capacity=8,
+        candidate_budget=3,
+        context_tokens=95,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    assert decision.admitted is True
+    assert decision.automatic_eligible is True
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == "qualified_automatic_gfx1100_production_c8_k3_d24"
+    assert decision.static_eligibility.max_realized_group_rows == 8
+    assert decision.evidence_artifacts[-1].endswith(
+        "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
+    )
+
+    for realized_rows in range(1, 8):
+        rejected = resolve_speculative_mtp_serving_plan(
+            evidence,
+            key=replace(key, realized_group_rows=realized_rows),
+        )
+        assert rejected.admitted is False
+        assert rejected.automatic_eligible is False
+        assert rejected.selected_candidate_count == 0
+
+
+def test_w7900_dense_evidence_tracks_current_profile_manifests() -> None:
+    register_qwen36_dense_gguf_gfx1100_profiles()
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    for profile in ("strict", "production"):
+        resolved = resolve_runtime_profile(
+            model=QWEN36_DENSE_GGUF_MODEL,
+            backend=QWEN36_DENSE_GGUF_BACKEND,
+            quant=QWEN36_DENSE_GGUF_QUANT,
+            profile=profile,
+        )
+        relevant = tuple(
+            row
+            for row in evidence
+            if row.backend == "hip_gfx1100" and row.execution_profile == profile
+        )
+        assert relevant
+        assert {
+            row.execution_profile_manifest_sha256 for row in relevant
+        } == {resolved.manifest_sha256}
 
 
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
@@ -421,9 +489,12 @@ def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     assert decision.selected_candidate_count == 2
     assert decision.reason == "qualified_automatic_production_dense_c2_k2_d24"
     assert decision.strict_fallback_key == "gguf_target_ar"
-    assert decision.evidence_artifacts[-1] == (
-        "benchmarks/results/"
-        "2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json"
+    assert any(
+        path.endswith("2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json")
+        for path in decision.evidence_artifacts
+    )
+    assert decision.evidence_artifacts[-1].endswith(
+        "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
     )
 
     frontend_c1 = Qwen35GGUFModel().resolve_speculative_mtp_serving_plan(

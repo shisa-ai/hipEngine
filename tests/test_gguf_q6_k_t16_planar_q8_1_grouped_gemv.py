@@ -280,12 +280,32 @@ def test_decode_wrapper_session_routes_to_grouped_dp4a(grouped_libraries) -> Non
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-def test_runner_dp4a_grouped_gate_defaults_off() -> None:
+def test_runner_dp4a_grouped_gate_is_qwen38_q4km_c8_only(monkeypatch) -> None:
     from hipengine.runtime.qwen35_gguf_runner import (
+        _GGUF_C8_Q6_DP4A_GROUPED_ENV,
         _gguf_c8_q6_dp4a_grouped_enabled,
     )
 
-    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", request_count=8) is False
+    kwargs = {
+        "request_count": 8,
+        "model_name": "Qwen3.8-27B",
+        "file_type_name": "MOSTLY_Q4_K_M",
+    }
+    monkeypatch.delenv(_GGUF_C8_Q6_DP4A_GROUPED_ENV, raising=False)
+    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **kwargs) is False
+
+    monkeypatch.setenv(_GGUF_C8_Q6_DP4A_GROUPED_ENV, "1")
+    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1100", **kwargs) is True
+    assert _gguf_c8_q6_dp4a_grouped_enabled(
+        "hip_gfx1100", **(kwargs | {"request_count": 7})
+    ) is False
+    assert _gguf_c8_q6_dp4a_grouped_enabled(
+        "hip_gfx1100", **(kwargs | {"model_name": "Qwen3.6-27B"})
+    ) is False
+    assert _gguf_c8_q6_dp4a_grouped_enabled(
+        "hip_gfx1100", **(kwargs | {"file_type_name": "MOSTLY_Q4_K_S"})
+    ) is False
+    assert _gguf_c8_q6_dp4a_grouped_enabled("hip_gfx1151", **kwargs) is False
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")

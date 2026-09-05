@@ -12736,11 +12736,18 @@ def _gguf_c8_q6_dp4a_grouped_enabled(
     backend: str,
     *,
     request_count: int,
+    model_name: str | None = None,
+    file_type_name: str | None = None,
 ) -> bool:
-    """Opt-in C8-P4 grouped-dp4a owner pass; default-off (L4 pending)."""
+    """Resolve the retained Qwen3.8 Q4_K_M physical-C8 Q6 owner."""
 
-    del backend, request_count
-    return _env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
+    return (
+        str(backend) == "hip_gfx1100"
+        and int(request_count) == 8
+        and "qwen3.8" in str(model_name or "").casefold()
+        and str(file_type_name or "").upper() == "MOSTLY_Q4_K_M"
+        and _env_flag(_GGUF_C8_Q6_DP4A_GROUPED_ENV, False)
+    )
 
 
 def _gguf_c8_q5_raw_mmq_enabled(
@@ -17724,6 +17731,8 @@ class Qwen35GGUFResidentSession:
         enabled = _gguf_c8_q6_dp4a_grouped_enabled(
             self.runner.backend,
             request_count=request_count,
+            model_name=getattr(self.runner.weights, "model_name", None),
+            file_type_name=getattr(self.runner.weights, "file_type_name", None),
         )
         if not enabled:
             return q6_dp4a_grouped_target_session(enabled=False)
