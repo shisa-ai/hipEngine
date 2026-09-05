@@ -106,11 +106,15 @@ def classify_operation(name: str) -> str:
 
 
 def parse_perf_log(path: Path) -> list[TimingSection]:
+    return parse_perf_text(path.read_text(errors="replace"), source_label=str(path))
+
+
+def parse_perf_text(text: str, *, source_label: str = "<text>") -> list[TimingSection]:
     sections: list[TimingSection] = []
     in_section = False
     operations: list[OperationTiming] = []
 
-    for raw_line in path.read_text(errors="replace").splitlines():
+    for raw_line in text.splitlines():
         line = raw_line.strip()
         if line == "Vulkan Timings:":
             if in_section:
@@ -144,7 +148,7 @@ def parse_perf_log(path: Path) -> list[TimingSection]:
     if in_section:
         raise ValueError("incomplete Vulkan timing section at end of log")
     if not sections:
-        raise ValueError(f"no Vulkan timing sections found in {path}")
+        raise ValueError(f"no Vulkan timing sections found in {source_label}")
     return sections
 
 
