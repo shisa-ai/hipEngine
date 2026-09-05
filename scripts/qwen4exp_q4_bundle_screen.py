@@ -104,6 +104,8 @@ def main():
                 "active_experts":int(np.count_nonzero(counts)),"seconds":times,
                 "max_expert_rows":int(counts.max()),
                 "median_active_expert_rows":float(np.median(counts[counts>0])),
+                "weight_passes_by_row_batch":{
+                    str(rb):int(np.sum((counts+rb-1)//rb)) for rb in (8,16,32)},
                 "speedup":statistics.median(times["parent"])/statistics.median(times["candidate"]),
                 "all_pairs_exact":True})
             for ptr in reversed(allocations[mark:]):

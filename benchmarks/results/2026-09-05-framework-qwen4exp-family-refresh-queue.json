@@ -89,7 +89,8 @@
     }
   ],
   "next_optimization": {
-    "status": "unmeasured_hypothesis_after_refresh",
+    "status": "simple_larger_rowbatch_kernel_screen_rejected_full_model_sweep_not_run",
+    "evidence": "benchmarks/results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json",
     "grid": {"prefill_chunk": [512, 1024, 2048], "q4_row_batch": [8, 16, 32]},
     "requirements": ["Actual routing distributions and complete MoE boundary.", "Exact gates, VGPR/LDS/scratch, cache/weight-traffic evidence and whole-model wall.", "Do not equate the inferred 1.8x weight-pass reduction with measured speedup."]
   }

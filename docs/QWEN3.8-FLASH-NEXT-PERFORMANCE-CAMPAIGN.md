@@ -53,6 +53,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 row-batch screen (2026-09-05 UTC):** straightforward pair2 RB16/32
+instantiations are exact but lose against RB8 across all final token-count
+512/1024/2048 x uniform/skewed routing cells, even after skipping padded-row
+reductions. Masked RB16 ratios0.880-0.981x, RB32 ratios0.586-0.623x.
+Measured VGPR increases88->120 (masked16) and176 (original32), with zero
+scratch. Weight-pass reductions alone did not predict performance.
+Remove these variants; keep RB8 and weight-pass telemetry.
+[Evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json).
+This is a real-weight/synthetic-routing gate/up+SiLU screen, not a completed
+full-model chunk sweep or proof that all reuse designs are exhausted.
+Next independent portfolio is the large non-GR linear/GR deficit; QSA remains
+the leading decode target. Do not spend a full model A/B on these losing cells.
+
 **Shared-taxonomy Framework refresh complete (2026-09-05 UTC):** the committed
 collector now joins six same-host prompt cases across prefill/fixed-live decode,
 with100% semantic coverage, same-root decode inputs, Vulkan instrumentation

@@ -679,6 +679,33 @@ pressure (pair2 currently uses 88 VGPR), LDS/scratch, cache/weight traffic,
 the complete MoE operation and whole-request wall. Preserve the exact parent
 gate and smaller-row fallback; do not promote on traffic arithmetic alone.
 
+**First joint kernel screen (2026-09-05 UTC): rejected.** Instantiate the
+current pair2 kernel at ROW_BATCH16/32, keeping the same K/reduction sequence
+and testing token counts512/1024/2048 with real layer0/layer4 weights.
+Routing and activations in this screen are synthetic uniform/skewed inputs,
+not captured model routing. After a resource audit, an exact variant also
+skips absent-row reduction/publication work. Its speed ratios versus RB8 are:
+
+| Routing | Row batch | tokens512 | tokens1024 | tokens2048 |
+| --- | ---: | ---: | ---: | ---: |
+| Uniform | 16 | 0.981x | 0.947x | 0.916x |
+| Uniform | 32 | 0.606x | 0.623x | 0.590x |
+| Skewed | 16 | 0.921x | 0.924x | 0.880x |
+| Skewed | 32 | 0.610x | 0.598x | 0.586x |
+
+Every output is exact but all12 final cells regress. On the skewed map,
+inferred weight passes at tokens2048 fall2801->1557->946 for RB8/16/32;
+this does not translate into a speedup. RB8 uses88 VGPR, masked RB16 uses120,
+and original RB32 uses176, all with zero scratch. Register pressure is a
+measured change, not proof of the sole cause; DRAM/MALL traffic was not
+measured. Both larger-RB variants and selectors are removed. The harness
+retains weight-pass telemetry, and production keeps RB8.
+[Rejected screen and source recipe](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json).
+No expensive full-model chunk sweep was run for these losing candidates.
+This does not close every adaptive/heavy-expert or changed-layout reuse
+design; a future attempt must name a new mechanism rather than simply
+instantiate the same larger row batches again.
+
 ### 5.3 Source audit corrections (2026-09-05)
 
 Audit basis: hipEngine `3574a1bd2` and read-only halo-box
