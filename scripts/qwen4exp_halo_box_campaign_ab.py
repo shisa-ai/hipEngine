@@ -188,11 +188,13 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
         environment[flag] = "1" if mode == "after" else "0"
+        if route_package == "qsa-h256-page256" and mode == "after":
+            environment[flag] = "page256"
         return
     if mode == "before":
         environment[Q5_M1_ENV] = "0"
@@ -228,7 +230,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -352,14 +354,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
             "selected_grouped_row4_gemv_bf16_bf16_out")
             if args.route_package == "q5k-row4" else KernelKey(
                 "hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
-                "strict_h256_wave_rows_spans"))
+                "strict_h256_page256_wave_rows_spans" if args.route_package == "qsa-h256-page256"
+                else "strict_h256_wave_rows_spans"))
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -373,7 +376,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before": {"q5_k_gate_up": "selected_gemv_bf16_bf16_out"},
             "after": {"q5_k_gate_up": row4_key.variant},
         }
-        if args.route_package == "qsa-h256-wave":
+        if args.route_package.startswith("qsa-h256-"):
             artifact["arms"] = {
                 "before": {"sparse_prefill": "strict_rows_spans"},
                 "after": {"sparse_prefill": row4_key.variant},
@@ -388,7 +391,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             generator.runner, case=case, repetition=repetition, transitions=transitions)
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            if args.route_package == "qsa-h256-wave":
+            if args.route_package.startswith("qsa-h256-"):
                 validate_qsa_h256_engagement(mode, calls, int(case["prompt_tokens"]))
             else:
                 validate_row4_engagement(mode, calls)
