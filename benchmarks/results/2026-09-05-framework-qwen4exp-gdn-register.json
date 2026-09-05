@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "date_basis": "UTC; September 6 JST",
+  "kind": "qwen4exp_gdn_register_screen",
+  "status": "retained_kernel_pending_model_admission",
+  "source": {
+    "base_commit": "64790784737e1a3adc9e1ae59c3cf036f5a838f0",
+    "tracked_clean": false,
+    "scope": "qwen4_exp_gdn.hip/.py plus new test and microbenchmark"
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon 8060S",
+    "target_arch": "gfx1151",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "model": {
+    "name": "Qwen3.8-Flash-Next",
+    "quant": "UD-Q4_K_XL",
+    "kv": "BF16",
+    "scope": "synthetic operation-complete F32 GDN fixture at model geometry; no model weights used"
+  },
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "command": ".venv/bin/python scripts/qwen4exp_gdn_register_micro.py --output /tmp/qwen4exp-gdn-register-bound128-micro.json",
+  "protocol": {
+    "shape": "Hk16/Hv48/Dk128/Dv128",
+    "seed": 8305,
+    "warmups_per_arm": 3,
+    "samples_per_arm": 15,
+    "statistic": "median HIP event kernel milliseconds",
+    "order": "alternating paired arms",
+    "state": "identical nonzero state reset outside each timed window",
+    "includes": "Q/K normalization, serial recurrence, sigmoid RMSNorm gate, final state write"
+  },
+  "rows": [
+    {"tokens": 16, "parent_ms": 0.6637250185, "candidate_ms": 0.1003080010, "speedup": 6.616870156},
+    {"tokens": 64, "parent_ms": 2.5957100391, "candidate_ms": 0.3495759964, "speedup": 7.425309706},
+    {"tokens": 512, "parent_ms": 21.0716114044, "candidate_ms": 2.8079478741, "speedup": 7.504274420}
+  ],
+  "correctness": {
+    "contract": "T0 exact output and final-state bits vs registered serial parent",
+    "tokens": [1, 17, 64, 512],
+    "repeat_and_split7_replay": true,
+    "cpu_reference_tokens": [1, 17, 64],
+    "cpu_rtol": 0.00005,
+    "cpu_atol": 0.00005,
+    "cpu_kl_max_limit": 0.05,
+    "cpu_top1_min_limit": 0.9,
+    "scope": "primitive output-channel distribution, not model logits or D1"
+  },
+  "trace": {
+    "command": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-gdn-register-bound128-trace -- .venv/bin/python scripts/qwen4exp_gdn_register_micro.py --tokens 16 --repeats 1 --output /tmp/qwen4exp-gdn-register-bound128-trace.json",
+    "raw_path": "/tmp/qwen4exp-gdn-register-bound128-trace/gfx1151/2417449_kernel_trace.csv",
+    "candidate_symbol": "qwen4_exp_gdn_prefill_f32_kernel<true>",
+    "first_duration_ns": 93854,
+    "workgroup": 128,
+    "grid": 6144,
+    "vgpr": 256,
+    "scratch_bytes": 24,
+    "dynamic_lds_launch_bytes": 2560,
+    "review": "Accept residual spill for kernel retention: measured complete operation wins 6.62-7.50x; model admission remains pending."
+  },
+  "rejected_tuning": [
+    {"variant": "no launch bound", "tokens512_ms": 9.649015427, "scratch_bytes": 480},
+    {"variant": "memory scheduling barrier every column", "tokens512_ms": 5.157756805},
+    {"variant": "memory scheduling barrier every eight columns", "tokens512_ms": 3.051043987, "scratch_bytes": 24}
+  ],
+  "fresh_profile": {
+    "source_commit": "64790784737e1a3adc9e1ae59c3cf036f5a838f0",
+    "raw_path": "/tmp/qwen4exp-post-q51-roles.json",
+    "code_p4096_profiled_window_ms": 32621.964487,
+    "gdn_ms": 3866.190011,
+    "serial_prefix_ms": 3555.166138,
+    "serial_launches": 168,
+    "warning": "profile attribution only; not an unprofiled rate or realized model speedup"
+  },
+  "promotion_blocker": "Need invocation-verified whole-model state/KV/logit gate and full same-residency 12-case A/B before profile/default wiring."
+}

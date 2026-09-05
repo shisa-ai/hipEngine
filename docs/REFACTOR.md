@@ -4816,3 +4816,13 @@ guarded by rows>=64 and registry capability; strict binds zero. The full
 and the post-binder opt-out keep M1; strict keeps its original exact parent.
 Remove the environment selector when this runtime dispatch moves directly
 under the manifest; retain rollback and registered strict fallbacks.
+
+## Qwen4Exp register-state serial GDN admission
+
+- Separate `qwen4exp_sigmoid_register_prefill` kernel is retained after exact
+  primitive gates and a 6.62-7.50x Framework micro win. No runtime flag added.
+- Pending: invocation-verified whole-model state/KV/logit and 12-case A/B gates.
+  Wire the qualified shape through the profile/capability path after admission;
+  keep the registered serial strict fallback. Do not widen the suffix arithmetic.
+- Resource review accepts 256 VGPR/24-byte scratch at the kernel-screen stage;
+  whole-model performance remains the binding admission test.

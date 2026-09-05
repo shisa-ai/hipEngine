@@ -186,6 +186,13 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
+Serial GDN candidate screen on Framework `gfx1151`:
+Hk16/Hv48/D128, tokens512, complete F32 recurrence plus norm/gate
+**21.072->2.808 ms (7.50x)** with exact parent output/state bits.
+This is a synthetic model-geometry microbenchmark, not a model rate;
+whole-model admission is pending and defaults are unchanged.
+[GDN screen](results/2026-09-05-framework-qwen4exp-gdn-register.json).
+
 Latest full-suite production retention adds Q5_1 paired-output reuse:
 
 | Shape | Parent prefill | Pair2 prefill | Gain | Pair2 decode |
