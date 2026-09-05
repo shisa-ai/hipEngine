@@ -399,10 +399,51 @@ def _q6_rowtile_dispatch_count(rows: int, *, max_chunk: int = 6) -> int:
     return dispatches
 
 
+def _backend_lm_head_max_chunk(backend: str) -> int:
+    """Resolve the backend's qualified Q6 LM-head chunk cap.
+
+    The dispatch-count mirror must follow the backend package rather than a
+    hardcoded partition, or every promoted owner change silently fails the
+    census with a stale expectation.
+    """
+
+    from hipengine.kernels.backends import backend_package_capability
+
+    raw = backend_package_capability(backend, "GGUF_Q6_LM_HEAD_MAX_CHUNK", None)
+    try:
+        value = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 6
+    return value if value >= 2 else 6
+
+
+def _q6_lm_head_rows(
+    rows: Sequence[KernelTraceRow],
+) -> list[KernelTraceRow]:
+    """Return Q6 row-tile LM-head launches across owner generations.
+
+    The promoted qmicro-planar rowtile symbol also serves Q6 FFN down
+    projections; those launches write a BF16 output pointer, while the LM
+    head writes FP32 logits, so only ``float*``-out qmicro launches count.
+    The legacy ``q6_k_t16_gemv_rowtile`` owner never appears with a Q6 FFN
+    down projection in the same trace and needs no output-type filter.
+    """
+
+    legacy = _rows_matching(rows, "q6_k_t16_gemv_rowtile")
+    qmicro = [
+        row
+        for row in _rows_matching(rows, "q6_k_t16_qmicro_planar_gemv_rowtile")
+        if "unsigned char const*, float*" in row.kernel
+    ]
+    seen = {id(row) for row in legacy}
+    return legacy + [row for row in qmicro if id(row) not in seen]
+
+
 def build_c3_family_census(
     c4_rows: Sequence[KernelTraceRow],
     *,
     manifest: Mapping[str, Any],
+    lm_head_max_chunk: int = 6,
 ) -> dict[str, Any]:
     """Prove the C3 c-aware families and steady movement from one c4 trace."""
 
@@ -440,19 +481,48 @@ def build_c3_family_census(
         c4_rows,
         "weighted_sum_shared_gate_combine_residual_batch_out_kernel",
     )
-    moe_passed = (
-        len(selected_gate_up) == total_layers
-        and len(selected_down) == total_layers
-        and len(moe_combine) == total_layers
-        and _all_row_extent(selected_gate_up, selected_lanes)
-        and _all_row_extent(selected_down, selected_lanes)
-        and _all_row_extent(moe_combine, row_count)
-    )
+    moe_path = str(families["moe_ffn"]["decode_path"])  # type: ignore[index]
+    if moe_path == "dense_ffn_rows":
+        # Dense FFN models have no selected-lane work at all. The fused
+        # dual-rowtile SiLU gate/up and the Q6 qmicro-planar down projections
+        # are the name-separable dense FFN owners; their grids are 1-D, so
+        # row ownership is asserted by per-layer dispatch counts.
+        dense_gate_up = _rows_matching(
+            c4_rows,
+            "dense_dual_rowtile_silu_gemv_kernel",
+        )
+        dense_q6_down = [
+            row
+            for row in _rows_matching(
+                c4_rows,
+                "q6_k_t16_qmicro_planar_gemv_rowtile",
+            )
+            if "unsigned char const*, unsigned short*" in row.kernel
+        ]
+        moe_passed = (
+            not selected_gate_up
+            and not selected_down
+            and not moe_combine
+            and len(dense_gate_up) == total_layers
+            and (not dense_q6_down or len(dense_q6_down) == total_layers)
+        )
+    else:
+        moe_passed = (
+            len(selected_gate_up) == total_layers
+            and len(selected_down) == total_layers
+            and len(moe_combine) == total_layers
+            and _all_row_extent(selected_gate_up, selected_lanes)
+            and _all_row_extent(selected_down, selected_lanes)
+            and _all_row_extent(moe_combine, row_count)
+        )
 
     lm_head_path = str(manifest["lm_head_decode_path"])
     if lm_head_path == "q6_rowtile_f32_logits":
-        lm_head_rows = _rows_matching(c4_rows, "q6_k_t16_gemv_rowtile")
-        expected_lm_head_dispatches = _q6_rowtile_dispatch_count(row_count)
+        lm_head_rows = _q6_lm_head_rows(c4_rows)
+        expected_lm_head_dispatches = _q6_rowtile_dispatch_count(
+            row_count,
+            max_chunk=lm_head_max_chunk,
+        )
     elif lm_head_path == "direct_top1_rows":
         lm_head_rows = _rows_matching(c4_rows, "top1_gather")
         expected_lm_head_dispatches = 1
@@ -516,6 +586,12 @@ def build_c3_family_census(
             "selected_gate_up_dispatches": len(selected_gate_up),
             "selected_down_dispatches": len(selected_down),
             "combine_dispatches": len(moe_combine),
+            "dense_gate_up_dispatches": (
+                len(dense_gate_up) if moe_path == "dense_ffn_rows" else None
+            ),
+            "dense_down_dispatches": (
+                len(dense_q6_down) if moe_path == "dense_ffn_rows" else None
+            ),
         },
         "lm_head_sampler": {
             "passed": sampler_passed,
@@ -543,6 +619,7 @@ def build_execution_census(
     *,
     manifest: Mapping[str, Any],
     packed_concurrency: int = 4,
+    lm_head_max_chunk: int = 6,
 ) -> dict[str, Any]:
     expected = int(
         manifest["model_step"]["expected_exact_row_local_kernel_launches"]  # type: ignore[index]
@@ -573,7 +650,11 @@ def build_execution_census(
     return {
         "route_check_passed": route_check_passed,
         "packed_concurrency": int(packed_concurrency),
-        "c3_family_census": build_c3_family_census(packed_rows, manifest=manifest),
+        "c3_family_census": build_c3_family_census(
+            packed_rows,
+            manifest=manifest,
+            lm_head_max_chunk=lm_head_max_chunk,
+        ),
         "family_attribution": {
             "c1": summarize_decode_kernel_families(c1_rows),
             packed_label: summarize_decode_kernel_families(packed_rows),
@@ -1199,6 +1280,7 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
         packed["rows"],
         manifest=manifest,
         packed_concurrency=packed_concurrency,
+        lm_head_max_chunk=_backend_lm_head_max_chunk(str(args.backend)),
     )
     closure_level = execution_census_closure_level(manifest, census)
     physical_shape_exact = bool(
