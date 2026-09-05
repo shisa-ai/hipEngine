@@ -376,12 +376,12 @@ def qwen4_exp_gdn_prefill_tiled16_f32(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Run exact token-tile-16 Qwen4Exp GDN prefill for the 16K/32V shape."""
+    """Run exact token-tile-16 Qwen4Exp GDN prefill at 32 or 48 V heads."""
 
     if tokens < 16:
         raise ValueError("tile-16 GDN prefill requires at least 16 tokens")
-    if num_k_heads != 16 or num_v_heads != 32:
-        raise ValueError("tile-16 GDN prefill requires 16 key and 32 value heads")
+    if num_k_heads != 16 or num_v_heads not in (32, 48):
+        raise ValueError("tile-16 GDN prefill requires 16K and 32V or 48V heads")
     if head_k_dim != 128 or head_v_dim != 128:
         raise ValueError("tile-16 GDN prefill requires 128x128 heads")
     library = library or build_qwen4_exp_gdn(load=True)

@@ -1,18 +1,15 @@
-"""PF-5 RED tests for the token-tile-16 GDN prefill candidate.
+"""PF-5 RED/parity tests for the token-tile-16 GDN prefill candidate.
 
-The candidate adapts halo-box PR11 ``gated_delta_net_kda_tiled_128_cuda``
-(``a7ad7b7f``) to the in-tree Qwen4Exp input boundary. It stages 16 tokens of
-Q/K and identical per-token scalars once per 16-column block. The recurrent
-state remains in registers for the complete sequence.
+The candidate adapts cooperative staging from halo-box PR11
+``gated_delta_net_kda_tiled_128_cuda`` (``a7ad7b7f``) to the in-tree
+Qwen4Exp arithmetic and binding Hk=16/Hv=48/D=128 shape. The external tile-16
+branch itself is H=32 KDA and is inactive on this model.
 
 Arithmetic class: T0. The candidate must preserve the production columnwarp
 owner's per-lane r=0..3 accumulation order, XOR shuffle reductions, recurrent
 update order, and FP32 outputs/state bit-for-bit. The registered serial
 ``qwen4exp_sigmoid_strict_prefill`` route remains the strict fallback; the
 columnwarp owner remains the immediate production rollback.
-
-RED semantics: before implementation, the candidate wrapper and registry key
-are absent, so these tests fail with ImportError.
 """
 
 from __future__ import annotations
@@ -77,9 +74,14 @@ def test_qwen4_exp_gdn_tiled16_prefill_registry_contract() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [16, 17, 64])
-def test_qwen4_exp_gdn_tiled16_prefill_exact_vs_columnwarps(rows: int) -> None:
-    """Tile-16 core output and final state must be bit-exact to the parent."""
+@pytest.mark.parametrize(
+    ("v_heads", "rows"),
+    [(32, 16), (48, 16), (48, 17), (48, 64)],
+)
+def test_qwen4_exp_gdn_tiled16_prefill_exact_vs_columnwarps(
+    v_heads: int, rows: int
+) -> None:
+    """Tile-16 output and state must be exact, including binding Hv=48 tails."""
     from hipengine.core.hip import get_hip_runtime
     from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
         build_qwen4_exp_gdn,
@@ -89,9 +91,8 @@ def test_qwen4_exp_gdn_tiled16_prefill_exact_vs_columnwarps(rows: int) -> None:
 
     runtime = get_hip_runtime()
     library = build_qwen4_exp_gdn(load=True)
-    rng = np.random.default_rng(101_600 + rows)
+    rng = np.random.default_rng(101_600 + 100 * v_heads + rows)
     k_heads = 16
-    v_heads = 32
     head_dim = 128
     qkv_width = 2 * k_heads * head_dim + v_heads * head_dim
     core_width = v_heads * head_dim
