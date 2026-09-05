@@ -377,6 +377,101 @@ __global__ void q5_1_selected_grouped_prefill_logical256_m1_bf16_bf16_kernel(
   }
 }
 
+__device__ inline float q51_cached_weight(
+    const uint8_t* row, int column, const float* d, const float* m,
+    const uint32_t* qh) {
+  const int block = column / 32;
+  const int within = column & 31;
+  const uint8_t packed = row[block * 24 + 8 + (within & 15)];
+  const int low = within < 16 ? (packed & 15) : (packed >> 4);
+  const int high = (qh[block] >> within) & 1;
+  return d[block] * static_cast<float>(low | (high << 4)) + m[block];
+}
+
+__global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
+    const uint16_t* __restrict__ input, const int64_t* __restrict__ starts,
+    const uint8_t* __restrict__ weights, uint16_t* __restrict__ output,
+    int64_t rows, int64_t experts, int64_t k, int64_t n) {
+  constexpr int R = 8, L = 256;
+  extern __shared__ float partial[];
+  const int blocks = k / 32;
+  const int row_bytes = blocks * 24;
+  float* d = partial + R * L;
+  float* m = d + blocks * 2;
+  uint32_t* qh = reinterpret_cast<uint32_t*>(m + blocks * 2);
+  const int out_base = blockIdx.x * 8;
+  for (int64_t expert = blockIdx.y; expert < experts; expert += gridDim.y) {
+    const int64_t begin = starts[expert], end = starts[expert + 1];
+    if (begin < 0 || end < begin || end > rows || begin == end) continue;
+    for (int offset = 0; offset < 8 && out_base + offset < n; offset += 2) {
+      const uint8_t* wr[2];
+#pragma unroll
+      for (int p = 0; p < 2; ++p) {
+        wr[p] = weights + (expert * n + out_base + offset + p) * row_bytes;
+        if (out_base + offset + p < n && threadIdx.x < blocks) {
+          const uint8_t* block = wr[p] + threadIdx.x * 24;
+          const int idx = p * blocks + threadIdx.x;
+          d[idx] = load_fp16(block);
+          m[idx] = load_fp16(block + 2);
+          qh[idx] = *reinterpret_cast<const uint32_t*>(block + 4);
+        }
+      }
+      __syncthreads();
+      for (int64_t base = begin; base < end; base += R) {
+        float acc0[2][R] = {}, acc1[2][R] = {};
+        for (int column = threadIdx.x; column < k; column += L) {
+          const int column1 = column + 128;
+          float w0[2] = {}, w1[2] = {};
+#pragma unroll
+          for (int p = 0; p < 2; ++p) {
+            if (out_base + offset + p < n) {
+              w0[p] = q51_cached_weight(wr[p], column, d+p*blocks, m+p*blocks, qh+p*blocks);
+              if (column1 < k)
+                w1[p] = q51_cached_weight(wr[p], column1, d+p*blocks, m+p*blocks, qh+p*blocks);
+            }
+          }
+#pragma unroll
+          for (int r = 0; r < R; ++r) {
+            if (base + r < end) {
+              const float x0 = bf16_bits_to_float(input[(base+r)*k+column]);
+              const float x1 = column1 < k ? bf16_bits_to_float(input[(base+r)*k+column1]) : 0.0f;
+#pragma unroll
+              for (int p = 0; p < 2; ++p) {
+                acc0[p][r] += x0 * w0[p];
+                if (column1 < k) acc1[p][r] += x1 * w1[p];
+              }
+            }
+          }
+        }
+#pragma unroll
+        for (int p = 0; p < 2; ++p) {
+          if (out_base + offset + p >= n) continue;
+#pragma unroll
+          for (int r = 0; r < R; ++r) {
+            partial[r*L+threadIdx.x] = acc0[p][r];
+            partial[r*L+threadIdx.x+128] = acc1[p][r];
+          }
+          __syncthreads();
+          for (int stride = 128; stride > 0; stride >>= 1) {
+            if (threadIdx.x < stride) {
+#pragma unroll
+              for (int r = 0; r < R; ++r)
+                partial[r*L+threadIdx.x] += partial[r*L+threadIdx.x+stride];
+            }
+            __syncthreads();
+          }
+          if (threadIdx.x == 0) {
+#pragma unroll
+            for (int r = 0; r < R; ++r)
+              if (base+r < end) output[(base+r)*n+out_base+offset+p] = float_to_bf16_bits(partial[r*L]);
+          }
+          __syncthreads();
+        }
+      }
+    }
+  }
+}
+
 template <int TILE_M, int TILE_N>
 __launch_bounds__(32, 8)
 __global__ void q5_1_selected_grouped_wmma_prefill_bf16_bf16_kernel(
@@ -875,6 +970,21 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
       static_cast<const int64_t*>(expert_start),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       compact_rows, num_experts, in_features, out_features, row_bytes);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out(
+    const void* input, const void* starts, const void* weights, void* output,
+    int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t stream) {
+  if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||
+      k <= 0 || k % 32 || k > 4096 || n <= 0)
+    return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL(q5_1_selected_grouped_prefill_pair2_bf16_kernel,
+      dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),
+      dim3(128), 8*256*sizeof(float)+(k/32)*24, stream,
+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),
+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
+      rows, experts, k, n);
   return static_cast<int>(hipGetLastError());
 }
 
