@@ -1038,7 +1038,8 @@ Phase-0 targets (driven by the current research focus):
 Qwen3.8-Flash-Next gap-closure priority (source review 2026-09-05): routed
 prefill MoE, dense/GR, D=256 sparse QSA, then GDN; see the
 [halo campaign's ordered work](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#6-punchlist).
-The GDN tile-16 candidate needs Hv=48 coverage before binding-model validation.
+The GDN tile-16 Hv=48 repair is committed; live-route one-residency validation
+remains before promotion.
 The historical Q8 admission packet's route-coverage finding and subsequent
 natural-text failure leave D1 re-qualification/scope/fallback with the owner;
 the status row above records historical admission, not resolution of that audit.
