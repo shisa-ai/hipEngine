@@ -198,7 +198,7 @@ hipEngine treats memory as a hierarchy of tiers with async migration, not a sing
 ```python
 # hipengine/memory/tiers.py
 class MemoryTier(Enum):
-    DEVICE = auto()      # GPU HBM (24 GiB on W7900)
+    DEVICE = auto()      # GPU VRAM (48 GiB on W7900)
     HOST_PINNED = auto() # CPU pinned memory (fast DMA)
     HOST = auto()        # CPU regular memory
     DISK = auto()       # NVMe/SATA SSD
@@ -237,7 +237,7 @@ class KVColdTier(Protocol):
 
 | Tier | Latency | Bandwidth | Use Case |
 |------|---------|-----------|----------|
-| **Device (HBM)** | ~1 μs | ~1 TB/s | Active decode, prefill, hot KV |
+| **Device (VRAM)** | ~1 μs | ~864 GB/s (GDDR6) | Active decode, prefill, hot KV |
 | **Host Pinned** | ~10 μs | ~16 GB/s (PCIe4) | Warm KV prefix, prefetch target |
 | **Host Regular** | ~100 μs | ~50 GB/s (DRAM) | Cold weights, CPU fallback |
 | **Disk (NVMe)** | ~100 μs | ~7 GB/s | Cold KV, session persistence |

@@ -443,7 +443,7 @@ First native design is **append-then-attend from cache**:
 - Append all prompt K/V rows to paged BF16 KV cache first.
 - Attention reads prefix+prompt keys/values entirely from the paged cache.
 - Future optimization may read prefix-from-cache plus prompt-from-scratch to
-  avoid one HBM round-trip; do not combine that two-source design with the first
+  avoid one VRAM round-trip; do not combine that two-source design with the first
   native kernel.
 
 Register a gfx1100 kernel such as:
@@ -738,7 +738,7 @@ Key observations:
    `<false>` (split-K disabled, **4572.38 ms / 10 layers, 457 ms per layer**).
    8× the tokens produces 175× the kernel time. That is super-quadratic; a
    correctly-tiled Flash-Attention-style kernel scales as T² in compute but
-   stays HBM-bandwidth-bound and finishes ≈ 64× of the T=512 cost, not 175×.
+   stays VRAM-bandwidth-bound and finishes ≈ 64× of the T=512 cost, not 175×.
 2. **`<false>` is 74 % of all 4K kernel time** (4572 / 6171 ms). Closing this
    one bucket is worth more than every other optimization in the multiloop
    combined.
@@ -776,13 +776,13 @@ structural problems, all visible in the source:
    `for (int64_t dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
    float acc = 0.0f; for (int64_t token = 0; token < visible_len; ++token)
    { ... acc += scores[token] * value_cache[v_offset]; } }`. Each thread
-   walks the full T axis sequentially, fetching every V row from HBM with no
+   walks the full T axis sequentially, fetching every V row from VRAM with no
    LDS staging. At T=4K that is 4096 serial multiply-accumulates per
-   `(thread, output_dim)` pair, with one HBM load each.
+   `(thread, output_dim)` pair, with one VRAM load each.
 3. **GQA KV sharing is missing.** Line 1084: `kv_head = q_head / kv_group`,
    computed independently per block. With 16 Q-heads and 2 KV-heads, each of
    the 8 Q-heads in a KV group has its own block that re-streams the same
-   K/V cache through HBM. That is 8× redundant K/V bandwidth.
+   K/V cache through VRAM. That is 8× redundant K/V bandwidth.
 4. **The `<true>` / `<false>` template flip is a red herring.** It toggles
    `SHORT_BLOCK256` for short-context block-table inlining (line 1090–1097);
    it does not change the inner attention algorithm. Both branches share the
@@ -804,7 +804,7 @@ produced by the upstream QKV projection split. AOTriton's `attn_fwd*` API
 has no gate input; any AOTriton-based replacement must add a trivial
 elementwise post-pass kernel (`out *= sigmoid(gate)`) immediately after the
 attention call to maintain model semantics. At T=4K, head_dim=128,
-num_q_heads=16 the post-pass is one HBM-bandwidth-bound pass over
+num_q_heads=16 the post-pass is one VRAM-bandwidth-bound pass over
 ≈ 4096 × 16 × 128 = 8.4 M FP16 elements per layer — expected cost ≤ 0.2 ms
 per layer, well inside noise.
 

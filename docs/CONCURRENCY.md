@@ -594,7 +594,7 @@ Cancellation, disconnect, EOS, max-tokens, timeout, and errors all converge on
 - `KVLiveSpans` is the only attention/KV-write ABI.
 - The scheduler allocates KV; kernels and model code do not.
 - A logical block id remains stable for its lifetime.
-- While a block is resident and referenced by a captured graph, its HBM backing
+- While a block is resident and referenced by a captured graph, its device-memory backing
   pointer is pinned.
 - Pool shrink may free only unreferenced, graph-unpinned tail chunks.
 - Future KV tier movement must update allocator indirection and invalidate or
@@ -603,7 +603,7 @@ Cancellation, disconnect, EOS, max-tokens, timeout, and errors all converge on
 - Prefix sharing remains default-off until a real model loop passes shared-prefix
   lifecycle and savings gates.
 
-This resolves the apparent conflict between current append-only HBM allocation
+This resolves the apparent conflict between current append-only device-memory allocation
 and future KVTC pointer movement.
 
 ### Graph contract

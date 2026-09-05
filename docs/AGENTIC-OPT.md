@@ -226,7 +226,7 @@ Required gates:
 - sampled same-seed non-perturbation before sampled reuse is enabled;
 - bounded cache residency, refcount/COW correctness, eviction, cancellation,
   fork/rollback rejection or support, and zero final ownership;
-- paired off/on TTFT, tool-call-ready, total-turn wall, and HBM economics.
+- paired off/on TTFT, tool-call-ready, total-turn wall, and VRAM economics.
 
 A2.0 is correctness-ready on gfx1100: active-current and completed-source
 p256+s1 both preserve exact output, every Conv/GDN/live-KV byte, and four
