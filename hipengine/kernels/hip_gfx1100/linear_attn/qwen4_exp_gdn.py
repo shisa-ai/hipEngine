@@ -432,6 +432,7 @@ def qwen4_exp_gdn_prefill_f32(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _register_state: bool = False,
 ) -> None:
     """Run exact serial-order FP32-state Qwen4Exp recurrence for token rows."""
 
@@ -441,11 +442,14 @@ def qwen4_exp_gdn_prefill_f32(
         raise ValueError("num_v_heads must be divisible by positive num_k_heads")
     if head_k_dim <= 0 or head_v_dim <= 0:
         raise ValueError("head dimensions must be positive")
+    if _register_state and (head_k_dim != 128 or head_v_dim != 128):
+        raise ValueError("register-state GDN requires Dk=Dv=128")
     library = library or build_qwen4_exp_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
-        "hipengine_qwen4_exp_gdn_prefill_f32",
+        ("hipengine_qwen4_exp_gdn_register_prefill_f32" if _register_state
+         else "hipengine_qwen4_exp_gdn_prefill_f32"),
         _PREFILL_ARGS,
         ctypes.c_int,
     )
@@ -528,10 +532,15 @@ def qwen4_exp_gdn_prefill_w32_f32(
         runtime.check(int(error))
 
 
+def qwen4_exp_gdn_register_prefill_f32(*args, **kwargs):
+    qwen4_exp_gdn_prefill_f32(*args, **kwargs, _register_state=True)
+
+
 def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
     registrations = {
         "qwen4exp_sigmoid_strict": qwen4_exp_gdn_decode_f32,
         "qwen4exp_sigmoid_strict_prefill": qwen4_exp_gdn_prefill_f32,
+        "qwen4exp_sigmoid_register_prefill": qwen4_exp_gdn_register_prefill_f32,
         "qwen4exp_sigmoid_peer_prefill": qwen4_exp_gdn_peer_prefill_f32,
         "qwen4exp_gdn_columnwarps_prefill": qwen4_exp_gdn_prefill_columnwarps_f32,
         "qwen4exp_gdn_tiled16_prefill": qwen4_exp_gdn_prefill_tiled16_f32,
@@ -586,6 +595,7 @@ __all__ = [
     "qwen4_exp_gdn_decode_transposed_f32",
     "qwen4_exp_gdn_peer_prefill_f32",
     "qwen4_exp_gdn_prefill_f32",
+    "qwen4_exp_gdn_register_prefill_f32",
     "qwen4_exp_gdn_prefill_prepare_f32",
     "qwen4_exp_gdn_prefill_sigmoid_gate_f32",
     "register_qwen4_exp_gdn_kernels",

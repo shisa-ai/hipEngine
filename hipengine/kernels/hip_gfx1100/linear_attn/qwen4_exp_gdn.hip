@@ -208,7 +208,9 @@ __global__ void qwen4_exp_gdn_prefill_sigmoid_gate_f32_kernel(
   }
 }
 
-__global__ void qwen4_exp_gdn_prefill_f32_kernel(
+template <bool REGISTER_STATE = false>
+__global__ void __launch_bounds__(REGISTER_STATE ? 128 : 1024)
+qwen4_exp_gdn_prefill_f32_kernel(
     const float* __restrict__ conv,
     const float* __restrict__ output_gate,
     const float* __restrict__ alpha,
@@ -223,6 +225,10 @@ __global__ void qwen4_exp_gdn_prefill_f32_kernel(
     int64_t num_v_heads,
     int64_t head_k_dim,
     int64_t head_v_dim) {
+  if constexpr (REGISTER_STATE) {
+    head_k_dim = 128;
+    head_v_dim = 128;
+  }
   extern __shared__ float shared[];
   float* query = shared;
   float* key = query + head_k_dim;
@@ -244,6 +250,12 @@ __global__ void qwen4_exp_gdn_prefill_f32_kernel(
   const int64_t value_index = threadIdx.x;
   const int64_t state_col = v_head * head_k_dim * head_v_dim + value_index;
 
+  float saved_state[REGISTER_STATE ? 128 : 1];
+  if constexpr (REGISTER_STATE) {
+#pragma unroll
+    for (int column = 0; column < 128; ++column)
+      saved_state[column] = recurrent_state[state_col + column * 128];
+  }
   for (int64_t token = 0; token < tokens; ++token) {
     const float* conv_row = conv + token * qkv_width;
     float q_sumsq = 0.0f;
@@ -275,17 +287,32 @@ __global__ void qwen4_exp_gdn_prefill_f32_kernel(
     float core_value = 0.0f;
     if (value_index < head_v_dim) {
       float memory = 0.0f;
-      for (int64_t column = 0; column < head_k_dim; ++column) {
-        memory += key[column] * k_scale
-            * recurrent_state[state_col + column * head_v_dim] * decay;
-      }
-      const float delta = (conv_row[v_offset + value_index] - memory) * beta;
-      for (int64_t column = 0; column < head_k_dim; ++column) {
-        const int64_t state_index = state_col + column * head_v_dim;
-        const float next = recurrent_state[state_index] * decay
-            + key[column] * k_scale * delta;
-        recurrent_state[state_index] = next;
-        core_value += query[column] * q_scale * next;
+      if constexpr (REGISTER_STATE) {
+#pragma unroll
+        for (int column = 0; column < 128; ++column)
+          memory += key[column] * k_scale * saved_state[column] * decay;
+        const float delta = (conv_row[v_offset + value_index] - memory) * beta;
+#pragma unroll
+        for (int column = 0; column < 128; ++column) {
+          float next = saved_state[column] * decay + key[column] * k_scale * delta;
+          // Preserve the parent's FP32 state-store boundary before Q accumulation.
+          asm volatile("" : "+v"(next));
+          saved_state[column] = next;
+          core_value += query[column] * q_scale * next;
+        }
+      } else {
+        for (int64_t column = 0; column < head_k_dim; ++column) {
+          memory += key[column] * k_scale
+              * recurrent_state[state_col + column * head_v_dim] * decay;
+        }
+        const float delta = (conv_row[v_offset + value_index] - memory) * beta;
+        for (int64_t column = 0; column < head_k_dim; ++column) {
+          const int64_t state_index = state_col + column * head_v_dim;
+          const float next = recurrent_state[state_index] * decay
+              + key[column] * k_scale * delta;
+          recurrent_state[state_index] = next;
+          core_value += query[column] * q_scale * next;
+        }
       }
       core[value_index] = core_value;
       norm_reductions[threadIdx.x] = core_value * core_value;
@@ -308,6 +335,11 @@ __global__ void qwen4_exp_gdn_prefill_f32_kernel(
           * sigmoid_f32(output_gate[token * core_width + index]);
     }
     __syncthreads();
+  }
+  if constexpr (REGISTER_STATE) {
+#pragma unroll
+    for (int column = 0; column < 128; ++column)
+      recurrent_state[state_col + column * 128] = saved_state[column];
   }
 }
 
@@ -812,7 +844,7 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_f32(
   const size_t shared = static_cast<size_t>(2 * head_k_dim + 2 * threads + head_v_dim)
       * sizeof(float);
   hipLaunchKernelGGL(
-      qwen4_exp_gdn_prefill_f32_kernel,
+      (qwen4_exp_gdn_prefill_f32_kernel<false>),
       dim3(static_cast<uint32_t>(num_v_heads)), dim3(threads), shared, stream,
       static_cast<const float*>(conv), static_cast<const float*>(output_gate),
       static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
@@ -820,6 +852,28 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_f32(
       static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
       static_cast<float*>(output), tokens, num_k_heads, num_v_heads,
       head_k_dim, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+
+extern "C" int hipengine_qwen4_exp_gdn_register_prefill_f32(
+    const void* conv, const void* output_gate, const void* alpha,
+    const void* beta_logits, const void* dt_bias, const void* a,
+    const void* norm_weight, void* recurrent_state, void* output,
+    int64_t tokens, int64_t num_k_heads, int64_t num_v_heads,
+    int64_t head_k_dim, int64_t head_v_dim, hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !output || tokens <= 0 ||
+      num_k_heads <= 0 || num_v_heads <= 0 || num_v_heads % num_k_heads ||
+      head_k_dim != 128 || head_v_dim != 128)
+    return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL((qwen4_exp_gdn_prefill_f32_kernel<true>),
+      dim3(static_cast<uint32_t>(num_v_heads)), dim3(128), 640 * sizeof(float), stream,
+      static_cast<const float*>(conv), static_cast<const float*>(output_gate),
+      static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias), static_cast<const float*>(a),
+      static_cast<const float*>(norm_weight), static_cast<float*>(recurrent_state),
+      static_cast<float*>(output), tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
 
