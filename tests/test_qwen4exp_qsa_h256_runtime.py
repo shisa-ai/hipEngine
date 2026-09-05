@@ -11,6 +11,9 @@ def test_qsa_benchmark_modes_and_engagement():
     assert env == {ROW4_ENV: "1", QSA_H256_ENV: "0"}
     _apply_mode("after", environment=env, route_package="qsa-h256-wave")
     assert env[QSA_H256_ENV] == "1"
+    _apply_mode("after", environment=env, route_package="qsa-h256-page256")
+    assert env[QSA_H256_ENV] == "page256"
+    assert env[ROW4_ENV] == "1"
     validate_qsa_h256_engagement("after", 48, 4096)
     for shape in (512, 1024, 4096):
         validate_qsa_h256_engagement("before", 0, shape)
@@ -41,3 +44,12 @@ def test_h256_sparse_prefill_admission(monkeypatch):
     assert not select(head_dim=256, rows=509, backend="missing")
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "0")
     assert not select(head_dim=256, rows=509, backend="registered")
+
+
+def test_page256_registry_choice(monkeypatch):
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "page256")
+    monkeypatch.setattr(runner, "is_registered", lambda key: "page256" in key.variant)
+    assert runner.qwen4_exp_qsa_h256_wave_prefill_selected(
+        head_dim=256, rows=509, backend="test", block_size=256)
+    assert not runner.qwen4_exp_qsa_h256_wave_prefill_selected(
+        head_dim=256, rows=509, backend="test", block_size=128)

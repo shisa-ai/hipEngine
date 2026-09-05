@@ -32,7 +32,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--decode-steps", type=int, default=1)
     p.add_argument("--full-kv", action="store_true")
@@ -60,7 +60,8 @@ def main():
                      "selected_grouped_row4_gemv_bf16_bf16_out")
            if args.route_package == "q5k-row4" else
            KernelKey("hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
-                     "strict_h256_wave_rows_spans"))
+                     "strict_h256_page256_wave_rows_spans"
+                     if args.route_package == "qsa-h256-page256" else "strict_h256_wave_rows_spans"))
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
     calls = [0]
 
@@ -97,7 +98,9 @@ def main():
             baseline = None
             summaries = []
             for enabled in ("0", "1", "0"):
-                os.environ[flag] = enabled
+                os.environ[flag] = (
+                    "page256" if args.route_package == "qsa-h256-page256" and enabled == "1"
+                    else enabled)
                 start_calls = calls[0]
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 logits = first.logits.copy()
