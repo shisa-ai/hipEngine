@@ -1041,6 +1041,15 @@ alone never proves speed, and a verifier-derived `off` or `B0` row is
 diagnostic. A speedup claim requires a true no-speculation autoregressive
 baseline measured under the same protocol.
 
+Admission can be non-monotonic in physical request width and draft depth. A
+wider cell may fill a tile or amortize a weight stream well enough to beat AR
+even when the immediately smaller widths lose. Represent qualification as a
+profile-owned set of exact `(physical width, draft depth)` cells, not as one
+maximum width. An unlisted cell must take one full-width AR step; it must not be
+silently decomposed into several speculative groups. Recheck cancellation,
+retirement, and refill transitions because one live service can cross admitted
+and rejected cells repeatedly.
+
 One further diagnostic separates kernel work from cycle economics. Measure the
 wall reduction required on a short fixed cell and on the full prompt suite
 separately. When the short cell needs 25% and the full suite needs 57% for the
