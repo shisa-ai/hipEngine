@@ -77,6 +77,32 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+**Frozen three-engine refresh (2026-09-05 UTC):** controller/runtime
+`bd451a417`, halo-box `b212548e0`, Framework machine
+`55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL/BF16 KV, identical12-case
+canonical fixture, one warmup plus three measured tg128 requests per case.
+All108 measured trajectories repeat within their engine, hipEngine closes
+to zero allocations, and both external servers exit0. Logger/profiler off.
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG | Max per-case PP / TG CV |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine combined production | 153.96 / 19.38 | 152.30 / 18.75 | 142.03 / 14.42 | 2.45% / 9.02% |
+| halo-box Vulkan target | 316.28 / 25.27 | 391.68 / 25.30 | 425.72 / 24.51 | 12.52% / 3.91% |
+| halo-box HIP diagnostic | 282.76 / 21.08 | 368.33 / 20.56 | 351.08 / 18.83 | 11.26% / 4.10% |
+
+Rates are weighted tok/s. The corresponding Vulkan/hipEngine target factors
+are **2.054/2.572/2.997x prefill** and **1.304/1.349/1.700x decode**.
+These are sequential same-host screening ratios, not inter-engine
+counterbalanced confidence bounds. Every lane exceeds the2% stability
+criterion on at least one metric; no statistical match/beat claim follows.
+Full execution36m18s (hipEngine17m21s, Vulkan8m39s, HIP10m17s).
+[Frozen baseline packet](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
+This closes the missing standalone combined-default decode measurement.
+The shared-family matrix remains in progress, not filled with older costs.
+
+The following promotion notes and earlier comparator screen are retained
+as revision-specific history, not the current baseline table above.
+
 Latest Q4 pair admission measures combined-stack prefill
 **153.78/151.21/141.30 tok/s** at p512/p1024/p4096, with all72 trajectories
 exact. Decode measures19.383/18.512/12.899 tok/s in that A/B, with explicit
@@ -496,7 +522,7 @@ still be established by their retained same-session A/B packets.
 
 **Owner-requested next priority: rerun on Framework before further tuning.**
 The [machine-readable queue](../benchmarks/results/2026-09-05-framework-qwen4exp-family-refresh-queue.json)
-has **instrumentation smoke passed; full refresh pending**. It freezes the combined Q4-pair production default,
+has **frozen baselines captured; family alignment in progress**. It freezes the combined Q4-pair production default,
 then measures halo-box **Vulkan `b212548e0`** as the target and HIP as a
 separate diagnostic. GPU stages run serially.
 
