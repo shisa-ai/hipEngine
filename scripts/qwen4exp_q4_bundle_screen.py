@@ -19,7 +19,7 @@ from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.kernels.hip_gfx1100.quant import gguf_q4_k_selected_prefill as q4
 from hipengine.kernels.hip_gfx1100.fused.paro_silu import silu_mul_separate_out_bf16
 from scripts.qwen4exp_canonical_ar_bench import _host_metadata, _git_metadata
-from tests.test_qwen4exp_q4_bundle import PARENT, CANDIDATE
+from tests.test_qwen4exp_q4_bundle import PARENT, CANDIDATE, PAIR
 from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download, _make_activation
 
 
@@ -31,7 +31,11 @@ def main():
     p.add_argument("--compiler-version-file",type=Path,required=True)
     p.add_argument("--require-cached-build",action="store_true")
     p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--pair-reuse", action="store_true")
+    p.add_argument("--routing", choices=("uniform", "skewed"), default="uniform")
+    p.add_argument("--layer", type=int, default=0)
     a=p.parse_args()
+    parent_name, candidate_name = (CANDIDATE, PAIR) if a.pair_reuse else (PARENT, CANDIDATE)
     if a.pairs<1 or any(r<1 for r in a.rows):
         p.error("positive rows and pairs required")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"]=str(a.compiler_version_file)
@@ -42,7 +46,7 @@ def main():
     readers=[GGUFReader(path) for path in discover_gguf_files(a.model_root)]
     weights=[]
     identities=[]
-    for name in ("blk.0.ffn_gate_exps.weight","blk.0.ffn_up_exps.weight"):
+    for name in (f"blk.{a.layer}.ffn_gate_exps.weight",f"blk.{a.layer}.ffn_up_exps.weight"):
         reader=next(r for r in readers if any(t.name==name for t in r.info.tensors))
         info=reader.tensor_info(name)
         assert info.shape==(512,640,2560) and info.ggml_type_name=="Q4_K"
@@ -55,6 +59,8 @@ def main():
             "model":"Qwen3.8-Flash-Next UD-Q4_K_XL","weights":identities,
             "arithmetic_class":"T0","runtime_default_changed":False,
             "boundary":"grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine",
+            "parent_variant": parent_name, "candidate_variant": candidate_name,
+            "routing": a.routing, "layer": a.layer,
             "cases":[]}
     allocations=[]
     try:
@@ -62,7 +68,11 @@ def main():
         for rows in a.rows:
             mark=len(allocations)
             rng=np.random.default_rng(1788+rows)
-            selected=np.argsort(rng.random((rows,512)),axis=1)[:,:10]
+            scores = rng.random((rows,512))
+            if a.routing == "skewed":
+                priorities = np.exp(rng.normal(0, 1.5, 512))
+                scores = -np.log(np.maximum(scores, np.finfo(np.float64).tiny)) / priorities
+            selected=np.argsort(scores,axis=1)[:,:10]
             counts=np.bincount(selected.reshape(-1),minlength=512)
             starts=np.concatenate(([0],np.cumsum(counts))).astype(np.int64)
             compact=rows*10
@@ -71,7 +81,7 @@ def main():
             outputs=[_alloc((compact,640),np.uint16,runtime,allocations) for _ in range(6)]
             def run(candidate):
                 offset=3 if candidate else 0
-                getattr(q4,CANDIDATE if candidate else PARENT)(
+                getattr(q4,candidate_name if candidate else parent_name)(
                     dx.ptr,ds.ptr,wa.ptr,wb.ptr,outputs[offset].ptr,outputs[offset+1].ptr,
                     compact,512,2560,640,library=library,runtime=runtime)
                 silu_mul_separate_out_bf16(
@@ -92,6 +102,8 @@ def main():
                         _download(outputs[i+3],(compact,640),np.uint16,runtime))
             report["cases"].append({"tokens":rows,"compact_rows":compact,
                 "active_experts":int(np.count_nonzero(counts)),"seconds":times,
+                "max_expert_rows":int(counts.max()),
+                "median_active_expert_rows":float(np.median(counts[counts>0])),
                 "speedup":statistics.median(times["parent"])/statistics.median(times["candidate"]),
                 "all_pairs_exact":True})
             for ptr in reversed(allocations[mark:]):

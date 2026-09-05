@@ -4830,3 +4830,13 @@ under the manifest; retain rollback and registered strict fallbacks.
   when dispatch is owned directly by the manifest and rollback needs expire.
 - Resource review accepts256 VGPR/24-byte scratch with the measured whole-model
   win. Avoid the rejected per-column/every8 scheduling barriers.
+
+## Qwen4Exp Q4 shared-activation output-pair admission
+
+- `selected_dual_grouped_pair2_bf16_bf16_out` is retained after exact
+  primitive/actual-weight gates and1.345-1.440x tokens512 gate/up+SiLU wins.
+  No runtime selector yet; bundled output4 stays the default.
+- Next: registry-counted model wiring, full state/KV/logit gate and12-case A/B.
+  Promote supported winning shapes after admission and retain the registered
+  bundled/serial strict fallback. Do not reopen the rejected independent-team
+  or wider serial-output sweeps: this path shares each activation load.

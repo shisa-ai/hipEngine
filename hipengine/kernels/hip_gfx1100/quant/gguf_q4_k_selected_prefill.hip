@@ -334,6 +334,105 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
   }
 }
 
+__global__ __launch_bounds__(128, 2)
+void gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel(
+    const uint16_t* __restrict__ input,
+    const int64_t* __restrict__ expert_start,
+    const uint8_t* __restrict__ qweight_a,
+    const uint8_t* __restrict__ qweight_b,
+    uint16_t* __restrict__ output_a,
+    uint16_t* __restrict__ output_b,
+    int64_t compact_rows, int64_t num_experts,
+    int64_t in_features, int64_t out_features) {
+  __shared__ float scales[4][128];
+  __shared__ float mins[4][128];
+  __shared__ float sums[4][8][4];
+  const int blocks = in_features / QK_K;
+  const int metadata_count = blocks * Q4_K_SUBBLOCKS;
+  const int64_t row_bytes = blocks * Q4_K_BLOCK_BYTES;
+  const int64_t expert_bytes = out_features * row_bytes;
+  const int64_t out_base = blockIdx.x * 4;
+  for (int64_t expert = blockIdx.y; expert < num_experts; expert += gridDim.y) {
+    const int64_t start = expert_start[expert];
+    const int64_t end = expert_start[expert + 1];
+    if (start < 0 || end <= start || end > compact_rows) continue;
+    for (int pair_offset = 0; pair_offset < 4; pair_offset += 2) {
+      const int64_t out = out_base + pair_offset;
+      if (out >= out_features) break;
+      const uint8_t* weights[4];
+#pragma unroll
+      for (int p = 0; p < 2; ++p) {
+        // The odd output tail loads valid metadata but never publishes it.
+        const int64_t column = out + p < out_features ? out + p : out;
+        weights[2 * p] = qweight_a + expert * expert_bytes + column * row_bytes;
+        weights[2 * p + 1] = qweight_b + expert * expert_bytes + column * row_bytes;
+      }
+      for (int index = threadIdx.x; index < 4 * metadata_count; index += 128) {
+        const int bank = index / metadata_count;
+        const int metadata = index % metadata_count;
+        const int subblock = metadata % Q4_K_SUBBLOCKS;
+        const uint8_t* block = weights[bank] +
+            (metadata / Q4_K_SUBBLOCKS) * Q4_K_BLOCK_BYTES;
+        scales[bank][metadata] = fp16_bytes_to_float(block) *
+            static_cast<float>(gguf_q4_k_scale(block + 4, subblock));
+        mins[bank][metadata] = fp16_bytes_to_float(block + 2) *
+            static_cast<float>(gguf_q4_k_min(block + 4, subblock));
+      }
+      __syncthreads();
+      for (int64_t base = start; base < end; base += 8) {
+        float acc[4][8] = {};
+        for (int block = 0; block < blocks; ++block) {
+          q4_k_weight_pair w[4];
+#pragma unroll
+          for (int bank = 0; bank < 4; ++bank)
+            w[bank] = gguf_q4_k_weight_pair128(
+                weights[bank], block, threadIdx.x, scales[bank], mins[bank]);
+#pragma unroll
+          for (int row = 0; row < 8; ++row) {
+            if (base + row < end) {
+              const int64_t offset = (base + row) * in_features +
+                  block * QK_K + threadIdx.x;
+              const float x0 = bf16_bits_to_float(input[offset]);
+              const float x1 = bf16_bits_to_float(input[offset + 128]);
+#pragma unroll
+              for (int bank = 0; bank < 4; ++bank) {
+                acc[bank][row] += x0 * w[bank].first;
+                acc[bank][row] += x1 * w[bank].second;
+              }
+            }
+          }
+        }
+#pragma unroll
+        for (int bank = 0; bank < 4; ++bank) {
+#pragma unroll
+          for (int row = 0; row < 8; ++row) {
+#pragma unroll
+            for (int delta = 16; delta > 0; delta >>= 1)
+              acc[bank][row] += __shfl_down(acc[bank][row], delta);
+            if ((threadIdx.x & 31) == 0)
+              sums[bank][row][threadIdx.x >> 5] = acc[bank][row];
+          }
+        }
+        __syncthreads();
+        if (threadIdx.x < 32) {
+          const int bank = threadIdx.x / 8;
+          const int row = threadIdx.x % 8;
+          float total = 0.0f;
+#pragma unroll
+          for (int wave = 0; wave < 4; ++wave)
+            total += sums[bank][row][wave];
+          if (base + row < end && out + bank / 2 < out_features) {
+            uint16_t* output = bank % 2 ? output_b : output_a;
+            output[(base + row) * out_features + out + bank / 2] =
+                float_to_bf16_bits(total);
+          }
+        }
+        __syncthreads();
+      }
+    }
+  }
+}
+
 template <typename scalar_t>
 __device__ inline half16_t load_compact_row_half16(
     const scalar_t* __restrict__ x,
@@ -1817,6 +1916,25 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgr
   }
   hipLaunchKernelGGL(
       (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true, true>),
+      dim3(static_cast<uint32_t>((out_features + 3) / 4),
+           static_cast<uint32_t>(num_experts < 64 ? num_experts : 64)),
+      dim3(128), 0, stream, static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start), static_cast<const uint8_t*>(qweight_a),
+      static_cast<const uint8_t*>(qweight_b), static_cast<uint16_t*>(output_a),
+      static_cast<uint16_t*>(output_b), compact_rows, num_experts, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(
+    const void* input, const void* expert_start,
+    const void* qweight_a, const void* qweight_b, void* output_a, void* output_b,
+    int64_t compact_rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  if (!input || !expert_start || !qweight_a || !qweight_b || !output_a ||
+      !output_b || compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||
+      in_features % QK_K || in_features > 4096 || out_features <= 0)
+    return static_cast<int>(hipErrorInvalidValue);
+  hipLaunchKernelGGL(gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel,
       dim3(static_cast<uint32_t>((out_features + 3) / 4),
            static_cast<uint32_t>(num_experts < 64 ? num_experts : 64)),
       dim3(128), 0, stream, static_cast<const uint16_t*>(input),

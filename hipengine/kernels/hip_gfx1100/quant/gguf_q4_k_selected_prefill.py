@@ -255,6 +255,7 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     _bundle: bool = False,
+    _pair: bool = False,
 ) -> None:
     """Launch exact row8/output4 Q4_K over a fixed 64-CTA expert grid."""
 
@@ -270,6 +271,8 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
     library = library or build_gguf_q4_k_selected_prefill(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, (
+        "hipengine_gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out"
+        if _pair else
         "hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"
         if _bundle else _SYMBOL_GROUPED_ROW8_OUT4_EXPERTGRID64_BF16))
     fn.argtypes = [ctypes.c_void_p] * 6 + [ctypes.c_int64] * 4 + [ctypes.c_void_p]
@@ -294,6 +297,11 @@ def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
 def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out(*args, **kwargs):
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
         *args, **kwargs, _bundle=True)
+
+
+def gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out(*args, **kwargs):
+    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out(
+        *args, **kwargs, _pair=True)
 
 
 def gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out(
@@ -1055,6 +1063,12 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
     # Primary P8.4 key: compact ABI, row-major concatenated gate+up output.
     register(
         KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k",
+                  "selected_dual_grouped_pair2_bf16_bf16_out"),
+        gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k",
                   "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"),
         gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out,
         replace=replace,
@@ -1164,6 +1178,7 @@ __all__ = [
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out",
