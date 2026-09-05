@@ -53,6 +53,26 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Shared-taxonomy Framework refresh complete (2026-09-05 UTC):** the committed
+collector now joins six same-host prompt cases across prefill/fixed-live decode,
+with100% semantic coverage, same-root decode inputs, Vulkan instrumentation
+prefix parity and HIP repeated-state/lifecycle checks. Taxonomy v2 groups
+complete FFN (routed+shared) and complete GR projections/read/mix consistently.
+The four-category p4096 prefill diagnostic is HE/Vulkan:
+**MoE14.418/4.372s (3.298x)**, **linear5.716/1.019s (5.609x)**,
+**GR4.339/1.707s (2.541x)**, **QSA1.920/0.645s (2.975x)**,
+**GDN0.778/1.390s (0.560x)**. Decode's principal positive difference is
+**QSA16.942/3.161ms (5.360x)**, followed by FFN17.272/12.469ms.
+These are HIP kernel sums versus Vulkan timestamp intervals, not guaranteed
+recoverable wall savings or cross-engine arithmetic equality.
+[Generated starting/current/target tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [family evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json).
+The logger-off baseline still needs2.997x prefill and1.700x decode at p4096,
+with explicit timing variance. Next measured lever: joint Q4 ROW_BATCH8/16/32
+x chunk512/1024/2048, starting with operation-complete actual routing and
+resource/spill checks. Dense/GR remains a necessary co-priority; no single
+owner's zero-cost ceiling closes the full prefill gap.
+
 **Q4 pair production (2026-09-05 UTC):** clean `9ed31059d` full12-case A/B
 passes all72 exact trajectories and improves prefill
 **145.21->153.78 (+5.90%)**, **142.82->151.21 (+5.87%)**,

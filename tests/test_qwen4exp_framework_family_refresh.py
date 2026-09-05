@@ -2,12 +2,17 @@ import pytest
 
 from scripts.qwen4exp_framework_family_refresh import (
     HOST_ID,
+    OVERVIEW_END,
+    OVERVIEW_START,
     TAXONOMY,
     annotated_sections,
     baseline_commands,
     check_capture_identity,
+    family_overview,
+    join_captures,
     normalize_hip_roles,
     summarize_sections,
+    update_overview_block,
 )
 
 
@@ -137,3 +142,67 @@ def test_baseline_commands_preserve_full_suite_and_use_original_binaries(tmp_pat
         assert argv[argv.index("--repetitions") + 1] == "3"
         assert argv[argv.index("--warmups") + 1] == "1"
     assert "--server-arg=bf16" in commands[1][1]
+
+
+def test_overview_rejects_incomplete_or_duplicate_case_matrix():
+    with pytest.raises(ValueError, match="six"):
+        family_overview({"comparisons": []}, {})
+    with pytest.raises(ValueError, match="six"):
+        family_overview({"comparisons": [{"id": "code-p512", "phase": "prefill"}] * 2}, {})
+
+
+def test_document_update_preserves_surrounding_text_and_rejects_missing_markers(tmp_path):
+    path = tmp_path / "doc.md"
+    path.write_text(f"before\n{OVERVIEW_START}\nold\n{OVERVIEW_END}\nafter\n")
+    update_overview_block(path, "new\n")
+    assert path.read_text() == f"before\n{OVERVIEW_START}\nnew\n\n{OVERVIEW_END}\nafter\n"
+    path.write_text("no markers")
+    with pytest.raises(ValueError, match="marker"):
+        update_overview_block(path, "new")
+
+
+def test_decode_join_rejects_different_root_token():
+    identity = {
+        "taxonomy": TAXONOMY,
+        "fixture_sha256": "fixture",
+        "quant": "q4",
+        "kv_dtype": "bf16",
+        "status": "captured",
+        "host": {"machine_id": HOST_ID},
+        "model_identity": {"fingerprint": {"value": "model"}},
+    }
+    profile = {
+        "matched_gap_eligible": True,
+        "owner_ms": {"moe": 1},
+        "total_device_ms": 1,
+        "profiled_window_ms": 2,
+    }
+    he = identity | {
+        "cases": [
+            {
+                "id": "code-p512",
+                "phase": "decode",
+                "prompt_tokens": 512,
+                "prompt_token_ids_sha256": "prompt",
+                "live_count": 513,
+                "profile": profile,
+                "raw": {"contexts": [{"root_token_id": 7}]},
+            }
+        ]
+    }
+    vk = identity | {
+        "cases": [
+            {
+                "id": "code-p512",
+                "prompt_tokens": 512,
+                "prompt_token_ids_sha256": "prompt",
+                "decode_profile": profile,
+                "decode": {"response": {"prompt_n": 1}},
+                "prefill": {"response": {"output_token_ids": [8]}},
+            }
+        ]
+    }
+    with pytest.raises(ValueError, match="root"):
+        join_captures(he, vk)
+    vk["cases"][0]["prefill"]["response"]["output_token_ids"] = [7]
+    assert len(join_captures(he, vk)["comparisons"]) == 1

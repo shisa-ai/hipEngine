@@ -98,7 +98,8 @@ criterion on at least one metric; no statistical match/beat claim follows.
 Full execution36m18s (hipEngine17m21s, Vulkan8m39s, HIP10m17s).
 [Frozen baseline packet](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
 This closes the missing standalone combined-default decode measurement.
-The shared-family matrix remains in progress, not filled with older costs.
+The shared-family matrix is now generated in section5.2.1 from matching
+Framework captures; the overall optimization campaign remains open.
 
 The following promotion notes and earlier comparator screen are retained
 as revision-specific history, not the current baseline table above.
@@ -491,6 +492,70 @@ Reading rules and caveats, binding on any use of these rows:
 
 ### 5.2.1 Framework starting and current owner snapshots
 
+The generated tables below supersede the subsequent post-GDN checkpoint
+for the current family comparison. Captures use the frozen post-Q4 production
+runtime, halo-box Vulkan `b212548e0`, identical fixtures and this Framework
+machine. Fine per-node/per-kernel provenance and the regeneration command
+are in the [family packet](../benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json).
+
+<!-- BEGIN FRAMEWORK FAMILY REFRESH -->
+#### Generated Framework Family Tables
+
+Taxonomy: `qwen4exp-semantic-owners-v2-complete-gr`. Same Framework host and UD-Q4_K_XL/BF16 KV.
+Device timings are diagnostic: HIP kernel sums versus serial Vulkan query intervals.
+Use the logger-off baseline table for throughput and parity factors.
+
+**Starting versus current, exact code-p4096 fixture:**
+
+| Owner | Framework arrival (ms) | Current (ms) | Device share | Device zero-cost ceiling | Wall zero-cost ceiling |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| MoE/FFN (routed + shared) | 19,773.694 | 14,569.341 | 53.17% | 2.135x | 2.057x |
+| Non-FFN, non-GR linear | 5,828.219 | 5,719.651 | 20.87% | 1.264x | 1.253x |
+| GR projections + read/mix | 4,351.404 | 4,330.930 | 15.81% | 1.188x | 1.180x |
+| QSA | 8,982.811 | 1,920.116 | 7.01% | 1.075x | 1.073x |
+| GDN | 3,906.453 | 775.096 | 2.83% | 1.029x | 1.028x |
+| Boundary / residual combine | 76.563 | 72.486 | 0.26% | 1.003x | 1.003x |
+| PLE | 14.224 | 13.871 | 0.05% | 1.001x | 1.000x |
+
+Current kernel sum 27,401.492 ms; profiled wall 28,350.943 ms.
+Ceilings are sensitivity bounds, not expected realizable speedups. Snapshot deltas
+are historical attribution, not replacements for each retained A/B.
+
+**Prefill, four-category p4096 mean (ms):**
+
+| Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
+| --- | ---: | ---: | ---: | ---: |
+| MoE/FFN (routed + shared) | 14,418.396 | 4,372.034 | 3.298x | +10,046.362 |
+| Non-FFN, non-GR linear | 5,716.394 | 1,019.237 | 5.609x | +4,697.157 |
+| GR projections + read/mix | 4,338.538 | 1,707.311 | 2.541x | +2,631.227 |
+| QSA | 1,919.855 | 645.424 | 2.975x | +1,274.431 |
+| PLE | 13.929 | 75.456 | 0.185x | -61.527 |
+| Boundary / residual combine | 76.600 | 506.861 | 0.151x | -430.261 |
+| GDN | 778.160 | 1,390.400 | 0.560x | -612.240 |
+| **Total device time** | **27,261.872** | **9,716.723** | | |
+
+**Decode, four-category p4096 mean (ms):**
+
+| Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
+| --- | ---: | ---: | ---: | ---: |
+| QSA | 16.942 | 3.161 | 5.360x | +13.781 |
+| MoE/FFN (routed + shared) | 17.272 | 12.469 | 1.385x | +4.803 |
+| Non-FFN, non-GR linear | 17.078 | 16.394 | 1.042x | +0.684 |
+| GR projections + read/mix | 6.616 | 6.115 | 1.082x | +0.501 |
+| PLE | 0.031 | 0.115 | 0.271x | -0.084 |
+| GDN | 2.349 | 2.777 | 0.846x | -0.428 |
+| Boundary / residual combine | 0.457 | 1.386 | 0.330x | -0.929 |
+| **Total device time** | **60.745** | **42.416** | | |
+
+Decode is a fixed-live4097 diagnostic, averaged over three restored HIP repetitions
+and one Vulkan appended-root query per category, not a tg128 trajectory average.
+Negative differences are not automatically transferable savings; intervals, fusion
+and dispatch instrumentation differ. Every timestamp has one semantic owner.
+
+<!-- END FRAMEWORK FAMILY REFRESH -->
+
+**Historical post-GDN checkpoint (before Q4 pair promotion):**
+
 These are **same-physical-host diagnostic snapshots**, not joined to the
 historical `zbook` classifier above. Both use UD-Q4_K_XL, BF16 KV and the
 exact `code-p4096` fixture. The Framework arrival snapshot is `cf9c55920`
@@ -518,25 +583,23 @@ are optimistic sensitivity bounds, not predicted realizable speedups.
 The arrival profiled window is 43,171.036 ms; individual phase gains must
 still be established by their retained same-session A/B packets.
 
-### 5.2.2 Shared-taxonomy target mapping and queued refresh
+### 5.2.2 Shared-taxonomy refresh protocol
 
-**Owner-requested next priority: rerun on Framework before further tuning.**
+**Owner-requested refresh completed; optimization resumes from its ranking.**
 The [machine-readable queue](../benchmarks/results/2026-09-05-framework-qwen4exp-family-refresh-queue.json)
-has **frozen baselines captured; family alignment in progress**. It freezes the combined Q4-pair production default,
+has **frozen baselines and six-case family alignment captured**. It freezes the combined Q4-pair production default,
 then measures halo-box **Vulkan `b212548e0`** as the target and HIP as a
 separate diagnostic. GPU stages run serially.
 
-The second family table must be emitted by a committed refresh script, not
-hand-assembled from different taxonomies. Until those captures pass, the
-honest alignment is:
-
-| Shared family | Post-GDN Framework (ms) | Current halo-box Vulkan family cost | Matched gap |
-| --- | ---: | --- | --- |
-| Routed MoE, including all quant types and local routing/combine | 15,511.808 | Queued | Not established |
-| Non-routed linear + GR read | 10,789.347 | Queued | Not established |
-| QSA prefill, including its non-projection preparation | 1,921.000 | Queued | Not established |
-| GDN recurrence/Conv/norm-gate | 779.854 | Queued | Not established |
-| PLE + boundary | 88.459 | Queued | Not established |
+The generated section5.2.1 tables replace the former pending alignment.
+The [family packet](../benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json)
+contains six exact prompt cases and12 phase comparisons: code512/1024/4096
+and all four p4096 categories, with fixed-live513/1025/4097 decode anchors.
+All profiles have100% semantic coverage; Vulkan outputs match the original
+engine's prefill/next-token reference, and all HIP decode repetitions pass
+state and lifecycle checks. Fine role sources, node IDs, binary/library hashes,
+commands and regeneration inputs are retained. This is diagnostic alignment,
+not identical instrumentation or statistical throughput parity.
 
 **Collector implementation update:** `scripts/qwen4exp_framework_family_refresh.py`
 now captures request-bounded Vulkan logs, runs serial baseline commands,
@@ -545,8 +608,9 @@ tables. `scripts/qwen4exp_vulkan_owner_build.py` builds owned host-library
 copies against pinned halo-box; the original source and shader objects stay
 unchanged. Metadata-only graph scopes and fused-node IDs give the p512/p4096
 smokes 100% semantic coverage for prefill and one-token decode. Both return
-the same greedy prefix as the original uninstrumented binary. This is
-instrumentation validation, **not the full frozen baseline refresh**.
+the same greedy prefix as the original uninstrumented binary. That initial
+instrumentation validation is now followed by the full baseline and six-case
+family packet; full-logit/task-quality qualification remains separate.
 [Instrumentation evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-vulkan-owner-instrumentation.json).
 
 The versioned comparison taxonomy uses **complete MoE/FFN, including shared
@@ -595,9 +659,9 @@ Execution order and acceptance:
    Regenerate these tables after every retained promotion.
 
 There **are** combined-stack decode measurements in the GDN and Q4 A/B
-packets, plus post-binder state checks. What remains missing is a fresh
-frozen-default cross-engine baseline with aligned current decode-family
-costs. The 20.913/80.061-ms ordered-QSA figures and its historical comparator
+packets, plus post-binder state checks. The frozen-default cross-engine
+baseline and aligned current decode-family costs are now recorded above.
+The 20.913/80.061-ms ordered-QSA figures and its historical comparator
 are `zbook` evidence, not a Framework 35x precedent. Compute the decode
 parity factor from the new matching rows rather than carrying forward 1.54x.
 
