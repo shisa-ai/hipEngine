@@ -270,8 +270,11 @@ def test_indexed_decode_kernels_register_gguf_batch_variants() -> None:
 
     gfx1100_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1100")
     gfx1151_plan = _resolve_gguf_linear_attention_decode_batch_plan("hip_gfx1151")
-    assert gfx1100_plan.gdn_indexed_singleton is None
-    assert gfx1100_plan.gdn_decode_path == "segments"
+    assert (
+        gfx1100_plan.gdn_indexed_singleton
+        is qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16
+    )
+    assert gfx1100_plan.gdn_decode_path == "indexed_singleton"
     assert (
         gfx1151_plan.gdn_indexed_singleton
         is qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16

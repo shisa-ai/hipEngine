@@ -203,8 +203,10 @@ GGUF_GDN_PREFILL_AUTO_MODES_BY_QUANT_SHAPE: dict[
 # the quality-admitted peer-wave production default.
 GGUF_GDN_PREFILL_EXACT_MODE = "chain_lds32_direct_nonvolatile"
 # The singleton-indexed packed-AR recurrence is retained only on independently
-# measured backends. gfx1100 keeps the arbitrary-segment fallback by default.
-GGUF_GDN_INDEXED_SINGLETON_DECODE = False
+# measured backends. gfx1100 qualified the indexed singleton on the physical
+# W7900 (2026-09-05 audit packet A); the arbitrary-segment recurrence stays
+# registered as the strict fallback.
+GGUF_GDN_INDEXED_SINGLETON_DECODE = True
 # Exact Q8T16 row-amortized decode remains explicit on gfx1100 until an
 # independent native-AR width gate passes on W7900.
 GGUF_Q8_T16_DECODE_ROWTILE_ALL = False
