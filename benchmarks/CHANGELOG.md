@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 UTC Framework Q8 wave-scale conditioned screen] Under symmetric256MiB device-fill preconditioning, actual attention-gate rows5126.299->5.678ms (-9.86%,1.109x), independent layer4 1.111x; shared-down1.089x. F32-bit exact,15 tests,72 VGPR/zero scratch. Unconditioned order reversal invalidates the initial odd-pair1.20x general claim; model admission pending. `benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale.json`.
+
 - [2026-09-05 UTC Framework Q4 larger row batches rejected] Masked RB16 is0.880-0.981x RB8 speed and RB32 is0.586-0.623x across token512/1024/2048 and uniform/skewed routing; all outputs exact, all12 cells regress despite fewer inferred weight passes. Remove variants, preserve RB8; no whole-model admission attempted. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json`.
 
 - [2026-09-05 UTC Framework semantic family refresh] Complete six-case prefill/decode alignment with100% owner coverage and instrumentation prefix parity. P4096 four-category HE/Vulkan costs: FFN14.418/4.372s, non-GR linear5.716/1.019s, GR4.339/1.707s, QSA1.920/0.645s; decode QSA16.942/3.161ms. Diagnostic ranking, not a new speedup; generated starting/current/target tables replace stale cross-host bucket estimates. `benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json`.

@@ -4854,3 +4854,16 @@ under the manifest; retain rollback and registered strict fallbacks.
   with zero scratch in observed traces.
 - Reopen only for a different resource/reuse mechanism, not the same template
   enlargement. No persistent candidate flag or default change remains.
+
+## Qwen4Exp Q8 wave-scale candidate admission
+
+- Separate registered `coltile8_rowbatch4_wave_scale_f32_f32_out` is retained
+  after exact F32/CPU gates and actual attention-gate/shared-down wins.
+  These wins are conditioned on symmetric256MiB device-fill preconditioning.
+  Unconditioned attention-gate timings reverse by order; promotion must resolve
+  actual model cache/workload behavior. No runtime selector/default change yet.
+- Next: scope through registry policy, count live invocations, run full
+  logits/state/KV gate and complete12-case A/B before promotion.
+- Preserve original coltile as strict fallback. Remove candidate-only
+  dispatch experimentation once admitted or rejected; do not claim SGPR
+  instruction counts without inspecting generated code.

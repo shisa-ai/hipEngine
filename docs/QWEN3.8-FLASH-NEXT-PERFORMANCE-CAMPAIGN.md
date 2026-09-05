@@ -53,6 +53,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 wave-uniform scale candidate (2026-09-05 UTC):** a new T0 raw-Q8 coltile
+variant preserves original F32 FMA/reduction order while explicitly making
+the Q8 block-scale index uniform per wave. Actual attention-gate rows512
+improves6.299->5.678ms (1.109x) under symmetric256MiB device-fill
+preconditioning; independent layer4 measures1.111x and shared-down1.089x.
+Twenty pairs balance both orders, and mean/order-stratified timings improve
+under that condition. Unconditioned attention-gate reverses by order; the
+initial odd-pair1.20x general claim is superseded, not a retained win.
+All outputs exact,15 focused tests pass, cached
+trace72 VGPR/512 LDS/scratch0 for both arms. This is not another coltile
+geometry sweep, and no layout/activation arithmetic changed.
+Model default stays original coltile pending invocation-verified state/KV
+and full12-case A/B admission.
+[Evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale.json).
+
 **Q4 row-batch screen (2026-09-05 UTC):** straightforward pair2 RB16/32
 instantiations are exact but lose against RB8 across all final token-count
 512/1024/2048 x uniform/skewed routing cells, even after skipping padded-row

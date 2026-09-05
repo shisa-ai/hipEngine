@@ -779,6 +779,19 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+The raw Q8 coltile family has a separate T0
+`coltile8_rowbatch4_wave_scale_f32_f32_out` sibling. It makes the Q8 scale
+block index wave-uniform while preserving original F32 FMA and reduction
+order. On Framework gfx1151, under symmetric256MiB device-fill preconditioning,
+actual attention-gate rows512 improves6.299->5.678ms (1.109x),
+independently1.111x on layer4; shared-down improves1.089x. Both orders and
+mean timings are positive under that condition. Unconditioned attention-gate
+timing reverses by order; the original odd-pair1.20x claim is superseded.
+Both kernels use72 VGPR,
+512-byte LDS and zero scratch in the cached trace. Original coltile remains
+the model default and registered fallback until full-model admission.
+Evidence: `2026-09-05-framework-qwen4exp-q8-wave-scale.json`.
+
 The Qwen4Exp serial GDN family registers the T0
 `qwen4exp_sigmoid_register_prefill` candidate for Dk=Dv128.
 It retains serial arithmetic and the FP32 state boundary while keeping state
