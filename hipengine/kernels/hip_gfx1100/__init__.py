@@ -601,9 +601,12 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
 # layer hidden versus independent c1, with resolution provenance recorded.
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
-# Keep intermediate packed-prefill tail sampling until the W7900 lane runs its
-# independent output/state and complete-wall qualification.
-GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = False
+# Intermediate packed-prefill rounds sample only each slot's final tail. A
+# physical W7900 C8 512/384 prefill plans five slot-fair bounded rounds whose
+# first three carry no final slot at all, so the mask drops 25 intermediate
+# samples and takes output-norm and LM-head sampling from 33 rows to 8. Final
+# rows, target-hidden sinks, and every request's ownership are unchanged.
+GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # SPECDEC2 exposes only evidence-backed width/depth cells. This adopts the
 # non-monotonic package policy without importing gfx1151 economics: production
 # owns the qualified Qwen3.6/Qwen3.8 C1-K2/C1-K3/C2-K2 and Qwen3.8 C8-K3

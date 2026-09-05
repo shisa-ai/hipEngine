@@ -1738,15 +1738,22 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     ) is False
 
 
-def test_gfx1151_backend_scopes_packed_prefill_final_output_mask() -> None:
+def test_packed_prefill_final_output_mask_is_qualified_on_both_backends() -> None:
+    """Both RDNA3 packages own the mask after independent qualification.
+
+    gfx1151 qualified it first; gfx1100 qualified it on the physical W7900
+    (audit packet F1). Intermediate bounded rounds skip output norm, the full
+    LM head, and sampling on both.
+    """
+
     assert GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is True
-    assert GFX1100_GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is False
+    assert GFX1100_GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is True
     assert backend_package_capability(
         "hip_gfx1151", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
     ) is True
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
-    ) is False
+    ) is True
 
 
 def test_gfx1151_backend_scopes_dense_grouped_gqa_split_policy() -> None:
