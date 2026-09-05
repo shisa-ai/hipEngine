@@ -42,6 +42,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**QSA followup (2026-09-05):** the exact H256 wave candidate passes all72
+canonical trajectories and improves p4096 prefill about19-20%, but late
+2900-MHz-requested runs lose about0.5-0.6% decode. Page256 addressing is
+another exact ~2% attention-leaf win. External phase telemetry associates
+the late losses with lower effective clocks. A separate fixed2700-MHz
+mixed-language control has +20.69% prefill and decode within0.017%, with
+all measured phase clocks exactly2700 MHz and exact outputs. Original
+2900/2900 high policy is restored.
+[Clock control](../benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json).
+This supports operating-point coupling, not an intrinsic arithmetic/state
+regression; it does not waive the original performance gate or promote QSA.
+Do not keep repeating unchanged2900 runs. Continue the remaining dominant
+MoE/dense work, then qualify the combined path, or seek an explicit owner
+decision on the operating-point tradeoff. Strict fallbacks and D1 remain.
+
 **Retained grouped-row4 production improvement (2026-09-05):** a clean
 one-process/one-residency 12-case tg128 A/B at `82caa403d` measures weighted
 prefill **118.919->122.575 (+3.07%)**, **117.716->121.472 (+3.19%)**, and

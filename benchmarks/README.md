@@ -247,6 +247,12 @@ records lower after-arm clocks (about 2880–2882 versus 2898 MHz). It is
 correlation, not yet a causal proof or promotion.
 [Phase clocks](results/2026-09-05-framework-qwen4exp-qsa-phase-clocks.json).
 
+A separate mixed p4096 control holds every sampled phase at2700 MHz:
+prefill93.01→112.25 tok/s (+20.69%), decode14.800→14.798 (−0.017%), exact
+outputs. This supports an operating-point effect but is not promotion at
+the original setting; 2900/2900 high policy was restored.
+[Fixed-clock control](results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 

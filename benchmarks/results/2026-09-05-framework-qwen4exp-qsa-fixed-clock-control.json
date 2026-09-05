@@ -1,0 +1,577 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_qsa_fixed_clock_control",
+  "status": "diagnostic_fixed_clock_decode_parity",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "05baf8fc5ccfc508f55c8bc8defdef255c9be5c4",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "manual"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+    "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "one_model_residency": true,
+    "one_python_process": true,
+    "case_ids": [
+      "mixed_ja_en-p4096"
+    ],
+    "case_order": "fixture order",
+    "case_counterbalance_indices": {
+      "mixed_ja_en-p4096": 11
+    },
+    "arm_order_even_case": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "arm_order_odd_case": [
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before"
+    ],
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 512,
+    "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+  },
+  "arms": {
+    "before": {
+      "sparse_prefill": "strict_rows_spans"
+    },
+    "after": {
+      "sparse_prefill": "strict_h256_page256_wave_rows_spans"
+    }
+  },
+  "commands": {
+    "argv": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "/home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--route-package",
+      "qsa-h256-page256",
+      "--case-id",
+      "mixed_ja_en-p4096",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-qsa-cap2700-ab.json"
+    ],
+    "shell": "/home/lhl/hipEngine/.venv/bin/python /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --route-package qsa-h256-page256 --case-id mixed_ja_en-p4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-qsa-cap2700-ab.json"
+  },
+  "correctness": {
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "mismatched_case_ids": []
+  },
+  "by_case": {
+    "mixed_ja_en-p4096": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 93.00816507018799,
+      "after_prefill_tok_s_weighted": 112.25031692390041,
+      "after_over_before_prefill": 1.2068866947239683,
+      "before_decode_tok_s_weighted": 14.80035511967449,
+      "after_decode_tok_s_weighted": 14.797880545643267,
+      "after_over_before_decode": 0.9998328030637633,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+        ],
+        "after": [
+          "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+        ]
+      }
+    }
+  },
+  "by_shape": {
+    "4096": {
+      "case_count": 1,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 93.00816507018799,
+      "after_prefill_tok_s_weighted": 112.25031692390041,
+      "after_over_before_prefill": 1.2068866947239683,
+      "before_decode_tok_s_weighted": 14.80035511967449,
+      "after_decode_tok_s_weighted": 14.797880545643267,
+      "after_over_before_decode": 0.9998328030637633
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83545265060,
+    "total_allocated_bytes": 83555750820,
+    "total_freed_bytes": 83555750820,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "samples": [
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "repetition": 0,
+      "prefill_ms": 36503.797238,
+      "decode_ms": 8646.213694,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1883085216980155,
+          1883121720777393
+        ],
+        "decode": [
+          1883121720779677,
+          1883130366993371
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "repetition": 0,
+      "prefill_ms": 44036.998564,
+      "decode_ms": 8645.540285,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1883130367467081,
+          1883174404465645
+        ],
+        "decode": [
+          1883174404468510,
+          1883183050008795
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "repetition": 1,
+      "prefill_ms": 44051.234688,
+      "decode_ms": 8651.91586,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1883183050477344,
+          1883227101712032
+        ],
+        "decode": [
+          1883227101714477,
+          1883235753630337
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "repetition": 1,
+      "prefill_ms": 36476.674919,
+      "decode_ms": 8652.527578,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1883235754096071,
+          1883272230770990
+        ],
+        "decode": [
+          1883272230773024,
+          1883280883300602
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "repetition": 2,
+      "prefill_ms": 36489.151954,
+      "decode_ms": 8650.920831,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1883280883794318,
+          1883317372946272
+        ],
+        "decode": [
+          1883317372948747,
+          1883326023869578
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "repetition": 2,
+      "prefill_ms": 44029.199564,
+      "decode_ms": 8647.867254,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1883326024378323,
+          1883370053577887
+        ],
+        "decode": [
+          1883370053580292,
+          1883378701447546
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    }
+  ],
+  "clock_control": {
+    "before": {
+      "policy": "high",
+      "od": "OD_SCLK:\n0:       2900Mhz\n1:       2900Mhz\nOD_RANGE:\nSCLK:     600Mhz       2900Mhz\n"
+    },
+    "target_mhz": 2700,
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_clock_trace.py",
+      "--hwmon",
+      "/sys/class/drm/card1/device/hwmon/hwmon6",
+      "--output",
+      "/tmp/qwen4exp-qsa-cap2700-clocks.json",
+      "--benchmark-output",
+      "/tmp/qwen4exp-qsa-cap2700-ab.json",
+      "--",
+      ".venv/bin/python",
+      "scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--route-package",
+      "qsa-h256-page256",
+      "--case-id",
+      "mixed_ja_en-p4096",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-qsa-cap2700-ab.json"
+    ],
+    "during": "OD_SCLK:\n0:       2700Mhz\n1:       2700Mhz\nOD_RANGE:\nSCLK:     600Mhz       2900Mhz\n",
+    "returncode": 0,
+    "after": {
+      "policy": "high",
+      "od": "OD_SCLK:\n0:       2900Mhz\n1:       2900Mhz\nOD_RANGE:\nSCLK:     600Mhz       2900Mhz\n"
+    }
+  },
+  "telemetry": {
+    "phases": [
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "after",
+        "repetition": 0,
+        "prefill": {
+          "samples": 146,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 77000,
+            "mean": 71554.79452054795
+          },
+          "power_uw": {
+            "min": 88024000,
+            "max": 123030000,
+            "mean": 112269363.01369864
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 62000,
+            "max": 67000,
+            "mean": 63382.35294117647
+          },
+          "power_uw": {
+            "min": 86085000,
+            "max": 119079000,
+            "mean": 94172647.05882353
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "before",
+        "repetition": 0,
+        "prefill": {
+          "samples": 176,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 62000,
+            "max": 78000,
+            "mean": 70534.09090909091
+          },
+          "power_uw": {
+            "min": 86056000,
+            "max": 121036000,
+            "mean": 105193903.4090909
+          }
+        },
+        "decode": {
+          "samples": 35,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 61000,
+            "max": 66000,
+            "mean": 62600
+          },
+          "power_uw": {
+            "min": 86034000,
+            "max": 102031000,
+            "mean": 89502971.42857143
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "before",
+        "repetition": 1,
+        "prefill": {
+          "samples": 175,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 76000,
+            "mean": 70285.71428571429
+          },
+          "power_uw": {
+            "min": 89010000,
+            "max": 120077000,
+            "mean": 105465771.42857143
+          }
+        },
+        "decode": {
+          "samples": 35,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 61000,
+            "max": 68000,
+            "mean": 62428.57142857143
+          },
+          "power_uw": {
+            "min": 86013000,
+            "max": 103001000,
+            "mean": 89220857.14285715
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "after",
+        "repetition": 1,
+        "prefill": {
+          "samples": 146,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 79000,
+            "mean": 72417.80821917808
+          },
+          "power_uw": {
+            "min": 88098000,
+            "max": 123016000,
+            "mean": 113146835.61643836
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 62000,
+            "max": 66000,
+            "mean": 63323.529411764706
+          },
+          "power_uw": {
+            "min": 87004000,
+            "max": 117000000,
+            "mean": 91762411.76470588
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "after",
+        "repetition": 2,
+        "prefill": {
+          "samples": 146,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 67000,
+            "max": 79000,
+            "mean": 72917.80821917808
+          },
+          "power_uw": {
+            "min": 88041000,
+            "max": 123025000,
+            "mean": 112640787.67123288
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 62000,
+            "max": 68000,
+            "mean": 63352.94117647059
+          },
+          "power_uw": {
+            "min": 87029000,
+            "max": 118098000,
+            "mean": 91734382.35294117
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "before",
+        "repetition": 2,
+        "prefill": {
+          "samples": 176,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 79000,
+            "mean": 70414.77272727272
+          },
+          "power_uw": {
+            "min": 87073000,
+            "max": 129068000,
+            "mean": 105687090.9090909
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2700000000,
+            "max": 2700000000,
+            "mean": 2700000000
+          },
+          "temperature_millic": {
+            "min": 62000,
+            "max": 67000,
+            "mean": 62852.94117647059
+          },
+          "power_uw": {
+            "min": 86049000,
+            "max": 100089000,
+            "mean": 91393588.23529412
+          }
+        }
+      }
+    ],
+    "interval_s": 0.25,
+    "hwmon": "/sys/class/drm/card1/device/hwmon/hwmon6"
+  },
+  "raw_hashes": {
+    "/tmp/qwen4exp-qsa-cap2700-ab.json": "09c32353a93f6c97ba8a3f52b415f4c0ca2115eaa09684b977e1b95edf59521d",
+    "/tmp/qwen4exp-qsa-cap2700-clocks.json": "a65eaecad6602bf1a9154d5a41af89a15e99c4b00faf24f51996dd52d9bbcf69",
+    "/tmp/qwen4exp-qsa-cap2700-host.json": "92d8d32342fd812a1eb0290a6f29341df9d601ec1322f86ec7bbef27e37847e0"
+  },
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "clock_commands": {
+    "device": "/sys/class/drm/card1/device",
+    "enter_policy": "manual",
+    "enter_od": [
+      "s 0 600",
+      "s 1 2700",
+      "s 0 2700",
+      "c"
+    ],
+    "restore_od": [
+      "s 0 600",
+      "s 1 2900",
+      "s 0 2900",
+      "c"
+    ],
+    "restore_policy": "high",
+    "restoration": "try/finally around subprocess; readback verified"
+  },
+  "interpretation": "At exactly2700MHz across every sampled prefill/decode phase, mixed candidate prefill +20.69% and decode -0.0167%. Together with complete-KV/logit equality and lower-clock late losses at2900 request, this strongly supports hardware operating-point response rather than an intrinsic decode-path regression.",
+  "limitations": [
+    "Single affected-case intervention; not all-category promotion at2700 or2900.",
+    "Manual policy and lower requested clock change operating conditions; original2900 loss is retained and not normalized away.",
+    "Original2900/2900 high policy restored; no runtime default change."
+  ]
+}
