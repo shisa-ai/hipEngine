@@ -219,6 +219,12 @@ role coverage and traced/unprofiled final-logit equality:
 No optimization or new paired comparator verdict is claimed.
 [Owner refresh](results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json).
 
+Framework standalone Q5_K grouped-row4 gate/up, including its device map,
+screens at 30.022→24.391 ms (64 rows) and 239.491→107.911 ms (512 rows),
+with bit-exact paired outputs. This is a development-tree primitive result,
+not a runtime promotion or whole-model gain.
+[Candidate evidence](results/2026-09-05-framework-qwen4exp-q5k-grouped-row4.json).
+
 Earlier implementation-calibration evidence was collected on physical host
 `zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`). The pinned artifact
 runs through public `LLM.generate()` under the strict c1/greedy text scope.

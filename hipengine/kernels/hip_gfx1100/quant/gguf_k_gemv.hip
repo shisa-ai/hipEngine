@@ -1204,6 +1204,59 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
   }
 }
 
+// Preserve selected GEMV's per-row arithmetic while amortizing Q5 decoding
+// over four lanes belonging to the same expert.
+__launch_bounds__(256, 2)
+__global__ void gguf_q5_k_selected_grouped_row4_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const int64_t* __restrict__ expert_start,
+    const int64_t* __restrict__ lane_to_row,
+    const uint8_t* __restrict__ weights,
+    uint16_t* __restrict__ output,
+    int x_rows, int rows, int experts, int in_features, int out_features) {
+  const int out_col = blockIdx.x;
+  const int expert = blockIdx.y;
+  if (out_col >= out_features || expert >= experts) return;
+  const int begin = static_cast<int>(expert_start[expert]);
+  const int end = static_cast<int>(expert_start[expert + 1]);
+  if (begin < 0 || begin >= end || end > rows) return;
+  const int row_bytes = (in_features / QK_K) * Q5_K_BLOCK_BYTES;
+  const uint8_t* weight_row = weights
+      + (static_cast<int64_t>(expert) * out_features + out_col) * row_bytes;
+  const int lanes_per_x_row = rows / x_rows;
+  for (int base = begin; base < end; base += 4) {
+    int dest[4];
+#pragma unroll
+    for (int r = 0; r < 4; ++r) {
+      dest[r] = base + r < end
+          ? (lane_to_row ? static_cast<int>(lane_to_row[base + r]) : base + r)
+          : -1;
+    }
+    float acc[4] = {};
+    for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
+      const float wv = q5_k_weight(weight_row, k);
+#pragma unroll
+      for (int r = 0; r < 4; ++r) {
+        if (dest[r] >= 0 && dest[r] < rows) {
+          const int x_row = dest[r] / lanes_per_x_row;
+          const float xv = scalar_to_float<uint16_t>(
+              x[static_cast<int64_t>(x_row) * in_features + k]);
+          acc[r] += xv * wv;
+        }
+      }
+    }
+#pragma unroll
+    for (int r = 0; r < 4; ++r) {
+      const float total = reduce_block_sum(acc[r]);
+      if (threadIdx.x == 0 && dest[r] >= 0 && dest[r] < rows) {
+        store_output<uint16_t>(
+            output, static_cast<int64_t>(dest[r]) * out_features + out_col, total);
+      }
+      __syncthreads();
+    }
+  }
+}
+
 template <typename scalar_t, typename out_t, int qtype>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_silu_prefill_out_kernel(
@@ -4594,6 +4647,26 @@ extern "C" int hipengine_##NAME##_gemv_rowtile_f32_f32_out( \
 HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
+
+extern "C" int hipengine_gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* weights, uint16_t* output,
+    int64_t x_rows, int64_t rows, int64_t experts,
+    int64_t in_features, int64_t out_features, int64_t threads,
+    hipStream_t stream) {
+  if (!x || !expert_start || !weights || !output || x_rows <= 0 ||
+      rows <= 0 || rows % x_rows != 0 || experts <= 0 ||
+      in_features <= 0 || in_features % QK_K != 0 || out_features <= 0 ||
+      (threads != 64 && threads != 128 && threads != 256)) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 grid(static_cast<unsigned int>(out_features),
+                  static_cast<unsigned int>(experts));
+  gguf_q5_k_selected_grouped_row4_bf16_kernel<<<grid, threads, 0, stream>>>(
+      x, expert_start, lane_to_row, weights, output, x_rows, rows, experts,
+      in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
 
 // PF-1 fork (b) T0 candidate: grouped selected down (Q8_0 only). Consumes the
 // per-expert group map (exclusive expert_start[num_experts+1] prefix plus the
