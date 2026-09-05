@@ -1,15 +1,117 @@
 # Qwen3.8-Flash-Next Strix Halo engine survey
 
-Status: **external lanes surveyed 2026-08-31; hipEngine evidence refreshed
-2026-09-01 on `zbook` / Ryzen AI Max+ Pro 395 / Radeon 8060S (`gfx1151`)**.
-A source-only review of the Pat1entZ3r0 optimization program was added
-2026-09-01 (section 6.7); it is not a surveyed lane and none of its claims
-are locally reproduced.
-The central result is that static-logit agreement and multi-step reliability
-are different questions: several fast forks compute plausible logits for a
-fixed batch but fail deterministic autoregressive or MTP output checks.
+Status: **active comparator refresh prepared 2026-09-05 on the Framework
+Desktop / Ryzen AI Max+ 395 / Radeon 8060S (`gfx1151`)**. The active overview
+tracks only upstream llama.cpp HIP/Vulkan and halo-box HIP/Vulkan. Fresh builds
+are ready, but no model benchmark from this host has been promoted yet.
 
-## 1. Speed topline
+The Framework Desktop is a separate physical benchmark lane from the earlier
+power- and heat-limited `zbook`. Do not report old-to-new rate deltas across
+these hosts. The 2026-08-31 through 2026-09-01 multi-engine survey remains at
+the bottom as historical analysis because its model, fork, accuracy, and
+failure-mode comparisons are still useful but no longer define the active
+comparator set.
+
+## 1. Active comparator set
+
+All four lanes use the same Qwen3.8-Flash-Next target artifact and will be
+measured on the Framework Desktop. A source or backend identity is not a
+performance result; the table records only the binaries prepared for the new
+comparison.
+
+| Engine | Backend | Source commit | Fresh Release build | Current status |
+| --- | --- | --- | --- | --- |
+| Upstream llama.cpp | HIP | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release-4d917609/bin/` | Builds and detects `ROCm0`; model benchmark pending |
+| Upstream llama.cpp | Vulkan | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-vulkan/build-vulkan-release-4d917609/bin/` | Builds and detects `Vulkan0`; model benchmark pending |
+| halo-box | HIP | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/` | Builds and detects `ROCm0`; model benchmark pending |
+| halo-box | Vulkan | `b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf` | `/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/` | Builds and detects `Vulkan0`; model benchmark pending |
+
+The HIP builds use the existing ROCm/HIP 7.15 `therock` environment,
+`AMDGPU_TARGETS=gfx1151`, HIP graphs, MMQ MFMA, and no virtual memory
+management. The Vulkan builds use RADV/Mesa 26.1.6. All three source trees were
+clean after the builds. halo-box `master` is distinct from the historical,
+unmerged PR #11 head `a7ad7b7f`; active rows must name `b212548e` unless a
+separate pinned-PR lane is deliberately added.
+
+## 2. Active speed and reliability topline
+
+No prior `zbook` rate is copied into this table. Fill a row only after all four
+fresh binaries complete the same Framework Desktop protocol and the row's
+repeatability verdict is known.
+
+| Engine and backend | p512 | p1024 | p4096 | Output repeatability |
+| --- | ---: | ---: | ---: | --- |
+| Upstream llama.cpp HIP `4d9176092` | Pending | Pending | Pending | Pending |
+| Upstream llama.cpp Vulkan `4d9176092` | Pending | Pending | Pending | Pending |
+| halo-box HIP `b212548e0` | Pending | Pending | Pending | Pending |
+| halo-box Vulkan `b212548e0` | Pending | Pending | Pending | Pending |
+
+Each completed cell will report prompt processing / decode in tokens per second.
+A fast row that fails exact repeated greedy output remains a diagnostic and is
+not promoted as the active target.
+
+## 3. Framework Desktop comparison protocol
+
+- Physical host: hostname `gfx1151`, machine ID
+  `55ea6c509d0b49eea8de7094a1023668`, Framework Desktop, Ryzen AI Max+ 395,
+  Radeon 8060S, 128 GB unified memory, kernel `7.1.6-1-cachyos`.
+- Target: Unsloth Qwen3.8-Flash-Next `UD-Q4_K_XL`, revision
+  `8bdc666649440e9bdc97e16f3f75782c98478ff5`, four verified GGUF shards,
+  BF16 K/V.
+- Fixture:
+  [`qwen4exp_canonical_ar_p512_p1024_p4096.json`](../benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json),
+  SHA-256 `42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1`.
+- Workload: code, English, Japanese, and mixed Japanese/English at
+  p512/p1024/p4096, greedy sampling, disabled prompt reuse, and 128 decode
+  transitions.
+- Reporting: record source and binary hashes, exact command, runtime and driver
+  identity, per-sample rates, output hashes, variance, and teardown status.
+  Compare absolute rates only within this Framework Desktop packet.
+
+MTP remains a separate protocol. If measured, every lane must use its stated
+sidecar and compare complete messages with its own true autoregressive control;
+acceptance alone is not a correctness result.
+
+## 4. Promotion and comparison rules
+
+1. Keep HIP and Vulkan as separate lanes even when they share a source commit.
+2. Require exact repeated output for every canonical case before treating a
+   rate as a correctness-valid comparator.
+3. Do not average a failing or unstable case into a promoted topline.
+4. Do not compare Framework Desktop absolute rates with `zbook` absolute rates
+   as an old-to-new improvement. Both machines are `gfx1151`, but their power,
+   thermal, kernel, and runtime conditions differ.
+5. Keep model-quality, alternate-quant, old-fork, and author-reported results in
+   the historical section unless they are rerun under the active protocol.
+
+## 5. Next benchmark packet
+
+1. Smoke-load the verified first `UD-Q4_K_XL` shard with each fresh binary and
+   record startup behavior.
+2. Run the 12-case canonical autoregressive screen for all four lanes under one
+   declared Framework Desktop power and cache protocol.
+3. Record repeatability before interpreting throughput.
+4. Publish one compact artifact containing all four lanes, then replace the
+   pending cells in section 2.
+5. Add full-logit or MTP packets only as separate comparisons with their own
+   correctness gates.
+
+## 6. Historical survey and model analysis
+
+The remainder is the 2026-08-31 through 2026-09-01 `zbook` survey. Terms such
+as “current” and “today” below refer to that snapshot, not the active Framework
+Desktop builds in sections 1–5.
+
+Historical status: external lanes were surveyed 2026-08-31 and hipEngine
+evidence was refreshed 2026-09-01 on `zbook` / Ryzen AI Max+ Pro 395 / Radeon
+8060S (`gfx1151`). A source-only review of the Pat1entZ3r0 optimization program
+was added 2026-09-01 (historical section H6.7); it was not a surveyed lane and
+none of its claims were locally reproduced. The central result was that
+static-logit agreement and multi-step reliability are different questions:
+several fast forks computed plausible logits for a fixed batch but failed
+deterministic autoregressive or MTP output checks.
+
+### H1. Speed topline
 
 All values in the first table use the **same physical host, exact
 `UD-Q4_K_XL` weight files, BF16 K/V, exact token arrays, greedy sampling,
@@ -48,7 +150,7 @@ prefill throughput. Against upstream Vulkan, it reaches
 prefill throughput. Production therefore remains the slowest matched lane,
 although its short-context decode gap narrowed.
 
-### hipEngine P8 graph research—not a matched survey row
+#### hipEngine P8 graph research—not a matched survey row
 
 | Boundary | Strict runner diagnostic | Strict graph diagnostic | Status |
 | --- | ---: | ---: | --- |
@@ -66,7 +168,7 @@ pending until one same-session production graph arm runs. Evidence:
 and
 [named denominator](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-production-denominator.json).
 
-### Current exact-token profile implications
+#### Current exact-token profile implications
 
 The matched code-case device sums are hipEngine versus patched llama HIP
 **5.972 vs 1.926 s**, **11.196 vs 2.990 s**, and **54.762 vs 10.838 s** at
@@ -78,7 +180,7 @@ coverage, not unknown runtime. Closing the survey gap therefore requires exact
 QSA decode plus a prefill MoE+dense/GR+long-QSA portfolio. Evidence:
 [current canonical impact profile](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-canonical-impact-profile.json).
 
-### MTP speed versus true AR
+#### MTP speed versus true AR
 
 This table uses the same ten code, English, Japanese, and mixed-language
 prompts with 16 generated tokens. Representations differ by row and must not
@@ -99,7 +201,7 @@ match across both repeats of both modes. High acceptance therefore does not
 prove losslessness. hipEngine is the only locally tested lane that passes all
 ten AR-equivalence rows, but its serial verification loses economically.
 
-### Published speed claims that are not matched rows
+#### Published speed claims that are not matched rows
 
 | Source/configuration | Published result | Evidence status |
 | --- | --- | --- |
@@ -107,9 +209,9 @@ ten AR-equivalence rows, but its serial verification loses economically.
 | [EngramHalo](https://github.com/Aristo94/EngramHalo.cpp), IQ3/IQ4/Q8/MTP | up to 39.3 tok/s shallow; 24.7 at 78K; p4096 up to about 502 | Author-reported and independently directionally reproduced with another quant; not the matched Q4/BF16 protocol |
 | [Sleeping Robots Engram test](https://sleepingrobots.com/dreams/engramhalo-qwen38-flash-next-strix-halo/), AtomicChat 4.27 bpw | 28–38.5 tok/s MTP at working depths; 15.0 at 26K; p26K 395.1 without MTP | Independent same-machine-class cross-check, different host instance and quant |
 | Agention ROCmFP4 fork, FP4/Q8 | 27.77 tok/s AR at 512, 24.67 at 32K, 19.70 at 131K; up to 40 with MTP | Different quant, PLE layout, and fork; quant-specific evidence only |
-| [Pat1entZ3r0 optimization program](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`, dense-Q6K / Q8 KV / EasiiX Q8 MTP sidecar, Vulkan | 21–26 tok/s decode at 16K, 14–20 at 128K, up to 469 tok/s shallow prefill, 2.25 s TTFT at 38K | Author-reported; lock files and patch series verified, but the experiment harness and raw data are not committed and nothing is locally reproduced. Headline 2.5–3x compares a tuned stack against an `-ub 512` f16-KV no-MTP baseline. See section 6.7 |
+| [Pat1entZ3r0 optimization program](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`, dense-Q6K / Q8 KV / EasiiX Q8 MTP sidecar, Vulkan | 21–26 tok/s decode at 16K, 14–20 at 128K, up to 469 tok/s shallow prefill, 2.25 s TTFT at 38K | Author-reported; lock files and patch series verified, but the experiment harness and raw data are not committed and nothing is locally reproduced. Headline 2.5–3x compares a tuned stack against an `-ub 512` f16-KV no-MTP baseline. See historical section H6.7 |
 
-## 2. Accuracy and reliability topline
+### H2. Accuracy and reliability topline
 
 No single column below means “model accuracy.” The columns test distinct
 failure modes:
@@ -152,7 +254,7 @@ The static packet changes the diagnosis materially:
    Engram HIP can themselves flip that row between duplicate executions.
    Reporting 159/160 without this control would overstate the difference.
 
-### Pairwise same-GGUF distributions
+#### Pairwise same-GGUF distributions
 
 Symmetric KL is the mean of KL(A‖B) and KL(B‖A). The packet teacher-forces the
 same frozen-HIP greedy sequence, so every engine receives identical tokens.
@@ -178,7 +280,7 @@ Vulkan on 3/12 stable continuations. Nathan has no stable full continuation to
 compare. These counts are useful arithmetic fingerprints, but compounding
 near-tie differences make them too strict to serve as task-accuracy verdicts.
 
-## 3. Testing and promotion guardrails
+### H3. Testing and promotion guardrails
 
 None of the external forks has a production-correctness promotion contract
 comparable to hipEngine's named execution profiles. Upstream llama.cpp has the
@@ -201,7 +303,7 @@ hipEngine's heavier process costs development time, but it explicitly binds
 arithmetic, state ownership, determinism, task validity, concurrency, fallback,
 and teardown before promotion.
 
-## 4. What the survey supports
+### H4. What the survey supports
 
 - **For correctness-valid AR today:** use upstream llama.cpp HIP/Vulkan or
   hipEngine under its declared profile. Patched upstream HIP is required to
@@ -221,9 +323,9 @@ and teardown before promotion.
   BF16 model or different community quants. They cannot establish that the
   surveyed Q4/Q3 engines retain SWE-bench, GPQA, or coding scores.
 
-## 5. Methodology
+### H5. Methodology
 
-### 5.1 Canonical AR screen
+#### H5.1 Canonical AR screen
 
 The committed
 [`qwen4exp_canonical_ar_p512_p1024_p4096.json`](../benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json)
@@ -250,7 +352,7 @@ Its four failing measured cases first diverge at these output indices:
 These are generally later than Nathan's identical-prompt control, which often
 diverges at indices 1–9, but exact greedy repeatability still fails.
 
-### 5.2 Full-logit packet
+#### H5.2 Full-logit packet
 
 The packet renders the ten canonical prompts with the Qwen chat template and
 reasoning disabled. Frozen llama.cpp #27742 HIP generates a 16-token greedy
@@ -271,7 +373,7 @@ smaller than hipEngine's 450-row production-profile gate. Raw logits are local
 artifacts; their hashes and per-category statistics are retained in the
 [survey JSON](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json).
 
-### 5.3 MTP equivalence
+#### H5.3 MTP equivalence
 
 MTP checks use all ten prompts from
 [`mtpbench-code-general-ja.jsonl`](../benchmarks/prompts/mtpbench-code-general-ja.jsonl),
@@ -285,7 +387,7 @@ It is distinct from EngramHalo's 4,137,429,088-byte sidecar. Nathan uses the
 EngramHalo/EasiiX Q8 sidecar at n-max 3; its pinned source explicitly supports
 sidecar Qwen4Exp MTP and loaded this artifact successfully.
 
-### 5.4 What was not tested
+#### H5.4 What was not tested
 
 - The official 360 GB BF16 checkpoint was not executed on this 128 GB host.
 - The published apepojken Q3 headline quant was not downloaded; local matched
@@ -297,9 +399,9 @@ sidecar Qwen4Exp MTP and loaded this artifact successfully.
 - The canonical speed screen has three repetitions and several noisy rows; it
   is not the five-pair closure protocol in the performance campaign.
 
-## 6. Engine details
+### H6. Engine details
 
-### 6.1 hipEngine
+#### H6.1 hipEngine
 
 hipEngine production remains the slowest short-context matched lane in this
 survey, especially for prefill, but it has the strongest locally retained
@@ -330,7 +432,7 @@ the [current canonical row](../benchmarks/results/2026-08-31-gfx1151-qwen38-flas
 and the
 [P8 full transition](../benchmarks/results/2026-09-01-gfx1151-qwen38-flash-next-p8-full-transition-graph.json).
 
-### 6.2 Upstream llama.cpp
+#### H6.2 Upstream llama.cpp
 
 Current upstream HIP and Vulkan are repeatable on all 12 canonical AR cases.
 Current HIP reproduces the frozen #27742 HIP logit packet nearly exactly.
@@ -343,7 +445,7 @@ two separate 1,800-second attempts. The numeric HIP row applies the documented
 host-buffer and per-buffer-mmap patches and is explicitly non-stock. No
 single-patch ablation establishes which patch is individually necessary.
 
-### 6.3 EngramHalo
+#### H6.3 EngramHalo
 
 EngramHalo's static HIP arithmetic is close to upstream HIP, and p512/p1024
 requests repeat exactly. Its two local failures are nevertheless material:
@@ -362,7 +464,7 @@ receive another slot's response verbatim.
 Assessment: credible performance work with partial correctness evidence, not a
 fully qualified engine configuration.
 
-### 6.4 Nathan's Vulkan fork
+#### H6.4 Nathan's Vulkan fork
 
 Nathan's source and release build agree within 1% on synthetic shape rates.
 The new logit packet shows that its fixed-batch math is effectively identical
@@ -382,7 +484,7 @@ Assessment: strong Vulkan static kernels and fast rates, but the measured build
 is not suitable for deterministic greedy or MTP use until transition
 repeatability is fixed.
 
-### 6.5 apepojken `qwen4exp-spec-mtp`
+#### H6.5 apepojken `qwen4exp-spec-mtp`
 
 The supplied Reddit post is tied to clean commit
 `843d5750579a15ed4a42d73eb862855c271021ac`. The custom post-base delta is 13
@@ -413,7 +515,7 @@ The result does not establish that the reported long sessions were corrupt or
 that every optimization is wrong. It establishes that the published evidence
 was insufficient to qualify the whole stack.
 
-### 6.6 Other community configurations
+#### H6.6 Other community configurations
 
 Several useful quality anchors use different checkpoints or quants and cannot
 rank the engines above:
@@ -432,7 +534,7 @@ rank the engines above:
 - `cafe-llama.cpp` and other fresh forks remain source leads. No matched local
   rate or correctness packet was available for this survey.
 
-### 6.7 Pat1entZ3r0 optimization program (source review only, 2026-09-01)
+#### H6.7 Pat1entZ3r0 optimization program (source review only, 2026-09-01)
 
 [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization)
 is a single-commit (`413c33c`) documentation-plus-patches repository: two
@@ -441,7 +543,7 @@ llama.cpp patch lines (`patches/hybrid-04`, a correctness/perf line on master
 head and recurrent-rollback fixes), model/source lock files with shard
 SHA-256s, and prose results/rejected-experiment catalogs claiming 58
 controlled experiments on a 128 GB Strix Halo host. Its published rates are
-listed in the not-matched-claims table in section 1.
+listed in the not-matched-claims table in historical section H1.
 
 Evidence status: **author-reported; nothing locally reproduced.** The
 committed `reproduce_final.sh` invokes `scripts/` and `reports/` paths that
@@ -449,7 +551,7 @@ do not exist in the repository, so no raw logs, gate captures, or per-rep
 data are auditable. Its correctness gate is token parity against
 self-captured references at depths 0/4K/16K with a near-tie tolerance
 (≤~0.04 nats at fixed positions) — the same gate class that misses the
-transition nondeterminism measured in section 2, and its wholesale
+transition nondeterminism measured in historical section H2, and its wholesale
 Nathan-fork evaluation was rejected on depth-decode speed alone with no
 correctness finding, even though Nathan fails all 12 canonical AR repeat
 cases here. Its "ROCm/HIP is 25–30% slower than Vulkan" claim rests on one
@@ -472,7 +574,7 @@ hipEngine:**
    the EngramHalo (9/10) and Nathan (8/10) lanes, which use the same EasiiX
    Q8_0 sidecar (4,137,429,088 bytes). Worth doing: (a) audit hipEngine's own
    checkpoint+replay and recurrent-rollback ownership for the same failure
-   mode; (b) re-run the section-5.3 MTP equivalence probe on an external lane
+   mode; (b) re-run the historical H5.3 MTP equivalence probe on an external lane
    built from `c589f0ed` + #27879 + EXP-016. Caveat: the patch's own SSM
    clamp is self-described as "best-effort deeper" than exact, so even a
    correct diagnosis may not fully restore MTP output identity.
@@ -486,10 +588,10 @@ hipEngine:**
    +38–40% decode at 32–64K with a flat depth slope). The QSA selection it
    produces is explicitly non-bit-exact with no published KL/top-1
    quantification. It is a port candidate for the QSA decode gap identified
-   in section 1, but only behind the production-profile numerical gates,
-   which it may fail.
+   in historical section H1, but only behind the production-profile numerical
+   gates, which it may fail.
 
-## 7. Required evidence for a qualified fast fork
+### H7. Required evidence for a qualified fast fork
 
 A practical minimum is smaller than hipEngine's full production campaign but
 larger than a speed screenshot:
@@ -507,7 +609,7 @@ larger than a speed screenshot:
 7. Keep the speed row only if all binding checks pass. Record failing fast rows
    rather than averaging them away.
 
-## 8. Evidence index
+### H8. Evidence index
 
 - Compact survey evidence:
   [`2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json`](../benchmarks/results/2026-08-31-gfx1151-qwen38-flash-next-strix-halo-survey.json)
@@ -530,4 +632,4 @@ larger than a speed screenshot:
 - apepojken sidecar: [jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF](https://huggingface.co/jockevaupptaget/Qwen3.8-Flash-Next-MTP-GGUF)
 - EngramHalo source and methodology: [Aristo94/EngramHalo.cpp](https://github.com/Aristo94/EngramHalo.cpp)
 - Nathan release: [Nathanw1014/strix-halo-llamacpp v0.7.2](https://github.com/Nathanw1014/strix-halo-llamacpp/releases/tag/v0.7.2)
-- Pat1entZ3r0 source review (section 6.7): [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`
+- Pat1entZ3r0 source review (historical section H6.7): [Pat1entZ3r0/strix-qwen-next-flash-optimization](https://github.com/Pat1entZ3r0/strix-qwen-next-flash-optimization) `413c33c`
