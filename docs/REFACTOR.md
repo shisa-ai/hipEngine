@@ -18,6 +18,22 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-05 Qwen4Exp PF-5 GDN tile-16 prefill opt-out — promoted default
+
+- `qwen4_exp_gdn_tile16_prefill_selected` in
+  `hipengine/runtime/qwen4_exp_runner.py` makes the exact token-tile-16 owner
+  (`qwen4exp_gdn_tiled16_prefill`, Hk16/Hv32-or-48/D128, rows>=16) the
+  production default inside the existing `HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL`
+  gate.
+- `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` (or empty/false) forces the
+  columnwarp `<4, 4>` parent for rollback and bisection; non-envelope shapes
+  always use columnwarp, and the serial strict route stays registered below
+  both.
+- Removal trigger: after the gfx1151 stable-clock closure verify (five-pair
+  same-thermal 12-case comparison) confirms the promotion, drop the flag and
+  call tile-16 unconditionally inside the colwarps gate. Keep the registered
+  columnwarp and serial strict fallbacks per `EXECUTION-PROFILES.md`.
+
 ## 2026-09-04 Qwen4Exp PF-5 GDN w32 prefill variant — retained rejected lever
 
 - `qwen4exp_gdn_w32_prefill` (`hipengine_qwen4_exp_gdn_prefill_w32_f32`,

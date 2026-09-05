@@ -73,6 +73,34 @@ def test_qwen4_exp_gdn_tiled16_prefill_registry_contract() -> None:
     assert strict is qwen4_exp_gdn_prefill_f32
 
 
+def test_qwen4_exp_runner_selects_tile16_prefill_for_binding_envelope(
+    monkeypatch,
+) -> None:
+    """The production colwarps gate must resolve tile-16 for envelope shapes."""
+
+    from hipengine.runtime import qwen4_exp_runner
+
+    monkeypatch.delenv("HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL", raising=False)
+    select = qwen4_exp_runner.qwen4_exp_gdn_tile16_prefill_selected
+    assert select(rows=16, num_k_heads=16, num_v_heads=48, head_dim=128)
+    assert select(rows=512, num_k_heads=16, num_v_heads=48, head_dim=128)
+    assert select(rows=512, num_k_heads=16, num_v_heads=32, head_dim=128)
+    assert not select(rows=15, num_k_heads=16, num_v_heads=48, head_dim=128)
+    assert not select(rows=512, num_k_heads=8, num_v_heads=48, head_dim=128)
+    assert not select(rows=512, num_k_heads=16, num_v_heads=40, head_dim=128)
+    assert not select(rows=512, num_k_heads=16, num_v_heads=48, head_dim=64)
+
+
+def test_qwen4_exp_runner_tile16_prefill_opt_out(monkeypatch) -> None:
+    """The columnwarp parent stays reachable for rollback and bisection."""
+
+    from hipengine.runtime import qwen4_exp_runner
+
+    monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL", "0")
+    select = qwen4_exp_runner.qwen4_exp_gdn_tile16_prefill_selected
+    assert not select(rows=512, num_k_heads=16, num_v_heads=48, head_dim=128)
+
+
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize(
     ("v_heads", "rows"),

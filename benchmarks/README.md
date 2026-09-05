@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-04**
+Last updated: **2026-09-05**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -212,6 +212,7 @@ prefix:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
 | --- | ---: | ---: | ---: | --- |
+| hipEngine current production (PF-5 GDN tile-16 after arm) | **89.87 / 14.81** | **88.97 / 14.77** | **72.93 / 12.39** | 12/12 deterministic; one-residency cross-mode exact; 12/12 prefill-positive |
 | hipEngine current production (PF-1/PF-3 after arm) | **89.34 / 14.84** | **88.54 / 14.79** | **72.58 / 12.40** | 12/12 deterministic; one-residency cross-mode exact |
 | hipEngine pre-PF baseline (`37d59564…`, HB-1 retained arm) | 83.37 / 14.32 | 82.91 / 14.27 | 69.20 / 12.18 | 12/12 deterministic; cross-arm exact; historical |
 | Upstream Vulkan `f1793c1c4`, queue/repack/fit-off | 200.01 / 24.39 | 241.84 / 21.33 | 266.58 / 18.98 | 12/12 exact; noisy p512/p1024 rows |
@@ -266,10 +267,27 @@ orders reversed across adjacent cases. Weighted prefill improves
 all 72 measured trajectories are exact across modes. Decode changes
 −0.15%/+0.13%/−0.07%. Production again selects PF-3 Q5_1 M1 and PF-1 grouped
 Q8_0 down; strict retains the preceding registered owners. PF-4's fused-combine
-whole-model rejection remains provisional, PF-5's tile-16 lever remains open,
-and the Q4_K M1/PF-5 w32 kernel losses remain valid.
+whole-model rejection remains provisional, and the Q4_K M1/PF-5 w32 kernel
+losses remain valid.
 [`Production refresh`](results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json),
 [`Review plan`](../worklog/entries/20260904T100046.831998Z-lhl-qwen4exp-halo-box-campaign-review-511155.md).
+
+The 2026-09-05 PF-5 closure promotes the exact GDN token-tile-16 prefill owner
+(binding Hk=16/Hv=48/D=128) as the production default inside the colwarps gate
+after a fail-closed, engagement-verified one-residency A/B: weighted prefill
+**89.435→89.873 (+0.49%)**, **88.553→88.966 (+0.47%)**, and
+**72.661→72.929 tok/s (+0.37%)** at p512/p1024/p4096 with all 12 cases
+non-negative, 72/72 cross-mode exact outputs, and per-case prefill CV ≤1.6%.
+The binding-shape leaf wins 23.3%/29.1%/35.3% at rows 16/64/512, bit-exact in
+outputs and final FP32 state. The columnwarp parent stays registered for
+non-envelope shapes and the `HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0` opt-out;
+serial strict remains the registered fallback. The first same-day A/B was
+invalidated as a no-op (the runner bypassed the replaced registry key, so both
+arms ran the parent) and is superseded. Scaling the loop's 0.3037 screening
+baseline by the measured code-only geomean infers ~0.3045; the frozen-halo
+screening metric itself is refreshed at the next stable-clock closure verify.
+[`PF-5 tile-16 promotion A/B`](results/2026-09-05-gfx1151-qwen38-flash-next-pf5-gdn-tiled16-whole-model-ab.json),
+[`Hv48 correction`](../worklog/entries/20260905T022638.146026Z-lhl-qwen4exp-pf5-gdn-tiled16-hv48-correction-c178a9.md).
 
 The frozen p508 role/API profile still puts hipEngine versus llama HIP device
 kernels at **5.959 vs 1.625 s (3.67×)** and decode at **48.63 vs 38.90

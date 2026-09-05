@@ -131,6 +131,7 @@ from hipengine.kernels.hip_gfx1100.linear_attn.qwen4_exp_gdn import (
     qwen4_exp_gdn_peer_prefill_f32,
     qwen4_exp_gdn_prefill_columnwarps_f32,
     qwen4_exp_gdn_prefill_f32,
+    qwen4_exp_gdn_prefill_tiled16_f32,
 )
 from hipengine.kernels.hip_gfx1100.fused.qwen4_exp_gr import (
     qwen4_exp_gated_mean_f32,
@@ -242,6 +243,37 @@ def _qwen4_exp_gdn_peer_layer_allowed(
         weights["attn_qkv"],
         env_name="HIPENGINE_QWEN4_EXP_GDN_PEER_PREFILL_LAYERS",
         default="35-47",
+    )
+
+
+def qwen4_exp_gdn_tile16_prefill_selected(
+    *,
+    rows: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_dim: int,
+) -> bool:
+    """Select the exact tile-16 GDN prefill owner inside the colwarps gate.
+
+    PF-5 production default after the engaged one-process/one-residency
+    canonical A/B (2026-09-05, 72/72 cross-mode exact, prefill
+    +0.49%/+0.47%/+0.37% at p512/p1024/p4096). Non-envelope shapes and the
+    ``HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0`` opt-out use the columnwarp
+    parent; the serial strict route stays registered below both.
+    """
+
+    if os.environ.get("HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL", "1") in {
+        "",
+        "0",
+        "false",
+        "False",
+    }:
+        return False
+    return (
+        rows >= 16
+        and num_k_heads == 16
+        and num_v_heads in (32, 48)
+        and head_dim == 128
     )
 
 
@@ -4551,24 +4583,51 @@ def run_qwen4_exp_gdn_token_mixer(
             )
         )
         if colwarps_prefill:
-            qwen4_exp_gdn_prefill_columnwarps_f32(
-                scratch.conv.ptr,
-                scratch.gate.ptr,
-                scratch.alpha.ptr,
-                scratch.beta.ptr,
-                dt_bias_ptr,
-                a_ptr,
-                norm_weight_ptr,
-                recurrent_state_ptr,
-                scratch.core.ptr,
-                rows,
-                num_k_heads,
-                num_v_heads,
-                head_dim,
-                head_dim,
-                stream=stream,
-                runtime=active_runtime,
-            )
+            if qwen4_exp_gdn_tile16_prefill_selected(
+                rows=rows,
+                num_k_heads=num_k_heads,
+                num_v_heads=num_v_heads,
+                head_dim=head_dim,
+            ):
+                # PF-5 production: exact token-tile-16 owner, bit-exact to
+                # the columnwarp parent at the binding Hk16/Hv48/D128 shape.
+                qwen4_exp_gdn_prefill_tiled16_f32(
+                    scratch.conv.ptr,
+                    scratch.gate.ptr,
+                    scratch.alpha.ptr,
+                    scratch.beta.ptr,
+                    dt_bias_ptr,
+                    a_ptr,
+                    norm_weight_ptr,
+                    recurrent_state_ptr,
+                    scratch.core.ptr,
+                    rows,
+                    num_k_heads,
+                    num_v_heads,
+                    head_dim,
+                    head_dim,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                qwen4_exp_gdn_prefill_columnwarps_f32(
+                    scratch.conv.ptr,
+                    scratch.gate.ptr,
+                    scratch.alpha.ptr,
+                    scratch.beta.ptr,
+                    dt_bias_ptr,
+                    a_ptr,
+                    norm_weight_ptr,
+                    recurrent_state_ptr,
+                    scratch.core.ptr,
+                    rows,
+                    num_k_heads,
+                    num_v_heads,
+                    head_dim,
+                    head_dim,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
         elif peer_prefill:
             compact_width = rows * num_k_heads * head_dim
             query_ptr = scratch.qkv.ptr
