@@ -186,11 +186,31 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
-On physical host `zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`),
-the pinned four-part Unsloth `UD-Q4_K_XL` artifact now runs through public
-`LLM.generate()` under the strict c1/greedy text scope. Frozen same-artifact
-llama.cpp PR #27742 full logits over all 10 canonical code/general-English/
-general-Japanese/mixed prompts measured:
+The current same-host comparator screen ran on the Framework Desktop (physical
+host `gfx1151`, machine ID `55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+
+395 / Radeon 8060S) with the verified four-part Unsloth `UD-Q4_K_XL` artifact,
+BF16 K/V, one warmup, and three measured requests per canonical case:
+
+| Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
+| --- | ---: | ---: | ---: | --- |
+| hipEngine production `c0cfdc3ef`, HIP | 118.44 / 19.92 | 117.79 / 19.22 | 95.14 / 15.21 | **12/12** |
+| Upstream llama.cpp `4d9176092`, HIP | 283.85 / 21.06 | 367.97 / 20.79 | 395.02 / 19.63 | **11/12** |
+| Upstream llama.cpp `4d9176092`, Vulkan | 230.35 / 24.94 | 305.47 / 24.59 | 357.44 / 23.53 | **11/12** |
+| halo-box master `b212548e0`, HIP | 265.69 / 21.02 | 368.90 / 20.50 | 356.62 / 18.63 | **12/12** |
+| halo-box master `b212548e0`, Vulkan | **298.97 / 24.92** | **369.72 / 24.52** | **402.46 / 23.47** | **12/12** |
+
+The two upstream lanes vary on `mixed_ja_en-p4096`. Every external lane also
+exceeds 2% maximum per-case coefficient of variation on at least one metric,
+so this is a screening result, not a frozen closure target. Do not compare
+these rates as old-to-new deltas against `zbook`. Exact commands, binary and
+model hashes, per-sample rates, and output hashes are in the
+[Framework comparator packet](results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json).
+
+Earlier implementation-calibration evidence was collected on physical host
+`zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`). The pinned artifact
+runs through public `LLM.generate()` under the strict c1/greedy text scope.
+Frozen same-artifact llama.cpp PR #27742 full logits over all 10 canonical
+code/general-English/general-Japanese/mixed prompts measured:
 
 | Artifact | Context scope | Mean / p95 / p99 / max KL ↓ | Top-1 | Tracked peak / after close |
 | --- | --- | ---: | ---: | ---: |
@@ -206,8 +226,8 @@ identical logits SHAs, and natural 16K improves to **341.177 s / 47.989 tok/s**
 with the full gate passing (prior chunk-256 steady rows were p508 58.466 and
 p1006 55.046 tok/s).
 
-The exact-token screening baseline now feeds all engines the same four category
-prompts at p512/p1024/p4096 and measures 128 decode transitions after each
+The earlier `zbook` exact-token screen fed all engines the same four category
+prompts at p512/p1024/p4096 and measured 128 decode transitions after each
 prefix:
 
 | Engine | p512 pp/tg128 | p1024 pp/tg128 | p4096 pp/tg128 | Repeatability |
