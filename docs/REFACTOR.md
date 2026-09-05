@@ -4817,15 +4817,16 @@ and the post-binder opt-out keep M1; strict keeps its original exact parent.
 Remove the environment selector when this runtime dispatch moves directly
 under the manifest; retain rollback and registered strict fallbacks.
 
-## Qwen4Exp register-state serial GDN admission
+## Qwen4Exp register-state serial GDN rollback
 
-- Separate `qwen4exp_sigmoid_register_prefill` kernel is retained after exact
-  primitive gates and a 6.62-7.50x Framework micro win. No runtime flag added.
-- Pending: invocation-verified whole-model state/KV/logit and 12-case A/B gates.
-  Wire the qualified shape through the profile/capability path after admission;
-  keep the registered serial strict fallback. Do not widen the suffix arithmetic.
-- Resource review accepts 256 VGPR/24-byte scratch at the kernel-screen stage;
-  whole-model performance remains the binding admission test.
-- Admission wiring uses `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`, default
-  off, only in the serial fallback branch at Hk16/Hv48/D128 and rows>=2.
-  Remove the selector after profile admission and rollback needs expire.
+- Production binds `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`; strict binds0.
+  The registry/shape-guarded serial branch uses Hk16/Hv48/D128 and rows>=2.
+  Suffix arithmetic and decode routes are unchanged.
+- Full72-trajectory admission passes exactly; prefill improves9.50-10.55% and
+  every request wall improves3.28-6.79%. Decode p4096 loses3.63% amid drift.
+  Retain the win under the owner's prefill-first direction and optimize decode
+  next; do not hide the adverse phase rows or claim thermal causality.
+- Keep the registered strict serial fallback. Remove the environment selector
+  when dispatch is owned directly by the manifest and rollback needs expire.
+- Resource review accepts256 VGPR/24-byte scratch with the measured whole-model
+  win. Avoid the rejected per-column/every8 scheduling barriers.

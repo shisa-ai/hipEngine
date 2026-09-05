@@ -27,6 +27,15 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
+The latest retained hipEngine serial-GDN A/B now measures prefill
+**145.49/143.10/134.32 tok/s** at p512/p1024/p4096 on this physical host.
+All72 trajectories are exact and every complete request improves3.28-6.79%
+over its same-residency parent. Decode p1024/p4096 loses0.45%/3.63%;
+retention follows the owner's prefill-first direction, with decode followup.
+This later A/B is not a refreshed cross-engine comparison; the pinned screen
+below retains its original revisions and uncertainty.
+[Latest hipEngine production packet](../benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
+
 Weighted tokens per second for prompt processing (PP) and generation (TG); one
 warmup and three measured requests per case.
 

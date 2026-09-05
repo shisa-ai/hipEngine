@@ -102,6 +102,11 @@ def _selection(
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128",
+            "qwen4exp_sigmoid_strict_prefill", "qwen4exp_sigmoid_strict_prefill",
+            "f32_state",
+        ),
+        _selection(
             "moe_linear", "prefill_rows_ge64_exact_grouped_q5_1_down",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
@@ -225,6 +230,12 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128",
+            "qwen4exp_sigmoid_register_prefill", "qwen4exp_sigmoid_strict_prefill",
+            "f32_state",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json",
+        ),
         _selection(
             "moe_linear", "prefill_rows_ge64_exact_grouped_q5_1_down",
             "selected_grouped_prefill_pair2_bf16_bf16_out",
@@ -382,6 +393,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
