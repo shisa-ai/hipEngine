@@ -4835,12 +4835,11 @@ under the manifest; retain rollback and registered strict fallbacks.
 
 - `selected_dual_grouped_pair2_bf16_bf16_out` is retained after exact
   primitive/actual-weight gates and1.345-1.440x tokens512 gate/up+SiLU wins.
-  No runtime selector yet; bundled output4 stays the default.
-- Next: registry-counted model wiring, full state/KV/logit gate and12-case A/B.
-  Promote supported winning shapes after admission and retain the registered
+  Full state/KV/logit and72-trajectory A/B admission now pass.
+- Production selects pair2 for supported rows>=64; retain the registered
   bundled/serial strict fallback. Do not reopen the rejected independent-team
   or wider serial-output sweeps: this path shares each activation load.
-- Admission selector `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL=1` is initially
-  default-off, guarded by rows>=64, supported K and registry availability.
+- Selector `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL` is production1/strict0,
+  guarded by rows>=64, supported K and registry availability.
   Remove the environment selector when the admitted profile owns dispatch
   directly and rollback needs expire; retain smaller-row/bundled fallbacks.

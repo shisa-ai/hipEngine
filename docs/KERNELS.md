@@ -810,10 +810,12 @@ two output columns with shared original-BF16 activation loads, preserving
 each128-lane K sequence, wave reduction and BF16 gate/up boundary. The actual
 Q4 gate/up+SiLU screen at tokens512 measures25.155->18.696 ms (1.345x);
 an independent layer4 skewed map measures26.412->18.344 ms (1.440x).
-gfx1151 trace:88 VGPR,4608-byte LDS, zero scratch. The bundled parent stays
-the model default until invocation-verified state/KV/logit and full A/B
-admission; no arithmetic scope or runtime flag is added by this kernel unit.
-Evidence: `2026-09-05-framework-qwen4exp-q4-pair-reuse.json`.
+gfx1151 trace:88 VGPR,4608-byte LDS, zero scratch. Production now selects pair2
+at rows>=64 and supported K; smaller rows keep bundled output4, and strict
+keeps its original exact owner. Full72-trajectory A/B is exact and improves
+prefill5.44-5.90%; all12 request walls improve. Decode p4096 loses1.63% amid
+drift, retained under the owner's prefill-first direction. Evidence:
+`2026-09-05-framework-qwen4exp-q4-pair-production.json`.
 
 The Qwen4Exp `attention/qwen4_exp_qsa.{hip,py}` family registers a separate
 `strict_h256_wave_rows_spans` candidate for D=256 paged BF16 sparse rows.

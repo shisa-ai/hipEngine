@@ -113,7 +113,13 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
             "gguf_q5_1",
         ),
         _selection(
-            "moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up",
+            "moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "gguf_q4_k",
+        ),
+        _selection(
+            "moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
@@ -244,11 +250,18 @@ def _production_selections() -> tuple[VariantSelection, ...]:
             evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json",
         ),
         _selection(
-            "moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up",
+            "moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
             evidence="benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json",
+        ),
+        _selection(
+            "moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up",
+            "selected_dual_grouped_pair2_bf16_bf16_out",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "gguf_q4_k",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json",
         ),
         _selection(
             "qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16",
@@ -392,6 +405,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
