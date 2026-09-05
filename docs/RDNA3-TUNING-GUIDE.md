@@ -1832,7 +1832,8 @@ Start with these documents for details deliberately omitted here:
   promotion rules.
 - [LESSONS-LEARNED.md](LESSONS-LEARNED.md): detailed case studies, including
   negative results.
-- [SOL-OPTIMIZATION.md](SOL-OPTIMIZATION.md): speed-of-light campaign method.
+- [SOL-OPTIMIZATION.md](SOL-OPTIMIZATION.md): ordered gfx1151 PARO/GGUF
+  optimization ledger; partially superseded by `CONCURRENCY.md`.
 - [GGUF-PREFILL-OPTIMIZATION.md](GGUF-PREFILL-OPTIMIZATION.md): staged prefill
   optimization.
 - [STRIX-HALO-LLAMACPP-REVIEW.md](STRIX-HALO-LLAMACPP-REVIEW.md): comparative
