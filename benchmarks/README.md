@@ -384,6 +384,19 @@ transport. Server c9/c13 are declared grouped execution, not native widths.
 All 189 server request rows and 24,192 generated IDs pass the exact gate.
 Evidence: [`context-scoped C8 server refresh`](results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json).
 
+Two further exact width-8 owners entered this backend's direct packed-AR
+decode route on 2026-09-05, each qualified on this same W7900 host at 512/128
+against the route immediately preceding it: an exact Q8T16 qkv+gate pair
+rowtile moves native c8 decode 275.244 → 282.160 tok/s (+2.51%), and the exact
+Q4 selected gate/up duplicate-expert pair-reuse owner then moves it
+284.772 → 298.924 tok/s (+4.97%). Both are on by default with no environment
+flag and engage only at physical width 8; narrower widths keep their existing
+per-row owners. Both pass candidate-versus-rollback state and lifecycle
+differentials and a width-8 kernel census with exact tokens. The table above
+uses the separate server-refresh protocol and predates both changes.
+Evidence: [`Q8T16 pair rowtile`](results/2026-09-05-gfx1100-gguf-q8t16-pair-rowtile-c8-retained.json),
+[`Q4 selected pair reuse`](results/2026-09-05-gfx1100-gguf-q4-selected-pairreuse-c8-retained.json).
+
 ### Maple-Preview 2-bit on Radeon 8060S
 
 | Interface | c1 | c2 | c4 | c8 | Scope |
