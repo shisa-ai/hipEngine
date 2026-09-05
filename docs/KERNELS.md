@@ -779,6 +779,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+The Qwen4Exp Q5_1 selected family registers an exact output-pair prefill
+candidate that reuses BF16 activation loads across two output columns.
+It preserves separate logical256 accumulations and reuses one LDS reduction
+arena sequentially. M1 remains the registered parent and production owner
+until complete-model admission.
+
 The Q4_K selected-prefill family has a separately registered exact bundled
 publication sibling of its row8/output4/expertgrid64 owner. It preserves
 per-row FMA and wave/serial-wave reduction order while publishing all

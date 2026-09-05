@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 Framework Qwen4Exp Q5_1 pair] Standalone two-bank down tokens512 ~54.5→43.5 ms (-20.20%, 1.253x), exact outputs, 11 tests and cached trace pass; activation reuse, runtime pending. Combined production code-p4096 diagnostic measures121.14 pp/s separately. `benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair.json`.
+
 - [2026-09-05 Framework exact prefill promotion] Owner accepts measured hot-decode tradeoffs and retains QSA page256 plus bundled-Q4 production defaults with strict fallbacks. Q4 same-residency pp512/1024/4096 improves 123.34→127.62 (+3.47%), 121.47→125.33 (+3.18%), 97.34→99.72 (+2.45%); QSA separately measured +19.29% at p4096. Decode losses remain explicit debt; no additive/combined rate claim. `benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json`.
 
 - [2026-09-05 Framework Qwen4Exp Q4 bundle] Standalone actual gate/up+SiLU tokens512 30.385→24.967 ms (-17.83%), exact outputs, 11 tests and cached trace pass; bundle wave publication removes repeated barriers, whole-model admission pending. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-bundle.json`.
