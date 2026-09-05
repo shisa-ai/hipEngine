@@ -32,6 +32,10 @@ SCRIPT = _load_script_module()
         ("MUL_MAT_ID q5_K m=2048 n=8 k=512", "llama_selected_q5"),
         ("MUL_MAT_ID_MUL MUL_MAT_ID_VEC q5_K m=2048 n=8 k=512", "llama_selected_q5"),
         ("MUL_MAT_ID q6_K m=2048 n=8 k=512", "llama_selected_q6"),
+        ("MUL_MAT_ID q5_1 m=2560 n=10 k=640", "llama_selected_q51"),
+        ("MUL_MAT_ID_MUL MUL_MAT_ID_VEC q5_1 m=2560 n=10 k=640", "llama_selected_q51"),
+        ("MUL_MAT_ID q8_0 m=2560 n=10 k=640", "llama_selected_q8"),
+        ("MUL_MAT_ID_VEC f32 m=2560 n=10 k=640", "llama_selected_other"),
         ("MUL_MAT q8_0 m=2048 n=1 k=4096", "llama_dense_q8"),
         ("MUL_MAT_ADD MUL_MAT_VEC q8_0 m=2048 n=1 k=4096", "llama_dense_q8"),
         ("MUL_MAT_VEC q6_K m=248320 n=1 k=2048", "llama_lm_head"),
@@ -75,6 +79,7 @@ def test_parse_and_aggregate_sections(tmp_path: Path) -> None:
 
     payload = SCRIPT.build_summary(log, label="unit", command="llama-bench", discard_first_sections=1, top=10)
     assert payload["schema"] == SCRIPT.SCHEMA
+    assert payload["classifier_version"] == SCRIPT.CLASSIFIER_VERSION
     assert payload["sections_found"] == 2
     assert payload["selected_section_count"] == 1
     assert payload["total_gpu_ms"] == pytest.approx(0.042)
