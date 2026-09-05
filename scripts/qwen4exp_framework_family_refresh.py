@@ -47,6 +47,16 @@ SHARED_SLOTS = {"shared_gate", "shared_up", "shared_down", "shared_expert_gate"}
 SHARED_WEIGHTS = re.compile(r"(?:^|\.)ffn_(?:gate|up|down|gate_inp)_shexp\.weight$")
 GR_SLOTS = re.compile(r"(?:hc_(?:attn|ffn)|head_hc)_(?:down|up|inject)$")
 GR_WEIGHTS = re.compile(r"(?:^|\.)(?:hc_(?:attn|ffn)|output_hc)_(?:down|up|inject)\.weight$")
+OVERVIEW_CASES = {
+    "code-p512",
+    "code-p1024",
+    "code-p4096",
+    "general_en-p4096",
+    "general_ja-p4096",
+    "mixed_ja_en-p4096",
+}
+OVERVIEW_START = "<!-- BEGIN FRAMEWORK FAMILY REFRESH -->"
+OVERVIEW_END = "<!-- END FRAMEWORK FAMILY REFRESH -->"
 
 
 def model_identity(root):
@@ -577,6 +587,10 @@ def join_captures(hip, vk):
             or other["decode"]["response"]["prompt_n"] != 1
         ):
             raise ValueError("decode context mismatch")
+        if phase == "decode":
+            root = row["raw"]["contexts"][0]["root_token_id"]
+            if other["prefill"]["response"]["output_token_ids"] != [root]:
+                raise ValueError("decode appended-root token mismatch")
         left = row["profile"]
         owners = []
         for owner in sorted(OWNERS):
@@ -605,6 +619,9 @@ def join_captures(hip, vk):
         "taxonomy": TAXONOMY,
         "performance_claim": False,
         "comparisons": comparisons,
+        "host": hip["host"],
+        "fixture_sha256": hip["fixture_sha256"],
+        "model_identity": hip["model_identity"],
         "limits": [
             "HIP kernel durations versus Vulkan query intervals: semantic alignment, not identical instruments.",
             "MoE is the complete FFN including shared projections and router; fine source roles remain available.",
@@ -613,6 +630,155 @@ def join_captures(hip, vk):
             "Fixed-live decode profiles are not tg128-average family costs.",
         ],
     }
+
+
+def family_overview(result, starting):
+    expected = {(case, phase) for case in OVERVIEW_CASES for phase in ("prefill", "decode")}
+    keys = [(c["id"], c["phase"]) for c in result["comparisons"]]
+    if len(keys) != len(set(keys)) or set(keys) != expected:
+        raise ValueError("overview requires exactly all six case/phase pairs")
+    if starting["host"]["machine_id"] != result["host"]["machine_id"]:
+        raise ValueError("starting snapshot physical host mismatch")
+    if starting["fixture"]["sha256"] != result["fixture_sha256"]:
+        raise ValueError("starting snapshot fixture mismatch")
+    case = next(c for c in starting["cases"] if c["case"]["id"] == "code-p4096")
+    roles = case["roles"]
+    normalized = normalize_hip_roles(
+        {
+            "roles": roles,
+            "unattributed_ms": 0,
+            "attributed_ms": sum(r["ms"] for r in roles),
+            "window_ms": case["profile_wall_seconds"][0] * 1000,
+        }
+    )
+    current = next(
+        c for c in result["comparisons"] if (c["id"], c["phase"]) == ("code-p4096", "prefill")
+    )
+    history = []
+    for row in current["owners"]:
+        owner, ms = row["owner"], row["hipengine_ms"]
+        total, wall = current["hipengine_device_ms"], current["hipengine_profiled_window_ms"]
+        history.append(
+            {
+                "owner": owner,
+                "starting_ms": normalized["owner_ms"].get(owner, 0),
+                "current_ms": ms,
+                "device_share": ms / total,
+                "device_zero_cost_ceiling": total / (total - ms),
+                "wall_zero_cost_ceiling": wall / (wall - ms),
+            }
+        )
+    aggregate = {}
+    for phase in ("prefill", "decode"):
+        cases = [
+            c for c in result["comparisons"] if c["phase"] == phase and c["id"].endswith("p4096")
+        ]
+        rows = []
+        for owner in sorted(OWNERS):
+            selected = [next(r for r in c["owners"] if r["owner"] == owner) for c in cases]
+            he = sum(r["hipengine_ms"] for r in selected) / len(selected)
+            vk = sum(r["vulkan_ms"] for r in selected) / len(selected)
+            rows.append(
+                {
+                    "owner": owner,
+                    "hipengine_ms": he,
+                    "vulkan_ms": vk,
+                    "hip_over_vulkan": he / vk if vk else None,
+                    "difference_ms": he - vk,
+                }
+            )
+        aggregate[phase] = {
+            "owners": rows,
+            "case_count": len(cases),
+            "hipengine_device_ms": sum(r["hipengine_ms"] for r in rows),
+            "vulkan_device_ms": sum(r["vulkan_ms"] for r in rows),
+        }
+    return {
+        "history_code_p4096": history,
+        "starting_source": starting["source"],
+        "current_code_device_ms": current["hipengine_device_ms"],
+        "current_code_profiled_wall_ms": current["hipengine_profiled_window_ms"],
+        "four_category_p4096": aggregate,
+    }
+
+
+def render_overview(overview):
+    labels = {
+        "moe": "MoE/FFN (routed + shared)",
+        "gr_read": "GR projections + read/mix",
+        "linear": "Non-FFN, non-GR linear",
+        "qsa": "QSA",
+        "gdn": "GDN",
+        "ple": "PLE",
+        "boundary": "Boundary / residual combine",
+    }
+    lines = [
+        "#### Generated Framework Family Tables",
+        "",
+        f"Taxonomy: `{TAXONOMY}`. Same Framework host and UD-Q4_K_XL/BF16 KV.",
+        "Device timings are diagnostic: HIP kernel sums versus serial Vulkan query intervals.",
+        "Use the logger-off baseline table for throughput and parity factors.",
+        "",
+        "**Starting versus current, exact code-p4096 fixture:**",
+        "",
+        "| Owner | Framework arrival (ms) | Current (ms) | Device share | Device zero-cost ceiling | Wall zero-cost ceiling |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in sorted(overview["history_code_p4096"], key=lambda r: -r["current_ms"]):
+        lines.append(
+            f"| {labels[row['owner']]} | {row['starting_ms']:,.3f} | {row['current_ms']:,.3f} | "
+            f"{100 * row['device_share']:.2f}% | {row['device_zero_cost_ceiling']:.3f}x | {row['wall_zero_cost_ceiling']:.3f}x |"
+        )
+    lines += [
+        "",
+        (
+            f"Current kernel sum {overview['current_code_device_ms']:,.3f} ms; "
+            f"profiled wall {overview['current_code_profiled_wall_ms']:,.3f} ms."
+        ),
+        "Ceilings are sensitivity bounds, not expected realizable speedups. Snapshot deltas",
+        "are historical attribution, not replacements for each retained A/B.",
+        "",
+    ]
+    for phase, group in overview["four_category_p4096"].items():
+        lines += [
+            f"**{phase.title()}, four-category p4096 mean (ms):**",
+            "",
+            "| Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+        for row in sorted(group["owners"], key=lambda r: -r["difference_ms"]):
+            ratio = (
+                f"{row['hip_over_vulkan']:.3f}x" if row["hip_over_vulkan"] is not None else "n/a"
+            )
+            lines.append(
+                f"| {labels[row['owner']]} | {row['hipengine_ms']:,.3f} | {row['vulkan_ms']:,.3f} | "
+                f"{ratio} | {row['difference_ms']:+,.3f} |"
+            )
+        lines += [
+            (
+                f"| **Total device time** | **{group['hipengine_device_ms']:,.3f}** | "
+                f"**{group['vulkan_device_ms']:,.3f}** | | |"
+            ),
+            "",
+        ]
+    lines += [
+        "Decode is a fixed-live4097 diagnostic, averaged over three restored HIP repetitions",
+        "and one Vulkan appended-root query per category, not a tg128 trajectory average.",
+        "Negative differences are not automatically transferable savings; intervals, fusion",
+        "and dispatch instrumentation differ. Every timestamp has one semantic owner.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def update_overview_block(path, text):
+    current = path.read_text()
+    if current.count(OVERVIEW_START) != 1 or current.count(OVERVIEW_END) != 1:
+        raise ValueError("document must contain exactly one family refresh marker pair")
+    start, end = current.index(OVERVIEW_START), current.index(OVERVIEW_END)
+    if end <= start:
+        raise ValueError("family refresh marker order invalid")
+    path.write_text(current[:start] + OVERVIEW_START + "\n" + text + "\n" + current[end:])
 
 
 def refresh_vulkan_sections(capture):
@@ -916,6 +1082,9 @@ def main():
     join.add_argument("--reference", type=Path, required=True)
     join.add_argument("--output", type=Path, required=True)
     join.add_argument("--markdown", type=Path)
+    join.add_argument("--starting", type=Path)
+    join.add_argument("--overview-markdown", type=Path)
+    join.add_argument("--update-doc", type=Path)
     baseline = sub.add_parser("baselines")
     baseline.add_argument(
         "--queue",
@@ -942,9 +1111,18 @@ def main():
         result["sources"] = {
             str(p): digest(p) for p in (args.hipengine, args.vulkan, args.reference)
         }
+        if args.starting:
+            result["overview"] = family_overview(result, json.loads(args.starting.read_text()))
+            result["sources"][str(args.starting)] = digest(args.starting)
+        if (args.overview_markdown or args.update_doc) and not args.starting:
+            parser.error("overview rendering requires --starting")
         args.output.write_text(json.dumps(result, indent=2) + "\n")
         if args.markdown:
             args.markdown.write_text(render_comparison(result))
+        if args.overview_markdown:
+            args.overview_markdown.write_text(render_overview(result["overview"]))
+        if args.update_doc:
+            update_overview_block(args.update_doc, render_overview(result["overview"]))
 
 
 if __name__ == "__main__":

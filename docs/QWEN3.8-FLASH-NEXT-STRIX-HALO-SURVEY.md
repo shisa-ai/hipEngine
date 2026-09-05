@@ -43,6 +43,14 @@ rates, not statistical closure. Vulkan target factors at p4096 are2.997x
 prefill and1.700x decode. [Full evidence and variance](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
 Older snapshots below retain their named revisions; do not mix their cells.
 
+The family refresh is also complete: six exact prompt cases and both phases,
+using one versioned taxonomy with100% ownership coverage. Four-category
+p4096 prefill HE/Vulkan ratios are3.30x FFN,5.61x non-GR linear,2.54x GR,
+2.97x QSA and0.56x GDN. Decode's largest positive device-time difference is
+QSA16.94 versus3.16ms. These are diagnostic HIP kernel/Vulkan query costs,
+not logger-off rates or guaranteed savings.
+[Generated family tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots).
+
 The newer Q4 pair admission measures combined-stack prefill
 **153.78/151.21/141.30 tok/s**, with all72 trajectories exact and all request
 walls improved. Its A/B decode is19.383/18.512/12.899 tok/s with drift.

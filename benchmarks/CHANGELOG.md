@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 UTC Framework semantic family refresh] Complete six-case prefill/decode alignment with100% owner coverage and instrumentation prefix parity. P4096 four-category HE/Vulkan costs: FFN14.418/4.372s, non-GR linear5.716/1.019s, GR4.339/1.707s, QSA1.920/0.645s; decode QSA16.942/3.161ms. Diagnostic ranking, not a new speedup; generated starting/current/target tables replace stale cross-host bucket estimates. `benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json`.
+
 - [2026-09-05 UTC Framework frozen baselines] Combined hipEngine PP153.96/152.30/142.03 and TG19.38/18.75/14.42 versus halo-box Vulkan PP316.28/391.68/425.72 and TG25.27/25.30/24.51 at512/1K/4K; all108 samples repeat outputs, clean teardown,36m18s. Same-protocol screening refresh, not old-to-new speedup: all lanes fail at least one2% CV metric. `benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json`.
 
 - [2026-09-05 UTC Framework Qwen4Exp Q4 pair production] Prefill p512145.21->153.78 (+5.90%), p1024142.82->151.21 (+5.87%), p4096134.01->141.30 tok/s (+5.44%); all72 trajectories exact, all12 request walls1.67-3.90% faster. Decode p1024/p4096 -0.23%/-1.63% retained as explicit debt. A/B34m53s, default state/KV gate passes. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json`.
