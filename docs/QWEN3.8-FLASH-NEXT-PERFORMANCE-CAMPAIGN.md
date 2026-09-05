@@ -34,7 +34,8 @@ to **20.913 ms/token**. This is a retained production improvement, not section
 and its section-6 queue govern the next prefill units: routed MoE (including
 selected Q8/Q5_K tails), dense/GR, D=256 sparse QSA, GDN, then batch-policy and
 routing/combine cleanup. Correct binding geometry before promotion: GDN is
-Hk=16/Hv=48/D=128; the new tile-16 candidate accepts Hv=32 only. Q8 MMQ already
+Hk=16/Hv=48/D=128; `617038db9` repairs the tile-16 candidate's former Hv32-only
+envelope, while live-route one-residency A/B remains pending. Q8 MMQ already
 uses 128×128 matrix tiles. Historical mixed-bucket ratios are not matched
 kernel ratios. This source-only reprioritization adds no benchmark and changes
 no section-6 closure target, representation or quality gate.
