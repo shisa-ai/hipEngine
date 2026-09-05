@@ -73,11 +73,15 @@ DEFAULT_HISTORICAL_SOURCE = Path(
 POLICY_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_ALL"
 POLICY_MIN_ROWS_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS"
 POLICY_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
+PAIR_MIN_ROWS_CAPABILITY = "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS"
+PAIR_POLICY_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
+PAIR_COL8_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
 ROUTER_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
 ROUTER_PERSISTENT_ENV = "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER"
 _router_candidate_enabled = False
 DEFAULT_GDN_MODE = "chain_lds32_direct_nonvolatile"
 ROUTE_PROFILE_Q8T16 = "q8t16_candidate"
+ROUTE_PROFILE_Q8T16_PAIR = "q8t16_pair_candidate"
 ROUTE_PROFILE_CURRENT_DIRECT = "current_package_direct"
 SUPPORTED_WIDTHS = frozenset(range(1, 9))
 DIRECT_STATIC_WIDTHS = frozenset({3, 5, 6, 7})
@@ -289,9 +293,38 @@ def _current_package_policy() -> Iterator[None]:
 
 
 @contextlib.contextmanager
+def _pair_package_policy() -> Iterator[None]:
+    """Evaluate the package pair-rowtile floor with diagnostic envs unset.
+
+    The candidate arm must reach the route exactly the way production does:
+    through the backend package ``GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS``
+    floor, never through the broad all-projection boolean or the pair env
+    overrides. The env keys are *unset* rather than set to ``0`` because an
+    explicit ``0`` overrides the package floor instead of deferring to it.
+    """
+
+    keys = (POLICY_ENV, PAIR_POLICY_ENV, PAIR_COL8_ENV)
+    previous = {key: os.environ.get(key) for key in keys}
+    try:
+        for key in keys:
+            os.environ.pop(key, None)
+        yield
+    finally:
+        for key, prior in previous.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
+
+
+@contextlib.contextmanager
 def _candidate_route_policy(route_profile: str) -> Iterator[None]:
     if str(route_profile) == ROUTE_PROFILE_CURRENT_DIRECT:
         with _current_package_policy():
+            yield
+        return
+    if str(route_profile) == ROUTE_PROFILE_Q8T16_PAIR:
+        with _pair_package_policy():
             yield
         return
     if str(route_profile) != ROUTE_PROFILE_Q8T16:
@@ -587,6 +620,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         if not widths or any(width not in {4, 8} for width in widths):
             raise CalibrationError("Q8T16 candidate widths must be a non-empty subset of 4,8")
         dynamic_schedule = DEFAULT_DYNAMIC_SCHEDULE
+    elif route_profile == ROUTE_PROFILE_Q8T16_PAIR:
+        if not widths or any(width not in {4, 8} for width in widths):
+            raise CalibrationError("Q8T16 pair candidate widths must be a non-empty subset of 4,8")
+        dynamic_schedule = DEFAULT_DYNAMIC_SCHEDULE
     elif route_profile == ROUTE_PROFILE_CURRENT_DIRECT:
         if not widths or any(width not in DIRECT_STATIC_WIDTHS for width in widths):
             raise CalibrationError(
@@ -641,6 +678,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     package_value = getattr(package, POLICY_CAPABILITY)
     package_min_rows = int(getattr(package, POLICY_MIN_ROWS_CAPABILITY, 0))
+    if route_profile == ROUTE_PROFILE_Q8T16_PAIR:
+        pair_min_rows = int(getattr(package, PAIR_MIN_ROWS_CAPABILITY, 0))
+        if pair_min_rows != 8:
+            raise CalibrationError(
+                f"pair candidate requires package {PAIR_MIN_ROWS_CAPABILITY} == 8, got {pair_min_rows}"
+            )
     if route_profile == ROUTE_PROFILE_Q8T16 and package_value is not False:
         raise CalibrationError(
             f"current package {POLICY_CAPABILITY} must be False, got {package_value!r}"
@@ -863,6 +906,12 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             ROUTER_COOP_ENV: "unset: current package default",
             ROUTER_PERSISTENT_ENV: "unset: current package default",
         }
+        if route_profile == ROUTE_PROFILE_Q8T16_PAIR
+        else {
+            POLICY_ENV: "unset: current package default",
+            ROUTER_COOP_ENV: "unset: current package default",
+            ROUTER_PERSISTENT_ENV: "unset: current package default",
+        }
         if current_direct
         else {
             POLICY_ENV: (
@@ -881,7 +930,18 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         }
     )
     candidate_variants: Mapping[str, Any] = (
-        {"source": "current_package_execution_manifests"}
+        {
+            "source": "package_pair_floor",
+            "c1": {"pair": "t16_dual_gemv_decode_bf16_bf16_out", "single": "t16_gemv_decode_bf16_bf16_out", "triple": "t16_triple_gemv_decode_bf16_bf16_out"},
+            "c2_c4": {"pair": "t16_dual_gemv_decode_bf16_bf16_out", "single": "t16_gemv_decode_bf16_bf16_out", "triple": "t16_triple_gemv_decode_bf16_bf16_out"},
+            "c8": {
+                "pair": "t16_dual_gemv_decode_rowtile4_col8_bf16_bf16_out",
+                "single": "t16_gemv_decode_bf16_bf16_out",
+                "triple": "t16_triple_gemv_decode_bf16_bf16_out",
+            },
+        }
+        if route_profile == ROUTE_PROFILE_Q8T16_PAIR
+        else {"source": "current_package_execution_manifests"}
         if current_direct
         else candidate_variant_manifest(
             include_router_candidate=bool(args.include_router_candidate)
@@ -998,7 +1058,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument(
         "--route-profile",
-        choices=(ROUTE_PROFILE_Q8T16, ROUTE_PROFILE_CURRENT_DIRECT),
+        choices=(
+            ROUTE_PROFILE_Q8T16,
+            ROUTE_PROFILE_Q8T16_PAIR,
+            ROUTE_PROFILE_CURRENT_DIRECT,
+        ),
         default=ROUTE_PROFILE_Q8T16,
     )
     parser.add_argument("--widths", default="4,8")
