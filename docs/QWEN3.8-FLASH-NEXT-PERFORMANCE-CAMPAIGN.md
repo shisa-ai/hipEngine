@@ -53,6 +53,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 pair production (2026-09-05 UTC):** clean `9ed31059d` full12-case A/B
+passes all72 exact trajectories and improves prefill
+**145.21->153.78 (+5.90%)**, **142.82->151.21 (+5.87%)**,
+**134.01->141.30 tok/s (+5.44%)** at p512/p1024/p4096.
+All12 complete-request walls improve1.67-3.90%. Decode changes
+-0.01%/-0.23%/-1.63% amid drift remain explicit under the prefill-first
+direction. Production selects pair2 at rows>=64; smaller rows and strict
+retain their parents. Elapsed34m53s and zero final ownership.
+[Evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json).
+**Next priority, owner request:** freeze this combined default, rerun Framework
+baselines against halo-box Vulkan, and commit a shared-taxonomy family refresh
+using Vulkan timestamp logging plus hipEngine roles before further tuning.
+
 **Post-GDN refresh / next Q4 kernel (2026-09-05 UTC):** full p4096 role
 attribution is100%; the GDN owner now costs0.780s, including0.473s serial
 register recurrence, while routed MoE still costs15.512s. Logits match the

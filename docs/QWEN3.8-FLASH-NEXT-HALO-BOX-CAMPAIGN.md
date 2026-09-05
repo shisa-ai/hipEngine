@@ -77,6 +77,16 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+Latest Q4 pair admission measures combined-stack prefill
+**153.78/151.21/141.30 tok/s** at p512/p1024/p4096, with all72 trajectories
+exact. Decode measures19.383/18.512/12.899 tok/s in that A/B, with explicit
+drift and incremental losses of0.01%/0.23%/1.63%; do not treat these as a
+fresh same-session comparison against the earlier Vulkan table.
+[Q4 pair production](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json).
+The owner has requested a frozen combined-default Framework baseline and
+shared-taxonomy family refresh against halo-box Vulkan. This is the next
+campaign priority; historical `zbook`/upstream-HIP buckets are not substitutes.
+
 **Later retained hipEngine update (2026-09-05 UTC):** exact serial-prefix
 register GDN on top of the retained Q51/Q4/QSA stack measures prefill
 **145.49/143.10/134.32 tok/s** at p512/p1024/p4096 in the full-category

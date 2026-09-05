@@ -121,7 +121,7 @@ def main():
         "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
     }
     try:
-        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register"}:
+        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair"}:
             assert os.environ[flag] == "1", "production must select the retained route without an override"
         if args.route_package == "prefill-bundle":
             assert os.environ[flag] == "1"
