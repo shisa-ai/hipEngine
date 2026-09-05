@@ -153,6 +153,12 @@ post-closure production gate reviewed the retained grouped-Q6 DP4A candidate on
 the final stack (**95.708→97.674 tok/s, +2.05%**, both orders and every slice
 positive), then promoted the exact capacity-8 C8/K3 key; its clean automatic
 route validation is **98.643 tok/s (1.1178x AR)** with 10/10 exact cells.
+The direct packed-AR decode route now uses the singleton-indexed GDN
+recurrence on this backend (retained 2026-09-05 after independent W7900
+qualification): direct graph decode at 512/128 improves **c2 +7.40%, c4
++6.06%, native C8 +5.91%** with exact trajectories and byte-identical state
+differentials ([singleton GDN retention](results/2026-09-05-gfx1100-gdn-singleton-retained.json)).
+The server-protocol rows above predate that route change.
 [`C8 automatic promotion`](results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json);
 [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
