@@ -206,6 +206,19 @@ these rates as old-to-new deltas against `zbook`. Exact commands, binary and
 model hashes, per-sample rates, and output hashes are in the
 [Framework comparator packet](results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json).
 
+The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
+role coverage and traced/unprofiled final-logit equality:
+
+| Diagnostic | code-p512 | code-p4096 |
+| --- | ---: | ---: |
+| Unprofiled prefill wall (s) | 4.306 | 43.046 |
+| Routed MoE device time (s) | 2.402 | 19.024 |
+| QSA device time (s) | 0.042 | 8.983 |
+| GDN device time (s) | 0.489 | 3.906 |
+
+No optimization or new paired comparator verdict is claimed.
+[Owner refresh](results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json).
+
 Earlier implementation-calibration evidence was collected on physical host
 `zbook` (Ryzen AI Max+ Pro 395 / Radeon 8060S, `gfx1151`). The pinned artifact
 runs through public `LLM.generate()` under the strict c1/greedy text scope.
