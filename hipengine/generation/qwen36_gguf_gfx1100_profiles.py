@@ -24,6 +24,7 @@ VERIFY_CAPTURE_PREFILL_GDN_ENV = "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN"
 VERIFY_F32_RESIDUAL_ENV = "HIPENGINE_GGUF_VERIFY_F32_RESIDUAL"
 VERIFY_F32_POST_NORM_ENV = "HIPENGINE_GGUF_VERIFY_F32_POST_NORM"
 Q4_FUSED_R28_ENV = "HIPENGINE_GGUF_Q4_T16_DUAL_SILU_PRODUCTION_R28"
+Q6_DP4A_GROUPED_ENV = "HIPENGINE_C8_Q6_DP4A_GROUPED"
 
 _GDN_CHAIN_VARIANT = "bf16_c1_exact_state_rows_tloop"
 _GDN_REGISTRY_QUANT = "gguf_qwen35"
@@ -44,26 +45,51 @@ _MOE_CANDIDATE_EVIDENCE = (
     "benchmarks/results/2026-08-27-w7900-35b-moe-generation2-mtp-c1-owner.json"
 )
 
+# Process-global profile binding must not mistake a value written by an earlier
+# LLM instance for a user-supplied rollback on the next instance.
+_PROFILE_BOUND_ENV: dict[str, str] = {}
+
+
+def _bind_profile_env(name: str, value: str) -> None:
+    os.environ[name] = value
+    _PROFILE_BOUND_ENV[name] = value
+
+
+def _explicit_profile_env(name: str) -> str | None:
+    value = os.environ.get(name)
+    if value is None or _PROFILE_BOUND_ENV.get(name) == value:
+        return None
+    return value
+
 
 def _strict_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     del generator, resolved
-    os.environ[FP16_RECURRENT_STATE_ENV] = "0"
-    os.environ[VERIFY_CAPTURE_PREFILL_GDN_ENV] = "1"
-    os.environ[VERIFY_F32_RESIDUAL_ENV] = "0"
-    os.environ[VERIFY_F32_POST_NORM_ENV] = "0"
-    os.environ[Q4_FUSED_R28_ENV] = "0"
+    _bind_profile_env(FP16_RECURRENT_STATE_ENV, "0")
+    _bind_profile_env(VERIFY_CAPTURE_PREFILL_GDN_ENV, "1")
+    _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "0")
+    _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "0")
+    _bind_profile_env(Q4_FUSED_R28_ENV, "0")
+    _bind_profile_env(Q6_DP4A_GROUPED_ENV, "0")
 
 
 def _dense_production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
-    explicit_r28 = os.environ.get(Q4_FUSED_R28_ENV)
+    explicit_r28 = _explicit_profile_env(Q4_FUSED_R28_ENV)
+    explicit_q6_dp4a = _explicit_profile_env(Q6_DP4A_GROUPED_ENV)
     _strict_binder(generator, resolved)
-    os.environ[Q4_FUSED_R28_ENV] = "1" if explicit_r28 is None else explicit_r28
+    _bind_profile_env(
+        Q4_FUSED_R28_ENV,
+        "1" if explicit_r28 is None else explicit_r28,
+    )
+    _bind_profile_env(
+        Q6_DP4A_GROUPED_ENV,
+        "1" if explicit_q6_dp4a is None else explicit_q6_dp4a,
+    )
 
 
 def _production_binder(generator: Any, resolved: ResolvedRuntimeProfile) -> None:
     _strict_binder(generator, resolved)
-    os.environ[VERIFY_F32_RESIDUAL_ENV] = "1"
-    os.environ[VERIFY_F32_POST_NORM_ENV] = "1"
+    _bind_profile_env(VERIFY_F32_RESIDUAL_ENV, "1")
+    _bind_profile_env(VERIFY_F32_POST_NORM_ENV, "1")
 
 
 def _key(profile: ExecutionProfile, *, model: str) -> RuntimeProfileKey:
@@ -135,7 +161,7 @@ def register_qwen36_dense_gguf_gfx1100_profiles() -> bool:
         model=QWEN36_DENSE_GGUF_MODEL,
         profile=ExecutionProfile.PRODUCTION,
         evidence=_DENSE_STRICT_EVIDENCE,
-        graph_policy="specdec2_eager_c1_exact",
+        graph_policy="specdec2_eager_c1_exact_qwen38_c8_q6_dp4a",
         binder=_dense_production_binder,
         selections=(
             VariantSelection(
@@ -190,6 +216,7 @@ __all__ = [
     "QWEN36_DENSE_GGUF_MODEL",
     "QWEN36_DENSE_GGUF_QUANT",
     "Q4_FUSED_R28_ENV",
+    "Q6_DP4A_GROUPED_ENV",
     "QWEN36_MOE_GGUF_MODEL",
     "VERIFY_CAPTURE_PREFILL_GDN_ENV",
     "VERIFY_F32_POST_NORM_ENV",

@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "kind": "w7900_qwen38_q4km_k3_c8_automatic_promotion",
+  "date": "2026-09-05",
+  "status": "retained_default",
+  "performance_claim": true,
+  "decision": "Promote production C8/K3 automatic MTP for the exact Qwen3.8-27B Q4_K_M W7900/gfx1100 key. The reviewed grouped-Q6 DP4A owner remains a fresh +2.054% composition win on final campaign HEAD; automatic scope misses remain K0.",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.53211-3d9ef42",
+    "visible_device": "0"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "artifact_size_bytes": 17106773984,
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+    "kv": "BF16"
+  },
+  "protocol": {
+    "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "heldouts": 4,
+    "width": 8,
+    "resident_capacity": 8,
+    "candidate_budget": 3,
+    "output_horizon_tokens": 24,
+    "max_sequence_length": 1024,
+    "batch_window_ms": 20.0,
+    "sampling": "raw greedy",
+    "timing": "per-prompt barrier-to-last-completion complete wall; aggregate generated tokens / aggregate wall",
+    "aggregation": "arithmetic mean of two independently aggregated full-suite process rates per arm",
+    "counterbalanced_process_order": [
+      "order A: grouped-Q6 BF16 control -> grouped-Q6 DP4A candidate",
+      "order B: grouped-Q6 DP4A candidate -> grouped-Q6 BF16 control"
+    ],
+    "command": "/tmp/he-c8-review-q6/run_ab.sh",
+    "source_commit": "6929dbfeb7428bad067db75a93928de5bade80ff",
+    "tracked_clean": true,
+    "only_arm_difference": "HIPENGINE_C8_Q6_DP4A_GROUPED=0/1"
+  },
+  "composition_gate": {
+    "control_mtp_tok_s_mean": 95.70831144426165,
+    "candidate_mtp_tok_s_mean": 97.67428987526826,
+    "candidate_delta_percent": 2.0541355304878994,
+    "candidate_ar_tok_s_mean": 87.3276394770989,
+    "candidate_mtp_vs_ar_ratio": 1.11848082073583,
+    "orders": {
+      "A": {
+        "control_mtp_tok_s": 96.39644390472141,
+        "candidate_mtp_tok_s": 97.92451136884782,
+        "delta_percent": 1.5851907002262022
+      },
+      "B": {
+        "control_mtp_tok_s": 95.02017898380188,
+        "candidate_mtp_tok_s": 97.4240683816887,
+        "delta_percent": 2.5298725213900086
+      }
+    },
+    "slice_delta_percent": {
+      "A": {
+        "train": 1.413,
+        "heldout": 1.841,
+        "code": 1.993,
+        "general_en": 0.359,
+        "general_ja": 1.820,
+        "mixed_ja_en": 1.686
+      },
+      "B": {
+        "train": 2.332,
+        "heldout": 2.823,
+        "code": 2.998,
+        "general_en": 1.050,
+        "general_ja": 3.090,
+        "mixed_ja_en": 2.427
+      }
+    },
+    "correctness": {
+      "within_arm_ar_mtp_exact_cells": "40/40",
+      "cross_arm_generated_id_cells": "20/20 prompt-order cells (160/160 request trajectories)",
+      "accepted_draft_tokens_per_order": "1256 control / 1256 candidate",
+      "rejected_draft_tokens_per_order": "336 control / 344 candidate",
+      "acceptance_rate": "0.7889447 control / 0.7850000 candidate",
+      "acceptance_diagnosis": "general_en_plan adds one rejected proposal cycle per request; final IDs remain exact and general_en throughput remains positive in both orders"
+    }
+  },
+  "prior_quality_and_lifecycle_gates": {
+    "numerics": "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-l4-numerics.json",
+    "numerics_result": "18 prompts, c8_k3_r32, three deterministic repeats, mean/p95/p99/max KL 0.000337/0.001379/0.002978/0.007267, 99.769% top-1; all binding production thresholds passed",
+    "retention": "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-retention-e2e.json",
+    "serving_lifecycle": "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json plus committed C1-C8 Generation-2 lifecycle/ownership tests"
+  },
+  "promotion_scope": {
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "strict_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+    "backend": "hip_gfx1100",
+    "model_name_contains": "qwen3.8",
+    "file_type": "MOSTLY_Q4_K_M",
+    "resident_capacity": 8,
+    "realized_group_rows": 8,
+    "candidate_budget": 3,
+    "context_tokens": "4-95",
+    "output_horizon_tokens": 24,
+    "sampling_mode": "greedy_fast",
+    "strict_fallback": "gguf_target_ar",
+    "automatic_eligible": true,
+    "miss_behavior": "K0; C1-C7 at capacity 8, Qwen3.6, Q4_K_S, peer backends, profile/manifest misses, other budgets, context buckets, horizons, and sampling modes are not admitted"
+  },
+  "regression_repair": {
+    "finding": "gfx1100 dense serving evidence still named obsolete pre-R28 strict/production manifest hashes, so current profile metadata failed closed before reaching the previously qualified C1/C2 automatic keys",
+    "repair": "refresh exact manifest hashes and append this continuity artifact; retain exact matching",
+    "guards": [
+      "dynamic test requires every gfx1100 dense evidence hash to equal the current resolved profile hash",
+      "Q6 runtime gate requires gfx1100 + request_count 8 + Qwen3.8 model metadata + MOSTLY_Q4_K_M",
+      "strict and explicit-zero paths retain grouped BF16 Q6"
+    ]
+  },
+  "validation": {
+    "profile_and_q6_tests": "12 passed",
+    "serving_capability_tests": "37 passed",
+    "automatic_clean_tree_packet": null,
+    "automatic_clean_tree_status": "scheduled after the promotion commit because the benchmark rejects tracked-dirty source"
+  },
+  "raw_packets": {
+    "directory": "/tmp/he-c8-review-q6",
+    "a1_control_sha256": "0b877419602e2422df872e300ea570053ccb95923d8cd6bc904d7a546f51aaff",
+    "a2_candidate_sha256": "80395d40f293b45d88968475c40b42a1ace38914df11465ece74a59792f959ee",
+    "b1_candidate_sha256": "407260d637084020a22bb38e8662beb6fdac1644451b10bfc59d8ba78bdb966b",
+    "b2_control_sha256": "b23a69be0ad01ecfc4fe871619c7e73efb687def14deb42136af7a2c062d2e91"
+  }
+}

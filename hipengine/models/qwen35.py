@@ -100,7 +100,7 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="production",
         execution_profile_manifest_sha256=(
-            "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -118,6 +118,7 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-quality.json",
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-performance.json",
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-production-serving.json",
+            "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
         ),
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
@@ -133,7 +134,7 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="strict",
         execution_profile_manifest_sha256=(
-            "b27ee5d053ccbda64a47084430114948e25feb303d8e90976188e317f9a2012d"
+            "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -149,6 +150,7 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         reason="qualified_explicit_dense_c2_k2_d24",
         evidence_artifacts=(
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json",
+            "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
         ),
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=False,
@@ -164,7 +166,7 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="production",
         execution_profile_manifest_sha256=(
-            "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -182,6 +184,7 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-production-quality.json",
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-explicit-ownership.json",
             "benchmarks/results/2026-08-27-w7900-27b-dense-mtp2-c2-automatic-promotion.json",
+            "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
         ),
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
@@ -368,7 +371,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="production",
         execution_profile_manifest_sha256=(
-            "38a90b990e6475b8fb2fde08aa0c67dcf85bc75fb9f22cc0899be9592a519eff"
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -386,8 +389,43 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json",
             "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json",
             "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json",
+            "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
         ),
         max_realized_group_rows=2,
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=True,
+    ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1100-production-bf16-c8-k3-d24",
+        artifact_sha256=(
+            "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+        ),
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=8,
+        resident_capacity=8,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_automatic_gfx1100_production_c8_k3_d24",
+        evidence_artifacts=(
+            "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-l4-numerics.json",
+            "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-retention-e2e.json",
+            "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
+        ),
+        max_realized_group_rows=8,
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
     ),
