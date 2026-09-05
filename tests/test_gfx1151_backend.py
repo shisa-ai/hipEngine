@@ -2559,7 +2559,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
     assert GGUF_GDN_INDEXED_SINGLETON_DECODE is True
     assert GFX1100_GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 8
     assert GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS == 8
-    assert GFX1100_GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
+    # gfx1100 qualified the c8 selected pair-reuse dual owner on the W7900
+    # (2026-09-05 audit packet D1); parity with the gfx1151 floor.
+    assert GFX1100_GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
     assert GFX1100_GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 0
     assert GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS == 8
@@ -2801,7 +2803,7 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1100",
             "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
         )
-        == 0
+        == 8
     )
     assert (
         backend_package_capability(

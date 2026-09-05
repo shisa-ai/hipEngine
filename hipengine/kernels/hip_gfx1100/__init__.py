@@ -218,9 +218,13 @@ GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS = 0
 # arm-identical state/lifecycle differentials). Rows below the floor keep
 # the per-row dual owner.
 GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS = 8
-# Dynamic selected-expert pair reuse remains disabled until independently
-# measured on W7900. Zero preserves the existing gfx1100 route.
-GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 0
+# The exact c8 selected-expert pair-reuse dual owner is admitted only on
+# independently measured backends; gfx1100 qualified it at physical c8 on
+# the W7900 (2026-09-05 audit packet D1: +5.0% native_c8, exact
+# trajectories, arm-identical state differentials, natural-prompt reuse
+# measured). The geometry gate pins the route to x_rows=8/rows=64; all other
+# widths keep the per-row dual owner.
+GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS = 8
 # Qwen Q5T16 tile8 selected-down requires an independent W7900 gate.
 GGUF_Q5_T16_SELECTED_QWEN_TILE8 = False
 # Q5T16 selected-down pair reuse also requires an independent W7900 gate.

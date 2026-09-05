@@ -74,8 +74,13 @@ POLICY_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_ALL"
 POLICY_MIN_ROWS_CAPABILITY = "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS"
 POLICY_ENV = "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL"
 PAIR_MIN_ROWS_CAPABILITY = "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS"
+SELECTED_PAIR_MIN_ROWS_CAPABILITY = "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS"
 PAIR_POLICY_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE"
 PAIR_COL8_ENV = "HIPENGINE_GGUF_Q8_T16_PAIR_COL8"
+ROUTE_PROFILE_Q4_SELECTED_PAIR = "q4_selected_pair_candidate"
+SELECTED_PAIR_ENV = "HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE"
+SELECTED_DOWN_PAIR_ENV = "HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE"
+SELECTED_Q6_DOWN_PAIR_ENV = "HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE"
 ROUTER_COOP_ENV = "HIPENGINE_GGUF_ROUTER_F32W_COOP"
 ROUTER_PERSISTENT_ENV = "HIPENGINE_GGUF_ROUTER_F32W_PERSISTENT_COUNTER"
 _router_candidate_enabled = False
@@ -318,6 +323,38 @@ def _pair_package_policy() -> Iterator[None]:
 
 
 @contextlib.contextmanager
+def _q4_selected_pair_package_policy() -> Iterator[None]:
+    """Evaluate the package selected-pairreuse floor with diagnostic envs unset.
+
+    Same rule as ``_pair_package_policy``: the candidate arm must reach the
+    Q4 selected dual pairreuse route through the backend package
+    ``GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS`` floor, never through the env
+    overrides. The selected-pairreuse env keys are *unset* rather than set
+    to ``0`` because an explicit ``0`` overrides the package floor.
+    """
+
+    keys = (
+        POLICY_ENV,
+        PAIR_POLICY_ENV,
+        PAIR_COL8_ENV,
+        SELECTED_PAIR_ENV,
+        SELECTED_DOWN_PAIR_ENV,
+        SELECTED_Q6_DOWN_PAIR_ENV,
+    )
+    previous = {key: os.environ.get(key) for key in keys}
+    try:
+        for key in keys:
+            os.environ.pop(key, None)
+        yield
+    finally:
+        for key, prior in previous.items():
+            if prior is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = prior
+
+
+@contextlib.contextmanager
 def _candidate_route_policy(route_profile: str) -> Iterator[None]:
     if str(route_profile) == ROUTE_PROFILE_CURRENT_DIRECT:
         with _current_package_policy():
@@ -325,6 +362,10 @@ def _candidate_route_policy(route_profile: str) -> Iterator[None]:
         return
     if str(route_profile) == ROUTE_PROFILE_Q8T16_PAIR:
         with _pair_package_policy():
+            yield
+        return
+    if str(route_profile) == ROUTE_PROFILE_Q4_SELECTED_PAIR:
+        with _q4_selected_pair_package_policy():
             yield
         return
     if str(route_profile) != ROUTE_PROFILE_Q8T16:
@@ -624,6 +665,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         if not widths or any(width not in {4, 8} for width in widths):
             raise CalibrationError("Q8T16 pair candidate widths must be a non-empty subset of 4,8")
         dynamic_schedule = DEFAULT_DYNAMIC_SCHEDULE
+    elif route_profile == ROUTE_PROFILE_Q4_SELECTED_PAIR:
+        if not widths or any(width not in {4, 8} for width in widths):
+            raise CalibrationError("Q4 selected-pair candidate widths must be a non-empty subset of 4,8")
+        dynamic_schedule = DEFAULT_DYNAMIC_SCHEDULE
     elif route_profile == ROUTE_PROFILE_CURRENT_DIRECT:
         if not widths or any(width not in DIRECT_STATIC_WIDTHS for width in widths):
             raise CalibrationError(
@@ -683,6 +728,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
         if pair_min_rows != 8:
             raise CalibrationError(
                 f"pair candidate requires package {PAIR_MIN_ROWS_CAPABILITY} == 8, got {pair_min_rows}"
+            )
+    if route_profile == ROUTE_PROFILE_Q4_SELECTED_PAIR:
+        selected_pair_min_rows = int(
+            getattr(package, SELECTED_PAIR_MIN_ROWS_CAPABILITY, 0)
+        )
+        if selected_pair_min_rows != 8:
+            raise CalibrationError(
+                "selected-pair candidate requires package "
+                f"{SELECTED_PAIR_MIN_ROWS_CAPABILITY} == 8, got {selected_pair_min_rows}"
             )
     if route_profile == ROUTE_PROFILE_Q8T16 and package_value is not False:
         raise CalibrationError(
@@ -905,6 +959,15 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             POLICY_ENV: "unset: current package default",
             ROUTER_COOP_ENV: "unset: current package default",
             ROUTER_PERSISTENT_ENV: "unset: current package default",
+            SELECTED_PAIR_ENV: "unset: package selected-pairreuse floor",
+            SELECTED_DOWN_PAIR_ENV: "unset: package selected-pairreuse floor",
+            SELECTED_Q6_DOWN_PAIR_ENV: "unset: package selected-pairreuse floor",
+        }
+        if route_profile == ROUTE_PROFILE_Q4_SELECTED_PAIR
+        else {
+            POLICY_ENV: "unset: current package default",
+            ROUTER_COOP_ENV: "unset: current package default",
+            ROUTER_PERSISTENT_ENV: "unset: current package default",
         }
         if route_profile == ROUTE_PROFILE_Q8T16_PAIR
         else {
@@ -931,6 +994,16 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     )
     candidate_variants: Mapping[str, Any] = (
         {
+            "source": "package_selected_pairreuse_floor",
+            "c1": {"pair": "t16_selected_dual_gemv_bf16_bf16_out", "single": "t16_selected_gemv_bf16_bf16_out"},
+            "c2_c4": {"pair": "t16_selected_dual_gemv_bf16_bf16_out", "single": "t16_selected_gemv_bf16_bf16_out"},
+            "c8": {
+                "pair": "t16_selected_dual_pairreuse_gemv_bf16_bf16_out",
+                "single": "t16_selected_gemv_bf16_bf16_out",
+            },
+        }
+        if route_profile == ROUTE_PROFILE_Q4_SELECTED_PAIR
+        else {
             "source": "package_pair_floor",
             "c1": {"pair": "t16_dual_gemv_decode_bf16_bf16_out", "single": "t16_gemv_decode_bf16_bf16_out", "triple": "t16_triple_gemv_decode_bf16_bf16_out"},
             "c2_c4": {"pair": "t16_dual_gemv_decode_bf16_bf16_out", "single": "t16_gemv_decode_bf16_bf16_out", "triple": "t16_triple_gemv_decode_bf16_bf16_out"},
@@ -1061,6 +1134,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=(
             ROUTE_PROFILE_Q8T16,
             ROUTE_PROFILE_Q8T16_PAIR,
+            ROUTE_PROFILE_Q4_SELECTED_PAIR,
             ROUTE_PROFILE_CURRENT_DIRECT,
         ),
         default=ROUTE_PROFILE_Q8T16,
