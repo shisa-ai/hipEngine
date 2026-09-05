@@ -1,0 +1,73 @@
+{
+ "schema": 1,
+ "kind": "gfx1100_gguf_q6_selected_down_pairreuse_rejected",
+ "created_at": "2026-09-05T18:35:00Z",
+ "status": "rejected_no_route_changed",
+ "passed": true,
+ "performance_claim": false,
+ "claim_scope": "clean cached p512/d128 direct native-c8 graph model-step decode throughput on the physical W7900; same-host same-protocol control vs candidate where the candidate differs only by HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE",
+ "decision": "Reject the Q6T16 selected-down pair-reuse owner on hip_gfx1100: the env-on candidate is flat-to-negative at physical c8 (median -0.27%, overlapping ranges), so GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS stays 0 and the per-row Q6 down owner remains the default. Packet D closes with D1 (Q4 gate/up) retained and D2 (Q5 down) / D3 (Q6 down) rejected on the W7900.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocr_visible_devices": "0",
+  "gpu_max_hw_queues": 1,
+  "rocm": "HIP version: 7.2.53211-3d9ef42",
+  "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+ },
+ "software": {
+  "control_commit": "e31789e81 (cumulative D1-retained state: Q4 selected pairreuse floor 8, Q5/Q6 down floors 0; D2 rejected)",
+  "candidate_commit": "e31789e81 (same commit; candidate differs only by HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE=1)",
+  "audit_plan": "docs/20260905-gfx1100-audit.md work packet D, third cumulative unit (Q6 down)"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "moe_down_tensors": "3 of 41 down tensors are Q6_K (38 are Q5_K), so the Q6-down route engages on a small share of MoE layers; even a small win would be marginal, and none was measured"
+ },
+ "workload": {
+  "configuration": "native_c8 (one physical eight-row decode group)",
+  "prompt_length": 512,
+  "decode_steps": 128,
+  "prompt_token_id": 9707,
+  "sampling": "greedy_top1",
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "command": ".venv/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-gfx1100-hipcc-version.txt --require-cached-build --json <artifact>"
+ },
+ "performance": {
+  "metric": "decode_tok_s_aggregate median, 3 measured runs each arm",
+  "native_c8": {
+   "control": 299.483,
+   "candidate": 298.689,
+   "delta_pct": -0.27,
+   "control_samples": [301.44, 299.483, 298.533],
+   "candidate_samples": [300.161, 298.689, 297.346],
+   "sample_ranges_separated": false
+  },
+  "prefill_native_c8_tok_s": {
+   "control": 1193.224,
+   "candidate": 1187.643
+  },
+  "interpretation": "the candidate median is below the control median and the ranges overlap; there is no positive signal to chase with more runs"
+ },
+ "correctness": {
+  "primitive_bit_parity": [
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_q6_t16_direct_pairreuse_matches_production_bits (green)",
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_t16_compact_down_pairreuse_matches_direct_bits_beyond_64_lanes (green)"
+  ],
+  "red_green_policy": {
+   "test": "tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_gfx1100_q6_selected_down_pairreuse_floor_stays_rejected",
+   "state": "green: asserts the qualified rejection state — floor 0 keeps the per-row down owner at every geometry, the floor-8 scope admits only as a diagnostic scope, and env 0 overrides; a future qualification packet flips the floor and rewrites this test RED-first"
+  },
+  "bench_exactness": "both arms produced repeatable trajectories under their own environments"
+ },
+ "limitations": [
+  "The A/B uses the deterministic four-trajectory fixture; the natural-distribution artifact for the gate/up route does not transfer to the down owner's economics.",
+  "The rejection is a throughput decision at physical c8 on the W7900; it does not re-open the gfx1151 retention.",
+  "Only 3 of 41 down tensors are Q6_K on this model, bounding the possible effect regardless of outcome."
+ ],
+ "disposition": "rejected; GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS stays 0; per-row Q6 down owner remains default; rollback env documented"
+}

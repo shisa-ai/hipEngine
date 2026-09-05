@@ -1357,6 +1357,79 @@ def _fail_if_called(name: str):
     return fail
 
 
+def test_gfx1100_q6_selected_down_pairreuse_floor_stays_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W7900 Q6-down pairreuse (audit packet D3): until independently
+    qualified, the Q6 down-pairreuse route stays off — floor 0 keeps the
+    per-row down owner, and the env remains the only diagnostic override."""
+
+    min_rows = int(
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+            0,
+        )
+    )
+    assert min_rows == 0
+
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE", raising=False)
+
+    def admits(x_rows: int, rows: int) -> bool:
+        # Mirror the packed-decode selected-down admission exactly.
+        return (
+            qgr._gguf_t16_selected_q6_down_pairreuse_enabled()
+            and x_rows == 64
+            and rows == 64
+        )
+
+    with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(min_rows):
+        assert not admits(64, 64)
+    with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(8):
+        assert admits(64, 64)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_Q6_DOWN_PAIRREUSE", "0")
+    with qgr._gguf_t16_selected_q6_down_pairreuse_min_rows_scope(8):
+        assert not admits(64, 64)
+
+
+def test_gfx1100_q5_selected_down_pairreuse_floor_stays_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W7900 selected-down pairreuse rejection (audit packet D2): the Q5
+    down-pairreuse route stays unqualified on gfx1100 — floor 0 keeps the
+    per-row down owner at every geometry, and the env remains the only
+    diagnostic override."""
+
+    min_rows = int(
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+            0,
+        )
+    )
+    assert min_rows == 0
+
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE", raising=False)
+
+    def admits(x_rows: int, rows: int) -> bool:
+        # Mirror the packed-decode selected-down admission exactly.
+        return (
+            qgr._gguf_t16_selected_down_pairreuse_enabled()
+            and x_rows == 64
+            and rows == 64
+        )
+
+    with qgr._gguf_t16_selected_down_pairreuse_min_rows_scope(min_rows):
+        assert not admits(64, 64)
+    with qgr._gguf_t16_selected_down_pairreuse_min_rows_scope(8):
+        assert admits(64, 64)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE", "0")
+    with qgr._gguf_t16_selected_down_pairreuse_min_rows_scope(8):
+        assert not admits(64, 64)
+
+
 def test_gfx1100_q4_selected_pairreuse_floor_admits_c8_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
