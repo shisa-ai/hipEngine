@@ -4787,3 +4787,12 @@ The clean Framework all-category gate retained the path. Keep the post-binder
 opt-out for rollback and the reproducible A/B harness; replace it with direct
 manifest-driven selection when runtime profile dispatch owns this boundary.
 Always retain selected-GEMV strict fallback.
+
+## Qwen4Exp H256 wave sparse rows (2026-09-05)
+
+`strict_h256_wave_rows_spans` is registered but not yet selected by runtime.
+Promote only after the complete-model gate and actual transition/isolation
+evidence; remove an unneeded candidate if those gates reject it. Keep the
+score-product register boundary: removing it changes arithmetic under the
+current HIP compiler. Preserve `strict_rows_spans` and the separate decode
+ordered parent. No new env flag is introduced by the standalone leaf.

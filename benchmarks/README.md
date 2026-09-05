@@ -213,6 +213,12 @@ prefill improves 3.07%/3.19%/2.55%, all 72 measured trajectories are exact,
 max per-case prefill CV is 0.23%, and teardown is clean.
 [Production evidence](results/2026-09-05-framework-qwen4exp-row4-production.json).
 
+The next H256 sparse-attention candidate is standalone only: at
+24Q/2KV/D256 and selected stride2051, rows512 attention measures
+171.93→28.02 ms (6.14x), with exact parent output bits. It is not a
+whole-model gain or runtime default.
+[QSA candidate](results/2026-09-05-framework-qwen4exp-qsa-h256-wave.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 
