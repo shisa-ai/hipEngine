@@ -83,6 +83,7 @@ from hipengine.kernels.hip_gfx1100.moe.group_scatter import (
     qwen35_moe_group_count,
     qwen35_moe_group_prefix,
     qwen35_moe_group_scatter_gather_lowp,
+    qwen35_moe_group_scatter,
     qwen35_moe_mmq32_tile_map,
     qwen35_moe_wmma_tile_map,
 )
@@ -2977,6 +2978,22 @@ def _qwen4_exp_production_moe_prefill_enabled(
     return int(parts[1]) in admitted
 
 
+def qwen4_exp_grouped_row4_prefill_selected(
+    weights: Mapping[str, GGUFDeviceWeight], *, rows: int, backend: str
+) -> bool:
+    if rows < 64 or os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL", "0"
+    ) in {"", "0", "false", "False"}:
+        return False
+    return all(
+        is_registered(KernelKey(
+            backend, "linear", weights[name].spec.quant_key,
+            "selected_grouped_row4_gemv_bf16_bf16_out",
+        ))
+        for name in ("expert_gate", "expert_up")
+    )
+
+
 def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -3827,14 +3844,50 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
             )
         else:
-            selected_projection(
-                "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
-                rows, compact, hidden, ffn,
-            )
-            selected_projection(
-                "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
-                rows, compact, hidden, ffn,
-            )
+            row4 = qwen4_exp_grouped_row4_prefill_selected(
+                weights, rows=rows, backend=backend)
+            if row4:
+                # Map only: projections publish original token-major lanes,
+                # leaving SiLU/down/ordered combine ownership unchanged.
+                active_runtime.memset(scratch.group_counts.ptr, 0, scratch.group_counts.nbytes)
+                qwen35_moe_group_count(
+                    scratch.selected.ptr, scratch.group_counts.ptr, compact,
+                    experts, stream=stream, runtime=active_runtime)
+                qwen35_moe_group_prefix(
+                    scratch.group_counts.ptr, scratch.group_padded_counts.ptr,
+                    scratch.group_expert_start.ptr, scratch.group_wmma_total.ptr,
+                    experts, 1, stream=stream, runtime=active_runtime)
+                active_runtime.memset(
+                    scratch.group_scatter_offsets.ptr, 0, scratch.group_scatter_offsets.nbytes)
+                qwen35_moe_group_scatter(
+                    scratch.selected.ptr, scratch.routing.ptr,
+                    scratch.group_expert_start.ptr, scratch.group_scatter_offsets.ptr,
+                    scratch.group_sorted_lanes.ptr, scratch.group_sorted_experts.ptr,
+                    scratch.group_sorted_weights.ptr, compact, experts,
+                    stream=stream, runtime=active_runtime)
+                for name, output in (
+                    ("expert_gate", scratch.expert_gate),
+                    ("expert_up", scratch.expert_up),
+                ):
+                    weight = weights[name]
+                    resolve(
+                        backend=backend, layer="linear", quant=weight.spec.quant_key,
+                        variant="selected_grouped_row4_gemv_bf16_bf16_out",
+                    )(
+                        scratch.hidden_bf16.ptr, scratch.group_expert_start.ptr,
+                        scratch.group_sorted_lanes.ptr, weight.allocation("raw").tensor.ptr,
+                        output.ptr, rows, compact, experts, hidden, ffn,
+                        stream=stream, runtime=active_runtime,
+                    )
+            else:
+                selected_projection(
+                    "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
+                    rows, compact, hidden, ffn,
+                )
+                selected_projection(
+                    "expert_up", scratch.hidden_bf16.ptr, scratch.expert_up.ptr,
+                    rows, compact, hidden, ffn,
+                )
         if not fused_silu and not use_dp4a:
             silu_mul_separate_out_bf16(
                 scratch.expert_gate.ptr,
