@@ -1512,3 +1512,34 @@ hipengine_gguf_qwen35_head_rmsnorm_partial_rotary_positions_packed_query_f32_wei
       packed_query_end);
   return hipGetLastError();
 }
+
+// B2 P1: stage-owned BF16 -> IEEE-half activation cast for the F16-input
+// dense T16 siblings. Round-to-nearest via the F32 intermediate, matching
+// the host-side staging used by the sibling numerics contract.
+__global__ void gguf_cast_bf16_to_f16_kernel(
+    const uint16_t* __restrict__ x,
+    half_t* __restrict__ out,
+    int64_t n) {
+  const int64_t stride = static_cast<int64_t>(blockDim.x) * gridDim.x;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x; idx < n; idx += stride) {
+    out[idx] = static_cast<half_t>(bf16_bits_to_float(x[idx]));
+  }
+}
+
+extern "C" int hipengine_gguf_cast_bf16_to_f16(
+    const uint16_t* x,
+    half_t* out,
+    int64_t n,
+    int64_t threads,
+    hipStream_t stream) {
+  if (x == nullptr || out == nullptr || n <= 0) {
+    return hipErrorInvalidValue;
+  }
+  if (threads <= 0) {
+    threads = 256;
+  }
+  const int64_t blocks = (n + threads - 1) / threads;
+  gguf_cast_bf16_to_f16_kernel<<<static_cast<unsigned int>(blocks), static_cast<unsigned int>(threads), 0, stream>>>(
+      x, out, n);
+  return hipGetLastError();
+}

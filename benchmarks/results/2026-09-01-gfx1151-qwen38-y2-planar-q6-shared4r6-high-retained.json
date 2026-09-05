@@ -1,0 +1,233 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared4r6-high-retained",
+  "status": "validated_retained",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "bound": {
+    "rows288_ms": 191.83,
+    "rows536_ms": 410.82,
+    "rows1024_ms": 810.42
+  },
+  "scope": {
+    "wide_17408x5120": "rows288-1024",
+    "narrow_5120x1024": "rows288-536; rows1024 rejected at 0.9568x"
+  },
+  "strict_fallback": "prior exact planar selector",
+  "leaf_screen": {
+    "rows": [
+      288,
+      536,
+      1024
+    ],
+    "results": {
+      "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+        "288": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 6.186472702026367,
+          "candidate_ms": 3.7114284515380858,
+          "speedup": 1.6668710667081772
+        },
+        "536": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 11.710690307617188,
+          "candidate_ms": 6.814026641845703,
+          "speedup": 1.7186152803836316
+        },
+        "1024": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 21.95838165283203,
+          "candidate_ms": 12.90271453857422,
+          "speedup": 1.7018420106237957
+        }
+      },
+      "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+        "288": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.539179801940918,
+          "candidate_ms": 0.35131518840789794,
+          "speedup": 1.5347466313209834
+        },
+        "536": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.6592529773712158,
+          "candidate_ms": 0.48995118141174315,
+          "speedup": 1.3455482962029957
+        },
+        "1024": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.9959327697753906,
+          "candidate_ms": 1.0409454345703124,
+          "speedup": 0.9567579017112434
+        }
+      }
+    }
+  },
+  "complete_ticks": {
+    "288": {
+      "control_wall_ms": 1068.828498,
+      "candidate_wall_ms": 987.231693,
+      "wall_delta_pct": -7.634228049933611,
+      "token": 15685
+    },
+    "536": {
+      "control_wall_ms": 1845.626599,
+      "candidate_wall_ms": 1651.300886,
+      "wall_delta_pct": -10.528983116373036,
+      "token": 10562
+    },
+    "1024": {
+      "control_wall_ms": 3052.124824,
+      "candidate_wall_ms": 2765.166807,
+      "wall_delta_pct": -9.40190960551618,
+      "token": 709
+    }
+  },
+  "trace": {
+    "hits": 152,
+    "grid_y": [
+      1,
+      2,
+      3
+    ],
+    "threads": 128,
+    "vgpr": 200,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "duration_ms": 883.02988
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high.json",
+      "sha256": "bf2dbeb88ee7cc5afe0cd1366f872a56f01fb27726f61448b41e337ec879015c",
+      "bytes": 1516
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-full-pair.json",
+      "sha256": "46b08c44e7de3d53a6f2bf6315f24f516158eba42004037739527c6651eeb9c8",
+      "bytes": 542274
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-trace-raw.json",
+      "sha256": "9573d87b952fb50d916d3555ad0a8065228089e5784590af7f47a95b7ca54ac4",
+      "bytes": 254167
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-rocprof/gfx1151/2634310_kernel_trace.csv",
+      "sha256": "002916f986c08c6ab035a027a9f86a82fc04c46b0c04efe49bb18239e1e09f70",
+      "bytes": 2107233
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-c1c8-control.json",
+      "sha256": "8a7c0db79811b083b015060686cbd238abc85a756b5383676cf19a395a1eaeca",
+      "bytes": 3735614
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r6-high-c1c8-candidate.json",
+      "sha256": "d7510836de347152f8b8b70d5d9cd5827fb51369eacc4566c4780fcbfc6dd260",
+      "bytes": 3735626
+    }
+  ],
+  "limitations": [
+    "Y2 remains open pending post-retention residual trace."
+  ],
+  "c1_c8_collateral": {
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 76.46645364700817,
+        "candidate_wall_seconds": 75.82866994058713,
+        "wall_delta_pct": -0.834069943095872
+      },
+      "mtp": {
+        "control_wall_seconds": 67.89203068683855,
+        "candidate_wall_seconds": 65.84237268846482,
+        "wall_delta_pct": -3.018996453100753
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "wall_delta_pct": 0.07833621273412028
+        },
+        "mtp": {
+          "wall_delta_pct": 0.024920626234914423
+        }
+      },
+      "2": {
+        "ar": {
+          "wall_delta_pct": -3.0600275495871854
+        },
+        "mtp": {
+          "wall_delta_pct": 0.11655289595087215
+        }
+      },
+      "3": {
+        "ar": {
+          "wall_delta_pct": 1.3878342109043817
+        },
+        "mtp": {
+          "wall_delta_pct": -0.0030142110000630495
+        }
+      },
+      "4": {
+        "ar": {
+          "wall_delta_pct": 0.6477191125912718
+        },
+        "mtp": {
+          "wall_delta_pct": 0.12931706170142832
+        }
+      },
+      "5": {
+        "ar": {
+          "wall_delta_pct": 3.9582295679003288
+        },
+        "mtp": {
+          "wall_delta_pct": -2.2067243828275185
+        }
+      },
+      "6": {
+        "ar": {
+          "wall_delta_pct": 0.5615196143333279
+        },
+        "mtp": {
+          "wall_delta_pct": -2.735521514211081
+        }
+      },
+      "7": {
+        "ar": {
+          "wall_delta_pct": -2.186460111048305
+        },
+        "mtp": {
+          "wall_delta_pct": -4.823600307444731
+        }
+      },
+      "8": {
+        "ar": {
+          "wall_delta_pct": -5.2753733277829955
+        },
+        "mtp": {
+          "wall_delta_pct": -7.244463062809459
+        }
+      }
+    }
+  }
+}

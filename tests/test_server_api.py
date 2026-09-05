@@ -4626,6 +4626,29 @@ def test_generation_batcher_coalesces_compatible_submissions() -> None:
     asyncio.run(run())
 
 
+def test_generation_batcher_dispatches_solo_submission_before_full_window() -> None:
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.100,
+        )
+
+        started = time.perf_counter()
+        result = await batcher.submit(("solo",), sampling)
+        elapsed = time.perf_counter() - started
+
+        assert result == ["generated:solo"]
+        assert fake.calls == [(("solo",), sampling)]
+        # A solo submission on an idle engine must not pay the full batch
+        # window; the solo dispatch slice is 2 ms, so anything near the
+        # 100 ms window is a regression of the early-dispatch contract.
+        assert elapsed < 0.060, f"solo dispatch took {elapsed:.3f}s"
+
+    asyncio.run(run())
+
+
 def test_mtp_circuit_breaker_opens_by_scope_and_restart_resets() -> None:
     engine = SimpleNamespace(
         model_id="model",
@@ -5666,7 +5689,7 @@ def test_server_production_gguf_uses_backend_physical_mtp_route_limit() -> None:
     asyncio.run(run())
 
 
-def test_server_production_gguf_width_rollback_restores_c4_route(
+def test_server_production_gguf_width_rollback_uses_largest_admitted_cell(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     llm = FakeLLM()
@@ -5686,7 +5709,7 @@ def test_server_production_gguf_width_rollback_restores_c4_route(
 
     assert app.state.hipengine_generation_batcher._route_max_active_requests == {
         _SPECULATIVE_MTP_DEFAULT_ROUTE: 4,
-        _SPECULATIVE_MTP_BATCH_ROUTE: 4,
+        _SPECULATIVE_MTP_BATCH_ROUTE: 2,
         _SPECULATIVE_MTP_AUTO_ROUTE: 4,
     }
 

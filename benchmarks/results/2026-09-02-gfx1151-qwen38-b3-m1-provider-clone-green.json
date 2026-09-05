@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_provider_clone_green",
+  "date": "2026-09-02",
+  "status": "implementation_green_pending_physical_fingerprint_gate",
+  "performance_claim": false,
+  "source_commit": "0ab9c610d plus candidate worktree",
+  "implementation": "clone distinct active NextN slots: Conv/GDN state, visible KV rows, position/context metadata, and request cursor; synchronize before use",
+  "route_selected": false,
+  "validation": {
+    "command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py tests/test_qwen35_gguf_nextn_checkpoint.py tests/test_qwen35_gguf_mtp2_seam.py",
+    "result": "85 passed",
+    "configured_guard": "94 passed"
+  },
+  "remaining": "physical gfx1151 two-slot fingerprint equality and independent-ownership gate before acquisition can enable physical C2"
+}

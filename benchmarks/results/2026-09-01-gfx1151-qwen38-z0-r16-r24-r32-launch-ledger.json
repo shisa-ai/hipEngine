@@ -1,0 +1,1172 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z0_target_launch_ledger",
+  "date": "2026-09-01",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "source": {
+    "commit": "1b3d9e752c4edc27ab18b4c80c0a0f8d37a78282",
+    "dirty": false
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "diagnostic_prompt": "code_merge_intervals"
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "diagnostic_override": {
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS": {
+      "production": 8
+    },
+    "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS": {},
+    "scope": "run-owned driver only; production registry/defaults unchanged"
+  },
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --marker-trace --output-format csv --output-directory /tmp/q38-z0-run-20260901-201730/wide-target-profile --output-file z0-wide-target -- .venv/bin/python /tmp/q38-z0-run-20260901-201730/z0_wide_target_driver.py",
+  "raw_sources": {
+    "raw": {
+      "path": "/tmp/q38-z0-run-20260901-201730/wide-target-raw.json",
+      "sha256": "1fa4d2536c91ee854cc3ae9937a9a944928384b019419639e18584b5b4ba79c5"
+    },
+    "kernel_trace": {
+      "path": "/tmp/q38-z0-run-20260901-201730/wide-target-profile/z0-wide-target_kernel_trace.csv",
+      "sha256": "88c03100f24042c9494c41588a377fdd364ec2657f02bed683414616ea583cd7"
+    },
+    "hip_api_trace": {
+      "path": "/tmp/q38-z0-run-20260901-201730/wide-target-profile/z0-wide-target_hip_api_trace.csv",
+      "sha256": "e4ba437fe71f6d500acc060a19d89634b24f9b37d8f8fc01f16951b8751c5e9a"
+    },
+    "memory_copy_trace": {
+      "path": "/tmp/q38-z0-run-20260901-201730/wide-target-profile/z0-wide-target_memory_copy_trace.csv",
+      "sha256": "6ac866cd2374325b4e918c21e38d103b8439ee27d79f58dc301fe01a8454b2e2"
+    }
+  },
+  "correctness": {
+    "warm_and_profile": "R16/R24/R32 all pass AR and MTP self-exactness, AR/MTP equality, engagement, and budget checks"
+  },
+  "ledger": {
+    "16": {
+      "source_width": 4,
+      "full_passes_observed": 7,
+      "owner_summary": [
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            34816,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 130,
+          "total_ms_per_pass_median": 49.452985,
+          "per_launch_ms_median_across_passes": 0.3729395
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_planar_rowtile",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            81920,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 64,
+          "total_ms_per_pass_median": 26.211777,
+          "per_launch_ms_median_across_passes": 0.4095685
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_lm_head",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "grid": [
+            3973120,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 4,
+          "total_ms_per_pass_median": 19.153934999999997,
+          "per_launch_ms_median_across_passes": 4.7831735
+        },
+        {
+          "quant": "q5",
+          "owner": "q5_rowtile",
+          "kernel_name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 16, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "grid": [
+            81920,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 18.005067,
+          "per_launch_ms_median_across_passes": 0.374944
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_standard_rowtile",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            81920,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 17.576932,
+          "per_launch_ms_median_across_passes": 0.3657865
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            10240,
+            1,
+            1
+          ],
+          "workgroup": [
+            64,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 32,
+          "total_ms_per_pass_median": 15.692443,
+          "per_launch_ms_median_across_passes": 0.490059
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            12288,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 11.484227,
+          "per_launch_ms_median_across_passes": 0.2389085
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            20480,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 24,
+          "total_ms_per_pass_median": 6.647231,
+          "per_launch_ms_median_across_passes": 0.277
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            24576,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 17,
+          "total_ms_per_pass_median": 5.135677,
+          "per_launch_ms_median_across_passes": 0.301085
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            10240,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 17,
+          "total_ms_per_pass_median": 4.739937,
+          "per_launch_ms_median_across_passes": 0.278923
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            2048,
+            1,
+            1
+          ],
+          "workgroup": [
+            64,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 24,
+          "total_ms_per_pass_median": 1.873916,
+          "per_launch_ms_median_across_passes": 0.0780865
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_rowtile_chunk",
+          "kernel_name": "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            655360,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 0.992001,
+          "per_launch_ms_median_across_passes": 0.992001
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_planar_rowtile",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            16384,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 16,
+          "total_ms_per_pass_median": 0.489479,
+          "per_launch_ms_median_across_passes": 0.0304565
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            2816,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 0.164188,
+          "per_launch_ms_median_across_passes": 0.16343649999999998
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_rowtile_chunk",
+          "kernel_name": "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 4>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            131072,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 0.06987099999999999,
+          "per_launch_ms_median_across_passes": 0.0697905
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            16,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 0.00505,
+          "per_launch_ms_median_across_passes": 0.00505
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            4,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 0.003306,
+          "per_launch_ms_median_across_passes": 0.003206
+        }
+      ],
+      "family_curve": {
+        "classified_kernel_fraction": 0.9187045032985787,
+        "family_calls_median": {
+          "q4": 295.0,
+          "q5": 48.0,
+          "q6": 134.0
+        },
+        "family_ms_median": {
+          "q4": 95.1692485,
+          "q5": 18.00352,
+          "q6": 64.5589595
+        },
+        "host_ms_median": 200.59144650000002,
+        "kernel_ms_median": 193.45908,
+        "passes": 8
+      }
+    },
+    "24": {
+      "source_width": 6,
+      "full_passes_observed": 7,
+      "owner_summary": [
+        {
+          "quant": "q6",
+          "owner": "q6_planar_direct",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            40960,
+            24,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 32,
+          "total_ms_per_pass_median": 248.084046,
+          "per_launch_ms_median_across_passes": 7.7338905
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_standard_direct",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            81920,
+            24,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 24,
+          "total_ms_per_pass_median": 107.340908,
+          "per_launch_ms_median_across_passes": 4.461891
+        },
+        {
+          "quant": "q5",
+          "owner": "q5_ssm_out_selected_direct",
+          "kernel_name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "grid": [
+            40960,
+            24,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 80.102646,
+          "per_launch_ms_median_across_passes": 1.66833
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            34816,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 130,
+          "total_ms_per_pass_median": 61.680355,
+          "per_launch_ms_median_across_passes": 0.46857899999999997
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            10240,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 49,
+          "total_ms_per_pass_median": 40.201499,
+          "per_launch_ms_median_across_passes": 1.054218
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_lm_head",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "grid": [
+            3973120,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 6,
+          "total_ms_per_pass_median": 28.459072,
+          "per_launch_ms_median_across_passes": 4.7419565
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            12288,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 15.764251,
+          "per_launch_ms_median_across_passes": 0.3286365
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            20480,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 24,
+          "total_ms_per_pass_median": 8.906511,
+          "per_launch_ms_median_across_passes": 0.3710565
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            24576,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 17,
+          "total_ms_per_pass_median": 6.672481,
+          "per_launch_ms_median_across_passes": 0.39912899999999996
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            2816,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 25,
+          "total_ms_per_pass_median": 4.618101,
+          "per_launch_ms_median_across_passes": 0.187873
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_planar_direct",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            8192,
+            24,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 8,
+          "total_ms_per_pass_median": 1.704796,
+          "per_launch_ms_median_across_passes": 0.2126785
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_rowtile_chunk",
+          "kernel_name": "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            655360,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 1.090346,
+          "per_launch_ms_median_across_passes": 1.0871300000000002
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_rowtile_chunk",
+          "kernel_name": "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 6>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            131072,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 0.0765435,
+          "per_launch_ms_median_across_passes": 0.07592275
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            24,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 0.005891,
+          "per_launch_ms_median_across_passes": 0.005891
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            6,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 6,
+          "launches_per_pass_median": 1.0,
+          "total_ms_per_pass_median": 0.0032265,
+          "per_launch_ms_median_across_passes": 0.0030255
+        }
+      ],
+      "family_curve": {
+        "classified_kernel_fraction": 0.9639575289524525,
+        "family_calls_median": {
+          "q4": 295,
+          "q5": 48,
+          "q6": 72
+        },
+        "family_ms_median": {
+          "q4": 137.825314,
+          "q5": 80.102646,
+          "q6": 386.91539
+        },
+        "host_ms_median": 638.458966,
+        "kernel_ms_median": 627.458505,
+        "passes": 7
+      }
+    },
+    "32": {
+      "source_width": 8,
+      "full_passes_observed": 8,
+      "owner_summary": [
+        {
+          "quant": "q6",
+          "owner": "q6_planar_direct",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            40960,
+            32,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 32,
+          "total_ms_per_pass_median": 330.725777,
+          "per_launch_ms_median_across_passes": 10.317357000000001
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_standard_direct",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_gemv_kernel<unsigned short, unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            81920,
+            32,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 24,
+          "total_ms_per_pass_median": 142.564593,
+          "per_launch_ms_median_across_passes": 5.9362975
+        },
+        {
+          "quant": "q5",
+          "owner": "q5_ssm_out_selected_direct",
+          "kernel_name": "void (anonymous namespace)::qk_t16_selected_direct_gemv_kernel<unsigned short, 5, false, false, true>(unsigned short const*, long const*, unsigned char const*, unsigned short*, long, long, long, long, long)",
+          "grid": [
+            40960,
+            32,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 104.680881,
+          "per_launch_ms_median_across_passes": 2.181032
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            34816,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 130.0,
+          "total_ms_per_pass_median": 61.6082275,
+          "per_launch_ms_median_across_passes": 0.46921025
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            10240,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 49.0,
+          "total_ms_per_pass_median": 40.085345000000004,
+          "per_launch_ms_median_across_passes": 1.051112
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_lm_head",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "grid": [
+            3973120,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 8.0,
+          "total_ms_per_pass_median": 37.937395,
+          "per_launch_ms_median_across_passes": 4.74253725
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_planar_rowtile",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            81920,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 64,
+          "total_ms_per_pass_median": 26.335567,
+          "per_launch_ms_median_across_passes": 0.409869
+        },
+        {
+          "quant": "q5",
+          "owner": "q5_rowtile",
+          "kernel_name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 16, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "grid": [
+            81920,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 17.899784,
+          "per_launch_ms_median_across_passes": 0.3728595
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_standard_rowtile",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            81920,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 48,
+          "total_ms_per_pass_median": 17.596493,
+          "per_launch_ms_median_across_passes": 0.366047
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            12288,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 48.0,
+          "total_ms_per_pass_median": 15.752210999999999,
+          "per_launch_ms_median_across_passes": 0.3286965
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            10240,
+            1,
+            1
+          ],
+          "workgroup": [
+            64,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 32,
+          "total_ms_per_pass_median": 15.688118,
+          "per_launch_ms_median_across_passes": 0.48991949999999995
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            20480,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 24.0,
+          "total_ms_per_pass_median": 8.892866,
+          "per_launch_ms_median_across_passes": 0.3706655
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_wmma_prefill",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            24576,
+            1,
+            1
+          ],
+          "workgroup": [
+            32,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 17.0,
+          "total_ms_per_pass_median": 6.655946999999999,
+          "per_launch_ms_median_across_passes": 0.39771625
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            2816,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 8,
+          "launches_per_pass_median": 25.0,
+          "total_ms_per_pass_median": 4.674632,
+          "per_launch_ms_median_across_passes": 0.19051725
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_planar_direct",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<unsigned short>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            8192,
+            32,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 8,
+          "total_ms_per_pass_median": 2.22181,
+          "per_launch_ms_median_across_passes": 0.27726
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_shared_b_wmma",
+          "kernel_name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            2048,
+            1,
+            1
+          ],
+          "workgroup": [
+            64,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 24,
+          "total_ms_per_pass_median": 1.875037,
+          "per_launch_ms_median_across_passes": 0.078267
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_rowtile_chunk",
+          "kernel_name": "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            655360,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 1.206985,
+          "per_launch_ms_median_across_passes": 1.203017
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_planar_rowtile",
+          "kernel_name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "grid": [
+            16384,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 16,
+          "total_ms_per_pass_median": 0.486797,
+          "per_launch_ms_median_across_passes": 0.030337499999999996
+        },
+        {
+          "quant": "q6",
+          "owner": "q6_rowtile_chunk",
+          "kernel_name": "void (anonymous namespace)::gguf_k_prefill_out_rowtile_kernel<unsigned short, unsigned short, 6, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            131072,
+            1,
+            1
+          ],
+          "workgroup": [
+            128,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 0.086883,
+          "per_launch_ms_median_across_passes": 0.084438
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            32,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 0.007294,
+          "per_launch_ms_median_across_passes": 0.007294
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            16,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 1,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 0.005571,
+          "per_launch_ms_median_across_passes": 0.005571
+        },
+        {
+          "quant": "q4",
+          "owner": "q4_other",
+          "kernel_name": "gguf_q4_k_embedding_bf16_out_kernel(long const*, unsigned char const*, unsigned short*, int, int, int)",
+          "grid": [
+            5120,
+            8,
+            1
+          ],
+          "workgroup": [
+            256,
+            1,
+            1
+          ],
+          "passes_observed": 7,
+          "launches_per_pass_median": 1,
+          "total_ms_per_pass_median": 0.004729,
+          "per_launch_ms_median_across_passes": 0.0046689999999999995
+        }
+      ],
+      "family_curve": {
+        "classified_kernel_fraction": 0.959011066559695,
+        "family_calls_median": {
+          "q4": 295,
+          "q5": 48,
+          "q6": 74
+        },
+        "family_ms_median": {
+          "q4": 137.683072,
+          "q5": 104.680881,
+          "q6": 514.865246
+        },
+        "host_ms_median": 802.273734,
+        "kernel_ms_median": 789.593807,
+        "passes": 7
+      }
+    }
+  },
+  "notes": [
+    "Every Q4/Q5/Q6 dispatch wholly contained in each recorded target-pass cycle window is listed by exact kernel name, grid, workgroup, launch count, total duration, and per-launch distribution.",
+    "Tail-shrunk R8/R12/R16 windows are excluded from the R16/R24/R32 ledger.",
+    "This run-owned one-group diagnostic sizes launch mechanics only; it is not a serving throughput claim."
+  ]
+}

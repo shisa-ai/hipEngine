@@ -1,0 +1,122 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b5_planar_q6_integer_mmq_retained",
+  "date": "2026-09-03",
+  "status": "retained_production_default",
+  "performance_claim": true,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop / Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "software": {
+    "measurement_commit": "4fc7722694b846b6c85448722bc99c09349b94f5",
+    "tracked_tree_dirty": false,
+    "hip_arch": "gfx1151",
+    "gpu_max_hw_queues": 2,
+    "compiler_version_file": "/tmp/q38-z0-run-20260901-201730/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "standard_q4_k_m",
+    "kv": "bf16"
+  },
+  "candidate": {
+    "class": "T2",
+    "variant": "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+    "scope": "production profile, gfx1151, rows17-48, sole-resident planar-Q6 K17408/N5120 ffn_down and K5120/N1024 attn_v",
+    "mechanism": "session-owned BF16-to-Q8_1 D4 pack plus dense specialization of the existing integer MMQ64x64 consumer",
+    "persistent_weight_delta_bytes": 0,
+    "workspace": "aliases the resident session's bounded 34 MiB staging allocation",
+    "strict_fallback": "registered exact t16_wmma_prefill_bf16_bf16_out owner",
+    "env_override": "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL=1/0"
+  },
+  "performance": {
+    "protocol": "one-group D24 explicit K3, ten canonical prompts, raw greedy, no prompt cache, batch-window 50 ms, complete barrier-to-last-completion wall",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "widths": {
+      "5": {"a_mtp_tok_s": 36.51914834439479, "candidate_mtp_tok_s": 37.280352457841445, "improvement_percent": 2.084397221611245, "wall_reduction_percent": 2.0418372232597903, "candidate_ar_tok_s": 37.99506077277712, "candidate_mtp_over_ar": 0.9811894414589868},
+      "6": {"a_mtp_tok_s": 40.271042539620005, "candidate_mtp_tok_s": 41.047842967294734, "improvement_percent": 1.9289305135581802, "wall_reduction_percent": 1.8924269133792193, "candidate_ar_tok_s": 43.09298844645841, "candidate_mtp_over_ar": 0.9525411081270285},
+      "7": {"a_mtp_tok_s": 43.727633815356455, "candidate_mtp_tok_s": 44.492250073242275, "improvement_percent": 1.7485882293893917, "wall_reduction_percent": 1.7185380748942158, "candidate_ar_tok_s": 46.153404620655145, "candidate_mtp_over_ar": 0.9640079738197808},
+      "8": {"a_mtp_tok_s": 49.97903660378319, "candidate_mtp_tok_s": 50.8929375646149, "improvement_percent": 1.8285685818172137, "wall_reduction_percent": 1.795732383636528, "candidate_ar_tok_s": 50.60462323391885, "candidate_mtp_over_ar": 1.0056973911131266}
+    },
+    "category_mtp_tok_s": {
+      "code": {"a": 43.913767326811794, "candidate": 44.752151589296204, "improvement_percent": 1.9091604148763874},
+      "general_en": {"a": 47.698215014223294, "candidate": 48.726098832771335, "improvement_percent": 2.154973342800215},
+      "general_ja": {"a": 41.79807413467029, "candidate": 42.65180663471705, "improvement_percent": 2.0425163544523617},
+      "mixed_ja_en": {"a": 38.29169690175553, "candidate": 38.86810309259031, "improvement_percent": 1.5053033358998436}
+    },
+    "all_40_ar_id_cells_equal": true,
+    "all_40_mtp_id_cells_equal": true,
+    "acceptance_exact": true,
+    "acceptance": {"cycles": 1846, "proposed_draft_tokens": 5174, "accepted_draft_tokens": 4082, "draft_acceptance": 0.7889447236180904},
+    "all_cells_self_exact_engaged_budget_conformed": true,
+    "off_artifact_status_note": "The off process measured all 40 cells exact/engaged/budget-conformed but returned status=failed solely because the inherited B1 driver declared C5 MTP unexpected. The corrected declaration changes validation only; the candidate arm uses 5,6,7,8 expected."
+  },
+  "production_quality": {
+    "profile": "production candidate versus exact A/strict owner at identical teacher tokens and positions",
+    "canonical_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "heldout_suite": "benchmarks/prompts/gdn-prefill-category-heldouts.jsonl",
+    "heldout_sha256": "8d86154fdb52adf5085dbf278c4097dce78d9510d1a6d04ade29a327560e5280",
+    "full_vocabulary_rows": 216,
+    "candidate_repeats": 3,
+    "strict_repeat_bit_exact": true,
+    "candidate_repeat_bit_exact": true,
+    "mean_kl": 0.00008576966516756423,
+    "p95_kl": 0.0004905268493445377,
+    "p99_kl": 0.0009683075757518455,
+    "max_kl": 0.002230657367184759,
+    "top1_agreement": 1.0,
+    "rows_above_2e_2": 0,
+    "category_top1_min": 1.0,
+    "category_max_kl": {"code": 0.001980687686158723, "general_en": 0.0006314579782182098, "general_ja": 0.002230657367184759, "mixed_ja_en": 0.0006673170945616922},
+    "c5_neighbor_isolation_bit_exact": true,
+    "c8_permutation_isolation_bit_exact": true,
+    "bf16_relative": "not applicable: no matching BF16-weight Qwen3.8-27B teacher artifact is available; selected-quant strict is the normative denominator",
+    "passed": true
+  },
+  "kernel_trace": {
+    "command": "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL=1 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/q38-b5-rocprof2 --output-file b5 -- .venv/bin/python /tmp/q38-b5-smoke-driver.py /tmp/q38-b5-smoke-prof2.json",
+    "dense_integer_launches": 600,
+    "dense_integer_total_ms": 418.223735,
+    "dense_integer_median_us": 815.03,
+    "q8_pack_launches": 600,
+    "q8_pack_total_ms": 4.012666,
+    "kernel": "gguf_q6_k_t16_selected_q8_1_ds4_f32_mmq64x32_prefill_compact32_kernel<...,DENSE_LINEAR=true>"
+  },
+  "other_b5_shapes": {
+    "q4_gate_up": "rejected: 0/18 wins, 1.47-1.59x slower than A/B2 in the direct screen",
+    "q4_ffn_down": "rejected: 0/18 wins, 2.01-2.41x slower than A/B2",
+    "q5_ssm_out": "rejected before T16 extension: the optimistic raw-Q5 source consumer loses 0/18 pairs and is 59.01%/61.50% slower than current BF16 A at R20/R28",
+    "q6_standard_qkv": "not converted: standard/qmicro MMQ does not win both rows; planar MMQ wins but the standard-to-planar replacement would regress the retained c1 QKV owner by 8.72%, so sole-resident ownership stays standard"
+  },
+  "lifecycle": {
+    "global_allocator_added": false,
+    "persistent_weight_duplicate_added": false,
+    "off_final_current_allocated_bytes": 0,
+    "candidate_final_current_allocated_bytes": 0,
+    "candidate_active_allocations_after_teardown": 0
+  },
+  "commands": {
+    "focused_gate": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 uv run pytest -q tests/test_qwen38_b5_q6_integer_mmq.py tests/test_gguf_k_t16_dense_f16_activation_prefill.py tests/test_mtp_serving_target_wmma_transfer.py",
+    "quality": "GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-b5-full-quality.py",
+    "off_wall": "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL=0 .venv/bin/python /tmp/q38-b1-run/onegroup_driver.py /tmp/q38-b5-suite-off.json 3",
+    "candidate_wall": "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL=1 .venv/bin/python /tmp/q38-b5-onegroup-driver.py /tmp/q38-b5-suite-on.json 3",
+    "q5_screen": "GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-b5-q5-source-screen.py"
+  },
+  "raw_evidence": {
+    "quality": {"path": "/tmp/q38-b5-full-quality.json", "sha256": "b4dbbc189b5c39b1bc2ec8f7cb3cda46c4ba84beeaf757473c6550e5f29655ba"},
+    "quality_script": {"path": "/tmp/q38-b5-full-quality.py", "sha256": "869eb72e0fa613ba6a28109b08f829ddb7ee0ffa84dc514ce77a6fc90315c2c1"},
+    "off_wall": {"path": "/tmp/q38-b5-suite-off.json", "sha256": "6f18987b47897698079de330b369d34e205c08a30ba0bf31583eb09b0726583b"},
+    "candidate_wall": {"path": "/tmp/q38-b5-suite-on.json", "sha256": "de8f0081ba506effeacb09344dddbef1915b306ea9de60b80f603f94fb21763c"},
+    "corrected_driver": {"path": "/tmp/q38-b5-onegroup-driver.py", "sha256": "fb68360c012c7e1d727c5073069091bffb555aabdc54b1c66cca3426019c8e1a"},
+    "kernel_trace": {"path": "/tmp/q38-b5-rocprof2/b5_kernel_trace.csv", "sha256": "5f108d4569b39a14cf5c80eac7d9289e5af2858ae3c232535a11792188dd4b3a"},
+    "q5_screen": {"path": "/tmp/q38-b5-q5-source-screen.json", "sha256": "922e95758fd7f6684e679a9020e02e1f5969e924755a564176399231c97c0ee5"},
+    "q5_screen_script": {"path": "/tmp/q38-b5-q5-source-screen.py", "sha256": "f6a80920a03063f59d8e0b8d181148e46908b24757c1968f9e0a315fe545c2a7"}
+  },
+  "decision": "Retain and default the selective planar-Q6 integer-MMQ route for resolved production sessions. Strict, profile fallback, peers, standard Q6, Q4/Q5, and all row/shape misses keep registered exact A owners. Keep the env override for rollback/bisection."
+}

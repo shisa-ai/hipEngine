@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "completed",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P1.3"],
+  "title": "Parity P1.3 hipEngine C1 prefill serving-path attribution",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf (sha256 7e78da5d…c6fe169)"
+  },
+  "headline": "The C1 prefill deficit is NOT serving-stack overhead: the per-request wall equals the isolated packed-prefill wall, and that wall is GPU-bound in the small-row Q4/Q5/Q6 T16 wmma prefill GEMM family.",
+  "measurements": {
+    "server_c1_request_wall_ms": {
+      "frozen_survey_row": 628,
+      "current_head_reproduced": "617-700 (cProfile run: 1.44-1.64 tok/s/request; plain rerun ~1.43-1.62)",
+      "note": "warmup 2 arms/width then 10 prompts x 2 arms, Starlette TestClient"
+    },
+    "isolated_packed_ar_prefill_s": {
+      "method": "scripts/gguf_packed_ar_bench.py --configurations c1 --decode-steps 1 --route production --warmup-runs 1 --measured-runs 3",
+      "prompt_45": 0.626,
+      "prompt_128": 0.722,
+      "prompt_512": 1.441
+    },
+    "isolated_forced_bulk_prefill_s": {
+      "method": "scripts/qwen35_gguf_bench.py --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --persistent-session (1 warmup + 3 measured; identical at GPU_MAX_HW_QUEUES=1 and 2)",
+      "prompt_45": 0.515,
+      "prompt_128": 0.622,
+      "prompt_512": 1.273,
+      "prompt_512_tok_s": 402.2
+    },
+    "auto_route_no_selectors_s": {
+      "prompt_45": 1.189,
+      "prompt_512": 8.51,
+      "note": "qwen35_gguf_bench without --force-bulk-prefill falls to a serial per-row path; not the serving route."
+    },
+    "route_overhead_packed_vs_bulk_ms": {
+      "prompt_45": 111,
+      "prompt_512": 168,
+      "note": "packed-AR multi-prompt route vs single-session forced-bulk owners"
+    }
+  },
+  "kernel_trace": {
+    "command": "rocprofv3 --kernel-trace on qwen35_gguf_bench --prompt-length 45 --measured-runs 1 --warmup-runs 1 (require-cached-build)",
+    "csv": "/tmp/p13-rocprof-45/ktrace45b_kernel_trace.csv (scratch; summarized here)",
+    "measured_pass": {
+      "kernel_launches": 1380,
+      "gpu_busy_ms": 534.2,
+      "wall_ms": 560.4,
+      "conclusion": "GPU-bound: gaps are ~26 ms; per-launch CPU overhead is not the wall at C1."
+    },
+    "top_kernels_measured_pass": [
+      {"name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel", "gpu_ms": 360.56, "launches": 298, "avg_ms": 1.21},
+      {"name": "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel", "gpu_ms": 87.74, "launches": 44},
+      {"name": "gguf_q5_t16_dense_wmma_prefill_bf16_kernel", "gpu_ms": 32.41, "launches": 50},
+      {"name": "q6_k_t16_wmma_prefill_bf16_kernel", "gpu_ms": 20.99, "launches": 25},
+      {"name": "qwen35_gdn_prefill_recurrent_compact_normalized_wave32_xor_fp16state", "gpu_ms": 11.79, "launches": 50},
+      {"name": "q6_k_t16_qmicro_planar_gemv_bf16_kernel", "gpu_ms": 9.13, "launches": 2},
+      {"name": "dense_gemv_bf16_f32w_bf16_out_kernel", "gpu_ms": 3.23, "launches": 100}
+    ],
+    "interpretation": "The Q4T16 dense wmma prefill family holds 360.6 ms at M=45 rows, ~20x the bandwidth-ideal for its weight traffic (single full weight sweep of 17.1 GB is ~67 ms at 256 GB/s for the WHOLE model; this one family alone exceeds 5x that). The wmma tiling is tuned for large row slabs; at M<=64 it underutilizes the 72-CU device (too few workgroups / latency-bound)."
+  },
+  "host_profile": {
+    "method": "cProfile (whole bench) + py-spy dump/record (250 Hz, nonblocking)",
+    "findings": [
+      "Engine-thread chain per request: tick -> _run_prefill (525 ms) -> prefill_batch_native -> sampler readback device_synchronize; _run_ar_decode ~50 ms; reclaim/events ~49 ms each.",
+      "py-spy: 14.8% of all samples in device_synchronize under _run_prefill, issued by _read_target_block_row_tokens (full-device sync then 4-byte readback).",
+      "Serving stack (TestClient + anyio portal + scheduler) adds ~0-30 ms/request; it is NOT the C1 prefill wall.",
+      "Startup (one-time, not per-request): eager_load_model -> _speculative_mtp_capability -> resolve_speculative_mtp_serving_plan re-hashes the 17.1 GB model artifact (model_artifact_identity), ~8-10 s; worth caching but parity-neutral."
+    ]
+  },
+  "model_notebook_correction": {
+    "claim": "Campaign doc §2 previously cited 'hipEngine isolated gfx1151 prefill ~1294 tok/s @512 (LCP tranche)' as context.",
+    "correction": "That published row is Qwen3.6-35B-A3B-UD-Q4_K_M (3B-active MoE; benchmarks/results/2026-07-15-gfx1151-gguf-production-refresh-512-64k-128k-blocked.json provenance), NOT Qwen3.8-27B. On the parity model the current-head isolated bulk prefill is 402 tok/s @512. No regression: the numbers were never the same model."
+  },
+  "decomposition_c1_prefill_request_ms": {
+    "hipengine_total": 628,
+    "packed_route_prefill_gpu_bound": 534,
+    "packed_vs_bulk_route_overhead": 111,
+    "serving_stack_testclient_scheduler": "0-30",
+    "external_winner_cluster_total": "323-332 (Nathan/Laurent/stock-HIP/q38rocm)",
+    "gap_to_close": "~300 ms: (a) small-row T16 wmma GEMM efficiency ~230 ms, (b) route overhead ~110 ms"
+  },
+  "p2_implications": [
+    "P2.1/P2.2 become: route small slabs to the best owner (kill the ~111 ms packed-vs-bulk overhead) AND fix small-M T16 wmma prefill GEMM efficiency (360.6 -> target <=130 ms at M=45).",
+    "P2.3 kernel work is now FIRST-PRIORITY (the wall is below the serving boundary and is a kernel-shape problem), not conditional.",
+    "Candidate approaches for the small-M family: N-split/split-K workgroup partitioning to fill 72 CUs at M<=64, low-M tiling variants, or gemv-class batched dispatch; all require strict/production gates per docs/EXECUTION-PROFILES.md.",
+    "C2-C8 rows improve automatically as slab rows grow (W x prompt_len); the small-M fix also lifts the C1 decode-adjacent shapes."
+  ],
+  "sources": [
+    "/tmp/p13-packed-ar-L{45,128,512}.json",
+    "/tmp/p13-forcedbulk-L{45,128,512}.json",
+    "/tmp/p13-q1-forcedbulk-L{45,512}.json",
+    "/tmp/p13-autounset-L{45,128,512}.json",
+    "/tmp/p13-rocprof-45/ktrace45b_kernel_trace.csv",
+    "/tmp/p13-pyspy-raw.txt",
+    "/tmp/parity-p13-prefill-c1.prof"
+  ]
+}

@@ -211,6 +211,30 @@ sampling. Every miss remains K0. The production/strict manifest hashes are
 `52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb`.
 Evidence: [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
 
+### 2.8 Qwen3.8 gfx1151 production planar-Q6 integer-MMQ decision
+
+The 2026-09-03 gfx1151 Qwen3.8 `Q4_K_M` production profile qualifies one
+shape- and row-bounded T2 association: BF16→Q8_1 activation packing plus the
+sole-resident planar-Q6 integer `mmq64x64` consumer at physical rows17-48 for
+K17408/N5120 FFN-down and K5120/N1024 narrow-V. The composite aliases a bounded
+resident-session staging allocation and adds no persistent weight bytes.
+Strict, profile fallback, peer backends, standard Q6, Q4/Q5, and every row or
+shape miss retain registered exact A owners.
+
+The canonical+category-heldout teacher packet covers 216 full-vocabulary rows
+with three bit-exact candidate repeats. Mean/p95/p99/max KL is
+`8.58e-5/4.91e-4/9.68e-4/0.002231`; overall and every-scope top-1 agreement is
+`100%`, no row crosses the `2e-2` review line, and C5 neighbor substitution plus
+C8 row permutation are bit-exact. The D24 task gate preserves all 40 AR and 40
+MTP ID cells and exact acceptance/accounting.
+
+One-group C5-C8 complete MTP improves `36.519/40.271/43.728/49.979` to
+`37.280/41.048/44.492/50.893 tok/s` (+2.08%/+1.93%/+1.75%/+1.83%), with every
+category positive. C8 reaches `1.0057x` its same-arm AR rate. This changes an
+implementation association inside production; it does not widen automatic MTP
+admission. Evidence:
+[`B5 retention packet`](../benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json).
+
 ## 3. Profile is orthogonal to model representation
 
 An execution profile selects implementation arithmetic and reproducibility. It

@@ -7795,6 +7795,48 @@ hipengine_gguf_q5_k_t16_gemv_rowtile_grouped_rows6_bf16_bf16_out(
 }
 
 extern "C" int
+hipengine_gguf_q5_k_t16_gemv_rowtile12_col8_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 12 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  hipLaunchKernelGGL(
+      (q5_k_t16_dense_rowtile_gemv_kernel<uint16_t, 12, 8>),
+      grid, block, 0, stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<uint16_t*>(out), in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int
+hipengine_gguf_q5_k_t16_gemv_rowtile16_col8_bf16_bf16_out(
+    const void* x, const void* tiles, void* out,
+    int64_t rows, int64_t in_features, int64_t out_features,
+    hipStream_t stream) {
+  if (!x || !tiles || !out || rows != 16 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return hipErrorInvalidValue;
+  }
+  const dim3 block(128);
+  const dim3 grid(static_cast<unsigned int>(out_features / 8));
+  hipLaunchKernelGGL(
+      (q5_k_t16_dense_rowtile_gemv_kernel<uint16_t, 16, 8>),
+      grid, block, 0, stream,
+      reinterpret_cast<const uint16_t*>(x),
+      reinterpret_cast<const uint8_t*>(tiles),
+      reinterpret_cast<uint16_t*>(out), in_features, out_features);
+  return hipGetLastError();
+}
+
+extern "C" int
 hipengine_gguf_q4_k_t16_dense_dual_rowtile_silu_gemv_bf16_bf16_out(
     const void* x, const void* tiles_a, const void* tiles_b, void* out,
     int64_t rows, int64_t in_features, int64_t out_features,

@@ -73,6 +73,19 @@ def build_chat_prompt(tokenizer, user_prompt: str = DEFAULT_PROMPT, *, reasoning
     return prompt
 
 
+def select_prompt_tokens(
+    tokenizer,
+    *,
+    user_prompt: str,
+    reasoning: str,
+    raw_token_ids: tuple[int, ...] = (),
+) -> list[int]:
+    """Select an exact raw-token context or build the existing chat prompt."""
+    if raw_token_ids:
+        return [int(token) for token in raw_token_ids]
+    return build_chat_prompt(tokenizer, user_prompt, reasoning=reasoning)
+
+
 def _hip_available() -> bool:
     try:
         ctypes.CDLL("libamdhip64.so")
@@ -1266,6 +1279,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--prompt", default=DEFAULT_PROMPT, help="User prompt text before the assistant turn")
     parser.add_argument(
+        "--prompt-token-ids",
+        type=_parse_nonnegative_token_csv,
+        default=(),
+        metavar="ID,ID,...",
+        help=(
+            "Use these exact raw token IDs as the complete prompt context, bypassing "
+            "chat templating and text tokenization. Intended for teacher-forced diagnostics."
+        ),
+    )
+    parser.add_argument(
         "--prompt-reasoning",
         choices=("off", "open", "none"),
         default="off",
@@ -1950,8 +1973,13 @@ def main(argv: list[str] | None = None):
         max_positions=262144, rotary_dim=rope_dim, base=rope_base
     )
 
-    # Build chat-formatted prompt
-    prompt = build_chat_prompt(tok, args.prompt, reasoning=args.prompt_reasoning)
+    # Build the normal chat prompt or preserve an exact teacher-forced token context.
+    prompt = select_prompt_tokens(
+        tok,
+        user_prompt=args.prompt,
+        reasoning=args.prompt_reasoning,
+        raw_token_ids=tuple(args.prompt_token_ids),
+    )
 
     print(f"Prompt: {repr(tok.decode(prompt))}")
     print(f"Prompt tokens: {len(prompt)}")
@@ -4080,7 +4108,11 @@ def main(argv: list[str] | None = None):
             "model": Path(args.model).name,
             "model_path": args.model,
             "quant": "Q4_K_M",
-            "prompt": args.prompt,
+            "prompt": args.prompt if not args.prompt_token_ids else None,
+            "prompt_source": "raw_token_ids" if args.prompt_token_ids else "chat_template",
+            "prompt_token_ids_sha256": hashlib.sha256(
+                json.dumps(prompt, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
             "prompt_tokens": len(prompt),
             "initial_prev_token": int(initial_prev_token),
             "initial_prev_position": int(initial_prev_position),

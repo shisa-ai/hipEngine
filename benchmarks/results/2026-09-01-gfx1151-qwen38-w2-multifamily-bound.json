@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w2_multifamily_dataflow_bound",
+  "status": "blocked_gate",
+  "performance_claim": false,
+  "measured": {
+    "current_r32_target_host_ms": 51.22291,
+    "current_r32_kernel_sum_ms": 49.015942,
+    "optimistic_all_non_kernel_removed_ms": 2.206968,
+    "optimistic_target_reduction_percent": 4.3085,
+    "required_complete_wall_reduction_percent": {
+      "C6": 19.2,
+      "C8": 20.1
+    }
+  },
+  "mandatory_work": "Q4/Q5/Q6 projection tensors are distinct. Runtime already attempts Q4/Q6 mixed pair/triple and Q4 gate/up fused owners; co-scheduling cannot share weight bytes across different tensors. W1 supplied within-tensor one-decode owners and exhausted their geometry/pipeline gate.",
+  "historical_guard": "The gfx1100 B4 FFN megakernel was 2.66x slower on GPU; a giant fused owner is disallowed absent a larger measured bound.",
+  "decision": "Close W2 measured-blocked. Even deleting all measured target non-kernel/launch gap saves only 4.31% of target, less of full wall and far below 19.2/20.1%. Mandatory distinct-weight kernel work remains. No implementation is justified."
+}

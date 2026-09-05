@@ -1,0 +1,83 @@
+{
+ "schema": 1,
+ "kind": "gfx1151-qwen38-mtp-q4-verify-owner-retained",
+ "created_at": "2026-08-30T19:59:28.602772+00:00",
+ "title": "Scaling M2j: low-VGPR/shared-B2W2 promotion for physical Q4 rows2-16 retained",
+ "source_commit": "f982f4d2d4a2ee41c6d4db5d91ebe6fabf4fa670",
+ "status": "retained_default_path",
+ "change": {
+  "file": "hipengine/kernels/hip_gfx1151/__init__.py",
+  "selector": "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
+  "bands": "rows<=16 on the six physical Qwen3.8 shapes -> low-VGPR 16-column owner; (17408,5120) -> shared-B2W2; one-row-tile smallm superseded (launcher stays registered); rows>=17 bands unchanged",
+  "bit_exact": "microbench harness fails closed on any mismatch vs shared-B; all 48 screened (shape,rows) cells bit_exact_vs_shared_b=true"
+ },
+ "screen": {
+  "harness": "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py",
+  "cells": "6 shapes x rows{2,3,4,5,6,7,8,12,16,17,20}; lowvgpr best at every shape/rows except (17408,5120) where shared_b2w2 wins rows2-20",
+  "speedups_vs_smallm_rows8_16": "1.19x (5120,12288) .. 1.65x (6144,5120)"
+ },
+ "measurement": {
+  "protocol": "frozen scaling M0 protocol (production D24, candidate_budget 3, batch_window 50, mtp_self_exact), bound 4 = production default",
+  "command": ".venv/bin/python .worklog/tmp_m2j_bench.py (argv in file; scripts/gguf_mtp_c1c8_server_bench.py canonical argv)",
+  "host": "AMD Ryzen AI MAX+ 395 / Radeon 8060S (gfx1151), HIPENGINE_COMPILER_VERSION_FILE pinned",
+  "control": "same-head same-day control /tmp/m2h-bound4-c1c8.json sha256 71c19d902717b19f4790ecd54f1bfdf46e8813e3d54728b6cd09f24c023dc328 (pre-band head, pinned-null revert state)",
+  "widths": {
+   "C1": {
+    "mtp_tok_s": 13.759,
+    "ar_tok_s": 11.123,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 75.47
+   },
+   "C2": {
+    "mtp_tok_s": 28.125,
+    "ar_tok_s": 18.113,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 8.79
+   },
+   "C3": {
+    "mtp_tok_s": 30.537,
+    "ar_tok_s": 24.037,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 3.28
+   },
+   "C4": {
+    "mtp_tok_s": 34.201,
+    "ar_tok_s": 30.05,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 15.77
+   },
+   "C5": {
+    "mtp_tok_s": 26.059,
+    "ar_tok_s": 36.122,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 39.05
+   },
+   "C6": {
+    "mtp_tok_s": 31.885,
+    "ar_tok_s": 40.475,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 12.62
+   },
+   "C7": {
+    "mtp_tok_s": 32.395,
+    "ar_tok_s": 43.791,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 9.61
+   },
+   "C8": {
+    "mtp_tok_s": 33.491,
+    "ar_tok_s": 47.263,
+    "cells_exact_engaged_budget": 6,
+    "vs_m0_refreeze_pct": 15.33
+   }
+  },
+  "gate_status": "all 48 non-heldout cells exact/engaged/budget-conformant; MTP>=1.15x own AR met at C2 (1.553) and C3 (1.270) and C1 flipped to 1.237; C4 1.138 remains the closest miss vs its 34.596 gate (34.201 measured, -1.14%)"
+ },
+ "raw_sources": [
+  [
+   "/tmp/m2j-bound4-c1c8.json",
+   "cd02dbd57f1c39f5940c9d52657ce5eeb09bf1990f5f9144d7f519beac413077",
+   21097623
+  ]
+ ]
+}

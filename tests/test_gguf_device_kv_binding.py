@@ -612,6 +612,100 @@ def test_gguf_prefix_state_clone_copies_exact_current_hybrid_boundary(monkeypatc
         destination.clone_prefix_state_from(source, position=256)
 
 
+def test_gguf_current_state_clone_copies_private_kv_at_arbitrary_boundary(
+    monkeypatch,
+) -> None:
+    """B3 RED: clone independent KV plus recurrent state at non-page C1."""
+
+    assert hasattr(gguf_runner.Qwen35GGUFResidentSession, "clone_current_state_from")
+    runtime = _FakeRuntime()
+    layout = gguf_runner.Qwen35GGUFKVChunkLayout(
+        storage_dtype=DType.BF16,
+        storage_layout="uniform",
+        scale_dtype=DType.FP16,
+        scale_granularity="per_token_head",
+        int8_kv_value_bf16=False,
+        layer_storage_dtypes=(DType.BF16, None),
+    )
+    shared_runner = SimpleNamespace(
+        weights=SimpleNamespace(
+            config=SimpleNamespace(
+                layer_types=(gguf_runner.FULL_ATTENTION, gguf_runner.LINEAR_ATTENTION),
+                head_count_kv=2,
+                key_length=2,
+            )
+        )
+    )
+
+    def make_session(*, base: int, block_ids, chunk_start):
+        session = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+        session.runtime = runtime
+        session.runner = shared_runner
+        session.scratch = SimpleNamespace(
+            max_positions=1024,
+            layer_conv_states=(None, DeviceBuffer(base + 0x4000, 64)),
+            layer_recurrent_states=(None, DeviceBuffer(base + 0x5000, 128)),
+            full_key_caches=(DeviceBuffer(base + 0x0000, 8192), None),
+            full_value_caches=(DeviceBuffer(base + 0x2000, 8192), None),
+            position_host=np.zeros((1,), dtype=np.int64),
+            context_host=np.ones((1,), dtype=np.int64),
+            position_buf=DeviceBuffer(base + 0x6000, 8),
+            context_buf=DeviceBuffer(base + 0x7000, 8),
+        )
+        session.kv_storage_dtype = DType.BF16
+        session.kv_storage_layout = "uniform"
+        session._device_kv_layout = layout
+        session._device_kv_allocation = SimpleNamespace(
+            block_ids=tuple(block_ids),
+            chunk_start_block_id=int(chunk_start),
+            backing=object(),
+        )
+        session._device_kv_pool = object()
+        session._device_kv_graph_handles = {}
+        session._decode_graphs = []
+        session._packed_decode_state_dirty = False
+        session._packed_decode_sessions = ()
+        session._packed_decode_session_ids = ()
+        session._packed_decode_positions = ()
+        session._packed_verify_session_ids = ()
+        session._packed_verify_max_written_positions = ()
+        session._runtime_state_library = object()
+        session._position = 0
+        session._hidden_seed_fp32_populated = True
+        session._last_pre_output_norm_hidden = np.ones((1, 1), dtype=np.float32)
+        session._last_layer_output_hidden = {0: np.ones((1, 1), dtype=np.float32)}
+        return session
+
+    source = make_session(base=0x10000, block_ids=(8, 10), chunk_start=8)
+    destination = make_session(base=0x30000, block_ids=(20, 21), chunk_start=20)
+    source._position = 300
+    source.scratch.position_host[0] = 300
+    source.scratch.context_host[0] = 301
+    position_calls = []
+    monkeypatch.setattr(
+        gguf_runner,
+        "set_decode_position_i64",
+        lambda position_ptr, context_ptr, position, *, stream, **kwargs: position_calls.append(
+            (int(position_ptr), int(context_ptr), int(position), int(stream))
+        ),
+    )
+
+    copied = destination.clone_current_state_from(source, stream=7)
+
+    assert copied == (300 * 8 * 2) + 64 + 128
+    assert runtime.memcpy_async_calls == [
+        (0x30000, 0x10000, 2048, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0x32000, 0x12000, 2048, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0x30800, 0x11000, 352, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0x32800, 0x13000, 352, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0x34000, 0x14000, 64, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+        (0x35000, 0x15000, 128, gguf_runner.HipMemcpyKind.DEVICE_TO_DEVICE, 7),
+    ]
+    assert destination.position == 300
+    assert position_calls == [(0x36000, 0x37000, 300, 7)]
+    assert source._device_kv_allocation.backing is not destination._device_kv_allocation.backing
+
+
 def test_gguf_prefix_state_snapshot_outlives_source_session_and_restores_boundary(
     monkeypatch,
 ) -> None:

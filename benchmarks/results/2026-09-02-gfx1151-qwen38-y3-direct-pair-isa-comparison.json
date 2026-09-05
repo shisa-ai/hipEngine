@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-direct-pair-isa-comparison",
+  "status": "generated_isa_analysis",
+  "source_commit": "f296583da",
+  "kernel": "planar-Q6 shared4r6",
+  "resources": {
+    "direct": {"code_bytes": 50376, "vgpr": 198, "sgpr": 39, "lds_bytes": 16384, "scratch_bytes": 0},
+    "pair": {"code_bytes": 51440, "vgpr": 198, "sgpr": 41, "lds_bytes": 16384, "scratch_bytes": 0}
+  },
+  "static_isa": {
+    "direct": {"instructions": 8115, "decode_region_instructions": 325, "global_load": 22, "ds_store": 2, "mix_fma": 17, "convert": 17, "wait": 16},
+    "pair": {"instructions": 8283, "decode_region_instructions": 493, "global_load": 42, "ds_store": 4, "mix_fma": 34, "convert": 34, "wait": 22}
+  },
+  "interpretation": "Pair decode did not implement record-byte reuse: the pair_col loop repeats the complete per-column address, record load, unpack, convert, and store sequence. Its retained gain comes from halving cooperative scheduling units (512 to 256), not fewer per-pair operations. It preserves occupancy resources but adds 1064 code bytes and 2 SGPR.",
+  "next_candidate": "Specialize the two-column body so each kk loads the shared qmicro low byte once, extracts both nibbles, and shares record/base address calculation across the pair; retain independent d/scale conversion and both exact LDS stores. This preserves all output values and accumulation order.",
+  "bound_wall_pct": {"rows288": 4.63, "rows536": 4.95, "rows1024": 5.54},
+  "raw": {"direct_isa": "/tmp/y3-direct-pair-isa/direct.isa", "pair_isa": "/tmp/y3-direct-pair-isa/pair.isa", "metadata": "/tmp/y3-direct-pair-isa/notes.txt"}
+}

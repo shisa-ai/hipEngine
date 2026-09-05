@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "progress",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": [
+    "P3.1 progress: C3-C8 AR parity closed; C1/C2 remain open"
+  ],
+  "title": "Qwen3.8 standard-Q4 AR C1-C8 re-freeze",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)"
+  },
+  "source": {
+    "commit": "115000314b1d5648774650adcade8d6dde07a9d1",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "protocol": {
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=2 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p220-ar-c1c8-d24-refreeze.json",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_included": true,
+    "widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "expected_mtp_widths": [],
+    "batch_window_ms": 50,
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "sampling": "raw greedy, no processed target, natural stop/EOS",
+    "execution_profile": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
+  },
+  "comparison": {
+    "columns": [
+      "width",
+      "frozen_hipengine_tok_s",
+      "current_tok_s",
+      "frozen_external_target_tok_s",
+      "delta_vs_target_pct",
+      "status"
+    ],
+    "rows": [
+      [1, 9.637, 11.060027632551684, 11.336, -2.434, "open"],
+      [2, 14.247, 16.99261645573364, 20.056, -15.274, "open"],
+      [3, 20.731, 24.031754277550778, 20.731, 15.922, "parity"],
+      [4, 26.216, 30.623294799170964, 26.216, 16.811, "parity"],
+      [5, 31.19, 35.89579507430196, 31.19, 15.088, "parity"],
+      [6, 34.564, 40.5850113698842, 34.564, 17.420, "parity"],
+      [7, 36.592, 44.21962597806701, 36.592, 20.845, "parity"],
+      [8, 39.057, 47.781052622417796, 45.751, 4.437, "parity"]
+    ]
+  },
+  "correctness": {
+    "passed": true,
+    "exact_cells_per_width": 10,
+    "total_exact_cells": 80,
+    "route_expectation_passed": true,
+    "budget_conformed": true,
+    "mtp_engaged_cells": 0,
+    "contract": "ar_exact"
+  },
+  "verdict": {
+    "closed_widths": [3, 4, 5, 6, 7, 8],
+    "open_widths": [1, 2],
+    "summary": "Current AR beats the frozen external comparator at C3-C8. C1 is 2.434% short and C2 is 15.274% short; P3.1 remains open pending measured attribution and either retained wins or named blockers for those widths.",
+    "next": "Profile the current C1 native_c1_eager route and C2 native packed decode route before changing dispatch or kernels."
+  }
+}

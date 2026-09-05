@@ -3809,6 +3809,11 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
         def decode_graph_min_replay_steps() -> int:
             return 128
 
+        @staticmethod
+        def packed_decode_graph_min_replay_steps(physical_rows: int) -> int:
+            assert physical_rows == 2
+            return 23
+
     sessions = (FakeSession(512), FakeSession(512))
     graph = FakeGraph(sessions)
     capture_kwargs: dict[str, object] = {}
@@ -3835,13 +3840,14 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
         )
         for index, session in enumerate(sessions)
     ]
-    request = _request(prompts=("first", "second"), max_tokens=128, ignore_eos=True)
+    request = _request(prompts=("first", "second"), max_tokens=24, ignore_eos=True)
     rows = [
         SimpleNamespace(
             request_id=index + 1,
             request=request,
             native_greedy=True,
             native_sampled=False,
+            native_sampler=False,
             slot=slot,
             samples=[],
             sampling_request=None,
@@ -3880,8 +3886,8 @@ def test_gguf_resident_runner_captures_replays_and_closes_packed_graph() -> None
         "physical_rows": 2,
         "active_slot_indices": (0, 1),
         "steps_per_replay": 1,
-        "max_replay_steps": 127,
-        "record_steps": 127,
+        "max_replay_steps": 23,
+        "record_steps": 23,
     }
     assert [slot.generated_ids[-1] for slot in slots] == [41, 42]
     assert all(slot.packed_decode_graph is graph for slot in slots)

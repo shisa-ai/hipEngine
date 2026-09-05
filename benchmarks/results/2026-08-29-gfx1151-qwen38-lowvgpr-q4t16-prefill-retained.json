@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.3 (fourth retained unit: low-VGPR 16-column Q4T16 owners)"],
+  "title": "Low-VGPR 16-column Q4T16 prefill owners retained (rows 17-48)",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "change": {
+    "files": [
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py",
+      "hipengine/kernels/hip_gfx1151/__init__.py"
+    ],
+    "summary": "OUT_TILES_PER_BLOCK template parameter (default 3 = byte-identical existing instantiations) plus <false,2,1> and <false,3,1> low-VGPR owners: one 16-column out tile per 32-thread block with 16/24-float accumulators. gfx1151 bands: rows 17-32 lowvgpr on all six shapes; rows 33-48 lowvgpr48 on {(5120,17408),(5120,10240),(5120,12288)} and lowvgpr on the other three; rows 49-64 single-wave 48-col; >=65 and unadmitted shapes retain shared-B fail-closed.",
+    "basis": "Iteration-8 counter attribution: the 248-VGPR owners are latency-bound at ~2 waves/SIMD; the smaller accumulator footprint restores residency."
+  },
+  "selection_evidence": {
+    "harness": "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py (synthetic Q4T16, bit-exact cross-validation max_abs 0.0 on all shapes/rows)",
+    "dominant_shape_5120_17408": {
+      "rows_17_32": {"default_ms": 0.881, "lowvgpr_ms": 0.496, "delta_pct": -43.7, "gb_s": 103.9},
+      "rows_45": {"default_ms": 0.923, "lowvgpr48_ms": 0.681, "delta_pct": -26.2}
+    },
+    "other_shapes_rows_45_vs_default": {
+      "5120_6144": {"delta_pct": -36.7},
+      "17408_5120": {"delta_pct": -43.4},
+      "5120_10240": {"delta_pct": -39.1},
+      "5120_12288": {"delta_pct": -29.4},
+      "6144_5120": {"delta_pct": -46.2}
+    },
+    "rows_49_64": "48-column single-wave owner retains the band; crossovers measured at rows 56/64"
+  },
+  "measurements": {
+    "isolated_forced_bulk_prefill_45tok_s": {
+      "before": 0.418,
+      "after_median": 0.331,
+      "runs_after_s": [0.330, 0.332, 0.335],
+      "delta_pct": -20.8,
+      "vs_campaign_start_pct": -35.7
+    },
+    "server_prefill_frozen_protocol": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact",
+      "c1": {"before_tok_s": 102.21, "after_tok_s": 122.09, "delta_pct": 19.4, "cumulative_vs_frozen_pct": 70.6},
+      "c2": {"before_tok_s": 97.18, "after_tok_s": 115.58, "cumulative_vs_frozen_pct": 54.3},
+      "correctness": "every cell ar_self_exact / mtp_self_exact / ar_mtp_equal passed"
+    }
+  },
+  "kernel_trace_evidence": {
+    "command": "rocprofv3 --kernel-trace on the isolated 45-token forced-bulk bench",
+    "measured_pass": {
+      "q4_dense_family_gpu_ms": 174.85,
+      "q4_dense_launches": 297,
+      "q4_dense_vgpr": {"96": 191, "80": 106},
+      "pass_gpu_busy_ms_before": 442.8,
+      "pass_gpu_busy_ms_after": 379.1,
+      "note": "Q4 dense VGPR fell 248 -> 96/80 (4-6 waves/SIMD residency). Next families with the same pattern: q6_k_t16_qmicro_planar (184 VGPR, 103.1 ms), gguf_q5_t16_dense (200 VGPR, 35.9 ms)."
+    }
+  },
+  "gates": {
+    "red": "routing test extended RED-first; it also caught a 33-48 fall-through bug before commit",
+    "tests": "tests/test_gfx1151_backend.py 47/47; kernel family + server API 636/636",
+    "full_suite": "only the 3 pre-existing test_specdec2_perf_bridge ordering flakes; compileall, check_fixtures, smoke registry, smoke cpu-fixtures OK",
+    "exactness": "bit-exact vs shared-B on all six shapes and rows 17-64 sampled (max_abs 0.0); real-model ar_exact contracts passed"
+  },
+  "parity_context": {
+    "frozen_c1_winner": {"engine": "Nathan", "tok_s": 138.95},
+    "hipengine_c1_now_tok_s": 122.09,
+    "remaining_gap_pct": 12.1,
+    "remaining_walls": [
+      "Q6 qmicro-planar + Q5 T16 prefill families (~139 ms/pass at 184/200 VGPR - same latency-bound pattern)",
+      "GDN/attn ~25 ms; residual host ~5-15 ms"
+    ]
+  }
+}

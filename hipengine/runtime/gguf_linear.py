@@ -56,6 +56,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_pack8_gemv import (
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     register_gguf_q6_k_t16_gemv_kernels,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    q6_dense_integer_mmq_workspace,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     register_gguf_k_t16_selected_prefill_kernels,
 )
@@ -158,9 +161,248 @@ _target_verifier_rowtile_chunk_child_enabled: ContextVar[bool] = ContextVar(
     "gguf_target_verifier_rowtile_chunk_child_enabled",
     default=False,
 )
+_target_verifier_wide_q6_shared4_policy_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_wide_q6_shared4_policy_enabled",
+    default=False,
+)
+_target_verifier_wide_q6_shared4_leaf_enabled: ContextVar[bool] = ContextVar(
+    "gguf_target_verifier_wide_q6_shared4_leaf_enabled",
+    default=False,
+)
 TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV = (
     "HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE"
 )
+TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV = "HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4"
+
+# B1 mechanism-A transfer (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md): route the
+# packed MTP serving target verifier's rows>1 projections through the same
+# retained exact prefill band owners the prefill path uses, instead of the
+# July-2026 small-B per-row GEMV owners (9cceedbcc). Default ON for the
+# production execution profile (retained 2026-09-02 after the B1 gates:
+# one-group suite +56.3/+64.0/+69.5/+72.7 pct C5-C8 with 40/40 exact and
+# identical IDs; sec-6 teacher-forced logits gate top-1 100 pct, max KL
+# 6.5e-4; production-admission measured inert). Strict (and any profile
+# fallback) keeps the GEMV verifier oracle unchanged. The env remains an
+# explicit override for bisection and diagnostics: 1/on forces the transfer,
+# 0/off restores the GEMV owners everywhere.
+MTP_SERVING_TARGET_WMMA_PREFILL_ENV = (
+    "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL"
+)
+
+
+# B2 P1: prefill F16-staging route (docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md).
+# Default OFF: the BF16 owners remain the selected strict fallback. When
+# enabled (env or prefill session), Q4/Q5-T16 dense prefill launches stage
+# the activation operand into a bounded session-owned IEEE-half workspace,
+# then dispatch
+# the registered fp16-in siblings (measured 0.69-0.89x their BF16 owners at
+# the kernel level). The cast kernel and siblings are exact-family; outputs
+# are T1 and require the complete B2 item-3 gates before any default flip.
+PREFILL_F16_STAGING_ENV = "HIPENGINE_GGUF_PREFILL_F16_STAGING"
+_prefill_f16_staging_session_enabled: ContextVar[bool] = ContextVar(
+    "gguf_prefill_f16_staging_session_enabled", default=False
+)
+_PREFILL_F16_STAGING_MIN_ROWS = 17
+PREFILL_F16_STAGING_MAX_ROWS = 1024
+_PREFILL_F16_STAGING_QUANTS = frozenset(
+    {"gguf_q4_k_t16_v1", "gguf_q5_k_t16_v1"}
+)
+_PREFILL_F16_STAGING_SOURCE_VARIANT = "t16_wmma_prefill_bf16_bf16_out"
+PREFILL_F16_STAGING_VARIANT = "t16_wmma_prefill_fp16_in_bf16_out"
+
+# B5: production-default changed-arithmetic planar-Q6 integer MMQ. The registered
+# gfx1151 variant is selected only inside a caller-owned workspace context and
+# the backend package's exact row/shape policy. A remains the strict fallback.
+Q6_INTEGER_MMQ_PREFILL_ENV = "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL"
+
+
+def q6_integer_mmq_for(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Resolve the retained production default with an explicit env override."""
+
+    override = os.environ.get(Q6_INTEGER_MMQ_PREFILL_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
+
+
+@dataclass(frozen=True)
+class PrefillF16StagingWorkspace:
+    """Bounded device workspace owned by the active resident session."""
+
+    ptr: int
+    nbytes: int
+
+    def __post_init__(self) -> None:
+        if int(self.ptr) <= 0 or int(self.nbytes) <= 0:
+            raise ValueError("prefill F16 staging workspace must be non-empty")
+
+
+_prefill_f16_staging_workspace: ContextVar[
+    PrefillF16StagingWorkspace | None
+] = ContextVar("gguf_prefill_f16_staging_workspace", default=None)
+
+
+@contextlib.contextmanager
+def prefill_f16_staging_session(
+    enabled: bool = True,
+    *,
+    workspace_ptr: int = 0,
+    workspace_nbytes: int = 0,
+) -> Iterator[None]:
+    """Enable F16 staging with one caller-owned bounded device workspace."""
+
+    workspace = None
+    if enabled and (int(workspace_ptr) or int(workspace_nbytes)):
+        workspace = PrefillF16StagingWorkspace(
+            ptr=int(workspace_ptr),
+            nbytes=int(workspace_nbytes),
+        )
+    enabled_token = _prefill_f16_staging_session_enabled.set(bool(enabled))
+    workspace_token = _prefill_f16_staging_workspace.set(workspace)
+    try:
+        yield
+    finally:
+        _prefill_f16_staging_workspace.reset(workspace_token)
+        _prefill_f16_staging_session_enabled.reset(enabled_token)
+
+
+def prefill_f16_staging_enabled(default: bool = False) -> bool:
+    """Whether the prefill F16-staging route is active for this launch."""
+
+    if _prefill_f16_staging_session_enabled.get():
+        return True
+    override = os.environ.get(PREFILL_F16_STAGING_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    return bool(default)
+
+
+def prefill_f16_staging_for(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Resolve the profile default while preserving explicit env overrides."""
+
+    override = os.environ.get(PREFILL_F16_STAGING_ENV, "").strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
+
+
+def prefill_f16_staging_workspace() -> PrefillF16StagingWorkspace | None:
+    """Return the active caller-owned workspace, if one was supplied."""
+
+    return _prefill_f16_staging_workspace.get()
+
+
+def _prefill_f16_stage_ptr(count: int) -> int:
+    """Return the bounded owner pointer, or zero to keep the strict fallback."""
+
+    workspace = prefill_f16_staging_workspace()
+    required_nbytes = int(count) * 2
+    if workspace is None or int(workspace.nbytes) < required_nbytes:
+        return 0
+    return int(workspace.ptr)
+
+
+def _launch_prefill_f16_staged(
+    fn,
+    weight: GGUFDeviceWeight,
+    x_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    kwargs,
+    *,
+    backend: str,
+    quant: str,
+    layer: str,
+    runtime,
+) -> bool:
+    """Stage x as IEEE half and dispatch the fp16-in sibling; False = skip."""
+
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
+        gguf_cast_bf16_to_f16,
+    )
+
+    key = KernelKey(
+        backend, layer, quant, PREFILL_F16_STAGING_VARIANT
+    )
+    if not is_registered(key):
+        return False
+    sibling = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+    )
+    count = int(rows) * int(in_features)
+    stage_ptr = _prefill_f16_stage_ptr(count)
+    if stage_ptr <= 0:
+        return False
+    gguf_cast_bf16_to_f16(
+        x_ptr,
+        stage_ptr,
+        count,
+        stream=kwargs.get("stream", 0),
+        runtime=runtime,
+    )
+    stage_kwargs = dict(kwargs)
+    stage_kwargs.pop("library", None)
+    _LAUNCH_ABI["t16"](
+        sibling,
+        weight,
+        stage_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        stage_kwargs,
+    )
+    return True
+
+
+def mtp_serving_target_use_wmma_prefill(
+    profile: object = None,
+    *,
+    profile_fell_back_to_strict: bool = False,
+) -> bool:
+    """Whether MTP serving target verify passes use the prefill band owners.
+
+    ``profile`` accepts the generator's execution-profile value (or its
+    string). Resolution order: explicit env override, then the production
+    profile (without strict fallback), then off. Without profile context the
+    answer is off so unrelated callers never drift onto the transferred
+    owners.
+    """
+
+    override = os.environ.get(
+        MTP_SERVING_TARGET_WMMA_PREFILL_ENV, ""
+    ).strip().lower()
+    if override:
+        return override in {"1", "true", "yes", "on"}
+    profile_value = getattr(profile, "value", profile)
+    if profile_value is None or str(profile_value) == "":
+        return False
+    return str(profile_value) == "production" and not bool(
+        profile_fell_back_to_strict
+    )
 
 # Small-B weight-amortized row-tile GEMV for raw K-quants and resident-pack8
 # Q4_K verifier continuation blocks. Default ON: every specialization preserves
@@ -1350,6 +1592,45 @@ def target_verifier_production_q4_rowtile_session(
         _target_verifier_production_q4_rowtile_session_enabled.reset(token)
 
 
+@contextlib.contextmanager
+def target_verifier_wide_q6_shared4_session(
+    enabled: bool = True,
+) -> Iterator[None]:
+    """Enable the W1 B-stationary Q6 verifier candidate in one context."""
+
+    token = _target_verifier_wide_q6_shared4_policy_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _target_verifier_wide_q6_shared4_policy_enabled.reset(token)
+
+
+def target_verifier_wide_q6_shared4_policy_enabled() -> bool:
+    """Return whether the outer W1 logical-width policy is enabled."""
+
+    if _target_verifier_wide_q6_shared4_policy_enabled.get():
+        return True
+    return os.environ.get(TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV, "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+@contextlib.contextmanager
+def target_verifier_wide_q6_shared4_leaf_session(
+    enabled: bool = True,
+) -> Iterator[None]:
+    """Activate W1 Q6 leaves only inside one packed verifier transaction."""
+
+    token = _target_verifier_wide_q6_shared4_leaf_enabled.set(bool(enabled))
+    try:
+        yield
+    finally:
+        _target_verifier_wide_q6_shared4_leaf_enabled.reset(token)
+
+
 def _env_gemv_decode_enabled() -> bool:
     raw = os.environ.get(_GEMV_DECODE_ENV, "")
     if not raw:
@@ -2484,6 +2765,93 @@ def _native_split_row_chunk(
     return chunk
 
 
+def _target_verifier_true_rowtile_variant(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch | None:
+    """Resolve one package-qualified operation-complete verifier rowtile."""
+
+    if not (
+        _target_verifier_rowtile_session_enabled.get()
+        and _target_verifier_production_q4_rowtile_session_enabled.get()
+    ):
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("target verifier true-rowtile policies must be a mapping")
+    variant = policies.get(
+        (
+            str(weight.spec.quant_key),
+            int(rows),
+            int(in_features),
+            int(out_features),
+        )
+    )
+    if variant is None:
+        return None
+    variant = str(variant)
+    parent = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
+    if parent.abi != "t16":
+        return None
+    key = KernelKey(backend, parent.key.layer, str(weight.spec.quant_key), variant)
+    _ensure_linear_kernel_registered(key)
+    return GGUFLinearDispatch(key, parent.abi) if is_registered(key) else None
+
+
+def _target_verifier_wide_q6_shared4_variant(
+    weight: GGUFDeviceWeight,
+    *,
+    backend: str,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch | None:
+    """Resolve the default-off W1 B-stationary Q6 verifier candidate."""
+
+    if not (
+        _target_verifier_rowtile_session_enabled.get()
+        and _target_verifier_production_q4_rowtile_session_enabled.get()
+        and _target_verifier_wide_q6_shared4_leaf_enabled.get()
+    ):
+        return None
+    policies = backend_package_capability(
+        backend,
+        "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("wide Q6 shared4 policies must be a mapping")
+    variant = policies.get(
+        (
+            str(weight.spec.quant_key),
+            int(rows),
+            int(in_features),
+            int(out_features),
+        )
+    )
+    if variant is None:
+        return None
+    parent = resolve_gguf_linear_dispatch(weight, backend=backend, rows=rows)
+    if parent.abi != "t16":
+        return None
+    key = KernelKey(
+        backend,
+        parent.key.layer,
+        str(weight.spec.quant_key),
+        str(variant),
+    )
+    _ensure_linear_kernel_registered(key)
+    return GGUFLinearDispatch(key, parent.abi) if is_registered(key) else None
+
+
 def _native_rowtile_chunk_groups(
     weight: GGUFDeviceWeight,
     *,
@@ -2607,6 +2975,21 @@ def launch_gguf_linear(
     """
 
     resolved_backend = _weight_backend(weight, backend=backend)
+    wide_q6_dispatch = (
+        _target_verifier_wide_q6_shared4_variant(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
     split_row_chunk = (
         _native_split_row_chunk(
             weight,
@@ -2620,6 +3003,7 @@ def launch_gguf_linear(
         and threads == 0
         and not use_q4_pack8_wmma
         and registered_variant is None
+        and wide_q6_dispatch is None
         else None
     )
     if split_row_chunk is not None:
@@ -2641,6 +3025,76 @@ def launch_gguf_linear(
                 use_wmma_prefill=use_wmma_prefill,
                 use_gemv_decode=use_gemv_decode,
             )
+        return
+    if wide_q6_dispatch is not None:
+        fn = resolve(
+            backend=wide_q6_dispatch.key.backend,
+            layer=wide_q6_dispatch.key.layer,
+            quant=wide_q6_dispatch.key.quant,
+            variant=wide_q6_dispatch.key.variant,
+        )
+        library = None
+        if libraries is not None:
+            library = libraries.get(
+                f"{wide_q6_dispatch.key.quant}:{wide_q6_dispatch.key.variant}",
+                libraries.get(wide_q6_dispatch.key.quant),
+            )
+        kwargs = {"stream": stream, "runtime": runtime}
+        if library is not None:
+            kwargs["library"] = library
+        _LAUNCH_ABI[wide_q6_dispatch.abi](
+            fn,
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
+        return
+    true_rowtile_dispatch = (
+        _target_verifier_true_rowtile_variant(
+            weight,
+            backend=resolved_backend,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+        and threads == 0
+        and not use_q4_pack8_wmma
+        and registered_variant is None
+        else None
+    )
+    if true_rowtile_dispatch is not None:
+        fn = resolve(
+            backend=true_rowtile_dispatch.key.backend,
+            layer=true_rowtile_dispatch.key.layer,
+            quant=true_rowtile_dispatch.key.quant,
+            variant=true_rowtile_dispatch.key.variant,
+        )
+        library = None
+        if libraries is not None:
+            library = libraries.get(
+                f"{true_rowtile_dispatch.key.quant}:"
+                f"{true_rowtile_dispatch.key.variant}",
+                libraries.get(true_rowtile_dispatch.key.quant),
+            )
+        kwargs = {"stream": stream, "runtime": runtime}
+        if library is not None:
+            kwargs["library"] = library
+        _LAUNCH_ABI[true_rowtile_dispatch.abi](
+            fn,
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+        )
         return
     native_rowtile_groups = (
         _native_rowtile_chunk_groups(
@@ -2753,6 +3207,12 @@ def launch_gguf_linear(
             is None
             else id(q6_f16_session)
         ),
+        (
+            None
+            if (q6_integer_workspace := q6_dense_integer_mmq_workspace())
+            is None
+            else id(q6_integer_workspace)
+        ),
         raw_weight_ptr,
         has_raw_weight_sidecar,
     )
@@ -2805,6 +3265,12 @@ def launch_gguf_linear(
             use_wmma=use_wmma,
         )
         dispatch = _q6_t16_f16_rocblas_prefill_dispatch(
+            dispatch,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        dispatch = _q6_integer_mmq_prefill_dispatch(
             dispatch,
             rows=rows,
             in_features=in_features,
@@ -2927,9 +3393,15 @@ def launch_gguf_linear(
             quant=dispatch.key.quant,
             variant=dispatch.key.variant,
         )
-        cached = (dispatch.abi, fn, dispatch.key.quant, dispatch.key.variant)
+        cached = (
+            dispatch.abi,
+            fn,
+            dispatch.key.layer,
+            dispatch.key.quant,
+            dispatch.key.variant,
+        )
         _DISPATCH_RESOLVE_CACHE[cache_key] = cached
-    abi, fn, quant, variant = cached
+    abi, fn, layer, quant, variant = cached
     library = None
     if libraries is not None:
         library = libraries.get(f"{quant}:{variant}", libraries.get(quant))
@@ -2964,6 +3436,31 @@ def launch_gguf_linear(
             **kwargs,
         )
         return
+    if (
+        prefill_f16_staging_enabled()
+        and abi == "t16"
+        and quant in _PREFILL_F16_STAGING_QUANTS
+        and variant == _PREFILL_F16_STAGING_SOURCE_VARIANT
+        and _PREFILL_F16_STAGING_MIN_ROWS <= int(rows)
+        <= PREFILL_F16_STAGING_MAX_ROWS
+        and activation_dtype == GGUF_ACTIVATION_BF16
+        and output_dtype == GGUF_OUTPUT_BF16
+    ):
+        if _launch_prefill_f16_staged(
+            fn,
+            weight,
+            x_ptr,
+            out_ptr,
+            rows,
+            in_features,
+            out_features,
+            kwargs,
+            backend=resolved_backend,
+            quant=quant,
+            layer=layer,
+            runtime=runtime,
+        ):
+            return
     _LAUNCH_ABI[abi](fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs)
 
 
@@ -3114,6 +3611,52 @@ def _target_verifier_production_q4_rowtile_scope_enabled(
         ) in shapes
     except TypeError:
         return False
+
+
+def _target_verifier_production_q4_pair_key(
+    dispatch_a: GGUFLinearDispatch,
+    dispatch_b: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> KernelKey | None:
+    """Resolve a package-qualified operation-complete verifier pair."""
+
+    if not (
+        _target_verifier_production_q4_rowtile_scope_enabled(
+            dispatch_a,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        and _target_verifier_production_q4_rowtile_scope_enabled(
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        and dispatch_a.key.quant == dispatch_b.key.quant
+    ):
+        return None
+    table = backend_package_capability(
+        dispatch_a.key.backend,
+        "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS",
+        {},
+    )
+    if not isinstance(table, Mapping):
+        raise RuntimeError("production Q4 verifier pair variants must be a mapping")
+    variant = table.get((int(rows), int(in_features), int(out_features)))
+    if variant is None:
+        return None
+    key = KernelKey(
+        dispatch_a.key.backend,
+        "linear_pair_silu",
+        dispatch_a.key.quant,
+        str(variant),
+    )
+    _ensure_linear_kernel_registered(key)
+    return key if is_registered(key) else None
 
 
 def _q4_t16_dense_native_dispatch(
@@ -4750,6 +5293,39 @@ def launch_gguf_linear_pair_silu(
             and dispatch_a.key.quant in _Q4_T16_DENSE_QUANTS
             else None
         )
+        production_q4_pair_key = _target_verifier_production_q4_pair_key(
+            dispatch_a,
+            dispatch_b,
+            rows=rows,
+            in_features=in_features,
+            out_features=out_features,
+        )
+        if production_q4_pair_key is not None:
+            fn = resolve(
+                backend=production_q4_pair_key.backend,
+                layer=production_q4_pair_key.layer,
+                quant=production_q4_pair_key.quant,
+                variant=production_q4_pair_key.variant,
+            )
+            kwargs = {"stream": stream, "runtime": runtime}
+            library = (
+                None
+                if libraries is None
+                else libraries.get(production_q4_pair_key.quant)
+            )
+            if library is not None:
+                kwargs["library"] = library
+            fn(
+                x_ptr,
+                weight_a.allocation("tiles").tensor.ptr,
+                weight_b.allocation("tiles").tensor.ptr,
+                out_ptr,
+                rows,
+                in_features,
+                out_features,
+                **kwargs,
+            )
+            return True
         production_q4_chunk_groups = (
             _rowtile8_row_chunks(rows)
             if rows > _ROWTILE_MAX_ROWS
@@ -6818,6 +7394,46 @@ def _native_batch_decode_dispatch(
     return GGUFLinearDispatch(rewritten_key, dispatch.abi)
 
 
+def _q6_integer_mmq_prefill_dispatch(
+    dispatch: GGUFLinearDispatch,
+    *,
+    rows: int,
+    in_features: int,
+    out_features: int,
+) -> GGUFLinearDispatch:
+    """Select the backend-declared dense integer route inside its owner context."""
+
+    if q6_dense_integer_mmq_workspace() is None or dispatch.abi != "t16":
+        return dispatch
+    policy = backend_package_capability(
+        dispatch.key.backend,
+        "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
+        {},
+    )
+    if not isinstance(policy, Mapping):
+        return dispatch
+    entry = policy.get(dispatch.key.quant)
+    if not isinstance(entry, Mapping):
+        return dispatch
+    try:
+        admitted = (
+            int(entry["min_rows"]) <= int(rows) <= int(entry["max_rows"])
+            and (int(in_features), int(out_features)) in entry["shapes"]
+        )
+        variant = str(entry["variant"])
+    except (KeyError, TypeError, ValueError):
+        return dispatch
+    if not admitted:
+        return dispatch
+    key = KernelKey(
+        dispatch.key.backend,
+        dispatch.key.layer,
+        dispatch.key.quant,
+        variant,
+    )
+    return GGUFLinearDispatch(key, dispatch.abi) if is_registered(key) else dispatch
+
+
 _T16_F16_ROCBLAS_ROUTE_BY_QUANT = MappingProxyType(
     {
         "gguf_q4_k_t16_v1": (
@@ -7228,6 +7844,9 @@ __all__ = [
     "GGUF_OUTPUT_BF16",
     "GGUF_OUTPUT_FP16",
     "GGUF_OUTPUT_F32",
+    "PREFILL_F16_STAGING_MAX_ROWS",
+    "PREFILL_F16_STAGING_VARIANT",
+    "PrefillF16StagingWorkspace",
     "launch_gguf_q4_t16_sidecar_decode",
     "GGUFLinearDispatch",
     "Q5F32OrderedPrefillSession",
@@ -7246,9 +7865,18 @@ __all__ = [
     "launch_gguf_linear_triple",
     "gguf_native_batch_decode_enabled",
     "native_batch_decode_session",
+    "prefill_f16_staging_enabled",
+    "prefill_f16_staging_for",
+    "prefill_f16_staging_session",
+    "prefill_f16_staging_workspace",
+    "q6_integer_mmq_for",
     "target_verifier_rowtile_session",
     "target_verifier_production_q4_rowtile_session",
+    "target_verifier_wide_q6_shared4_session",
+    "target_verifier_wide_q6_shared4_policy_enabled",
+    "target_verifier_wide_q6_shared4_leaf_session",
     "TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ENV",
+    "TARGET_VERIFIER_WIDE_Q6_SHARED4_ENV",
     "q4_pack8_dual_wmma_silu_prefill_session",
     "q4_t16_unequal_pair_prefill_session",
     "q5_f32_ordered_prefill_session",

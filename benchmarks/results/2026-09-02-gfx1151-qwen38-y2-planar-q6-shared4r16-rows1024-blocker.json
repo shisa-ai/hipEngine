@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared4r16-rows1024-blocker",
+  "status": "blocked",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "bound": {
+    "rows1024_q6_sweeps": 3.78,
+    "rows1024_q6_gpu_ms": 587.02
+  },
+  "candidate": {
+    "geometry": "<4,16,2>",
+    "capacity_rows": 1024,
+    "grid_y": 1
+  },
+  "actual_weight_screen": {
+    "rows": [
+      1024
+    ],
+    "results": {
+      "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+        "1024": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 12.689061737060547,
+          "candidate_ms": 46.13825378417969,
+          "speedup": 0.2750225831349406
+        }
+      },
+      "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+        "1024": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 1.0251392364501952,
+          "candidate_ms": 3.509055328369141,
+          "speedup": 0.2921410865660634
+        }
+      }
+    }
+  },
+  "decision": "Exact one-sweep ownership is 3.43-3.64x slower than shared4r6. Shared4r9 already loses wide rows1024 at 0.878x; increasing row tiles further worsens the resource/occupancy regime. Remove export and retain shared4r6 fallback.",
+  "raw_source": {
+    "path": "/tmp/y2-q6-planar-shared4r16-r1024.json",
+    "sha256": "4d7dd792ea27b592ded36520344de6e191691fffc9bc3c8b04e80e41b500a24c",
+    "bytes": 607
+  }
+}

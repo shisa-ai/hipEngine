@@ -53,7 +53,7 @@ The microbench was fixed: it had been measuring **Python ctypes launch overhead*
 (4 launches vs 1) against an **8x strawman** (naive non-staged chain), not GPU
 time. With HIP-graph replay timing it now matches rocprof (fused ~210 us vs
 production ~83 us) and shows the fused time is **flat ~210 us across c=1..8**
-(occupancy/latency-bound; only 32 blocks on 48 CUs; gate_up uses 64/256 threads).
+(occupancy/latency-bound; only 32 blocks on 96 CUs; gate_up uses 64/256 threads).
 
 The occupancy redesign (split-K gate_up to use all 256 threads) **regressed** to
 ~520 us in both LDS-reduction and warp-shuffle forms — split-K scatters the
@@ -133,7 +133,7 @@ M7.C already eliminated it). Do not re-chase it.
 ## 3. What does NOT work — measured, do not re-litigate
 
 **Op-pair *staging* fusion regresses `C_B`.** The existing bit-exact
-staged-rotate kernels (HBM-staged, keyed-barrier — the "good" rotate-once design)
+staged-rotate kernels (VRAM-staged, keyed-barrier — the "good" rotate-once design)
 were re-measured on the current tree:
 
 | config | `C_B` (B=3) | exact | launches removed |
@@ -143,15 +143,15 @@ were re-measured on the current tree:
 | `+ SELECTED_MOE_STAGED_ROTATE=1` | 5.06 | ✓ | ~146/pass |
 
 Removing **small-grid** launches (rotate/rmsnorm/router) saves only the ~5.6 µs
-dispatch floor per launch, which is **less** than the barrier-spin + staged-HBM
+dispatch floor per launch, which is **less** than the barrier-spin + staged-VRAM
 round-trip a staging kernel adds. Consistent with M13.B.1 (+12.4 ms/pass
 redundant LDS rotation) and M15.4 (occupancy trap).
 
 **Consequence:** the first true megakernel must consolidate **real big-grid GEMV
-work + HBM intermediate traffic**, not shuffle small-grid plumbing behind a
+work + VRAM intermediate traffic**, not shuffle small-grid plumbing behind a
 barrier. **§10 (#105) makes this decisive in isolation:** a persistent-barrier
 microbench shows the grid barrier is ~free but persistent only beats N-launch for
-*dispatch-bound (sub-cache)* stages; for HBM-bound stages (the big GEMVs) it ties
+*dispatch-bound (sub-cache)* stages; for VRAM-bound stages (the big GEMVs) it ties
 or loses (0.93–1.27×). The 3-5× persistent whole-pass is **not supported** — the
 lever is glue fusion + dispatch-floor reduction, not a megakernel.
 
@@ -174,11 +174,11 @@ target (per layer, 1 launch):
 ```
 
 Each block carries the 512-d intermediate **on-chip** (registers/LDS), so the
-gate_up-output HBM write + down-input HBM read **vanish**, ~3 big-grid GEMV
+gate_up-output VRAM write + down-input VRAM read **vanish**, ~3 big-grid GEMV
 launches/layer collapse to 1, and the rotates fold in for free (already in the
 block, no separate launch). Grid = `(tokens × top_k)` = 32 blocks at B=3.
 
-Reach: ~114 launches/pass + the intermediate HBM round-trip. A step toward
+Reach: ~114 launches/pass + the intermediate VRAM round-trip. A step toward
 `C_B ≤ 2`, not a one-shot fix — the GDN/full-attn blocks and rmsnorm are
 separate later units.
 
@@ -392,8 +392,8 @@ GDN, where 128 dv-blocks per v_head redid identical q/k loads, reductions, and 3
 transcendentals/t (free to collapse). The GEMV blocks are *not* over-launch in
 that sense.
 
-**But they are not occupancy-bound either.** W7900 = **96 CUs** (48 WGPs; the
-earlier "48 CUs" in this doc and ROOFLINE conflates WGP with CU), 32 max
+**But they are not occupancy-bound either.** W7900 = **96 CUs** (48 WGPs; an
+earlier "48 CUs" figure in this doc conflated WGP with CU), 32 max
 waves/CU. At VGPR=104 the GEMV reaches ~half occupancy (~14 WGs/CU), so the
 machine fills at **~1,350 WGs**. The verify grids run **49× (gate_up) to 97×
 (down)** that depth — far past the ~4–8 waves needed for memory-latency hiding.
@@ -535,17 +535,17 @@ cache-resident): persistent = **1.45 µs/stage**, i.e. `grid.sync()` ≈ **~1 µ
 far below a dispatch boundary.
 
 **But the win depends entirely on whether the stage is dispatch-bound or
-HBM-bound** — set by the L3 (64 MB Infinity Cache) boundary:
+VRAM-bound** — set by the L3 (96 MB Infinity Cache) boundary:
 
 | stage MB | regime | N-launch µs/st | persistent µs/st | speedup |
 |---:|---|---:|---:|---:|
 | 0.5–2 | sub-cache (dispatch-bound) | ~19.5 | 1.5–3 | **6–13×** |
 | 16 | sub-cache | 19.6 | 13.3 | 1.48× |
 | 64 | cache edge | 55 | 51 | 1.08× |
-| 128–256 | **>L3 → HBM-bound** | 457–999 | 477–1076 | **0.93–0.96×** |
+| 128–256 | **>L3 → VRAM-bound** | 457–999 | 477–1076 | **0.93–0.96×** |
 
 The first table re-reads one buffer (cache reuse) and **overstates** the win.
-The **AR-faithful** test streams a *distinct* fresh HBM slice per stage (1 GB
+The **AR-faithful** test streams a *distinct* fresh VRAM slice per stage (1 GB
 buffer, 160 stages, no reuse — exactly weight-streaming decode):
 
 | slice MB (≈ AR kernel working set) | N-launch µs/st | persistent µs/st | speedup | GB/s |
@@ -556,16 +556,16 @@ buffer, 160 stages, no reuse — exactly weight-streaming decode):
 
 **Verdict (decisive, NO-GO on the persistent megakernel for 3-5×):** persistent
 beats N-launch **only when the stage is dispatch-bound** (sub-cache, tiny working
-set). For HBM-bandwidth-bound stages — which is what AR decode is: each
-GEMV/expert streams *fresh* weights from HBM at ~600 GB/s effective — the only
+set). For VRAM-bandwidth-bound stages — which is what AR decode is: each
+GEMV/expert streams *fresh* weights from VRAM at ~600 GB/s effective — the only
 recoverable slack is the constant ~3 µs/launch dispatch gap, worth **~1.08–1.27×**
 at AR's 3–12 MB per-kernel working set, *not* 3-5×. The "25% → 70% BW util" premise
-is refuted: the big-grid kernels already run near HBM-effective BW; they are not
+is refuted: the big-grid kernels already run near VRAM-effective BW; they are not
 25%-utilised, the *token wall* is (because of the dispatch gap between kernels).
 
 **Consequence (redirects the program):**
 - The 3-5× persistent whole-pass / FFN-megakernel (§4) is **not supported** — it
-  would consolidate HBM-bound GEMV work that is already efficient, while paying
+  would consolidate VRAM-bound GEMV work that is already efficient, while paying
   barrier + lost-launch-overlap cost. Consistent with §3, M12.1/M13.D (graph
   replay ≈ direct dispatch), and #101 (verify is dispatch-bound, fix = dispatch).
 - The real lever is the **dispatch-bound GLUE** (rotations/norms/router/casts,

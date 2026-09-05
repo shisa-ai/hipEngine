@@ -277,6 +277,7 @@ def plan_speculative_requests(
     prefer_graph: bool = True,
     ar_target_widths: Sequence[int] = (1, 2, 4, 8),
     suppress_speculation: Sequence[bool] = (),
+    declared_logical_c: int = 0,
 ) -> SpecRequestPlan:
     """Choose K or K0 for every request before opening any mutable owner.
 
@@ -476,6 +477,7 @@ def plan_speculative_requests(
         ),
         context_bucket_size=context_bucket,
         execution_route=route or "eager",
+        declared_logical_c=declared_logical_c,
     )
 
 

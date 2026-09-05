@@ -1,0 +1,474 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_w0_sweep_economics",
+  "date": "2026-09-01",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "campaign": "docs/QWEN38-GFX1151-SCALING-CAMPAIGN.md extension W0",
+  "source": {
+    "instrumented_full_suite_commit": "8e8d4667dcb7a7ed57cf444dcbc7fb1eba7c3ce8",
+    "profile_commit": "dc977dd04a962d90da35be4ecc03eae261d9f8c4",
+    "dirty": false
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_version": "7.15.26333-0000000",
+    "amd_clang": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard_q4_k_m",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "full_suite": {
+      "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_ids": [
+        "code_merge_intervals",
+        "code_topological_sort",
+        "code_lru_cache",
+        "code_markdown_table",
+        "general_en_plan",
+        "general_en_explain",
+        "general_ja_plan",
+        "general_ja_explain",
+        "mixed_ja_en_translate",
+        "mixed_ja_en_review"
+      ],
+      "widths": [
+        6,
+        8
+      ],
+      "resident_capacity": 8,
+      "expected_mtp_widths": [
+        6,
+        8
+      ],
+      "max_tokens": 24,
+      "candidate_budget": 1,
+      "batch_window_ms": 50.0,
+      "warmup_arms_per_width": 2,
+      "runs": 1,
+      "sampling": "raw greedy, no processed target, natural stop/EOS",
+      "execution_profile": "production",
+      "correctness_contract": "mtp_self_exact",
+      "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+      "generation2_diagnostic_plan": true,
+      "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+    },
+    "profile_diagnostic": {
+      "prompts": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+      "prompt_ids": [
+        "code_merge_intervals"
+      ],
+      "full_prompt_suite": false,
+      "diagnostic_prompt_count": 1,
+      "performance_claim_eligible": false,
+      "widths": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        8
+      ],
+      "resident_capacity": 8,
+      "expected_mtp_widths": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        8
+      ],
+      "max_tokens": 24,
+      "candidate_budget": 3,
+      "batch_window_ms": 50.0,
+      "warmup_arms_per_width": 2,
+      "runs": 1,
+      "sampling": "raw greedy, no processed target, natural stop/EOS",
+      "execution_profile": "production",
+      "correctness_contract": "mtp_self_exact",
+      "generated_id_equality": "diagnostic; production promotion binds the complete execution-profile numerical/task gate",
+      "generation2_diagnostic_plan": true,
+      "timing": "blocking OpenAI barrier-to-last-completion complete wall"
+    },
+    "profile_scope": "one canonical prompt only; kernel/fetch attribution, never a throughput claim",
+    "timing_profile_command": "rocprofv3 --kernel-trace --output-format csv -d /tmp/wy-w0-rowcurve-trace -o w0-trace -- .venv/bin/python .multiloop/active/qwen38-scaling-extensions/wy-dataflow-prefill-r1/w0_rowcurve_driver.py",
+    "fetch_profile_command": "rocprofv3 --pmc FETCH_SIZE --kernel-trace --output-format csv -d /tmp/wy-w0-rowcurve-pmc -o w0-pmc -- .venv/bin/python .multiloop/active/qwen38-scaling-extensions/wy-dataflow-prefill-r1/w0_rowcurve_driver.py",
+    "full_suite_command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python .multiloop/active/qwen38-wide-mtp/q38-c6c8-115x-r2/verify_driver.py",
+    "counter": "FETCH_SIZE: total KiB fetched from video memory, including cache/memory effects"
+  },
+  "full_suite_k1": {
+    "6": {
+      "ar_tok_s": 40.13297670286469,
+      "mtp_tok_s": 37.2684013397218,
+      "mtp_vs_ar": 0.9286229031962532,
+      "cycle_cost_ar_step_equivalents": 2.106906616664555,
+      "target_cycle_cost_ar_step_equivalents_at_1_15x": 1.7013232514177696,
+      "stage_ms_per_cycle": {
+        "accept": 148.90478925941431,
+        "proposal": 12.368963839000333,
+        "provider_update": 5.307489698347838,
+        "selected_commit": 2.1108191379386447,
+        "target": 25.10910711304348
+      },
+      "target_shapes": {
+        "12": 115
+      }
+    },
+    "8": {
+      "ar_tok_s": 47.81487015280761,
+      "mtp_tok_s": 43.668055070002644,
+      "mtp_vs_ar": 0.9132735262157463,
+      "cycle_cost_ar_step_equivalents": 2.14231737039122,
+      "target_cycle_cost_ar_step_equivalents_at_1_15x": 1.7013232514177696,
+      "stage_ms_per_cycle": {
+        "accept": 167.8014975587797,
+        "proposal": 10.778880767200304,
+        "provider_update": 4.730618660054777,
+        "selected_commit": 2.999045112696679,
+        "target": 33.44492105217391
+      },
+      "target_shapes": {
+        "16": 115
+      }
+    }
+  },
+  "weight_inventory": {
+    "proposal": {
+      "minimum_weight_bytes_per_sweep": 1332471808,
+      "minimum_weight_bytes_per_sweep_by_family": {
+        "f32": 104448,
+        "q4_k": 156303360,
+        "q6_k": 1120358400,
+        "q8_0": 55705600
+      },
+      "tensor_count": 16
+    },
+    "target": {
+      "minimum_weight_bytes_per_sweep": 16091068416,
+      "minimum_weight_bytes_per_sweep_by_family": {
+        "f32": 104933376,
+        "q4_k": 10498867200,
+        "q5_k": 1038090240,
+        "q6_k": 4449177600
+      },
+      "tensor_count": 849
+    }
+  },
+  "row_curve": {
+    "8": {
+      "passes": 8,
+      "timing": {
+        "host_ms_median": 118.619078,
+        "kernel_ms_median": 111.836556,
+        "family_ms_median": {
+          "q4": 60.6685665,
+          "q5": 8.315583,
+          "q6": 32.853632000000005
+        },
+        "classified_kernel_fraction": 0.9105947566911843
+      },
+      "fetch": {
+        "total_mib_median": 19580.010955810547,
+        "family_mib_median": {
+          "q4": 11452.66928100586,
+          "q5": 1033.8279724121094,
+          "q6": 5458.225799560547
+        },
+        "family_sweep_multiplicity_vs_resident": {
+          "q4": 1.1438371316859786,
+          "q5": 1.044270679204151,
+          "q6": 1.2863870788165435
+        },
+        "classified_fetch_fraction": 0.9164817677312512
+      }
+    },
+    "12": {
+      "passes": 8,
+      "timing": {
+        "host_ms_median": 178.344289,
+        "kernel_ms_median": 169.1615645,
+        "family_ms_median": {
+          "q4": 94.87314950000001,
+          "q5": 11.161344499999998,
+          "q6": 50.478826
+        },
+        "classified_kernel_fraction": 0.9252297971032304
+      },
+      "fetch": {
+        "total_mib_median": 28285.90151977539,
+        "family_mib_median": {
+          "q4": 16055.919555664062,
+          "q5": 1052.839599609375,
+          "q6": 8752.717468261719
+        },
+        "family_sweep_multiplicity_vs_resident": {
+          "q4": 1.603587471227372,
+          "q5": 1.0634743430397726,
+          "q6": 2.0628283015719577
+        },
+        "classified_fetch_fraction": 0.9142885760757791
+      }
+    },
+    "16": {
+      "passes": 8,
+      "timing": {
+        "host_ms_median": 203.2290965,
+        "kernel_ms_median": 193.538456,
+        "family_ms_median": {
+          "q4": 95.24389350000001,
+          "q5": 18.0029635,
+          "q6": 64.553939
+        },
+        "classified_kernel_fraction": 0.9186845843184779
+      },
+      "fetch": {
+        "total_mib_median": 25762.101501464844,
+        "family_mib_median": {
+          "q4": 10586.135131835938,
+          "q5": 1082.5839538574219,
+          "q6": 10838.154602050781
+        },
+        "family_sweep_multiplicity_vs_resident": {
+          "q4": 1.0572918983107054,
+          "q5": 1.093519145310527,
+          "q6": 2.554321230062832
+        },
+        "classified_fetch_fraction": 0.8736427688736647
+      }
+    },
+    "20": {
+      "passes": 7,
+      "timing": {
+        "host_ms_median": 558.722723,
+        "kernel_ms_median": 547.750785,
+        "family_ms_median": {
+          "q4": 137.741674,
+          "q5": 67.247152,
+          "q6": 322.969056
+        },
+        "classified_kernel_fraction": 0.9638651307455454
+      },
+      "fetch": {
+        "total_mib_median": 106751.42156982422,
+        "family_mib_median": {
+          "q4": 10623.593872070312,
+          "q5": 21408.85723876953,
+          "q6": 70658.69244384766
+        },
+        "family_sweep_multiplicity_vs_resident": {
+          "q4": 1.0610330958372347,
+          "q5": 21.625108321989426,
+          "q6": 16.65274254010449
+        },
+        "classified_fetch_fraction": 0.961965115260962
+      }
+    },
+    "24": {
+      "passes": 7,
+      "timing": {
+        "host_ms_median": 639.780882,
+        "kernel_ms_median": 627.61788,
+        "family_ms_median": {
+          "q4": 137.872195,
+          "q5": 80.136417,
+          "q6": 386.973929
+        },
+        "classified_kernel_fraction": 0.9639345217507187
+      },
+      "fetch": {
+        "total_mib_median": 126018.12023925781,
+        "family_mib_median": {
+          "q4": 10639.625061035156,
+          "q5": 25678.633666992188,
+          "q6": 84845.13488769531
+        },
+        "family_sweep_multiplicity_vs_resident": {
+          "q4": 1.0626342133368445,
+          "q5": 25.938013805042612,
+          "q6": 19.99618360031301
+        },
+        "classified_fetch_fraction": 0.9614759638191874
+      }
+    },
+    "32": {
+      "passes": 7,
+      "timing": {
+        "host_ms_median": 805.642699,
+        "kernel_ms_median": 790.178511,
+        "family_ms_median": {
+          "q4": 137.761546,
+          "q5": 104.69354,
+          "q6": 515.553968
+        },
+        "classified_kernel_fraction": 0.9592883676888553
+      },
+      "fetch": {
+        "total_mib_median": 164175.5952758789,
+        "family_mib_median": {
+          "q4": 10671.725952148438,
+          "q5": 34274.584411621094,
+          "q6": 113235.12670898438
+        },
+        "family_sweep_multiplicity_vs_resident": {
+          "q4": 1.065840294846286,
+          "q5": 34.6207923349708,
+          "q6": 26.68709745908997
+        },
+        "classified_fetch_fraction": 0.9634893469211884
+      }
+    }
+  },
+  "flatness": {
+    "gate": "R32 <= 1.25x R8 per family",
+    "r32_over_r8_family_ms": {
+      "q4": 2.2707236044550356,
+      "q5": 12.590042093260328,
+      "q6": 15.69244971149613
+    },
+    "r32_over_r8_family_fetch": {
+      "q4": 0.9318112389613303,
+      "q5": 33.15308283993538,
+      "q6": 20.745775434592897
+    },
+    "passed": false
+  },
+  "sized_bounds": {
+    "W1_C6_R24": {
+      "current_family_ms_per_cycle": {
+        "q4": 137.872195,
+        "q5": 80.136417,
+        "q6": 386.973929
+      },
+      "flatness_ceiling_ms_per_family": {
+        "q4": 75.835708125,
+        "q5": 10.394478750000001,
+        "q6": 41.067040000000006
+      },
+      "family_saving_bound_ms_per_cycle": {
+        "q4": 62.03648687500001,
+        "q5": 69.74193824999999,
+        "q6": 345.906889
+      },
+      "family_saving_bound_ms_per_cycle_total": 477.685314125,
+      "projected_71_cycle_full_suite_saving_s": 33.915657302875,
+      "unclassified_kernel_ms_per_cycle": 22.635339000000045,
+      "host_minus_kernel_ms_per_cycle": 12.163002000000006,
+      "non_family_upper_bound_ms_per_cycle": 34.79834100000005,
+      "non_family_upper_bound_71_cycle_s": 2.4706822110000033
+    },
+    "W1_C8_R32": {
+      "current_family_ms_per_cycle": {
+        "q4": 137.761546,
+        "q5": 104.69354,
+        "q6": 515.553968
+      },
+      "flatness_ceiling_ms_per_family": {
+        "q4": 75.835708125,
+        "q5": 10.394478750000001,
+        "q6": 41.067040000000006
+      },
+      "family_saving_bound_ms_per_cycle": {
+        "q4": 61.92583787500001,
+        "q5": 94.29906125,
+        "q6": 474.48692800000003
+      },
+      "family_saving_bound_ms_per_cycle_total": 630.711827125,
+      "projected_71_cycle_full_suite_saving_s": 44.780539725875,
+      "unclassified_kernel_ms_per_cycle": 32.16945699999985,
+      "host_minus_kernel_ms_per_cycle": 15.464188000000036,
+      "non_family_upper_bound_ms_per_cycle": 47.63364499999989,
+      "non_family_upper_bound_71_cycle_s": 3.381988794999992
+    },
+    "W2_W5_overlap_note": "Unclassified-kernel plus host-gap bounds overlap and are not additive; remeasure after W1.",
+    "W4": {
+      "c6_current_proposal_ms_per_cycle": 34.458021487807855,
+      "c8_current_proposal_ms_per_cycle": 30.136728048091754,
+      "c6_projected_flat_target_ms": 149.93256587500005,
+      "c8_projected_flat_target_ms": 159.46668387499986,
+      "c6_gate_ms_per_cycle": 22.489884881250006,
+      "c8_gate_ms_per_cycle": 23.920002581249978,
+      "c6_excess_ms_per_cycle": 11.968136605307849,
+      "c8_excess_ms_per_cycle": 6.216725466841776,
+      "c6_excess_71_cycle_s": 0.8497376989768573,
+      "c8_excess_71_cycle_s": 0.4413875081457661,
+      "gate": "proposal <=15% of projected flat target sweep; optimize only the measured excess"
+    },
+    "W5": {
+      "c6_provider_plus_selected_commit_ms_per_cycle": 11.895356845343485,
+      "c8_provider_plus_selected_commit_ms_per_cycle": 13.989403989398852,
+      "c6_explicit_owned_71_cycle_s": 0.8445703360193874,
+      "c8_explicit_owned_71_cycle_s": 0.9932476832473185,
+      "c6_fraction_of_historical_k3_wall": 0.014173296092860093,
+      "c8_fraction_of_historical_k3_wall": 0.0135728543099212,
+      "historical_k3_wall_s": {
+        "6": 59.58893641200848,
+        "8": 73.17897285963409,
+        "source": "2026-08-30 M1 wide cycle accounting"
+      },
+      "decision": "explicit owned stages are below 2% of current K3 full wall; defer implementation until post-W1 cycle trace separates residual accept epilogue from target drain"
+    }
+  },
+  "correctness": {
+    "full_suite": "20/20 exact, engaged, budget-conformant",
+    "profile_trace": "6/6 exact, engaged, budget-conformant",
+    "profile_pmc": "6/6 exact, engaged, budget-conformant",
+    "acceptance": "1540/1610 accepted candidates across C6/C8 K1"
+  },
+  "decision": {
+    "w0_closed": true,
+    "w1_entry_open": true,
+    "finding": "R32 family time is 2.27x/12.59x/15.69x R8 for Q4/Q5/Q6; measured R32 fetch is ~1.07x/34.62x/26.69x each family resident sweep. W1 has 33.9s/44.8s C6/C8 71-cycle family-time bounds, well above the remaining K1 wall gaps.",
+    "next": "Implement shared W1/Y1 B-stationary M-loop tile machinery, starting with Q6 then Q5; Q4 bytes are already near one sweep but its R32 time still fails flatness. Keep automatic C6/C8 K0."
+  },
+  "raw_sources": {
+    "full_suite": {
+      "path": "/tmp/wy-w0-c6c8-k1.json",
+      "size_bytes": 5954131,
+      "sha256": "926d02142a94ef56c50a7a39512b7a2d26f215bb5ea0fdee7184302b40574e0f"
+    },
+    "full_accounting": {
+      "path": "/tmp/wy-w0-c6c8-k1-accounting.json",
+      "size_bytes": 7128,
+      "sha256": "a2f8485e52d021c9d683cd2fcd859081411172079da8e835eed1f1700ae1e05e"
+    },
+    "trace_raw": {
+      "path": "/tmp/wy-w0-rowcurve-trace/raw.json",
+      "size_bytes": 1030855,
+      "sha256": "a785a245749fc1e2126525d6f0544b55fc673c93910edcc2b95bb4c0ce17ce31"
+    },
+    "trace_accounting": {
+      "path": "/tmp/wy-w0-rowcurve-trace/accounting.json",
+      "size_bytes": 18903,
+      "sha256": "140ca913cf32e466790a3b629644344221ba3506e71b2518531fc792742d3bc2"
+    },
+    "trace_kernel_csv": {
+      "path": "/tmp/wy-w0-rowcurve-trace/w0-trace_kernel_trace.csv",
+      "size_bytes": 125503484,
+      "sha256": "9519c2b25f94d70e447c081a70988b2e78a9420d7a1e46671ee40149ad954653"
+    },
+    "pmc_raw": {
+      "path": "/tmp/wy-w0-rowcurve-pmc/raw.json",
+      "size_bytes": 1030757,
+      "sha256": "8288aa925638281c7aa6075ffe3e83c490c676052aa46671e37ee3eeb7e27e31"
+    },
+    "pmc_accounting": {
+      "path": "/tmp/wy-w0-rowcurve-pmc/accounting.json",
+      "size_bytes": 20910,
+      "sha256": "7c00cf480c3530bc8c4beb460a6c21c7fc2a5a0f7612131947ebff775b66b859"
+    },
+    "pmc_counter_csv": {
+      "path": "/tmp/wy-w0-rowcurve-pmc/w0-pmc_counter_collection.csv",
+      "size_bytes": 127889320,
+      "sha256": "0a40b3cd858f0fc4d8c88ca41860f9f56b10e4a8c549c6905759e76d67cef6f2"
+    }
+  }
+}

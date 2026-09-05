@@ -78,6 +78,8 @@ from hipengine.tokenization.identity import token_ids_sha256
 
 
 _LOGGER = logging.getLogger("uvicorn.error")
+# Solo-idle batch dispatch slice for the arrival-aware generation window.
+_SOLO_DISPATCH_SLICE_SECONDS = 0.002
 _GRAPH_KERNEL_TIME_HISTOGRAM_BUCKET_SET = frozenset(GRAPH_KERNEL_TIME_HISTOGRAM_BUCKETS)
 _THINKING_START_MARKER = "<think>"
 _THINKING_CLOSE_MARKER = "</think>"
@@ -515,16 +517,15 @@ def _gguf_mtp_batch_route_max_active_requests(
         return _GGUF_MTP_MAX_ACTIVE_REQUESTS
     backend = _server_model_identity(config, engine)["backend"]
     try:
-        physical_max = int(
-            backend_package_capability(
-                backend,
-                "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
-                _GGUF_MTP_MAX_ACTIVE_REQUESTS,
-            )
+        width_depths = backend_package_capability(
+            backend,
+            "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
+            {},
         )
-    except (ImportError, TypeError, ValueError):
-        return _GGUF_MTP_MAX_ACTIVE_REQUESTS
-    if physical_max <= 0:
+        profile_cells = width_depths.get(profile, ())
+        physical_widths = tuple(sorted({int(cell[0]) for cell in profile_cells}))
+        physical_max = max(physical_widths)
+    except (AttributeError, ImportError, IndexError, TypeError, ValueError):
         return _GGUF_MTP_MAX_ACTIVE_REQUESTS
     configured_raw = os.environ.get(_GGUF_MTP_MAX_ACTIVE_REQUESTS_ENV)
     try:
@@ -533,7 +534,10 @@ def _gguf_mtp_batch_route_max_active_requests(
         configured_max = physical_max
     if configured_max <= 0:
         configured_max = physical_max
-    return min(physical_max, configured_max)
+    return max(
+        (width for width in physical_widths if width <= configured_max),
+        default=_GGUF_MTP_MAX_ACTIVE_REQUESTS,
+    )
 
 
 class OpenAIHTTPError(Exception):
@@ -2813,6 +2817,21 @@ class _GenerationBatcher:
         route_name = str(route)
         limit = self._max_active_requests
         route_limit = self._route_max_active_requests.get(route_name)
+        if route_name == _SPECULATIVE_MTP_BATCH_ROUTE:
+            # The physical MTP width is capability-owned: a resident adapter
+            # publishes its certified bound; engines without one retain the
+            # registered GGUF fallback constant.
+            registered_limit = getattr(
+                self._engine_factory(),
+                "server_mtp_batch_max_active_requests",
+                None,
+            )
+            if registered_limit is not None:
+                route_limit = int(registered_limit)
+                if route_limit < 1:
+                    raise ValueError(
+                        "server_mtp_batch_max_active_requests must be positive"
+                    )
         if route_name in {
             _SPECULATIVE_MTP_DEFAULT_ROUTE,
             _SPECULATIVE_MTP_AUTO_ROUTE,
@@ -2998,7 +3017,23 @@ class _GenerationBatcher:
     async def _run(self) -> None:
         try:
             if self._batch_window_seconds > 0.0:
-                await asyncio.sleep(self._batch_window_seconds)
+                # Arrival-aware window: a solo submission on an idle engine
+                # dispatches after one short slice instead of paying the full
+                # window (measured 2026-08-29: the fixed 50 ms window was the
+                # largest single slice of C1 request latency, and no second
+                # submission can join an idle solo batch). Two or more queued
+                # submissions, or a busy engine, still honor the full window
+                # so concurrent-arrival batching behavior is unchanged.
+                solo_slice = min(
+                    _SOLO_DISPATCH_SLICE_SECONDS, self._batch_window_seconds
+                )
+                await asyncio.sleep(solo_slice)
+                if not (
+                    len(self._queue) <= 1 and self._active_requests == 0
+                ):
+                    remaining = self._batch_window_seconds - solo_slice
+                    if remaining > 0.0:
+                        await asyncio.sleep(remaining)
             while self._queue:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):

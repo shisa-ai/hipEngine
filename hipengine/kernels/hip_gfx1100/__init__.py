@@ -409,11 +409,6 @@ GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY = {
     "enabled_default": True,
     "rows": frozenset({32}),
 }
-# The production dense adapter owns one physical request group through C8. The
-# adapter derives frontier/accept workspaces from this package capability and
-# retains an environment rollback to the previous C4 ceiling. Strict remains
-# on its existing C4/exact-fallback route.
-GGUF_SPECDEC2_MTP2_MAX_REQUESTS = 8
 # Pad physical SPECDEC2 target verify groups up to the admitted rows6
 # production rowtile when the root+candidate total falls below it (K1 R4 and
 # ragged 2-5-row cycles otherwise ride the shared-B 256-row padded tile at a
@@ -597,12 +592,30 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 8
 # layer hidden versus independent c1, with resolution provenance recorded.
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
-# SPECDEC2 exposes the dense GGUF C1 adapter plus the independently qualified
-# explicit physical C2 owner on gfx1100. The C4 construction seam is shared,
-# but model-plugin evidence still admits only exact C2 keys; C4 and automatic
-# physical policy remain fail-closed.
+# Keep intermediate packed-prefill tail sampling until the W7900 lane runs its
+# independent output/state and complete-wall qualification.
+GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = False
+# SPECDEC2 exposes only evidence-backed width/depth cells. This adopts the
+# non-monotonic package policy without importing gfx1151 economics: production
+# owns the qualified Qwen3.6/Qwen3.8 C1-K2/C1-K3/C2-K2 and Qwen3.8 C8-K3
+# frontiers, while strict owns only the explicit dense C2-K2 cell. Model
+# evidence, profile hashes, capacity, context, horizon, and sampling mode still
+# gate each request; every unmatched key remains K0.
 GGUF_SPECDEC2_MTP2_C1 = True
-GGUF_SPECDEC2_MTP2_C4 = True
+GGUF_SPECDEC2_MTP2_PHYSICAL = True
+GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
+    str, tuple[tuple[int, int], ...]
+] = {
+    "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+    "strict": ((2, 2),),
+}
+# Production prompt streaming follows the same model-local physical evidence.
+# C8 is retained only on the dense Qwen3.8 C8-K3 serving key; the serving
+# evidence resolver rejects other capacity-8 due groups before provider mutation.
+GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 8),
+    (QWEN35_MOE_H2048_E256_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2),
+}
 # W7900 P2 p128 found deterministic native target-graph NaN/sentinel output;
 # eager/serial target verification remains exact above the locally-qualified
 # natural25 context envelope.  This is graph admission, not model policy.
@@ -1104,7 +1117,6 @@ __all__ = [
     "GGUF_SPECDEC2_PRODUCTION_PHYSICAL_EXACT_ROWTILE_ROWS",
     "GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS_POLICY",
     "GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS_POLICY",
-    "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
     "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1",
     "GGUF_MAPPED_HOST_TOKEN_EMBEDDING_C1_GGML_TYPES",
@@ -1132,8 +1144,11 @@ __all__ = [
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_SPECDEC2_MTP2_C1",
-    "GGUF_SPECDEC2_MTP2_C4",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
+    "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
     "PARO_SPECDEC2_MTP2_C1",

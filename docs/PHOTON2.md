@@ -20,7 +20,7 @@ portable implementation for hipEngine:
 - Photon’s published launch results are H100-only and do not isolate the
   megakernel from the rest of its serving system; and
 - hipEngine already has AMD measurements rejecting a wholesale persistent
-  HBM-streaming megakernel on gfx1100, while the current gfx1151 dispatch residue
+  VRAM-streaming megakernel on gfx1100, while the current gfx1151 dispatch residue
   is below the project’s trigger for another execution mechanism.
 
 The transferable part is the **contract around generated execution**, not the
@@ -183,13 +183,13 @@ port.
 
 The W7900 persistent-barrier experiment found approximately 1 us grid barriers,
 but only 1.08-1.27x opportunity for AR-faithful 3-12 MiB fresh-weight stages;
-128-256 MiB HBM-bound stages were 0.93-0.96x. The selected PARO FFN megakernel
+128-256 MiB VRAM-bound stages were 0.93-0.96x. The selected PARO FFN megakernel
 was 2.66x slower than the production staged path because it lost GPU-filling
 parallelism. See [`docs/MEGAKERNEL.md` §10](MEGAKERNEL.md).
 
 Photon does not overturn those local measurements. It does reinforce their
 redirect: eliminate dispatch-bound glue, intermediate traffic, and redundant
-state conversions while preserving wide HBM-streaming kernels. A generated
+state conversions while preserving wide VRAM-streaming kernels. A generated
 scheduler could eventually automate those choices, but a whole-model kernel is
 not admitted merely because H100 benefits.
 

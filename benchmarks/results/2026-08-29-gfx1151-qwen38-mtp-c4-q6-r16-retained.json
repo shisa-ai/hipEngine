@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "retained_external_parity_passed",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M C4 exact Q6 R16 reuse",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "control_commit": "0c59aaeaee5971c62f85a1a1c5116623223a1475",
+    "candidate_commit": "11b62f717e13491daa87f9b94865263b9408494f",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "physical_width": 4,
+    "logical_target_rows": 16,
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "actual-weight BF16-bit parent parity plus full-suite exact IDs/acceptance",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "quant/row package policy only; full categories/heldouts; no content selector"
+  },
+  "commands": {
+    "clean_c4": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 4 --resident-capacity 4 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 4 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p360-c4-q6-r16-clean.json",
+    "actual_red": "HIPENGINE_HIP_ARCH=gfx1151 pytest tests/test_qwen38_q6_t16_r16_chunk.py -q",
+    "leaf_micro": "5 warmups + 15 counterbalanced HIP-event pairs per actual Q6 shape; /tmp/p360-q6-r16-micro.json",
+    "trace": "cached-only rocprofv3 final C4/K3 child kernel+marker+HIP+copy+allocation trace"
+  },
+  "leaf_screen": {
+    "columns": ["shape", "current_r16_ms", "exact_r8_r8_ms", "candidate_delta_pct", "paired_wins"],
+    "rows": [
+      ["planar Q6 K17408/N5120", 5.261652946472168, 0.8347259759902954, -84.13567020702187, 15],
+      ["standard Q6 K5120/N10240", 2.750502109527588, 0.9380800127983093, -65.89422674686007, 15],
+      ["planar Q6 K5120/N1024", 0.16748400032520294, 0.05698699876666069, -65.97466106851444, 15]
+    ],
+    "all_actual_shapes_win": true
+  },
+  "actual_weight_red": {
+    "every_bf16_output_bit_exact": true,
+    "guard_words_exact": true,
+    "candidate": "two existing exact R8 col8 rowtile launches",
+    "parent": "current R16 direct/WMMA dispatch",
+    "new_kernel_body": false,
+    "new_allocation_bytes": 0,
+    "new_workspace_bytes": 0
+  },
+  "c4_complete_wall": {
+    "columns": ["route", "ar_tok_s", "mtp_tok_s", "mtp_vs_ar", "mtp_wall_seconds", "accepted", "proposed"],
+    "rows": [
+      ["post-E2 R16 direct/WMMA Q6", 30.425310297243538, 20.384436564632978, 0.6699828651042471, 47.09475275198929, 628, 796],
+      ["exact Q6 R8+R8", 30.11966197195465, 27.450267382673612, 0.9113736870033072, 34.972336940001696, 628, 796]
+    ],
+    "mtp_uplift_pct": 34.662870350313526,
+    "mtp_wall_reduction_pct": 25.740480846829673,
+    "external_target_tok_s": 27.015,
+    "margin_over_external_pct": 1.6112063026970658,
+    "automatic_gate": "not passed: overall and code/general_ja/mixed categories remain below true AR"
+  },
+  "c4_categories": {
+    "columns": ["category", "ar_tok_s", "mtp_tok_s", "ratio"],
+    "rows": [
+      ["code", 30.74866778473768, 27.943039338652405, 0.9087560974762663],
+      ["general_en", 30.18329713570824, 29.971892517860148, 0.9929959733392416],
+      ["general_ja", 30.35608593210167, 26.73096257260331, 0.8805800139185672],
+      ["mixed_ja_en", 28.66329800429753, 25.12624791896073, 0.8766000309941135]
+    ],
+    "note": "Clean category values bind automatic rejection, not external aggregate parity."
+  },
+  "engagement_trace": {
+    "measured_target_cycles": 8,
+    "parent_q6_kernel_ms": 1846.532207,
+    "candidate_q6_kernel_ms": 478.312697,
+    "q6_family_reduction_pct": 74.09670434196765,
+    "parent_target_stage_seconds": 3.533230486093089,
+    "candidate_target_stage_seconds": 2.166976905427873,
+    "target_stage_reduction_pct": 38.66867972646661,
+    "parent_profile_child_seconds": 4.861160837113857,
+    "candidate_profile_child_seconds": 3.5050381631590426,
+    "profile_child_reduction_pct": 27.89709535222794,
+    "candidate_q6_calls": {
+      "planar_rowtile8": 600,
+      "standard_rowtile8": 360,
+      "direct_or_wmma": 0
+    },
+    "compiler_ran_inside_profiler": false
+  },
+  "scope": {
+    "enabled": "hip_gfx1151 production target verifier standard/planar Q6 logical R16 decomposed R8+R8",
+    "unchanged": ["Q4", "Q5", "other rows", "strict misses", "proposal", "prefill", "AR", "peer backends"]
+  },
+  "raw_sources": [
+    ["/tmp/p360-q6-r16-micro.json", "8ba4aa099b76d8667840e887e5e6dd6f33eeb9e209a25aa14eab9c797fa05d85", 3004],
+    ["/tmp/p310-post-e2-mtp-c1c8-clean.json", "2c5900b6137295d25b521ca1b6cdb045f0321b661ff695749240b246b79eeeb7", 20675296],
+    ["/tmp/p360-c4-q6-r16-clean.json", "d6675e694ca439fa5d3630e0834ece9fb96bd50656eb8e6f4522526cb43c2cab", 1148416],
+    ["/tmp/p350-c4-clean-profile.json", "93c65b83852b29bea850d777df2da585a8d8ceb714fcf94bcd07d5550d15d313", 86573],
+    ["/tmp/p360-c4-q6-r16-clean-profile.json", "2c68662b746c7286b2af6bee1e171f12ab941a9b3b4beb7e3aafdd7cd8fbfce8", 86569],
+    ["/tmp/p360-c4-q6-r16-clean-rocprof/gfx1151/4033121_kernel_trace.csv", "79b7eac0804df7d1c5ab74cacf7905cd9480689bb428d24854e0a80f52abeea4", 12848479],
+    ["/tmp/p360-c4-q6-r16-clean-rocprof/gfx1151/4033121_marker_api_trace.csv", "345731f43b12984292530fdc02fc6c8a468c492e0b13160acb4c4702ef82c4a8", 20834]
+  ],
+  "verdict": {
+    "retained": true,
+    "external_c4_parity_passed": true,
+    "automatic_c4": false,
+    "next": "Use exact Q6 chunking to screen R20-R32 decomposition; C4 Q4 is not required for external parity and remains unchanged."
+  }
+}

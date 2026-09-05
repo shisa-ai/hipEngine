@@ -42,6 +42,7 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_physical_c1_rowtile_gfx1100_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out,
     register_gguf_k_t16_selected_prefill_kernels,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
@@ -74,6 +75,7 @@ from hipengine.kernels.hip_gfx1100 import (
     GGUF_GDN_PREFILL_EXACT_MODE as GFX1100_GGUF_GDN_PREFILL_EXACT_MODE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT as GFX1100_GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
+    GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK as GFX1100_GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK,
     GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS as GFX1100_GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
     GGUF_PREFILL_ROUTER_SELECT_THREADS as GFX1100_GGUF_PREFILL_ROUTER_SELECT_THREADS,
     GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE as GFX1100_GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE,
@@ -88,6 +90,8 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_FUSED_LINEAR_STATE_TRANSFER,
     GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS,
     GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS,
+    GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY,
+    GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE,
     GGUF_PAGED_ATTN_PARALLEL_REDUCE_MIN_CONTEXT,
     GGUF_PREFILL_DEVICE_METADATA_MAX_TOKENS,
@@ -196,6 +200,8 @@ from hipengine.kernels.hip_gfx1151 import (
     GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES,
     GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT,
     GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT,
+    GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS,
+    GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS,
     TARGET_ARCH,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -433,6 +439,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
         KernelKey(
             "hip_gfx1151",
             "linear",
+            "gguf_q6_k_t16_qmicro_planar_v1",
+            "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
             "gguf_q4_k_t16_v1",
             "t16_wmma_prefill_single_wave_bf16_bf16_out",
         ),
@@ -447,6 +459,12 @@ def test_gfx1151_backend_does_not_alias_unvalidated_native_spec_provider(
             "linear",
             "gguf_q4_k_t16_v1",
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
+        ),
+        KernelKey(
+            "hip_gfx1151",
+            "linear",
+            "gguf_q4_k_t16_v1",
+            "t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
         ),
         KernelKey(
             "hip_gfx1151",
@@ -516,10 +534,13 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
         "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
         (),
     ) == ("attn_qkv",)
-    assert GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS == 512
+    assert GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS == 96
     assert GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES == frozenset({(5_120, 10_240)})
-    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS == 512
-    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES == frozenset({(17_408, 5_120)})
+    assert GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS == 256
+    assert (
+        GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
+        == gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    )
     assert (
         resolve(
             backend="hip_gfx1151",
@@ -561,8 +582,8 @@ def test_gfx1151_backend_admits_dense_q6_qmicro_planar_exact_routes() -> None:
 def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None:
     assert GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT == {
         "gguf_q5_k_t16_v1": frozenset({9, 12}),
-        "gguf_q6_k_t16_v1": frozenset({9, 12}),
-        "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12}),
+        "gguf_q6_k_t16_v1": frozenset({9, 12, 16}),
+        "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16}),
     }
     assert GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS == frozenset(
         {6, 8, 9, 12}
@@ -584,6 +605,17 @@ def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None
             {(5_120, 1_024), (17_408, 5_120)}
         ),
     }
+    assert GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS[
+        ("gguf_q5_k_t16_v1", 16, 6_144, 5_120)
+    ] == "t16_gemv_rowtile16_col8_bf16_bf16_out"
+    assert len(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS) == 15
+    assert set(GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS.values()) == {
+        "t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
+        "t16_wmma_prefill_shared4_bf16_bf16_out",
+    }
+    assert {
+        key[1] for key in GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS
+    } == {20, 24, 32}
     assert GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT["gguf_q6_k_t16_v1"] == 8
     assert (
         GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[
@@ -591,6 +623,130 @@ def test_gfx1151_target_verifier_admits_scoped_rowtile_rows_and_shapes() -> None
         ]
         == 8
     )
+
+
+def test_gfx1151_q5_standard_prefill_shared8r3_is_scoped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def retained(*args, **kwargs):
+        calls.append(("retained", args, kwargs))
+
+    def shared8r3(*args, **kwargs):
+        calls.append(("shared8r3", args, kwargs))
+
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
+        shared8r3,
+    )
+    fn = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    fn(1, 2, 3, 288, 6_144, 5_120, stream=7)
+    fn(1, 2, 3, 65, 6_144, 5_120, stream=13)
+    fn(1, 2, 3, 96, 6_144, 5_120, stream=14)
+    fn(1, 2, 3, 97, 6_144, 5_120, stream=15)
+    fn(1, 2, 3, 256, 6_144, 5_120, stream=8)
+    fn(1, 2, 3, 385, 6_144, 5_120, stream=9)
+    fn(1, 2, 3, 1_024, 6_144, 5_120, stream=11)
+    fn(1, 2, 3, 1_025, 6_144, 5_120, stream=12)
+    fn(1, 2, 3, 288, 5_120, 10_240, stream=10)
+
+    assert calls == [
+        ("shared8r3", (1, 2, 3, 288, 6_144, 5_120), {"stream": 7}),
+        ("retained", (1, 2, 3, 65, 6_144, 5_120), {"stream": 13}),
+        ("retained", (1, 2, 3, 96, 6_144, 5_120), {"stream": 14}),
+        ("retained", (1, 2, 3, 97, 6_144, 5_120), {"stream": 15}),
+        ("shared8r3", (1, 2, 3, 256, 6_144, 5_120), {"stream": 8}),
+        ("retained", (1, 2, 3, 385, 6_144, 5_120), {"stream": 9}),
+        ("retained", (1, 2, 3, 1_024, 6_144, 5_120), {"stream": 11}),
+        ("retained", (1, 2, 3, 1_025, 6_144, 5_120), {"stream": 12}),
+        ("retained", (1, 2, 3, 288, 5_120, 10_240), {"stream": 10}),
+    ]
+
+
+def test_gfx1151_q6_shared3r1_is_scoped_to_rows33_48(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def retained(*args, **kwargs):
+        calls.append(("retained", args, kwargs))
+
+    def shared3r1(*args, **kwargs):
+        calls.append(("shared3r1", args, kwargs))
+
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out",
+        shared3r1,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out",
+        shared3r1,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out",
+        retained,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out",
+        retained,
+    )
+    standard = gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    planar = gfx1151_backend.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    standard(1, 2, 3, 35, 5_120, 10_240, stream=7)
+    standard(1, 2, 3, 32, 5_120, 10_240, stream=8)
+    planar(1, 2, 3, 48, 17_408, 5_120, stream=9)
+    planar(1, 2, 3, 49, 17_408, 5_120, stream=10)
+    planar(1, 2, 3, 35, 5_120, 1_024, stream=11)
+
+    assert calls == [
+        ("shared3r1", (1, 2, 3, 35, 5_120, 10_240), {"stream": 7}),
+        ("retained", (1, 2, 3, 32, 5_120, 10_240), {"stream": 8}),
+        ("shared3r1", (1, 2, 3, 48, 17_408, 5_120), {"stream": 9}),
+        ("retained", (1, 2, 3, 49, 17_408, 5_120), {"stream": 10}),
+        ("shared3r1", (1, 2, 3, 35, 5_120, 1_024), {"stream": 11}),
+    ]
+
+
+def test_gfx1151_q6_planar_shared4r6_routes_high_rows_by_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared4r6"),
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("fallback"),
+    )
+    fn = gfx1151_backend.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    fn(1, 2, 3, 1_024, 17_408, 5_120)
+    fn(1, 2, 3, 536, 5_120, 1_024)
+    fn(1, 2, 3, 1_024, 5_120, 1_024)
+    assert calls == ["shared4r6", "shared4r6", "fallback"]
 
 
 def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
@@ -604,6 +760,12 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
     def shared4(*args, **kwargs):
         calls.append(("shared4", args, kwargs))
 
+    def shared6r1(*args, **kwargs):
+        calls.append(("shared6r1", args, kwargs))
+
+    def shared8r3(*args, **kwargs):
+        calls.append(("shared8r3", args, kwargs))
+
     monkeypatch.setattr(
         gfx1151_backend,
         "gguf_q6_k_t16_wmma_prefill_bf16_bf16_out",
@@ -614,19 +776,41 @@ def test_gfx1151_q6_standard_prefill_shared4_is_qkv_shape_only(
         "gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out",
         shared4,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_shared6r1_bf16_bf16_out",
+        shared6r1,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out",
+        shared8r3,
+    )
     fn = gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 5_120, 10_240, stream=7)
-    fn(1, 2, 3, 256, 5_120, 10_240, stream=8)
-    fn(1, 2, 3, 1_024, 5_120, 5_120, stream=9)
+    fn(1, 2, 3, 1_024, 5_120, 10_240, stream=13)
+    fn(1, 2, 3, 1_025, 5_120, 10_240, stream=14)
+    fn(1, 2, 3, 288, 5_120, 10_240, stream=11)
+    fn(1, 2, 3, 256, 5_120, 10_240, stream=16)
+    fn(1, 2, 3, 96, 5_120, 10_240, stream=8)
+    fn(1, 2, 3, 95, 5_120, 10_240, stream=9)
+    fn(1, 2, 3, 49, 5_120, 10_240, stream=12)
+    fn(1, 2, 3, 1_024, 5_120, 5_120, stream=10)
 
     assert calls == [
-        ("shared4", (1, 2, 3, 512, 5_120, 10_240), {"stream": 7}),
-        ("retained", (1, 2, 3, 256, 5_120, 10_240), {"stream": 8}),
-        ("retained", (1, 2, 3, 1_024, 5_120, 5_120), {"stream": 9}),
+        ("shared8r3", (1, 2, 3, 512, 5_120, 10_240), {"stream": 7}),
+        ("shared8r3", (1, 2, 3, 1_024, 5_120, 10_240), {"stream": 13}),
+        ("shared4", (1, 2, 3, 1_025, 5_120, 10_240), {"stream": 14}),
+        ("shared8r3", (1, 2, 3, 288, 5_120, 10_240), {"stream": 11}),
+        ("shared8r3", (1, 2, 3, 256, 5_120, 10_240), {"stream": 16}),
+        ("shared6r1", (1, 2, 3, 96, 5_120, 10_240), {"stream": 8}),
+        ("shared6r1", (1, 2, 3, 95, 5_120, 10_240), {"stream": 9}),
+        ("shared6r1", (1, 2, 3, 49, 5_120, 10_240), {"stream": 12}),
+        ("retained", (1, 2, 3, 1_024, 5_120, 5_120), {"stream": 10}),
     ]
 
 
-def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
+def test_gfx1151_q6_planar_prefill_shared4_covers_physical_shapes_from_row256(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
@@ -636,6 +820,18 @@ def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
 
     def shared4(*args, **kwargs):
         calls.append(("shared4", args, kwargs))
+
+    def shared4r3(*args, **kwargs):
+        calls.append(("shared4r3", args, kwargs))
+
+    def shared4r4(*args, **kwargs):
+        calls.append(("shared4r4", args, kwargs))
+
+    def shared4r6(*args, **kwargs):
+        calls.append(("shared4r6", args, kwargs))
+
+    def shared4r9(*args, **kwargs):
+        calls.append(("shared4r9", args, kwargs))
 
     monkeypatch.setattr(
         gfx1151_backend,
@@ -647,18 +843,457 @@ def test_gfx1151_q6_planar_prefill_shared4_is_wide_shape_only(
         "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
         shared4,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out",
+        shared4r3,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+        shared4r4,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+        shared4r6,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out",
+        shared4r9,
+    )
     fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
     fn(1, 2, 3, 512, 17_408, 5_120, stream=7)
     fn(1, 2, 3, 256, 17_408, 5_120, stream=8)
-    fn(1, 2, 3, 1_024, 5_120, 1_024, stream=9)
-    fn(1, 2, 3, 512, 5_120, 248_320, stream=11)
+    fn(1, 2, 3, 256, 5_120, 1_024, stream=13)
+    fn(1, 2, 3, 256, 5_120, 6_144, stream=9)
+    fn(1, 2, 3, 255, 5_120, 6_144, stream=10)
+    fn(1, 2, 3, 1_024, 5_120, 1_024, stream=11)
+    fn(1, 2, 3, 512, 5_120, 248_320, stream=12)
 
     assert calls == [
-        ("shared4", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
-        ("retained", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
-        ("retained", (1, 2, 3, 1_024, 5_120, 1_024), {"stream": 9}),
-        ("retained", (1, 2, 3, 512, 5_120, 248_320), {"stream": 11}),
+        ("shared4r6", (1, 2, 3, 512, 17_408, 5_120), {"stream": 7}),
+        ("shared4r4", (1, 2, 3, 256, 17_408, 5_120), {"stream": 8}),
+        ("shared4r3", (1, 2, 3, 256, 5_120, 1_024), {"stream": 13}),
+        ("shared4", (1, 2, 3, 256, 5_120, 6_144), {"stream": 9}),
+        ("retained", (1, 2, 3, 255, 5_120, 6_144), {"stream": 10}),
+        ("retained", (1, 2, 3, 1_024, 5_120, 1_024), {"stream": 11}),
+        ("retained", (1, 2, 3, 512, 5_120, 248_320), {"stream": 12}),
     ]
+
+
+def test_gfx1151_q6_planar_prefill_lowvgpr_bands_route_by_rows_and_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    for name, tag in (
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out",
+            "plain",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out",
+            "lowvgpr",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out",
+            "lowvgpr48",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
+            "shared4",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out",
+            "shared4r3",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out",
+            "shared4r4",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out",
+            "shared4r6",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out",
+            "shared4r9",
+        ),
+        (
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out",
+            "shared3r1",
+        ),
+    ):
+        monkeypatch.setattr(
+            gfx1151_backend,
+            name,
+            (lambda tag: lambda *a, **k: calls.append(tag))(tag),
+        )
+
+    fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    shapes = sorted(gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES)
+    for rows in (17, 32):
+        for in_f, out_f in shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (33, 48):
+        fn(1, 2, 3, rows, 5_120, 17_408)
+    others = [s for s in shapes if s != (5_120, 17_408)]
+    # (17_408, 5_120) is a retained shared3r1 shape at rows 33-48; every
+    # other low-M shape stays on the low-VGPR band there.
+    def _rows33_48_tag(shape: tuple[int, int]) -> str:
+        return "shared3r1" if shape == (17_408, 5_120) else "lowvgpr"
+
+    for rows in (33, 48):
+        for in_f, out_f in others:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (49, 64):
+        for in_f, out_f in shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    lowvgpr80_shapes = gfx1151_backend.GGUF_Q6_PLANAR_LOWVGPR80_SHAPES
+    for rows in (65, 80):
+        for in_f, out_f in sorted(lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+        for in_f, out_f in sorted(set(shapes) - lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows, in_f, out_f in (
+        (16, 5_120, 6_144),
+        (145, 6_144, 5_120),
+        (45, 5_120, 1_024),
+        (512, 17_408, 5_120),
+    ):
+        fn(1, 2, 3, rows, in_f, out_f)
+
+    expected = (
+        ["lowvgpr"] * (2 * len(shapes))
+        + ["lowvgpr48"] * 2
+        + [_rows33_48_tag(s) for s in others] * 2
+        + ["lowvgpr"] * (2 * len(shapes))
+    )
+    for _ in (65, 80):
+        expected += ["lowvgpr"] * len(lowvgpr80_shapes)
+        expected += ["lowvgpr48"] * len(set(shapes) - lowvgpr80_shapes)
+    # rows45 (5_120, 1_024) is the other retained shared3r1 shape and rows512
+    # (17_408, 5_120) is the retained shared4r6 band; both must stay stubbed.
+    expected += ["plain", "plain", "shared3r1", "shared4r6"]
+    assert calls == expected
+
+
+def test_gfx1151_q5_prefill_lowvgpr_bands_and_registry_scope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    for name, tag in (
+        ("gguf_q5_k_t16_wmma_prefill_bf16_bf16_out", "plain"),
+        (
+            "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+            "lowvgpr",
+        ),
+        (
+            "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
+            "lowvgpr48",
+        ),
+    ):
+        monkeypatch.setattr(
+            gfx1151_backend,
+            name,
+            (lambda tag: lambda *a, **k: calls.append(tag))(tag),
+        )
+
+    fn = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    shapes = sorted(gfx1151_backend.GGUF_Q5_T16_DENSE_LOWM_SHAPES)
+    for rows in (17, 32):
+        for in_f, out_f in shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (33, 48):
+        fn(1, 2, 3, rows, 17_408, 5_120)
+    lowvgpr48_shapes = sorted(
+        gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+    )
+    for rows in (33, 48):
+        for in_f, out_f in lowvgpr48_shapes:
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows in (33, 48):
+        fn(1, 2, 3, rows, 5_120, 17_408)
+    lowvgpr64_shapes = gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+    for rows in (49, 64):
+        for in_f, out_f in sorted(lowvgpr64_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+        for in_f, out_f in sorted(set(shapes) - lowvgpr64_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+    lowvgpr80_shapes = gfx1151_backend.GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+    for rows in (65, 80):
+        for in_f, out_f in sorted(lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+        for in_f, out_f in sorted(set(shapes) - lowvgpr80_shapes):
+            fn(1, 2, 3, rows, in_f, out_f)
+    for rows, in_f, out_f in (
+        (16, 5_120, 6_144),
+        (145, 6_144, 5_120),
+        (45, 5_120, 1_024),
+    ):
+        fn(1, 2, 3, rows, in_f, out_f)
+
+    expected = (
+        ["lowvgpr"] * (2 * len(shapes))
+        + ["lowvgpr"] * 2
+        + ["lowvgpr48"] * (2 * len(lowvgpr48_shapes))
+        + ["plain"] * 2
+    )
+    for _ in (49, 64):
+        expected += ["lowvgpr"] * len(lowvgpr64_shapes)
+        expected += ["plain"] * len(set(shapes) - lowvgpr64_shapes)
+    for _ in (65, 80):
+        expected += ["lowvgpr"] * len(lowvgpr80_shapes)
+        expected += ["lowvgpr48"] * len(set(shapes) - lowvgpr80_shapes)
+    expected += ["plain"] * 3
+    assert calls == expected
+
+    register_gfx1151_kernels()
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear",
+            quant="gguf_q5_k_t16_v1",
+            variant="t16_wmma_prefill_bf16_bf16_out",
+        )
+        is fn
+    )
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="moe_linear",
+            quant="gguf_q5_k_t16_v1",
+            variant="selected_wmma_prefill_compact_bf16_bf16_out",
+        )
+        is gguf_q5_k_t16_selected_wmma_prefill_compact_bf16_bf16_out
+    )
+
+
+def test_gfx1151_registers_y1_q4_single_sweep_variant() -> None:
+    register_gfx1151_kernels(replace=True)
+    assert (
+        resolve(
+            backend="hip_gfx1151",
+            layer="linear",
+            quant="gguf_q4_k_t16_v1",
+            variant="t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
+        )
+        is gfx1151_backend.gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out
+    )
+
+
+def test_gfx1151_highrow_prefill_bands_route_by_family_and_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    symbols = {
+        # Q4 owners
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out": "q4_plain",
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q4_lv",
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out": "q4_lv48",
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out": "q4_shared",
+        "gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out": "q4_shared2w2",
+        "gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out": "q4_shared2w4",
+        "gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out": "q4_shared3w8r3",
+        # Q5 owners
+        "gguf_q5_k_t16_wmma_prefill_bf16_bf16_out": "q5_plain",
+        "gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out": "q5_lv",
+        "gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out": "q5_lv48",
+        # Q6 planar owners
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out": "q6_plain",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out": "q6_lv",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out": "q6_lv48",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out": "q6_shared4",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out": "q6_shared4r3",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out": "q6_shared4r4",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out": "q6_shared4r6",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out": "q6_shared4r9",
+        "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out": "q6_shared3r1",
+    }
+    for name, tag in symbols.items():
+        monkeypatch.setattr(
+            gfx1151_backend,
+            name,
+            (lambda tag: lambda *a, **k: calls.append(tag))(tag),
+        )
+
+    shapes = sorted(gfx1151_backend.GGUF_Q4_T16_DENSE_LOWM_SHAPES)
+
+    def assert_routes(fn, rows: tuple[int, ...], expected: dict[tuple[int, int], str]):
+        for row_count in rows:
+            for shape in shapes:
+                fn(1, 2, 3, row_count, *shape)
+                assert calls.pop() == expected[shape]
+        assert not calls
+
+    q4 = gfx1151_backend.gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    assert_routes(
+        q4,
+        (81, 96),
+        {
+            (5_120, 6_144): "q4_lv48",
+            (5_120, 10_240): "q4_lv48",
+            (5_120, 12_288): "q4_lv",
+            (5_120, 17_408): "q4_lv48",
+            (6_144, 5_120): "q4_lv48",
+            (17_408, 5_120): "q4_lv",
+        },
+    )
+    assert_routes(
+        q4,
+        (97, 128),
+        {
+            (5_120, 6_144): "q4_plain",
+            (5_120, 10_240): "q4_lv",
+            (5_120, 12_288): "q4_lv48",
+            (5_120, 17_408): "q4_shared",
+            (6_144, 5_120): "q4_lv48",
+            (17_408, 5_120): "q4_lv",
+        },
+    )
+    assert_routes(
+        q4,
+        (129, 144),
+        {
+            (5_120, 6_144): "q4_lv48",
+            (5_120, 10_240): "q4_shared",
+            (5_120, 12_288): "q4_lv48",
+            (5_120, 17_408): "q4_shared",
+            (6_144, 5_120): "q4_lv48",
+            (17_408, 5_120): "q4_lv48",
+        },
+    )
+    assert_routes(
+        q4,
+        (145, 192),
+        {
+            **{shape: "q4_shared" for shape in shapes},
+            (17_408, 5_120): "q4_shared2w4",
+            (6_144, 5_120): "q4_shared2w2",
+        },
+    )
+    assert_routes(
+        q4,
+        (193, 256),
+        {
+            **{shape: "q4_shared" for shape in shapes},
+            (17_408, 5_120): "q4_shared2w2",
+            (6_144, 5_120): "q4_shared2w2",
+        },
+    )
+    assert_routes(
+        q4,
+        (257, 287),
+        {
+            **{shape: "q4_shared2w2" for shape in shapes},
+            (5_120, 12_288): "q4_shared",
+        },
+    )
+    assert_routes(
+        q4,
+        (288, 384),
+        {
+            **{shape: "q4_shared2w2" for shape in shapes},
+            (5_120, 12_288): "q4_shared3w8r3",
+            (5_120, 17_408): "q4_shared3w8r3",
+            (17_408, 5_120): "q4_shared3w8r3",
+        },
+    )
+    assert_routes(q4, (385,), {shape: "q4_shared" for shape in shapes})
+
+    q5 = gfx1151_backend.gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out
+    assert_routes(
+        q5,
+        (81, 96),
+        {
+            (5_120, 6_144): "q5_lv48",
+            (5_120, 10_240): "q5_lv48",
+            (5_120, 12_288): "q5_lv",
+            (5_120, 17_408): "q5_lv48",
+            (6_144, 5_120): "q5_lv48",
+            (17_408, 5_120): "q5_lv",
+        },
+    )
+    assert_routes(
+        q5,
+        (97, 128),
+        {
+            (5_120, 6_144): "q5_plain",
+            (5_120, 10_240): "q5_lv48",
+            (5_120, 12_288): "q5_lv48",
+            (5_120, 17_408): "q5_plain",
+            (6_144, 5_120): "q5_lv48",
+            (17_408, 5_120): "q5_lv48",
+        },
+    )
+    assert_routes(q5, (129, 144), {shape: "q5_lv48" for shape in shapes})
+    assert_routes(q5, (145,), {shape: "q5_plain" for shape in shapes})
+
+    q6 = gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out
+    assert_routes(
+        q6,
+        (81, 96),
+        {
+            (5_120, 6_144): "q6_lv48",
+            (5_120, 10_240): "q6_lv48",
+            (5_120, 12_288): "q6_lv",
+            (5_120, 17_408): "q6_lv48",
+            (6_144, 5_120): "q6_lv48",
+            (17_408, 5_120): "q6_lv",
+        },
+    )
+    assert_routes(
+        q6,
+        (97, 128),
+        {
+            (5_120, 6_144): "q6_plain",
+            (5_120, 10_240): "q6_shared4",
+            (5_120, 12_288): "q6_plain",
+            (5_120, 17_408): "q6_shared4",
+            (6_144, 5_120): "q6_lv48",
+            (17_408, 5_120): "q6_lv",
+        },
+    )
+    assert_routes(
+        q6,
+        (129, 144),
+        {
+            (5_120, 6_144): "q6_shared4",
+            (5_120, 10_240): "q6_shared4",
+            (5_120, 12_288): "q6_shared4",
+            (5_120, 17_408): "q6_shared4",
+            (6_144, 5_120): "q6_lv48",
+            (17_408, 5_120): "q6_lv48",
+        },
+    )
+    assert_routes(q6, (145, 255), {shape: "q6_plain" for shape in shapes})
+    # The retained Y2 high-row owners take (17_408, 5_120) at exact bands:
+    # shared4r4 at rows256, shared4r6 from row288, shared4r9 at rows536.
+    assert_routes(
+        q6,
+        (256,),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4r4",
+        },
+    )
+    assert_routes(
+        q6,
+        (288,),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4r6",
+        },
+    )
+    assert_routes(
+        q6,
+        (536,),
+        {
+            **{shape: "q6_shared4" for shape in shapes},
+            (17_408, 5_120): "q6_shared4r9",
+        },
+    )
 
 
 def test_gfx1151_backend_scopes_dense_down_residual_fusions() -> None:
@@ -760,6 +1395,9 @@ def test_gfx1151_backend_declares_q4_two_wave_shape_and_row_policy() -> None:
 def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
     monkeypatch,
 ) -> None:
+    """Scaling-campaign M2j: rows<=16 physical cells supersede the one-row-tile
+    smallm owner with the measured bit-exact siblings (low-VGPR everywhere,
+    shared-B2W2 on the N5120 down-projection)."""
     selector = getattr(
         gfx1151_backend,
         "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
@@ -806,22 +1444,180 @@ def test_gfx1151_backend_routes_admitted_physical_q4_shapes_to_smallm_wmma(
         lambda *args, **kwargs: calls.append("shared"),
         raising=False,
     )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("lowvgpr"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared_b2w2"),
+        raising=False,
+    )
 
-    for rows in sorted(rows_policy):
+    expected: list[str] = []
+    for rows in (2, 4, 6, 8, 12, 16):
         for in_features, out_features in sorted(shape_policy):
+            expected.append(
+                "shared_b2w2" if (in_features, out_features) == (17_408, 5_120)
+                else "lowvgpr"
+            )
             selector(1, 2, 3, rows, in_features, out_features)
+    tail: list[str] = []
     for rows, in_features, out_features in (
-        (4, 5_120, 10_240),
-        (7, 5_120, 10_240),
         (16, 5_120, 1_024),
         (16, 5_120, 5_120),
         (16, 1_024, 4_096),
     ):
+        tail.append("shared")
         selector(1, 2, 3, rows, in_features, out_features)
 
-    assert calls == ["smallm"] * (len(rows_policy) * len(shape_policy)) + [
-        "shared"
-    ] * 5
+    assert calls == expected + tail
+
+
+def test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma(
+    monkeypatch,
+) -> None:
+    selector = getattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out",
+        None,
+    )
+    lowm_max_rows = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS",
+        None,
+    )
+    lowm_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWM_SHAPES",
+        None,
+    )
+    lowvgpr_max_rows = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS",
+        None,
+    )
+    lowvgpr48_max_rows = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS",
+        None,
+    )
+    lowvgpr48_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES",
+        None,
+    )
+    lowvgpr64_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES",
+        None,
+    )
+    lowvgpr80_shapes = getattr(
+        gfx1151_backend,
+        "GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES",
+        None,
+    )
+    assert callable(selector)
+    assert lowm_max_rows == 80
+    assert lowvgpr_max_rows == 32
+    assert lowvgpr48_max_rows == 48
+    assert lowm_shapes == frozenset(
+        {
+            (5_120, 6_144),
+            (5_120, 10_240),
+            (5_120, 12_288),
+            (5_120, 17_408),
+            (6_144, 5_120),
+            (17_408, 5_120),
+        }
+    )
+    assert lowvgpr48_shapes == frozenset(
+        {
+            (5_120, 10_240),
+            (5_120, 12_288),
+            (5_120, 17_408),
+        }
+    )
+    assert lowvgpr64_shapes == lowm_shapes - {(5_120, 17_408)}
+    assert lowvgpr80_shapes == frozenset({(17_408, 5_120)})
+    calls: list[str] = []
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("smallm"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("single"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("shared"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("lowvgpr"),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        gfx1151_backend,
+        "gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out",
+        lambda *args, **kwargs: calls.append("lowvgpr48"),
+        raising=False,
+    )
+
+    # rows 17-32: lowvgpr on every admitted shape
+    for rows in (17, 24, 32):
+        for in_features, out_features in sorted(lowm_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+    # rows 33-48: lowvgpr48 on its three shapes, lowvgpr on the other three
+    for rows in (33, 45, 48):
+        for in_features, out_features in sorted(lowvgpr48_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+    others = sorted(lowm_shapes - lowvgpr48_shapes)
+    for rows in (33, 45, 48):
+        for in_features, out_features in others:
+            selector(1, 2, 3, rows, in_features, out_features)
+    # rows 49-64: lowvgpr on five shapes; wide 5120->17408 keeps single.
+    for rows in (49, 64):
+        for in_features, out_features in sorted(lowvgpr64_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+        selector(1, 2, 3, rows, 5_120, 17_408)
+    # rows 65-80: 17408->5120 uses lowvgpr; the other five use lowvgpr48.
+    for rows in (65, 80):
+        for in_features, out_features in sorted(lowvgpr80_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+        for in_features, out_features in sorted(lowm_shapes - lowvgpr80_shapes):
+            selector(1, 2, 3, rows, in_features, out_features)
+    for rows, in_features, out_features in (
+        (145, 5_120, 17_408),
+        (145, 5_120, 12_288),
+        (45, 5_120, 1_024),
+        (45, 4_096, 4_096),
+    ):
+        selector(1, 2, 3, rows, in_features, out_features)
+
+    expected = (
+        ["lowvgpr"] * (3 * len(lowm_shapes))
+        + ["lowvgpr48"] * (3 * len(lowvgpr48_shapes))
+        + ["lowvgpr"] * (3 * len(others))
+    )
+    for _ in (49, 64):
+        expected += ["lowvgpr"] * len(lowvgpr64_shapes) + ["single"]
+    for _ in (65, 80):
+        expected += ["lowvgpr"] * len(lowvgpr80_shapes)
+        expected += ["lowvgpr48"] * len(lowm_shapes - lowvgpr80_shapes)
+    expected += ["shared"] * 4
+    assert calls == expected
 
 
 def test_gfx1151_backend_registers_q4_physical_route_and_explicit_fallbacks() -> None:
@@ -939,6 +1735,17 @@ def test_gfx1151_backend_declares_generation2_physical_widths() -> None:
     ) is True
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_FUSED_LINEAR_STATE_TRANSFER", False
+    ) is False
+
+
+def test_gfx1151_backend_scopes_packed_prefill_final_output_mask() -> None:
+    assert GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is True
+    assert GFX1100_GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK is False
+    assert backend_package_capability(
+        "hip_gfx1151", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
     ) is False
 
 
@@ -1236,6 +2043,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
 
     assert TARGET_ARCH == "gfx1151"
     assert GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS == 128
+    assert GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY == {
+        (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {2: 23},
+    }
     assert LAGUNA_F16_PREFILL_STRATEGY == "wmma_comp_swa"
     assert LAGUNA_F16_PREFILL_MIN_ROWS == 16
     assert LAGUNA_F16_PREFILL_MODE == "hipblaslt_range_direct"

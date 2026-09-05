@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q6_lean_four_wave_screen",
+  "status": "rejected",
+  "performance_claim": false,
+  "geometry": {
+    "waves": 4,
+    "row_tiles_per_wave": 1,
+    "out_tiles": 2,
+    "threads": 128,
+    "lds_bytes": 16384
+  },
+  "comparison": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "two_wave_r32_ms": 0.7095791816711425,
+      "four_wave_r32_ms": 0.9121115684509278,
+      "delta_percent": 28.542605534564537,
+      "max_abs": 0.00390625
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "two_wave_r32_ms": 0.3814836025238037,
+      "four_wave_r32_ms": 0.6309679985046387,
+      "delta_percent": 65.3984586310673,
+      "max_abs": 0.0078125
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "two_wave_r32_ms": 0.10853159427642822,
+      "four_wave_r32_ms": 0.10109360218048095,
+      "delta_percent": -6.853296632686357,
+      "max_abs": 0.00390625
+    }
+  },
+  "decision": "revert to committed two-wave geometry: four-wave regresses the binding planar-down 28.5% and standard-qkv 65.4%; only narrow-planar improves 6.9%, insufficient and shape-local.",
+  "raw": {
+    "path": "/tmp/wy-w1-q6-shared4-screen.json",
+    "sha256": "740d4a02f7ff12c30bce7658e4f6dd321c18d99ba44efcbfa7bb00bec8dcbb06",
+    "size_bytes": 2992
+  }
+}

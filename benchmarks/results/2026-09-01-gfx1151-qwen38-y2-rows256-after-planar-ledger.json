@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-rows256-after-planar-ledger",
+  "status": "measurement_only",
+  "source_commit": "c0411e856",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "rows": 256,
+  "tick_wall_ms": 742.396239,
+  "q5": {"gpu_ms": 42.132884, "gpu_share": 0.0578320405007516, "sweep_multiplicity": 1.0},
+  "q6": {"gpu_ms": 132.219701, "gpu_share": 0.18148615469164814, "sweep_multiplicity": 1.7274045432576124, "grid_y_min": 1, "grid_y_median": 2, "grid_y_max": 2, "one_sweep_removable_ceiling_ms": 55.68},
+  "decision": "Q5 remains at one sweep. Q6 residual is exclusively gridY1/gridY2 and retains a sized 55.68 ms ceiling. Screen a 256-row-capacity four-wave/four-row-tile exact body before declaring the residual blocked."
+}

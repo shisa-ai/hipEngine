@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_diagnostic_refreeze",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M post-E2 MTP K3 C1-C8 re-freeze",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "commit": "0c59aaeaee5971c62f85a1a1c5116623223a1475",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "widths": [1, 2, 3, 4, 5, 6, 7, 8],
+    "resident_capacity": 8,
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "self-exact greedy IDs, route expectation, budget conformance",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "full fixed category/heldout suite at every width; no prompt/category/token selector"
+  },
+  "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 1,2,3,4,5,6,7,8 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p310-post-e2-mtp-c1c8-clean.json",
+  "matrix": {
+    "columns": ["width", "ar_tok_s", "mtp_tok_s", "mtp_vs_ar", "accepted", "proposed", "draft_acceptance", "external_target_tok_s", "gap_to_external_pct", "status"],
+    "rows": [
+      [1, 11.024335178893146, 7.8139254382372325, 0.7087888123355987, 157, 199, 0.7889447236180904, 21.277, -63.275248210569, "blocked"],
+      [2, 17.937290746849307, 21.58102290659696, 1.2031372636577058, 314, 398, 0.7889447236180904, 32.378, -33.346646159129776, "blocked"],
+      [3, 23.969490219452876, 29.489143523599438, 1.2302782935144356, 471, 597, 0.7889447236180904, 27.515, 7.174790200252357, "passed"],
+      [4, 30.425310297243538, 20.384436564632978, 0.6699828651042471, 628, 796, 0.7889447236180904, 27.015, -24.544006793881255, "blocked"],
+      [5, 35.55107324088478, 15.243695775617372, 0.42878299826084215, 785, 995, 0.7889447236180904, 32.74, -53.440147294998866, "blocked"],
+      [6, 39.98266617178316, 20.82951926121899, 0.5209637389294199, 942, 1194, 0.7889447236180904, 36.023, -42.17716664014938, "blocked"],
+      [7, 42.74725276014565, 23.245294235003094, 0.5437845179298931, 1099, 1393, 0.7889447236180904, 42.304, -45.051781781857294, "blocked"],
+      [8, 45.657329065812995, 19.649791466384148, 0.4303754045283694, 1256, 1592, 0.7889447236180904, 54.834, -64.16494972757022, "blocked"]
+    ],
+    "exact_cells": 80,
+    "engaged_cells": 80,
+    "budget_conformed_cells": 80
+  },
+  "route_facts": {
+    "physical_group_count_per_width": 1,
+    "physical_rows": {"1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8},
+    "logical_target_rows_k3": {"1": 4, "2": 8, "3": 12, "4": 16, "5": 20, "6": 24, "7": 28, "8": 32},
+    "acceptance_invariant_across_widths": true,
+    "draft_acceptance": 0.7889447236180904,
+    "interpretation": "Wide losses are execution-cost scaling, not proposal-quality collapse or request-serial lowering."
+  },
+  "named_blockers": {
+    "C1": "Production-D24 singleton keeps its direct/scalar proposal and replay economics; E1b begins at physical rows2 and E1a streaming is C3-only. The distinct strict natural25 automatic cell does not transfer to this comparator.",
+    "C2": "One physical rows2 group and exact proposal-head reuse clear AR economics, but host prompt replay plus logical R8 target cost leave a 33.35% external gap. C3-only prompt streaming and R12 owners do not transfer.",
+    "C4": "One physical rows4 group gets E1b proposal reuse, but keeps host prompt replay and logical R16 target decomposition; E2 owners are R12-only. Complete wall remains 24.54% below target.",
+    "C5": "One outer rows5 group lowers proposals as rows4+1, so E1b already covers the non-singleton head. Host replay plus operation-complete logical R20 target/accept/commit/provider work leaves a 53.44% gap.",
+    "C6": "One outer rows6 group lowers proposals as rows4+2; host replay plus logical R24 target/accept/commit/provider work leaves a 42.18% gap.",
+    "C7": "One outer rows7 group lowers proposals as rows4+3; host replay plus logical R28 target/accept/commit/provider work leaves a 45.05% gap.",
+    "C8": "One outer rows8 group lowers proposals as rows4+4; host replay plus logical R32 target/accept/commit/provider work leaves a 64.16% gap."
+  },
+  "next_candidates": [
+    "Independently adjudicate standard-Q4 prompt streaming at C2/C4; adjacent Q4_K_S rejection does not decide Q4_K_M.",
+    "Profile wide target/accept/commit/provider windows after streaming; proposals already use E1b rows2-4 subgroup owners.",
+    "Only after those screens profile operation-complete wide target R16-R32 owners."
+  ],
+  "raw_source": [
+    "/tmp/p310-post-e2-mtp-c1c8-clean.json",
+    "2c5900b6137295d25b521ca1b6cdb045f0321b661ff695749240b246b79eeeb7",
+    20675296
+  ],
+  "verdict": {
+    "passed_widths": [3],
+    "blocked_widths": [1, 2, 4, 5, 6, 7, 8],
+    "next": "Independent C2/C4 prompt-streaming screen, then wide target/accept profiling. A later trace proved proposal rows5-8 policy keys cannot engage because proposals are subgrouped at rows4."
+  }
+}

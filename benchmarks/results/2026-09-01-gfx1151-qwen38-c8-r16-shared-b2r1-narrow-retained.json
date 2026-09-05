@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c8_r16_shared_b2r1_narrow_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_intermediate",
+  "performance_claim": true,
+  "performance_claim_scope": "C8/K1 physical R16 Q4 K5120/N1024 extension",
+  "promotion": false,
+  "source": {"commit": "1f4687cab17ac8dc341e12134d2870221429eb4f", "dirty": false},
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_version": "7.15.26333-0000000",
+    "amd_clang": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard_q4_k_m",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "widths": [6, 8],
+    "candidate_budget": 1,
+    "max_tokens": 24,
+    "batch_window_ms": 50,
+    "sampling": "raw greedy, no prompt cache",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "execution_profile": "production",
+    "profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "comparison": {
+    "order": ["control", "candidate"],
+    "same_python_process": true,
+    "control": "Remove only the R16 K5120/N1024 shared-B2R1 key; retain direct-state, C6/R12, and R16 down owners in both arms.",
+    "candidate": "Use committed down+narrow shared-B2R1 package map.",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python .multiloop/active/qwen38-wide-mtp/q38-c6c8-115x-r2/publish_narrow_pair.py",
+    "benchmark_argv": "scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 6,8 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact",
+    "control_raw": {"path": "/tmp/q38-narrow-control.json", "sha256": "12b7a6bdc31d940a0b8396640304a7a137789e8db45e640c9cfabc17b3a6092f", "size_bytes": 5658939},
+    "candidate_raw": {"path": "/tmp/q38-narrow-candidate.json", "sha256": "83d50fe5c8cc50ec2a51feda060d01f90e66bd352b9d5b5fc210f83e74d531a6", "size_bytes": 5658953},
+    "pair_summary": {"path": "/tmp/q38-narrow-pair-summary.json", "sha256": "ada01269ef8f8bff4b5f7a5c3ba5caa1ee1c6e2430fb87228a6475df446b878c", "size_bytes": 2750}
+  },
+  "mechanism": {
+    "kernel": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2,2,1>",
+    "registry_key": ["hip_gfx1151", "linear", "gguf_q4_k_t16_v1", "t16_wmma_prefill_shared_b2r1_bf16_bf16_out"],
+    "new_shape": [16, 5120, 1024],
+    "prior_shape": [16, 17408, 5120],
+    "strict_fallback": "shared-B package selector",
+    "actual_shape_micro": {"control_ms": 0.191, "candidate_ms": 0.110, "speedup": 1.7363636363636363, "bit_exact": true},
+    "rejected_peer_shapes": [[16,5120,6144],[16,5120,10240],[16,5120,12288],[16,6144,5120]]
+  },
+  "results": {
+    "8": {
+      "control": {"ar_tok_s": 47.599344423660824, "mtp_tok_s": 43.233558051608995, "mtp_vs_ar": 0.908280535689864},
+      "candidate": {"ar_tok_s": 47.239776641148325, "mtp_tok_s": 43.421382180419414, "mtp_vs_ar": 0.9191699298297933},
+      "mtp_speedup": 1.0043444059955975,
+      "mtp_delta_pct": 0.43444059955975,
+      "ar_control_ratio": 0.9924459509502453,
+      "scopes": {
+        "train_mtp_speedup": 1.0040777871332751,
+        "heldout_mtp_speedup": 1.0047269602748352,
+        "categories_mtp_speedup": {
+          "code": 1.003932735450465,
+          "general_en": 1.0041615697528987,
+          "general_ja": 1.0044462264580825,
+          "mixed_ja_en": 1.0051251693626158
+        }
+      }
+    },
+    "6_control_cell": {
+      "control": {"ar_tok_s": 39.93138510269801, "mtp_tok_s": 37.115871775214615, "mtp_vs_ar": 0.929491217992006},
+      "candidate": {"ar_tok_s": 39.907964852020484, "mtp_tok_s": 37.07379577277245, "mtp_vs_ar": 0.9289823700667977},
+      "mtp_speedup": 0.9988663609278264,
+      "ar_control_ratio": 0.9994134876459384,
+      "interpretation": "Narrow R16 cannot engage at C6/R12; movement is run noise, not a C6 mechanism."
+    }
+  },
+  "correctness": {
+    "control_cells": 20,
+    "candidate_cells": 20,
+    "all_exact_engaged_budget": true,
+    "control_acceptance": 0.9565217391304348,
+    "candidate_acceptance": 0.9565217391304348,
+    "accepted_proposed_both": [1540, 1610],
+    "parent_parity": "BF16-bit exact to shared-B",
+    "cpu_reference": "R16 Q4 primitive smoke passes",
+    "dispatch_nodes": 2
+  },
+  "kernel_trace": {
+    "path": "/tmp/q38-c8-r16-b2r1-two-shape-rocprof/q38-c8-r16-b2r1-two-shape_kernel_trace.csv",
+    "sha256": "a34f6a60239bd60a72c35b7577de541cce4a2673b5dab4af18e68dde74c92fbb",
+    "size_bytes": 24632909,
+    "expected_kernel_calls": 672,
+    "expected_kernel_total_ms": 210.976656,
+    "call_breakdown": {"down": 384, "narrow": 288}
+  },
+  "decision": {
+    "retain": true,
+    "automatic_mtp_promotion": false,
+    "reason": "Exact C8 improvement with every C8 scope positive; C6 is unchanged control. Both remain below own AR and 1.15x.",
+    "next": "Continue remaining target families; complete production gates before promotion."
+  }
+}

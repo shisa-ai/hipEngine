@@ -1,0 +1,47 @@
+{
+ "schema": 1,
+ "kind": "gfx1151-qwen38-mtp-c1-streaming-width1-retained",
+ "created_at": "2026-08-30T20:43:10.041686+00:00",
+ "title": "Scaling M3: physical prompt-streaming width-1 policy retained for production C1",
+ "source_commit": "b17178215e1993680b19a45886386a354df94add",
+ "status": "retained_default_path",
+ "change": {
+  "validator": "_physical_prompt_streaming_widths admits width 1 (upper bound unchanged) - landed aeb391dbb",
+  "policy": "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES production key (2,3) -> (1,2,3); strict/other keys unchanged"
+ },
+ "screen": {
+  "width1_only": "/tmp/m3-c1-stream.json sha 8e13e0d? (see raw_sources): mean C1 17.081 vs 13.759 (+24.1%), every cell generated-ID and per-cell acceptance identical, stream flag true (prime rows 43) vs false/0 baseline"
+ },
+ "measurement": {
+  "protocol": "frozen M0 production D24 full C1-C8, bound 4 default",
+  "command": ".venv/bin/python .worklog/tmp_m3_bench.py",
+  "host": "Radeon 8060S gfx1151, compiler-version-file pinned",
+  "c1": {
+   "mtp_tok_s": 15.646,
+   "vs_m0_pct": 99.5,
+   "mtp_over_ar": 1.408,
+   "aspiration_gate": 18.191,
+   "aspiration_remaining_pct": -14.0,
+   "stretch_external": 21.126
+  },
+  "others": "C2-C8 within +-0.31% of the M2j head run (C5 +4.75% drift); 48/48 exact/engaged/budget",
+  "cycle_accounting": "C1 ms/token 63.67 vs frozen 127.54; accept-member remains 7875ms/71 cycles = 111ms/cycle vs target 33.6ms/pass"
+ },
+ "raw_sources": [
+  [
+   "/tmp/m3-bound4-c1c8.json",
+   "0b7c33c9b30bbc8cb99784b459c5a57fc4fb68d46bded74138a66d324ec96ad1",
+   22322314
+  ],
+  [
+   "/tmp/m3-c1-stream.json",
+   "b93dbdccd3320e7bdb4bc91f2255270fffa13c38c512e6a5b547111a9a1fdaad",
+   759947
+  ],
+  [
+   "/tmp/m3-cycle-acc.json",
+   "3f2e6ecd1504f778639b35625a94fac06dd45e2bf850483edff8a08bef5aba50",
+   11431
+  ]
+ ]
+}

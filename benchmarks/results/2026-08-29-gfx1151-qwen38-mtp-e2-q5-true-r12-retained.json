@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "retained_scoped_win_e2_complete",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "title": "Qwen3.8 Q4_K_M E2 Q5 true-R12 owner",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "baseline_commit": "d87a906e3a7389029ec5bd469963fa9077dd9392",
+    "candidate_commit": "6fb2f9a837784b420cc420247d52cc126bce0fc6",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "physical_width": 3,
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "actual-weight BF16-bit exact parent parity plus full-suite exact IDs/acceptance",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "one immutable quant/rows/K/N package key; full category/heldout suite; no content selector"
+  },
+  "commands": {
+    "clean_c3": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 3 --resident-capacity 3 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 3 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p300-e2-q5-r12-c3-clean.json",
+    "leaf_micro": "5 warmups + 15 counterbalanced HIP-event pairs over actual Q5 K6144/N5120; /tmp/p300-q5-r12-micro.json",
+    "actual_red": "HIPENGINE_HIP_ARCH=gfx1151 pytest tests/test_qwen38_q5_t16_true_r12.py -q",
+    "trace": "cached-only rocprofv3 kernel+marker+HIP+copy+allocation over final C3/K3 child"
+  },
+  "leaf": {
+    "shape": "Q5 K6144/N5120 R12",
+    "parent_r8_r4_median_ms": 0.26541799306869507,
+    "candidate_r12_median_ms": 0.19400399923324585,
+    "candidate_delta_pct": -26.906236841662036,
+    "counterbalanced_pairs": 15,
+    "candidate_wins": 15,
+    "warmups_per_arm": 5
+  },
+  "actual_weight_red": {
+    "every_bf16_output_bit_exact_vs_r8_r4": true,
+    "guard_words_exact": true,
+    "strict_fallback": "registered Q5 R8+R4 rowtiles",
+    "new_allocation_bytes": 0,
+    "new_workspace_bytes": 0
+  },
+  "c3_k3_complete_wall": {
+    "columns": ["route", "ar_tok_s", "mtp_tok_s", "ratio", "mtp_wall_seconds", "accepted", "proposed"],
+    "rows": [
+      ["E2-Q6 plus Q5 R8+R4", 23.902458452831283, 29.409403612516765, 1.230392416351347, 24.48196534300223, 471, 597],
+      ["E2-Q6 plus Q5 true-R12", 24.041727405515452, 29.56442923283164, 1.229713187166793, 24.35359040182084, 471, 597]
+    ],
+    "mtp_uplift_pct": 0.5271294255314141,
+    "mtp_wall_reduction_pct": 0.5243653415189731,
+    "e0_to_e2_mtp_uplift_pct": 38.26520314464705,
+    "external_target_tok_s": 27.515,
+    "margin_over_external_pct": 7.448407170022309
+  },
+  "c3_categories": {
+    "columns": ["category", "ar_tok_s", "mtp_tok_s", "ratio"],
+    "rows": [
+      ["code", 24.279211369870463, 30.015688787261386, 1.236271159305844],
+      ["general_en", 24.140962471766404, 31.419488827794652, 1.3015010840823231],
+      ["general_ja", 24.27152147692904, 28.311092894693058, 1.166432558486446],
+      ["mixed_ja_en", 23.270518369848098, 28.295658104846726, 1.2159444690974208]
+    ],
+    "every_category_positive": true
+  },
+  "engagement_trace": {
+    "measured_target_cycles": 8,
+    "parent_q5_r8_calls": 336,
+    "parent_q5_r4_calls": 336,
+    "parent_q5_r8_r4_kernel_sum_ms": 97.10509,
+    "candidate_q5_r12_calls": 336,
+    "candidate_q5_r12_kernel_sum_ms": 78.074825,
+    "q5_family_reduction_pct": 19.59759781902266,
+    "target_stage_seconds": {"parent": 1.5014606413897127, "candidate": 1.4804019997827709},
+    "target_stage_reduction_pct": 1.4025436982118,
+    "profile_child_complete_seconds": {"parent": 2.4841136690229177, "candidate": 2.4676988129504025},
+    "profile_child_complete_reduction_pct": 0.6607932751713341,
+    "compiler_ran_inside_profiler": false,
+    "expected_kernel": "q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 12, 8>",
+    "q5_r8_r4_fallback_calls": 0
+  },
+  "e2_closeout": {
+    "q4": "rejected: exact col4 +9.1-44.7%; shared +72.9-169.7%",
+    "standard_q6": "retained true-R12",
+    "planar_q6": "rejected: +3.73-6.13%",
+    "q5": "retained true-R12",
+    "next": "E5/E6 C3 promotion bundle or wider-width parity re-freeze; no further E2 family has a material measured entry premise"
+  },
+  "scope": {
+    "enabled": "hip_gfx1151 production target verifier gguf_q5_k_t16_v1 R12 K6144/N5120",
+    "unchanged": ["other Q5 rows/shapes", "strict misses", "AR", "prefill", "proposal", "peer backends"]
+  },
+  "raw_sources": [
+    ["/tmp/p300-q5-r12-micro.json", "42ec6baebc3e475262c39e12ba0f9d8cc9794b69bc047ff0b69cbfce877a991f", 924],
+    ["/tmp/p290-e2-q6-standard-r12-c3-clean.json", "a4c499a63adfd1c9cee204b5abc51fd0402aa71d40310aae8d00d7a6d0b773bf", 1052956],
+    ["/tmp/p300-e2-q5-r12-c3-clean.json", "cb6248833cd7a7a2a1c29aad57ada8b8d58995daea26f6086a4db5f847f7ceeb", 1053018],
+    ["/tmp/p300-e2-q5-r12-clean-profile.json", "d674fc9ab28e13d60fe3931f18b544b438d8dcf5a45881cb855d175f9c45c523", 71543],
+    ["/tmp/p300-e2-q5-r12-clean-rocprof/gfx1151/3941095_kernel_trace.csv", "df58d5707b43627b712414cd4512d23365fa0402fd03fb95273bf89bd6b145a2", 12854677],
+    ["/tmp/p300-e2-q5-r12-clean-rocprof/gfx1151/3941095_marker_api_trace.csv", "e118de8267fa69b7cfae5383aba5280e3505d1fcaf4be9d34ad68c3f9c867439", 17948]
+  ],
+  "verdict": {
+    "retained": true,
+    "e2_complete": true,
+    "reason": "Q5 true-R12 is actual-weight exact, wins every leaf pair, removes R8+R4 in trace, and improves clean complete C3 wall with every category positive."
+  }
+}

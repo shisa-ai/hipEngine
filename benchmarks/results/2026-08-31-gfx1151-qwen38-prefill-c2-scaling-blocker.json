@@ -1,0 +1,33 @@
+{
+ "schema": 1,
+ "kind": "gfx1151-qwen38-prefill-c2-scaling-blocker",
+ "created_at": "2026-08-30T21:57:56.953180+00:00",
+ "title": "Scaling P1: prefill C1->C2 non-scaling attributed to the Q4 prefill-owner weight-streaming floor, not grouping",
+ "source_commit": "38e781b719f06793f8469182c4ce04060b94893f",
+ "status": "measured_named_blocker",
+ "attribution": {
+  "prefill_tick": "100.0% GPU-busy (hipEvent pairs): median 281.4ms wall / 281.4ms GPU at C1/C2",
+  "tick_floor": "rows<=48 all ~278ms regardless of rows: ~16.3GB Q4_K_M weight pass at ~57 GB/s - 3.2x slower than the AR qmicro-planar gemv owners (~181 GB/s at C1)",
+  "row_slope": "rows 48->536: ~1.7-4.5 ms/row superlinear; rows256 = 1418ms (steady C8-relevant rate 180 tok/s)",
+  "grouping": "equal-length gate removal (ragged env experiment): fires 11-13 grouped ticks/pair-set, grouped rows72-96 ticks cost 408-440ms vs 2x278 serial; C2 -3.0%, C3 +4.8%, C1 +0.3% -> NOT the scaling blocker, experiment reverted",
+  "external_gap": "external engines rise 20-42% C1->C2 because their prefill GEMMs amortize weight streaming across grouped rows; hipEngine wmma_prefill re-streams weights per 16-row M-tile (measured steady ~184 GB/s/tile x 16 tiles at rows256)"
+ },
+ "resolution_path": "P2/P3 kernel-algorithmic attack (prequantized integer MMQ / B-resident tiling); scheduling changes measured null",
+ "raw_sources": [
+  [
+   "/tmp/p1-prefill-c123.json",
+   "6dc48792a9269abcc3dd2b991cc46c6f504742e39be7ce9c49de417e602f92f5",
+   2315437
+  ],
+  [
+   "/tmp/p1-ragged-c123.json",
+   "a290c0b45a3bcc028f84eecab03937a2ff7f794c1184ed47aed85d8273d7dfbd",
+   2315611
+  ],
+  [
+   "/tmp/p1-wall.json",
+   "20916de4748533d7a5797d74010b783e23f4a036f509ce5fe67f50d95edad737",
+   8829
+  ]
+ ]
+}

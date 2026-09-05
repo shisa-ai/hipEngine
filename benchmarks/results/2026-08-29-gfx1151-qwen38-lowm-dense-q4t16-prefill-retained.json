@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.3 (first retained unit: Q4 dense low-M band)"],
+  "title": "Low-M dense Q4T16 prefill owner band (rows 17-64) retained",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "change": {
+    "file": "hipengine/kernels/hip_gfx1151/__init__.py",
+    "summary": "gfx1151 dense Q4T16 prefill selector routes rows 17-64 on the six physical Qwen3.8 standard-Q4 shapes to the 32-thread single-wave WMMA owner (gguf_q4_t16_dense_wmma_prefill_bf16_kernel) instead of LDS-staged shared-B; unadmitted shapes and rows > 64 retain shared-B fail-closed. No registry key, plan selection, or manifest change.",
+    "band": {"rows": [17, 64], "shapes": [[5120, 6144], [5120, 10240], [5120, 12288], [5120, 17408], [6144, 5120], [17408, 5120]]}
+  },
+  "selection_evidence": {
+    "harness": "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py (synthetic Q4T16, bit-exact cross-validation max_abs 0.0)",
+    "dominant_shape_5120_17408": {
+      "rows_45": {"shared_b_ms": 1.568, "single_wave_ms": 0.932, "delta_pct": -40.6},
+      "rows_64": {"shared_b_ms": 1.724, "single_wave_ms": 0.984, "delta_pct": -42.9}
+    },
+    "all_shapes_rows_24_45_64": "single-wave wins 4-68%; crossover to shared-B between rows 80 and 96; band conservatively stops at 64",
+    "per_pass_launch_census_rows45": [
+      {"count": 128, "shape": [5120, 17408]},
+      {"count": 48, "shape": [5120, 6144]},
+      {"count": 32, "shape": [17408, 5120]},
+      {"count": 24, "shape": [5120, 10240]},
+      {"count": 24, "shape": [5120, 12288]},
+      {"count": 16, "shape": [6144, 5120]},
+      {"count": 24, "shape": [5120, 1024], "note": "router; unadmitted, stays shared-B"}
+    ]
+  },
+  "measurements": {
+    "isolated_forced_bulk_prefill_45tok_s": {
+      "command": ".venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length 45 --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+      "before_median_s": 0.515,
+      "after_median_s": 0.418,
+      "delta_pct": -18.9,
+      "runs_after_s": [0.418, 0.417, 0.418]
+    },
+    "server_c1_prefill_frozen_protocol": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact",
+      "c1_before": {"wall_s": 6.276, "tok_s": 71.55},
+      "c1_after": {"wall_s": 5.308, "tok_s": 84.59, "delta_pct": 18.2},
+      "c2_before": {"wall_s": 11.994, "tok_s": 74.87},
+      "c2_after": {"wall_s": 9.883, "tok_s": 90.86, "delta_pct": 21.4},
+      "correctness": "every cell ar_self_exact / mtp_self_exact / ar_mtp_equal passed"
+    }
+  },
+  "kernel_trace_evidence": {
+    "command": "rocprofv3 --kernel-trace on the isolated 45-token forced-bulk bench (require-cached-build)",
+    "measured_pass": {
+      "single_wave_owner": {"name": "gguf_q4_t16_dense_wmma_prefill_bf16_kernel", "gpu_ms": 257.89, "launches": 277},
+      "shared_b_residue": {"name": "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel", "gpu_ms": 5.25, "launches": 25},
+      "pass_gpu_busy_ms_before": 534.2,
+      "pass_gpu_busy_ms_after": 442.8
+    }
+  },
+  "gates": {
+    "red": "tests/test_gfx1151_backend.py::test_gfx1151_backend_routes_admitted_lowm_rows_to_single_wave_wmma failed before the selector edit (missing constants), passes after",
+    "kernel_family": "test_gguf_k_t16_selected_wmma_prefill, test_dense_prefill_wmma, test_batch_width_dispatch, test_dense_gemv_wmma: 76/76",
+    "full_suite": "only the 3 pre-existing test_specdec2_perf_bridge ordering flakes (23/23 pass in isolation with the change); check_fixtures, smoke registry, smoke cpu-fixtures OK",
+    "exactness": "owners are strict siblings (identical K16 WMMA association); microbench outputs bit-exact max_abs 0.0 across all shapes/rows measured; real-model runs under the ar_exact contract"
+  },
+  "parity_context": {
+    "frozen_c1_winner": {"engine": "Nathan", "tok_s": 138.95},
+    "hipengine_c1_now_tok_s": 84.59,
+    "remaining_gap_pct": 64.2,
+    "remaining_walls": ["deep bandwidth work (owners at 25-60 GB/s effective vs 256 peak)", "packed-route overhead ~111 ms", "Q5/Q6 T16 prefill families 146.5 ms/pass"]
+  }
+}

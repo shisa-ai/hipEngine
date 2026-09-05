@@ -395,7 +395,7 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
             "row64",
         ),
         (
-            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out",
+            "gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_gfx1100_bf16_bf16_out",
             "shared256",
         ),
     ):

@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "rejected_fixed_b4_and_adaptive_reopen",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 exact-raw B3/B4 oracle after verifier rowtile closure",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "base_commit": "17f6a9361b11417453581f50b6dbf4d8d59875df",
+    "candidate_code_committed": false,
+    "candidate_code_removed": true,
+    "production_changed": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "prompt_rendering": "exact canonical raw rendered strings; no reasoning-off wrapper",
+    "heldout_included": true,
+    "sampling": "greedy",
+    "max_new_tokens": 24,
+    "candidate_budgets": [3, 4],
+    "draft_hidden_variant": "post_output_norm",
+    "target_verify_mode": "native diagnostic",
+    "runs": 1,
+    "timing": "transition-normalized direct one-request decode plus request wall",
+    "performance_claim": false,
+    "anti_gaming": "full categories/heldouts; content-independent fixed budgets; no prompt/category selector"
+  },
+  "temporary_oracle_only_changes": {
+    "proposal_history_and_graph_capacity": "B1-B3 to B1-B4",
+    "native_target_clamp": "rows<=4 to rows<=5",
+    "production_q4_rowtile_rows": "admit neighboring R5",
+    "serving_b4_admitted": false,
+    "all_removed_after_measurement": true
+  },
+  "clamp_diagnosis": {
+    "without_native_r5": {
+      "b3_decode_tok_s": 23.878864290399356,
+      "b4_decode_tok_s": 7.38058256024451,
+      "b3_target_verify_seconds": 7.936251679668203,
+      "b4_target_verify_seconds": 29.1155313719064,
+      "reason": "_effective_target_verify_mode forced rows5 to serial_exact"
+    },
+    "note": "This noncanonical-render run sizes the mechanical clamp only and is not the policy oracle."
+  },
+  "exact_raw_oracle": {
+    "columns": ["scope", "b3_decode_tok_s", "b4_decode_tok_s", "b4_delta_pct", "b4_request_wall_delta_pct"],
+    "rows": [
+      ["full", 27.575464901346823, 28.8259325527147, 4.534711040562733, -0.835551947792379],
+      ["train", 26.719304415194966, 29.291247217348502, 9.625785021150858, -1.7920204279183838],
+      ["heldout", 28.967776538185337, 28.15503500236463, -2.8056745561722662, 0.5124950403283313]
+    ],
+    "category_columns": ["category", "b3_decode_tok_s", "b4_decode_tok_s", "b4_delta_pct"],
+    "category_rows": [
+      ["code", 27.931740095397018, 31.013476062942154, 11.033096960733157],
+      ["general_en", 31.41920172212391, 28.333150525637695, -9.822182064903206],
+      ["general_ja", 22.89873641808673, 24.34395284386283, 6.311337007375584],
+      ["mixed_ja_en", 29.223296846102652, 30.680001837553082, 4.9847387141902955]
+    ],
+    "b3": {
+      "accepted": 159,
+      "proposed": 204,
+      "acceptance": 0.7794117647058824,
+      "cycles": 71,
+      "visible_transitions_per_cycle": 3.23943661971831,
+      "target_forward_rows": 275,
+      "proposal_seconds": 1.3881846070289612,
+      "target_verify_seconds": 6.8961699842475355
+    },
+    "b4": {
+      "accepted": 167,
+      "proposed": 232,
+      "acceptance": 0.7198275862068966,
+      "cycles": 63,
+      "visible_transitions_per_cycle": 3.6507936507936507,
+      "target_forward_rows": 295,
+      "proposal_seconds": 1.5263256127946079,
+      "target_verify_seconds": 6.395538953831419
+    },
+    "b4_deltas_pct": {
+      "visible_transitions_per_cycle": 12.698412698412698,
+      "cycles": -11.267605633802813,
+      "target_forward_rows": 7.272727272727275,
+      "draft_acceptance": -7.644762524398175,
+      "proposal_seconds": 9.951198498109036,
+      "target_verify_seconds": -7.259551773805962
+    },
+    "all_generated_ids_exact": true
+  },
+  "decision": {
+    "fixed_b4": "reject",
+    "adaptive_k": "not opened per predeclared E3 rule",
+    "binding_failures": ["heldout -2.81%", "general_en -9.82%"],
+    "why_no_category_policy": "Selecting K by prompt/category would be benchmark gaming. The allowed controller is request-owned and content-agnostic, and E3 requires a fixed K4 winner before adaptation.",
+    "automatic_policy": "unchanged; fixed K3 remains the policy input and B4 remains clamped",
+    "reopen_condition": "A fixed B4 cell must win full/train/heldout/every category under exact raw rendering before adaptive K or serving/padded-R16 infrastructure is implemented."
+  },
+  "commands": {
+    "oracle": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE=1 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 /tmp/p410_qwen38_raw_b3b4.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --max-new-tokens 24 --candidate-budgets 3,4 --draft-hidden-variant post_output_norm --target-verify-mode native --runs 1 --warmup --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/p410-qwen38-raw-b3b4-r5native-production-oracle-dirty.json"
+  },
+  "raw_sources": [
+    ["/tmp/p410-qwen38-b3b4-oracle-dirty.json", "f749139bb60164ec32caca185247f893f11450ed6762e77324eca6d9efce94ca", 487100],
+    ["/tmp/p410-qwen38-raw-b3b4-r5native-production-oracle-dirty.json", "53b8dcafea30b36198b8785b7e5955ddf5c6f30fda03fd970c1efe0481c5914b", 427370]
+  ]
+}

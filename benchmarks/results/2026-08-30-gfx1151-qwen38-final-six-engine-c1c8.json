@@ -1,0 +1,654 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "completed_same_host_refresh",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 standard-Q4 final same-host six-implementation C1-C8 matrix",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008
+  },
+  "implementations": {
+    "hipengine": {
+      "commit": "bc6a2679cfc0a2b849576e1422ff270cd2b77f29",
+      "backend": "HIP/gfx1151"
+    },
+    "mainline_vulkan": {
+      "commit": "4e97ac86ebe2c4cb8212d98d2641ad6768810896",
+      "backend": "Vulkan/RADV"
+    },
+    "stock_hip": {
+      "commit": "9d57ce456c94d241dde672b2db9cf18879766568",
+      "backend": "HIP/ROCm"
+    },
+    "laurent_vulkan": {
+      "commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+      "backend": "Vulkan/RADV"
+    },
+    "nathan_vulkan": {
+      "commit": "0eb528051a56f34567312ce63ab4e14a3fc71d89",
+      "backend": "Vulkan/RADV"
+    },
+    "q38rocm_vulkan": {
+      "commit": "5d0977403b0dac778598b1af499bf178b46c0b35",
+      "backend": "Vulkan/RADV"
+    }
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": [
+      "code",
+      "general_en",
+      "general_ja",
+      "mixed_ja_en"
+    ],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "prompt_cache": false,
+    "widths": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "prefill_max_tokens": 1,
+    "ar_mtp_max_tokens": 24,
+    "mtp_candidate_budget": 3,
+    "timing": "barrier-to-last-completion complete wall per prompt; sums across ten prompts",
+    "server_isolation": "fresh no-spec and MTP process per external implementation; serial GPU execution"
+  },
+  "matrices": {
+    "prefill": {
+      "columns": [
+        "engine",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8"
+      ],
+      "rows": [
+        [
+          "hipengine",
+          146.75778250840006,
+          142.806315996623,
+          174.87845110245195,
+          188.94174880664661,
+          211.7366590008829,
+          226.61630729282135,
+          240.6717925694283,
+          247.21593228818617
+        ],
+        [
+          "mainline_vulkan",
+          111.15663554363393,
+          133.63560576365307,
+          126.9830136887123,
+          126.98636261210383,
+          137.55980787949932,
+          146.75480671019193,
+          148.0590694918517,
+          162.33940849702182
+        ],
+        [
+          "stock_hip",
+          146.24521120218776,
+          186.93226869369522,
+          190.346506950827,
+          200.4625595430168,
+          226.11668910375403,
+          250.1199768151594,
+          250.34022534921388,
+          283.5450488116644
+        ],
+        [
+          "laurent_vulkan",
+          149.10914756392515,
+          211.8877023492164,
+          192.41881304590981,
+          191.9130655184367,
+          222.07158064418167,
+          250.414801801425,
+          252.2718512933287,
+          305.84734658268803
+        ],
+        [
+          "nathan_vulkan",
+          153.40053802932582,
+          200.75114012340163,
+          186.05332147306717,
+          186.28380711411222,
+          208.20735783471767,
+          227.5373390547065,
+          228.62795946090938,
+          263.8740486264335
+        ],
+        [
+          "q38rocm_vulkan",
+          146.92081458920416,
+          186.507995024515,
+          181.26110089676473,
+          184.2402566807353,
+          206.08839273452585,
+          229.7353430087672,
+          233.02833781768922,
+          273.5164568653811
+        ]
+      ]
+    },
+    "ar": {
+      "columns": [
+        "engine",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8"
+      ],
+      "rows": [
+        [
+          "hipengine",
+          11.021299189825294,
+          17.918426788430462,
+          23.65944640689244,
+          30.083455284916784,
+          35.54445635336875,
+          39.906390029060354,
+          43.11175948846284,
+          45.9361759880918
+        ],
+        [
+          "mainline_vulkan",
+          10.226156463705944,
+          17.47122673520429,
+          14.905499448406282,
+          13.245975970126945,
+          18.085891331493386,
+          24.08310317733435,
+          29.34208374043795,
+          35.376108161341165
+        ],
+        [
+          "stock_hip",
+          10.634957238146663,
+          17.68135608668847,
+          15.265857067428062,
+          13.5368974455439,
+          18.271415487285807,
+          23.295627866901093,
+          26.544352100271,
+          30.32524395525072
+        ],
+        [
+          "laurent_vulkan",
+          11.04659461276375,
+          19.83543435406354,
+          16.35918075845632,
+          14.255084173517629,
+          20.29394996927176,
+          28.322192997312364,
+          35.89566880220477,
+          45.61415123492383
+        ],
+        [
+          "nathan_vulkan",
+          11.161941629745177,
+          19.6620962339549,
+          16.34107616980872,
+          14.32126170620167,
+          20.09894636695862,
+          27.57484561896058,
+          34.317260779306665,
+          41.511292934708706
+        ],
+        [
+          "q38rocm_vulkan",
+          10.58204194592928,
+          18.645431453005173,
+          15.663200349206399,
+          13.865573673380261,
+          19.054043814007226,
+          24.970417814334017,
+          29.576411308768588,
+          35.021346430321366
+        ]
+      ]
+    },
+    "mtp": {
+      "columns": [
+        "engine",
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8"
+      ],
+      "rows": [
+        [
+          "hipengine",
+          7.809331404165254,
+          25.73960410370756,
+          29.468337109799673,
+          29.38539000813243,
+          18.657040419879326,
+          28.19476473876897,
+          29.30511476903688,
+          28.577125951293514
+        ],
+        [
+          "mainline_vulkan",
+          21.02231816289129,
+          30.839569289085937,
+          27.28298165262923,
+          26.954553388675617,
+          32.712908835858904,
+          32.307499814558106,
+          38.28188482912318,
+          45.45789748109616
+        ],
+        [
+          "stock_hip",
+          17.35062948844875,
+          23.530345742528954,
+          23.086823087161836,
+          25.28665054590626,
+          22.293280966359365,
+          25.211611184178857,
+          46.083535265690436,
+          56.22204769948231
+        ],
+        [
+          "laurent_vulkan",
+          21.125930076668563,
+          32.22134350260536,
+          28.06732802857161,
+          26.184063228086913,
+          31.73705921081811,
+          37.15409759326455,
+          43.88756266779826,
+          50.836985193677286
+        ],
+        [
+          "nathan_vulkan",
+          20.780906785401438,
+          30.56600473413833,
+          27.858680439909236,
+          26.38517027855853,
+          29.767575036942652,
+          33.31844909321819,
+          36.991891659022016,
+          45.17272070108154
+        ],
+        [
+          "q38rocm_vulkan",
+          20.356921944686288,
+          27.16315545155182,
+          26.178065186913383,
+          26.481631687383125,
+          32.29686945987505,
+          31.613237168656433,
+          38.31350771151282,
+          45.34164254608012
+        ]
+      ]
+    }
+  },
+  "winners": {
+    "prefill": {
+      "columns": [
+        "width",
+        "winner",
+        "winner_tok_s",
+        "hipengine_tok_s",
+        "hipengine_gap_pct"
+      ],
+      "rows": [
+        [
+          1,
+          "nathan_vulkan",
+          153.40053802932582,
+          146.75778250840006,
+          -4.330333912946161
+        ],
+        [
+          2,
+          "laurent_vulkan",
+          211.8877023492164,
+          142.806315996623,
+          -32.60282951142628
+        ],
+        [
+          3,
+          "laurent_vulkan",
+          192.41881304590981,
+          174.87845110245195,
+          -9.115720893295842
+        ],
+        [
+          4,
+          "stock_hip",
+          200.4625595430168,
+          188.94174880664661,
+          -5.747113457312691
+        ],
+        [
+          5,
+          "stock_hip",
+          226.11668910375403,
+          211.7366590008829,
+          -6.359561587368201
+        ],
+        [
+          6,
+          "laurent_vulkan",
+          250.414801801425,
+          226.61630729282135,
+          -9.503629313204687
+        ],
+        [
+          7,
+          "laurent_vulkan",
+          252.2718512933287,
+          240.6717925694283,
+          -4.598237442834019
+        ],
+        [
+          8,
+          "laurent_vulkan",
+          305.84734658268803,
+          247.21593228818617,
+          -19.170156272273054
+        ]
+      ]
+    },
+    "ar": {
+      "columns": [
+        "width",
+        "winner",
+        "winner_tok_s",
+        "hipengine_tok_s",
+        "hipengine_gap_pct"
+      ],
+      "rows": [
+        [
+          1,
+          "nathan_vulkan",
+          11.161941629745177,
+          11.021299189825294,
+          -1.2600176975042454
+        ],
+        [
+          2,
+          "laurent_vulkan",
+          19.83543435406354,
+          17.918426788430462,
+          -9.664560560733849
+        ],
+        [
+          3,
+          "hipengine",
+          23.65944640689244,
+          23.65944640689244,
+          0.0
+        ],
+        [
+          4,
+          "hipengine",
+          30.083455284916784,
+          30.083455284916784,
+          0.0
+        ],
+        [
+          5,
+          "hipengine",
+          35.54445635336875,
+          35.54445635336875,
+          0.0
+        ],
+        [
+          6,
+          "hipengine",
+          39.906390029060354,
+          39.906390029060354,
+          0.0
+        ],
+        [
+          7,
+          "hipengine",
+          43.11175948846284,
+          43.11175948846284,
+          0.0
+        ],
+        [
+          8,
+          "hipengine",
+          45.9361759880918,
+          45.9361759880918,
+          0.0
+        ]
+      ]
+    },
+    "mtp": {
+      "columns": [
+        "width",
+        "winner",
+        "winner_tok_s",
+        "hipengine_tok_s",
+        "hipengine_gap_pct"
+      ],
+      "rows": [
+        [
+          1,
+          "laurent_vulkan",
+          21.125930076668563,
+          7.809331404165254,
+          -63.03437824595536
+        ],
+        [
+          2,
+          "laurent_vulkan",
+          32.22134350260536,
+          25.73960410370756,
+          -20.11629154561384
+        ],
+        [
+          3,
+          "hipengine",
+          29.468337109799673,
+          29.468337109799673,
+          0.0
+        ],
+        [
+          4,
+          "hipengine",
+          29.38539000813243,
+          29.38539000813243,
+          0.0
+        ],
+        [
+          5,
+          "mainline_vulkan",
+          32.712908835858904,
+          18.657040419879326,
+          -42.967345051785664
+        ],
+        [
+          6,
+          "laurent_vulkan",
+          37.15409759326455,
+          28.19476473876897,
+          -24.113983207385893
+        ],
+        [
+          7,
+          "stock_hip",
+          46.083535265690436,
+          29.30511476903688,
+          -36.40870953133065
+        ],
+        [
+          8,
+          "stock_hip",
+          56.22204769948231,
+          28.577125951293514,
+          -49.17096206804177
+        ]
+      ]
+    }
+  },
+  "correctness": {
+    "hipengine_exact_cells": {
+      "prefill": 80,
+      "ar_mtp": 80
+    },
+    "external_content_guards": "all cells min_unique_char30_fraction=1.0; max_word_trigram_repeats <=2",
+    "external_generated_id_equality": "not available from llama completion endpoint; output-content guards and acceptance recorded",
+    "comparison_scope": "same physical host, model hash, prompt hashes, widths, output lengths, and timing boundary"
+  },
+  "decision": {
+    "hipengine_prefill_wins": [],
+    "hipengine_ar_wins": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "hipengine_mtp_wins": [
+      3,
+      4
+    ],
+    "named_remaining_prefill": "external winners remain at C1-C8; hipEngine gaps 4.3-32.6%, GPU-bound high-row Q4/device algorithm",
+    "named_remaining_ar": "C1 -1.26% and C2 -9.66%; C3-C8 win",
+    "named_remaining_mtp": "C1 -63.03%, C2 -20.12%, C5 -42.97%, C6 -24.11%, C7 -36.41%, C8 -49.17%; prompt replay and provider-group costs already attributed"
+  },
+  "raw_sources": [
+    [
+      "hip_prefill",
+      "/tmp/p440-final-prefill-c1c8-clean.json",
+      "9b3915caf9778277e9306ab0b53dfec01bcd386fa8e48c58110d5d6f5e8c115d",
+      3449634
+    ],
+    [
+      "hip_ar_mtp",
+      "/tmp/p440-final-ar-mtp-c1c8-clean.json",
+      "9b077facf3fdd16d102ec56c1c5a52b6a17815a6282999bf2753b4aa3cd5e880",
+      20674114
+    ],
+    [
+      "mainline_prefill",
+      "/tmp/p440-mainline-vulkan-prefill.json",
+      "5cf76aa0dd5fcbbd19077886f15f8750a939edfc7cd6db128c258e0a77a110c6",
+      244287
+    ],
+    [
+      "mainline_ar",
+      "/tmp/p440-mainline-vulkan-ar.json",
+      "934cd2bf1c6c3a976f67b316c289f67ab88befeeee13d4ae963dd2d9a26800e7",
+      290009
+    ],
+    [
+      "mainline_mtp",
+      "/tmp/p440-mainline-vulkan-mtp.json",
+      "48803f9e045a6ddb36ca9aa0a1faffb4b09fb6083a46e7ae2eab92086b69641e",
+      291265
+    ],
+    [
+      "stock_prefill",
+      "/tmp/p440-stock-hip-prefill.json",
+      "2deefb1dbabd4d0fa0af21cc6cb1ee09b2c0a5b98cd4d0d1f27ae81dffea62f1",
+      244122
+    ],
+    [
+      "stock_ar",
+      "/tmp/p440-stock-hip-ar.json",
+      "e748f0bbd9503b689fe1e97b1b3fc2346c427d2f2ae3ff827fb69227854ffb08",
+      289475
+    ],
+    [
+      "stock_mtp",
+      "/tmp/p440-stock-hip-mtp.json",
+      "1b113a1342d20ebe525128807ce391e518b29e9f120c67050590e43aa70244ff",
+      290931
+    ],
+    [
+      "laurent_prefill",
+      "/tmp/p440-laurent-vulkan-prefill.json",
+      "239f4a1f59de1dd2657010f243dae7cb0b92d8a6b86f9827390a7789574c1933",
+      244125
+    ],
+    [
+      "laurent_ar",
+      "/tmp/p440-laurent-vulkan-ar.json",
+      "2be0482f4a753acc7af62e81b0e93d10c82b3042482f3e89eff4df495a81bbf6",
+      290003
+    ],
+    [
+      "laurent_mtp",
+      "/tmp/p440-laurent-vulkan-mtp.json",
+      "d1f859f4bf8c0215bdecbc254a87711b9b0b7fc4a60d346808d04f3f53b87013",
+      289100
+    ],
+    [
+      "nathan_prefill",
+      "/tmp/p440-nathan-vulkan-prefill.json",
+      "2472a5302cccfd2d0d0c4e2db555fbaa5fdd47547b3e7a9231396629c4f78ae6",
+      244164
+    ],
+    [
+      "nathan_ar",
+      "/tmp/p440-nathan-vulkan-ar.json",
+      "9c33fe11565895056f3899e778b8e0ef3cb1c1491ac14ef8b821d2aab2f05075",
+      289904
+    ],
+    [
+      "nathan_mtp",
+      "/tmp/p440-nathan-vulkan-mtp.json",
+      "3e37f3aa54e95d9267bb410270bd2dcc8673879a3d5544844fd119afa7689f3f",
+      291049
+    ],
+    [
+      "q38rocm_prefill",
+      "/tmp/p440-q38rocm-vulkan-prefill.json",
+      "7b867fbd106d45db711101b7db7ffa70fa32d10b6b0dae4080955e499fe43069",
+      246325
+    ],
+    [
+      "q38rocm_ar",
+      "/tmp/p440-q38rocm-vulkan-ar.json",
+      "d1896f2c3c115976db3ad211203831ef6f06139cbf9d5a94d0244d405d0a29d4",
+      289893
+    ],
+    [
+      "q38rocm_mtp",
+      "/tmp/p440-q38rocm-vulkan-mtp.json",
+      "b26939ba040fffa3e7b4eda384fb75f4bd3f3d49496a787cd13635cb402d87fd",
+      291363
+    ]
+  ]
+}

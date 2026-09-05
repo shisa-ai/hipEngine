@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-30",
+  "status": "closed_with_measured_blockers",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 standard-Q4 gfx1151 parity campaign closeout",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008
+  },
+  "acceptance_rule": {
+    "win": "[x] only with measured frozen/refreshed protocol win and applicable correctness gate",
+    "blocker": "[~] only with a measured named blocker and concrete reopen condition",
+    "mechanical_note": "The loop verify command counts both [ ] and [~]. Five remaining [~] cells are accepted terminal blockers, not unmeasured work."
+  },
+  "wins": {
+    "prefill": [],
+    "ar": [3, 4, 5, 6, 7, 8],
+    "mtp_k3": [3, 4],
+    "dflash": ["row8 correctness 3.53x versus serial", "Q6 select 70 to 22 ms"],
+    "correctness": ["MTP E5 production bundle passed", "B4 fixed/adaptive reopen adjudicated"]
+  },
+  "terminal_blockers": [
+    {
+      "item": "P2.2 prefill C2-C8",
+      "current_tok_s": [142.806315996623, 174.87845110245195, 188.94174880664661, 211.7366590008829, 226.61630729282135, 240.6717925694283, 247.21593228818617],
+      "winner_tok_s": [211.8877023492164, 192.41881304590981, 200.4625595430168, 226.11668910375403, 250.414801801425, 252.2718512933287, 305.84734658268803],
+      "gap_pct": [-32.6, -9.12, -5.75, -6.36, -9.5, -4.6, -19.17],
+      "named_blocker": "98-99% GPU-bound high-row Q4/device work plus physical-group variance; Q4 is about 60% of traced kernel sum and selector/scheduler ladders are exhausted.",
+      "reopen_condition": "new high-row Q4 algorithm/fusion with exact production gate; no more threshold tuning",
+      "evidence": ["benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json", "benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c2-c8-attribution.json"]
+    },
+    {
+      "item": "P3.1 AR C1/C2",
+      "current_tok_s": [11.021299189825294, 17.918426788430462],
+      "winner_tok_s": [11.161941629745177, 19.83543435406354],
+      "gap_pct": [-1.26, -9.66],
+      "named_blocker": "C1 is 96.6% device-kernel time and needs a new operation-complete serial dataflow; C2's graph-record plus P2.2 high-row prefill/Q4 wall explains nearly all request deficit.",
+      "reopen_condition": "new C1 serial dataflow or C2 high-row Q4/row2 operation-complete fusion with measured premise",
+      "evidence": ["benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json", "benchmarks/results/2026-08-29-gfx1151-qwen38-ar-c1-c2-blockers.json"]
+    },
+    {
+      "item": "P4.2 MTP C1/C2/C5-C8",
+      "current_tok_s": [7.809331404165254, 25.73960410370756, 18.657040419879326, 28.19476473876897, 29.30511476903688, 28.577125951293514],
+      "winner_tok_s": [21.125930076668563, 32.22134350260536, 32.712908835858904, 37.15409759326455, 46.083535265690436, 56.22204769948231],
+      "gap_pct": [-63.03, -20.12, -42.97, -24.11, -36.41, -49.17],
+      "named_blocker": "C1 production-D24 does not inherit strict-natural25 proposal/replay; C2 remains Q4-dominant after exact streaming; C5-C8 retain replay plus physical provider-group target costs after exact Q5/Q6 closure.",
+      "reopen_condition": "replay-equivalent prompt streaming or a new operation-complete Q4/provider-group dataflow that passes full categories/heldouts",
+      "evidence": ["benchmarks/results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json", "benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-c4-post-q5-blocker.json", "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-c2-post-streaming-blocker.json"]
+    },
+    {
+      "item": "P4.3 fixed B4/adaptive K",
+      "measured_full_delta_pct": 4.534711040562733,
+      "heldout_delta_pct": -2.8056745561722662,
+      "general_en_delta_pct": -9.822182064903206,
+      "named_blocker": "fixed B4 fails binding heldout and general-English scopes even after native-R5/clamp removal",
+      "reopen_condition": "fixed B4 must win full/train/heldout/every category before any content-agnostic adaptive controller or serving infrastructure",
+      "evidence": ["benchmarks/results/2026-08-30-gfx1151-qwen38-mtp-b4-reopen-rejected.json"]
+    },
+    {
+      "item": "P5.3 matched DFlash2 decision",
+      "historical_retained_dflash_b3_tok_s": 8.845,
+      "historical_ar_tok_s": 13.4,
+      "historical_mtp_b3_tok_s": 23.85263,
+      "named_blocker": "exact Qwen3.8 DFlash2 snapshot 50307d4c and reference repo are absent; historical rows use unmatched target/harness/token budgets; remaining five-layer full-block drafter is launch-bound",
+      "reopen_condition": "restore exact assets and run one same-target/harness/timing/full-suite AR, current MTP K3, DFlash B3/B5/B7 matrix",
+      "evidence": ["benchmarks/results/2026-08-30-gfx1151-qwen38-dflash-p5-closeout.json"]
+    }
+  ],
+  "completed_closure_items": {
+    "P4_1_E0_E5": "passed",
+    "P5_1_row8": "passed",
+    "P5_2_cost": "passed with one retained and one rejected candidate",
+    "P6_1_matrix": "passed",
+    "P6_2_rollup": "passed"
+  },
+  "automatic_policy": {
+    "strict_c1_k3": "automatic in existing certified scope",
+    "production_c2_c4": "K0 pending E6/width-specific product gates",
+    "fixed_b4_adaptive": "not admitted",
+    "dflash2": "diagnostic only"
+  },
+  "decision": {
+    "campaign_complete": true,
+    "production_code_changed_by_closeout": false,
+    "future_work": "Reopen only against the per-item conditions above; do not tune the frozen prompts or relabel blocker cells as wins."
+  }
+}

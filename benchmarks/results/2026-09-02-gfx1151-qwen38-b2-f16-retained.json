@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b2_f16_retained",
+  "date": "2026-09-02",
+  "status": "retained_profile_default",
+  "performance_claim": true,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop / AMD Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_max_hw_queues": "2"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "standard_q4_k_m",
+    "kv": "bf16"
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "train_heldout": [6, 4]
+  },
+  "profile": {
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "default_commits": ["98294239e", "8c34505b0"],
+    "production": "input-F16 staging on when the resolved profile did not fall back",
+    "strict_and_fallback": "registered BF16 owners",
+    "no_profile": "BF16 owners",
+    "env_override": "1 forces F16; 0 restores BF16",
+    "automatic_d24_c2_c8": "typed K0 unchanged"
+  },
+  "performance": {
+    "source_commit": "29b408cc714c5577e8b8bf6c558d93ae862b5b15",
+    "protocol": "production, full ten-prompt suite, C2/C8, D1, 50 ms window, cache-only, typed K0; sum AR-labeled and second-arm complete walls; prompt throughput uses the matched second arm",
+    "widths": {
+      "2": {
+        "control_combined_wall_seconds": 11.299176884116605,
+        "candidate_combined_wall_seconds": 9.250124024925753,
+        "wall_reduction_pct": 18.13453210092879,
+        "speedup": 1.2215162579084768,
+        "control_prompt_tok_s": 179.03685555421785,
+        "candidate_prompt_tok_s": 209.3906266989712,
+        "prompt_throughput_gain_pct": 16.95392328623717,
+        "candidate_repeat_prompt_tok_s": 209.00916554002546
+      },
+      "8": {
+        "control_combined_wall_seconds": 27.018930271966383,
+        "candidate_combined_wall_seconds": 22.33107723807916,
+        "wall_reduction_pct": 17.35025401339122,
+        "speedup": 1.2099250736499827,
+        "control_prompt_tok_s": 284.4226115322847,
+        "candidate_prompt_tok_s": 334.7043754474976,
+        "prompt_throughput_gain_pct": 17.67853956629095,
+        "candidate_repeat_prompt_tok_s": 334.3865265719817
+      }
+    },
+    "ids": "40/40 control/candidate and 40/40 candidate/repeat arm cells equal"
+  },
+  "default_confirmation": {
+    "source_commit": "8c34505b0d240b8daee40752ad22dc1cffdb1d16",
+    "production_no_env": {
+      "status": "complete",
+      "c2_prompt_tok_s": 208.3730846161639,
+      "c8_prompt_tok_s": 334.3256202917749,
+      "versus_explicit_candidate_pct": [-0.4859539793393708, -0.11316110081212027],
+      "ids_equal_explicit_candidate": "40/40 arm cells",
+      "all_cells_exact": true,
+      "automatic_k0": true
+    },
+    "strict_no_env": {
+      "status": "complete",
+      "c2_prompt_tok_s": 175.19206951915686,
+      "c8_prompt_tok_s": 271.941195105698,
+      "all_cells_exact": true,
+      "automatic_k0": true,
+      "owner_policy": "BF16 strict fallback"
+    }
+  },
+  "quality_and_safety": {
+    "full_logits": "90/90 bit-identical; mean/p95/p99/max KL 0; top-1 100% in every category/width/transition",
+    "determinism": "strict and candidate full-logit repeats bit-identical; full-suite candidate process repeat 40/40 IDs",
+    "isolation": "C2/C8 neighbor substitutions preserve focal logits bit-exactly",
+    "bf16_relative": "derived exact because candidate and BF16-activation fallback logits are byte-identical",
+    "task_d24": "40/40 control/candidate and 40/40 candidate/repeat output arm cells identical; all 60 cells typed automatic K0",
+    "lifecycle": "bounded 34 MiB resident-session owner; 0 tracked bytes/allocations after close",
+    "strict_fallback": "registered Q4/Q5 BF16 owners; profile/no-profile/env matrix tested",
+    "trace": "1008 corrected _Float16* casts, 864 Q4 and 144 Q5 _Float16 owners, all positive duration",
+    "z3_candidate_gate": "P1 T1 passed all 13 required checks"
+  },
+  "same_host_external_context": {
+    "laurent_c2_prompt_tok_s": 196.82375762199965,
+    "laurent_c8_prompt_tok_s": 297.325,
+    "hipengine_vs_laurent_pct": [6.3848334310872445, 12.571891178843897],
+    "source": "benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json",
+    "note": "same physical host/model/protocol, separate retained runs; external parity is context, not the retention criterion"
+  },
+  "evidence": [
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-cast-correction.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-lifecycle.json",
+    "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retention-gates.json"
+  ],
+  "raw_sources": [
+    {"role": "production_default", "path": "/tmp/q38-b2-run/pf11-default-production.json", "sha256": "819fa9b047a2894f0f2e43f8b4072e4a259f5488108684d834efdc56a450192a", "bytes": 1010451},
+    {"role": "strict_default", "path": "/tmp/q38-b2-run/pf11-default-strict.json", "sha256": "421817cdc40166d4669fbc2e658e3d22c4f4003547d22599b6b1df903d695ef8", "bytes": 1010426}
+  ],
+  "commands": {
+    "default_confirmation": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile <production|strict> --widths 2,8 --expected-mtp-widths none --max-tokens 1 --batch-window-ms 50 --correctness-contract ar_exact --output <profile.json>",
+    "retention_packet": "see exact prefill, quality, D24, trace, and candidate-gate commands in benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retention-gates.json"
+  },
+  "decision": "retain input-F16 activation staging as the production-profile default; keep registered BF16 owners for strict/fallback/no-profile and env-0 bisection"
+}

@@ -17,12 +17,12 @@ from typing import Any
 
 
 _CANDIDATE_PREFIX_RE = re.compile(
-    r"^\s*- seq_id\s+(?P<seq_id>\d+),\s+draft candidate\s+"
+    r"^.*?-\s+seq_id\s+(?P<seq_id>\d+),\s+draft candidate\s+"
     r"(?P<rank>\d+),\s+pos\s+(?P<pos>\d+):\s+"
     r"(?P<token_id>-?\d+)\s+\(\s*(?P<prob>[+-]?(?:\d+(?:\.\d*)?|\.\d+))\)\s+'(?P<piece>.*)$"
 )
 _CALL_RE = re.compile(
-    r"common_speculative_draft: called impl draft-mtp, hist size = (?P<hist_size>\d+), "
+    r"(?:common_speculative_draft|common_specu): called impl draft-mtp, hist size = (?P<hist_size>\d+), "
     r"call_count = (?P<call_count>\d+), gen = (?P<generated>\d+)"
 )
 _ACCEPT_RE = re.compile(r"accepted (?P<accepted>\d+)/(?P<generated>\d+) draft tokens")
@@ -30,7 +30,10 @@ _TIMING_RE = re.compile(
     r"draft acceptance = (?P<acceptance>[+-]?(?:\d+(?:\.\d*)?|\.\d+)) "
     r"\(\s*(?P<accepted>\d+) accepted /\s*(?P<generated>\d+) generated\)"
 )
-_REQUEST_RE = re.compile(r"new prompt, .*task\.n_tokens = (?P<prompt_tokens>\d+)")
+_REQUEST_RE = re.compile(
+    r"slot .*?id\s+(?P<slot_id>\d+)\s*\|\s*task\s+(?P<task_id>\d+)\s*\|\s*"
+    r"new prompt, .*task\.n_tokens = (?P<prompt_tokens>\d+)"
+)
 _OUTPUT_RE = re.compile(r"tokens_predicted\":\s*(?P<tokens_predicted>\d+)")
 
 
@@ -45,6 +48,9 @@ def parse_llamacpp_mtp_draft_trace(
     calls: list[dict[str, Any]] = []
     pending_accepts: list[dict[str, int]] = []
     prompt_tokens: int | None = None
+    requests: list[dict[str, Any]] = []
+    request_index_by_slot: dict[int, int] = {}
+    current_request_index: int | None = None
     timing_summary: dict[str, Any] | None = None
 
     lines = text.splitlines()
@@ -55,6 +61,20 @@ def parse_llamacpp_mtp_draft_trace(
         request_match = _REQUEST_RE.search(line)
         if request_match:
             prompt_tokens = int(request_match.group("prompt_tokens"))
+            current_request_index = len(requests)
+            slot_id = int(request_match.group("slot_id"))
+            task_id = int(request_match.group("task_id"))
+            request_index_by_slot[slot_id] = current_request_index
+            requests.append(
+                {
+                    "request_index": current_request_index,
+                    "line": line_no,
+                    "slot_id": slot_id,
+                    "task_id": task_id,
+                    "prompt_tokens": prompt_tokens,
+                    "draft_call_count": 0,
+                }
+            )
 
         candidate_match = _CANDIDATE_PREFIX_RE.match(line)
         if candidate_match:
@@ -83,12 +103,28 @@ def parse_llamacpp_mtp_draft_trace(
             candidates = pending_candidates
             if top_k is not None:
                 candidates = [item for item in candidates if item["rank"] < top_k]
+            candidate_slots = {int(item["seq_id"]) for item in candidates}
+            resolved_request_index = current_request_index
+            if len(candidate_slots) == 1:
+                resolved_request_index = request_index_by_slot.get(
+                    next(iter(candidate_slots)), current_request_index
+                )
+            resolved_request = (
+                requests[int(resolved_request_index)]
+                if resolved_request_index is not None
+                else None
+            )
             calls.append(
                 {
                     "line": line_no,
                     "hist_size": int(call_match.group("hist_size")),
                     "call_count": int(call_match.group("call_count")),
                     "generated": int(call_match.group("generated")),
+                    "request_index": resolved_request_index,
+                    "request_task_id": None if resolved_request is None else resolved_request["task_id"],
+                    "request_prompt_tokens": (
+                        prompt_tokens if resolved_request is None else resolved_request["prompt_tokens"]
+                    ),
                     "candidates": candidates,
                 }
             )
@@ -119,6 +155,10 @@ def parse_llamacpp_mtp_draft_trace(
     for call, accept in zip(calls, pending_accepts, strict=False):
         call["accepted"] = accept["accepted"]
         call["accept_generated"] = accept["generated"]
+    for call in calls:
+        request_index = call.get("request_index")
+        if request_index is not None:
+            requests[int(request_index)]["draft_call_count"] += 1
 
     all_candidates = [candidate for call in calls for candidate in call["candidates"]]
     observed_top_k = max((candidate["rank"] for candidate in all_candidates), default=-1) + 1
@@ -143,6 +183,7 @@ def parse_llamacpp_mtp_draft_trace(
         "source_log": source_log,
         "metadata": metadata or {},
         "prompt_tokens": prompt_tokens,
+        "requests": requests,
         "summary": summary,
         "calls": calls,
     }

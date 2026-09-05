@@ -50,6 +50,8 @@ from hipengine.runtime.gguf_linear import (
     set_wmma_prefill_enabled,
     target_verifier_production_q4_rowtile_session,
     target_verifier_rowtile_session,
+    target_verifier_wide_q6_shared4_leaf_session,
+    target_verifier_wide_q6_shared4_session,
     wmma_prefill_session,
 )
 from hipengine.runtime.prefill import PrefillConfig
@@ -5094,11 +5096,280 @@ def test_gfx1151_production_verifier_q4_scope_chunks_single_rowtiles(
 
 
 @pytest.mark.parametrize(
+    ("quant_key", "in_features", "out_features", "variant"),
+    (
+        ("gguf_q4_k_t16_v1", 5_120, 1_024, "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"),
+        ("gguf_q4_k_t16_v1", 17_408, 5_120, "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"),
+        ("gguf_q6_k_t16_v1", 5_120, 10_240, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+        ("gguf_q6_k_t16_qmicro_planar_v1", 17_408, 5_120, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+        ("gguf_q6_k_t16_qmicro_planar_v1", 5_120, 1_024, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+    ),
+)
+@pytest.mark.parametrize("rows", (20, 24, 32))
+def test_gfx1151_candidate_wide_q6_uses_one_shared4_launch(
+    quant_key: str,
+    in_features: int,
+    out_features: int,
+    variant: str,
+    rows: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    monkeypatch.setattr(
+        gguf_linear_module,
+        "_native_split_row_chunk",
+        lambda *args, **kwargs: 8,
+    )
+    weight = _fake_weight(
+        layout=(
+            LAYOUT_GGUF_Q4_K_T16
+            if quant_key == "gguf_q4_k_t16_v1"
+            else LAYOUT_GGUF_Q5_K_T16
+            if quant_key == "gguf_q5_k_t16_v1"
+            else LAYOUT_GGUF_Q6_K_T16
+            if quant_key == "gguf_q6_k_t16_v1"
+            else LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        ),
+        quant_key=quant_key,
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        quant_key,
+        variant,
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with (
+            target_verifier_rowtile_session(True),
+            target_verifier_production_q4_rowtile_session(True),
+            target_verifier_wide_q6_shared4_session(True),
+            target_verifier_wide_q6_shared4_leaf_session(True),
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=400,
+                rows=rows,
+                in_features=in_features,
+                out_features=out_features,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 14, 400, rows, in_features, out_features),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+def test_gfx1151_production_verifier_q6_true_r12_uses_one_rowtile() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q6_K_T16,
+        quant_key="gguf_q6_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q6_k_t16_v1",
+        "t16_gemv_rowtile12_col8_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with (
+            target_verifier_rowtile_session(True),
+            target_verifier_production_q4_rowtile_session(True),
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=400,
+                rows=12,
+                in_features=5_120,
+                out_features=10_240,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 14, 400, 12, 5_120, 10_240),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rows", "variant"),
+    (
+        (12, "t16_gemv_rowtile12_col8_bf16_bf16_out"),
+        (16, "t16_gemv_rowtile16_col8_bf16_bf16_out"),
+    ),
+)
+def test_gfx1151_production_verifier_q5_true_rowtile_uses_one_launch(
+    rows: int,
+    variant: str,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q5_K_T16,
+        quant_key="gguf_q5_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q5_k_t16_v1",
+        variant,
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with (
+            target_verifier_rowtile_session(True),
+            target_verifier_production_q4_rowtile_session(True),
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=400,
+                rows=rows,
+                in_features=6_144,
+                out_features=5_120,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 14, 400, rows, 6_144, 5_120),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("in_features", "out_features"),
+    ((17_408, 5_120), (5_120, 1_024)),
+)
+def test_gfx1151_production_verifier_q4_true_r16_uses_shared_b2r1(
+    in_features: int,
+    out_features: int,
+) -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_shared_b2r1_bf16_bf16_out",
+    )
+    original = resolve(
+        backend=candidate_key.backend,
+        layer=candidate_key.layer,
+        quant=candidate_key.quant,
+        variant=candidate_key.variant,
+    )
+    calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with (
+            target_verifier_rowtile_session(True),
+            target_verifier_production_q4_rowtile_session(True),
+        ):
+            launch_gguf_linear(
+                weight,
+                x_ptr=100,
+                out_ptr=400,
+                rows=16,
+                in_features=in_features,
+                out_features=out_features,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+                use_wmma_prefill=False,
+            )
+    finally:
+        register(candidate_key, original, replace=True)
+        gguf_linear_module.clear_gguf_linear_dispatch_cache()
+
+    assert calls == [
+        (
+            (100, 14, 400, 16, in_features, out_features),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+
+
+@pytest.mark.parametrize(
     ("rows", "chunks"),
     (
         (6, ((6, 0),)),
         (9, ((7, 0), (2, 7))),
-        (12, ((8, 0), (4, 8))),
     ),
 )
 def test_gfx1151_production_verifier_q4_scope_chunks_gate_up_rowtiles(
@@ -5166,6 +5437,78 @@ def test_gfx1151_production_verifier_q4_scope_chunks_gate_up_rowtiles(
         )
         for chunk_rows, row_base in chunks
     ]
+
+
+def test_gfx1151_production_verifier_q4_r12_uses_smallm_dual_wmma() -> None:
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    register_gfx1151_kernels(replace=True)
+    weight_a = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    weight_b = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    candidate_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_wmma_smallm_bf16_bf16_out",
+    )
+    fallback_key = KernelKey(
+        "hip_gfx1151",
+        "linear_pair_silu",
+        "gguf_q4_k_t16_v1",
+        "dense_dual_rowtile_bf16_bf16_out",
+    )
+    originals = {
+        key: resolve(
+            backend=key.backend,
+            layer=key.layer,
+            quant=key.quant,
+            variant=key.variant,
+        )
+        for key in (candidate_key, fallback_key)
+    }
+    candidate_calls: list[tuple[tuple, dict]] = []
+    fallback_calls: list[tuple[tuple, dict]] = []
+    register(
+        candidate_key,
+        lambda *args, **kwargs: candidate_calls.append((args, kwargs)),
+        replace=True,
+    )
+    register(
+        fallback_key,
+        lambda *args, **kwargs: fallback_calls.append((args, kwargs)),
+        replace=True,
+    )
+    try:
+        with target_verifier_production_q4_rowtile_session(True):
+            assert launch_gguf_linear_pair_silu(
+                weight_a,
+                weight_b,
+                x_ptr=100,
+                out_ptr=400,
+                rows=12,
+                in_features=5_120,
+                out_features=17_408,
+                backend="hip_gfx1151",
+                stream=7,
+                runtime="runtime-sentinel",
+            )
+    finally:
+        for key, fn in originals.items():
+            register(key, fn, replace=True)
+
+    assert candidate_calls == [
+        (
+            (100, 14, 14, 400, 12, 5_120, 17_408),
+            {"stream": 7, "runtime": "runtime-sentinel"},
+        )
+    ]
+    assert fallback_calls == []
 
 
 def test_gfx1151_qmicro_q8x2_rowbatch_quantizes_once(

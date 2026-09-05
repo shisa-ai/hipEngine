@@ -1,0 +1,296 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b1_transfer_smoke",
+  "date": "2026-09-02",
+  "status": "smoke",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt": "code_merge_intervals (diagnostic single prompt)",
+  "runtime_profile": "production",
+  "env": {
+    "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL": "1 (on arm)"
+  },
+  "correctness": {
+    "off_arm": [
+      {
+        "width": 5,
+        "passed": false,
+        "exact": null,
+        "engaged": null
+      },
+      {
+        "width": 7,
+        "passed": false,
+        "exact": null,
+        "engaged": null
+      }
+    ],
+    "on_arm": [
+      {
+        "width": 5,
+        "passed": false,
+        "exact": null,
+        "engaged": null
+      },
+      {
+        "width": 7,
+        "passed": false,
+        "exact": null,
+        "engaged": null
+      }
+    ],
+    "on_prof_arm": [
+      {
+        "width": 5,
+        "passed": false,
+        "exact": null,
+        "engaged": null
+      },
+      {
+        "width": 7,
+        "passed": false,
+        "exact": null,
+        "engaged": null
+      }
+    ]
+  },
+  "target_passes_env_on": {
+    "10": {
+      "passes": 1,
+      "median_kernel_ms": 235.121,
+      "template_ms_mean_per_pass": {
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 75.73,
+          "launches_per_pass": 232.0
+        },
+        "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel": {
+          "ms": 72.142,
+          "launches_per_pass": 40.0
+        },
+        "gguf_q5_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 29.923,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel": {
+          "ms": 25.571,
+          "launches_per_pass": 56.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel": {
+          "ms": 9.514,
+          "launches_per_pass": 2.0
+        },
+        "q6_k_t16_wmma_prefill_bf16_kernel": {
+          "ms": 8.314,
+          "launches_per_pass": 24.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel": {
+          "ms": 4.883,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_kernel": {
+          "ms": 4.593,
+          "launches_per_pass": 1.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 1.126,
+          "launches_per_pass": 96.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.825,
+          "launches_per_pass": 64.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 0.684,
+          "launches_per_pass": 48.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.593,
+          "launches_per_pass": 65.0
+        }
+      }
+    },
+    "14": {
+      "passes": 1,
+      "median_kernel_ms": 244.902,
+      "template_ms_mean_per_pass": {
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 75.945,
+          "launches_per_pass": 232.0
+        },
+        "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel": {
+          "ms": 72.526,
+          "launches_per_pass": 40.0
+        },
+        "gguf_q5_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 30.444,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel": {
+          "ms": 25.663,
+          "launches_per_pass": 56.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel": {
+          "ms": 14.346,
+          "launches_per_pass": 3.0
+        },
+        "q6_k_t16_wmma_prefill_bf16_kernel": {
+          "ms": 8.328,
+          "launches_per_pass": 24.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel": {
+          "ms": 7.806,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_kernel": {
+          "ms": 4.613,
+          "launches_per_pass": 1.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 1.399,
+          "launches_per_pass": 96.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 0.938,
+          "launches_per_pass": 48.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.829,
+          "launches_per_pass": 64.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.59,
+          "launches_per_pass": 65.0
+        }
+      }
+    },
+    "20": {
+      "passes": 7,
+      "median_kernel_ms": 245.864,
+      "template_ms_mean_per_pass": {
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 131.822,
+          "launches_per_pass": 264.0
+        },
+        "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel": {
+          "ms": 38.74,
+          "launches_per_pass": 40.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel": {
+          "ms": 23.851,
+          "launches_per_pass": 5.0
+        },
+        "gguf_q5_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 21.937,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_wmma_prefill_bf16_kernel": {
+          "ms": 11.416,
+          "launches_per_pass": 24.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel": {
+          "ms": 7.525,
+          "launches_per_pass": 48.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel": {
+          "ms": 4.435,
+          "launches_per_pass": 24.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 1.673,
+          "launches_per_pass": 96.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 1.299,
+          "launches_per_pass": 48.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.83,
+          "launches_per_pass": 64.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.593,
+          "launches_per_pass": 65.0
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel": {
+          "ms": 0.58,
+          "launches_per_pass": 16.0
+        }
+      }
+    },
+    "28": {
+      "passes": 7,
+      "median_kernel_ms": 264.591,
+      "template_ms_mean_per_pass": {
+        "gguf_q4_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 132.044,
+          "launches_per_pass": 264.0
+        },
+        "q6_k_t16_qmicro_planar_wmma_prefill_bf16_kernel": {
+          "ms": 38.83,
+          "launches_per_pass": 40.0
+        },
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel": {
+          "ms": 33.424,
+          "launches_per_pass": 7.0
+        },
+        "gguf_q5_t16_dense_wmma_prefill_bf16_kernel": {
+          "ms": 23.243,
+          "launches_per_pass": 48.0
+        },
+        "qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel": {
+          "ms": 13.234,
+          "launches_per_pass": 48.0
+        },
+        "q6_k_t16_wmma_prefill_bf16_kernel": {
+          "ms": 11.447,
+          "launches_per_pass": 24.0
+        },
+        "gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel": {
+          "ms": 4.478,
+          "launches_per_pass": 24.0
+        },
+        "dense_gemv_bf16_f32w_bf16_out_kernel": {
+          "ms": 2.144,
+          "launches_per_pass": 96.0
+        },
+        "qwen35_linear_attn_conv_prefill_segments_state_rows_kernel": {
+          "ms": 1.945,
+          "launches_per_pass": 48.0
+        },
+        "gguf_add_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.843,
+          "launches_per_pass": 64.0
+        },
+        "qwen35_paged_full_attn_decode_context_tensor_batch_kernel": {
+          "ms": 0.775,
+          "launches_per_pass": 16.0
+        },
+        "gguf_rmsnorm_bf16_f32_weight_kernel": {
+          "ms": 0.594,
+          "launches_per_pass": 65.0
+        }
+      }
+    }
+  },
+  "owner_routing": {
+    "wide_pass_rows": 28,
+    "wmma_band_owner_ms": 210.042,
+    "per_row_gemv_ms": 0,
+    "wide_pass_total_ms": 264.591,
+    "expected": "wmma band owners dominate; per-row GEMVs shrink to minor tails"
+  },
+  "generated_ids_equal_off_vs_on": {
+    "5": true,
+    "7": true
+  },
+  "baseline_from_b1_owner_map": {
+    "20": 540.6,
+    "28": 702.0
+  },
+  "findings": [
+    "mtp_self_exact passed on all arms: False.",
+    "Wide pass R28: wmma-band owners 210.0 ms vs per-row GEMV 0.0 ms of 264.6 ms total (B1 map baseline R20/R28: 540.6/702.0 ms).",
+    "Generated IDs env-on vs env-off equal per width: {'5': True, '7': True} (diagnostic; retention arithmetic is settled by the B1 item-4 gates)."
+  ]
+}

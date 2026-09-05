@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q6_pipeline_bound",
+  "status": "blocked_gate",
+  "performance_claim": false,
+  "measured": {
+    "two_wave_q6_r8_ms": 7.469779,
+    "two_wave_q6_r32_ms": 25.6331405,
+    "r32_over_r8": 3.431579501883523,
+    "required_max": 1.25,
+    "required_r32_ms": 9.33722375,
+    "required_saving_ms": 16.29591675,
+    "required_saving_percent": 63.57362551810615
+  },
+  "double_buffer_upper_bound": {
+    "model": "serial decode/LDS stage plus WMMA/accumulate stage; perfect steady-state overlap cannot make time lower than max(stage A, stage B), and max(A,B)>=total/2",
+    "optimistic_r32_floor_ms": 12.81657025,
+    "optimistic_r32_over_r8_floor": 1.7157897509417614,
+    "gate_pass_possible": false
+  },
+  "geometry_sweep": {
+    "retained": "2 waves x M16 x 2 output tiles",
+    "rejected_four_wave": "binding shapes +28.5%/+65.4%",
+    "rejected_x3_slab": "all shapes +13.7% to +84.3%"
+  },
+  "decision": "Close W1 as measured blocked: existing exact/T2 owners and bounded geometry sweep are exhausted; even perfect two-stage pipelining bottoms at 1.716x R32/R8, above 1.25x. W2 multi-family/stage dataflow is the next literal reopen path."
+}

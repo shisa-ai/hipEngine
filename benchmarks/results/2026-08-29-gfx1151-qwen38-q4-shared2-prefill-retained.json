@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.2 progress: Q4 shared-B2 retained; C4/C7 one-run statuses superseded"],
+  "title": "Reduced-accumulator Q4 shared-B owners lift C2-C8",
+  "superseded_c4_c7_note": "The one-run C4/C7 statuses are superseded by three-run medians 189.21/237.53 tok/s in the repeatability artifacts; both remain open.",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)"
+  },
+  "source": {
+    "candidate_commit": "646abe80f",
+    "control_commit": "8b60c778f4c1ab0ca488404ec839e0ca344f0799",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "change": {
+    "summary": "Template the exact Q4 shared-B parent and add 32-column <2,2> (128-row/64-thread) and <2,4> (256-row/128-thread) siblings at VGPR224 versus parent VGPR256. Scope capacity-periodic per-shape winners at rows145-384; rows385+ and misses retain parent.",
+    "files": [
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.hip",
+      "hipengine/kernels/hip_gfx1100/quant/gguf_k_t16_selected_prefill.py",
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py",
+      "tests/test_gfx1151_backend.py"
+    ],
+    "policy": {
+      "rows145_192": "<2,4> on 17408->5120; <2,2> on 6144->5120",
+      "rows193_256": "<2,2> on 17408->5120 and 6144->5120",
+      "rows257_384": "<2,2> on five physical shapes; 5120->12288 retains parent",
+      "rows385_plus": "parent shared-B"
+    }
+  },
+  "selection_evidence": {
+    "screen_rows": [192, 256, 320, 384],
+    "screen_shapes": [
+      [5120, 6144], [17408, 5120], [5120, 10240],
+      [5120, 12288], [6144, 5120], [5120, 17408]
+    ],
+    "warmup": 4,
+    "iterations": 20,
+    "exactness": "all candidates bit-exact to parent shared-B (max_abs 0.0)",
+    "rejected_scope": "out-of-band or losing candidate cells remain unselected"
+  },
+  "isolated_real_model": {
+    "command_template": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length {192|256|320|384} --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "rows": {
+      "192": {"control_ms": 689.39, "candidate_ms": 678.73, "delta_pct": -1.5},
+      "256": {"control_ms": 772.18, "candidate_ms": 765.52, "delta_pct": -0.9},
+      "320": {"control_ms": 1212.75, "candidate_ms": 1172.29, "delta_pct": -3.3},
+      "384": {"control_ms": 1293.88, "candidate_ms": 1271.48, "delta_pct": -1.7}
+    }
+  },
+  "server_prefill_frozen_protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p217-server-c1c8-shared2.json",
+    "columns": ["width", "tok_s", "delta_vs_frozen_pct", "delta_vs_winner_pct", "status"],
+    "rows": [
+      [1, 146.78011651464692, 105.1, 5.6, "parity"],
+      [2, 142.8760087505565, 90.8, -26.4, "open"],
+      [3, 168.48987962352564, 61.2, -6.4, "open"],
+      [4, 196.2328108968778, 57.8, 1.9, "superseded favorable one-run grouping result; three-run median is 189.21"],
+      [5, 211.90578064395194, 49.8, -2.5, "open; controlled neutral versus pre-unit"],
+      [6, 232.61991810483616, 52.8, -4.5, "open"],
+      [7, 244.8527772497157, 51.1, -0.3, "superseded favorable one-run grouping result; three-run median is 237.53"],
+      [8, 250.52738709132166, 47.4, -15.6, "open"]
+    ],
+    "correctness": "all 80 cells exact/route/budget conformant"
+  },
+  "c5_correction": {
+    "prior_one_run_tok_s": 218.6973310222875,
+    "clean_control_repeat_tok_s": 212.21637369402916,
+    "candidate_repeat_tok_s": 212.20679495926478,
+    "verdict": "the prior C5 parity claim was a physical-grouping outlier; candidate is neutral versus clean pre-unit control, so C5 remains open 2.5% below comparator",
+    "supersedes_status_in": "benchmarks/results/2026-08-29-gfx1151-qwen38-highrow-prefill-reuse-retained.json"
+  },
+  "trace": {
+    "row320": "<2,2> executed at VGPR224; parent <3,4> at VGPR256",
+    "row192": "<2,2> and <2,4> both executed at VGPR224",
+    "no_compiler_inside_profiler": true
+  },
+  "parity_context": {
+    "closed_prefill_cells": [1],
+    "open_prefill_cells": [2, 3, 4, 5, 6, 7, 8],
+    "next": "C7 three-run median is 3.3% short; C8 remains a high-row Q4 algorithm/fusion blocker. C4 one-run parity needs repeatability audit."
+  },
+  "gates": {
+    "tests": "gfx1151 backend + selected-prefill bundle 100/100",
+    "exactness": "synthetic screen and all 80 server cells exact",
+    "full_suite": "configured broad suite retains known specdec2 order failure"
+  }
+}

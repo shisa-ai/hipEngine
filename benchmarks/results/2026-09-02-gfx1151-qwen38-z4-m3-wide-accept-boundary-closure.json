@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z4_m3_wide_accept_boundary_closure",
+  "date": "2026-09-02",
+  "status": "m3_rejected_wide",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "source_commit": "e5ad9975f",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt": "code_merge_intervals",
+  "runtime_profile": "production af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+  "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --marker-trace --output-format csv --output-directory /tmp/q38-z2-teacher/k3-c5c7-rocprof --output-file z4-m3-c5c7 -- .venv/bin/python /tmp/q38-z2-teacher/k3_profile_driver.py",
+  "protocol": "one canonical prompt, one physical K3 group, D24, eight cycles per width; diagnostic only",
+  "cells": {
+    "5": {
+      "target_shapes": {"10": 1, "20": 7},
+      "target_pass_host_ms": 4237.541324,
+      "target_pass_kernel_ms": 4163.539108,
+      "kernel_coverage": 0.982536529247631,
+      "host_minus_kernel_ms_per_cycle": 9.250276999999983,
+      "complete_wall_ms_per_cycle": 707.9772563884035,
+      "residual_fraction": 0.013065782716224978,
+      "required_entry_fraction": 0.181,
+      "correctness": "exact, engaged, K3 conformant"
+    },
+    "7": {
+      "target_shapes": {"14": 1, "28": 7},
+      "target_pass_host_ms": 5486.832765,
+      "target_pass_kernel_ms": 5393.973479,
+      "kernel_coverage": 0.9830766163009916,
+      "host_minus_kernel_ms_per_cycle": 11.607410749999985,
+      "complete_wall_ms_per_cycle": 901.1012834962457,
+      "residual_fraction": 0.012881360799935366,
+      "required_entry_fraction": 0.352,
+      "correctness": "exact, engaged, K3 conformant"
+    },
+    "8": {
+      "source_artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-z4-m3-c8-accept-boundary-attribution.json",
+      "kernel_coverage": 0.9620844784332364,
+      "host_minus_kernel_ms_per_cycle": 14.474466874999905,
+      "complete_wall_ms_per_cycle": 664.1219739976805,
+      "residual_fraction": 0.021794892266357172,
+      "required_entry_fraction": 0.285,
+      "correctness": "exact, engaged, K3 conformant"
+    }
+  },
+  "decision": "Reject M3 for all primary wide cells. The apparent 63.9-65.2% accept boundary is queued target execution; host-minus-kernel ceilings are only 1.31% C5, 1.29% C7, and 2.18% C8, all far below entry. Do not implement a T0 accept-boundary refactor as a wide-gap mechanism.",
+  "raw_sources": {
+    "profile_raw": ["/tmp/q38-z2-teacher/k3-profile-raw.json", "93d13e649af5b6160ca6d6d69e93a24336a5ccdbe270475fa2db334a2a49681b"],
+    "accounting": ["/tmp/q38-z2-teacher/k3-c5c7-accounting.json", "6ba2b217d114fcff77c3d8e5fed6ade268ac17fa6ae7e65f04af234276e24930"],
+    "kernel_trace": ["/tmp/q38-z2-teacher/k3-c5c7-rocprof/z4-m3-c5c7_kernel_trace.csv", "846584075a5d3a6ae292035e0c646f9bb2f9c77fa93fba6a8b648e2c640e88a4"],
+    "hip_api_trace": ["/tmp/q38-z2-teacher/k3-c5c7-rocprof/z4-m3-c5c7_hip_api_trace.csv", "b81ca6c13e3c94a7a6e1388b1deddc74ac50d5a8e41098cfd110bafac07e72bb"],
+    "memory_copy_trace": ["/tmp/q38-z2-teacher/k3-c5c7-rocprof/z4-m3-c5c7_memory_copy_trace.csv", "458f514e9036222fe05c0ef45a6ff767b539f8e83122b88ebd6c5cb7772e5627"]
+  }
+}

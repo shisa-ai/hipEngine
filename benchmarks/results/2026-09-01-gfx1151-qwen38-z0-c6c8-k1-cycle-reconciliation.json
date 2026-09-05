@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z0_c6c8_k1_cycle_reconciliation",
+  "date": "2026-09-01",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "source": {
+    "commit": "841dc9afe498d6cf11cdf230f0bfdfd53e529e64",
+    "dirty": false
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "profile_prompt": "code_merge_intervals"
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "commands": {
+    "full_suite": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 6,8 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/q38-z0-run-20260901-201730/k1-c6c8-full.json",
+    "profile": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --marker-trace --output-format csv --output-directory /tmp/q38-z0-run-20260901-201730/k1-profile --output-file z0-k1 -- .venv/bin/python /tmp/q38-z0-run-20260901-201730/z0_k1_driver.py",
+    "accounting": ".venv/bin/python scripts/mtp_cycle_accounting.py --ar-mtp-raw /tmp/q38-z0-run-20260901-201730/k1-profile-raw.json --kernel-trace /tmp/q38-z0-run-20260901-201730/k1-profile/z0-k1_kernel_trace.csv --output /tmp/q38-z0-run-20260901-201730/k1-accounting.json"
+  },
+  "raw_sources": {
+    "full_suite": {
+      "path": "/tmp/q38-z0-run-20260901-201730/k1-c6c8-full.json",
+      "sha256": "a6567a37a8a6b39381d08118c2409816074ff97d78cd4e8783c8812858d0168b"
+    },
+    "profile_raw": {
+      "path": "/tmp/q38-z0-run-20260901-201730/k1-profile-raw.json",
+      "sha256": "4c8d8fb760223ba88b96e6c8c6d0ada635f49d26cb62c9041657e8fd3520f9a8"
+    },
+    "accounting": {
+      "path": "/tmp/q38-z0-run-20260901-201730/k1-accounting.json",
+      "sha256": "bc02d2429945497539df4846a0ab36f0f88ddfd34a2a33128a6cd9d99ca07fc3"
+    },
+    "kernel_trace": {
+      "path": "/tmp/q38-z0-run-20260901-201730/k1-profile/z0-k1_kernel_trace.csv",
+      "sha256": "3afad7385e50b7b97cce8a1c64624e6bee374eb2a97288c56fd84f72c051f329"
+    },
+    "hip_api_trace": {
+      "path": "/tmp/q38-z0-run-20260901-201730/k1-profile/z0-k1_hip_api_trace.csv",
+      "sha256": "25651a473c12e94c233d33c334eefe8bd5e05f4d059fb735914873cbece78973"
+    },
+    "memory_copy_trace": {
+      "path": "/tmp/q38-z0-run-20260901-201730/k1-profile/z0-k1_memory_copy_trace.csv",
+      "sha256": "adc158efdba087b4f1df1d48aa6414ee802aa78d984f32490e50dd276fcb1b39"
+    },
+    "matched_prefill_suite": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-c1c8.json",
+      "sha256": "88bff2ef12f33e585bc4ea271867558cf8e173a65e250321a7cdaaf8ae4b0f11"
+    }
+  },
+  "widths": {
+    "6": {
+      "correctness": {
+        "ar_self_exact": true,
+        "mtp_self_exact": true,
+        "ar_mtp_equal": true,
+        "passed": true
+      },
+      "full_suite_cells": 10,
+      "full_suite_exact_engaged_budget": true,
+      "average_request_cycles": 12.0,
+      "physical_groups": 2,
+      "complete_wall_ms_per_cycle": 406.7531079247904,
+      "matched_grouped_prefill_tick_total_ms": 862.8954249434173,
+      "matched_grouped_prefill_ms_per_cycle": 71.90795207861811,
+      "decode_only_wall_ms_per_cycle": 334.8451558461723,
+      "stage_ms_per_cycle": {
+        "accept": 194.90101089468226,
+        "proposal": 17.883094202261418,
+        "provider_update": 7.646683875160913,
+        "selected_commit": 3.171909018419683,
+        "target": 60.58047783333333
+      },
+      "stage_sum_ms_per_cycle": 284.1831758238576,
+      "decode_wall_minus_stage_sum_ms_per_cycle": 50.66198002231471,
+      "physical_group_entry_gap_ms_per_cycle": 124.39927341666667,
+      "group_entry_gap_minus_grouped_prefill_ms_per_cycle": 52.491321338048564,
+      "cycle_profile_window_host_ms_per_cycle": 263.27863974999997,
+      "cycle_profile_window_traced_kernel_ms_per_cycle": 252.08818525000012,
+      "cycle_profile_window_host_minus_kernel_ms_per_cycle": 11.190454499999845,
+      "intercycle_gap_ms_per_cycle": 18.401305166666667,
+      "proposal_stage_ms_per_cycle": 17.883094202261418,
+      "intercycle_gap_minus_proposal_ms_per_cycle": 0.5182109644052488,
+      "kernel_ms_per_cycle": {
+        "attention_or_kv": 0.7067771666666668,
+        "copy_kernel": 0.45561183333333105,
+        "gdn_or_linear_state": 6.446382083333351,
+        "norm_activation_sampling": 3.225734583333329,
+        "other": 4.299369500000005,
+        "q4": 162.45734475000015,
+        "q5": 14.738245749999999,
+        "q6": 54.890339749999924,
+        "state_commit": 4.868379833333332
+      },
+      "kernel_calls_per_cycle": {
+        "attention_or_kv": 101.5,
+        "copy_kernel": 332.0,
+        "gdn_or_linear_state": 192.0,
+        "norm_activation_sampling": 367.0,
+        "other": 512.0,
+        "q4": 525.0,
+        "q5": 96.0,
+        "q6": 134.66666666666666,
+        "state_commit": 18.0
+      },
+      "summed_api_overlap_ms_per_cycle": {
+        "copy_or_memset_api": 190.44099258333287,
+        "launch": 22.845266749999983,
+        "other": 0.060713999999972755,
+        "synchronization": 7.402852916666664
+      },
+      "api_calls_per_cycle": {
+        "copy_or_memset_api": 308.5,
+        "launch": 1969.8333333333333,
+        "other": 1969.8333333333333,
+        "synchronization": 3.8333333333333335
+      },
+      "dma_copy_ms_per_cycle": {},
+      "dma_copy_calls_per_cycle": {},
+      "localization": {
+        "batch_window": "The grouped prefill-only control uses the same 50 ms server batch-window protocol; its measured tick includes admission.",
+        "physical_group_entry": "The two MTP physical-group entry gaps exceed the one grouped prefill tick by 52.491 ms/cycle, versus the complete residual of 50.662 ms/cycle. This is the binding localization: physical-group prompt streaming/transition plus cross-run prefill error.",
+        "proposal_sync": "Inter-cycle gaps differ from the measured proposal stage by only 0.518 ms/cycle; proposal synchronization is already represented in the stage sum.",
+        "untraced_kernels": "Traced kernels cover 95.7% of cycle-profile host windows; no DMA copy event occurs in those windows. This does not support an untraced-GPU-kernel explanation for the full residual.",
+        "bound": "The remaining 50.662 ms/cycle is a measured upper bound. The entry-gap excess explains it within 1.829 ms/cycle; telemetry cannot separate physical-group transition from cross-run prefill error further."
+      }
+    },
+    "8": {
+      "correctness": {
+        "ar_self_exact": true,
+        "mtp_self_exact": true,
+        "ar_mtp_equal": true,
+        "passed": true
+      },
+      "full_suite_cells": 10,
+      "full_suite_exact_engaged_budget": true,
+      "average_request_cycles": 12.0,
+      "physical_groups": 2,
+      "complete_wall_ms_per_cycle": 410.8398307580501,
+      "matched_grouped_prefill_tick_total_ms": 1069.7888480499387,
+      "matched_grouped_prefill_ms_per_cycle": 89.14907067082822,
+      "decode_only_wall_ms_per_cycle": 321.69076008722186,
+      "stage_ms_per_cycle": {
+        "accept": 173.87571273138747,
+        "proposal": 19.005897571332753,
+        "provider_update": 8.550956787075847,
+        "selected_commit": 5.33396292788287,
+        "target": 56.54824383333334
+      },
+      "stage_sum_ms_per_cycle": 263.31477385101226,
+      "decode_wall_minus_stage_sum_ms_per_cycle": 58.3759862362096,
+      "physical_group_entry_gap_ms_per_cycle": 150.30454216666666,
+      "group_entry_gap_minus_grouped_prefill_ms_per_cycle": 61.15547149583844,
+      "cycle_profile_window_host_ms_per_cycle": 239.17979291666666,
+      "cycle_profile_window_traced_kernel_ms_per_cycle": 227.04567575000007,
+      "cycle_profile_window_host_minus_kernel_ms_per_cycle": 12.134117166666584,
+      "intercycle_gap_ms_per_cycle": 20.116446333333332,
+      "proposal_stage_ms_per_cycle": 19.005897571332753,
+      "intercycle_gap_minus_proposal_ms_per_cycle": 1.1105487620005796,
+      "kernel_ms_per_cycle": {
+        "attention_or_kv": 0.8473542499999995,
+        "copy_kernel": 0.6020919166666651,
+        "gdn_or_linear_state": 8.03678866666665,
+        "norm_activation_sampling": 3.0791872500000044,
+        "other": 5.101609666666713,
+        "q4": 120.37679766666679,
+        "q5": 17.197097499999995,
+        "q6": 65.23147708333326,
+        "state_commit": 6.5732717499999955
+      },
+      "kernel_calls_per_cycle": {
+        "attention_or_kv": 101.5,
+        "copy_kernel": 430.6666666666667,
+        "gdn_or_linear_state": 192.0,
+        "norm_activation_sampling": 303.0,
+        "other": 517.6666666666666,
+        "q4": 461.0,
+        "q5": 96.0,
+        "q6": 135.66666666666666,
+        "state_commit": 24.0
+      },
+      "summed_api_overlap_ms_per_cycle": {
+        "copy_or_memset_api": 167.86378574999972,
+        "launch": 22.550723666666684,
+        "other": 0.06336008333331937,
+        "synchronization": 7.592227583333336
+      },
+      "api_calls_per_cycle": {
+        "copy_or_memset_api": 399.3333333333333,
+        "launch": 1862.3333333333333,
+        "other": 1862.3333333333333,
+        "synchronization": 3.8333333333333335
+      },
+      "dma_copy_ms_per_cycle": {},
+      "dma_copy_calls_per_cycle": {},
+      "localization": {
+        "batch_window": "The grouped prefill-only control uses the same 50 ms server batch-window protocol; its measured tick includes admission.",
+        "physical_group_entry": "The two MTP physical-group entry gaps exceed the one grouped prefill tick by 61.155 ms/cycle, versus the complete residual of 58.376 ms/cycle. This is the binding localization: physical-group prompt streaming/transition plus cross-run prefill error.",
+        "proposal_sync": "Inter-cycle gaps differ from the measured proposal stage by only 1.111 ms/cycle; proposal synchronization is already represented in the stage sum.",
+        "untraced_kernels": "Traced kernels cover 94.9% of cycle-profile host windows; no DMA copy event occurs in those windows. This does not support an untraced-GPU-kernel explanation for the full residual.",
+        "bound": "The remaining 58.376 ms/cycle is a measured upper bound. The entry-gap excess explains it within 2.779 ms/cycle; telemetry cannot separate physical-group transition from cross-run prefill error further."
+      }
+    }
+  },
+  "findings": [
+    "The F6 estimate is reproduced: 50.7 ms/cycle at C6 and 58.4 ms/cycle at C8 remain after subtracting the matched prefill-only tick and every named stage.",
+    "The 50 ms batch-window protocol is present in both arms. The two MTP physical-group entry gaps exceed the one grouped prefill-only tick by 52.5/61.2 ms per C6/C8 cycle, explaining the 50.7/58.4 ms residual within 1.8/2.8 ms per cycle.",
+    "Inter-cycle gaps match proposal-stage telemetry within 1.2 ms/cycle. No DMA copy appears in cycle windows and traced kernels fill at least 94.9% of those windows. The named bound is therefore physical-group prompt streaming/transition plus cross-run prefill error; current telemetry cannot partition those two contributors further."
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b5_default_confirmation",
+  "date": "2026-09-03",
+  "status": "confirmed",
+  "performance_claim": false,
+  "source": {
+    "commit": "3c5dfe5abae1c5578c2eddd5e3d1d4f49cebcc32",
+    "dirty": false
+  },
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+  "env": "HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL unset",
+  "production": {
+    "profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "c5_mtp_tok_s": 36.72287240847906,
+    "c8_mtp_tok_s": 51.896605240072425,
+    "c5_explicit_candidate_tok_s": 36.727898452391614,
+    "c8_explicit_candidate_tok_s": 51.739341491489064,
+    "c5_delta_vs_explicit_percent": -0.013684539884761815,
+    "c8_delta_vs_explicit_percent": 0.30395390441764203,
+    "generated_ids_equal_explicit_candidate": true,
+    "self_exact": true,
+    "ar_mtp_equal": true,
+    "engaged": true,
+    "budget_conformed": true,
+    "teardown_current_allocated_bytes": 0
+  },
+  "strict": {
+    "profile_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "c7_mtp_tok_s": 19.88256996509054,
+    "self_exact": true,
+    "ar_mtp_equal": true,
+    "engaged": true,
+    "budget_conformed": true,
+    "teardown_current_allocated_bytes": 0,
+    "c5_diagnostic": "failed the pre-existing C5 strict exactness anomaly documented by B1; focused C7 fallback passed and no candidate route is selected in strict"
+  },
+  "raw_evidence": {
+    "production": {"path": "/tmp/q38-b5-default-confirm.json", "sha256": "7931e0e5f69c4df090ec30fd7af3bc9447f9d8153f206707ac1540462b5b35e0"},
+    "strict_c5_diagnostic": {"path": "/tmp/q38-b5-strict-confirm.json", "sha256": "84c3d54ced917ecbddf95c7742819c2f57dbb92dd2e25ab5cd8e52640af44a0a"},
+    "strict_c7": {"path": "/tmp/q38-b5-strict-c7-confirm.json", "sha256": "4c5b0e6d70f0b807fde59459686b9d58d8d0ae59cc3b998d6da1365073b8a585"},
+    "production_driver": {"path": "/tmp/q38-b5-default-driver.py", "sha256": "1515b4116fb29bceccfb4b707a8979ebfbddeb863235e9233acf7a1c2c167026"},
+    "strict_driver": {"path": "/tmp/q38-b5-strict-driver.py", "sha256": "848179cea83d5f949be7f5c080a6aaf104d0688b724640ab813e97e2759295ce"}
+  },
+  "decision": "Default policy selection is confirmed. No rollback or follow-up code change is required."
+}

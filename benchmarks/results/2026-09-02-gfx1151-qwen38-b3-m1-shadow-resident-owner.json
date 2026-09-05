@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_shadow_resident_owner",
+  "date": "2026-09-02",
+  "status": "resident_owner_pool_green_route_unselected",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "3b4582a5b",
+    "candidate_worktree": true,
+    "module": "hipengine/generation/qwen35_gguf.py"
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_used": false
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "execution_profile": "production experiment only; current C1 fallback unchanged"
+  },
+  "owner_pool": {
+    "acquire": "Qwen35GGUFResidentModelRunner.acquire_c1_shadow_resources",
+    "reclaim": "Qwen35GGUFResidentModelRunner.reclaim_c1_shadow_resource",
+    "abort": "Qwen35GGUFResidentModelRunner.abort_c1_shadow_resources",
+    "resources": [
+      "one additional available resident-session lease",
+      "separately keyed negative shadow-request KV allocation with equal page capacity",
+      "one BF16 hidden row",
+      "shadow session recurrent scratch owner"
+    ],
+    "real_lane": "retains parent request/session/KV/recurrent ownership claims",
+    "finalization": "free hidden, invalidate/unbind/release shadow KV, reset and return session lease after all eight non-checkpoint lifecycle claims return",
+    "idempotent_abort": true,
+    "route_selected": false,
+    "physical_state_clone_implemented": false,
+    "physical_target_execution_enabled": false
+  },
+  "failure_atomicity": {
+    "no_free_session": "fails before KV/hidden side effects",
+    "bind_or_hidden_failure": "unbinds/releases KV and frees hidden as applicable",
+    "available_order_change": "fails closed and returns temporary resources"
+  },
+  "validation": {
+    "ownership_and_seam_command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py tests/test_qwen35_gguf_mtp2_seam.py",
+    "ownership_and_seam_result": "77 passed",
+    "generation_command": "uv run pytest -q tests/test_generation_qwen35_gguf_sampling.py",
+    "generation_result": "passed with one skipped node"
+  },
+  "decision": "Retain the unselected resident-owner ABI. Next implement exact real-to-shadow state population and invoke physical-C2 target execution behind the diagnostic route; current C1 remains fallback."
+}

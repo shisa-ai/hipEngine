@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-shared4r6-isa-analysis",
+  "status": "generated_isa_analysis",
+  "source_commit": "8945377b1",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<4,6,2>",
+  "code_object": "/tmp/y3-isa/gfx1151.co",
+  "disassembly": "/tmp/y3-isa/shared4r6.isa",
+  "static_counts": {
+    "instructions": 8116,
+    "barriers": 2,
+    "wmma": 192,
+    "wmma_groups": 16,
+    "wmma_per_group": 12,
+    "between_barriers": {"instructions": 326, "wmma": 0, "global_load": 22, "ds_store": 2, "v_fma_mix": 17, "v_cvt": 17, "s_waitcnt": 16}
+  },
+  "finding": "Generated scheduling does not interleave dequant arithmetic with WMMA across the cooperative handoff: the static decode region between the two workgroup barriers contains zero WMMA. Sixteen separated groups of 12 WMMA instructions consume the K16 groups outside that region.",
+  "exact_candidate": "Decode adjacent column pairs per work item. The qmicro format shares each low-byte record across a column pair and each high byte across a four-column quartet; current per-column decode repeats those record-byte loads and address/unpack work. Pair decoding preserves each output weight and WMMA accumulation order while retaining all four cooperative waves and the 16 KiB LDS layout.",
+  "bound": {"rows288_wall_pct": 4.82, "rows536_wall_pct": 5.28, "rows1024_wall_pct": 5.99},
+  "decision": "Dedicated-wave overlap is rejected, and same-wave overlap cannot cross the generated barriers. Screen exact pair-column cooperative decode next; do not attempt another producer-wave geometry."
+}

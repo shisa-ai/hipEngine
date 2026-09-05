@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z1_mechanism_bounds",
+  "date": "2026-09-01",
+  "status": "z1_bounded_candidate",
+  "performance_claim": false,
+  "source_artifacts": [
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json",
+    "benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-operation-differential.json"
+  ],
+  "mechanisms": [
+    {
+      "name": "F16 activation-B staging for fused quantized matmul",
+      "evidence": "Measured Laurent Q4/Q5/Q6 GPU time is 280.367/634.229 ms at C2/C8 versus hipEngine 359.416/832.620 ms; pinned source defaults quantized MUL_MAT to F16 B and states that it halves B bytes and shared memory.",
+      "inference": "Portability to hipEngine production BF16 is unproven and requires a T2 numerical gate; the bound assumes the measured quant-time delta transfers while all other wall is unchanged.",
+      "c2_optimistic_wall_reduction_fraction": 0.1980272957,
+      "c8_optimistic_wall_reduction_fraction": 0.2008586314,
+      "c2_required_1_25x_gap_fraction": 0.1153576519,
+      "c8_required_1_25x_gap_fraction": 0.0579514384,
+      "entry": "passes bound; eligible for Z3 RED planning as T2"
+    },
+    {
+      "name": "64/256-row prompt chunking",
+      "evidence": "Laurent measures rows72 as 64+8 and rows288 as 256+32.",
+      "inference": "Not a standalone candidate: hipEngine already executes each grouped shape as one direct tick, so chunking cannot be credited with Laurent's gain.",
+      "entry": "reject as mechanism"
+    },
+    {
+      "name": "launch-count reduction",
+      "evidence": "Laurent records 3588 node dispatches versus 1955 classified hipEngine dispatches.",
+      "inference": "The sign is opposite the hypothesis.",
+      "entry": "reject"
+    }
+  ],
+  "decision": "Advance only F16 activation-B staging to Z3. C2 remains an M=35-96 owner plus admission problem; C8 shares the same quantized-matmul dataflow. Exact occupancy and weight-fetch bytes remain unavailable and are not used in the bound."
+}

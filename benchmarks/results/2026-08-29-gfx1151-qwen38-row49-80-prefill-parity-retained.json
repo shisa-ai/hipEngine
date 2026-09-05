@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.1 closed", "P2.2 progress", "post-P2.3 rows49-80 extension"],
+  "title": "Rows49-80 low-VGPR prefill bands close Qwen3.8 C1 parity",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "source": {
+    "candidate_commit": "9e3b09bc2945e625a9bb563cab424a801d9c0ade",
+    "control_commit": "40fe9697cd2c3741e32462e4dba11531b85fa4db",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008
+  },
+  "change": {
+    "files": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py"
+    ],
+    "summary": "Extend existing exact Q4/Q5/Q6-planar 16-column prefill owners with general rows49-64 and rows65-80 per-shape bands. The policy comes from seven morphology points (52/56/60/64/67/72/80), not exact suite rows. No new kernel body, arithmetic, registry key, or fallback chain; rows>80 and shape misses preserve prior owners.",
+    "anti_overfit": "all six physical shapes and seven row points were screened; selectors use contiguous row bands and shape keys only, with no prompt IDs, token IDs, or prompt-conditioned branches"
+  },
+  "selection_evidence": {
+    "q4_harness": "scripts/gguf_q4_t16_dense_prefill_owner_microbench.py",
+    "q5_q6_harness": "/tmp/p210_ab.py",
+    "rows": [52, 56, 60, 64, 67, 72, 80],
+    "shapes": [
+      [5120, 6144],
+      [17408, 5120],
+      [5120, 10240],
+      [5120, 12288],
+      [6144, 5120],
+      [5120, 17408]
+    ],
+    "warmup": 4,
+    "iterations": 20,
+    "exactness": "every sampled Q4/Q5/Q6 candidate output was bit-exact to its established owner (max_abs 0.0)",
+    "policy": {
+      "q4_rows49_64": "<2,1> on five shapes; plain 48-column on 5120->17408",
+      "q4_rows65_80": "<2,1> on 17408->5120; <3,1> on the other five",
+      "q5_rows49_64": "<2,1> on four shapes; plain on 5120->12288 and 5120->17408",
+      "q5_rows65_80": "<2,1> on 5120->12288; <3,1> on the other five",
+      "q6_rows49_64": "<2,1> on all six",
+      "q6_rows65_80": "<2,1> on four shapes; <3,1> on 5120->6144 and 5120->10240"
+    }
+  },
+  "measurements": {
+    "isolated_forced_bulk": {
+      "command_template": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length {60|67} --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --json /tmp/p213-{control|candidate}-forcedbulk-{L}.json",
+      "row60": {
+        "control_median_s": 0.4429453539196402,
+        "candidate_median_s": 0.33571669296361506,
+        "candidate_runs_s": [0.3356896808836609, 0.33571669296361506, 0.3362024240195751],
+        "delta_pct": -24.2
+      },
+      "row67": {
+        "control_median_s": 0.589638089062646,
+        "candidate_median_s": 0.4015778510365635,
+        "candidate_runs_s": [0.4031793640460819, 0.4015778510365635, 0.40137032186612487],
+        "delta_pct": -31.9
+      }
+    },
+    "server_prefill_frozen_protocol": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p213-server-c1c2-row80.json",
+      "c1": {
+        "prompt_tokens": 449,
+        "before_wall_s": 3.341432221001014,
+        "after_wall_s": 3.0521211593877524,
+        "before_tok_s": 134.3735171936213,
+        "after_tok_s": 147.11080476571522,
+        "delta_pct": 9.5,
+        "cumulative_vs_frozen_pct": 105.6,
+        "frozen_winner_tok_s": 138.95,
+        "beat_winner_pct": 5.9,
+        "parity": "passed"
+      },
+      "c2": {
+        "prompt_tokens": 898,
+        "after_wall_s": 6.560234321281314,
+        "after_tok_s": 136.88535439761654,
+        "delta_vs_best_prior_pct": 2.5,
+        "cumulative_vs_frozen_pct": 82.8,
+        "frozen_winner_tok_s": 194.07,
+        "remaining_gap_pct": 29.5,
+        "parity": "open"
+      },
+      "correctness": "all 20 cells passed ar_self_exact, mtp_self_exact, ar_mtp_equal, route expectation, and budget conformance"
+    }
+  },
+  "kernel_trace_evidence": {
+    "command": "pinned-cache rocprofv3 --kernel-trace on clean control and candidate isolated row67 runs",
+    "control_gpu_busy_ms": 681.30,
+    "candidate_gpu_busy_ms": 473.04,
+    "delta_pct": -30.6,
+    "families": {
+      "q4_ms": {"control": 430.37, "candidate": 279.14, "delta_pct": -35.1},
+      "q6_planar_ms": {"control": 126.18, "candidate": 72.03, "delta_pct": -42.9},
+      "q5_ms": {"control": 43.31, "candidate": 32.25, "delta_pct": -25.5}
+    },
+    "candidate_names": "Q4 <false,3,1>/<false,2,1> at 96/80 VGPR; Q6 <2,1> at 88 VGPR; Q5 <3,1> at 112 VGPR",
+    "jit_policy": "both profiled processes used a precomputed compiler-version file and require_cached; no compiler ran inside rocprofv3"
+  },
+  "gates": {
+    "red_green": "three routing tests failed RED on missing bands/constants and pass GREEN",
+    "tests": "tests/test_gfx1151_backend.py + tests/test_gguf_k_t16_selected_wmma_prefill.py: 99/99",
+    "mechanical": "compileall, check_fixtures, registry smoke, CPU-fixture smoke, worklog check, and diff check passed",
+    "full_suite": "configured broad suite retains the known test_specdec2_perf_bridge order failure documented in preceding iterations; affected nodes pass in isolation"
+  },
+  "parity_context": {
+    "p2_1_status": "closed: C1 147.11 tok/s exceeds frozen 138.95 with exact gate green",
+    "p2_2_status": "open: C2 136.89 remains below 194.07; C3-C8 require fresh re-freeze",
+    "next": "run full C1-C8 prefill re-freeze and close each P2.2 cell by win or measured blocker"
+  }
+}

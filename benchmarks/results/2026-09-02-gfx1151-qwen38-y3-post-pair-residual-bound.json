@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-post-pair-residual-bound",
+  "status": "measurement_and_bound",
+  "source_commit": "a781d02ba",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "reference": {"rows": 256, "q6_effective_tf_s": 20.24},
+  "points": {
+    "288": {"tick_wall_ms": 990.820392, "q6_gpu_ms": 164.212924, "q6_effective_tf_s": 14.580476685014146, "rate_match_savings_ms": 45.917, "rate_match_wall_pct": 4.634},
+    "536": {"tick_wall_ms": 1693.800495, "q6_gpu_ms": 303.926818, "q6_effective_tf_s": 14.654428244367695, "rate_match_savings_ms": 83.838, "rate_match_wall_pct": 4.950},
+    "1024": {"tick_wall_ms": 2761.841998, "q6_gpu_ms": 573.205429, "q6_effective_tf_s": 14.840365447550568, "rate_match_savings_ms": 152.867, "rate_match_wall_pct": 5.535}
+  },
+  "raw": {"trace": "/tmp/y2-q6-planar-shared4r6-high-trace-raw.json", "rocprof": "/tmp/y3-q6-shared4r6-pair-rocprof", "analyzed": "/tmp/y3-q6-pair-post-retention-ledger.json"},
+  "decision": "Y3 remains above its 2% opening threshold after pair decode. The next exact candidate is a four-column cooperative decode unit, matching qmicro quartet records and reducing the 512 per-slab column/group units to 128 while preserving LDS layout and WMMA accumulation order."
+}

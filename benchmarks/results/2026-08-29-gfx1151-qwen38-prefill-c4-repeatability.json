@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_attribution",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.2 C4 repeatability adjudication"],
+  "title": "Three-run C4 median supersedes favorable one-run crossing",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151"
+  },
+  "source": {"commit": "e49a972c0", "dirty": false},
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "protocol": {
+    "command_template": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 4 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p219-c4-r{1|2|3}.json",
+    "independent_fresh_process_runs": 3,
+    "prompt_tokens_per_run": 1796,
+    "cells_per_run": 10
+  },
+  "measurements": {
+    "runs_tok_s": [189.2121321913195, 189.20661789606987, 189.22863432696917],
+    "runs_wall_s": [9.491991761839017, 9.492268399335444, 9.491163989994675],
+    "median_tok_s": 189.2121321913195,
+    "frozen_winner_tok_s": 192.54,
+    "median_gap_pct": -1.7284033492679374,
+    "prior_favorable_one_run_tok_s": 196.2328108968778,
+    "correctness": "all 30 cells exact/route/budget conformant"
+  },
+  "verdict": {
+    "parity": "open",
+    "named_blocker": "repeatable C4 device/scheduling wall is 1.73% below comparator; the preceding 196.23 crossing was a favorable physical-grouping outlier",
+    "supersedes_status_in": "benchmarks/results/2026-08-29-gfx1151-qwen38-q4-shared2-prefill-retained.json",
+    "p2_2_disposition": "partial: only C1 is repeatably at parity; high-row Q4/device work remains binding"
+  }
+}

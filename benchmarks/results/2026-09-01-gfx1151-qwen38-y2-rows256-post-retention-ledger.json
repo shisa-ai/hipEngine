@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-rows256-post-retention-ledger",
+  "status": "measurement_only",
+  "source_commit": "7f1b0e264",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "rows": 256,
+  "tick_wall_ms": 835.00632,
+  "q5": {"gpu_ms": 42.008779, "gpu_share": 0.05120771231577485, "sweep_multiplicity": 1.0},
+  "q6": {"gpu_ms": 223.794928, "gpu_share": 0.2728007469760915, "sweep_multiplicity": 4.838569357177381, "family_wide_removable_ceiling_ms": 177.54},
+  "q6_dispatch_decomposition": {
+    "standard_shared8r3_gridY1_hits": 48,
+    "planar_shared4_gridY8_hits": 64,
+    "planar_plain_gridY4_hits": 16,
+    "other_gridY1_hits": 2
+  },
+  "decision": "Q5 is closed at one sweep for rows256. Planar Q6 is the sole material Y2 rows256 remainder; a four-wave/three-row-tile shared body has a sized family-wide ceiling and avoids the six-wave launch blocker."
+}

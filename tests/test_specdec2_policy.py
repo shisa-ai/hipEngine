@@ -86,6 +86,18 @@ def test_missing_capability_selects_k0_before_provider_ownership() -> None:
     assert plan.execution_route == "ar"
 
 
+def test_plan_preserves_declared_logical_width_across_physical_subset() -> None:
+    plan = _plan(
+        _capability(),
+        tuple(_semantics(index) for index in range(4)),
+        (3, 3, 3, 3),
+        declared_logical_c=8,
+    )
+
+    assert plan.declared_logical_c == 8
+    assert len(plan.request_ids) == 4
+
+
 def test_unsupported_sampling_selects_per_request_k0_in_mixed_plan() -> None:
     semantics = (_semantics(1), _semantics(2, sampling_mode="top_p"))
 

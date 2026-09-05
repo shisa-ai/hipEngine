@@ -1,0 +1,216 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-planar-q6-shared4r4-rows256-retained",
+  "status": "validated_retained",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "bound": {
+    "source": "2026-09-01-gfx1151-qwen38-y2-rows256-after-planar-ledger.json",
+    "one_sweep_removable_ceiling_ms": 55.68
+  },
+  "leaf_screen": {
+    "rows": [
+      256
+    ],
+    "results": {
+      "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+        "256": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 2.813730812072754,
+          "candidate_ms": 1.9470928192138672,
+          "speedup": 1.4450933126078649
+        }
+      },
+      "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+        "256": {
+          "exact": true,
+          "mismatch_count": 0,
+          "max_abs": 0.0,
+          "parent_ms": 0.23077700138092042,
+          "candidate_ms": 0.24492340087890624,
+          "speedup": 0.9422415357323084
+        }
+      }
+    }
+  },
+  "selection": {
+    "admitted": [
+      "17408x5120@rows256"
+    ],
+    "rejected": [
+      "5120x1024@rows256 regresses 5.78%; remains shared4r3"
+    ]
+  },
+  "complete_tick": {
+    "control_wall_ms": 734.190287,
+    "candidate_wall_ms": 706.580212,
+    "wall_delta_pct": -3.760615672650547,
+    "token": 80018
+  },
+  "trace": {
+    "hits": 64,
+    "grid_y": 1,
+    "threads": 128,
+    "vgpr": 176,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "duration_ms": 123.463993
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256.json",
+      "sha256": "2c19f3dc2d2048f2c592a390ede62eaf6899e063b6c4df380285828142fd7247",
+      "bytes": 607
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-full-pair.json",
+      "sha256": "2ebbf0c1980edd28295e21d25da11268bc29159f9d1c663fafc4ce46c7690079",
+      "bytes": 199235
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-trace-raw.json",
+      "sha256": "bfaa78136ef0c5502a6048667eb08591c5ced62fe371fcac23088067701c71ad",
+      "bytes": 93345
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-rocprof/gfx1151/2567265_kernel_trace.csv",
+      "sha256": "cc7204401bfc13f66db064dc5aac76ec7e2daa8197ba1d9fbdc77e65ed6f45cb",
+      "bytes": 847397
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-c1c8-control.json",
+      "sha256": "cc92882b83bc5db717d3f1edaa694cfcb2765731bb21760409dcd30db53ea0ce",
+      "bytes": 3735606
+    },
+    {
+      "path": "/tmp/y2-q6-planar-shared4r4-r256-c1c8-candidate.json",
+      "sha256": "4f2b338860e2505a684d611a528c7d1dce97723307088f3db69665f285bb717c",
+      "bytes": 3735592
+    }
+  ],
+  "limitations": [
+    "Y2 remains open pending final refreshed multiplicity."
+  ],
+  "c1_c8_collateral": {
+    "protocol": "tracked-clean frozen standard Q4_K_M ten-prompt D1 AR-exact C1-C8 collateral; control disables wide rows256 shared4r4",
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 77.02755321515724,
+        "candidate_wall_seconds": 77.16925021144561,
+        "wall_delta_pct": 0.1839562473087808
+      },
+      "mtp": {
+        "control_wall_seconds": 67.88928236649372,
+        "candidate_wall_seconds": 67.8554098433815,
+        "wall_delta_pct": -0.04989377105116821
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "control_wall_seconds": 2.9041567244566977,
+          "candidate_wall_seconds": 2.906721887877211,
+          "wall_delta_pct": 0.08832730681891388
+        },
+        "mtp": {
+          "control_wall_seconds": 2.910109290620312,
+          "candidate_wall_seconds": 2.9131320351734757,
+          "wall_delta_pct": 0.10387048221545125
+        }
+      },
+      "2": {
+        "ar": {
+          "control_wall_seconds": 6.150537331355736,
+          "candidate_wall_seconds": 6.284467950230464,
+          "wall_delta_pct": 2.1775433862004867
+        },
+        "mtp": {
+          "control_wall_seconds": 5.0193974177818745,
+          "candidate_wall_seconds": 5.0286830849945545,
+          "wall_delta_pct": 0.18499565664564788
+        }
+      },
+      "3": {
+        "ar": {
+          "control_wall_seconds": 7.881932770367712,
+          "candidate_wall_seconds": 7.893945975927636,
+          "wall_delta_pct": 0.152414463684436
+        },
+        "mtp": {
+          "control_wall_seconds": 6.63107091980055,
+          "candidate_wall_seconds": 6.63298328500241,
+          "wall_delta_pct": 0.028839462358187795
+        }
+      },
+      "4": {
+        "ar": {
+          "control_wall_seconds": 9.349597185151652,
+          "candidate_wall_seconds": 9.513471763115376,
+          "wall_delta_pct": 1.7527447944386099
+        },
+        "mtp": {
+          "control_wall_seconds": 7.7929976508021355,
+          "candidate_wall_seconds": 7.796905346214771,
+          "wall_delta_pct": 0.05014367497253591
+        }
+      },
+      "5": {
+        "ar": {
+          "control_wall_seconds": 10.337406591046602,
+          "candidate_wall_seconds": 10.66526532266289,
+          "wall_delta_pct": 3.1715762433128347
+        },
+        "mtp": {
+          "control_wall_seconds": 9.055185957811773,
+          "candidate_wall_seconds": 9.07077413261868,
+          "wall_delta_pct": 0.17214637975999647
+        }
+      },
+      "6": {
+        "ar": {
+          "control_wall_seconds": 11.927324027987197,
+          "candidate_wall_seconds": 11.55002688919194,
+          "wall_delta_pct": -3.163300820116377
+        },
+        "mtp": {
+          "control_wall_seconds": 10.68057753937319,
+          "candidate_wall_seconds": 10.63635785318911,
+          "wall_delta_pct": -0.4140196166458776
+        }
+      },
+      "7": {
+        "ar": {
+          "control_wall_seconds": 13.496289979899302,
+          "candidate_wall_seconds": 13.511384090641513,
+          "wall_delta_pct": 0.111838962890487
+        },
+        "mtp": {
+          "control_wall_seconds": 12.12397360149771,
+          "candidate_wall_seconds": 12.11926869652234,
+          "wall_delta_pct": -0.03880662503907839
+        }
+      },
+      "8": {
+        "ar": {
+          "control_wall_seconds": 14.980308604892343,
+          "candidate_wall_seconds": 14.843966331798583,
+          "wall_delta_pct": -0.9101432866959303
+        },
+        "mtp": {
+          "control_wall_seconds": 13.675969988806173,
+          "candidate_wall_seconds": 13.65730540966615,
+          "wall_delta_pct": -0.13647718703170275
+        }
+      }
+    }
+  }
+}

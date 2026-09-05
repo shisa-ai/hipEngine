@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_arbitrary_state_clone_green",
+  "date": "2026-09-02",
+  "status": "clone_primitive_green_route_unselected",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "ccc8060c8",
+    "candidate_worktree": true,
+    "module": "hipengine/runtime/qwen35_gguf_runner.py"
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_used": false
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "execution_profile": "production experiment only; current C1 fallback unchanged"
+  },
+  "primitive": {
+    "name": "Qwen35GGUFResidentSession.clone_current_state_from",
+    "boundary": "any positive current source position below destination capacity",
+    "ownership": "source and destination page IDs must be disjoint",
+    "kv": "zip arbitrary source/destination page segments and copy every full-attention storage/mirror/scale plane",
+    "linear_state": "copy every Conv/GDN state pair D2D",
+    "publication": "set device/host cursor only after all copy work is enqueued",
+    "route_selected": false
+  },
+  "fixture": {
+    "position": 300,
+    "source_pages": [8, 10],
+    "destination_pages": [20, 21],
+    "segments": [256, 44],
+    "kv_bytes": 4800,
+    "linear_state_bytes": 192,
+    "total_bytes": 4992,
+    "independent_backing": true
+  },
+  "validation": {
+    "focused_command": "uv run pytest -q tests/test_gguf_device_kv_binding.py::test_gguf_current_state_clone_copies_private_kv_at_arbitrary_boundary",
+    "focused_result": "1 passed",
+    "kv_file_command": "uv run pytest -q tests/test_gguf_device_kv_binding.py",
+    "kv_file_result": "12 passed",
+    "ownership_seam_command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py tests/test_qwen35_gguf_mtp2_seam.py",
+    "ownership_seam_result": "77 passed"
+  },
+  "decision": "Retain the unselected exact clone primitive. Next invoke it during shadow acquisition, prime shadow provider/hidden ownership, and run physical GPU state/logit parity before selecting the physical C2 route."
+}

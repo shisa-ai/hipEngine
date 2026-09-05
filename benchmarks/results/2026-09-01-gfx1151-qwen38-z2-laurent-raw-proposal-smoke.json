@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z2_laurent_raw_proposal_smoke",
+  "date": "2026-09-01",
+  "status": "protocol_smoke_passed",
+  "performance_claim": false,
+  "physical_host": "gfx1151 / Framework Desktop / AMD Radeon 8060S / 1002:1586",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_fingerprint": "sha256-sampled-v1:e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+  "laurent_commit": "c28d538df5c02643e701a8004db84dbf1bb0ffb2",
+  "prompt": "code_merge_intervals",
+  "prompt_tokens": 40,
+  "server_command": "/home/lhl/.local/state/hipengine-external-survey/repos/laurent/build-vulkan/bin/llama-server -m /models/gguf/Qwen3.8-27B-Q4_K_M.gguf -ngl 999 -fa on -b 2048 -ub 512 --no-mmap -c 8192 -np 2 --host 127.0.0.1 --port 48219 --spec-type draft-mtp --spec-draft-n-max 3 --spec-draft-p-min 0.0 --log-verbose",
+  "requests": [
+    {
+      "n_predict": 1,
+      "returned_tokens": [71093],
+      "draft_call_count": 0,
+      "result": "reject for capture: no proposal is emitted"
+    },
+    {
+      "n_predict": 4,
+      "returned_tokens": [71093, 12305, 198, 727],
+      "first_draft_top1": [12305, 198, 727],
+      "first_draft_top3": [[12305, 3181, 9745], [198, 271, 687], [727, 464, 1445]],
+      "draft_hist_size": 40,
+      "result": "capture protocol: request four tokens and retain only the first K3 proposal"
+    }
+  ],
+  "raw_sources": {
+    "request_n1": ["/tmp/q38-z2-teacher/request.json", "3761c05fd7da4ba7f9757305a406c013016c63ca42389955aedde77e10cb54fc"],
+    "response_n1": ["/tmp/q38-z2-teacher/response.json", "30bdde74fa8c8c395d2287eeb59c46a1d84c0d271a3d7bb7ca2a307506dde07d"],
+    "request_n4": ["/tmp/q38-z2-teacher/request4.json", "ba91b9ae3bf1aff31153d3133ab860c15d08da70eac5db065553a1d4cda186bf"],
+    "response_n4": ["/tmp/q38-z2-teacher/response4.json", "1023f3b1c417a5af19ee71ba5832c1d22e7dc2a2764bf8ee5f6bc50d30ae9fab"],
+    "server_log": ["/tmp/kendex-pi-bg/bg-135-1788301009213.log", "e6ed25224b292d8517591200f3db9ad97cdcc04d0e1c80436129075b1219ca55"]
+  },
+  "decision": "The full teacher capture must use n_predict=4 and discard the free-running response after extracting the first K3 proposal. n_predict=1 cannot be used because Laurent emits no draft call."
+}

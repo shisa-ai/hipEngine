@@ -1449,6 +1449,7 @@ register_gguf_ops()
 
 __all__ = [
     "build_gguf_ops",
+    "gguf_cast_bf16_to_f16",
     "gguf_add_rmsnorm_bf16_f32_weight",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed1024_wave256",
     "gguf_add_rmsnorm_bf16_f32_weight_fixed5120_wave256",
@@ -1475,3 +1476,27 @@ __all__ = [
     "plan_gguf_ops_build",
     "register_gguf_ops",
 ]
+
+
+def gguf_cast_bf16_to_f16(
+    x_ptr: int,
+    out_ptr: int,
+    n: int,
+    *,
+    threads: int = 256,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Stage-owned BF16 -> IEEE-half cast for the F16-input T16 siblings."""
+
+    _check_positive(n, "n")
+    _check_threads(threads)
+    _launch(
+        "hipengine_gguf_cast_bf16_to_f16",
+        (x_ptr, out_ptr, n),
+        threads=threads,
+        stream=stream,
+        library=library,
+        runtime=runtime,
+    )

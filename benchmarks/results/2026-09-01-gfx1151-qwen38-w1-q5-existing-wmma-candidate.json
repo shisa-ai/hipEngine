@@ -1,0 +1,125 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q5_existing_wmma_screen",
+  "status": "candidate_default_off",
+  "performance_claim": false,
+  "hardware": "strixhalo AMD Radeon 8060S gfx1151",
+  "model": "Qwen3.8-27B Q4_K_M",
+  "shape": "gguf_q5_k_t16_v1 K6144 N5120",
+  "rows": [
+    8,
+    20,
+    24,
+    32
+  ],
+  "result": {
+    "8": {
+      "exact": false,
+      "mismatch_count": 4161,
+      "max_abs": 0.00390625,
+      "parent_ms": 0.14766499996185303,
+      "wmma_ms": 0.5271049976348877,
+      "speedup": 0.28014342611893966
+    },
+    "20": {
+      "exact": false,
+      "mismatch_count": 10630,
+      "max_abs": 0.0078125,
+      "parent_ms": 1.2706037521362306,
+      "wmma_ms": 0.5387105941772461,
+      "speedup": 2.358601753649897
+    },
+    "24": {
+      "exact": false,
+      "mismatch_count": 12691,
+      "max_abs": 0.03125,
+      "parent_ms": 1.6422510147094727,
+      "wmma_ms": 0.5396264076232911,
+      "speedup": 3.0433110602250495
+    },
+    "32": {
+      "exact": false,
+      "mismatch_count": 17010,
+      "max_abs": 0.0078125,
+      "parent_ms": 2.037814903259277,
+      "wmma_ms": 0.5406703948974609,
+      "speedup": 3.769052129524777
+    }
+  },
+  "finding": "Existing Q5 WMMA owner is flat at 0.527-0.541 ms and improves R20/R24/R32 strict parent by 2.36x/3.04x/3.77x. It changes BF16 association (max absolute leaf delta 0.03125), so classify T2 and require full strict-teacher gates.",
+  "raw": {
+    "path": "/tmp/wy-w1-q5-existing-wmma-screen.json",
+    "sha256": "763cdd4f83604d65be82de6f3a4b67e2d66b154b4383da717dc16f9259e15ae9",
+    "size_bytes": 1019
+  },
+  "full_numerical_gates": {
+    "C6_R24": {
+      "measurement_valid": true,
+      "hard_gates_passed": true,
+      "summary": {
+        "candidate_teacher_nll_mean": 0.17544779432299384,
+        "kl_max": 0.0014633570048211428,
+        "kl_mean": 7.823067829780227e-05,
+        "kl_p50": 4.267303011684815e-06,
+        "kl_p95": 0.0004085524066393631,
+        "kl_p99": 0.0007823251951146972,
+        "max_abs_logit_delta": 0.647362232208252,
+        "rows": 240,
+        "strict_margin_min": 0.04146385192871094,
+        "strict_teacher_nll_mean": 0.17407610719807345,
+        "teacher_delta_p_mean": -0.0004910274233250648,
+        "teacher_nll_delta": 0.00137168712492039,
+        "top1_agreement": 1.0,
+        "top1_matches": 240,
+        "topk_overlap_mean": 0.985
+      },
+      "repeat_passed": true,
+      "raw_sha256": "05b85e0dbf04dc1f9ed53e1dae92983f299b24ba8cdb2c434a1dc41e96c95169"
+    },
+    "C8_R32": {
+      "measurement_valid": true,
+      "hard_gates_passed": true,
+      "summary": {
+        "candidate_teacher_nll_mean": 0.17475733611337543,
+        "kl_max": 0.0017202095253945934,
+        "kl_mean": 8.591328163740231e-05,
+        "kl_p50": 4.611591895512534e-06,
+        "kl_p95": 0.0004981702063113738,
+        "kl_p99": 0.0007606168948130547,
+        "max_abs_logit_delta": 0.8412189483642578,
+        "rows": 240,
+        "strict_margin_min": 0.04146385192871094,
+        "strict_teacher_nll_mean": 0.17407610719807345,
+        "teacher_delta_p_mean": -0.0001732419336222551,
+        "teacher_nll_delta": 0.000681228915301979,
+        "top1_agreement": 1.0,
+        "top1_matches": 240,
+        "topk_overlap_mean": 0.9908333333333333
+      },
+      "repeat_passed": true,
+      "raw_sha256": "50363162df5b8c18e726890dfe8937ffaf736f4c4a62fa91319c30c2e473aa3c"
+    }
+  },
+  "valid_route_full_suite": {
+    "baseline": {
+      "C6_mtp_tok_s": 33.6342520744,
+      "C8_mtp_tok_s": 36.6625089162,
+      "C6_target_ms": 2193.36182,
+      "C8_target_ms": 2295.778182
+    },
+    "q5q6_candidate": {
+      "C6_mtp_tok_s": 33.5775405983,
+      "C8_mtp_tok_s": 36.6252215991,
+      "C6_target_ms": 2223.425162,
+      "C8_target_ms": 2301.45232
+    },
+    "delta_percent": {
+      "C6_mtp": -0.1686,
+      "C8_mtp": -0.1017,
+      "C6_target_ms": 1.3707,
+      "C8_target_ms": 0.2472
+    },
+    "decision": "reject Q5 addition; actual transaction target stage regresses despite isolated leaf gain; keep default off"
+  }
+}
