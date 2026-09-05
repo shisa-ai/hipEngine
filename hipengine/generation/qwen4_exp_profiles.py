@@ -102,6 +102,11 @@ def _selection(
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            "linear", "prefill_exact_q8_f32_coltile",
+            "coltile8_rowbatch4_f32_f32_out", "coltile8_rowbatch4_f32_f32_out",
+            "gguf_q8_0",
+        ),
+        _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128",
             "qwen4exp_sigmoid_strict_prefill", "qwen4exp_sigmoid_strict_prefill",
             "f32_state",
@@ -236,6 +241,12 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "linear", "prefill_exact_q8_f32_coltile",
+            "coltile8_rowbatch4_wave_scale_f32_f32_out", "coltile8_rowbatch4_f32_f32_out",
+            "gguf_q8_0",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json",
+        ),
         _selection(
             "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128",
             "qwen4exp_sigmoid_register_prefill", "qwen4exp_sigmoid_strict_prefill",
@@ -406,6 +417,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",

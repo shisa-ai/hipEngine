@@ -205,26 +205,28 @@ It identifies FFN/linear/GR as the largest prefill gaps and QSA as the largest
 decode gap; HIP kernel sums and Vulkan query intervals remain diagnostic.
 [Generated family evidence](results/2026-09-05-framework-qwen4exp-family-alignment.json).
 
-Exact Q8 wave-scale screen on actual weights with symmetric256MiB device-fill
-preconditioning outside each timed projection:
+Latest retained Q8 wave-scale production A/B, normal model execution:
 
-| Projection / rows512 | Parent (ms) | Candidate (ms) | Speedup |
+| Prompt | Parent prefill | Wave-scale prefill | Gain |
 | --- | ---: | ---: | ---: |
-| Attention gate, layer0 | 6.299 | 5.678 | 1.109x |
-| Attention gate, layer4 | 6.304 | 5.674 | 1.111x |
-| Shared down, layer0 | 1.021 | 0.938 | 1.089x |
+| 512 | 154.29 | 155.45 | +0.75% |
+| 1024 | 151.67 | 153.43 | +1.17% |
+| 4096 | 141.58 | 143.41 | +1.29% |
 
-F32 bits exact,15 focused tests pass; both order strata improve with this
-precondition. Unconditioned attention-gate timing reverses by order, so no
-general non-regression or model-rate claim is made. Model admission pending.
-[Q8 screen](results/2026-09-05-framework-qwen4exp-q8-wave-scale.json).
+Tok/s on Framework, UD-Q4_K_XL/BF16 KV. All72 trajectories exact; all12 cases
+improve prefill and complete-request wall, with zero final allocations.
+Decode drift remains: no intrinsic decode improvement or new external
+parity claim. Full A/B33m53s, without synthetic memory preconditioning.
+[Q8 production](results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
+The earlier microbench's order reversal remains recorded in its
+[separate evidence](results/2026-09-05-framework-qwen4exp-q8-wave-scale.json).
 
 The larger Q4 row-batch screen is rejected: exact RB16/32 variants lose
 against RB8 in all12 final actual-weight, synthetic-routing cells across
 tokens512/1024/2048. Production is unchanged.
 [Screen evidence](results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json).
 
-Latest full-suite production retention adds exact Q4 output-pair reuse:
+The preceding Q4 output-pair retention remains part of the baseline:
 
 | Shape | Parent prefill | Q4 pair prefill | Gain | Decode before -> after |
 | --- | ---: | ---: | ---: | ---: |
