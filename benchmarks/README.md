@@ -205,6 +205,20 @@ It identifies FFN/linear/GR as the largest prefill gaps and QSA as the largest
 decode gap; HIP kernel sums and Vulkan query intervals remain diagnostic.
 [Generated family evidence](results/2026-09-05-framework-qwen4exp-family-alignment.json).
 
+Exact Q8 wave-scale screen on actual weights with symmetric256MiB device-fill
+preconditioning outside each timed projection:
+
+| Projection / rows512 | Parent (ms) | Candidate (ms) | Speedup |
+| --- | ---: | ---: | ---: |
+| Attention gate, layer0 | 6.299 | 5.678 | 1.109x |
+| Attention gate, layer4 | 6.304 | 5.674 | 1.111x |
+| Shared down, layer0 | 1.021 | 0.938 | 1.089x |
+
+F32 bits exact,15 focused tests pass; both order strata improve with this
+precondition. Unconditioned attention-gate timing reverses by order, so no
+general non-regression or model-rate claim is made. Model admission pending.
+[Q8 screen](results/2026-09-05-framework-qwen4exp-q8-wave-scale.json).
+
 The larger Q4 row-batch screen is rejected: exact RB16/32 variants lose
 against RB8 in all12 final actual-weight, synthetic-routing cells across
 tokens512/1024/2048. Production is unchanged.

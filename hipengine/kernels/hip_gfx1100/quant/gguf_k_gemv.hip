@@ -102,6 +102,14 @@ __device__ inline float q8_0_weight(const uint8_t* row, int k) {
   return d * static_cast<float>(q);
 }
 
+__device__ inline float q8_0_weight_wave_scale(const uint8_t* row, int k) {
+  const int block_idx = __builtin_amdgcn_readfirstlane(k / Q8_0_BLOCK);
+  const uint8_t* block = row + static_cast<int64_t>(block_idx) * Q8_0_BLOCK_BYTES;
+  const float d = fp16_bytes_to_float(block);
+  const int8_t q = reinterpret_cast<const int8_t*>(block + 2)[k & 31];
+  return d * static_cast<float>(q);
+}
+
 __device__ inline uint8_t q5_k_quant(const uint8_t* block, int subblock, int lane) {
   const uint8_t* qh = block + 16;
   const uint8_t* qs = block + 48;
@@ -633,7 +641,7 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH>
+    int ROW_BATCH, bool WAVE_SCALE = false>
 __launch_bounds__(128, 2)
 __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
     const scalar_t* __restrict__ x,
@@ -671,7 +679,8 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
 #pragma unroll
     for (int col = 0; col < COL_TILE; ++col) {
       if constexpr (qtype == 8) {
-        weights[col] = q8_0_weight(weight_rows[col], k);
+        weights[col] = WAVE_SCALE ? q8_0_weight_wave_scale(weight_rows[col], k)
+                                  : q8_0_weight(weight_rows[col], k);
       } else if constexpr (qtype == 5) {
         weights[col] = q5_k_weight(weight_rows[col], k);
       } else {
@@ -4312,7 +4321,7 @@ template <
     typename out_t,
     int qtype,
     int COL_TILE,
-    int ROW_BATCH>
+    int ROW_BATCH, bool WAVE_SCALE = false>
 int launch_gguf_k_gemv_coltile_rowbatch_out(
     const scalar_t* x,
     const uint8_t* qweight,
@@ -4338,7 +4347,7 @@ int launch_gguf_k_gemv_coltile_rowbatch_out(
       out_t,
       qtype,
       COL_TILE,
-      ROW_BATCH><<<grid, block, 0, stream>>>(
+      ROW_BATCH, WAVE_SCALE><<<grid, block, 0, stream>>>(
       x,
       qweight,
       out,
@@ -4777,6 +4786,13 @@ HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(16, 4)
 HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(32, 1)
 
 #undef HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT
+
+extern "C" int hipengine_gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out(
+    const float* x, const uint8_t* qweight, float* out, int64_t rows,
+    int64_t in_features, int64_t out_features, int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_gemv_coltile_rowbatch_out<float, float, 8, 8, 4, true>(
+      x, qweight, out, rows, in_features, out_features, threads, stream);
+}
 
 #define HIPENGINE_GGUF_K_COLTILE_ROWBATCH_EXPORTS( \
     NAME, QTYPE, COL_TILE, ROW_BATCH) \
