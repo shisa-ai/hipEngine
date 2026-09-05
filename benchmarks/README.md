@@ -197,8 +197,13 @@ four categories, p512/p1024/p4096 + tg128:
 
 Weighted tok/s,36 samples per engine, all outputs repeat, clean teardown.
 All lanes exceed2% per-case CV somewhere; these are sequential screening
-comparisons, not statistical parity. The family alignment is still in progress.
+comparisons, not statistical parity.
 [Frozen baseline evidence](results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
+
+The completed same-host family alignment covers six prompts and both phases.
+It identifies FFN/linear/GR as the largest prefill gaps and QSA as the largest
+decode gap; HIP kernel sums and Vulkan query intervals remain diagnostic.
+[Generated family evidence](results/2026-09-05-framework-qwen4exp-family-alignment.json).
 
 Latest full-suite production retention adds exact Q4 output-pair reuse:
 

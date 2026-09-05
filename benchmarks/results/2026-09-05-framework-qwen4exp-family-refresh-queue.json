@@ -3,7 +3,7 @@
   "kind": "qwen4exp_framework_family_refresh_queue",
   "date": "2026-09-05",
   "date_basis": "UTC",
-  "status": "baselines_captured_family_alignment_in_progress",
+  "status": "completed_diagnostic_refresh_not_performance_parity",
   "performance_claim": false,
   "priority": "before further kernel optimization",
   "host": {
@@ -66,7 +66,8 @@
     },
     {
       "id": "owner_profiles",
-      "status": "in_progress",
+      "status": "completed",
+      "evidence": "benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json",
       "depends_on": ["unprofiled_baselines"],
       "hipengine": "cached rocprofv3 kernel+HIP API+ROCTX traces; scripts/qwen4exp_role_analyze.py",
       "vulkan": "GGML_VK_PERF_LOGGER=1, frequency1, explicitly recorded concurrency setting; request-bounded graph sections plus semantic metadata",
@@ -75,10 +76,11 @@
     },
     {
       "id": "join_publish",
-      "status": "queued",
+      "status": "completed",
+      "taxonomy": "qwen4exp-semantic-owners-v2-complete-gr",
       "depends_on": ["owner_profiles"],
       "requirements": [
-        "One versioned taxonomy with exclusive MoE/FFN (routed plus shared), non-FFN linear, GR, QSA, GDN, PLE and boundary ownership. Preserve finer original tags.",
+        "One versioned taxonomy with exclusive MoE/FFN (routed plus shared), non-FFN/non-GR linear, complete GR projections/read/mix, QSA, GDN, PLE and boundary ownership. Preserve finer original tags.",
         "Reconcile every timestamp exactly once; disclose unclassified and mixed-family fused cost and fail matched-gap publication when unresolved.",
         "Reject host/model/fixture/phase/context mismatches; never join zbook to Framework.",
         "Emit starting/current/comparator tables, per-case/category/shape data, device and wall ceilings, and raw hashes.",
