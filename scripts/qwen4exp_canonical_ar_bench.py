@@ -430,9 +430,14 @@ def _host_metadata() -> dict[str, Any]:
     tuned = subprocess.run(
         ["tuned-adm", "active"], capture_output=True, text=True, check=False
     )
-    hipcc = subprocess.run(
-        ["hipcc", "--version"], capture_output=True, text=True, check=False
-    )
+    compiler_version_file = os.environ.get("HIPENGINE_COMPILER_VERSION_FILE")
+    if compiler_version_file:
+        hipcc_version = Path(compiler_version_file).read_text().strip()
+    else:
+        hipcc = subprocess.run(
+            ["hipcc", "--version"], capture_output=True, text=True, check=False
+        )
+        hipcc_version = hipcc.stdout.strip() or hipcc.stderr.strip()
     governors: dict[str, int] = defaultdict(int)
     for path in Path("/sys/devices/system/cpu").glob("cpu*/cpufreq/scaling_governor"):
         try:
@@ -455,7 +460,7 @@ def _host_metadata() -> dict[str, Any]:
         "cpu_governors": dict(governors),
         "gpu_clock_policies": gpu_clock_policies,
         "rocm_platform": _rocm_platform_version(),
-        "hipcc_version": hipcc.stdout.strip() or hipcc.stderr.strip(),
+        "hipcc_version": hipcc_version,
     }
 
 
