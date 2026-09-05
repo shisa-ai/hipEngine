@@ -4826,3 +4826,6 @@ under the manifest; retain rollback and registered strict fallbacks.
   keep the registered serial strict fallback. Do not widen the suffix arithmetic.
 - Resource review accepts 256 VGPR/24-byte scratch at the kernel-screen stage;
   whole-model performance remains the binding admission test.
+- Admission wiring uses `HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL=1`, default
+  off, only in the serial fallback branch at Hk16/Hv48/D128 and rows>=2.
+  Remove the selector after profile admission and rollback needs expire.
