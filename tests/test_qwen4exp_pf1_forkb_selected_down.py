@@ -223,6 +223,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
     """
 
     from hipengine.core.hip import get_hip_runtime
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from tests._gguf_synthetic_weights import make_q4_k_weight, make_q8_0_weight
     from tests.test_qwen4_exp_runner_moe import (
         _dense_f32_weight,
@@ -237,6 +238,7 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
         run_qwen4_exp_moe,
     )
 
+    register_gfx1151_kernels(replace=True)
     runtime = get_hip_runtime()
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")
     monkeypatch.delenv("HIPENGINE_QWEN4_EXP_Q8_0_GROUPED", raising=False)
