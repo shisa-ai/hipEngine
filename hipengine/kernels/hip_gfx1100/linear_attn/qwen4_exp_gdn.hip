@@ -893,8 +893,8 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_tiled16_f32(
     hipStream_t stream) {
   if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
       !norm_weight || !recurrent_state || !core || tokens < 16 ||
-      num_k_heads != 16 || num_v_heads != 32 || head_k_dim != 128 ||
-      head_v_dim != 128) {
+      num_k_heads != 16 || (num_v_heads != 32 && num_v_heads != 48) ||
+      head_k_dim != 128 || head_v_dim != 128) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   constexpr int token_tile = 16;
