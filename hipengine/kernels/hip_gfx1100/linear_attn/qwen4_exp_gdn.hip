@@ -411,6 +411,140 @@ qwen4_exp_gdn_prefill_columnwarps_f32_kernel(
   }
 }
 
+// PF-5 tile-16 candidate adapted from halo-box PR11 a7ad7b7f
+// gated_delta_net_kda_tiled_128_cuda. Unlike the external source, this body
+// preserves the in-tree columnwarp arithmetic exactly: one warp computes each
+// token's Q/K norms with the same r=0..3 and XOR-shuffle order, then all 16
+// column warps reuse those exact scalars and raw Q/K values from LDS. Each
+// column's recurrent state remains in registers for the complete sequence.
+template <int TOKEN_TILE, int WARPS_PER_BLOCK, int ROWS_PER_LANE>
+__global__ void __launch_bounds__(WARPS_PER_BLOCK * 32, 2)
+qwen4_exp_gdn_prefill_tiled_f32_kernel(
+    const float* __restrict__ conv,
+    const float* __restrict__ alpha,
+    const float* __restrict__ beta_logits,
+    const float* __restrict__ dt_bias,
+    const float* __restrict__ a,
+    float* __restrict__ recurrent_state,
+    float* __restrict__ core_out,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim) {
+  constexpr int HEAD_DIM = 128;
+  __shared__ float q_shared[TOKEN_TILE][HEAD_DIM];
+  __shared__ float k_shared[TOKEN_TILE][HEAD_DIM];
+  __shared__ float q_scale_shared[TOKEN_TILE];
+  __shared__ float k_scale_shared[TOKEN_TILE];
+  __shared__ float beta_shared[TOKEN_TILE];
+  __shared__ float decay_shared[TOKEN_TILE];
+
+  const int64_t v_head = blockIdx.x;
+  const int64_t k_head = v_head % num_k_heads;
+  const int warp_id = threadIdx.x >> 5;
+  const int lane = threadIdx.x & 31;
+  const int64_t col = static_cast<int64_t>(blockIdx.y) * WARPS_PER_BLOCK
+      + warp_id;
+  const int64_t key_width = num_k_heads * head_k_dim;
+  const int64_t qkv_width = 2 * key_width + num_v_heads * head_v_dim;
+  const int64_t q_offset = k_head * head_k_dim;
+  const int64_t k_offset = key_width + q_offset;
+  const int64_t v_offset = 2 * key_width + v_head * head_v_dim;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  const int64_t state_col = v_head * head_k_dim * head_v_dim + col;
+
+  float s_shard[ROWS_PER_LANE];
+  int j_idx[ROWS_PER_LANE];
+#pragma unroll
+  for (int r = 0; r < ROWS_PER_LANE; ++r) {
+    j_idx[r] = r * 32 + lane;
+    s_shard[r] = recurrent_state[state_col + j_idx[r] * head_v_dim];
+  }
+
+  for (int64_t token_base = 0; token_base < tokens;
+       token_base += TOKEN_TILE) {
+    const int64_t remaining = tokens - token_base;
+    const int tile_size = static_cast<int>(
+        remaining < TOKEN_TILE ? remaining : TOKEN_TILE);
+    const int tile_elements = tile_size * HEAD_DIM;
+    for (int index = threadIdx.x; index < tile_elements;
+         index += WARPS_PER_BLOCK * 32) {
+      const int tile_token = index / HEAD_DIM;
+      const int feature = index - tile_token * HEAD_DIM;
+      const float* conv_row = conv + (token_base + tile_token) * qkv_width;
+      q_shared[tile_token][feature] = conv_row[q_offset + feature];
+      k_shared[tile_token][feature] = conv_row[k_offset + feature];
+    }
+    __syncthreads();
+
+    if (warp_id < tile_size) {
+      float q_partial = 0.0f;
+      float k_partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < ROWS_PER_LANE; ++r) {
+        const float q_value = q_shared[warp_id][j_idx[r]];
+        const float k_value = k_shared[warp_id][j_idx[r]];
+        q_partial += q_value * q_value;
+        k_partial += k_value * k_value;
+      }
+      const float q_scale = rsqrtf(warp_sum_f32(q_partial) + 1.0e-6f)
+          * rsqrtf(static_cast<float>(head_k_dim));
+      const float k_scale = rsqrtf(warp_sum_f32(k_partial) + 1.0e-6f);
+      if (lane == 0) {
+        const int64_t token = token_base + warp_id;
+        q_scale_shared[warp_id] = q_scale;
+        k_scale_shared[warp_id] = k_scale;
+        beta_shared[warp_id] = sigmoid_f32(
+            beta_logits[token * num_v_heads + v_head]);
+        decay_shared[warp_id] = expf(
+            a[v_head] * softplus_f32(
+                alpha[token * num_v_heads + v_head] + dt_bias[v_head]));
+      }
+    }
+    __syncthreads();
+
+    for (int tile_token = 0; tile_token < tile_size; ++tile_token) {
+      float q_r[ROWS_PER_LANE];
+      float k_r[ROWS_PER_LANE];
+#pragma unroll
+      for (int r = 0; r < ROWS_PER_LANE; ++r) {
+        q_r[r] = q_shared[tile_token][j_idx[r]];
+        k_r[r] = k_shared[tile_token][j_idx[r]];
+      }
+      const float q_scale = q_scale_shared[tile_token];
+      const float k_scale = k_scale_shared[tile_token];
+      const float beta = beta_shared[tile_token];
+      const float decay = decay_shared[tile_token];
+
+      float kv_partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < ROWS_PER_LANE; ++r) {
+        kv_partial += (k_r[r] * k_scale) * s_shard[r];
+      }
+      const float memory = warp_sum_f32(kv_partial) * decay;
+      const float* conv_row = conv + (token_base + tile_token) * qkv_width;
+      const float delta = (conv_row[v_offset + col] - memory) * beta;
+
+      float attn_partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < ROWS_PER_LANE; ++r) {
+        s_shard[r] = s_shard[r] * decay + (k_r[r] * k_scale) * delta;
+        attn_partial += (q_r[r] * q_scale) * s_shard[r];
+      }
+      const float attn = warp_sum_f32(attn_partial);
+      core_out[(token_base + tile_token) * core_width
+          + v_head * head_v_dim + col] = attn;
+    }
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int r = 0; r < ROWS_PER_LANE; ++r) {
+    recurrent_state[state_col + j_idx[r] * head_v_dim] = s_shard[r];
+  }
+}
+
 __global__ void qwen4_exp_gdn_state_transpose_f32_kernel(
     const float* __restrict__ source,
     float* __restrict__ destination,
@@ -718,6 +852,61 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_columnwarps_f32(
       dim3(static_cast<uint32_t>(num_v_heads),
            static_cast<uint32_t>(col_blocks)),
       dim3(128), 0, stream,
+      static_cast<const float*>(conv),
+      static_cast<const float*>(alpha),
+      static_cast<const float*>(beta_logits),
+      static_cast<const float*>(dt_bias),
+      static_cast<const float*>(a),
+      static_cast<float*>(recurrent_state),
+      static_cast<float*>(core),
+      tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
+  const int err = static_cast<int>(hipGetLastError());
+  if (err != 0) return err;
+  const int64_t core_width = num_v_heads * head_v_dim;
+  hipLaunchKernelGGL(
+      qwen4_exp_gdn_core_norm_gate_f32_kernel,
+      dim3(static_cast<uint32_t>(tokens),
+           static_cast<uint32_t>(num_v_heads)),
+      dim3(32), 0, stream,
+      static_cast<float*>(core),
+      static_cast<const float*>(output_gate),
+      static_cast<const float*>(norm_weight),
+      tokens, core_width, num_v_heads, head_v_dim);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_gdn_prefill_tiled16_f32(
+    const void* conv,
+    const void* output_gate,
+    const void* alpha,
+    const void* beta_logits,
+    const void* dt_bias,
+    const void* a,
+    const void* norm_weight,
+    void* recurrent_state,
+    void* core,
+    int64_t tokens,
+    int64_t num_k_heads,
+    int64_t num_v_heads,
+    int64_t head_k_dim,
+    int64_t head_v_dim,
+    hipStream_t stream) {
+  if (!conv || !output_gate || !alpha || !beta_logits || !dt_bias || !a ||
+      !norm_weight || !recurrent_state || !core || tokens < 16 ||
+      num_k_heads != 16 || num_v_heads != 32 || head_k_dim != 128 ||
+      head_v_dim != 128) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int token_tile = 16;
+  constexpr int warps_per_block = 16;
+  constexpr int rows_per_lane = 4;
+  const int64_t col_blocks = head_v_dim / warps_per_block;
+  hipLaunchKernelGGL(
+      (qwen4_exp_gdn_prefill_tiled_f32_kernel<
+          token_tile, warps_per_block, rows_per_lane>),
+      dim3(static_cast<uint32_t>(num_v_heads),
+           static_cast<uint32_t>(col_blocks)),
+      dim3(warps_per_block * 32), 0, stream,
       static_cast<const float*>(conv),
       static_cast<const float*>(alpha),
       static_cast<const float*>(beta_logits),
