@@ -2432,6 +2432,18 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     return scratch.output
 
 
+def qwen4_exp_qsa_h256_wave_prefill_selected(
+    *, head_dim: int, rows: int, backend: str
+) -> bool:
+    return (
+        head_dim == 256 and rows >= 16
+        and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and is_registered(KernelKey(
+            backend, "qsa_sparse_attention", "bf16_kv", "strict_h256_wave_rows_spans"))
+    )
+
+
 def run_qwen4_exp_qsa_prefill_token_mixer(
     mixed_ptr: int,
     weights: Qwen4ExpQSAMixerDeviceWeights,
@@ -2724,7 +2736,14 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             stream,
         )
         sparse_attention_rows = qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32
-        if (
+        backend = str(weights.projections["attn_q"].backend)
+        if qwen4_exp_qsa_h256_wave_prefill_selected(
+            head_dim=head_dim, rows=sparse_rows, backend=backend
+        ):
+            sparse_attention_rows = resolve(
+                backend=backend, layer="qsa_sparse_attention", quant="bf16_kv",
+                variant="strict_h256_wave_rows_spans")
+        elif (
             head_dim == 128
             and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")
             not in {"", "0", "false", "False"}

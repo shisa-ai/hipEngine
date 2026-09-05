@@ -4790,9 +4790,11 @@ Always retain selected-GEMV strict fallback.
 
 ## Qwen4Exp H256 wave sparse rows (2026-09-05)
 
-`strict_h256_wave_rows_spans` is registered but not yet selected by runtime.
+`strict_h256_wave_rows_spans` has default-off prefill wiring through
+`HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` for D256 rows>=16.
 Promote only after the complete-model gate and actual transition/isolation
 evidence; remove an unneeded candidate if those gates reject it. Keep the
 score-product register boundary: removing it changes arithmetic under the
 current HIP compiler. Preserve `strict_rows_spans` and the separate decode
-ordered parent. No new env flag is introduced by the standalone leaf.
+ordered parent. Remove the flag/route if the complete-model gate fails;
+otherwise retain an opt-out only while it is useful for rollback and bisection.
