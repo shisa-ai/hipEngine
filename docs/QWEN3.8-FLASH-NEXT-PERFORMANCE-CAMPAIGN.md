@@ -2,6 +2,17 @@
 
 ## Active execution contract (2026-09-05)
 
+**Owner decision, 2026-09-05:** retain the substantial measured exact prefill
+gains and work on decode afterward. Promote the exact H256/page256 sparse
+QSA and bundled-Q4 publication paths with their strict fallbacks after
+combined correctness validation. This explicitly accepts their reported
+small hot-decode throughput tradeoffs for retention; it supersedes the
+default-off performance dispositions below for these two candidates only.
+Keep all adverse timing rows visible and track decode optimization as open
+work. No numerical, state, isolation or task-quality threshold is relaxed,
+and D1 is not resolved by this decision. Independent HIP/Vulkan parity and
+statistical closure claims still require their named evidence.
+
 The owner has authorized continued optimization with exclusive access to the
 Framework Desktop, hostname `gfx1151`, machine ID
 `55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S.
@@ -52,10 +63,10 @@ all measured phase clocks exactly2700 MHz and exact outputs. Original
 2900/2900 high policy is restored.
 [Clock control](../benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json).
 This supports operating-point coupling, not an intrinsic arithmetic/state
-regression; it does not waive the original performance gate or promote QSA.
-Do not keep repeating unchanged2900 runs. Continue the remaining dominant
-MoE/dense work, then qualify the combined path, or seek an explicit owner
-decision on the operating-point tradeoff. Strict fallbacks and D1 remain.
+regression. The subsequent owner decision above accepts this measured
+tradeoff for retention; the original adverse results remain evidence.
+Do not keep repeating unchanged2900 runs. Continue remaining MoE/dense and
+decode work from the retained combined path. Strict fallbacks and D1 remain.
 
 **Retained grouped-row4 production improvement (2026-09-05):** a clean
 one-process/one-residency 12-case tg128 A/B at `82caa403d` measures weighted

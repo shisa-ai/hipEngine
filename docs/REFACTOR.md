@@ -4790,30 +4790,20 @@ Always retain selected-GEMV strict fallback.
 
 ## Qwen4Exp H256 wave sparse rows (2026-09-05)
 
-`strict_h256_wave_rows_spans` has default-off prefill wiring through
-`HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` for D256 rows>=16.
-The first complete A/B passes 72/72 exact trajectories and improves p4096
-prefill 19.29%, but long decode is 0.48% lower overall. This concrete phase
-regression is pending original-protocol focused confirmation; the English
-full-KV/state diagnostic alone cannot waive it.
-Promote only after the complete-model gate and actual transition/isolation
-evidence; remove an unneeded candidate if those gates reject it. Keep the
-score-product register boundary: removing it changes arithmetic under the
-current HIP compiler. Preserve `strict_rows_spans` and the separate decode
-ordered parent. Remove the flag/route if the complete-model gate fails;
-otherwise retain an opt-out only while it is useful for rollback and bisection.
-The page256 addressing sibling is standalone only. Prefer it only after
-the same model/clock gates; remove redundant generic runtime dispatch if
-the specialization covers all qualified shapes, but retain a strict fallback.
-It can now be tested through the existing QSA flag's explicit `page256`
-value and a separately counted A/B arm; the flag's default remains off.
+Production selects page256 wave prefill through
+`HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL=page256`; strict binds zero.
+The owner accepted the measured hot-decode tradeoff on 2026-09-05.
+Keep the score-product register boundary: removing it changes arithmetic
+under the current compiler. Preserve `strict_rows_spans` and the separate
+ordered decode parent. Retain the post-binder opt-out for reproducing the
+tradeoff and rollback; remove the generic-wave experimental selector when
+no longer needed for bisection. Decode performance remains open work.
 
 ## Qwen4Exp Q4 bundled publication (2026-09-05)
 
-The separately registered exact Q4 gate/up bundle variant is a standalone
-candidate with default-off `HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL` wiring.
-Promote only after complete-owner and full-model validation;
-remove the alternative if it fails that gate. Preserve the prior exact
-grouped-Q4 owner as strict fallback. The real-model full-logit/full-KV
-state gate passes; full 12-case tg128 timing is still pending. Remove the
-flag on rejection, or replace it with profile-owned selection after promotion.
+Production selects bundled Q4 publication through
+`HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL=1`; strict binds zero. Its complete
+12-case timing and real-model state gates pass correctness, and the owner
+accepted the measured decode tradeoff. Keep the old exact grouped owner as
+strict fallback. Replace the environment selector with direct profile-owned
+selection when that runtime boundary is migrated; keep rollback capability.

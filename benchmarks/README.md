@@ -186,7 +186,22 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
-Standalone exact Q4 gate/up bundled publication reduces the actual-weight
+Production retains exact page256 QSA and bundled-Q4 prefill under the
+2026-09-05 owner decision to take the prefill gains and optimize decode next.
+Strict keeps the prior owners. Separate component A/B measurements are:
+
+| Component | Shape | Prefill before -> after (tok/s) | Gain | Decode change |
+| --- | --- | ---: | ---: | ---: |
+| Bundled Q4 | p512 | 123.34 -> 127.62 | +3.47% | -0.23% |
+| Bundled Q4 | p1024 | 121.47 -> 125.33 | +3.18% | -0.06% |
+| Bundled Q4 | p4096 | 97.34 -> 99.72 | +2.45% | -0.64% |
+| H256 wave QSA | p4096 | 97.83 -> 116.70 | +19.29% | -0.48% |
+
+These are separate same-residency component runs, not additive gains or
+combined throughput. The measured hot-decode tradeoffs remain open work.
+[Promotion and evidence](results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
+
+The original standalone exact Q4 gate/up bundled publication screen reduces the actual-weight
 gate/up+SiLU boundary at tokens512 from30.39 to24.97 ms (1.217x), all pairs
 exact. Timing variability and whole-model admission remain open; this is
 not a production gain.
@@ -219,15 +234,15 @@ prefill improves 3.07%/3.19%/2.55%, all 72 measured trajectories are exact,
 max per-case prefill CV is 0.23%, and teardown is clean.
 [Production evidence](results/2026-09-05-framework-qwen4exp-row4-production.json).
 
-The next H256 sparse-attention candidate is standalone only: at
+The original H256 sparse-attention standalone screen at
 24Q/2KV/D256 and selected stride2051, rows512 attention measures
-171.93→28.02 ms (6.14x), with exact parent output bits. It is not a
-whole-model gain or runtime default.
+171.93→28.02 ms (6.14x), with exact parent output bits. This leaf ratio is
+not a whole-model gain.
 [QSA candidate](results/2026-09-05-framework-qwen4exp-qsa-h256-wave.json).
 
 Its full-suite internal A/B measures p4096 prefill 97.83→116.70 tok/s
 (+19.29%), but decode 15.27→15.20 (-0.48%). All 72 trajectories are exact;
-the candidate stays default-off pending focused decode followup. An English
+the candidate initially stayed default-off pending focused decode followup. An English
 128-step probe also matches full logits and complete K/V, but is not a
 replacement for the original timing protocol.
 [Full-suite audit](results/2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json).
@@ -240,7 +255,7 @@ the harness now preserves original fixture indices for focused comparisons.
 The corrected-order three-case rerun still finds mixed-language decode
 down 0.64%; English/Japanese are effectively flat and all 18 trajectories
 are exact. A 2880 MHz clock snapshot during the affected section is a
-lead, not a causal diagnosis. QSA remains default-off.
+lead, not a causal diagnosis. The later owner decision accepts the measured tradeoff.
 [Corrected followup](results/2026-09-05-framework-qwen4exp-qsa-corrected-followup.json).
 
 The standalone page256-addressing sibling reduces rows512 attention from

@@ -6,6 +6,11 @@ hipEngine with upstream llama.cpp and halo-box master on HIP and Vulkan.
 
 ## 1. Active comparator set
 
+Later on 2026-09-05, the owner approved retaining exact QSA page256 and
+bundled-Q4 prefill in production while optimizing decode afterward. The
+screen below remains tied to its named revisions and is not a combined-default
+speed measurement. See the [promotion packet](../benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
+
 | Engine | Backend | Source commit | Release build |
 | --- | --- | --- | --- |
 | Upstream llama.cpp | HIP | `4d9176092d00586775af140581bb0b558ddc4389` | `/home/lhl/llama.cpp/llama.cpp-hip/build-hip-release-4d917609/bin/` |
