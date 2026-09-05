@@ -242,6 +242,11 @@ The standalone page256-addressing sibling reduces rows512 attention from
 This does not establish a power benefit or clear the whole-model decode gate.
 [Page256 screen](results/2026-09-05-framework-qwen4exp-qsa-page256.json).
 
+External phase telemetry reproduces page256's late mixed decode loss and
+records lower after-arm clocks (about 2880–2882 versus 2898 MHz). It is
+correlation, not yet a causal proof or promotion.
+[Phase clocks](results/2026-09-05-framework-qwen4exp-qsa-phase-clocks.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 

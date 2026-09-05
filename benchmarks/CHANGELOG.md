@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 Framework Qwen4Exp QSA phase clocks] Page256 long-case diagnostic preserves exact outputs but repeats mixed decode loss; late after clocks average2880–2882 versus parent2898 MHz. Correlation only, no promoted metric or default change. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-phase-clocks.json`.
+
 - [2026-09-05 Framework Qwen4Exp QSA page256] Standalone address specialization: generic-wave rows512 28.134→27.560 ms (-2.04%), both arms checked exact, 20 focused tests and cached trace pass. No runtime promotion or power claim. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-page256.json`.
 
 - [2026-09-05 Framework Qwen4Exp QSA corrected followup] Original-index three-case rerun: prefill 98.00→117.55 tok/s (+19.95%), decode 15.285→15.250 (-0.23%); mixed-language -0.64% persists, all 18 outputs exact. SCLK2880/2900 MHz snapshot is a lead only; default off. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-corrected-followup.json`.

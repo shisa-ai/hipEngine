@@ -1,0 +1,1314 @@
+{
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_page256_phase_clock_correlation",
+  "status": "diagnostic_clock_correlated_decode_loss",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "a00d1e1d98e443872e6065c7bf2f60d22ec4a04b",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+    "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+    "fell_back_to_strict": false
+  },
+  "protocol": {
+    "one_model_residency": true,
+    "one_python_process": true,
+    "case_ids": [
+      "general_en-p4096",
+      "general_ja-p4096",
+      "mixed_ja_en-p4096"
+    ],
+    "case_order": "fixture order",
+    "case_counterbalance_indices": {
+      "general_en-p4096": 5,
+      "general_ja-p4096": 8,
+      "mixed_ja_en-p4096": 11
+    },
+    "arm_order_even_case": [
+      "before",
+      "after",
+      "after",
+      "before",
+      "before",
+      "after"
+    ],
+    "arm_order_odd_case": [
+      "after",
+      "before",
+      "before",
+      "after",
+      "after",
+      "before"
+    ],
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "prefill_chunk_size": 512,
+    "timing_boundary": "synchronized runner.prefill including first greedy output, then exactly 128 runner.step transitions and a final device synchronize"
+  },
+  "arms": {
+    "before": {
+      "sparse_prefill": "strict_rows_spans"
+    },
+    "after": {
+      "sparse_prefill": "strict_h256_page256_wave_rows_spans"
+    }
+  },
+  "commands": {
+    "argv": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "/home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--route-package",
+      "qsa-h256-page256",
+      "--case-id",
+      "general_en-p4096",
+      "--case-id",
+      "general_ja-p4096",
+      "--case-id",
+      "mixed_ja_en-p4096",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-page256-clocked-ab.json"
+    ],
+    "shell": "/home/lhl/hipEngine/.venv/bin/python /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --route-package qsa-h256-page256 --case-id general_en-p4096 --case-id general_ja-p4096 --case-id mixed_ja_en-p4096 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-page256-clocked-ab.json"
+  },
+  "correctness": {
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "mismatched_case_ids": []
+  },
+  "by_case": {
+    "general_en-p4096": {
+      "category": "general_en",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 98.24609230465525,
+      "after_prefill_tok_s_weighted": 118.35373294950051,
+      "after_over_before_prefill": 1.2046660602285602,
+      "before_decode_tok_s_weighted": 15.280430513074487,
+      "after_decode_tok_s_weighted": 15.27780746871125,
+      "after_over_before_decode": 0.9998283396295025,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+        ],
+        "after": [
+          "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+        ]
+      }
+    },
+    "general_ja-p4096": {
+      "category": "general_ja",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 98.32501115029271,
+      "after_prefill_tok_s_weighted": 118.28499930315802,
+      "after_over_before_prefill": 1.2030001107485853,
+      "before_decode_tok_s_weighted": 15.279010019270146,
+      "after_decode_tok_s_weighted": 15.281194581255546,
+      "after_over_before_decode": 1.0001429779797673,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+        ],
+        "after": [
+          "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+        ]
+      }
+    },
+    "mixed_ja_en-p4096": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 4096,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 97.55557664301313,
+      "after_prefill_tok_s_weighted": 116.48834457256123,
+      "after_over_before_prefill": 1.1940716110861518,
+      "before_decode_tok_s_weighted": 15.283958349278484,
+      "after_decode_tok_s_weighted": 15.195877031628358,
+      "after_over_before_decode": 0.9942370087880877,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+        ],
+        "after": [
+          "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+        ]
+      }
+    }
+  },
+  "by_shape": {
+    "4096": {
+      "case_count": 3,
+      "samples_per_mode": 9,
+      "before_prefill_tok_s_weighted": 98.04100539832034,
+      "after_prefill_tok_s_weighted": 117.70265660216805,
+      "after_over_before_prefill": 1.200545181314354,
+      "before_decode_tok_s_weighted": 15.281132677352906,
+      "after_decode_tok_s_weighted": 15.251524158918766,
+      "after_over_before_decode": 0.9980624133655995
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83545265060,
+    "total_allocated_bytes": 83555750820,
+    "total_freed_bytes": 83555750820,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "samples": [
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "repetition": 0,
+      "prefill_ms": 34627.134351,
+      "decode_ms": 8376.350349,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1881594184253026,
+          1881628811387377
+        ],
+        "decode": [
+          1881628811389251,
+          1881637187739600
+        ]
+      },
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "repetition": 0,
+      "prefill_ms": 41693.648906,
+      "decode_ms": 8377.559821,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1881637188224630,
+          1881678881873536
+        ],
+        "decode": [
+          1881678881875960,
+          1881687259435781
+        ]
+      },
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "repetition": 1,
+      "prefill_ms": 41692.165601,
+      "decode_ms": 8377.203252,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1881687259894522,
+          1881728952060123
+        ],
+        "decode": [
+          1881728952062768,
+          1881737329266020
+        ]
+      },
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "repetition": 1,
+      "prefill_ms": 34588.392268,
+      "decode_ms": 8380.410493,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1881737329743106,
+          1881771918135374
+        ],
+        "decode": [
+          1881771918137448,
+          1881780298547941
+        ]
+      },
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "after",
+      "repetition": 2,
+      "prefill_ms": 34608.828505,
+      "decode_ms": 8377.735766,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1881780299086692,
+          1881814907915197
+        ],
+        "decode": [
+          1881814907918062,
+          1881823285653828
+        ]
+      },
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+    },
+    {
+      "case_id": "general_en-p4096",
+      "mode": "before",
+      "repetition": 2,
+      "prefill_ms": 41687.862336,
+      "decode_ms": 8375.418938,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1881823286191837,
+          1881864974054173
+        ],
+        "decode": [
+          1881864974057179,
+          1881873349476117
+        ]
+      },
+      "output_token_ids_sha256": "74b2716677053cba3663304e2c654694d9f951b3916d01734c26daed2c0c2af6"
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "before",
+      "repetition": 0,
+      "prefill_ms": 41636.008393,
+      "decode_ms": 8380.918172,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1881970466539207,
+          1882012102547600
+        ],
+        "decode": [
+          1882012102549464,
+          1882020483467636
+        ]
+      },
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "after",
+      "repetition": 0,
+      "prefill_ms": 34622.05058,
+      "decode_ms": 8379.03567,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1882020484047273,
+          1882055106097853
+        ],
+        "decode": [
+          1882055106100288,
+          1882063485135958
+        ]
+      },
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "after",
+      "repetition": 1,
+      "prefill_ms": 34632.217703,
+      "decode_ms": 8375.116425,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1882063485723240,
+          1882098117940943
+        ],
+        "decode": [
+          1882098117943588,
+          1882106493060013
+        ]
+      },
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "before",
+      "repetition": 1,
+      "prefill_ms": 41681.702084,
+      "decode_ms": 8378.440244,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1882106493671310,
+          1882148175373394
+        ],
+        "decode": [
+          1882148175375398,
+          1882156553815642
+        ]
+      },
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "before",
+      "repetition": 2,
+      "prefill_ms": 41655.578173,
+      "decode_ms": 8373.159955,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1882156554454401,
+          1882198210032574
+        ],
+        "decode": [
+          1882198210034568,
+          1882206583194523
+        ]
+      },
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+    },
+    {
+      "case_id": "general_ja-p4096",
+      "mode": "after",
+      "repetition": 2,
+      "prefill_ms": 34630.417623,
+      "decode_ms": 8374.773393,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1882206583833032,
+          1882241214250655
+        ],
+        "decode": [
+          1882241214252819,
+          1882249589026212
+        ]
+      },
+      "output_token_ids_sha256": "3550671c83d9dfcaaf451b6ae1a9032a995d585e28dc3512e1c102dfa3d7096a"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "repetition": 0,
+      "prefill_ms": 34884.361992,
+      "decode_ms": 8409.485607,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1882345955841493,
+          1882380840203485
+        ],
+        "decode": [
+          1882380840208174,
+          1882389249693781
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "repetition": 0,
+      "prefill_ms": 41953.335489,
+      "decode_ms": 8374.835064,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1882389250360432,
+          1882431203695921
+        ],
+        "decode": [
+          1882431203698045,
+          1882439578533109
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "repetition": 1,
+      "prefill_ms": 41968.97102,
+      "decode_ms": 8374.62012,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1882439579217313,
+          1882481548188333
+        ],
+        "decode": [
+          1882481548191319,
+          1882489922811439
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "repetition": 1,
+      "prefill_ms": 35275.321318,
+      "decode_ms": 8428.076382,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1882489923531672,
+          1882525198852990
+        ],
+        "decode": [
+          1882525198857108,
+          1882533626933490
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "after",
+      "repetition": 2,
+      "prefill_ms": 35327.265149,
+      "decode_ms": 8432.450344,
+      "candidate_calls": 48,
+      "phase_windows_ns": {
+        "prefill": [
+          1882533627684219,
+          1882568954949368
+        ],
+        "decode": [
+          1882568954953275,
+          1882577387403619
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    },
+    {
+      "case_id": "mixed_ja_en-p4096",
+      "mode": "before",
+      "repetition": 2,
+      "prefill_ms": 42036.663986,
+      "decode_ms": 8374.92629,
+      "candidate_calls": 0,
+      "phase_windows_ns": {
+        "prefill": [
+          1882577388158215,
+          1882619424822201
+        ],
+        "decode": [
+          1882619424824615,
+          1882627799750905
+        ]
+      },
+      "output_token_ids_sha256": "0bc2b0d5ebdc843170a56ed2dc5ff5664dc37ce386c27e0fd7104fdcdf5ab658"
+    }
+  ],
+  "telemetry": {
+    "command": [
+      ".venv/bin/python",
+      "scripts/qwen4exp_halo_box_campaign_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--route-package",
+      "qsa-h256-page256",
+      "--case-id",
+      "general_en-p4096",
+      "--case-id",
+      "general_ja-p4096",
+      "--case-id",
+      "mixed_ja_en-p4096",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--require-cached-build",
+      "--output",
+      "/tmp/qwen4exp-page256-clocked-ab.json"
+    ],
+    "hwmon": "/sys/class/drm/card1/device/hwmon/hwmon6",
+    "interval_s": 0.25,
+    "scope": "external sampler, diagnostic only; no injected delays in benchmark",
+    "phases": [
+      {
+        "case_id": "general_en-p4096",
+        "mode": "after",
+        "repetition": 0,
+        "prefill": {
+          "samples": 139,
+          "sclk_hz": {
+            "min": 2851000000,
+            "max": 2899000000,
+            "mean": 2882625899.2805758
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 83000,
+            "mean": 77856.11510791368
+          },
+          "power_uw": {
+            "min": 100059000,
+            "max": 141095000,
+            "mean": 131681035.97122303
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2871000000,
+            "max": 2900000000,
+            "mean": 2896121212.121212
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 71000,
+            "mean": 67424.24242424243
+          },
+          "power_uw": {
+            "min": 100094000,
+            "max": 135015000,
+            "mean": 106599787.87878788
+          }
+        }
+      },
+      {
+        "case_id": "general_en-p4096",
+        "mode": "before",
+        "repetition": 0,
+        "prefill": {
+          "samples": 166,
+          "sclk_hz": {
+            "min": 2863000000,
+            "max": 2899000000,
+            "mean": 2886783132.5301204
+          },
+          "temperature_millic": {
+            "min": 70000,
+            "max": 84000,
+            "mean": 76849.39759036145
+          },
+          "power_uw": {
+            "min": 103083000,
+            "max": 138038000,
+            "mean": 124560933.73493975
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2880000000,
+            "max": 2900000000,
+            "mean": 2897264705.882353
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 73000,
+            "mean": 66558.82352941176
+          },
+          "power_uw": {
+            "min": 99099000,
+            "max": 121059000,
+            "mean": 103550852.94117647
+          }
+        }
+      },
+      {
+        "case_id": "general_en-p4096",
+        "mode": "before",
+        "repetition": 1,
+        "prefill": {
+          "samples": 166,
+          "sclk_hz": {
+            "min": 2863000000,
+            "max": 2898000000,
+            "mean": 2886680722.8915663
+          },
+          "temperature_millic": {
+            "min": 70000,
+            "max": 81000,
+            "mean": 76475.90361445783
+          },
+          "power_uw": {
+            "min": 102091000,
+            "max": 137097000,
+            "mean": 124104638.55421686
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2881000000,
+            "max": 2900000000,
+            "mean": 2897424242.4242425
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 70000,
+            "mean": 66969.69696969698
+          },
+          "power_uw": {
+            "min": 100077000,
+            "max": 120010000,
+            "mean": 103833757.57575758
+          }
+        }
+      },
+      {
+        "case_id": "general_en-p4096",
+        "mode": "after",
+        "repetition": 1,
+        "prefill": {
+          "samples": 138,
+          "sclk_hz": {
+            "min": 2859000000,
+            "max": 2900000000,
+            "mean": 2882282608.695652
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 84000,
+            "mean": 78442.02898550725
+          },
+          "power_uw": {
+            "min": 101018000,
+            "max": 141093000,
+            "mean": 132115115.94202898
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2864000000,
+            "max": 2900000000,
+            "mean": 2895264705.882353
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 79000,
+            "mean": 68147.05882352941
+          },
+          "power_uw": {
+            "min": 101080000,
+            "max": 142031000,
+            "mean": 107693470.58823529
+          }
+        }
+      },
+      {
+        "case_id": "general_en-p4096",
+        "mode": "after",
+        "repetition": 2,
+        "prefill": {
+          "samples": 138,
+          "sclk_hz": {
+            "min": 2858000000,
+            "max": 2898000000,
+            "mean": 2882166666.6666665
+          },
+          "temperature_millic": {
+            "min": 71000,
+            "max": 84000,
+            "mean": 78840.57971014493
+          },
+          "power_uw": {
+            "min": 104055000,
+            "max": 142006000,
+            "mean": 132136971.01449275
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2865000000,
+            "max": 2900000000,
+            "mean": 2895242424.242424
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 74000,
+            "mean": 68212.12121212122
+          },
+          "power_uw": {
+            "min": 101051000,
+            "max": 139030000,
+            "mean": 108930878.78787878
+          }
+        }
+      },
+      {
+        "case_id": "general_en-p4096",
+        "mode": "before",
+        "repetition": 2,
+        "prefill": {
+          "samples": 167,
+          "sclk_hz": {
+            "min": 2861000000,
+            "max": 2899000000,
+            "mean": 2886245508.982036
+          },
+          "temperature_millic": {
+            "min": 70000,
+            "max": 83000,
+            "mean": 77017.96407185629
+          },
+          "power_uw": {
+            "min": 101052000,
+            "max": 139082000,
+            "mean": 124510628.74251497
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2882000000,
+            "max": 2900000000,
+            "mean": 2897545454.5454545
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 69000,
+            "mean": 66848.48484848485
+          },
+          "power_uw": {
+            "min": 100086000,
+            "max": 119048000,
+            "mean": 103806696.96969697
+          }
+        }
+      },
+      {
+        "case_id": "general_ja-p4096",
+        "mode": "before",
+        "repetition": 0,
+        "prefill": {
+          "samples": 166,
+          "sclk_hz": {
+            "min": 2863000000,
+            "max": 2897000000,
+            "mean": 2886753012.048193
+          },
+          "temperature_millic": {
+            "min": 71000,
+            "max": 83000,
+            "mean": 77415.6626506024
+          },
+          "power_uw": {
+            "min": 106079000,
+            "max": 139060000,
+            "mean": 124501686.74698795
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2886000000,
+            "max": 2900000000,
+            "mean": 2898030303.030303
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 70000,
+            "mean": 66696.9696969697
+          },
+          "power_uw": {
+            "min": 99098000,
+            "max": 120014000,
+            "mean": 103716515.15151516
+          }
+        }
+      },
+      {
+        "case_id": "general_ja-p4096",
+        "mode": "after",
+        "repetition": 0,
+        "prefill": {
+          "samples": 138,
+          "sclk_hz": {
+            "min": 2860000000,
+            "max": 2897000000,
+            "mean": 2882086956.521739
+          },
+          "temperature_millic": {
+            "min": 72000,
+            "max": 86000,
+            "mean": 78565.21739130435
+          },
+          "power_uw": {
+            "min": 102005000,
+            "max": 142080000,
+            "mean": 131963985.50724638
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2867000000,
+            "max": 2900000000,
+            "mean": 2895588235.2941175
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 75000,
+            "mean": 68029.41176470589
+          },
+          "power_uw": {
+            "min": 101028000,
+            "max": 140062000,
+            "mean": 107254941.1764706
+          }
+        }
+      },
+      {
+        "case_id": "general_ja-p4096",
+        "mode": "after",
+        "repetition": 1,
+        "prefill": {
+          "samples": 138,
+          "sclk_hz": {
+            "min": 2860000000,
+            "max": 2897000000,
+            "mean": 2881666666.6666665
+          },
+          "temperature_millic": {
+            "min": 72000,
+            "max": 84000,
+            "mean": 79181.15942028986
+          },
+          "power_uw": {
+            "min": 105048000,
+            "max": 142028000,
+            "mean": 132651855.07246377
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2869000000,
+            "max": 2900000000,
+            "mean": 2895787878.787879
+          },
+          "temperature_millic": {
+            "min": 67000,
+            "max": 73000,
+            "mean": 68424.24242424243
+          },
+          "power_uw": {
+            "min": 102021000,
+            "max": 137067000,
+            "mean": 107472393.93939394
+          }
+        }
+      },
+      {
+        "case_id": "general_ja-p4096",
+        "mode": "before",
+        "repetition": 1,
+        "prefill": {
+          "samples": 166,
+          "sclk_hz": {
+            "min": 2839000000,
+            "max": 2898000000,
+            "mean": 2885409638.554217
+          },
+          "temperature_millic": {
+            "min": 70000,
+            "max": 83000,
+            "mean": 77415.6626506024
+          },
+          "power_uw": {
+            "min": 104042000,
+            "max": 141039000,
+            "mean": 124848849.39759035
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2880000000,
+            "max": 2900000000,
+            "mean": 2897411764.7058825
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 74000,
+            "mean": 66764.70588235294
+          },
+          "power_uw": {
+            "min": 100048000,
+            "max": 121001000,
+            "mean": 103757588.23529412
+          }
+        }
+      },
+      {
+        "case_id": "general_ja-p4096",
+        "mode": "before",
+        "repetition": 2,
+        "prefill": {
+          "samples": 166,
+          "sclk_hz": {
+            "min": 2861000000,
+            "max": 2899000000,
+            "mean": 2886668674.6987953
+          },
+          "temperature_millic": {
+            "min": 69000,
+            "max": 84000,
+            "mean": 76843.3734939759
+          },
+          "power_uw": {
+            "min": 103060000,
+            "max": 139002000,
+            "mean": 124769084.3373494
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2884000000,
+            "max": 2900000000,
+            "mean": 2897787878.787879
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 71000,
+            "mean": 67303.0303030303
+          },
+          "power_uw": {
+            "min": 100053000,
+            "max": 119056000,
+            "mean": 104778181.81818181
+          }
+        }
+      },
+      {
+        "case_id": "general_ja-p4096",
+        "mode": "after",
+        "repetition": 2,
+        "prefill": {
+          "samples": 139,
+          "sclk_hz": {
+            "min": 2859000000,
+            "max": 2900000000,
+            "mean": 2882467625.8992805
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 85000,
+            "mean": 79086.3309352518
+          },
+          "power_uw": {
+            "min": 109096000,
+            "max": 142067000,
+            "mean": 132243489.2086331
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2868000000,
+            "max": 2900000000,
+            "mean": 2895636363.6363635
+          },
+          "temperature_millic": {
+            "min": 67000,
+            "max": 73000,
+            "mean": 68242.42424242424
+          },
+          "power_uw": {
+            "min": 101057000,
+            "max": 137009000,
+            "mean": 108045484.84848484
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "after",
+        "repetition": 0,
+        "prefill": {
+          "samples": 140,
+          "sclk_hz": {
+            "min": 2857000000,
+            "max": 2900000000,
+            "mean": 2884164285.714286
+          },
+          "temperature_millic": {
+            "min": 64000,
+            "max": 85000,
+            "mean": 79314.28571428571
+          },
+          "power_uw": {
+            "min": 108059000,
+            "max": 141070000,
+            "mean": 132163100
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2883000000,
+            "max": 2900000000,
+            "mean": 2897727272.7272725
+          },
+          "temperature_millic": {
+            "min": 67000,
+            "max": 71000,
+            "mean": 68393.93939393939
+          },
+          "power_uw": {
+            "min": 101017000,
+            "max": 129052000,
+            "mean": 107348575.75757575
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "before",
+        "repetition": 0,
+        "prefill": {
+          "samples": 167,
+          "sclk_hz": {
+            "min": 2876000000,
+            "max": 2899000000,
+            "mean": 2890359281.4371257
+          },
+          "temperature_millic": {
+            "min": 70000,
+            "max": 83000,
+            "mean": 76880.23952095809
+          },
+          "power_uw": {
+            "min": 107018000,
+            "max": 136067000,
+            "mean": 123207766.46706587
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2885000000,
+            "max": 2900000000,
+            "mean": 2898000000
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 76000,
+            "mean": 66852.94117647059
+          },
+          "power_uw": {
+            "min": 101009000,
+            "max": 120048000,
+            "mean": 103985529.41176471
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "before",
+        "repetition": 1,
+        "prefill": {
+          "samples": 167,
+          "sclk_hz": {
+            "min": 2879000000,
+            "max": 2899000000,
+            "mean": 2891035928.1437125
+          },
+          "temperature_millic": {
+            "min": 68000,
+            "max": 82000,
+            "mean": 76724.5508982036
+          },
+          "power_uw": {
+            "min": 104045000,
+            "max": 135062000,
+            "mean": 122382772.45508982
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2886000000,
+            "max": 2900000000,
+            "mean": 2898088235.2941175
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 73000,
+            "mean": 66852.94117647059
+          },
+          "power_uw": {
+            "min": 100090000,
+            "max": 119053000,
+            "mean": 103786529.41176471
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "after",
+        "repetition": 1,
+        "prefill": {
+          "samples": 140,
+          "sclk_hz": {
+            "min": 2755000000,
+            "max": 2899000000,
+            "mean": 2863507142.857143
+          },
+          "temperature_millic": {
+            "min": 70000,
+            "max": 81000,
+            "mean": 76678.57142857143
+          },
+          "power_uw": {
+            "min": 104056000,
+            "max": 134092000,
+            "mean": 124589471.42857143
+          }
+        },
+        "decode": {
+          "samples": 34,
+          "sclk_hz": {
+            "min": 2751000000,
+            "max": 2900000000,
+            "mean": 2880205882.352941
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 69000,
+            "mean": 67176.4705882353
+          },
+          "power_uw": {
+            "min": 100073000,
+            "max": 118076000,
+            "mean": 102816000
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "after",
+        "repetition": 2,
+        "prefill": {
+          "samples": 141,
+          "sclk_hz": {
+            "min": 2743000000,
+            "max": 2898000000,
+            "mean": 2852602836.8794327
+          },
+          "temperature_millic": {
+            "min": 68000,
+            "max": 81000,
+            "mean": 76574.46808510639
+          },
+          "power_uw": {
+            "min": 103099000,
+            "max": 135026000,
+            "mean": 122731801.41843972
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2770000000,
+            "max": 2900000000,
+            "mean": 2882242424.242424
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 68000,
+            "mean": 66545.45454545454
+          },
+          "power_uw": {
+            "min": 100048000,
+            "max": 112093000,
+            "mean": 102175818.18181819
+          }
+        }
+      },
+      {
+        "case_id": "mixed_ja_en-p4096",
+        "mode": "before",
+        "repetition": 2,
+        "prefill": {
+          "samples": 168,
+          "sclk_hz": {
+            "min": 2807000000,
+            "max": 2899000000,
+            "mean": 2884547619.047619
+          },
+          "temperature_millic": {
+            "min": 66000,
+            "max": 82000,
+            "mean": 75845.23809523809
+          },
+          "power_uw": {
+            "min": 100035000,
+            "max": 134099000,
+            "mean": 120429315.47619048
+          }
+        },
+        "decode": {
+          "samples": 33,
+          "sclk_hz": {
+            "min": 2888000000,
+            "max": 2900000000,
+            "mean": 2898393939.3939395
+          },
+          "temperature_millic": {
+            "min": 65000,
+            "max": 69000,
+            "mean": 66575.75757575757
+          },
+          "power_uw": {
+            "min": 100023000,
+            "max": 118048000,
+            "mean": 103714090.9090909
+          }
+        }
+      }
+    ],
+    "raw_path": "/tmp/qwen4exp-page256-phase-clocks.json",
+    "raw_sha256": "2ee7579b7f1211ba9a1200f1f0bdbb20c994660a472433db62abbad4f6d09941"
+  },
+  "raw_result": {
+    "path": "/tmp/qwen4exp-page256-clocked-ab.json",
+    "sha256": "773e65bcf97f1788c5b4bf597ed30de242f730ccf543ab4211120305a3731b09"
+  },
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "findings": [
+    "Late mixed after decode clock means 2880.2/2882.2 MHz versus parent 2898.0/2898.1/2898.4 MHz accompany rate loss. This supports but does not prove causation.",
+    "First mixed after rate loss is not explained by the nearly equal phase mean clock; sensor sampling/lag and transition dynamics remain limitations.",
+    "Requested OD_SCLK min/max2900 and high policy did not make effective clocks constant.",
+    "Page256 remains default-off; exact 18 trajectories, full-KV state gate and clean teardown do not alone waive measured performance loss."
+  ],
+  "next_control": "Temporarily cap both arms at2700 MHz within supported600..2900 range, record clocks, restore original min/max and policy; do not replace original protocol or claim production qualification from only capped data."
+}
