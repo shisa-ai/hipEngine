@@ -59,8 +59,8 @@
    "tests/test_gguf_t16_selected_gemv_decode.py::test_t16_compact_down_pairreuse_matches_direct_bits_beyond_64_lanes (green)"
   ],
   "red_green_policy": {
-   "test": "tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_gfx1100_q5_selected_down_pairreuse_floor_admits_c8_only",
-   "state": "RED retained on purpose: floor 0 fails the test (assert 0 == 8), documenting that the down-pairreuse route stays unqualified; the test goes green only if a future packet qualifies the floor"
+   "test": "tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_gfx1100_q5_selected_down_pairreuse_floor_stays_rejected",
+   "state": "green: asserts the qualified rejection state — floor 0 keeps the per-row down owner at every geometry, the floor-8 scope admits only as a diagnostic scope, and env 0 overrides; a future qualification packet flips the floor and rewrites this test RED-first"
   },
   "bench_exactness": "both arms produced repeatable trajectories under their own environments"
  },
