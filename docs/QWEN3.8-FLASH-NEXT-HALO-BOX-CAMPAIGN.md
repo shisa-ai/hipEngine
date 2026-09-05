@@ -77,6 +77,15 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+**Later Q8 promotion:** normal-model full A/B improves prefill
+154.29->155.45 /151.67->153.43 /141.58->143.41 tok/s at512/1K/4K
+(+0.75%/+1.17%/+1.29%), with all72 trajectories exact and every complete
+request faster. This incremental result is not a new external baseline;
+decode drifts in both arms. [Q8 promotion](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
+The following frozen baseline and generated family table name the
+**pre-Q8-wave-scale snapshot**, not the newest runtime. Refresh of current
+HE family costs is pending; do not silently transfer its old cells.
+
 **Frozen three-engine refresh (2026-09-05 UTC):** controller/runtime
 `bd451a417`, halo-box `b212548e0`, Framework machine
 `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL/BF16 KV, identical12-case

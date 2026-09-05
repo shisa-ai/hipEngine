@@ -53,6 +53,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 wave-scale production (2026-09-05 UTC):** normal model execution,
+clean24e7b5fe7, full12-case72-trajectory A/B improves prefill
+**154.29->155.45 (+0.75%)**, **151.67->153.43 (+1.17%)**,
+**141.58->143.41 tok/s (+1.29%)** at p512/p1024/p4096. Every trajectory
+is exact, every case improves prefill (minimum0.45%) and request wall
+(minimum0.14%), and teardown is zero. Max prefill CV0.58%; decode CV3.50%
+and time-order drift prevent an intrinsic decode or stable absolute claim.
+Production selects the registry-checked exact F32 wave-scale route during
+prefill only; strict, MMQ/WMMA and decode owners stay unchanged.
+[Model evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
+The earlier adverse unconditioned microbench remains valid for that protocol;
+the full model result, without synthetic memory preconditioning, is the
+promotion basis. The generated family table remains explicitly the pre-Q8
+snapshot until its current-HE capture is refreshed.
+
 **Q8 wave-uniform scale candidate (2026-09-05 UTC):** a new T0 raw-Q8 coltile
 variant preserves original F32 FMA/reduction order while explicitly making
 the Q8 block-scale index uniform per wave. Actual attention-gate rows512

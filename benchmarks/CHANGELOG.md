@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 UTC Framework Q8 wave-scale production] Normal-model full A/B prefill154.29->155.45 (+0.75%),151.67->153.43 (+1.17%),141.58->143.41 tok/s (+1.29%) at512/1K/4K; all72 trajectories exact, all12 prefill/request walls improve, clean teardown. Decode drift prevents an intrinsic decode gain claim;33m53s. `benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json`.
+
 - [2026-09-05 UTC Framework Q8 wave-scale conditioned screen] Under symmetric256MiB device-fill preconditioning, actual attention-gate rows5126.299->5.678ms (-9.86%,1.109x), independent layer4 1.111x; shared-down1.089x. F32-bit exact,15 tests,72 VGPR/zero scratch. Unconditioned order reversal invalidates the initial odd-pair1.20x general claim; model admission pending. `benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale.json`.
 
 - [2026-09-05 UTC Framework Q4 larger row batches rejected] Masked RB16 is0.880-0.981x RB8 speed and RB32 is0.586-0.623x across token512/1024/2048 and uniform/skewed routing; all outputs exact, all12 cells regress despite fewer inferred weight passes. Remove variants, preserve RB8; no whole-model admission attempted. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json`.

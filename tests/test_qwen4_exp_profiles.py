@@ -55,6 +55,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
@@ -242,6 +243,10 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
+    wave = _selection_map(production)[("linear", "prefill_exact_q8_f32_coltile")]
+    assert wave["selected_variant"] == "coltile8_rowbatch4_wave_scale_f32_f32_out"
+    assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
     gdn = _selection_map(production)[(
@@ -329,6 +334,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
