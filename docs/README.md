@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-08-31
+Last updated: 2026-09-05
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -17,14 +17,14 @@ working on.
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
 | [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Closed first-generation gfx1151/gfx1100 PARO/GGUF optimization ledger (`SOL-R0`-`R9`, `SOL-E1`/`E2`); its concurrency premise is superseded by [`CONCURRENCY.md`](CONCURRENCY.md) and it is retained as a dated record. |
-| [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
-| [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
-| [`QWEN35-08B-GFX1151-VULKAN-PARITY.md`](QWEN35-08B-GFX1151-VULKAN-PARITY.md) | Active Radeon 8060S campaign to profile every Qwen3.5-0.8B dense GGUF module and match or beat llama.cpp Vulkan before 27B transfer. |
+| [`OPTIMIZE.md`](OPTIMIZE.md) | Optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
+| [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
+| [`QWEN35-08B-GFX1151-VULKAN-PARITY.md`](QWEN35-08B-GFX1151-VULKAN-PARITY.md) | Radeon 8060S campaign profiling every Qwen3.5-0.8B dense GGUF module against llama.cpp Vulkan; per-module owner decisions and parity gates. |
 | [`QWEN36-27B-GGUF-7900XTX.md`](QWEN36-27B-GGUF-7900XTX.md) | RX 7900 XTX campaign to eliminate GGUF weight-layout duplication and beat same-card llama.cpp HIP/Vulkan in speed and memory. |
-| [`QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md`](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md) | Planned gfx1100/gfx1151 campaign for exact Qwen3.8-27B `UD-Q4_K_M`: dense Q3/IQ codec support, operation-complete strict execution, and same-host Q4_K_M plus llama.cpp performance gates. |
-| [`GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md`](GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md) | Planned shape-aware gfx1100 GEMV campaign seeded by Qingming: exact alpha/beta local128/SPLIT4 screening, cache-regime protocol, RX 7900 XTX relative comparison, and independent W7900 promotion gates. |
-| [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | E0-complete gfx1151 physical-C3 decode-economics campaign: current K3 is 0.8865x AR; adjudicate physical activation, then exact multi-row proposal-head reuse, true R12/R16 target amortization, and oracle-gated fixed K4. Appendix analyzes a DFlash2 revival. |
-| [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | Next INT8 KV campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
+| [`QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md`](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md) | gfx1100/gfx1151 campaign plan for exact Qwen3.8-27B `UD-Q4_K_M`: dense Q3/IQ codec support, operation-complete strict execution, and same-host Q4_K_M plus llama.cpp performance gates. |
+| [`GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md`](GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md) | Shape-aware gfx1100 GEMV campaign plan seeded by Qingming: exact alpha/beta local128/SPLIT4 screening, cache-regime protocol, RX 7900 XTX relative comparison, and independent W7900 promotion gates. |
+| [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | gfx1151 physical-C3 decode-economics campaign for Qwen3.8-27B `Q4_K_M` MTP; gate state and next steps are in the document header. Appendix analyzes a DFlash2 revival. |
+| [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | INT8 KV continuous-batching campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 | [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |
 
@@ -50,9 +50,9 @@ working on.
 | [`RELAXED.md`](RELAXED.md) | Historical relaxed-mode inventory and first changed-arithmetic kernel provenance; superseded as normative policy by `EXECUTION-PROFILES.md`. |
 | [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
 | [`QUANTS.md`](QUANTS.md) | GGUF tensor-type coverage, Qwen3.5 quality cliffs, Laguna S 2.1 quant targets, hardware headroom, and BF16 K/V capacity math. |
-| [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) | Active IQ2_XS decode/prefill bottleneck analysis, priority list, tuning order, precedent, and Laguna acceptance gates. |
+| [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) | IQ2_XS decode/prefill bottleneck analysis, priority list, tuning order, precedent, and Laguna acceptance gates. |
 | [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md) | P9.H2 qwen35moe GGUF decode-side replacement layout, memory budget, and acceptance plan. |
-| [`TUNING-gguf.md`](TUNING-gguf.md) | Active GGUF performance tuning playbook, baseline refresh protocol, and lane backlog. |
+| [`TUNING-gguf.md`](TUNING-gguf.md) | GGUF performance tuning playbook, baseline refresh protocol, and lane backlog. |
 | [`source_lineage.json`](source_lineage.json) | Machine-readable parent-file manifest for `scripts/check_lineage.py`. |
 
 ## Feature plans
@@ -64,14 +64,14 @@ working on.
 | [`NATIVE_SPEC_CYCLE.md`](NATIVE_SPEC_CYCLE.md) | Canonical N0-N5 speculative-cycle milestone glossary, ownership boundaries, current W7900/gfx1151 scorecard, and evidence index. |
 | [`SAMPLING.md`](SAMPLING.md) | Normal sampling parameter support plan, sampler-state contract, and CPU/GPU rollout tracks. |
 | [`AGENTIC.md`](AGENTIC.md) | Serving features and functional contract for local agent harnesses built on top of sampling/decode-state primitives. |
-| [`AGENTIC-OPT.md`](AGENTIC-OPT.md) | Active gfx1100 agent-serving status, limitations, optimization priorities, and coding-agent benchmark plan. |
+| [`AGENTIC-OPT.md`](AGENTIC-OPT.md) | gfx1100 agent-serving status, limitations, optimization priorities, and coding-agent benchmark plan. |
 | [`TENSOR_PARALLEL.md`](TENSOR_PARALLEL.md) | Tensor-parallel serving design gate, current disabled manifest contract, and multi-GPU validation plan. |
 | [`PREFILL.md`](PREFILL.md) | Native prefill implementation plan and compact/prompt execution details. |
 | [`KVCACHE.md`](KVCACHE.md) | KV cache ABI, policy notes, quantization path, and long-context considerations. |
 | [`DMS.md`](DMS.md) | External DMS architecture, exact-Q4 training campaign, sidecar size/timing/results, reproduction commands, and production punchlist. |
 | [`DFLASH.md`](DFLASH.md) | DFlash draft-model speculative decode plan. |
 | [`MTP.md`](MTP.md) | Multi-token prediction implementation history, economics, and provider design. |
-| [`MTP-FIX.md`](MTP-FIX.md) | Active campaign to make MTP safe and useful across real contexts, lifecycle events, APIs, load, quality, and rollout. |
+| [`MTP-FIX.md`](MTP-FIX.md) | Campaign to make MTP safe and useful across real contexts, lifecycle events, APIs, load, quality, and rollout. |
 | [`GGUF.md`](GGUF.md) | GGUF loading / comparison notes. |
 
 ## Common reading paths
