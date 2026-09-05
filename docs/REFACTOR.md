@@ -4781,8 +4781,9 @@ should be boring.
 
 ## Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)
 
-`selected_grouped_row4_gemv_bf16_bf16_out` has default-off runtime wiring
-through `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL`. Remove the flag and unused
-route if complete-owner/whole-model validation rejects it; otherwise promote
-through the existing registry boundary, keeping selected-GEMV strict fallback.
-Drop the opt-out once same-host promotion and rollback confidence are established.
+`selected_grouped_row4_gemv_bf16_bf16_out` is now selected by the production
+binder through `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL`; strict binds zero.
+The clean Framework all-category gate retained the path. Keep the post-binder
+opt-out for rollback and the reproducible A/B harness; replace it with direct
+manifest-driven selection when runtime profile dispatch owns this boundary.
+Always retain selected-GEMV strict fallback.
