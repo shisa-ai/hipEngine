@@ -184,6 +184,15 @@ The Qwen3.8/gfx1151 package also uses one rows-8 Q6 LM-head launch at physical
 C8. On the 512-input/128-output raw graph-decode protocol, it measures
 **71.043 versus 68.731 tok/s (+3.36%)** for the prior 4+4 route, with identical
 generated-token trajectories. The gfx1100 package stays capped at 6.
+
+For multi-round C5-C8/512 prefill, the gfx1151 package now samples only final
+prompt rows. Pooled complete wall falls 0.149%/0.219%/0.217%/0.033% at C5-C8.
+At C8, the Q6 LM head falls from six launches/34.599 ms to one launch/5.756 ms,
+with 70 fewer dispatches and exact final tokens, positions, state, live KV, and
+hidden-seed hashes. The small wall changes corroborate the launch/sub-window
+improvement; they are not headline throughput claims. gfx1100 remains unchanged
+pending independent qualification.
+[`final-output mask`](results/2026-09-05-gfx1151-qwen38-packed-prefill-final-mask-retained.json) ·
 [`Q6 LM-head rows-8 owner`](results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json)
 
 The first retained prefill extension cuts a representative 288-row tick by

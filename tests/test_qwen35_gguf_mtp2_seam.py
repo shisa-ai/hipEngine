@@ -125,6 +125,12 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
     ) == {}
     assert backend_package_capability(
+        "hip_gfx1151", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
+    ) is True
+    assert backend_package_capability(
+        "hip_gfx1100", "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK", False
+    ) is False
+    assert backend_package_capability(
         "hip_gfx1151",
         "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
         {},

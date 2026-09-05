@@ -2186,6 +2186,10 @@ GGUF_DIRECT_RESIDENT_LINEAR_STATE = True
 # Same-length full-prompt rows may enter one native prefill call. This is scoped
 # independently from decode widths and falls back before mutation on misses.
 GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
+# Long packed-prefill rounds sample only each slot's final tail. Intermediate
+# target-hidden rows and host hidden-seed capture remain intact; C5-C8 512-row
+# performance and lifecycle evidence own this gfx1151-only default.
+GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # SPECDEC2 S3 admits construction of the dense NextN c1 staged adapter on
 # gfx1151. S4 additionally admits the physical c2/c4 adapter; arithmetic/default
 # promotion remains independently gated by each phase's correctness and
@@ -3514,6 +3518,7 @@ __all__ = [
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",
     "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
+    "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",

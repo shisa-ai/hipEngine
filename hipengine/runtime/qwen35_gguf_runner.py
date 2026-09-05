@@ -782,6 +782,25 @@ class Qwen35GGUFPackedPrefillResult:
 
 
 @dataclass(frozen=True)
+class _Qwen35GGUFPackedPrefillHiddenRows:
+    """Internal unsampled hidden rows from one bounded prefill round."""
+
+    input_token_ids: list[int]
+    hidden_seeds: np.ndarray
+    start_position: int
+
+    def __post_init__(self) -> None:
+        if self.start_position < 0:
+            raise ValueError("start_position must be non-negative")
+        if len(self.input_token_ids) == 0:
+            raise ValueError("input_token_ids must be non-empty")
+        if self.hidden_seeds.shape[0] != len(self.input_token_ids):
+            raise ValueError("hidden_seeds rows must match input_token_ids length")
+        if self.hidden_seeds.dtype != np.float32:
+            raise ValueError("hidden_seeds must be float32")
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFMTPDraftSeed:
     """Ready target seed descriptor for one GGUF MTP draft step."""
 
@@ -20914,6 +20933,15 @@ class Qwen35GGUFResidentSession:
             prompt_tuple,
             row_capacity=row_capacity,
         )
+        backend = str(getattr(self, "backend", "") or "")
+        final_output_mask_enabled = bool(
+            backend not in {"", "auto"}
+            and backend_package_capability(
+                backend,
+                "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
+                False,
+            )
+        )
         aotriton_threshold = int(PrefillConfig().attn_aotriton_min_tokens)
         aotriton_eligible_slots = tuple(
             slot_index
@@ -20951,13 +20979,29 @@ class Qwen35GGUFResidentSession:
                     )
                 )
             ),
+            "chunk_final_output_slot_indices": [
+                [
+                    int(slot_index)
+                    for slot_index, start, tokens in zip(
+                        chunk.slot_indices,
+                        chunk.start_offsets,
+                        chunk.prompt_token_ids,
+                        strict=True,
+                    )
+                    if int(start) + len(tokens) == len(prompt_tuple[slot_index])
+                ]
+                for chunk in chunks
+            ],
             "intermediate_tail_samples": max(
                 0,
                 sum(len(chunk.slot_indices) for chunk in chunks) - len(prompt_tuple),
             ),
+            "final_output_mask_enabled": final_output_mask_enabled,
             "sample_output": bool(sample_output),
             "device_logits_required": bool(require_logits),
             "output_norm_rows": 0,
+            "hidden_seed_norm_rows": 0,
+            "target_hidden_norm_rows": 0,
             "lm_head_sample_rows": 0,
         }
         if len(chunks) == 1:
@@ -20986,6 +21030,24 @@ class Qwen35GGUFResidentSession:
         aotriton_eligible_set = set(aotriton_eligible_slots)
         for chunk in chunks:
             chunk_sessions = tuple(session_tuple[index] for index in chunk.slot_indices)
+            final_output_slot_indices = tuple(
+                local_index
+                for local_index, (slot_index, start, tokens) in enumerate(
+                    zip(
+                        chunk.slot_indices,
+                        chunk.start_offsets,
+                        chunk.prompt_token_ids,
+                        strict=True,
+                    )
+                )
+                if int(start) + len(tokens) == len(prompt_tuple[slot_index])
+            )
+            final_output_slot_set = set(final_output_slot_indices)
+            sample_output_slot_indices = (
+                final_output_slot_indices
+                if final_output_mask_enabled
+                else tuple(range(len(chunk.slot_indices)))
+            )
             force_aotriton_slot_indices = tuple(
                 local_index
                 for local_index, slot_index in enumerate(chunk.slot_indices)
@@ -21017,13 +21079,29 @@ class Qwen35GGUFResidentSession:
                 stream=stream,
                 _slot_local_full_attention=bool(force_aotriton_slot_indices),
                 _force_aotriton_slot_indices=force_aotriton_slot_indices,
+                _sample_output_slot_indices=(
+                    sample_output_slot_indices if sample_output else ()
+                ),
             )
             if len(chunk_results) != len(chunk.slot_indices):
                 raise RuntimeError("packed AR prefill chunk result count does not match active slots")
-            for slot_index, result in zip(chunk.slot_indices, chunk_results, strict=True):
-                final_results[slot_index] = result
+            for local_index, (slot_index, result) in enumerate(
+                zip(chunk.slot_indices, chunk_results, strict=True)
+            ):
+                if sample_output and local_index in final_output_slot_set:
+                    if result is None:
+                        raise RuntimeError(
+                            "packed AR prefill final slot did not produce a sample"
+                        )
+                    final_results[slot_index] = result
                 if return_hidden_seeds:
-                    if not isinstance(result, Qwen35GGUFPackedPrefillResult):
+                    if not isinstance(
+                        result,
+                        (
+                            Qwen35GGUFPackedPrefillResult,
+                            _Qwen35GGUFPackedPrefillHiddenRows,
+                        ),
+                    ):
                         raise RuntimeError("packed AR prefill chunk did not return hidden seeds")
                     hidden_parts[slot_index].append(
                         np.ascontiguousarray(result.hidden_seeds, dtype=np.float32)
@@ -21082,7 +21160,13 @@ class Qwen35GGUFResidentSession:
         stream: int = 0,
         _slot_local_full_attention: bool | None = None,
         _force_aotriton_slot_indices: tuple[int, ...] = (),
-    ) -> list[Qwen35GGUFNextTokenProbeResult | Qwen35GGUFPackedPrefillResult | None]:
+        _sample_output_slot_indices: tuple[int, ...] | None = None,
+    ) -> list[
+        Qwen35GGUFNextTokenProbeResult
+        | Qwen35GGUFPackedPrefillResult
+        | _Qwen35GGUFPackedPrefillHiddenRows
+        | None
+    ]:
         """Execute one packed prompt slab that already fits resident scratch."""
 
         prompt_tuple = tuple(tuple(int(token) for token in prompt) for prompt in prompt_token_ids)
@@ -21091,6 +21175,21 @@ class Qwen35GGUFResidentSession:
             raise ValueError("prompt_token_ids must be non-empty")
         if len(prompt_tuple) != len(session_tuple):
             raise ValueError("prompt_token_ids and sessions must have the same length")
+        sample_output_slot_indices = (
+            tuple(range(len(prompt_tuple)))
+            if sample_output and _sample_output_slot_indices is None
+            else tuple(int(index) for index in (_sample_output_slot_indices or ()))
+        )
+        if not sample_output and sample_output_slot_indices:
+            raise ValueError("sample_output=False cannot select output slots")
+        if len(set(sample_output_slot_indices)) != len(sample_output_slot_indices):
+            raise ValueError("packed prefill output slot indices must be unique")
+        if any(
+            index < 0 or index >= len(prompt_tuple)
+            for index in sample_output_slot_indices
+        ):
+            raise ValueError("packed prefill output slot index is outside the slab")
+        sample_output_rows = len(sample_output_slot_indices)
         sink_tuple: tuple[TargetHiddenChunkSink | None, ...] = (
             (None,) * len(prompt_tuple)
             if target_hidden_chunk_sinks is None
@@ -21434,6 +21533,7 @@ class Qwen35GGUFResidentSession:
                     stream=int(stream),
                     runtime=runtime,
                 )
+                self.last_packed_prefill_plan["target_hidden_norm_rows"] += rows
                 _consume_packed_target_hidden_sinks(
                     sinks=sink_tuple,
                     request_ids=request_ids,
@@ -21444,114 +21544,93 @@ class Qwen35GGUFResidentSession:
                     stream=int(stream),
                     finish=bool(finish_target_hidden_sinks),
                 )
+            if hidden_seed_buf is not None:
+                gguf_rmsnorm_bf16_f32_weight_out_f32(
+                    src.ptr,
+                    output_norm_weight_ptr,
+                    hidden_seed_buf.ptr,
+                    rows=rows,
+                    hidden_size=self.runner.hidden_size,
+                    eps=self.runner.weights.config.rms_norm_eps,
+                    stream=stream,
+                    runtime=runtime,
+                )
+                self.last_packed_prefill_plan["hidden_seed_norm_rows"] += rows
+
             token_host: np.ndarray | None = None
-            if sample_output:
+            if sample_output_rows:
                 row_nbytes = self.runner.hidden_size * DType.BF16.itemsize
-                if hidden_seed_buf is not None:
-                    gguf_rmsnorm_bf16_f32_weight(
-                        src.ptr,
-                        output_norm_weight_ptr,
-                        packed_scratch.norm.ptr,
-                        rows=rows,
-                        hidden_size=self.runner.hidden_size,
-                        eps=self.runner.weights.config.rms_norm_eps,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                    gguf_rmsnorm_bf16_f32_weight_out_f32(
-                        src.ptr,
-                        output_norm_weight_ptr,
-                        hidden_seed_buf.ptr,
-                        rows=rows,
-                        hidden_size=self.runner.hidden_size,
-                        eps=self.runner.weights.config.rms_norm_eps,
-                        stream=stream,
-                        runtime=runtime,
-                    )
-                    for slot_index in range(int(layout.slot_count)):
+                if streaming_hidden_seed_rows:
+                    # Streamed target hidden rows are already normalized. Copy
+                    # only slot tails that produce user-visible samples.
+                    for output_index, slot_index in enumerate(
+                        sample_output_slot_indices
+                    ):
                         final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
                         if final_row < int(layout.cu_seqlens[slot_index]):
                             raise RuntimeError(
                                 "packed AR prefill slot has no final row to sample"
                             )
                         runtime.memcpy_async(
-                            self._prefill_hidden_a.ptr + slot_index * row_nbytes,
+                            self._prefill_hidden_a.ptr + output_index * row_nbytes,
                             packed_scratch.norm.ptr + final_row * row_nbytes,
                             row_nbytes,
                             HipMemcpyKind.DEVICE_TO_DEVICE,
                             stream,
                         )
-                    output_norm_rows = rows
                 else:
-                    # Streaming already normalized every prompt row for the
-                    # shifted NextN seed contract. Reuse those slot tails for
-                    # LM-head sampling; replay-only paths retain tail-only norm.
-                    if streaming_hidden_seed_rows:
-                        for slot_index in range(int(layout.slot_count)):
-                            final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
-                            if final_row < int(layout.cu_seqlens[slot_index]):
-                                raise RuntimeError(
-                                    "packed AR prefill slot has no final row to sample"
-                                )
-                            runtime.memcpy_async(
-                                self._prefill_hidden_a.ptr + slot_index * row_nbytes,
-                                packed_scratch.norm.ptr + final_row * row_nbytes,
-                                row_nbytes,
-                                HipMemcpyKind.DEVICE_TO_DEVICE,
-                                stream,
+                    # RMSNorm is row-independent. Gather and normalize only the
+                    # slot tails that produce user-visible samples. Hidden-seed
+                    # capture, when requested, keeps its separate FP32 rows.
+                    for output_index, slot_index in enumerate(
+                        sample_output_slot_indices
+                    ):
+                        final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
+                        if final_row < int(layout.cu_seqlens[slot_index]):
+                            raise RuntimeError(
+                                "packed AR prefill slot has no final row to sample"
                             )
-                        output_norm_rows = rows
-                    else:
-                        # RMSNorm is row-independent. Gather only the raw slot
-                        # tails and normalize rows consumed by the LM head.
-                        for slot_index in range(int(layout.slot_count)):
-                            final_row = int(layout.cu_seqlens[slot_index + 1]) - 1
-                            if final_row < int(layout.cu_seqlens[slot_index]):
-                                raise RuntimeError(
-                                    "packed AR prefill slot has no final row to sample"
-                                )
-                            runtime.memcpy_async(
-                                packed_scratch.norm.ptr + slot_index * row_nbytes,
-                                src.ptr + final_row * row_nbytes,
-                                row_nbytes,
-                                HipMemcpyKind.DEVICE_TO_DEVICE,
-                                stream,
-                            )
-                        gguf_rmsnorm_bf16_f32_weight(
-                            packed_scratch.norm.ptr,
-                            output_norm_weight_ptr,
-                            self._prefill_hidden_a.ptr,
-                            rows=int(layout.slot_count),
-                            hidden_size=self.runner.hidden_size,
-                            eps=self.runner.weights.config.rms_norm_eps,
-                            stream=stream,
-                            runtime=runtime,
+                        runtime.memcpy_async(
+                            packed_scratch.norm.ptr + output_index * row_nbytes,
+                            src.ptr + final_row * row_nbytes,
+                            row_nbytes,
+                            HipMemcpyKind.DEVICE_TO_DEVICE,
+                            stream,
                         )
-                        output_norm_rows = int(layout.slot_count)
-                self.last_packed_prefill_plan["output_norm_rows"] = int(
-                    output_norm_rows
-                )
-                self.last_packed_prefill_plan["lm_head_sample_rows"] = int(
-                    layout.slot_count
-                )
+                    gguf_rmsnorm_bf16_f32_weight(
+                        packed_scratch.norm.ptr,
+                        output_norm_weight_ptr,
+                        self._prefill_hidden_a.ptr,
+                        rows=sample_output_rows,
+                        hidden_size=self.runner.hidden_size,
+                        eps=self.runner.weights.config.rms_norm_eps,
+                        stream=stream,
+                        runtime=runtime,
+                    )
+                    self.last_packed_prefill_plan[
+                        "output_norm_rows"
+                    ] += sample_output_rows
+                self.last_packed_prefill_plan[
+                    "lm_head_sample_rows"
+                ] += sample_output_rows
                 self._enqueue_target_block_rows_from_hidden(
                     self._prefill_hidden_a.ptr,
-                    int(layout.slot_count),
+                    sample_output_rows,
                     activation_dtype=GGUF_ACTIVATION_BF16,
                     stream=stream,
                     require_logits=bool(return_logits or require_logits),
                 )
                 token_host = self._read_target_block_row_tokens(
-                    int(layout.slot_count),
+                    sample_output_rows,
                     stream=stream,
                 )
 
         logits_host = None
-        if return_logits:
+        if return_logits and sample_output_rows:
             if self._verify_logits_buf is None:
                 raise RuntimeError("GGUF packed AR prefill logits buffer is closed")
             logits_host = np.empty(
-                (int(layout.slot_count), self.runner.vocab_size),
+                (sample_output_rows, self.runner.vocab_size),
                 dtype=np.float32,
             )
             copy_device_to_host(
@@ -21632,34 +21711,61 @@ class Qwen35GGUFResidentSession:
             runtime.device_synchronize()
         if not sample_output:
             return [None for _ in range(int(layout.slot_count))]
-        if token_host is None:
+        if sample_output_rows and token_host is None:
             raise RuntimeError("packed prefill sampling did not produce token IDs")
-        if return_hidden_seeds:
-            if hidden_host is None:
-                raise RuntimeError("packed prefill hidden rows were not captured")
-            return [
-                Qwen35GGUFPackedPrefillResult(
-                    input_token_ids=[int(token) for token in layout.input_token_ids[
-                        int(layout.cu_seqlens[slot_index]):int(layout.cu_seqlens[slot_index + 1])
-                    ].tolist()],
-                    token_id=int(token_host[slot_index]),
-                    hidden_seeds=np.ascontiguousarray(
-                        hidden_host[
-                            int(layout.cu_seqlens[slot_index]):int(layout.cu_seqlens[slot_index + 1])
-                        ],
-                        dtype=np.float32,
-                    ),
-                    start_position=int(layout.row_positions[int(layout.cu_seqlens[slot_index])]),
-                )
-                for slot_index in range(int(layout.slot_count))
+        if return_hidden_seeds and hidden_host is None:
+            raise RuntimeError("packed prefill hidden rows were not captured")
+
+        sample_row_by_slot = {
+            slot_index: output_index
+            for output_index, slot_index in enumerate(sample_output_slot_indices)
+        }
+        results: list[
+            Qwen35GGUFNextTokenProbeResult
+            | Qwen35GGUFPackedPrefillResult
+            | _Qwen35GGUFPackedPrefillHiddenRows
+            | None
+        ] = []
+        for slot_index in range(int(layout.slot_count)):
+            row_start = int(layout.cu_seqlens[slot_index])
+            row_end = int(layout.cu_seqlens[slot_index + 1])
+            input_token_ids = [
+                int(token)
+                for token in layout.input_token_ids[row_start:row_end].tolist()
             ]
-        results: list[Qwen35GGUFNextTokenProbeResult] = []
-        for slot_index, token in enumerate(token_host.tolist()):
-            token_id = int(token)
+            start_position = int(layout.row_positions[row_start])
+            output_index = sample_row_by_slot.get(slot_index)
+            if return_hidden_seeds:
+                hidden_seeds = np.ascontiguousarray(
+                    hidden_host[row_start:row_end],
+                    dtype=np.float32,
+                )
+                if output_index is None:
+                    results.append(
+                        _Qwen35GGUFPackedPrefillHiddenRows(
+                            input_token_ids=input_token_ids,
+                            hidden_seeds=hidden_seeds,
+                            start_position=start_position,
+                        )
+                    )
+                else:
+                    results.append(
+                        Qwen35GGUFPackedPrefillResult(
+                            input_token_ids=input_token_ids,
+                            token_id=int(token_host[output_index]),
+                            hidden_seeds=hidden_seeds,
+                            start_position=start_position,
+                        )
+                    )
+                continue
+            if output_index is None:
+                results.append(None)
+                continue
+            token_id = int(token_host[output_index])
             row_logits = (
                 np.empty((0,), dtype=np.float32)
                 if logits_host is None
-                else np.ascontiguousarray(logits_host[slot_index : slot_index + 1])
+                else np.ascontiguousarray(logits_host[output_index : output_index + 1])
             )
             results.append(
                 Qwen35GGUFNextTokenProbeResult(
@@ -21667,7 +21773,7 @@ class Qwen35GGUFResidentSession:
                     logit=(
                         0.0
                         if logits_host is None
-                        else float(logits_host[slot_index, token_id])
+                        else float(logits_host[output_index, token_id])
                     ),
                     logits=row_logits,
                 )

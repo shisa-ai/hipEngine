@@ -1,17 +1,16 @@
-- [2026-09-05 gfx1151 Qwen3.8 explicit C8/K3 width policy] Production C8 moves from true AR/K0 52.025 to explicit K3 52.103 tok/s (+0.15%) through a profile-owned `{C1-C4/K1-K3,C8/K3}` policy; all ten C8 cells are deterministic and AR-equal, C5-C7 execute zero MTP cycles, and cancellation/refill ownership drains exactly. `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`.
-
-- [2026-09-05 gfx1151 Qwen3.8 Q6 LM-head rows-8 owner] Physical-C8 512/128 raw graph decode 68.731 -> 71.043 tok/s (+3.36%) by restoring the package-owned exact rows-8 primitive and replacing two 4-row head scans with one; six samples per arm, both A/B pairs positive, and all generated trajectories identical. `benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json`.
-
-- [2026-09-03 gfx1151 Qwen3.8 B5 planar-Q6 integer MMQ retained] Production-profile rows17-48 K17408/N5120 down and K5120/N1024 narrow-V now use session-owned Q8_1+MMQ64x64: C5-C8 one-group D24 MTP 36.519/40.271/43.728/49.979 -> 37.280/41.048/44.492/50.893 tok/s (+2.08%/+1.93%/+1.75%/+1.83%), every category positive, 80/80 IDs and acceptance unchanged, 216-row canonical+heldout gate top-1 100%/max KL 0.002231; strict A fallback unchanged. `benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json`.
-
-- [2026-09-02 gfx1151 Qwen3.8 B2 input-F16 prefill retained] Production C2/C8 prompt throughput 179.037/284.423 -> 209.391/334.704 tok/s (+16.95%/+17.68%); combined complete wall -18.13%/-17.35%. All 90 profile rows bit-identical; repeat/isolation/lifecycle/D24 automatic-K0 task/trace gates pass; strict BF16 fallback unchanged. `benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json`.
-
-- [2026-09-02 gfx1151 Qwen3.8 B1 verifier owner transfer retained] One-group D24 explicit K3 C5-C8 MTP 22.476/23.568/24.215/25.983 -> 34.969/38.425/41.615/47.642 tok/s (+56.3/+64.0/+69.5/+72.7%), 40/40 exact, identical IDs, sec-6 gate top-1 100% max KL 6.5e-4; production admission inert; strict oracle unchanged. Profile-scoped default-on at c27abc15d. `benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json`.
 # hipEngine Benchmark Changelog
 
 Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
+
+- [2026-09-05 gfx1151 Qwen3.8 packed-prefill final-output mask] Pooled C5-C8/512 complete prefill wall falls 0.149%/0.219%/0.217%/0.033%; the C8 Q6 LM head changes from six launches/34.599 ms to one/5.756 ms and total dispatches fall by 70. Final tokens, positions, state, live KV, and hidden-seed hashes are exact. `benchmarks/results/2026-09-05-gfx1151-qwen38-packed-prefill-final-mask-retained.json`.
+
+- [2026-09-05 gfx1151 Qwen3.8 explicit C8/K3 width policy] Production C8 moves from true AR/K0 52.025 to explicit K3 52.103 tok/s (+0.15%) through a profile-owned `{C1-C4/K1-K3,C8/K3}` policy; all ten C8 cells are deterministic and AR-equal, C5-C7 execute zero MTP cycles, and cancellation/refill ownership drains exactly. `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`.
+
+- [2026-09-05 gfx1151 Qwen3.8 Q6 LM-head rows-8 owner] Physical-C8 512/128 raw graph decode 68.731 -> 71.043 tok/s (+3.36%) by restoring the package-owned exact rows-8 primitive and replacing two 4-row head scans with one; six samples per arm, both A/B pairs positive, and all generated trajectories identical. `benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json`.
+
+- [2026-09-03 gfx1151 Qwen3.8 B5 planar-Q6 integer MMQ retained] Production-profile rows17-48 K17408/N5120 down and K5120/N1024 narrow-V now use session-owned Q8_1+MMQ64x64: C5-C8 one-group D24 MTP 36.519/40.271/43.728/49.979 -> 37.280/41.048/44.492/50.893 tok/s (+2.08%/+1.93%/+1.75%/+1.83%), every category positive, 80/80 IDs and acceptance unchanged, 216-row canonical+heldout gate top-1 100%/max KL 0.002231; strict A fallback unchanged. `benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json`.
 
 - [2026-09-03 gfx1151 Qwen3.8 active-C1 singleton target retained] At resident capacity 3, explicit K3 C1 **8.541 -> 19.428 tok/s (+127.47%; 0.744x -> 1.687x AR)**, acceptance **0.1523 -> 0.7889**, and AR equality **0/10 -> 10/10** by keeping the wide NextN provider but selecting the existing transactional target for exactly one active request. C3 remains packed at **32.919 tok/s (+0.15%)**, acceptance unchanged, equality 10/10; public production C2-C8 admission stays K0. [`artifact`](results/2026-09-03-gfx1151-qwen38-c1-singleton-target-retained.json)
 
@@ -20,6 +19,10 @@ entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 - [2026-09-03 gfx1151 Qwen3.8 current-head C1-C8 refresh] One-group explicit K3 completes at C2-C4 **30.094/32.819/37.985 tok/s (1.564x/1.314x/1.207x)** with 10/10 AR equality; prefill-dominant C1-C8 **200.998-301.808 tok/s** leads the frozen external matrix at C1 and C3-C7. Named blocker: production explicit C1 K3 regressed 15.753->8.556 tok/s (0.743x AR, acceptance 0.1523, AR equality 0/10) from the B1 rows>1 owner at the R4 packed shape; opt-out restores 18.168/1.582x/10/10. `[MTP refresh`](results/2026-09-03-gfx1151-qwen38-current-head-mtp-c1c8-refresh.json) `[prefill refresh`](results/2026-09-03-gfx1151-qwen38-current-head-prefill-c1c8-refresh.json)
 
 - [2026-09-03 gfx1151 Qwen3.8 docs refresh to current-head retained rows] Topline Strix Halo MTP C2/C3 explicit diagnostic 28.121/30.499 -> **29.976/30.541 tok/s (1.575x/1.279x)** and a new C5-C8 one-group K3 row **37.280/41.048/44.492/50.893 tok/s (0.981x/0.953x/0.964x/1.006x)**; scoreboard and external survey updated from the same retained packets (no new measurement). `[B4 screen`](results/2026-09-03-gfx1151-qwen38-b4-c2-depth-screen.json) `[B5 packet`](results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json)
+
+- [2026-09-02 gfx1151 Qwen3.8 B2 input-F16 prefill retained] Production C2/C8 prompt throughput 179.037/284.423 -> 209.391/334.704 tok/s (+16.95%/+17.68%); combined complete wall -18.13%/-17.35%. All 90 profile rows bit-identical; repeat/isolation/lifecycle/D24 automatic-K0 task/trace gates pass; strict BF16 fallback unchanged. `benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-retained.json`.
+
+- [2026-09-02 gfx1151 Qwen3.8 B1 verifier owner transfer retained] One-group D24 explicit K3 C5-C8 MTP 22.476/23.568/24.215/25.983 -> 34.969/38.425/41.615/47.642 tok/s (+56.3/+64.0/+69.5/+72.7%), 40/40 exact, identical IDs, sec-6 gate top-1 100% max KL 6.5e-4; production admission inert; strict oracle unchanged. Profile-scoped default-on at c27abc15d. `benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json`.
 
 - [2026-09-02 gfx1151 Qwen3.8 Z1 Laurent prefill parity] Same-host one-output complete-wall refresh measures hipEngine/Laurent **178.660/196.824 prompt tok/s at C2 (-9.23%)** and **283.540/297.325 at C8 (-4.64%)**. The prior 211.888/305.847 Laurent targets used internal `prompt_ms`, not the matched complete-wall boundary. `benchmarks/results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json`.
 

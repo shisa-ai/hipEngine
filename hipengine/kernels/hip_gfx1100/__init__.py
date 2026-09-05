@@ -399,6 +399,9 @@ GGUF_Q6_LM_HEAD_MAX_CHUNK = 6
 # layer hidden versus independent c1, with resolution provenance recorded.
 # Promoted 2026-08-20 after direct c3/c5/c6/c7 lifecycle certification (#36).
 GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
+# Keep intermediate packed-prefill tail sampling until the W7900 lane runs its
+# independent output/state and complete-wall qualification.
+GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = False
 # SPECDEC2 S7 exposes only the independently-qualified dense GGUF C1 adapter on
 # gfx1100. Physical C2/C4 remains absent until its own frontier/economics gate.
 GGUF_SPECDEC2_MTP2_C1 = True
@@ -909,6 +912,7 @@ __all__ = [
     "GGUF_Q6_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
+    "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
