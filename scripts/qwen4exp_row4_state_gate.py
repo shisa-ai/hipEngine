@@ -32,7 +32,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -64,6 +64,8 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"
     if args.route_package == "q4-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
+    if args.route_package == "q8-wave-scale":
+        flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
     from hipengine.kernels.registry import KernelKey, register, resolve
     key = (KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
                      "selected_grouped_row4_gemv_bf16_bf16_out")
@@ -83,6 +85,9 @@ def main():
     if args.route_package == "q4-pair":
         key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q4_k",
                         "selected_dual_grouped_pair2_bf16_bf16_out")
+    if args.route_package == "q8-wave-scale":
+        key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
+                        "coltile8_rowbatch4_wave_scale_f32_f32_out")
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
     calls = [0]
 
@@ -170,7 +175,7 @@ def main():
                     state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
                 expected = enabled == "1" and (
-                    args.route_package in {"q5k-row4","q4-bundle","prefill-bundle","q51-pair","gdn-register","q4-pair"} or case["prompt_tokens"] > 2051)
+                    args.route_package in {"q5k-row4","q4-bundle","prefill-bundle","q51-pair","gdn-register","q4-pair","q8-wave-scale"} or case["prompt_tokens"] > 2051)
                 assert (invoked > 0) == expected, f"route not engaged correctly: {case['id']}"
                 invoked_qsa = qsa_calls[0] - start_qsa_calls
                 if args.route_package == "prefill-bundle":

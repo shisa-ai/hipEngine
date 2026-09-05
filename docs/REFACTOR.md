@@ -4867,3 +4867,7 @@ under the manifest; retain rollback and registered strict fallbacks.
 - Preserve original coltile as strict fallback. Remove candidate-only
   dispatch experimentation once admitted or rejected; do not claim SGPR
   instruction counts without inspecting generated code.
+- Model-admission flag `HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE=1` selects a
+  scoped prefill geometry with registry-checked fallback. Initially default-off;
+  MMQ/WMMA and decode stay unchanged. Remove the flag after admission/rollback
+  needs end, or remove the candidate if the actual-model gate loses.
