@@ -1,5 +1,47 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
+## Active execution contract (2026-09-05)
+
+The owner has authorized continued optimization with exclusive access to the
+Framework Desktop, hostname `gfx1151`, machine ID
+`55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+ 395 / Radeon 8060S.
+This supersedes `zbook` execution instructions and historical "blocked closure"
+stop instructions below. Historical rates and rejected experiments remain
+evidence for their original physical host, not Framework performance claims.
+
+Target halo-box **Vulkan** `b212548e0` directly, retaining HIP as a diagnostic
+comparison. Its September 5 repeatable screen is the working performance
+target despite variance, not a frozen statistical closure claim. Use the
+[Framework packet](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json)
+and report uncertainty rather than waiting for <=2% CV before optimizing.
+Section 6 still governs claims of statistically established match/beat.
+Refresh exclusive owner costs on this host before selecting a new kernel;
+operation-complete microbenchmarks and same-residency whole-model A/B are both
+required. Do not transfer absolute microseconds or candidate rankings by GPU
+architecture alone.
+
+The binding weights remain **UD-Q4_K_XL**, with BF16 K/V. The full model is
+native **FP8**, available remotely through `pi` as
+`local/Qwen3.8-Flash-Next`; there is no BF16 full-model oracle. BF16 K/V is
+cache storage, not the teacher representation. Use llama.cpp as the
+same-artifact implementation reference. Production need not reproduce its
+generated text: quantify PPL, KLD and top-1 where the required aligned
+probabilities/logits are available, alongside task quality and exact control,
+state ownership, isolation and declared repeatability. Remote text alone
+cannot establish PPL or full-distribution KLD. Record FP8 service/model,
+template, sampling and capture identity; never label FP8 evidence BF16.
+Historical BF16-oracle prerequisites below are superseded for this model,
+not globally for other execution-profile campaigns. Existing numerical
+thresholds are unchanged; D1 still needs a valid route-covering qualification
+decision, and does not block T0 work.
+
+GDN Hv48 tile-16 was promoted in `22dc56268` after engagement-verified
+one-residency validation. The remaining GDN target is the serial prefix,
+not repeating the completed suffix admission. The next portfolio is routed
+MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
+
+## Historical campaign record
+
 Status: **active plan, fully impact-profiled 2026-09-01; production refreshed
 2026-09-04.** The historical category-balanced screening baseline remains
 **83.70/83.16/69.10 tok/s** prefill and **14.40/14.42/10.42 tok/s** decode at
@@ -35,7 +77,7 @@ and its section-6 queue govern the next prefill units: routed MoE (including
 selected Q8/Q5_K tails), dense/GR, D=256 sparse QSA, GDN, then batch-policy and
 routing/combine cleanup. Correct binding geometry before promotion: GDN is
 Hk=16/Hv=48/D=128; `617038db9` repairs the tile-16 candidate's former Hv32-only
-envelope, while live-route one-residency A/B remains pending. Q8 MMQ already
+envelope; `22dc56268` subsequently promoted the live-route validated owner. Q8 MMQ already
 uses 128×128 matrix tiles. Historical mixed-bucket ratios are not matched
 kernel ratios. This source-only reprioritization adds no benchmark and changes
 no section-6 closure target, representation or quality gate.
@@ -60,7 +102,8 @@ backend, or one MTP budget wins.
 
 ### In scope
 
-- Host: `zbook`, AMD Ryzen AI Max+ Pro 395, Radeon 8060S, `gfx1151`.
+- Active host: Framework Desktop `gfx1151`, Ryzen AI Max+ 395, Radeon 8060S;
+  `zbook` / Ryzen AI Max+ Pro 395 is the historical lane only.
 - Model: `Qwen/Qwen3.8-Flash-Next` through the pinned Unsloth
   `UD-Q4_K_XL` split GGUF.
 - KV/cache policy: current BF16 baseline unless a row explicitly declares a
@@ -2201,7 +2244,8 @@ baseline event and, if desired, a new campaign.
 
 ```text
 Execute docs/QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md as the active
-performance authority for Qwen3.8-Flash-Next on zbook/gfx1151. Keep the pinned
+performance authority for Qwen3.8-Flash-Next on Framework Desktop gfx1151.
+Follow its active execution contract before historical instructions. Keep the pinned
 Unsloth UD-Q4_K_XL target weights and BF16 K/V as the binding AR configuration.
 Do not obtain or substitute a new weight quant. Treat Q8 K/V and MTP as separate
 product configurations with their own gates.

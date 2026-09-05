@@ -77,6 +77,13 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+Execution follows the main campaign's **active execution contract**: exclusive
+Framework host `gfx1151`, halo-box Vulkan as the working performance target
+despite screening variance, native FP8 remote quality reference, and same-Q4
+llama.cpp implementation reference without production cross-engine text
+equality. The historical section-6 tile-16 pending step is complete in
+`22dc56268`; proceed to serial-prefix GDN when its refreshed impact warrants it.
+
 This is the active same-host snapshot. It uses the verified four-part Unsloth
 `UD-Q4_K_XL` artifact, BF16 K/V, the canonical code/English/Japanese/mixed
 fixture at p512/p1024/p4096, 128 decode transitions, one warmup, and three
