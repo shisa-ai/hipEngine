@@ -112,14 +112,14 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | Functional family | Source / wrapper | Principal registry layers and quants | Stable notes |
 | --- | --- | --- | --- |
 | Cast and gather | `convert/cast.{hip,py}`, `convert/gather.{hip,py}` | `cast_*` (`bf16`, `fp16`, `fp32`, scaled rows); `gather_f32_rows_by_i32id` | Explicit low-precision boundaries and row gathers; no framework tensors in device ABI. |
-| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights. GGUF includes exact generic fallbacks plus gfx1151-qualified fixed c1/hidden-1024 and hidden-5120 wave-shuffle candidates for standalone and unrounded add+norm boundaries. |
+| RMSNorm | `norm/rmsnorm.{hip,py}`, `fused/gguf_ops.{hip,py}` | `rmsnorm`, `add_rmsnorm`, `add_rmsnorm_f32`, `head_rmsnorm` (`bf16`, `w4_paro`, `gguf_f32_weight`) | Qwen weights use delta semantics; PARO out variants use direct norm weights; GGUF F32-weight variants retain exact generic fallbacks. |
 | Rotary/prelude | `rotary/paro_rotate.{hip,py}`, `rotary/qwen35_rotary.{hip,py}` | `paro_rotate1/2/3`, `paro_rmsnorm_rotate2`, `partial_rotary`, `head_rmsnorm+partial_rotary`, `split_qgate` | BF16/FP16 PARO rotation and Qwen partial-RoPE/head-normalization families. |
-| Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`, `linear+residual`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. BF16 hidden/weight GEMV has both BF16 and unrounded F32 outputs, including the strict full-logit BF16-GGUF head route. gfx1151 rows512/K3584/N1024 dense-BF16 FFN down uses the WMMA exact rounded-residual sibling; the unfused projection+add chain remains registered. |
+| Dense projection and head | `linear/dense_gemv.{hip,py}`, `linear/lm_head.{hip,py}` | `dense_gemv`, `dense_dual_gemv`, `linear_pair`, `linear+residual`; `lm_head`, `lm_head_argmax`, `argmax`, `topk` | Dense fallback/auxiliary projection plus deterministic final reductions. BF16 hidden/weight GEMV has both BF16 and unrounded F32 outputs, including the strict full-logit BF16-GGUF head route. |
 | PARO AWQ projection | `quant/paro_awq_gemv.{hip,py}` | `pack8_gemv`, `dual_pack8_gemv`, `selected_*pack8_gemv`, `pack8_gemm`, rotate/SiLU composites (`w4_paro`) | Strided/transposed, BF16/FP16, selected-expert, fused-W4 prefill, and small-row routes. |
 | PARO Marlin-K | `quant/paro_marlin_k.{hip,py}` | `marlin_k_gemv` (`w4_paro`) | c=1 replacement layout; pack8 alias remains available to prefill/fused projections. |
 | PARO compact WMMA | `wmma/paro_awq_wmma.{hip,py}` | `awq_wmma` (`w4_paro`, `bf16`) | Compact/non-compact selected gate/up and down prefill; exact GEMV routes remain fallback. |
 | W8A16 projection/shared expert | `quant/w8a16_linear.{hip,py}` | `w8a16_linear` (`w8a16`, `w4_paro`) | Single/multi-row lowp projection and shared-expert helper variants. |
-| Router/select | `moe/router.{hip,py}` | `router_logits`, `router_select`, `router_topk_shared`, `router_topk_split_shared` | BF16/FP16/F32 hidden/weight combinations; deterministic top-k and shared-gate routes. Library handle is hoisted into a module cache (`_router_library()`) so per-launch host cost stays a plain ctypes call (~15 us) instead of re-running `build_qwen35_router(load=True)` (~34 us/call with a pinned session compiler version). |
+| Router/select | `moe/router.{hip,py}` | `router_logits`, `router_select`, `router_topk_shared`, `router_topk_split_shared` | BF16/FP16/F32 hidden/weight combinations; deterministic top-k and shared-gate routes. The compiled library handle is cached at module scope to keep per-launch host cost a plain ctypes call. |
 | MoE grouping and packing | `moe/group_scatter.{hip,py}` | `moe_group_count/prefix/scatter`, `moe_group_compact`, `moe_gather_packed_hidden`, `moe_wmma_tile_map`, `moe_mmq_tile_map` | Stable count/prefix/scatter and compact tile metadata; generic and `w4_paro`. |
 | MoE prefill orchestration leaf | `moe/prefill.py` | `moe_prefill` (`w4_paro`) | Registered wrapper composition for selected-expert prefill. |
 | Whole selected-expert FFN | `quant/paro_moe_ffn_fused.{hip,py}` | `moe_ffn_selected` (`w4_paro`) | Rotate → gate/up → SiLU → down-rotate → down projection megakernel; primitive chain remains fallback. |
@@ -127,51 +127,14 @@ These families implement Qwen3.5/Qwen3.6 PARO W4A16, shared W8A16, full-attentio
 | SiLU/rotation primitives | `fused/paro_silu.{hip,py}` | `silu_mul_dual`, `silu_mul_separate`, `silu_mul_dual_rotate`, `silu_mul_pair_rotate` | Primitive and fused activation/down-rotation boundaries coexist; separate BF16 SiLU permits exact in-place replacement of its gate plane. |
 | MoE combine/tail | `fused/paro_combine.{hip,py}` | `weighted_lanes_sum`, `weighted_sum`, `shared_gate_combine`, residual/RMSNorm composites | BF16/FP16/F32 values with FP32 route weights/gates; explicit primitive fallbacks are registered. |
 | Paged KV write/copy | `attention/paged_kv_write.{hip,py}` | `paged_kv_write`, `paged_kv_copy` (`bf16`, PARO/GGUF, INT8 layouts) | All attention-visible writes consume complete `KVLiveSpans`; includes BF16 and supported INT8 storage formats. |
-| Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. Per-token/head INT8 includes a row-batched 24Q/4KV/D256 split-K producer plus explicitly strided BF16 gated reducer; the c1 leaf remains registered as its numerical fallback. gfx1151 Qwen3.5-0.8B rows1/8Q/2KV/D256 selects generic split-K3+fused BF16 gate at cap514-641. The private-c1 exact leaf is the fixed256 body at 256 threads (strict exact default) with a parameterized `fixed256_threads_spans` probe at runtime block width; gfx1151 promotes 1024 threads (T2 non-exact, execution-profile gate-passed) via `GGUF_SHORT_C1_BATCH_ATTN_THREADS`. Dense H5120/L64/24Q/4KV/D256 selects the BF16 grouped-GQA split producer from context 4096; shorter contexts and unsupported shapes/backends retain the generic producer. |
+| Full/paged attention | `attention/paged_attn_decode.{hip,py}` | `full_attn_decode/prefill`, `paged_attn_decode/prefill`, `full_attn_gate_mul` | Contiguous and paged, batched, GQA, split-K, gated reduce, and supported INT8 KV variants. INT8 per-token/head includes a row-batched 24Q/4KV/D256 split-K producer with an explicitly strided BF16 gated reducer; the c1 leaf remains its registered numerical fallback. |
 | AOTriton adapter | `attention/aotriton_wrap.py`, `attention/aotriton.py` | `full_attn_prefill` (`w4_paro`, `gguf_qwen35`) | Optional library adapter; native raw-pointer paths remain available. |
 | Linear-attention Conv | `linear_attn/conv.{hip,py}` | `linear_attn_*conv_decode/prefill`, chain/tree and snapshot composites | Decode, segmented prefill, verifier tree/chain, and state-snapshot variants. |
-| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact schedules retain FP32 recurrent state. The ordinary segmented lowp owner also has optional strict-order FP32 state-row journals and a direct BF16 handoff for physical multi-request selected commit; its FP32/BF16 outputs, every row state, and final segment states are bit-identical to scalar fused GDN+cast at Qwen geometry. The no-copy decode-order sibling additionally exposes an exact FP32 output tap so immutable initial state and selected row journals can feed FP32 `ssm_out` without in-place state traffic. The gfx1151 Qwen3.8 Q4_K_S production experiment may select FP16 state (FP32 accumulation) through explicit `_fp16state` scalar, chain, segmented, indexed-singleton, compact-peer prefill, and decode-order writers; every supported leaf retains an FP32 fallback. SPECDEC2 P8 resolves the existing FP16 chain row writer through a non-fallback production manifest while retaining consumer-owned dtype-sized rollback snapshots and the strict unfused cast; the complete P9 product gate retains explicit compatibility but promotes no automatic cell, so K0 remains default. gfx1151 Q4 and Q8 `(16K,16V,128,128)` select cluster8; Q4 `(16K,48V,128,128)` selects 1K-chunked compact-peer wave32; all other gfx1151 shapes retain exact nonvolatile LDS32. |
+| Linear-attention GDN | `linear_attn/gdn.{hip,py}` | `linear_attn_prefill_prepare`, `gdn_*recurrent*`, RMSNorm/gate/rotate/cast/snapshot composites | Exact schedules retain FP32 recurrent state; segmented, chain/tree, snapshot, and decode-order writers cover prefill, verifier, and multi-request selected commit, with optional FP32 state-row journals, direct BF16 handoffs, and an exact FP32 output tap. FP16-state (FP32 accumulation) and gfx1151 cluster/chunked compact-peer variants are explicit opt-ins or capability selections that always retain an FP32 fallback. |
 | Runtime state | `runtime/state.{hip,py}` | token embedding, positions/metadata, graph record/commit, scalar state, profiling wall-clock marker | Device-side graph/verify bookkeeping, indexed row state, token publication, and profiling-only steady-clock boundaries. |
 | Sampling | `sampling/sampler.{hip,py}` | `sampler`, `mtp_draft_topk` | Greedy/temperature/top-k helpers and bounded draft top-k. |
 
-Compact DMS (C2-7 device port) now has a hip_gfx1100 family in addition to the CPU-reference registrations under `hipengine/kernels/cpu_reference/dms.py` (the `dms_compact_attn_decode` CPU oracle plus INT8 payload encode/decode): `attention/dms_compact.{hip,py}` registers `dms_extract_decision` (`corrected_mask`, bit-exact vs the schema-v1 CPU oracle), `dms_decision_source` (`external_linear_sidecar_v1`, resident BF16 schema-v2 projection for gfx1100/gfx1151 with exact observed retained-candidate decisions), `dms_streaming_pack` (`count_rank_scatter`, bit-exact, chunked 256-token scan for arbitrary prompt lengths), `dms_append_decode` (`compact_append_evict`, bit-exact parent keep-recompute, fail closed on overflow), and `dms_compact_attn_decode` (`grouped_gqa` small-live fallback plus bounded-LDS `grouped_gqa_splitk`; KL ≤ 0.05 / top-1 ≥ 90% vs `compact_attention_reference`, bit-exact at live 0/1). The cpu_reference siblings are the registered strict fallbacks for every key. The kernels are wired into `DMSCompactBackend` behind explicit device-payload selection; the host parent remains the strict fallback and no model package defaults to DMS. The retained W7900 fixture qualification passes the complete 53-test host/device bundle and cached-only rocprof records the original four expected kernel identities with scratch0; the gfx1151 schema-v2 extension adds the external-linear identity at 19.396 us, LDS 1,024 bytes, scratch0, and 16 VGPR; the repaired gfx1151 provisional-shrink fixtures also pass. The exact Qwen3.8 schema-v2 W8192 sidecar is source-disjoint-quality-qualified at 32K/128K. Explicit c1 resident sessions call the schema-v2 GPU projector, direct pack/append, and bounded split-K owner when matching metadata is supplied. Dense BF16 KV remains a temporary correctness-first prefill owner and is released after compact pack; decode has no dense mirror. The production-profile grouped split-K producer handles GQA groups up to eight with one K/V scan per KV head/split while preserving independent query-head outputs; larger groups retain the per-query-head producer and CPU reference is the strict fallback. On a native gfx1151 build, exact 24Q/4KV/D256 group-6 geometry selects the T1 wave-cooperative successor: one wave scores one compact token over 32 four-dimension lanes while sharing each K load across six query heads. gfx1100 and unsupported shapes retain the generic grouped predecessor. Integrated W8192 c1 drains to zero and passes the long-context production category and non-regressive c1 performance gates. Public `LLM.generate()`/real c>N selection, streaming prefill without the temporary dense peak, sampled memory controls, and long soak remain open. Dense paging therefore remains the general product default.
-
-Qwen3.8-27B Q4_K_M is the independent 16K/48V/128x128 gfx1151 GDN
-exception. `chain_compact_peer_wave32` materializes normalized Q/K once per K
-head and carries one recurrent state across at most 1,024 rows per launch. The
-strict route stores that state as FP32; the Q4_K_S R2 production experiment may
-store it as FP16 while retaining FP32 register accumulation and an FP32 strict
-fallback. Packed c>N prefill uses the registered compact normalized-segments
-sibling: one wave32 keeps four state rows per lane in FP32 registers for each
-indexed slot and performs only the declared state-store conversion at a packed
-chunk boundary. The FP32 compact sibling is the registered strict-storage
-fallback; the older decode-order segmented writer remains a generic diagnostic
-fallback, not the Q4_K_S compact-peer production owner. The complete c>N
-numerical/dynamic/isolation hard gate passes. The serving screen is also
-non-regressive (+0.38% c1 and +1.33% exact c8 throughput); both modes share an
-absolute ITL-p99 SLO failure. With the fixed percentage threshold removed,
-FP16 is the validated gfx1151 Q4_K_S default with FP32 env rollback;
-runtime-manifest, BF16-relative/task, and gfx1100 named-profile packets remain
-unavailable.
-Prepare and RMSNorm still cover the complete prefill once. This chunk is
-required because unchunked 4K loses 8.26% to direct LDS32, while the
-repaired route is peer-bit-exact and wins the production complete chain
-1.517x/1.479x/1.422x at 512/1K/4K. Scalar-exact output/state deltas are bounded
-at 0.001953125/2.24e-8. Integrated pp512 improves 316.258 to 330.069
-tok/s and drops 24 MiB; 512/1K/4K peak falls 24/128/128 MiB. rocprof confirms
-48/192 compact recurrence launches at pp512/pp4K (local128, 40 VGPR, zero LDS
-or scratch). Exact direct LDS32 remains the explicit rollback. Evidence:
-[`Qwen3.8 compact-peer GDN`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p3-compact-peer-gdn.json).
-
-The independent gfx1100 Qwen3.8 physical C5-C8 row-state path selects
-`decode_order_bf16_segments_state_rows_no_copy_wave_reduce` only for FP32
-state, K128/V128, and three- or four-token segments. It reconstructs the
-parent local128 Q/K and norm reduction trees with wave32 shuffles, preserving
-BF16 output and every FP32 state row bit-for-bit while removing redundant
-workgroup barriers. Strict, FP16-state, peer, non-physical, and shape misses
-retain the registered parent; `HIPENGINE_GGUF_GDN_STATE_ROWS_WAVE_REDUCE=0`
-is the same-build rollback. Evidence:
-[`gfx1100 segmented GDN wave reduction`](../benchmarks/results/2026-09-01-w7900-q4km-k3-c5c8-segmented-gdn-wave-reduce-retained.json).
+**Compact DMS attention** — `attention/dms_compact.{hip,py}` registers `dms_extract_decision`, `dms_decision_source`, `dms_streaming_pack`, `dms_append_decode`, and `dms_compact_attn_decode` (grouped GQA fallback plus bounded-LDS split-K) for the compact-KV path. The CPU-reference oracles in `cpu_reference/dms.py` are the registered strict fallbacks for every key; the kernels are wired into `DMSCompactBackend` behind explicit device-payload selection, and no model package defaults to DMS.
 
 ### GGUF / Qwen / Laguna path
 
@@ -185,352 +148,25 @@ GGUF is not a PARO alias. Raw GGML blocks, pack8/T16/qmicro/X8 replacement layou
 | Raw Q5_K/Q6_K/Q8_0 | `quant/gguf_k_gemv.{hip,py}` | `linear`, `linear_pair`, `attention_projection_quad` | Decode/prefill, BF16/F32 output, pair/quad launch contractions, rowbatch/coltile variants. |
 | Raw Q3_K selected | `quant/gguf_q3_k_gemv.{hip,py}` | `moe_linear` | Q3 selected-expert projection family. |
 | Q4_K pack8/raw | `quant/gguf_q4_k_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_pair_silu`, `linear+residual` | Raw GGUF math and lossless pack8 layouts; pair/SiLU and exact rounded-BF16 residual composites where registered. Primitive projection+add fallbacks remain available. |
-| Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. The p512 pack8-Q4 rounded-residual output-store sibling is rejected (0.958x core / 0.952x public complete-model prefill) and is not registered. |
+| Q4_K/Q6_K prefill WMMA | `quant/gguf_q4_k_prefill.{hip,py}` | `linear` | Resident pack8/raw prefill consumers; exact scalar/pack8 routes remain fallbacks. |
 | Q8_0 T16 prefill | `quant/gguf_q8_0_t16_prefill.{hip,py}` | `linear`, `linear_pair` | WMMA/T16 Q8 prefill and architecture-specific wave schedules. gfx1151 rows512/K1024/N16+N16 alpha/beta uses the exact two-wave dual owner; singleton WMMA remains the fallback. |
-| Q8_0 T16 decode | `quant/gguf_q8_0_t16_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_triple` | Exact T16 Q8 decode GEMV for Qwen3.5-family attention projections (in 2048; fused qkv 8192 + gate 4096). Single/dual/triple split owners run per-row at all widths; the exact 128-thread dual-split rowtile col8 pair owner is admitted at rows>=8 through the backend package floor `GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS` (gfx1151 retained 2026-07-20; gfx1100/W7900 retained 2026-09-05 audit packet C2 after native-c8 +2.51% with exact trajectories, arm-identical state/lifecycle differentials, and a c8 census showing `q8_0_t16_dual_split_rowtile_col8_gemv_kernel` with zero fallback). The broad all-projection rowtile boolean stays rejected on both backends (gfx1151 floor 4; W7900 c2 −2.94%/c4 −1.04% rejection 2026-09-05). Rows below the floor and shape misses keep the per-row dual/split owners. |
-| Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}`, `quant/gguf_k_t16_selected_prefill.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. gfx1151 Qwen3.8 standard-Q4 physical rows6/8/9/12/16 use the strict one-wave/one-16-row-tile WMMA owner for K/N 5120/6144, 5120/10240, 5120/12288, 5120/17408, 6144/5120, and 17408/5120; production-profile target verification may select the scoped T2 singleton/pair rowtiles at C2/K3 R8 or C3/K1-K3 R6/R9/R12 after their independent D24 numerical gates, while narrow K5120/N1024 and misses retain shared-B and the strict one-wave/shared-B variants remain registered fallbacks. The successor gfx1151 C6/K1 scope selects the exact two-wave low-M dual-WMMA+SiLU H5120/N17408 owner at R12 (the pair owner is negative at R16); C8/K1 independently selects an exact shared-B 32-column/two-wave/one-row-tile owner for the R16 K17408/N5120 down and K5120/N1024 narrow-V projections. Y1 adds an exact 48-column/eight-wave/three-row-tile shared-B sibling for global prefill rows288-384 on K/N 17408/5120, 5120/12288, and 5120/17408; shape/row misses retain measured parents. gfx1100 dense-H5120 physical rows6 uses the C1-equivalent rowtile for K/N 5120/1024, 5120/6144, 5120/10240, 5120/12288, and 17408/5120, plus the exact single-wave parent for 5120/17408. The exact four-wave/32-column extension is rejected and removed: it is bit-exact but loses six of seven actual Q4 role shapes (0.759–0.989x), while FFN-gate is noise-flat 1.0046x with 11/40 wins. The retained grouped-rows6 sibling keeps the WG64/two-wave block unchanged but maps consecutive physical R6 chunks onto `grid.y`; all 21 actual Q4 role×R24/R30/R36 cells are BF16-bit exact and improve HIP-event time 1.066–2.549x (minimum 29/30 wins). Its complete C5-C8 gate improves every width/category/heldout scope by 1.15–2.89%; same-build C8 tracing reduces Q4 launches 1,152→720 and Q4 wall 83.555→79.608 ms. `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_ROWS6=0` keeps repeated R6 rollback. The original all-width physical-R24 grouped-R8 policy is rejected: all seven actual Qwen3.8 Q4 roles improve 1.039-1.105x and same-build C8 target wall improves 174.277→172.119 ms, but the counterbalanced product gate has reverse-order losses in every C7/C8 prompt and pooled C7 code regresses 0.17%. The retained requalification restores the same exact primitive only for physical R24 packets with five or six live packed slots: current-source marker tracing reduces the three-cycle Q4 sum 1.76%/2.50% and target wall 0.79%/1.30% at C5/C6, while the counterbalanced complete gate improves aggregate throughput 1.12%/0.98%, wins all 40 prompt cells, and improves every category/heldout slice in both orders. C7/C8 and misses retain grouped R6; `HIPENGINE_GGUF_Q4_T16_GROUPED_ROWS8_C5C6=0` is the explicit rollback. Its low-pressure R8 col4 alternative is also rejected: all seven actual-weight wall medians lose to the R8 two-wave/16-column primitive at 0.898-0.987x, so doubling output workgroups costs more than the smaller accumulator saves. The corresponding R6 col4 screen is likewise rejected: five of seven roles lose at 0.901-0.961x wall, recurrent-QKV is 0.992x, and narrow full-K's isolated 1.0069x gain saves only ~0.16 us, closing narrower output ownership as a general physical route. The more aggressive exact grouped-R12 alternative is also rejected and removed at the actual-weight leaf gate: five of seven roles lose, including full-K at 0.631x with 0/30 paired wins, so its lower traversal count does not offset the larger accumulator footprint. A distinct WG128 dual-R6-chunk attempt that preserves both independent R6 accumulators and 16-column ownership is likewise rejected and removed: all seven actual R24 roles lose at 0.822-0.974x event / 0.843-0.976x wall, with full-K at 0/30 paired wins, confirming that scheduling two R6 subgroups in one workgroup does not offset occupancy loss. A pair-major R6 helper that shortened source-level scale/min/weight liveness is also rejected and removed: clang still allocates VGPR192, six of seven actual roles lose at 0.953-0.983x wall, and full-output's 1.006x has only 10/30 wins because repeated activation reads buy no occupancy. The retained pair-seam extension then consolidates the remaining equal-width physical fallback into two full grouped projections: complete C5-C8 improves 0.72–3.53%, while same-build C8 tracing removes all 576 remaining repeated calls, cuts target launches 2,266→1,832, Q4 wall 79.794→74.394 ms, and target wall 188.588→178.704 ms. `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2_GROUPED_PAIR_ROWS6=0` is its explicit repeated-R6 rollback. The attempted R24/R30 grouped dual+SiLU compositions are rejected and removed. A WG128/four-wave layout lost 1.1-4.9% in all six actual layer×row cells. Mapping the retained exact WG64 dual R6 block over `grid.y` then improved those isolated leaves 1.013-1.035x, but same-build C8 tracing worsened operation-complete Q4 wall 75.826→77.222 ms (+1.84%) and target wall 173.633→174.305 ms (+0.39%) despite reducing target launches 1,560→1,427; the retained grouped projections plus standalone SiLU remain optimal. The exact permlanex16+DPP transfer to those grouped K5120/N17408 gate/up projections is also rejected and removed: all 18 actual layer×gate/up×R24/R30/R36 cells lose at 0.959-0.998x (minimum 1/30 wins), so the shuffle reduction remains optimal. The exact two-wave/16-column sibling is now the gfx1100 physical-wrapper default after correcting an unrouted first attempt: its initial standard-shape gate improved every C5-C8 width/category/heldout scope by 1.00–2.14%. Recurrent-QKV K5120/N10240 is also qualified: marker-scoped C8 evidence transfers the predicted 128 calls/cycle to **853.3 candidate / 170.7 remaining-parent**, reduces same-commit Q4-family wall 101.785→101.202 ms/cycle and target device-union 192.867→192.173 ms, while its complete C5-C8 gate improves every width/category/heldout scope (aggregate +0.46–1.08%). `HIPENGINE_GGUF_Q4_T16_ROWTILE16_W2=0` retains the WG32 strict parent. K17408/N5120 FFN-down is also qualified after correcting an earlier provenance error from an aborted screen: the valid leaf is exact and 1.033–1.054x faster, marker evidence transfers the final 170.7 WG32 calls/cycle, and its complete C5-C8 gate improves every width/category/heldout slice by 0.66–1.43%. Outside the row6 precedence, tracked-clean counterbalanced W7900 evidence gives single-wave K/N 5120/17408 and 5120/10240 through row128, and 5120/12288 through its shape-specific row112 cap. gfx1100 K/N 17408/5120 rows33-192 use the exact four-wave shared-B row64 sibling (one 16-row tile/wave); its partial final row64 group skips zero-input WMMA arithmetic in waves that cannot publish, while full R64 groups use the unchanged parent kernel. The actual FFN-down weight is BF16-bit exact at R32/R35/R48/R64/R67/R128/R129/R192 and partial groups improve 1.241-1.641x (full groups are noise-flat). Row193+ and misses keep the separately registered 256-row strict fallback; all other rows/shapes keep their explicitly registered owners. gfx1100 dense H5120 gate/up (K5120/N17408) fuses the dual+SiLU prefill owner from rows33: the fused kernel is bit-identical to the two-singleton+`silu_mul` chain at that shape for rows 45/96/192/511/512 (and on the small fixture from rows 2), and W7900 Qwen3.8-27B-Q4_K_M measured **+4.2%/+4.2%/+4.9%** prefill at 45/96/192 rows with 512 unchanged; rows<=8 keep their dedicated small-B rowtile/GEMV owners and the unfused chain remains the registered fallback. Exact row48 (three active waves), row64, and row128 fused siblings are additionally registered: row48 is the physical-R36 default after its complete gate improved C8 3.13% in both orders and every C8 category/heldout slice by 2.81–3.27%; `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_ROW48=0` keeps row64 rollback. Actual-weight row64/row128 results are bit-identical and select row64 at rows33-64 (**1.517-1.611x** over the parent on measured production/crossover rows) and row128 at rows65-128 (**1.454-1.492x**); row129 immediately crosses back to the 256-row parent. They are the gfx1100 default after the complete counterbalanced category+heldout gate passed; `HIPENGINE_GGUF_Q4_T16_DUAL_SILU_RETILE=0` restores the 256-row parent on the same build. Exact C2/K3 R8 now uses the existing Q4/Q5/Q6 rows8 rowtiles instead of padding to R12 after a counterbalanced full-suite gate improved 42.350→51.769 tok/s (+22.24%); other widths keep the rows6-multiple fallback, and `HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS=0` restores padded R12. Retained C7/K3 R28 composes exact grouped prefixes plus strict R4 tails instead of padded R30: current-source tracing improves target wall/device union 2.63%/4.25%, and the clean counterbalanced complete gate improves aggregate throughput 2.81%, wins all 20 prompt cells, and improves every category/heldout slice. `HIPENGINE_GGUF_SPECDEC2_EXACT_C7_TARGET_ROWS=0` restores padded R30. The C7/R28 production gate/up path now uses a fixed periodic-strict T2 schedule: layers 0/8/…/64 retain the exact grouped-rowtile projections plus standalone SiLU, while the other 56/65 layers use the existing fused row32 WMMA owner. The all-layer candidate was rejected at seven real depth-3 rows (max KL 1.009/top-1 flip); the periodic schedule instead passes 1,922 full-logit rows at mean/p95/p99/max KL 5.57e-5/3.27e-4/8.56e-4/0.001588 with 100% top-1 and three bit-exact candidate runs. Its tracked-clean full gate improves 76.510→81.641 tok/s (+6.71%), wins all 20 prompt-order cells and every category/heldout slice, and preserves all IDs/acceptance; explicit zero retains exact R28 globally. The original C8 R32 composition is rejected by itself: it loses the retained fused gate/up owner and regresses complete wall despite lower target/device time. The promoted replacement pairs exact R32 admission with a two-active-wave fused gate/up+SiLU sibling; actual-weight layers 0/32/64 are BF16-bit exact to padded row48 and improve 1.360-1.364x. The tracked-clean full gate improves pooled C8 throughput 78.731→85.806 tok/s (+8.99%), wins all 20 prompt/order cells and every category/heldout slice, and preserves all 160 cross-arm IDs/acceptance counts; `HIPENGINE_GGUF_SPECDEC2_EXACT_C8_TARGET_ROWS=0` atomically retains padded R36 plus row48. A Q4-only R24/R30/R36 singleton-projection composition using mixed rows8/rows6 leaves is rejected and removed: isolated actual-weight leaves won, but the binding counterbalanced C5-C8 suite regressed C5-C7 by 0.23-0.56% and was noise-flat at C8. The distinct fused dual+SiLU rowtile composition is also rejected and removed: its R36 8/8/8/8/4 actual-weight leaf was 1.487x faster than fused WMMA and passed the C8 full-logit T2 gate, but launch multiplication regressed the complete C8 product route by 3.63% in both process orders; fused WMMA remains the owner. Planar Q6 now defaults to the same mixed partitions only at actual recurrent-QKV, full-attention-V, and FFN-down shapes after 12/12 exact actual-weight cells improved 1.079-1.234x and the complete counterbalanced C5-C8 gate improved every width/category/heldout scope; R18 and shape misses retain repeated R6, and `HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES=0` restores that fallback. The retained grouped-grid siblings preserve the mixed route's R8 DPP and R6 shuffle block bodies while consolidating identical chunks: all nine actual role×R24/R30/R36 cells are BF16-bit exact and 1.108-2.002x faster (minimum 28/30 wins). The complete C5-C8 gate improves every width/category/heldout slice by 0.70-1.91% (aggregate 1.18-1.75%); same-build C8 tracing reduces BF16 Q6 launches 192→64, Q6 wall 29.669→25.693 ms, and target wall 178.464→174.248 ms. `HIPENGINE_GGUF_Q6_T16_GROUPED_TARGET_ROWTILES=0` retains the prior mixed launch sequence. The changed-arithmetic grouped-q8_1 DP4A sibling is now the production Qwen3.8 `Q4_K_M` physical-C8/K3 default: its 18-prompt/432-row L4 gate passes at mean/p95/p99/max KL 0.000140/0.000688/0.001606/0.007267 and 99.769% top-1; fresh final-stack composition improves 95.708→97.674 tok/s (+2.05%) in both orders and every category/heldout slice, and clean automatic routing measures 98.643 tok/s (1.1178x AR). Strict, explicit zero, C1-C7, Qwen3.6, Q4_K_S, and peer backends retain the grouped BF16 owner. The exact WG256 dual-output extension is rejected and removed: all nine actual recurrent-QKV/full-V/FFN-down × R24/R30/R36 cells lose at 0.864–0.951x event and 0.872–0.952x operation-complete wall, so halving output workgroups does not offset the larger scheduling unit. The analogous Q5 R24/R30/R36 mixed-row composition is rejected and removed: exact actual-weight leaves improved 1.085-1.159x, but the binding counterbalanced suite regressed C5/C6 by 0.07%/0.38%. The retained grouped-grid sibling instead preserves each existing R6 block verbatim while mapping independent chunks to `grid.y`; the actual recurrent-output weight is BF16-bit exact and 1.184-1.257x faster across R18/R24/R30/R36 (30/30 paired wins). Its complete C5-C8 gate improves every width/category/heldout slice by 0.48-1.77% (aggregate 0.95-1.49%); same-build C8 tracing reduces Q5 launches 192→48, Q5 wall 15.448→13.912 ms, and target wall 178.457→178.044 ms. `HIPENGINE_GGUF_Q5_T16_GROUPED_TARGET_ROWS6=0` keeps repeated-R6 rollback. Exact physical C8/R32 now uses a grouped-R8 sibling instead of grouped R30 plus strict R2: actual `ssm_out` layers 0/32 are BF16-bit exact and 1.241-1.246x faster, current-source tracing reduces Q5 launches 240→144 and Q5 wall 53.03→45.43 ms, and the complete counterbalanced C8 gate improves 85.611→86.991 tok/s (+1.61%), wins all 20 prompt-order cells and every category/heldout slice, and preserves IDs/acceptance. `HIPENGINE_GGUF_Q5_T16_GROUPED_ROWS8_C8=0` retains grouped R30 plus strict R2. The floor stops at 33 because this same shared FFN stage also serves captured target verification in 16/32-row physical groups (C4-C8 at K3), where the fused owner measured +11.9% wall over 7/7 same-cycle prompts; at rows33 MTP C8 instead improved 2.6% on the same 7/7 prompts. The same gfx1151 model's Q5 K6144/N5120, K17408/N5120, and K5120/N10240 rows2-8 use the exact col8 rowtile; packed target verification explicitly admits the measured K6144/N5120 recurrent-output shape, while production C3/C4-group target verification uses one exact Q5 K6144/N5120 true-R12/true-R16 col8 sweep. Registered parents remain strict fallbacks. B2 P1 adds input-F16 activation siblings (`t16_wmma_prefill_fp16_in_bf16_out` Q4 plain + Q5 and `t16_wmma_prefill_shared_b_fp16_in_bf16_out` Q4 shared-B) on both backends. They preserve weights, schedule, and BF16 stores while pre-casting x to IEEE half; retained gfx1151 Qwen3.8 production prefill uses them after 18.13%/17.35% C2/C8 complete-wall reductions and bit-identical profile gates. Strict/fallback/no-profile and env-0 retain BF16 owners. |
-| Q6/Q4 mixed and narrow K/V grids | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (standard-Q6+Q4, Q4, Q4+planar-Q6) | Exact block-parallel rows1 pairs; gfx1151 qualifies Qwen3.8 recurrent K5120/N10240+N6144 and full-attention K/V K5120/N1024+N1024 while primitive projections remain fallbacks. |
-| Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families. gfx1100 planar row8 uses the exact DPP reduction (VGPR136→112, bpermute320→0), admitted on all 55 actual-operation rows and retained by a 1.634% complete-owner wall win; rows1-7 keep the generic reduction. The same exact R8 primitive now owns physical verifier root logits by default: the actual Qwen3.8 root leaf is BF16-bit exact and 1.285x faster than two R4 launches, same-build C8 tracing reduces root launches 170→85 and root wall 18.406→14.038 ms, and the complete counterbalanced C5-C8 gate improves every width/category/heldout slice by 1.35-2.27% (aggregate 1.60-2.04%). `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` keeps the exact R4 composition for rollback. The exact grouped-grid F32 R8 root extension is rejected and removed: its actual R24 root leaf is bit-exact and 1.007x faster than three R8 launches, but same-build C8 target wall worsens 169.861→170.989 ms, target device-union worsens 143.122→145.156 ms, and complete wall worsens 1.3359→1.3440 s. The exact R6 DPP analogue is rejected: recurrent-QKV and FFN-down actual-weight leaves are 0.953x/0.967x, while full-V is only 1.005x. gfx1100 planar K17408/N5120 prompt prefill uses the exact four-wave row64 owner at rows33-128 and the existing four-wave shared256 owner at rows129-511; rows<=32, rows>=512, shape misses, the non-WMMA physical verifier, and peer backends retain their prior owners, with the one-wave primitive separately registered. gfx1151 standard/planar physical shapes also use exact shared-weight schedules outside verifier scope: `<3,1,2>` at rows33-48, standard-Q6 `<6,1,2>` at rows49-96, and `<8,3,2>` at rows385-1024; standard-Q6 rows256-384 uses the exact 256-thread/eight-wave/three-row-tile one-sweep owner. gfx1151 packed target verification routes only actual Q5 K6144/N5120, standard Q6 K5120/N10240, and planar-qmicro Q6 K5120/N1024 plus K17408/N5120 at rows2-8 through their exact col8 rowtiles; production C3 uses one exact standard-Q6 K5120/N10240 true-R12 sweep while planar Q6 keeps R8+R4 after its R12 leaves lost 3.7-6.1%. Production C4 and C4-sized provider groups inside C5-C8 compose exact standard/planar R8+R8 at logical R16; remainder groups use measured R4/R8/R12 owners. Physical NextN proposal-head H5120/N248320 rows2-4 uses the same exact F32 rowtile plus generic GPU argmax, with the col8 body at rows3/4; C1, AR, target verification, prefill, shape misses, and peer backends retain prior owners. The verifier-local capability does not broaden the global native-batch scope or peer-backend ownership. gfx1151 rows>=512 uses 128-thread/four-wave shared-weight WMMA for standard K5120/N10240 QKV (2.96-3.55x) and planar K17408/N5120 FFN-down (1.42-1.50x); both use 24 KiB LDS / 248 VGPR. Other non-verifier rows<512, root paths, capability misses, and peer backends retain exact one-wave/16x16 primitives. Qwen3.8-27B `Q4_K_M` production NextN now defaults to a packaged, model-bound 131,072-row CJK-aware planar-Q6 proposal head: arbitrary selected rows are repacked into compact T16 storage, physical batches score only that head, and `proposal_top1_mapped_bf16`/the mapped batch reduction return full token IDs on device. The complete counterbalanced C5-C8 gate improves 3.59-4.49%, cuts proposal wall 29.19-33.44%, preserves acceptance and all 520 cross-arm target rows, and wins all 80 prompt cells in each pair. Strict, capability/identity misses, and `HIPENGINE_GGUF_MTP_HOT_VOCAB=0` retain the full-vocabulary exact head; malformed or model-mismatched explicit maps fail closed. |
-| Dense planar-Q6 integer MMQ | `quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}` | `activation_quant`, `linear` | B5 retains a gfx1151 production-profile T2 composite for rows17-48 on sole-resident planar K17408/N5120 down and K5120/N1024 narrow-V: session-owned BF16→Q8_1 packing plus the existing integer `mmq64x64` consumer. The dense specialization is parent-bit-exact; the complete gate improves C5-C8 MTP 1.75-2.08% with 100% top-1 and max KL 0.002231. Exact A owners remain registered for strict/profile fallback. Standard Q6, Q4/Q5, peers, and shape/row misses are excluded. |
-| IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families. IQ3 tile4 remains scoped to the retained gfx1100 explicit-DFlash route; gfx1151 excludes it after a complete-route rejection and keeps tile1. |
+| Q8_0 T16 decode | `quant/gguf_q8_0_t16_gemv.{hip,py}` | `linear`, `linear_pair`, `linear_triple` | Exact T16 Q8 decode GEMV for Qwen3.5-family attention projections (in 2048; fused qkv 8192 + gate 4096). Per-row dual/split owners run at all widths, with an exact 128-thread dual-split rowtile col8 pair owner admitted at rows >= the backend-package floor `GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS`. |
+| Q4/Q5/Q6 T16 selected | `quant/gguf_t16_selected_gemv.{hip,py}`, `quant/gguf_k_t16_selected_prefill.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, `moe_linear+weighted_sum`, `linear+residual` | c=1 and selected-prefill T16/qmicro/interleaved consumers, including weighted/residual composites. Exact one-wave/shared-B WMMA rowtile owners cover physical shapes, with grouped-grid siblings, fused dual+SiLU prefill owners, and input-F16 activation siblings (`*_fp16_in_bf16_out`) registered per backend; every shape/row miss and env-disabled path retains the strict one-wave/shared-B or primitive fallback, and current per-shape ownership is backend-package capability data. |
+| Q6/Q4 mixed and narrow K/V grids | `fused/gguf_q6_q4_pair.{hip,py}` | `linear_pair` (standard-Q6+Q4, Q4, Q4+planar-Q6) | Exact block-parallel rows1 pairs for standard-Q6+Q4, Q4, and Q4+planar-Q6 layouts; primitive projections remain the registered fallbacks. |
+| Dense Q6_K T16/qmicro | `quant/gguf_q6_k_t16_gemv.{hip,py}` | `linear`, `linear+argmax`, `linear+residual` | Exact dense Q6 decode/prefill/root families with wave-shuffle/DPP reductions, grouped-grid and shared-weight WMMA owners for larger rows, and exact col8 rowtiles for small packed rows; `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` caps root-logit chunking and registered primitives remain fallbacks. |
+| Dense planar-Q6 integer MMQ | `quant/gguf_q4_k_q8_1_selected_prefill.{hip,py}` | `activation_quant`, `linear` | gfx1151 production-profile T2 composite for rows17-48 on sole-resident planar K17408/N5120 down and K5120/N1024 narrow-V: session-owned BF16-to-Q8_1 packing feeding the integer `mmq64x64` consumer; exact A owners remain registered for strict/profile fallback. |
+| IQ2/IQ3/IQ4 decode | `quant/gguf_iq_gemv.{hip,py}` | `moe_linear` | Raw IQ selected-expert projection families; IQ3 tile4 is scoped to the gfx1100 explicit-DFlash route and gfx1151 keeps tile1. |
 | IQ selected prefill | `quant/gguf_iq_selected_prefill.{hip,py}` | `moe_linear` | Grouped/expert-major, active-expert, rowbatch, and output-ownership variants. |
-| Raw-K activation MMQ | `quant/gguf_k_mmq_prefill.{hip,py}` | `activation_quant`, `linear` | Q8_1 producer layouts plus Q5/Q6 MMQ consumers; retained diagnostics may not be runtime defaults. The original gfx1100 C8 Q5 I64/J16-J32 source-faithful DS4 owner is rejected after its ten-prompt task gate changed one acceptance decision and regressed `general_en` by 1.38%/1.90% across orders despite a +0.99% pooled aggregate. Its retained replacement is R32-only and defaults on behind the zero-valued `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ` rollback: a baseline-built K-major D4S4-FP32 producer and FP32 LDS weight metadata remove that independent precision downgrade, while the fast-math I64/J32 consumer preserves source-shaped loading. Against the retained raw owner, all 48 actual R32 `ssm_out` weights win (11.330→11.025 ms, 1.028x), with max KL below 3e-9 and 100% top-1; R24 is 0.974x and therefore retains raw MMQ. A bit-exact baseline-compiled consumer loses all 48 R32 weights at 0.957x. Tracked-clean profiling attributes Q5 operation wall **12.794→10.940 ms/cycle (-14.49%)**, cycle device union -2.55%, target marker wall -1.25%, and target device union -2.32% at identical 144-consumer/144-producer launch counts; the strict-teacher packet passes 240 rows at mean/p95/p99/max KL 0.000158/0.000837/0.001535/0.005678 and 99.583% top-1, the staged counterbalanced task gate improves pooled throughput 88.932→90.082 tok/s (+1.29%), and the post-promotion same-build default-versus-explicit-zero gate confirms 88.953→90.139 tok/s (+1.33%) with 20/20 prompt cells, every category/heldout slice positive in both orders, identical generated IDs and acceptance ledgers, and clean teardown. The existing D4S4 raw-Q5 owner remains the gfx1100 eight-request C8 production owner at exact K6144/N5120 R24 and the R32 rollback beneath the K-major route: bounded scratch plus explicit raw sidecars reduce three-cycle Q5 operation wall 45.514→38.027 ms, the strict-teacher R24/R32 gates pass 480 rows at 100% top-1 and max KL 0.005018, and the promoted-default task gate improves 87.186→89.377 tok/s (+2.51%). `HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ=0` retains D4S4 raw MMQ; `HIPENGINE_GGUF_C8_Q5_RAW_MMQ=0`, peer backends, and scope misses retain grouped T16. |
+| Raw-K activation MMQ | `quant/gguf_k_mmq_prefill.{hip,py}` | `activation_quant`, `linear` | Q8_1 producer layouts plus Q5/Q6 MMQ consumers; retained diagnostics may not be runtime defaults. The gfx1100 C8 Q5 owner choice between K-major source MMQ and raw MMQ is capability/env data (`HIPENGINE_GGUF_C8_Q5_SOURCE_MMQ`, `HIPENGINE_GGUF_C8_Q5_RAW_MMQ`) in the backend package. |
 | Raw-IQ source MMQ | `quant/gguf_iq_source_mmq_prefill.{hip,py}` | `moe_linear` | Source-faithful IQ MMQ diagnostic/alternative consumers. |
 | Exact expanded F32 planes | `quant/gguf_q5_k_f32_rocblas_prefill.{hip,py}` | `linear` and raw-quant composites | Raw Q5/Q6 producers plus ordered exact consumers; library SGEMM variants are distinct diagnostic paths. |
-| Source-F16 Q4/Q5/Q6 library route | `quant/gguf_q6_k_f16_rocblas_prefill.{hip,py}` | dequant/cast/`linear` composites | Sole Q4T16/Q5T16 and raw/sole-planar-Q6T16 bounded tile producers feeding F16 rocBLAS; Q4T16 includes scalar column-owned and exact adjacent-pair-owned producers, while Q5T16 includes scalar plus exact pair- and natural-octet-owned producer leaves. Changed arithmetic is model/shape gated, while exact T16 remains the small-row and miss fallback. Qwen3.6-27B admits Q5T16 recurrent output with its natural-octet producer at M512-M4096, bounded Q4T16 full-attention Q with its adjacent-pair producer at M512-M2047, and Q4T16 linear-attention gate only as the second operand behind the already-admitted Q6T16 QKV peer at M512-M2047 after complete category and cross-board full-engine qualification. A generic ordered-pair policy prevents that gate shape from claiming standalone or Q4/Q4 pair dispatch, while request-row filtering and a per-shape ceiling keep M2048/4K exact. Scalar producer and exact T16 kernels remain registered policy-miss fallbacks; decode, verifier, peer backends, and every unqualified shape remain exact. |
+| Source-F16 Q4/Q5/Q6 library route | `quant/gguf_q6_k_f16_rocblas_prefill.{hip,py}` | dequant/cast/`linear` composites | Bounded tile producers feeding F16 rocBLAS for Q4T16/Q5T16 and raw/sole-planar-Q6T16, with scalar, pair-, and octet-owned producer variants. Changed arithmetic is model/shape gated; scalar producers and exact T16 kernels remain registered fallbacks, and decode, verifier, peer backends, and unqualified shapes stay exact. |
 | Embedding | `quant/gguf_q6_k_embedding.{hip,py}` | `embedding` (`gguf_q4_k/q5_k/q6_k/q8_0`) | Raw GGUF row lookup for root/token tables. |
 | X8 sidecars/replacements | `quant/gguf_x8_selected_gemv.{hip,py}` and pack8 modules | selected `moe_linear` / top-1 helpers | GGML-style packed selected-expert and head diagnostics/qualified lanes. |
-| Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. The Q6 X8 direct-top1 consumer is c1-only for shared-slot AR; multi-row uses Q6 rowtile logits plus GPU argmax after the physical-cN shortcut emitted an invalid second-row sentinel. |
+| Q8 dp4a verifier | `quant/gguf_q8_0_dp4a_gemv.{hip,py}` | `linear` pair/triple/rowtile variants | q8_1+sudot4 verifier/draft families; selection is route-specific. The Q6 X8 direct-top1 consumer is c1-only for shared-slot AR; multi-row uses Q6 rowtile logits plus GPU argmax. |
 | Selected pack8/T16 support files | `quant/gguf_*selected*.{hip,py}`, `quant/gguf_*pack8*.{hip,py}`, `quant/gguf_*t16*.{hip,py}` | `linear`, `linear_pair_silu`, `moe_linear`, producer/metadata variants | Build/registration partitions for selected-expert storage layouts; exact ownership stays in each wrapper. |
 
-The gfx1100 grouped-Q4/Q6 packed FFN-down residual-store experiment is rejected
-and removed. Candidate row6/row8 kernels preserved the retained projection
-arithmetic and first BF16 boundary exactly, then folded the BF16 residual add
-into the store; all 12 actual-weight R12/R18/R24/R28/R32/R36 cells were
-BF16-bit exact. The binding current-width leaf gate nevertheless lost Q4 at
-R24/R28/R32 (**0.996x/0.983x/0.992x**, 9/6/13 of 30 event wins), while planar
-Q6 was only **1.003x/1.000x/1.002x**. Residual liveness/read/add pressure inside
-the heavy projection outweighed deleting the tiny add launch, so the full
-prompt suite was not spent and the retained grouped projection plus standalone
-`gguf_bf16_add` remains the registered chain. Evidence:
-[`grouped down-residual rejection`](../benchmarks/results/2026-09-02-w7900-q4km-grouped-down-residual-rejected.json).
-
-For dense Qwen3.6-27B on gfx1100, the package-default rank-2 Q4 map is one
-`gguf_q4_k_t16_v1/tiles` payload across all 288 tensors. Its c1/rows-2-4 owners
-live in `gguf_t16_selected_gemv.{hip,py}` and its M16-through-M4096/tail
-shared-B owner lives in `gguf_k_t16_selected_prefill.{hip,py}`; the output-major
-K256 LDS slab is the retained implementation. For the model's dense
-K=5,120/N=17,408 FFN gate/up pair at M>=512, the same prefill family also owns
-an operation-complete dual-output WMMA+SiLU variant: one four-wave block reuses
-each activation fragment across independent gate/up weights, rounds both
-projection outputs to BF16 in LDS, then applies the existing SiLU boundary.
-The model's Q4/Q4 linear-attention K=5,120/N=10,240+6,144 pair has a separate
-exact unequal-output owner at M>=512: a dual-WMMA shared 6,144-column prefix plus
-a singleton-geometry QKV tail, with two direct BF16 outputs and no new storage.
-On gfx1100 dense H5120 `Q4_K_M` that floor is **M>=16** after the 2026-08-30
-re-qualification: bit-identical to the two singletons at the dispatched shape for
-rows 16/24/32/45/96/512 and +1.7-2.1% W7900 Qwen3.8 prefill across rows 16-192.
-The route is ContextVar-scoped to the resident prefill entry, so this differs from
-the shared `linear_pair_silu` gate and cannot reach captured target verification.
-Raw/pack8 Q4 bodies remain registered for other layouts and diagnostics, not as
-dense-27B sidecars. Evidence: [`XTX first fit`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-sole-t16-first-fit.json),
-[`output-major LDS keep`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-q4-t16-output-major-lds.json),
-[`dual-WMMA SiLU keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-dual-wmma-silu-prefill-retained.json),
-[`unequal Q4 pair keep`](../benchmarks/results/2026-08-13-qwen36-27b-q4-unequal-dual-prefill-retained.json),
-and [`live residency/correctness`](../benchmarks/results/2026-08-12-qwen36-27b-xtx-correctness-residency.json).
-
-For dense Qwen3.8-27B Q4_K_M on gfx1151, the capability-driven H=5,120
-plan is qualified as sole Q4 ownership: all 288 rank-2 Q4 tensors use only
-`gguf_q4_k_t16_v1/tiles`; pack8, decode-tile, raw, and alternate-Q4 sidecars are
-absent. The serial rows1 H=5,120/N=17,408 gate/up pair defaults to the exact
-local32 dual+SiLU owner. Its former changed-arithmetic Q8_1x2 split-weight route
-passes the strict-teacher gate but loses the current seven-pair ZBook timing at
-`0.998071x` with one win, so it remains diagnostic. Native B1 retains its
-separately qualified non-split Q8_1x2 owner. Native verifier rows2-4 use the
-exact standard-Q4 two-wave/16-column owner only for full-attention Q
-K5,120/N12,288 (rows2/3/4) and recurrent QKV K5,120/N10,240 (rows3/4). Each
-wave preserves the parent WG32/eight-column K/FMA/reduction/store sequence;
-the parent stays the registered strict fallback for every shape/row miss.
-
-The selected Q4_K_S representation independently replaces only its 128
-H=5,120/N=17,408 gate/up weights with
-`gguf_q4_k_qmicro_t16_v1/tiles`; its other rank-2 Q4 weights remain standard
-T16. Each qmicro K256/N16 tile is 2,304 rather than 2,368 bytes, removing 170
-MiB. Serial c1 uses the exact split-weight Q8_1x2 owner over compact metadata;
-native rows2-4 use the exact shared-weight rowtile8 sibling because direct-BF16
-association can change greedy trajectories. Bulk 512/1K uses direct-metadata
-WMMA; from 4K, one bounded expansion writes only compact coefficients into the
-already-dead FFN scratch plane before the same exact dual WMMA. This adds no
-workspace or persistent bytes. Rows5-4095 and misses retain the qualified
-singleton/primitive fallbacks. The raw token embedding remains raw GGUF, peer
-geometries retain prior policy, and no `KVLiveSpans` ABI changes are involved.
-Evidence:
-[`current Q4_K_M strict requalification`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-requalification.json),
-[`current Q4_K_M counterbalanced A/B`](../benchmarks/results/2026-08-16-gfx1151-qwen38-dense-pair-strict-default.json),
-[`Q4_K_S split-weight decode`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q4-q8x2-split-weight-decode.json), and
-[`Q4_K_S sole qmicro gate/up`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-qmicro-sole-retained.json).
-The serial-c1 K=5,120/N=1,024 full-attention K/V subset independently selects
-the exact four-column Q4T16 owner; native sessions, peers, and all shape misses
-retain local32 direct. Evidence:
-[`Qwen3.8 Q4T16 c1 col4 full-K/V`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4-single-col4-c1-decode.json).
-The same gfx1151 model policy also gives the 48 exact
-K=6,144/N=5,120 recurrent `ssm_out` Q5_K tensors one sole
-`gguf_q5_k_t16_v1/tiles` payload each. Serial c1 uses the exact eight-column
-output-ownership sibling after five actual layers and every repeated/natural AR
-scope improve with BF16-bit identity; the registered local128 direct owner
-remains the policy-miss and `native_batch_decode_session` fallback. Exact
-rows-2-4 rowtile, rows-5+ direct fallback, and dense WMMA consumers cover the
-rest of the role; GDN and residual boundaries remain separate registered
-primitives. Dense BF16 stays available as a numerical oracle but is not a
-resident shadow for this qualified shape. The smaller 0.8B Q5T16 role remains
-independently shape-qualified. Evidence:
-[`Qwen3.8 Q5T16 serial-c1 tile8`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-q5-dense-tile8-decode.json).
-
-Qwen3.8-27B Q4_K_S is qualified on gfx1151 using the same operation-complete
-Q5T16 family. Its 60 rank-2 Q5 owners consist of the 48 existing recurrent
-outputs plus eight K17,408/N5,120 FFN-down, three K5,120/N10,240 recurrent-QKV,
-and one K5,120/N1,024 full-attention-V tensor; all own only `tiles`, with no
-dense-BF16 Q5 shadow. The exact 16K/48V/128x128 GDN geometry also selects
-`chain_compact_peer_wave32`. True AR independently transfers three exact
-Q4_K_M-derived policies whose representation and math are unchanged: qmicro Q4
-split-weight gate+up+SiLU, Q4 down+residual (Q5 down remains unfused), and
-quant-independent fixed-H5120 norms. The transfers improve matched 512/128 AR
-**12.42932 -> 13.06854 tok/s (+5.143%)**. Clean commit `3118943eb` publishes
-**13.03883/12.86679/13.02544 tok/s** at 512/1K/4K, above both frozen clean
-llama backends at every shape. Natural true AR is **13.33276 tok/s**,
-repeat-exact across 30 requests.
-Native Q4_K_S MTP uses a separately qualified rows2-8 qmicro Q8_1x2
-rowtile8 owner for H5120/N17408 gate/up+SiLU. It shares each compact-weight
-traversal across rows while preserving c1's dp4a/FMA/reduction and BF16
-association independently per row. Rows2-8 are BF16-bit exact to serial c1;
-the complete ten-prompt AR/B1/B2/B3 gate is exact with GPU/CPU acceptance
-agreement, and B3 reaches **24.19347 tok/s / 1.8228x** own AR. Cache-only
-`rocprofv3` records rows3 at local128, 120 VGPR, 512-byte LDS, zero scratch,
-and 0.462-0.465 ms on an actual layer-0 pair. The policy adds no bytes, and the
-direct-BF16 rowtile plus primitive chain remain registered fallbacks. On
-2026-08-18 the owner was extended to ROW_TILE 5..8 and the packed-AR decode
-step (`_enqueue_packed_decode_model_step`) now enters
-`native_batch_decode_session(True)`, so eager `step_batch_native` and graph
-capture route c2..c8 gate/up through the rowtile8 owner instead of WMMA
-prefill (c8 step 408.9 -> 312.4 ms; c4 42.5 tok/s agg 3.31x c1 with no
-regression; native_c8 25.2 tok/s agg, rows exact vs c4). On 2026-08-18 the
-single Q4/Q5 projections (attn_qkv, attn_q/k/v/o, attn_gate, ffn_down,
-ssm_out) were also extended to rows 2..8: `launch_q4_dense_rowtile` (8-col),
-`launch_q4_dense_rowtile_col4`, and `launch_q5_dense_rowtile_col4` now
-instantiate ROW_TILE 5..8, `_q4_t16_dense_native_dispatch`/`_q4_t16_
-sidecar_decode_variants` cover rows 2..8, and gfx1151's
-`GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT` for Q5 is 8. c8 WMMA prefill is
-eliminated: packed-AR c8 step 312.4 -> 139.8 ms, native_c8 aggregate
-25.2 -> 56.6 tok/s (4.40x c1, 7.1/stream), c4 unchanged (42.5 tok/s agg),
-RED rows 2..8 bit-exact vs c1. The Q6 lm_head rowtile was also extended to
-rows 2..8 (`launch_q6_t16_rowtile`/`_col8` ROW_TILE 5..8), so c8 lm_head is
-one launch instead of the prior 4+4 chunk; `GGUF_Q6_LM_HEAD_MAX_CHUNK` is now
-8 (was 5/4).
-
-### c=N decode combination map (gfx1151 Qwen3.8 Q4_K_S)
-
-No decode concurrency below 512 silently falls to WMMA prefill:
-
-| rows | Q4 single proj | Q4 gate/up | Q5 single | Q6 lm_head |
-| --- | --- | --- | --- | --- |
-| 1 | `dense_single_local32` | `dense_dual_local32` | `t16_gemv_decode` (direct) | `t16_gemv_decode` (direct) |
-| 2-8 | `dense_rowtile`/`_col4` (gfx1100 qualified Qwen3.8 R6 shapes and gfx1151 qualified small-M shapes use exact `dense_rowtile16_w2`) | `dense_dual_q8_1x2_rowtile8` | `t16_gemv_rowtile` (per-shape cap; qualified gfx1151 Qwen3.8 shapes use col8 ownership) | `t16_gemv_rowtile` |
-| 9-511 | rowtile8 chunked (8+2, 8+8, ...) | dual rowtile8 chunked | `t16_gemv_decode` (direct grid.y=rows) | chunked (max 8) |
-| >=512 | WMMA prefill (bulk) | WMMA prefill | WMMA prefill | WMMA prefill |
-
-Mechanism: in a `native_batch_decode_session` the single Q4/Q5 projections at
-rows 9..511 are decomposed by `_native_rowtile_chunk_groups` into
-`_rowtile8_row_chunks` groups (all groups 2..8 rows, tail-1 folded), so each
-group lands on the native rowtile owner; the gate only fires for quants that
-would resolve to a `t16_wmma_prefill` leaf (Q4) and that have a registered
-rowtile owner. Q5 keeps its native direct grid.y=rows leaf (it never hits
-WMMA), and rows >= 512 stay on WMMA prefill. The gate/up dual rowtile8 policy
-(`GGUF_DENSE_PAIR_SILU_NATIVE_DECODE_POLICIES`) admits rows 2..511. c>8 chunks
-into <=8-row rowtile8 groups; c>=512 stays on WMMA. Evidence:
-[`Qwen3.8 Q4_K_S qualification checkpoint`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-qualification-checkpoint.json),
-[`Qwen3.8 Q4_K_S true-AR policies`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-decode-policies-retained.json),
-[`clean Q4_K_S publication`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q4ks-clean-publication.json), and
-[`exact Q4_K_S native B3`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-exact-native-b3.json).
-
-The same Qwen3.8/gfx1151 policy role-qualifies byte-neutral Q6 ownership rather
-than forcing the losing all-planar route. The 32 FFN-down tensors, eight narrow
-attention-V tensors, and untied root own one
-`gguf_q6_k_t16_qmicro_planar_v1/tiles` payload each. The 24 recurrent
-K=5,120/N=10,240 QKV tensors retain one `gguf_q6_k_t16_v1/tiles` payload each
-because planar c1 loses 8.72% on actual weights; no tensor retains both layouts
-and dense-BF16 Q6 bytes are zero. Exact native c1, rows2-4, WMMA, residual,
-and top-1 leaves remain registered. On gfx1151, rows2 F32 uses a dedicated
-planar col16 owner, while native rows2-4 FFN down+residual deliberately uses
-planar projection plus the primitive BF16 add: the exact native fused sibling
-loses 17.35%/11.44%/11.15% at rows2/3/4 and remains a
-peer-backend/diagnostic leaf. Complete actual-weight,
-512/1K/4K, graph, NextN, natural AR/B1-B3, CPU quality, memory, and teardown
-gates retain the role-qualified route. Evidence:
-[`Qwen3.8 role-qualified Q6`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p2a-role-qualified-q6.json).
-
-Qwen3.8/gfx1151 P4 enables changed-arithmetic source-F16 only for the 48
-K=6,144/N=5,120 sole-Q5T16 recurrent outputs at M512-M4096. The byte-exact
-octet producer expands four bounded tiles per layer into temporary F16,
-zero-workspace rocBLAS publishes BF16, and exact Q5T16 WMMA remains the policy
-miss/rollback. Q4 and Q6 source-F16 are explicitly empty after pp512 wall and
-memory losses. Q5 improves prefill 3.978%/2.498%/2.650% at 512/1K/4K while
-adding 24.375/65/65 MiB temporary peak, no duplicate weight payload, and zero
-teardown. All natural tokens/acceptance are identical; every full/train/
-heldout/category scope stays within the frozen 0.5% decode guard. Evidence:
-[`Qwen3.8 Q5 source-F16`](../benchmarks/results/2026-08-15-gfx1151-qwen38-27b-p4-q5-source-f16.json).
-On 2026-08-17 the same admission was extended to the byte-identical Q4_K_S
-model (MOSTLY_Q4_K_S added to the dense H5120 F16 policy; its 48 recurrent
-outputs are byte-identical to K_M), and the Q4_K_S bulk-prefill scratch row cap
-became capacity-conditional: 4K-class requests grow to the natural 4,096-row
-full-attention plateau so the source-F16 route stays active there (+2.95%),
-while 8K and larger keep 1,024-row chunks (4,096-row chunks measured -2.3%
-slower at 8K regardless of source-F16), keeping memory flat past 8K. Evidence:
-[`Q4_K_S Q5 source-F16 retention`](../benchmarks/results/2026-08-17-gfx1151-qwen38-27b-q4ks-q5-source-f16-prefill-retention.json).
-
-For dense Qwen3.5-0.8B Q4_K_M on gfx1151, exact role/shape plugin policy also
-keeps one compact Q4T16 payload for the six full-attention Q projections at
-K=1,024/N=4,096. The existing direct leaf owns c1, exact rowtile owns c2-c4,
-physical c8 is split into two exact c4 launches by backend capability, and the
-existing T16 WMMA owner handles bulk rows. Every other 0.8B Q4 role and peer
-geometry retains its prior residents. No attention kernel or
-`KVLiveSpans` ABI changes. Evidence:
-[`0.8B Q4T16 attention-Q route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-q4t16-attn-q-route.json).
-
-The same model/quant/backend also owns one operation-complete p512 dense-FFN
-prefill route over the sole resident pack8 gate/up weights. A 128-thread,
-32-column x 256-row WMMA body decodes both matrices into one 32-KiB LDS union,
-reuses each activation fragment across gate and up, rounds both projection
-boundaries to BF16 in LDS, and emits the existing BF16 SiLU product directly.
-The route is qualified only for rows512/K1024/N3584 by model/quant plugin policy;
-two registered singleton WMMAs plus standalone SiLU remain the exact fallback.
-No resident bytes are added. Evidence:
-[`0.8B operation-complete pack8 prefill`](../benchmarks/results/2026-08-15-gfx1151-qwen35-08b-pack8-dual-wmma-silu-prefill.json).
-
-The same model/quant/backend has one separately qualified decode-only composite:
-`(hip_gfx1151, linear_pair_silu, gguf_q4_k,
-pack8_dual_decode_t128_bf16_bf16_out)` for c1 K=1,024/N=3,584 dense gate/up.
-It binds the existing sole-pack8 dual-SiLU body to 128 threads, replacing 24
-dual-t32 plus 24 standalone SiLU launches with 24 fused launches. Model/file
-identity and exact shape are backend capability data; Q8, other models/shapes,
-rows >1, and peer backends retain prior registered owners and the unfused
-fallback. No persistent bytes or hot scratch are added. Evidence:
-[`0.8B fused dense decode route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-fused-decode-retained.json).
-
-Its dense-down boundary has a second exact decode-only policy for c1
-K=3,584/N=1,024. Twelve existing Q4-pack8 t32 owners derive
-`linear+residual/gguf_q4_k/pack8_bf16_residual_bf16_out`; twelve existing
-dense-BF16 t256 owners derive
-`linear+residual/bf16/out_bf16_residual_bf16_out`. Both round the projection to
-BF16 before adding the BF16 residual in FP32 and rounding the sum to BF16. The
-model/file/shape policy is resolved once when the resident runner initializes.
-It adds no layout, persistent bytes, or hot scratch; Q8, rows >1, other models,
-and peer backends retain the primitive projection+add or their prior registered
-small-row composites. Evidence:
-[`0.8B fused dense-down residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-dense-down-residual-retained.json).
-
-Dense-H5120 has an independent exact c1 K=17,408/N=5,120 policy for its 32
-Q4T16 and 32 planar-qmicro-Q6 FFN-down owners. Each same-resident
-`linear+residual` sibling freezes the direct projection's K/FMA/reduction tree,
-rounds that projection to BF16, then folds only the BF16 residual read/add/final
-round into the producer store. The mixed prefill/decode selector treats this
-explicit rows1 policy independently of the WMMA-prefill axis, and the T16 ABI
-launches from the existing sole `tiles` allocation. A selected-region graph
-trace removes exactly **64 launches/token (934 -> 870)** and changes profiled
-host decode **82.46295 -> 82.31707 ms/token (-0.177%)** while selected kernel
-wall is flat within **0.005%**. Rows>1, Q8, other shapes/models, and peer
-backends retain the registered primitive chain; no payload, workspace, or
-tracked peak changes. Evidence:
-[`Qwen3.8 c1 down-residual graph contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-c1-down-residual.json).
-
-For scalar gfx1151 Q5T16 recurrent-output ownership, the registered
-`gdn_recurrent_rmsnorm_gate+cast/gguf_q5_k_t16_v1/bf16_lowp_f32_bf16_out`
-producer writes both the unchanged FP32 recurrent output/state and the exact RNE
-BF16 handoff consumed by `ssm_out`. It removes one standalone cast per recurrent
-layer without changing payload, scratch, or math. Registry misses and other
-quants retain ordinary GDN plus explicit cast; the verifier-chain sibling stays
-excluded pending its independent MTP gate. Evidence:
-[`Qwen3.8 scalar GDN BF16 handoff`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-gdn-bf16-handoff.json).
-
-The same gfx1151 scalar graph independently admits the existing exact
-`linear_pair/f32/bf16_hidden_bf16_out` body only at rows1 K5120/N48+N48. One
-local256 grid assigns independent alpha/beta output blocks while preserving each
-singleton K/FMA/reduction tree. Capability or registry misses, gfx1100, and
-rows2-4 retain two singleton dense-F32 projections. gfx1100 physical verifier
-rows15/18/21/24 also retain those singletons: the exact flat pair contracted the
-family 96→48 launches and 2.057→1.469 ms, but regressed operation-complete target
-wall 173.633→173.816 ms and target kernel sum 159.009→160.442 ms. No payload or
-scratch is added. Evidence:
-[`gfx1151 Qwen3.8 dense-F32 alpha/beta pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-dense-f32-alpha-beta-pair.json),
-[`gfx1100 high-row rejection`](../benchmarks/results/2026-09-02-w7900-q4km-k3-dense-f32-high-row-pair-rejected.json).
-
-A second gfx1151-only rows1 capability joins those pair blocks to the independent
-C10240/K4 in-place Conv blocks under
-`linear_attn_alpha_beta+conv_decode/f32/bf16_k5120_n48_c10240_k4_c1`.
-The local256 mixed grid preserves both dense-F32 reduction trees and every Conv
-state/output bit, needs 32 VGPR, 1 KiB LDS, zero scratch, and adds no bytes.
-Capability/registry/shape misses, verifier rows, and peers retain pair plus
-ordinary Conv. Evidence:
-[`Qwen3.8 serial alpha/beta+Conv`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-alpha-beta-serial-conv.json).
-
-The gfx1151-only serial 24Q/4KV/D256 full-attention route also registers
-`split_qgate+head_rmsnorm+partial_rotary/gguf_f32_weight/qwen35_position_qk_bf16_f32`.
-One local256 grid reads packed BF16 Q/gate and BF16 K directly, reproduces the
-existing FP32 head RMSNorm reduction and partial-RoPE expression bit for bit,
-and copies gate BF16 bits. It removes the standalone split and K-cast nodes;
-the complete primitive chain remains registered for shape/capability misses,
-native rows, prefill, and peers. No payload or scratch is added. Evidence:
-[`Qwen3.8 Q/K postprocess contraction`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-qk-postprocess-contraction.json).
-
-The gfx1151 rows1 recurrent QKV/gate boundary independently registers
-`linear_pair/gguf_q6_k_t16_v1+gguf_q4_k_t16_v1/mixed_grid_bf16_bf16_out` for
-K5120/N10240+N6144. One local128 grid assigns the established Q6 local128
-blocks and four independent Q4 local32 waves per Q4 workgroup, preserving both
-primitive arithmetic trees without serializing either owner. It removes 24
-launches/token, uses 96 VGPR, 512-byte LDS, zero scratch, and adds no payload or
-workspace. Native rows, prefill, capability/registry misses, and peers retain
-the two primitive projections. Evidence:
-[`Qwen3.8 Q6/Q4 mixed grid`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-q6-q4-mixed-grid.json).
-
-The same gfx1151 rows1 family independently registers two narrow full-attention
-K/V keys for K5120/N1024+N1024:
-`linear_pair/gguf_q4_k_t16_v1/narrow_col4_pair_bf16_bf16_out` and
-`linear_pair/gguf_q4_k_t16_v1+gguf_q6_k_t16_qmicro_planar_v1/narrow_col4_planar_pair_bf16_bf16_out`.
-Each local128 grid preserves the qualified Q4-col4 K owner and either the
-Q4-col4 or planar-qmicro-Q6 V owner. The target's eight Q4/Q4 and eight Q4/Q6
-pairs remove 16 launches/token; both kernels use zero scratch and add no
-payload or workspace. Native rows/MTP, prefill, NextN, capability/registry
-misses, and peer backends retain the two primitives. Evidence:
-[`Qwen3.8 narrow K/V pair`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-narrow-kv-pair.json).
-
-The model's separately screened D5 norm boundary has two fixed c1/hidden-1,024
-registry candidates:
-`rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256` and
-`add_rmsnorm/gguf_f32_weight/bf16_out_fixed1024_wave256`. Each caches four
-values per local256 thread, reduces within wave32 using HIP shuffles, and uses
-eight shared wave sums plus two block barriers. The add form preserves the
-existing unrounded-F32 normalization and rounded-BF16 residual contract. Generic
-t256 primitives remain registered fallbacks; no layout, persistent bytes, hot
-scratch, or node count is added. The production capability selects both keys as
-one C route only for gfx1151 Qwen3.5-0.8B Q4_K_M c1/hidden-1,024
-attention/post-attention owners. Resident dispatch caches a prevalidated
-registry partial after exact capability resolution; public wrappers and HIP
-entry points retain their full validation contract. Q8, output norm, verifier
-F32, rows>1, other shapes/models, and peer backends stay generic. Evidence:
-[`0.8B retained norm/residual route`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-retained.json),
-[`screen`](../benchmarks/results/2026-08-14-gfx1151-qwen35-08b-norm-residual-screen.json).
-
-Dense-H5120 has an independently qualified pair under variants
-`bf16_out_fixed5120_wave256`. Each local256 thread caches 20 values, preserves
-the generic per-thread accumulation and complete FP32 reduction tree, replaces
-nine tree barriers with shared-partial and inverse-RMS publication barriers
-plus five wave32 exchanges, and reuses the cached values for output. On gfx1151 Qwen3.8-27B,
-all 128 actual-weight norm/residual outputs are BF16-bit exact; the package
-improves **1.23268 -> 0.35870 ms/token (3.4365x, 15/15)** and complete graph AR
-**1.37-1.46%** across 512/1K/4K. `rocprofv3` records local256/grid256, 56/80
-VGPR, 1,536-byte LDS, and zero scratch. The model/backend/shape capability is
-rows1 Q4_K_M only; generic kernels remain the rows>1, Q8, output-norm,
-other-model, and peer-backend fallbacks. Evidence:
-[`dense-H5120 norm route`](../benchmarks/results/2026-08-16-gfx1151-qwen38-27b-fixed5120-norm-decode.json).
+Model-, quant-, and shape-specific owner selection for the dense Qwen3.6, Qwen3.8, and Qwen3.5-0.8B GGUF paths (payload plans, decode rowtiles, c=N decode maps, source-F16 library admissions, fused c1 composites, and norm/KV capability keys) is capability/policy data in `hip_gfx1100/__init__.py`, `hip_gfx1151/__init__.py`, and the GGUF dispatch wrappers — not catalog prose. Performance and correctness evidence for each selection lives in `benchmarks/results/` and the corresponding immutable worklog entries.
 
 The numerous small files named `gguf_*selected*`, `gguf_*pack8*`, `gguf_*t16*`, and `gguf_*prefill*` are registration/build partitions of these storage families. The exact per-variant inventory is the registry plus the source directory, not old campaign prose.
 
@@ -581,9 +217,9 @@ Encoder kernels are currently CUDA-only; see the CUDA catalog below.
 | DFlash2 drafter reference | `speculative/dflash2_drafter.py` + `cpu_reference/dflash2.py` | `dflash2_grouped_conv`, `dflash2_selector`, `dflash2_selector_path`, `dflash2_attention_forward`, `dflash2_rope_tables` (`fp32`) | Torch-free NumPy DFlash2 exactness reference (grouped dynamic conv, top-16 bilinear selector, q/k-norm sliding attention). Golden fixtures from z-lab/dflash @ 07ebd93; native kernels land in D2. Source lineage: `docs/source_lineage.json` (repo `dflash`). |
 | DFlash2 native kernels | `speculative/dflash2.{hip,py}` | `dflash2_grouped_conv`, `dflash2_top16_rows`, `dflash2_selector` (`bf16`/`fp32`) | Native grouped dynamic conv (strided side views over the 1280-wide projection), top-16 logits, and the low-rank bilinear candidate-selector greedy walk. Strict RED vs `cpu_reference/dflash2.py` (BF16 round-trip modeled); registered for `hip_gfx1100` + `hip_gfx1151`. D2a. |
 | DFlash acceptance | `speculative/dflash_accept.{hip,py}` | `dflash_accept_chain`, `speculative_accept_commit` | GGUF/PARO acceptance and bounded commit summaries. |
-| DFlash commit/state | `speculative/dflash_commit.{hip,py}` | `dflash_commit_chain`, `linear_state_pair_*` | Transactional selected-state and cursor commit helpers. gfx1100 physical C5-C8 target verification reads initial Conv/GDN state directly from one resident multi-slot slab and preserves the GPU-selected row commit as sole post-accept owner; the strict chunked pointer-table import is the explicit rollback and remains the retained gfx1151 packed-state route. gfx1100 also keeps the per-layer HIP D2D chain as a lower strict fallback. |
+| DFlash commit/state | `speculative/dflash_commit.{hip,py}` | `dflash_commit_chain`, `linear_state_pair_*` | Transactional selected-state and cursor commit helpers. gfx1100 target verification reads initial Conv/GDN state from a resident multi-slot slab with the strict chunked pointer-table import as rollback; gfx1151 keeps the packed-state route, and a per-layer HIP D2D chain remains a lower strict fallback on gfx1100. |
 | MTP core | `speculative/mtp.{hip,py}` | MTP norm/fuse/router/top-k/gate/finalize/route accumulation | Provider-neutral proposal/acceptance primitives. |
-| MTP NextN | `speculative/mtp_nextn.{hip,py}` | `mtp_nextn_*`, quant GEMVs, shared head | GGUF NextN layer, attention, MoE, and projection helpers. The existing exact K/V-only full-attention branch owns prompt priming and is now the default singleton/device and physical-batch accepted-tail repair owner. A 12-token W7900 future-state probe is exact and improves 0.910→0.329 ms/token; the complete C5-C8 gate improves +1.18%/+1.30%/+0.65%/+1.23%, every category/heldout slice is positive, and all 520 IDs/acceptance rows match. `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0` restores the complete NextN block. |
+| MTP NextN | `speculative/mtp_nextn.{hip,py}` | `mtp_nextn_*`, quant GEMVs, shared head | GGUF NextN layer, attention, MoE, and projection helpers. The exact K/V-only full-attention branch owns prompt priming and accepted-tail repair by default; `HIPENGINE_GGUF_NEXTN_ACCEPT_KV_WRITE_ONLY=0` restores the complete NextN block. |
 
 Detailed provider/runtime status belongs in `MTP.md`, `DFLASH.md`, worklogs, and benchmark artifacts.
 
