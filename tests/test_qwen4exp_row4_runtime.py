@@ -118,10 +118,27 @@ def test_live_row4_matches_parent(monkeypatch):
             for a, b in zip(actual, parent):
                 np.testing.assert_array_equal(a, b)
         assert len(calls) == 4
+        primary_scratch, primary_mixed = scratch, mixed
+        neighbor = runner.Qwen4ExpMoEScratch.allocate(
+            rows=rows, hidden=hidden, ffn=ffn, experts=experts, top_k=topk, runtime=runtime)
+        try:
+            scratch = neighbor
+            mixed = _upload(rng.normal(0, 0.2, (rows, hidden)).astype(np.float32), runtime, allocations)
+            neighbor_parent = run("0")
+            neighbor_candidate = run("1")
+            for a, b in zip(neighbor_candidate, neighbor_parent):
+                np.testing.assert_array_equal(a, b)
+        finally:
+            scratch, mixed = primary_scratch, primary_mixed
+            neighbor.close()
+        isolated = run("1")
+        for a, b in zip(isolated, parent):
+            np.testing.assert_array_equal(a, b)
         replay = run("0")
         for a, b in zip(replay, parent):
             np.testing.assert_array_equal(a, b)
     finally:
+        register(key, candidate, replace=True)
         if scratch:
             scratch.close()
         for ptr in reversed(allocations):

@@ -42,6 +42,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Retained grouped-row4 production improvement (2026-09-05):** a clean
+one-process/one-residency 12-case tg128 A/B at `82caa403d` measures weighted
+prefill **118.919->122.575 (+3.07%)**, **117.716->121.472 (+3.19%)**, and
+**95.421->97.850 tok/s (+2.55%)** at p512/p1024/p4096. All 72 trajectories
+are exact across arms, all 12 cases improve, max per-case prefill CV is 0.23%,
+and final tracked ownership is zero. Candidate invocations are 2/4/16 per
+after sample and zero per before sample. Decode is unchanged within 0.02%.
+The production profile selects exact Q5_K grouped-row4 gate/up for registered
+ungrouped rows>=64; strict and smaller rows retain selected GEMV. Evidence:
+[row4 promotion](../benchmarks/results/2026-09-05-framework-qwen4exp-row4-production.json).
+This is not halo-box parity or D1 requalification. Reprofile remaining MoE,
+dense/GR and QSA costs before the next optimization.
+
 Current-host follow-up:
 the [Framework owner refresh](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json)
 at `cf9c55920` measures code-p512/p4096 unprofiled prefill at 4.306/43.046 s.

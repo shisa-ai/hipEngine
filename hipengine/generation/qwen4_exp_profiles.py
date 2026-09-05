@@ -102,6 +102,13 @@ def _selection(
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            "linear",
+            "ungrouped_prefill_rows_ge64_q5k_gate_up",
+            "selected_gemv_bf16_bf16_out",
+            "selected_gemv_bf16_bf16_out",
+            "gguf_q5_k",
+        ),
+        _selection(
             "argmax",
             "qwen4exp_normal_greedy_output",
             "top1_i64",
@@ -202,6 +209,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "linear",
+            "ungrouped_prefill_rows_ge64_q5k_gate_up",
+            "selected_grouped_row4_gemv_bf16_bf16_out",
+            "selected_gemv_bf16_bf16_out",
+            "gguf_q5_k",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-row4-production.json",
+        ),
         _selection(
             "argmax",
             "qwen4exp_normal_greedy_output",
@@ -329,6 +344,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         # keeps the preceding owners as registered fallbacks.
         PROFILE_Q5_1_DOWN_M1_ENV: "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",
