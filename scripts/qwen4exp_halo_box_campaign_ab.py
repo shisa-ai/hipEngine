@@ -38,6 +38,7 @@ from scripts.qwen4exp_canonical_ar_bench import (  # noqa: E402
 BEFORE_COMMIT = "0436e138b5fe6a43b1b1bae5df6c33fff2110148"
 FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
 Q5_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
+ROW4_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
 _BASE_SEQUENCE = ("before", "after", "after", "before", "before", "after")
 
 
@@ -179,7 +180,13 @@ def _apply_mode(
     mode: str,
     *,
     environment: MutableMapping[str, str] = os.environ,
+    route_package: str = "pf13",
 ) -> None:
+    if route_package == "q5k-row4":
+        if mode not in {"before", "after"}:
+            raise ValueError(f"invalid campaign A/B mode {mode!r}")
+        environment[ROW4_ENV] = "1" if mode == "after" else "0"
+        return
     if mode == "before":
         environment[Q5_M1_ENV] = "0"
         environment[FORKB_ENV] = "0"
@@ -189,6 +196,11 @@ def _apply_mode(
         environment[FORKB_ENV] = "1"
         return
     raise ValueError(f"invalid campaign A/B mode {mode!r}")
+
+
+def validate_row4_engagement(mode: str, calls: int) -> None:
+    if (mode == "before" and calls != 0) or (mode == "after" and calls <= 0):
+        raise ValueError(f"invalid row4 engagement: {mode} calls={calls}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -201,6 +213,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4"), default="pf13")
+    parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
 
@@ -233,6 +247,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     fixture, fixture_sha256 = load_fixture(args.fixture)
     cases = fixture["cases"]
+    if args.case_id:
+        cases = [case for case in cases if case["id"] in args.case_id]
+        if {case["id"] for case in cases} != set(args.case_id):
+            raise SystemExit("unknown --case-id")
     transitions = int(fixture["decode_transitions"])
     model_root = args.model_root.resolve()
     max_sequence_length = max(int(row["prompt_tokens"]) for row in cases) + transitions + 8
@@ -314,18 +332,46 @@ def main(argv: Sequence[str] | None = None) -> int:
     _write_json(args.output, artifact)
 
     generator = resolved.construct_generator(factory)
+    row4_calls = [0]
+    original_row4 = None
+    if args.route_package == "q5k-row4":
+        from hipengine.kernels.registry import KernelKey, register, resolve
+        row4_key = KernelKey(
+            "hip_gfx1151", "linear", "gguf_q5_k",
+            "selected_grouped_row4_gemv_bf16_bf16_out")
+        original_row4 = resolve(
+            backend=row4_key.backend, layer=row4_key.layer,
+            quant=row4_key.quant, variant=row4_key.variant)
+
+        def counted_row4(*call_args, **call_kwargs):
+            row4_calls[0] += 1
+            return original_row4(*call_args, **call_kwargs)
+
+        register(row4_key, counted_row4, replace=True)
+        artifact["arms"] = {
+            "before": {"q5_k_gate_up": "selected_gemv_bf16_bf16_out"},
+            "after": {"q5_k_gate_up": row4_key.variant},
+        }
+    artifact["route_package"] = args.route_package
+    artifact["diagnostic_subset"] = bool(args.case_id)
+
+    def sample(mode, case, repetition):
+        _apply_mode(mode, route_package=args.route_package)
+        start_calls = row4_calls[0]
+        row = _hipengine_case_sample(
+            generator.runner, case=case, repetition=repetition, transitions=transitions)
+        if original_row4 is not None:
+            calls = row4_calls[0] - start_calls
+            validate_row4_engagement(mode, calls)
+            row["candidate_calls"] = calls
+        return row
+
     try:
         for case_index, case in enumerate(cases):
             warmup_modes = ("before", "after") if case_index % 2 == 0 else ("after", "before")
             for warmup in range(args.warmups_per_mode):
                 for mode in warmup_modes:
-                    _apply_mode(mode)
-                    row = _hipengine_case_sample(
-                        generator.runner,
-                        case=case,
-                        repetition=warmup,
-                        transitions=transitions,
-                    )
+                    row = sample(mode, case, warmup)
                     artifact["warmups"].append(
                         {"case_id": row["case_id"], "mode": mode}
                     )
@@ -337,13 +383,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             mode_counts = {"before": 0, "after": 0}
             sequence = arm_sequence(case_index)
             for slot, mode in enumerate(sequence):
-                _apply_mode(mode)
-                row = _hipengine_case_sample(
-                    generator.runner,
-                    case=case,
-                    repetition=mode_counts[mode],
-                    transitions=transitions,
-                )
+                row = sample(mode, case, mode_counts[mode])
                 mode_counts[mode] += 1
                 row.update(
                     {
@@ -375,8 +415,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_json(args.output, artifact)
         return 0
     finally:
-        _apply_mode("after")
+        _apply_mode("after", route_package=args.route_package)
+        if original_row4 is not None:
+            register(row4_key, original_row4, replace=True)
         generator.close()
+        artifact["memory_after_close"] = memory_stats()
+        _write_json(args.output, artifact)
 
 
 if __name__ == "__main__":
