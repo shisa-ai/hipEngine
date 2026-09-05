@@ -77,6 +77,15 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+**Later retained hipEngine update (2026-09-05 UTC):** exact serial-prefix
+register GDN on top of the retained Q51/Q4/QSA stack measures prefill
+**145.49/143.10/134.32 tok/s** at p512/p1024/p4096 in the full-category
+same-residency A/B, a9.50-10.55% incremental gain. All72 trajectories are exact
+and all12 complete requests improve3.28-6.79%. Decode p1024/p4096 loses
+0.45%/3.63% amid drift; retained under the owner's prefill-first direction.
+The comparator table below remains its earlier pinned screen, not a new
+cross-engine run. [Latest production evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
+
 The later 2026-09-05 owner decision retains exact QSA page256 and bundled-Q4
 prefill in production, accepting the recorded small hot-decode tradeoffs
 as follow-up work. The table below remains the pinned earlier comparator
@@ -88,7 +97,8 @@ Framework host `gfx1151`, halo-box Vulkan as the working performance target
 despite screening variance, native FP8 remote quality reference, and same-Q4
 llama.cpp implementation reference without production cross-engine text
 equality. The historical section-6 tile-16 pending step is complete in
-`22dc56268`; proceed to serial-prefix GDN when its refreshed impact warrants it.
+`22dc56268`; serial-prefix GDN is now retained as described above. Remaining
+routed MoE/dense and decode work is still open.
 
 This is the active same-host snapshot. It uses the verified four-part Unsloth
 `UD-Q4_K_XL` artifact, BF16 K/V, the canonical code/English/Japanese/mixed

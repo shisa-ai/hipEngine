@@ -53,6 +53,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Serial GDN retention (2026-09-05 UTC):** clean `e235f4480` full12-case,
+72-sample A/B measures p512 **131.60->145.49 (+10.55%)**, p1024
+**129.83->143.10 (+10.23%)**, p4096 **122.67->134.32 tok/s (+9.50%)**.
+Every trajectory is exact and every complete-request wall improves3.28-6.79%.
+Production now selects register-state GDN only in its exact serial branch,
+Hk16/Hv48/D128 rows>=2; strict and the qualified suffix remain unchanged.
+Decode p512 is flat, p1024 loses0.45%, and p4096 loses3.63%. Retention follows
+the owner's prefill-first direction; these new adverse rows are explicit
+decode debt, not a numerical waiver or a claim of thermal causality.
+Max per-case prefill/decode CV is1.81%/3.61%; no stable absolute decode or
+external parity claim. Full A/B36m11s, zero final ownership.
+[Register-GDN evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
+The serial-prefix unit is now retained; rerank remaining routed MoE/dense
+work from a fresh profile rather than repeating the completed GDN screen.
+
 **Q5_1 pair2 retention:** the clean full-category A/B at `e60061201`
 improves prefill **126.88->132.13 (+4.14%)**, **125.37->130.60 (+4.17%)**,
 and **118.40->122.82 tok/s (+3.73%)** at p512/p1024/p4096, on top of

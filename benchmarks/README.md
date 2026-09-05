@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-05**
+Last updated: **2026-09-05 UTC**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -186,27 +186,26 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
-Serial GDN candidate screen on Framework `gfx1151`:
-Hk16/Hv48/D128, tokens512, complete F32 recurrence plus norm/gate
-**21.072->2.808 ms (7.50x)** with exact parent output/state bits.
-This is a synthetic model-geometry microbenchmark, not a model rate;
-whole-model admission is pending and defaults are unchanged.
-[GDN screen](results/2026-09-05-framework-qwen4exp-gdn-register.json).
+Latest full-suite production retention adds exact register-state serial GDN:
 
-Latest full-suite production retention adds Q5_1 paired-output reuse:
-
-| Shape | Parent prefill | Pair2 prefill | Gain | Pair2 decode |
+| Shape | Parent prefill | Register GDN prefill | Gain | Decode before -> after |
 | --- | ---: | ---: | ---: | ---: |
-| p512 | 126.88 | **132.13** | **+4.14%** | 19.50 |
-| p1024 | 125.37 | **130.60** | **+4.17%** | 18.85 |
-| p4096 | 118.40 | **122.82** | **+3.73%** | 14.41 |
+| p512 | 131.60 | **145.49** | **+10.55%** | 19.435 -> 19.435 |
+| p1024 | 129.83 | **143.10** | **+10.23%** | 18.685 -> 18.602 |
+| p4096 | 122.67 | **134.32** | **+9.50%** | 14.057 -> 13.547 |
 
 All rates are tok/s on Framework `gfx1151`, UD-Q4_K_XL/BF16 KV, four
 categories and tg128. This is a same-residency incremental A/B with all72
-trajectories exact and all12 prefill cases positive. Decode has substantial
-time-order drift in both arms; its aggregate paired change is within0.04%,
-not a stable absolute comparison to older sessions.
-[Full timing and promotion evidence](results/2026-09-05-framework-qwen4exp-q51-pair-production.json).
+trajectories exact, all12 prefill cases positive, and complete-request wall
+speedups of3.28-6.79% per case. Decode losses of0.45%/3.63% at p1024/p4096
+are retained under the owner's prefill-first direction and remain open work.
+Both arms drift; this is not a stable absolute decode comparison or external
+parity claim. Full A/B elapsed36m11s; teardown is zero.
+[Full timing and promotion evidence](results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
+
+The preceding Q5_1 pair2 admission improved prefill3.73-4.17% and remains
+part of this measured baseline.
+[Pair2 evidence](results/2026-09-05-framework-qwen4exp-q51-pair-production.json).
 
 The prior promoted combination remeasured at121.14 pp/s on the code-p4096
 diagnostic (not an all-category refresh). The original standalone Q5_1 output-
