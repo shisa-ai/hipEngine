@@ -360,49 +360,6 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_
         runtime.check(int(error))
 
 
-def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out(
-    input_ptr: int,
-    expert_start_ptr: int,
-    weights_ptr: int,
-    output_ptr: int,
-    compact_rows: int,
-    num_experts: int,
-    in_features: int,
-    out_features: int,
-    *,
-    stream: int = 0,
-    library: ctypes.CDLL | None = None,
-    runtime: HipRuntime | None = None,
-) -> None:
-    """Run exact Q5_1 M2 with hierarchical strict-tree reduction."""
-
-    if compact_rows <= 0 or num_experts <= 0:
-        raise ValueError("compact_rows and num_experts must be positive")
-    if in_features <= 0 or in_features % 32 or out_features <= 0:
-        raise ValueError("Q5_1 grouped projection has invalid feature geometry")
-    library = library or build_qwen4_exp_q5_1(load=True)
-    runtime = runtime or get_hip_runtime()
-    fn = signed_kernel_fn(
-        library,
-        "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out",
-        _ARGS_GROUPED,
-        ctypes.c_int,
-    )
-    error = fn(
-        input_ptr,
-        expert_start_ptr,
-        weights_ptr,
-        output_ptr,
-        compact_rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream,
-    )
-    if int(error) != HIP_SUCCESS:
-        runtime.check(int(error))
-
-
 def qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(
     input_ptr: int,
     selected_ptr: int,
@@ -658,16 +615,6 @@ def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
         qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out,
         replace=replace,
     )
-    register(
-        KernelKey(
-            "hip_gfx1100",
-            "moe_linear",
-            "gguf_q5_1",
-            "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out",
-        ),
-        qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out,
-        replace=replace,
-    )
     for layer in ("linear", "moe_linear"):
         register(
             KernelKey(
@@ -738,7 +685,6 @@ __all__ = [
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out",
-    "qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m2_bf16_bf16_out",
     "qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out",
     "register_qwen4_exp_q5_1_kernels",
 ]
