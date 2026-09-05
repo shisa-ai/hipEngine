@@ -27,6 +27,7 @@ import numpy as np
 import pytest
 
 from hipengine.core.specdec2_scope import moe_physical_c2_pairreuse_session
+from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.registry import KernelKey
 from hipengine.runtime import qwen35_gguf_runner as qgr
 from hipengine.runtime.gguf_linear import set_gemv_decode_enabled
@@ -1354,3 +1355,42 @@ def _fail_if_called(name: str):
         raise AssertionError(f"{name} should not be called")
 
     return fail
+
+
+def test_gfx1100_q4_selected_pairreuse_floor_admits_c8_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """W7900 selected pairreuse retention (audit packet D1): the package
+    floor enables the exact Q4 dual pairreuse owner at physical c8 without
+    any env override; explicit env 0 still rolls back, and the geometry gate
+    keeps non-c8 shapes on the per-row dual owner."""
+
+    min_rows = int(
+        backend_package_capability(
+            "hip_gfx1100",
+            "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
+            0,
+        )
+    )
+    assert min_rows == 8
+
+    monkeypatch.delenv("HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE", raising=False)
+
+    def admits(x_rows: int, rows: int) -> bool:
+        # Mirror the packed-decode selected-dual admission exactly.
+        return (
+            qgr._gguf_t16_selected_pairreuse_enabled()
+            and x_rows == 8
+            and rows == 64
+        )
+
+    with qgr._gguf_t16_selected_pairreuse_min_rows_scope(min_rows):
+        assert admits(8, 64)
+        assert not admits(4, 32)
+        assert not admits(2, 16)
+    with qgr._gguf_t16_selected_pairreuse_min_rows_scope(0):
+        assert not admits(8, 64)
+
+    monkeypatch.setenv("HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE", "0")
+    with qgr._gguf_t16_selected_pairreuse_min_rows_scope(min_rows):
+        assert not admits(8, 64)
