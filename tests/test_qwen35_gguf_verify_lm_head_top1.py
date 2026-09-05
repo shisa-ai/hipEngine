@@ -336,3 +336,45 @@ def test_verify_lm_head_q6_top1_dp4a_requires_sidecar(monkeypatch: pytest.Monkey
             stream=7,
             runtime=session.runtime,
         )
+
+
+def test_gfx1100_lm_head_rowtile_width_bound_comes_from_the_resolved_quant() -> None:
+    """The width-8 root head depends on which Q6 quant the lm_head resolves to.
+
+    ``_verify_lm_head_rowtile_max_rows()`` reads ``_hipengine_max_rows`` off the
+    registered rowtile primitive, and the effective chunk is
+    ``min(GGUF_Q6_LM_HEAD_MAX_CHUNK, that bound)``. gfx1100 registers the
+    variant under two Q6 quants with different bounds, so the package constant
+    alone does not establish that a physical width-8 verifier head is one
+    launch. Pin all three values together.
+    """
+
+    from hipengine.kernels.backends import backend_package_capability
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+        register_gguf_q6_k_t16_gemv_kernels,
+    )
+    from hipengine.kernels.registry import resolve
+
+    register_gguf_q6_k_t16_gemv_kernels()
+
+    bounds = {}
+    for quant in ("gguf_q6_k_t16_v1", "gguf_q6_k_t16_qmicro_planar_v1"):
+        fn = resolve(
+            backend="hip_gfx1100",
+            layer="linear",
+            quant=quant,
+            variant="t16_gemv_rowtile_bf16_f32_out",
+        )
+        bounds[quant] = int(getattr(fn, "_hipengine_max_rows", 0))
+
+    assert bounds["gguf_q6_k_t16_v1"] == 6
+    assert bounds["gguf_q6_k_t16_qmicro_planar_v1"] == 8
+
+    package_chunk = int(
+        backend_package_capability("hip_gfx1100", "GGUF_Q6_LM_HEAD_MAX_CHUNK", 0)
+    )
+    assert package_chunk == 8
+
+    # Planar resolution: one launch at width 8. Non-planar resolution: 6+2.
+    assert min(package_chunk, bounds["gguf_q6_k_t16_qmicro_planar_v1"]) == 8
+    assert runner_mod._small_b_rowtile_chunks(8, max_chunk=6) == (6, 2)
