@@ -219,6 +219,13 @@ The next H256 sparse-attention candidate is standalone only: at
 whole-model gain or runtime default.
 [QSA candidate](results/2026-09-05-framework-qwen4exp-qsa-h256-wave.json).
 
+Its full-suite internal A/B measures p4096 prefill 97.83→116.70 tok/s
+(+19.29%), but decode 15.27→15.20 (-0.48%). All 72 trajectories are exact;
+the candidate stays default-off pending focused decode followup. An English
+128-step probe also matches full logits and complete K/V, but is not a
+replacement for the original timing protocol.
+[Full-suite audit](results/2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 
