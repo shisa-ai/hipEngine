@@ -779,6 +779,15 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+The Qwen4Exp serial GDN family registers the T0
+`qwen4exp_sigmoid_register_prefill` candidate for Dk=Dv128.
+It retains serial arithmetic and the FP32 state boundary while keeping state
+across tokens. Framework gfx1151 complete-kernel tokens512 is 21.072->2.808 ms;
+256 VGPR and 24-byte scratch are an explicit reviewed tradeoff.
+The original strict serial kernel remains registered and selected.
+Whole-model admission is pending; suffix tile16 scope is unchanged.
+Evidence: `2026-09-05-framework-qwen4exp-gdn-register.json`.
+
 The Qwen4Exp Q5_1 selected family registers an exact output-pair prefill
 candidate that reuses BF16 activation loads across two output columns.
 It preserves separate logical256 accumulations and reuses one LDS reduction

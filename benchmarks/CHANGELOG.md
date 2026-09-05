@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 UTC Framework Qwen4Exp serial GDN] Register-state candidate tokens512 21.072->2.808 ms (-86.67%, 7.50x), exact state/output; explicit launch bound reduces scratch480->24 bytes. Kernel retained, model admission pending. `benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register.json`.
+
 - [2026-09-05 UTC Framework Qwen4Exp Q5_1 pair2 production] Exact output-pair reuse improves same-residency prefill p512126.88→132.13 (+4.14%), p1024125.37→130.60 (+4.17%), p4096118.40→122.82 tok/s (+3.73%); all72 trajectories exact, all12 cases improve, clean teardown. Decode paired aggregate within0.04% despite drift. `benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json`.
 
 - [2026-09-05 Framework Qwen4Exp Q5_1 pair] Standalone two-bank down tokens512 ~54.5→43.5 ms (-20.20%, 1.253x), exact outputs, 11 tests and cached trace pass; activation reuse, runtime pending. Combined production code-p4096 diagnostic measures121.14 pp/s separately. `benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair.json`.
