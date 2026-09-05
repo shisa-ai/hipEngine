@@ -4781,8 +4781,8 @@ should be boring.
 
 ## Qwen4Exp Q5_K grouped row4 candidate (2026-09-05)
 
-`selected_grouped_row4_gemv_bf16_bf16_out` is registered but not selected by
-runtime. Remove the standalone candidate if complete-owner/whole-model
-validation rejects it; otherwise promote through the existing registry
-boundary and keep the selected-GEMV strict fallback. No environment flag
-has been added for this primitive.
+`selected_grouped_row4_gemv_bf16_bf16_out` has default-off runtime wiring
+through `HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL`. Remove the flag and unused
+route if complete-owner/whole-model validation rejects it; otherwise promote
+through the existing registry boundary, keeping selected-GEMV strict fallback.
+Drop the opt-out once same-host promotion and rollback confidence are established.
