@@ -1035,6 +1035,15 @@ Phase-0 targets (driven by the current research focus):
 | **Llama 3** | full_attention + dense_mlp | Phase 3 |
 | **sansho** (custom) | (your arch; see `/home/lhl/amd-gpu-tuning/reference/sansho/`) | Phase 3+ |
 
+Qwen3.8-Flash-Next gap-closure priority (source review 2026-09-05): routed
+prefill MoE, dense/GR, D=256 sparse QSA, then GDN; see the
+[halo campaign's ordered work](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#6-punchlist).
+The GDN tile-16 candidate needs Hv=48 coverage before binding-model validation.
+The historical Q8 admission packet's route-coverage finding and subsequent
+natural-text failure leave D1 re-qualification/scope/fallback with the owner;
+the status row above records historical admission, not resolution of that audit.
+This reprioritization changes no architecture, runtime default or quality gate.
+
 Each model plugin owns:
 - **Layer sequence**: Qwen3.5 35B-A3B alternates `full_attn` with `linear_attn` and `gdn`; Gemma 4 alternates `sliding` with `global`; dense models are uniform.
 - **Weight name map**: HF `model.layers.0.self_attn.q_proj.weight` → our `layers.0.attn.q_proj`.
