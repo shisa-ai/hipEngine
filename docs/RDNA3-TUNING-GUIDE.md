@@ -118,6 +118,14 @@ third of the W7900's theoretical external bandwidth. It also has one third of
 the L2 and last-level cache. Never copy a split count, row threshold, cache
 policy, or chunk size solely because both devices execute RDNA3-family ISA.
 
+A power envelope is part of the host identity. The same `gfx1151` silicon in a
+60 W laptop chassis and in a 140 W desktop chassis are separate measurement
+lanes with separate noise floors: roughly 10% clock-driven run spread in the
+60 W lane against roughly 1% in the 140 W lane. A 1.2% prefill-chunk win
+measured on the 60 W lane did not reproduce on the 140 W lane and was below the
+60 W lane's own noise floor. Establish a lane's noise floor before promoting any
+percent-scale result, and never carry an absolute rate between lanes.
+
 ### 2.3 A practical memory hierarchy
 
 Think about traffic in this order:
@@ -165,6 +173,26 @@ arithmetic, cache-line waste, low occupancy, barriers, synchronization, launch
 cost, and unrelated model traffic all reduce achieved performance. Conversely,
 a cache-hot or multi-row test can legitimately exceed a one-stream external
 bandwidth calculation because it reuses data.
+
+Useful first-pass classification thresholds:
+
+- arithmetic intensity below about 10 usually indicates a memory-bound
+  operation; above about 50 usually indicates a compute-bound one;
+- more than about four ALU operations per encoded weight element indicates a
+  dequantization-overhead-bound kernel rather than a bandwidth-bound one;
+- for a packed rowtile that reuses one weight read across `M` rows, useful
+  arithmetic intensity rises approximately as `2M / bpw`, where `bpw` is bytes
+  per encoded weight value.
+
+Two symmetric errors are common. Measuring below a bandwidth roof does not prove
+the operation is not bandwidth-limited: low occupancy, cache-line waste, poor
+channel utilization, and dequantization issue pressure all reduce attainable
+bandwidth. And sub-linear wall growth across batch widths does not identify the
+limiter. Packing eight rows measured 4.20x aggregate throughput at 1.92x round
+wall, which proves weight and metadata amortization but says nothing about the
+mechanism; a fitted "fixed" term contains the weight stream, dequantization
+setup, device kernels, dispatch, and synchronization, and cannot be relabeled
+host overhead from scaling alone.
 
 ## 3. Classify the workload before changing code
 
@@ -254,8 +282,16 @@ costs include:
 - overlap potential between genuinely independent branches.
 
 An expert-sequential schedule is not automatically cache-friendly enough to
-win. Measure selected-expert locality and full wall rather than assuming L2
-reuse.
+win, and the reason is structural rather than tunable: grid dimensions do not
+control block scheduling order on RDNA3. Reshaping a grid from
+`(packs, total_rows)` to `(packs, num_experts)` to hold one expert's weights in
+L2 measured 59% slower, because blocks sharing a `blockIdx.y` are not
+co-scheduled, the added per-expert token loop serialized work that had been
+parallel across blocks, and the smaller grid removed the thread-level
+parallelism that was hiding memory latency. Guaranteeing expert order requires a
+cooperative launch with device-wide synchronization, a persistent kernel with an
+atomic work queue, or separate launches. Measure selected-expert locality and
+full wall rather than assuming L2 reuse.
 
 ## 4. Build trustworthy evidence
 
@@ -286,10 +322,14 @@ Use each timing layer for its proper question:
 | Full operation/request wall | Did the user-visible path improve? | Which mechanism caused it |
 | Prompt/task suite | Did the optimization retain useful output quality? | Bitwise arithmetic identity |
 
-Warm up the code path and clocks before timed samples. Use repeated,
-counterbalanced baseline/candidate runs. Report median and tails when variance
-matters; do not promote a result smaller than uncontrolled run-to-run movement
-without stronger paired evidence.
+Warm up the code path and clocks before timed samples. The gap is large enough
+to invert conclusions: identical 512-token prefill measured about 458 tok/s cold
+and about 1,930 tok/s on the next pass, and 4K prefill moved from about 2,142 to
+about 3,255 tok/s, almost all of it JIT and allocator warmup. Keep an explicit
+cold row when first-request latency is the subject, but never mix cold and warm
+rows in one speed table. Use repeated, counterbalanced baseline/candidate runs.
+Report median and tails when variance matters; do not promote a result smaller
+than uncontrolled run-to-run movement without stronger paired evidence.
 
 ### 4.3 Calculate overlap with interval unions
 
@@ -335,8 +375,26 @@ that differ from the tool label. Cross-check every important conclusion with:
 - complete wall;
 - a known-control kernel when using hardware counters.
 
-Do not build an occupancy theory from a zero `SQ_WAVES` value or a bandwidth
-theory from an implausible `MemUnitBusy` result.
+On the current stack, `MemUnitBusy` reads zero for every sampled dispatch in a
+production c8 profile and is unusable. `SQ_WAVES` is populated but is exactly
+grid-derived, so it confirms launch geometry and is not independent evidence
+about residency. Do not build an occupancy theory from either.
+
+When counters cannot supply bandwidth, compute achieved rates from exact
+resident tensor ledgers instead: divide each kernel family's encoded weight
+bytes by its summed duration. One c8 production profile ranked Q4-pair, Q4
+singleton, Q6, and Q5 projections at 508.0, 387.4, 322.2, and 245.5 GB/s this
+way. Label such numbers as lower-bound traffic rates. They exclude activations,
+metadata, overfetch, and cache reuse, and they are not hardware-counter
+bandwidth.
+
+Reported utilization is not a work signal either. A `gfx1151` long-prefill stall
+holds the GPU at approximately 100% reported activity and 2.9 GHz while drawing
+only 41-59 W against a roughly 120 W working regime, with device memory stable
+and no fault, timeout, or reset logged. High utilization at low power means the
+device is not doing useful work. The complementary signature, a hang at 0%
+activity with no error, is usually a stale JIT cache rather than a kernel
+defect.
 
 ### 4.6 Correctness is part of performance
 
@@ -411,11 +469,34 @@ Grid coverage is necessary, not sufficient. Check:
 - private scratch;
 - resident wave limit after all resources are combined.
 
-A low-row WMMA kernel can launch hundreds of blocks and remain latency-bound if
+As a working ladder for a bandwidth-bound decode kernel, at most 96 VGPRs allows
+16 waves per SIMD and ample latency hiding; 192 allows 8 and remains adequate;
+above 256 allows only 4-5 and starts to starve the memory controller; 1-2 waves
+per SIMD is critically undersubscribed and can drop effective bandwidth to
+30-40%. Treat any allocation above about 128 VGPRs as worth inspecting. A
+low-row WMMA kernel can launch hundreds of blocks and remain latency-bound if
 roughly 200-250 VGPRs per thread permit only a few waves per issue slot. In that
 case, reducing the accumulator tile can outperform adding more blocks. Treat
 any sharp VGPR rise as a possible occupancy-class transition and verify it with
 resources plus timing.
+
+Grid size also has an upper limit past which extra blocks buy nothing and cost
+dispatch. A W7900 GEMV at 104 VGPRs reaches about half occupancy, roughly 14
+workgroups per CU, so the machine fills at about 1,350 workgroups; the same
+kernel's verifier grids ran 49x to 97x that depth. Before shrinking such a grid,
+decide which kind of excess it is. Blocks that repeat identical work collapse
+for free: a GDN recurrence launching one block per `(v_head, dv_idx)` repeated
+the same q/k loads, reductions, and transcendentals across 128 blocks per head.
+Blocks that each compute a unique output do not; folding them into an output
+tile trades grid size for per-block serial work and must be measured per shape.
+
+Any runtime knob that changes thread or block size must be validated against the
+kernel's `__launch_bounds__`, its statically allocated shared memory, and its
+reduction scratch size. Wrappers that accepted a 256-thread request for kernels
+compiled with `__launch_bounds__(128, 4)` produced HIP unspecified launch
+failures during otherwise ordinary sweeps. Fall back to the compiled default for
+out-of-contract values and keep one smoke test covering rejected values; failing
+safely is better than treating an invalid knob as a benchmark candidate.
 
 Keep private scratch at zero on hot paths unless a measured exception justifies
 it. A tiny spill inside a deep K loop can dominate the kernel.
@@ -426,6 +507,15 @@ Deep K-loop unrolling can expose independent loads and arithmetic to the
 scheduler. It is especially useful when the compiler otherwise emits a serial
 load-dequant-accumulate chain. But unrolling also increases live values and
 code size.
+
+The default hypothesis for a simple dot or FMA loop of the form
+`for (k = tid; k < N; k += blockDim.x)` is manual vec8 unrolling with a tail
+loop, applied when `N / blockDim.x` falls below roughly 64 iterations per
+thread. HIP and ROCm did not expose enough instruction-level parallelism at
+those trip counts on their own. In the parent lineage this was the largest
+single decode-era kernel family win: vec4 across the W8A16 kernels gave roughly
++42% decode and vec8 added a further +8%. Checks at vec16 showed diminishing
+returns, so treat vec8 as the plateau rather than the first rung of a ladder.
 
 For each candidate:
 
@@ -517,9 +607,28 @@ cross-workgroup partials.
 
 ### 5.9 Treat integer dot/MMQ as a layout decision
 
-RDNA3 exposes mixed signed/unsigned dot operations such as `sudot4`; portable
-signed `sdot4` assumptions have failed in this lineage. Integer matrix paths can
-reduce weight and activation bytes, but their end-to-end value depends on:
+Check instruction availability before designing an integer path. On `gfx1100`,
+`__builtin_amdgcn_sdot4` and `__builtin_amdgcn_udot4` require the unavailable
+`dot1-insts` feature and do not compile; mixed signed/unsigned
+`__builtin_amdgcn_sudot4` uses `dot8-insts` and is the available route, which is
+what llama.cpp HIP uses for RDNA3 Q4/Q8 matrix-vector work. `v_dot8_i32_iu4`
+exists for INT4-packed layouts and `v_dot2_f32_f16` for FP16 pairs. Signedness
+and the bias or minimum fold must match the quantization math exactly, and a
+builtin that compiles is not evidence of speed: inspect the ISA for real
+`v_dot4*` instructions, zero scratch, and healthy VGPR counts, then measure the
+exact shape.
+
+Two arithmetic assumptions fail on this architecture. INT8 and FP16 WMMA both
+run at 512 operations per cycle per CU, so INT8 is not a 2x compute path; a
+measured `4096^3` comparison on W7900 gave about 84.8 TFLOP/s BF16 against about
+75.3 TOP/s INT8. Integer wins therefore come from lower memory traffic and
+better residency, not from the multiply. And `gfx11` has no native FP8 hardware,
+so FP8 decode and dequantization are software bit manipulation while INT8 has
+native dot and conversion paths; prefer INT8 for 8-bit storage work unless
+targeting RDNA4 or later.
+
+Integer matrix paths can reduce weight and activation bytes, but their
+end-to-end value depends on:
 
 - native instruction availability in the selected compiler path;
 - resident packed layout;
@@ -540,6 +649,15 @@ VOPD encodes compatible pairs of independent vector arithmetic operations. It
 can raise FP32 throughput, but its presence is not a useful optimization metric
 by itself. The compiler may emit VOPD for a slower schedule and omit it for a
 faster one.
+
+Two encoding facts bound what VOPD can do. Published FP32 peak assumes full VOPD
+pairing, so the unpaired rate is roughly half of it; a roofline built on the
+headline number overstates the compute roof for any dependent chain. And
+`v_dot4*` instructions are VOP3-encoded and do not participate in VOPD at all,
+so a dot-based path is not competing for those issue slots. The
+shift-mask-subtract-convert-multiply dequantization chain has little VOPD
+opportunity because its steps depend on each other; replacing that chain with a
+dot instruction removes work rather than pairing it better.
 
 Create independent accumulator chains, avoid unnecessary dependencies, inspect
 the final ISA, and measure the real kernel. Do not preserve a slower path to
@@ -595,6 +713,25 @@ For `M=1`, reduce instructions per encoded byte and preserve enough waves to
 cover memory latency. For packed widths, reuse each weight record across rows
 without eliminating too much output parallelism.
 
+Size the workgroup from the smallest `K` in the kernel's dispatch set. Threads
+whose loop never executes are pure overhead, and the effect is severe at small
+`K`: llama.cpp HIP's Q4_K matrix-vector path maps thread groups to quant blocks,
+so at `ncols=512` only 32 of 256 threads enter the useful inner loop and 224
+idle. That structural difference, not an instruction gap, is most of why a
+64-thread single-wave shape beat a 256-thread block on the same expert-down
+shape. As a starting point, `K=512` suits 64 threads and `K=2048` suits 128; a
+global 256 is usually wrong at one end of the set. An independent RDNA3 engine
+reached the same conclusion from a different direction: hipfire's `gfx1100` Q4
+matrix-vector path uses 32-thread workgroups with `__launch_bounds__(32, 16)`,
+packed `uint32_t` nibble loads, and four independent FP32 accumulators, and does
+not default to dot instructions either.
+
+The rule inverts for a latency-bound kernel with no dead lanes. A `gfx1151`
+short-context attention leaf carrying an inherited `gfx1100` 256-thread geometry
+was 6-26% faster at 1,024 threads across contexts 256-1024. Block geometry is
+the first inherited constant to re-derive when moving between architectures, and
+the answer comes from the shape rather than from the previous host.
+
 ### 6.2 Multi-row quantized linear and verifier paths
 
 Test these owner classes independently:
@@ -639,6 +776,19 @@ parallelism or inflate registers. Likewise, split-K/context is useful only when
 added workgroups cover an undersubscribed kernel enough to pay for partial
 reduction and scratch traffic.
 
+Two attention-specific traps recur. First, a populated grid can still hide
+serial work: a split-K path with enough workgroups assigned each token's
+256-wide QK dot to a single thread, and making that dot wave-cooperative was
+worth 1.12x at 4K and 1.62x at 128K before any layout change. Audit work
+distribution inside the block after fixing grid coverage. Second, a one-pass
+streaming rewrite in the FlashAttention style changes reduction order and is
+easy to mistake for an exact speedup. One grouped online-softmax prototype
+showed the right direction at 128K and then failed exact graph-versus-eager
+token agreement at 32K and at `decode_len=1`. Build a fixture comparing
+producer outputs, split partials, top logits, and greedy tokens against the
+retained exact path before wiring such a rewrite end to end; without it the
+candidate is an approximate-attention path, not an exact default.
+
 ### 6.4 Prefill attention and linear layers
 
 Prefill prefers larger tiles, WMMA, and enough row work to amortize loads.
@@ -681,6 +831,21 @@ Small pointwise kernels are often launch-bound. Fusion is valuable when it:
 - removes one launch;
 - shares a reduction or already-loaded value;
 - keeps exact ownership and output semantics.
+
+Price the fusion before writing it. Removing a small-grid launch recovers only
+the per-launch dispatch floor, on the order of 5.6 microseconds, which a staging
+kernel can easily lose to barrier spin and a staged round trip through memory:
+two bit-exact staged-rotate fusions that removed roughly 68 and 146 launches per
+pass both regressed the verify cycle. A launch that is already overlapped
+recovers nothing at all; fusing a gate multiply that occupied about 1
+microsecond of a 95 microsecond attention call was flat to +0.7% at the leaf and
+within noise end to end.
+
+Some pairs cannot be fused at all under the current grid. A router logits kernel
+using one block per expert to keep occupancy high cannot absorb a top-k that
+needs every expert logit for a token: without inter-block synchronization the
+fused form is either racy or collapses to one block per token, recreating the
+undersubscription the split was designed to fix.
 
 Do not fuse merely to reduce a kernel count if the result raises VGPR/LDS enough
 to slow the dominant operation. Every fused composite needs a registered strict
@@ -739,6 +904,14 @@ For integrated memory, distinguish:
 
 For discrete memory, distinguish requested device bytes from runtime reserves,
 allocator overhead, and mapped host pages.
+
+Runtime reserves can be large and are tunable. ROCr 7.2.4 reserves 140 MiB of
+single-dispatch scratch per process and GPU by default, with dispatches above
+that limit using a use-once scheme. Lowering the homogeneous `gfx1100` default
+to 8 MiB through `HSA_SCRATCH_SINGLE_LIMIT` recovered 132 MiB of unused reserve
+while retaining full-engine behavior. The variable must be applied before
+`libamdhip64` loads, and an explicit user value should always win over an engine
+default.
 
 ### 7.4 Keep one operation-complete resident layout
 
@@ -819,8 +992,19 @@ compute units. Requirements:
 - remeasure after queue-count or runtime changes;
 - preserve a sequential rollback.
 
-Queue count is host- and workload-specific. One queue fixed an older long-
-prefill stall, while a later full `gfx1151` matrix selected two queues for an
+The compute frontend bounds what overlap can buy. The chip has 8 ACEs and the
+queue manager connects one queue per pipe at a time, so about 8 kernels can be
+in flight simultaneously; a single HIP stream uses one. Two bandwidth-bound
+branches will not exceed the single-stream bandwidth ceiling between them, so
+overlap pays only when the branches use complementary resources. `rocprofv3`
+kernel traces carry a queue ID, so pipe spread is directly verifiable rather
+than inferred.
+
+Queue count is host- and workload-specific, and no single setting is a fix.
+`GPU_MAX_HW_QUEUES=1` was an initial mitigation for a `gfx1151` long-prefill
+stall and is documented as risk reduction only: the stall still reproduces with
+one queue, with SDMA disabled, and under both tested HIP 7.13 and 7.15
+user-space stacks. A later full `gfx1151` matrix selected two queues for an
 independent MoE branch. Neither is a universal RDNA3 setting.
 
 ## 8. `gfx1100`: discrete Navi 31
@@ -955,6 +1139,10 @@ tests. Treat all system settings as same-host experimental variables.
   production HIP owners.
 - `gfx1100` PM4 packets and replay thresholds are not portable evidence;
   current `gfx1151` policy uses HIP graphs.
+- A long-prefill no-progress hazard is open on this architecture
+  (`ROCm/ROCm#6437`). It is intermittent, reproduces with a single queue and
+  with SDMA disabled, and constrains both published long-context rows and any
+  proposal to add another low-level queue or transport path.
 
 ### 9.5 Suggested first checks
 
@@ -1024,6 +1212,9 @@ specific mechanism before another sweep.
 | "Persistent alternate layouts are free" | Duplicate weights consumed many GiB and narrowed model capacity | Is the layout operation-complete, or can a bounded workspace capture the benefit? |
 | "Alias scratch with an apparently later buffer" | A hidden consumer caused nondeterministic corruption | What is the proven last-use graph for every range? |
 | "Tune clocks/governor first" | `high` performance mode and TuneD were neutral/noisy in retained tests | Is there measured throttling under a same-commit control? |
+| "A microbenchmark with pre-filled inputs predicts end-to-end" | An 8x `grouped_mm` microbenchmark became a 16% end-to-end loss and +1.6 GiB peak once dequantization, stacking, and allocator pressure were included | What does the complete pipeline cost, staged one layer at a time? |
+| "Reorder `blockIdx` to get cache locality" | Grid dimensions do not control block scheduling order on RDNA3; the reshape measured 59% slower | Does the schedule need a cooperative launch, a persistent work queue, or separate launches? |
+| "A fast row is a fast row" | Non-finite logits and collapsed expert routing each produced large apparent speedups by removing real work | Did work volume hold constant: finite outputs, route diversity, unique tokens, fallback share? |
 
 ## 12. A repeatable tuning procedure
 
