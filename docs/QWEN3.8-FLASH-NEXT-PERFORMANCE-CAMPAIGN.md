@@ -29,6 +29,16 @@ with exact full logits and IDs; the named trace reduces the QSA operation role
 to **20.913 ms/token**. This is a retained production improvement, not section
 6 closure.
 
+**2026-09-05 execution-order update:** the
+[halo campaign source review](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#53-source-audit-corrections-2026-09-05)
+and its section-6 queue govern the next prefill units: routed MoE (including
+selected Q8/Q5_K tails), dense/GR, D=256 sparse QSA, GDN, then batch-policy and
+routing/combine cleanup. Correct binding geometry before promotion: GDN is
+Hk=16/Hv=48/D=128; the new tile-16 candidate accepts Hv=32 only. Q8 MMQ already
+uses 128×128 matrix tiles. Historical mixed-bucket ratios are not matched
+kernel ratios. This source-only reprioritization adds no benchmark and changes
+no section-6 closure target, representation or quality gate.
+
 This document is the performance-specific plan and punchlist.
 [`QWEN3.8-FLASH-NEXT.md`](QWEN3.8-FLASH-NEXT.md) remains the model/bring-up
 authority; this file owns only the gap-closure campaign. Cross-engine speed,
@@ -726,7 +736,7 @@ None of these numbers are hipEngine results.
 | [quimmedes/cafe-llama.cpp](https://github.com/quimmedes/cafe-llama.cpp), observed HEAD `2da84198eccb0aee59abba59e967dcc61f84ce07` | The fresh fork exposes pinned-host/CPU routed-expert placement, PLE n-gram SSD mmap or disable modes, and Qwen4Exp MTP trunk/combiner fixes. Commits `ba7bd23` and `7ee981d` add the PLE controls; `19aefd2` and `d98dc18` address MTP hidden export and mixer mapping. | Track as a source lead, not a measured comparator. SSD PLE and host-placement ownership may inform P9; `--no-ngram` changes the model and cannot close parity. No same-weight local rate or correctness packet has been verified. Confidence: high for repository/commit identity, medium for transfer applicability. |
 | [omlx PR #3260](https://github.com/jundot/omlx/pull/3260), open head `3343e4414f75b9808d2d8a6de1950ad96ce8dac8` | Adds row-addressable SSD expert reads, fixed preallocated expert banks, manifest pins plus an evictable hot tier, learned route-frequency hotlists, expert-major overflow chunks, and checked/speculative miss handling with transactional KV/SSM restore. The author reports exact expert output at a 0% substitution threshold. | Track the fixed-bank, telemetry, hotlist, and transactional retry mechanisms for constrained-residency work. This is an unmerged Apple MLX/safetensors path with a dirty merge state, not direct HIP/GGUF code or local performance evidence. Confidence: high for PR state/design, low for transfer magnitude. |
 | [exllamav3 PR #303](https://github.com/turboderp-org/exllamav3/pull/303), open head `5705f07b39671746af336bb004ad2e324410a654` | Builds a selected draft-only vocabulary head, keeps draft IDs on GPU through the block, and leaves full-vocabulary target verification unchanged. The author reports CUDA/SM89 Qwen3.8-27B MTP-4 **36.584→44.579 tok/s (+21.9%)** with a grouped 64K head; follow-up comments report separately quantized individual-row 8K/16K/32K heads at 0.032/0.165/0.329 ms versus 0.932 ms for grouped 64K, but acceptance varies with the proposal map. | Mechanism: high-confidence source match. Transfer magnitude: low confidence because backend, model, quant, draft depth, and verifier differ. On gfx1151 the current Qwen4Exp 248,320-row Q8_0 draft head is **3.153 ms / 41.3%** of a 7.639-ms draft step, but eliminating it entirely would improve the retained full-suite wall only **0.97%** and **0.955x→0.964x AR** because serial target verification dominates. P11 should first remove host draft outputs, then test individual Q8_0 rows—not EXL3's 128-token groups—after target verification improves. |
-| [halo-box/strix-llama.cpp PR #11](https://github.com/halo-box/strix-llama.cpp/pull/11), head `a7ad7b7f` on base `6c84c7d5`, source-reviewed 2026-09-02 | gfx1151-gated ROCm prefill package: MMQ tile retune (256→128-wide Q4_K/Q5_K/Q6_K/Q8_0), parallel top-10 `mm_ids` compaction, device-built routed-compact J48 MMQ (Q6_K/Q8_0 only), fused weighted top-10 expert sum + shared mul-add-residual, 32-warp/tile-16 GDN, Q8_0-KV decode FA opt. Author-reported +44.8%/+25.6%/+15.3%/+13.5% PP2048 at depth 0/12K/32K/64K on UD-**IQ4_XS** with byte-identical-logits correctness claims; faster FA tiles were rejected for logit drift. | Author-reported; different quant, PP2048 shape, and a base older than pinned upstream `f1793c1c4`; nothing locally reproduced yet. The mechanisms map directly onto the blocked prefill-MoE, dense/GR, and GDN owners. Dedicated follow-up: [`QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md). |
+| [halo-box/strix-llama.cpp PR #11](https://github.com/halo-box/strix-llama.cpp/pull/11), head `a7ad7b7f` on base `6c84c7d5`, source-reviewed 2026-09-02 | gfx1151-gated ROCm prefill package: MMQ tile retune (256→128-wide Q4_K/Q5_K/Q6_K/Q8_0), parallel top-10 `mm_ids` compaction, device-built routed-compact J48 MMQ (Q6_K/Q8_0 only), fused weighted top-10 expert sum + shared mul-add-residual, 32-warp/tile-16 GDN, Q8_0-KV decode FA opt. Author-reported +44.8%/+25.6%/+15.3%/+13.5% PP2048 at depth 0/12K/32K/64K on UD-**IQ4_XS** with byte-identical-logits correctness claims; faster FA tiles were rejected for logit drift. | HB-0/HB-1/HB-2 now pin local binaries, same-payload screens and active symbols; HB-3 operation-matched microbenchmarks remain blocked. The published IQ4_XS gain remains author-reported. The 2026-09-05 source audit corrects M6 to active H=48 non-KDA warps, with H=32 KDA tile-16 inactive; prioritize actual owner coverage over literal PR transplants. Dedicated follow-up: [`QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md`](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md). |
 | Upstream llama.cpp [#27742](https://github.com/ggml-org/llama.cpp/pull/27742) | Qwen4Exp architecture support; merged at `6c84c7d5`. | Already represented in the fresh comparator. |
 | Upstream [#27794](https://github.com/ggml-org/llama.cpp/pull/27794) | `TENSOR_READ_LAZY` plumbing; merged at `fac889fb`. Nathan's branch keeps the missing batched row-prefetch half. | Useful PLE hypothesis. |
 | Upstream [#27836](https://github.com/ggml-org/llama.cpp/pull/27836) | Qwen4Exp NextN/MTP draft head; open. Its key note is that the hyper-connection combiner must run per stream; mean pooling first destroys acceptance. | Matches our retained lesson; use it to audit, not re-derive, the Qwen4Exp MTP combiner. |
@@ -2209,9 +2219,10 @@ long-context rung and the device-resident MTP milestone; MTP must beat true AR
 on the full category+heldout suite and reach the section 6 target without
 benchmark gaming.
 
-Start with the exact ordered live-4097 QSA decode dataflow. Then execute
-operation-complete prefill MoE, dense/GR, p4096 QSA prefill, short-decode
-selected projections/Q8, and GDN in measured order. P8 is not rank 2: do not
+The exact ordered live-4097 QSA decode route is already retained. Follow the
+2026-09-05 halo campaign section-6 work order for the next prefill units,
+including its binding-shape corrections. Use its section 5.5 for residual
+short-decode selected projections/Q8 and long-decode ordered QSA. P8 is not rank 2: do not
 integrate it until a same-session named-production arm supplies `O` and `s`.
 
 Settle the P0 measurement gaps before the closure freeze: GPU clock policy must
