@@ -24,6 +24,13 @@ def test_qsa_benchmark_modes_and_engagement():
         validate_qsa_h256_engagement("before", 48, 4096)
 
 
+def test_subset_keeps_original_case_counterbalance():
+    from scripts.qwen4exp_halo_box_campaign_ab import fixture_case_index
+
+    cases = [{"id": "code-p512"}, {"id": "english-p4096"}]
+    assert fixture_case_index(cases, cases[1]) == 1
+
+
 def test_h256_sparse_prefill_admission(monkeypatch):
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL", "1")
     monkeypatch.setattr(runner, "is_registered", lambda key: key.backend == "registered")

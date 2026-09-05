@@ -51,6 +51,11 @@ def arm_sequence(case_index: int) -> tuple[str, ...]:
     return _BASE_SEQUENCE
 
 
+def fixture_case_index(cases: Sequence[Mapping[str, Any]], case: Mapping[str, Any]) -> int:
+    """Keep the full-fixture counterbalance when running a diagnostic subset."""
+    return next(index for index, row in enumerate(cases) if row["id"] == case["id"])
+
+
 def _weighted_rates(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
     prompt_tokens = sum(int(row["prompt_tokens"]) for row in rows)
     prefill_ms = sum(float(row["prefill_ms"]) for row in rows)
@@ -324,6 +329,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "one_python_process": True,
             "case_ids": [str(row["id"]) for row in cases],
             "case_order": "fixture order",
+            "case_counterbalance_indices": {
+                str(row["id"]): fixture_case_index(fixture["cases"], row) for row in cases
+            },
             "arm_order_even_case": list(arm_sequence(0)),
             "arm_order_odd_case": list(arm_sequence(1)),
             "warmups_per_mode_per_case": int(args.warmups_per_mode),
@@ -388,7 +396,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return row
 
     try:
-        for case_index, case in enumerate(cases):
+        for case in cases:
+            case_index = fixture_case_index(fixture["cases"], case)
             warmup_modes = ("before", "after") if case_index % 2 == 0 else ("after", "before")
             for warmup in range(args.warmups_per_mode):
                 for mode in warmup_modes:
