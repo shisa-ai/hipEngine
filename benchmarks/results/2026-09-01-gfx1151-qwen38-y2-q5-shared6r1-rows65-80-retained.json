@@ -1,0 +1,148 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q5-shared6r1-rows65-80-retained",
+  "status": "rejected_after_c1_c8_collateral",
+  "source_prior_artifact": "2026-09-01-gfx1151-qwen38-y2-q5-shared6r1-retained.json",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "pre_code_bound": {
+    "rows72_previous_complete_wall_gain_ms": 8.160274,
+    "rows96_previous_complete_wall_gain_ms": 3.66572,
+    "decision": "admit rows65-80 only to retain the stronger sub-band and exclude rows81-96 from collateral"
+  },
+  "scope": "Q5 6144x5120 rows65-80 only",
+  "strict_fallback": "prior exact selector on row/shape miss",
+  "complete_tick": {
+    "rows": 72,
+    "control_wall_ms": 394.406684,
+    "candidate_wall_ms": 388.301456,
+    "wall_delta_pct": -1.5479524682700418,
+    "token": 321
+  },
+  "trace": {
+    "hits": 144,
+    "grid_y": 1,
+    "threads": 192,
+    "vgpr": 72,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "duration_ms": 82.965052
+  },
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows72-only-full-pair.json",
+      "sha256": "9cb0badc6b76c3f719f7280cc868d0b12698800bec69ace2fda4a2561c04aa3f",
+      "bytes": 198238
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows72-only-trace-raw.json",
+      "sha256": "fe31802f0aaa2a47c7e37364c3d3e56a6995eccf630933d5eee8d84cd779f1d0",
+      "bytes": 92848
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows72-only-rocprof/gfx1151/2588026_kernel_trace.csv",
+      "sha256": "755f43446f7eb1df91788e2caf6d7974b7631d17e82469a3079a91b62a254a58",
+      "bytes": 836323
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows65-80-c1c8-control.json",
+      "sha256": "ed991f29cbb5e0d7e0363b3907fcb7b591181643797d7ad091ffec4479a27603",
+      "bytes": 3735557
+    },
+    {
+      "path": "/tmp/y2-q5-shared6r1-rows65-80-c1c8-candidate.json",
+      "sha256": "78d34b2d81fa2b28a4d675bf0e38cc27ac45a415b74163311e2ffcdace8f2f8b",
+      "bytes": 3735576
+    }
+  ],
+  "limitations": [
+    "Route and export removed after +0.53% aggregate AR and +0.04% aggregate MTP wall regressions."
+  ],
+  "c1_c8_collateral": {
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 76.77561154565774,
+        "candidate_wall_seconds": 77.18461511842906,
+        "wall_delta_pct": 0.5327259067524182
+      },
+      "mtp": {
+        "control_wall_seconds": 67.84978754632175,
+        "candidate_wall_seconds": 67.87503121769987,
+        "wall_delta_pct": 0.0372052327516581
+      }
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "wall_delta_pct": -0.055503157334158004
+        },
+        "mtp": {
+          "wall_delta_pct": -0.06537482131943051
+        }
+      },
+      "2": {
+        "ar": {
+          "wall_delta_pct": 3.7848939845153584
+        },
+        "mtp": {
+          "wall_delta_pct": -0.6579215746096101
+        }
+      },
+      "3": {
+        "ar": {
+          "wall_delta_pct": 4.112820062174305
+        },
+        "mtp": {
+          "wall_delta_pct": 0.05916665482261774
+        }
+      },
+      "4": {
+        "ar": {
+          "wall_delta_pct": 1.5637653878078916
+        },
+        "mtp": {
+          "wall_delta_pct": -0.02008129233409539
+        }
+      },
+      "5": {
+        "ar": {
+          "wall_delta_pct": -0.6492917169831469
+        },
+        "mtp": {
+          "wall_delta_pct": 0.26782334725334866
+        }
+      },
+      "6": {
+        "ar": {
+          "wall_delta_pct": -1.734022852287942
+        },
+        "mtp": {
+          "wall_delta_pct": 0.027362278397813355
+        }
+      },
+      "7": {
+        "ar": {
+          "wall_delta_pct": -0.007725320944806935
+        },
+        "mtp": {
+          "wall_delta_pct": 0.15468803152702826
+        }
+      },
+      "8": {
+        "ar": {
+          "wall_delta_pct": 0.008404451032828497
+        },
+        "mtp": {
+          "wall_delta_pct": 0.0872790251008615
+        }
+      }
+    }
+  }
+}

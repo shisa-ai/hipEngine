@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-standard-q5-shared8r3-partial-retained",
+  "created_at": "2026-09-01T09:35:00Z",
+  "status": "validated_partial_retention_pending_c1c8",
+  "source_commit_before_unit": "3854d9b8511315a170dfc39ce503188b303d054c",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "pre_code_full_wall_bound": {
+    "rows": 288,
+    "q5_single_sweep_savings_ms": 59.1665216,
+    "share_of_tick_wall": 0.050331987
+  },
+  "candidate": {
+    "variant": "standard Q5 shared8r3",
+    "geometry": "2 output tiles, 8 waves, 3 row tiles/wave; 384-row one-sweep",
+    "scope": "K6144/N5120 rows257-384",
+    "strict_fallback": "existing gfx1151 Q5 WMMA selector"
+  },
+  "direct_parent_comparison": {
+    "gguf_q5_k_t16_v1:6144x5120": {
+      "288": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 1.393989372253418,
+        "candidate_ms": 0.9564184188842774,
+        "speedup": 1.4575099608386828
+      }
+    }
+  },
+  "complete_rows288_tick": {
+    "control_wall_ms": 1100.914892,
+    "candidate_wall_ms": 1068.494434,
+    "improvement_pct": 3.034218707029779,
+    "control_gpu_ms": 1100.9095458984375,
+    "candidate_gpu_ms": 1068.4893798828125,
+    "control_next_token_id": 15685,
+    "candidate_next_token_id": 15685
+  },
+  "rocprof": {
+    "kernel": "gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<8,3,2>",
+    "grid_y": 1,
+    "threads": 256,
+    "vgpr": 96,
+    "lds_bytes": 16384,
+    "scratch_bytes": 0,
+    "sample_duration_ms": 0.84759
+  },
+  "limitations": [
+    "Y2 remains open for GDN and unresolved Q6/Q5 row bands.",
+    "Tracked-clean C1-C8 collateral follows after commit."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q5-shared8r3-r288.json",
+      "sha256": "7ca4e27c52d716e86bfce734f3ae13af80c5021f268c137cd52c67a6472fb46c",
+      "bytes": 311
+    },
+    {
+      "path": "/tmp/y2-q5-shared8r3-rows288-full-pair.json",
+      "sha256": "7deb18ddda7f85725a68d2239cd56caa3a0fd5cd7738f9ce1f8bcaa67e81147f",
+      "bytes": 199227
+    },
+    {
+      "path": "/tmp/y2-q5-shared8r3-rocprof/gfx1151/2379227_kernel_trace.csv",
+      "sha256": "3ca4edade1ad866da5200e278a7df7afc8cc41b82a0a4185944168ecd27ce789",
+      "bytes": 57466
+    }
+  ],
+  "commands": {
+    "direct_screen": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/y2_q5_shared8r3_screen.py",
+    "complete_rows288_pair": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/y2_q5_shared8r3_rows288_full_pair.py",
+    "rocprof": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/y2-q5-shared8r3-rocprof -- .venv/bin/python /tmp/y2_q5_shared8r3_screen.py"
+  }
+}

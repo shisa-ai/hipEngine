@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted_diagnostic_blockers_c4_r16_admitted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M C4-C8 target/accept attribution",
+  "source": {
+    "c4_trace_commit": "5b911eec849d989b081f23213497713b3c1b9e47",
+    "wide_telemetry_commit": "0c59aaeaee5971c62f85a1a1c5116623223a1475",
+    "tracked_dirty": false
+  },
+  "host": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "gpu_max_hw_queues": 2
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "kv_dtype": "bf16"
+  },
+  "c4_protocol": {
+    "execution_profile": "production",
+    "physical_width": 4,
+    "logical_target_rows": 16,
+    "candidate_budget": 3,
+    "prompt": "code_merge_intervals",
+    "prompt_tokens": 36,
+    "max_tokens": 24,
+    "profile_child": true,
+    "cache_mode": "require_cached",
+    "selected_regions": ["proposal", "target_accept_commit_provider"],
+    "performance_claim": false
+  },
+  "c4_external_gap": {
+    "current_mtp_tok_s": 20.384436564632978,
+    "external_target_tok_s": 27.015,
+    "gap_pct": -24.544006793881255,
+    "current_full_suite_wall_seconds": 47.09475275198929,
+    "target_wall_seconds": 35.53581343697945,
+    "required_wall_reduction_seconds": 11.558939315009837,
+    "required_wall_reduction_pct": 24.544006793881266
+  },
+  "c4_trace": {
+    "profile_child_complete_ms": 4861.160837113857,
+    "proposal_marker_ms": 269.419458,
+    "proposal_kernel_ms": 247.527593,
+    "proposal_kernel_reconciliation_pct": 91.87443061369382,
+    "target_marker_ms": 3533.282693,
+    "target_kernel_ms": 3454.94163,
+    "target_kernel_reconciliation_pct": 97.78276832603272,
+    "target_fraction_of_complete_pct": 72.68392903242761,
+    "measured_cycles": 8,
+    "proposal_classes_ms": {"q6_f32_head": 104.881917, "q4_nextn": 93.594094, "remaining": 49.051582},
+    "target_classes_ms": {"q6": 1846.532207, "q4": 1059.012449, "q5": 8.658011, "remaining": 540.738963},
+    "target_class_shares_pct": {"q6": 52.26109449601293, "q4": 29.972480014069454, "q5": 0.24504155914704787},
+    "dominant_kernels": [
+      ["planar Q6 direct BF16", 1173.285, 280],
+      ["Q4 WMMA single-wave", 934.418, 1848],
+      ["standard Q6 direct BF16", 506.773, 168],
+      ["Q5 selected direct", 381.626, 336],
+      ["Q6 F32 target head rowtile", 144.247, 30]
+    ],
+    "interpretation": "R16 is not admitted to exact verifier rowtile chunking. Direct/WMMA Q6/Q4 target owners dominate and provide a measured entry premise for exact R8+R8 or true-R16 screening."
+  },
+  "wide_group_telemetry": {
+    "timing_note": "target_ms is asynchronous enqueue time. accept_ms starts after enqueue and includes queued target-kernel completion, device selected-state commit, and bounded readback; it is not a standalone accept-kernel cost.",
+    "columns": ["width", "proposal_subgroups", "logical_target_rows", "wall_ms_per_subgroup_cycle", "proposal_wall_share_pct", "target_enqueue_plus_accept_owner_pct", "provider_update_pct", "selected_commit_pct"],
+    "rows": [
+      [4, "4", 16, 663.3063767885816, 5.024474734439368, 65.37790202104443, 1.0732365182504646, 0.28409529124897887],
+      [5, "4+1", 20, 554.3737128937722, 4.1251039294051255, 69.46432189658574, 0.8343766318071261, 0.2188384885641804],
+      [6, "4+2", 24, 486.8496936126153, 6.611397569206627, 57.526311884620064, 1.3816523539454573, 0.29607299271050597],
+      [7, "4+3", 28, 508.9626225370678, 6.6582749609602185, 60.4355387267786, 1.4442486283319729, 0.4501416557102485],
+      [8, "4+4", 32, 688.1053564204296, 5.341755998699664, 63.556203599867615, 1.2241024178536206, 0.5144796302993349]
+    ],
+    "acceptance": "78.894% at every width",
+    "interpretation": "57.5-69.5% of wide complete wall is owned by target enqueue plus the following synchronization/commit/readback interval. Proposal, provider update, and selected commit are not the binding wide wall."
+  },
+  "decision": {
+    "c4_r16_candidate_admitted": true,
+    "first_candidate": "Exact standard/planar Q6 R8+R8 reuse at logical R16, with actual-output parent parity and complete C4 suite before Q4.",
+    "q4_second": "Q4 R16 only after Q6 because its production rowtiles are T2/numerically scoped and R16 needs an independent full numerical gate.",
+    "c5_c8_status": "blocked on operation-complete R20-R32 target model work; use C4 R16 result to decide whether wider bucket kernels have a credible premise.",
+    "do_not_optimize": "Standalone accept kernel, provider update, selected commit, or proposal subgroup widths; their measured shares are non-binding."
+  },
+  "raw_sources": [
+    ["/tmp/p350-c4-clean-profile.json", "93c65b83852b29bea850d777df2da585a8d8ceb714fcf94bcd07d5550d15d313", 86573],
+    ["/tmp/p350-c4-clean-rocprof/gfx1151/4017161_kernel_trace.csv", "6427a7746fab250ed2f9390d605ee7f1c6e525eacefd2cb2f5b190af2a773e41", 12693800],
+    ["/tmp/p350-c4-clean-rocprof/gfx1151/4017161_marker_api_trace.csv", "4f707aaa8310756a7a333090a28480ca582934727f97b61df1a368e79f9b5694", 20834],
+    ["/tmp/p310-post-e2-mtp-c1c8-clean.json", "2c5900b6137295d25b521ca1b6cdb045f0321b661ff695749240b246b79eeeb7", 20675296]
+  ]
+}

@@ -207,6 +207,23 @@ should be removed or collapsed.
   restores the per-layer HIP D2D chain. Remove the environment/cache policy
   after the next stable milestone audit; keep the strict per-layer fallback.
 
+## 2026-09-01 W1 wide-Q6 shared-weight candidate context — open
+
+- `target_verifier_wide_q6_shared4_session()` and the temporary
+  `HIPENGINE_GGUF_VERIFY_WIDE_Q6_SHARED4` cross-thread experiment flag expose
+  exact Q4 shared-b2w2 and standard/planar-Q6 shared-weight owners at physical
+  R20/R24/R32 for W1. The screened Q5 WMMA addition is excluded after its
+  complete target stage regressed 0.25%. The context defaults off; current
+  chunk/direct owners remain strict fallbacks, and automatic C6/C8 stays K0.
+- Synchronization resolved the historical symbol collision: gfx1151 retains
+  its measured two-wave/two-tile `shared4` ABI while gfx1100 uses a distinct
+  four-wave/three-tile `shared4_gfx1100` symbol. Do not collapse these
+  backend-qualified geometries into one global symbol.
+- Remove the candidate context after complete C6/C8 strict-teacher,
+  determinism/isolation/task, full-suite performance, and profiler gates either
+  promote or reject the shape policy. A promotion should leave one immutable
+  profile/capability selection plus registered strict fallbacks.
+
 ## 2026-08-28 Qwen3.8 production verifier-Q4 selector — open
 
 - `HIPENGINE_GGUF_VERIFY_PRODUCTION_Q4_ROWTILE` currently carries the resolved
@@ -2370,7 +2387,7 @@ shorter-horizon audit establishes a lower break-even.
 | GGUF compact-WMMA tight no-read scope | `HIPENGINE_GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS=0` restores the scalar `wmma_total` D2H read around the gfx1100/gfx1151 defaults capped at 4,096 selected rows. | The old rejected c=8 probe overlaunched `selected_rows * 16`. LCP-2B instead proves the exact worst-case tile count `A + floor((S-A)/16)` and clears unused tile ids to `-1`. SH9-D1 independently transfers it to gfx1151 pp512: exact full state, neutral prefill **1366.040 -> 1366.013 tok/s**, and cached ROCTX **44 -> 4 `hipMemcpy` / 1,409 -> 1,369 dispatches / -1.736 ms span** with unchanged 80 selected-WMMA launches. This is multi-row prefill only; c1 decode bypasses the helper. | Keep the scalar fallback permanently for selected rows above 4,096, insufficient capacity, and exact-count diagnostics. Remove the env opt-out after one defaults-only prefill refresh on both gfx11 packages; do not remove the fallback. |
 | GGUF selected-WMMA launch-bounds tuning | `HIPENGINE_GGUF_SELECTED_WMMA_LAUNCH_BOUNDS` remains an R&D build flag for selected-WMMA kernels. | Default unchanged after the 2026-07-05 c>N server probe. `=2` was flat at c=8 (**52.55/52.23 tok/s**); `=4` helped c=8 (**53.22/53.44**) but regressed c=4 (**49.20/49.04** vs retained **49.65**), so no default promotion. | Keep as kernel R&D only; do not promote without a c=2/c=4/c=8 same-protocol rerun that is non-regressive at every concurrency. |
 | GGUF AR server packed decode | `HIPENGINE_GGUF_AR_PACKED_DECODE` is a default-on rollback opt-out around decode-shaped packed resident target passes for c>N GGUF greedy AR serving. | E1/E2 retain eager/graph c8 p512/d128, ragged, sparse, cancellation, and **748 packed-native / 0 row-local / 0 copies** on both targets. E3/F1 adds exact C13 c8+sparse-c8, middle-hole/new admission, and real SSE logical c1/c8/c9/c13/serial-c13 at **25.583/136.122/88.592/111.380/31.708 tok/s** on gfx1100 and **15.701/86.338/57.127/72.522/42.764** on gfx1151, with zero packed-route fallback and **189/189** exact requests per packet. | Both gfx11 E3/F1 triggers are met. Keep the opt-out for one release window, then remove the env switch during F2 while retaining registry-resolved scalar fallback for unsupported shapes. |
-| GGUF AR server packed prefill | `HIPENGINE_GGUF_AR_PACKED_PREFILL` is a default-on rollback opt-out around packed final-row prompt prefill for c>N GGUF greedy AR serving. Row-bounded multi-round prefill still computes and samples each intermediate chunk tail even though only the final prompt result is returned. | Packed linear/MoE stays multi-row and full attention preserves slot-local arithmetic across bounded rounds. E1/E2/E3 cover c8 and C13 eager/graph, ragged, sparse masks, cancellation/admission, and exact token/hidden/Conv/GDN/live-KV state. Each gfx11 F1 packet sends 512 exact prompt IDs/request through real prefill work and preserves all **189** prompt rows, usage counts, and outputs. | Remove intermediate chunk-tail output-norm/LM-head sampling after a final-slot mask preserves hidden-seed/MTP contracts and is profiler-non-regressive.  Keep the opt-out for one release window, then remove it during F2 on both gfx11 targets while retaining scalar fallback only for unsupported shapes. **2026-08-30 gate note:** the byte-exact `scripts/gguf_packed_ar_state_oracle.py --prefill-mode packed` result (`initial_state_exact=false` at rows 2..8, `tokens_exact=true`) cannot qualify or displace this route - the candidate persists `segmented_in_place_final_state` while its teacher persists per-token-exact state, and `scripts/gguf_state_slot_hash_match.py` shows 0 permuted of 126 groups, i.e. no slot-index defect. The missing evidence is a production-profile KL/top-1 run whose candidate admits prompts through packed prefill. `scripts/execution_profile_gguf_batch_route_gate.py --packed-prefill-candidate` (added 2026-08-30, `worklog/entries/20260830T010758.358171Z-lhl-w7900-qwen38-packed-prefill-profile-gate-b6c739.md`) now provides that admission mode, and the canonical 18-prompt suite at widths 3/5/6/7 passes the numeric production gate (`status: complete`, 1950 rows, per-category KL_mean 3.6e-5..1.2e-4, top-1 0.9906..1.0, the four top-1 rows being one near-tie position replayed across the width scenarios; `benchmarks/results/2026-08-30-w7900-qwen38-q4km-packed-prefill-profile-gate-c3567.json`). C4/C8 also pass under the q8t16_candidate protocol (attribution caveated: it forces `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` on the candidate; `benchmarks/results/2026-08-30-w7900-qwen38-q4km-packed-prefill-profile-gate-c4c8.json`), leaving width 2 as the only packed serving width with no capture, because neither width protocol admits it. Remove the flag only once those widths are covered AND the control-plane blockers (runtime-profile-resolved route manifest, complete exact control-plane record, fresh task and BF16-relative verdicts) are closed; until then keep it explicit and default-off, because the mode intentionally skips the byte-exact prefill calibration. See `worklog/entries/20260830T011300.377155Z-lhl-w7900-qwen38-packed-prefill-profile-gate-full-74863b.md`. See `worklog/entries/20260830T005330.724870Z-lhl-w7900-qwen38-packed-prefill-state-gate-3df834.md`. |
+| GGUF AR server packed prefill | `HIPENGINE_GGUF_AR_PACKED_PREFILL` is a default-on rollback opt-out around packed final-row prompt prefill for c>N GGUF greedy AR serving. The gfx1151 package additionally enables `GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK`; gfx1100 keeps the unmasked fallback pending independent qualification. Row-bounded multi-round prefill still computes and samples each intermediate chunk tail even though only the final prompt result is returned. | Packed linear/MoE stays multi-row and full attention preserves slot-local arithmetic across bounded rounds. On gfx1151, a clean C8/512 six-round gate preserves tokens, positions, hidden seeds, and final outputs while skipping 40 intermediate chunk-tail samples; matched tracing changes the Q6 LM head from six launches/34.599 ms to one/5.756 ms and removes 70 dispatches. A/B/B/A pooled complete prefill wall improves 0.149%/0.219%/0.217%/0.033% at C5-C8, so this is retained as an exact launch/sub-window reduction rather than a standalone throughput claim. E1/E2/E3 cover c8 and C13 eager/graph, ragged, sparse masks, cancellation/admission, and exact token/hidden/Conv/GDN/live-KV state. Each gfx11 F1 packet sends 512 exact prompt IDs/request through real prefill work and preserves all **189** prompt rows, usage counts, and outputs. | Keep the unmasked path for unsupported packages and W7900 transfer testing. Remove intermediate chunk-tail output-norm/LM-head sampling after a final-slot mask preserves hidden-seed/MTP contracts and is profiler-non-regressive. Keep the opt-out for one release window, then remove it during F2 on both gfx11 targets while retaining scalar fallback only for unsupported shapes. **2026-08-30 gate note:** the byte-exact `scripts/gguf_packed_ar_state_oracle.py --prefill-mode packed` result (`initial_state_exact=false` at rows 2..8, `tokens_exact=true`) cannot qualify or displace this route - the candidate persists `segmented_in_place_final_state` while its teacher persists per-token-exact state, and `scripts/gguf_state_slot_hash_match.py` shows 0 permuted of 126 groups, i.e. no slot-index defect. The missing evidence is a production-profile KL/top-1 run whose candidate admits prompts through packed prefill. `scripts/execution_profile_gguf_batch_route_gate.py --packed-prefill-candidate` (added 2026-08-30, `worklog/entries/20260830T010758.358171Z-lhl-w7900-qwen38-packed-prefill-profile-gate-b6c739.md`) now provides that admission mode, and the canonical 18-prompt suite at widths 3/5/6/7 passes the numeric production gate (`status: complete`, 1950 rows, per-category KL_mean 3.6e-5..1.2e-4, top-1 0.9906..1.0, the four top-1 rows being one near-tie position replayed across the width scenarios; `benchmarks/results/2026-08-30-w7900-qwen38-q4km-packed-prefill-profile-gate-c3567.json`). C4/C8 also pass under the q8t16_candidate protocol (attribution caveated: it forces `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1` on the candidate; `benchmarks/results/2026-08-30-w7900-qwen38-q4km-packed-prefill-profile-gate-c4c8.json`), leaving width 2 as the only packed serving width with no capture, because neither width protocol admits it. Remove the flag only once those widths are covered AND the control-plane blockers (runtime-profile-resolved route manifest, complete exact control-plane record, fresh task and BF16-relative verdicts) are closed; until then keep it explicit and default-off, because the mode intentionally skips the byte-exact prefill calibration. See `worklog/entries/20260830T011300.377155Z-lhl-w7900-qwen38-packed-prefill-profile-gate-full-74863b.md`. See `worklog/entries/20260830T005330.724870Z-lhl-w7900-qwen38-packed-prefill-state-gate-3df834.md`. |
 | GGUF fair prefill burst rollback | `HIPENGINE_FAIR_PREFILL_BURST_CHUNKS` and `--fair-prefill-burst-chunks` retain strict one-chunk alternation as an explicit rollback around bounded fair-prefill bursting. | gfx1151 Q4_K_M defaults to at most two consecutive 256-token chunks only while at least two prompts still need prefill; lone staggered arrivals keep one-chunk alternation. The static p512/C8 host contract removes six duplicate partial-width ticks, accepted real-Uvicorn C8 improves over the retained exact SSE/live rows, and `continuous_fixed` moves ITL p99 **0.5068 -> 0.2949 s** while all 12 rows and SLO checks pass. Other backend/quant packages remain at one chunk. | Remove the env/CLI rollback after one release window and a defaults-only full F4 production matrix plus C1/C2/C4/C8 packet remain exact, SLO-clean, and non-regressive. Keep workload-derived pressure/fairness logic rather than backend branches in the scheduler. |
 | GGUF MTP server packed prefill | `HIPENGINE_GGUF_MTP_SERVER_PACKED_PREFILL` is a default-on opt-out around packed prompt prefill for eligible c=2/c=4 GGUF MTP serving batches. | Default-on after the 2026-07-06 steady-state natural24 rerun. The path reuses packed prompt rows and returns FP32 prompt hidden rows for MTP catch-up, moving server MTP **46.75/49.65/52.18 -> 59.94/66.60/54.88 tok/s** at c=2/c=4/c=8. It keeps the four-slot safety cap: c=8's first wave still uses serial prompt open and only the trailing c=2 wave uses packed prefill. Startup now warms hidden-seed packed prefill at widths 2/4 when MTP serving is enabled, moving fresh c=2 to **56.59 tok/s** and warm c=2/c=4 to **59.71/65.57 tok/s**. | Keep the opt-out until one more c=2/c=4/c=8 rerun confirms the default. Do not remove the four-slot cap until c=8 full packed prefill is non-regressive; pool-filling eight startup slots was rejected (**35.25 tok/s** c=8 rerun, **76.5 GiB** used). |
 | GGUF MTP server startup warmup | `HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP` is an internal server-scoped env marker set only during startup scratch probing when `--speculative-mtp-serving` is not `off`. | Added after the 2026-07-06 cold-start audit. It lets the GGUF backend warm MTP hidden-seed packed prefill plus one tiny packed verifier at supported widths 2/4 without changing the generic `prepare_request_scratch(...)` hook signature. It removes the worst c=2 first-request MTP cliff but deliberately does not attempt unsupported width-8 packed prefill. | Replace this env handoff with an explicit backend scratch-preparer option if the startup hook grows typed capabilities. Keep it while MTP serving is opt-in/auto and c=2/c=4 cold-start evidence remains positive; remove or narrow it if startup memory/time becomes a production blocker. |
@@ -5291,3 +5308,65 @@ batches (len(sessions) >= 2) with a RED-first contract
   (ar_exact 10/10 required) plus the C1-C2 two-order gate.
 - Remove this entry only when the route is either root-caused and re-qualified
   for the single-session shape, or the policy is deleted outright.
+
+## RF-OI5 — resolved: profile-owned MTP width/depth policy (2026-09-05)
+
+- The scalar physical-width ceiling is now a package-owned set of exact
+  `(physical width, draft depth)` cells resolved by the shared GGUF MTP
+  adapter. gfx1151 production preserves C1-C4/K1-K3 and adds C8/K3; C5-C7
+  fail closed to AR. Its strict profile preserves the certified C1-C4 cells.
+  The independently evidenced gfx1100 policy is narrower: production owns
+  `(1,2)`, `(1,3)`, `(2,2)`, and `(8,3)`, while strict owns `(2,2)`.
+  Model evidence still rejects every unmatched model/quant/profile/context/
+  horizon/sampling key to K0.
+- gfx1151 C8/K3 measures 52.103 tok/s versus 52.025 true AR (1.0015x), with
+  exact cancellation/refill lifecycle and full drain. gfx1100 automatic C8/K3
+  measures 98.643 tok/s versus 88.250 true AR (1.1178x), with 10/10 exact
+  task cells. Evidence:
+  `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`
+  and
+  `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
+- Roll back by removing only the failing exact cell from that backend/profile
+  policy. Do not restore a scalar ceiling or broaden intervening widths. Keep
+  the registered strict fallback.
+
+## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
+
+`GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS = {"production": 4}` plus a
+zero `partition_max_requests` result make an over-bound due batch take one
+full-width AR step rather than chained MTP subgroups. This is currently inert
+on the server benchmark because admission caps explicit groups at four before
+the partitioner sees them. If admission semantics broaden, move demotion to
+the admission owner, remeasure C5-C8 against current AR, and remove the
+partitioner-level defense once redundant.
+
+## RF-B1A — MTP serving target WMMA-prefill transfer (2026-09-02)
+
+`HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL` remains the explicit override
+around the production-profile transfer from July's per-row GEMV verifier
+owners to retained exact prefill-band owners. The current gfx1151 one-group
+C5-C8 gate improves 56.3-72.7%, preserves all 40 IDs, and passes the sec-6
+teacher gate at 100% top-1/max KL 6.5e-4. Strict/profile fallback keeps GEMV.
+Retire the override only when a future verifier family supersedes this owner;
+keep registered strict fallbacks.
+
+## RF-B5A — selective planar-Q6 integer-MMQ route (2026-09-03)
+
+`HIPENGINE_GGUF_Q6_INTEGER_MMQ_PREFILL` is the rollback override for gfx1151
+B5's production rows17-48 planar-Q6 route. The dispatcher selects the
+registered Q8_1/`mmq64x64` composite only under its exact quant/shape/row
+policy and an active bounded resident workspace. The complete gate improves
+C5-C8 one-group MTP 1.75-2.08%, passes 216 rows at 100% top-1/max KL 0.002231,
+and preserves all task IDs and acceptance. Strict, peer, standard-Q6, Q4/Q5,
+and misses keep exact A owners. Retire the env override after its rollback
+window; retain policy and strict fallback.
+
+## RF-B2A — prefill F16-staging route switch (2026-09-02)
+
+`HIPENGINE_GGUF_PREFILL_F16_STAGING` remains the rollback/diagnostic override
+for gfx1151 Qwen3.8 production Q4/Q5-T16 prefill rows17-1024. The session casts
+BF16 activation input into a bounded resident-owned F16 workspace and launches
+the registered F16-input/BF16-output siblings; missing or undersized ownership
+fails closed to BF16. Complete C2/C8 wall falls 18.13%/17.35% and profile logits
+are bit-identical. Strict, fallback, no-profile, and env zero keep BF16. Retire
+the override after the normal rollback window; keep registered BF16 fallbacks.

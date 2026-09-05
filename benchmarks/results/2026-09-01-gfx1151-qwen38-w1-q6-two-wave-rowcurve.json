@@ -1,0 +1,210 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q6_two_wave_rowcurve",
+  "status": "candidate_partial",
+  "performance_claim": false,
+  "baseline": {
+    "2": {
+      "q4": {
+        "launches": 55.0,
+        "ms": 14.438794
+      },
+      "q5": {
+        "launches": 13.0,
+        "ms": 2.1754595
+      },
+      "q6": {
+        "launches": 21.5,
+        "ms": 7.329340999999999
+      }
+    },
+    "3": {
+      "q4": {
+        "launches": 62.0,
+        "ms": 16.351456
+      },
+      "q5": {
+        "launches": 10.0,
+        "ms": 2.326022
+      },
+      "q6": {
+        "launches": 29.0,
+        "ms": 10.0199485
+      }
+    },
+    "4": {
+      "q4": {
+        "launches": 68.5,
+        "ms": 21.643500500000002
+      },
+      "q5": {
+        "launches": 12.0,
+        "ms": 4.5191125
+      },
+      "q6": {
+        "launches": 40.0,
+        "ms": 14.253446499999999
+      }
+    },
+    "5": {
+      "q4": {
+        "launches": 15.0,
+        "ms": 5.764889999999999
+      },
+      "q5": {
+        "launches": 0.0,
+        "ms": 0.0
+      },
+      "q6": {
+        "launches": 8.0,
+        "ms": 35.866191
+      }
+    },
+    "6": {
+      "q4": {
+        "launches": 14.0,
+        "ms": 5.307831
+      },
+      "q5": {
+        "launches": 0.0,
+        "ms": 0.0
+      },
+      "q6": {
+        "launches": 7.0,
+        "ms": 33.02284
+      }
+    },
+    "8": {
+      "q4": {
+        "launches": 9.5,
+        "ms": 3.649162
+      },
+      "q5": {
+        "launches": 0.0,
+        "ms": 0.0
+      },
+      "q6": {
+        "launches": 5.0,
+        "ms": 38.54734
+      }
+    }
+  },
+  "candidate": {
+    "2": {
+      "q4": {
+        "launches": 54.5,
+        "ms": 14.303357
+      },
+      "q5": {
+        "launches": 12.5,
+        "ms": 2.08231
+      },
+      "q6": {
+        "launches": 21.0,
+        "ms": 7.469779
+      }
+    },
+    "3": {
+      "q4": {
+        "launches": 66.5,
+        "ms": 17.6186835
+      },
+      "q5": {
+        "launches": 11.5,
+        "ms": 2.451982
+      },
+      "q6": {
+        "launches": 30.5,
+        "ms": 10.6591625
+      }
+    },
+    "4": {
+      "q4": {
+        "launches": 69.0,
+        "ms": 21.8127585
+      },
+      "q5": {
+        "launches": 12.5,
+        "ms": 4.528479
+      },
+      "q6": {
+        "launches": 41.0,
+        "ms": 14.586252
+      }
+    },
+    "5": {
+      "q4": {
+        "launches": 15.0,
+        "ms": 5.7703869999999995
+      },
+      "q5": {
+        "launches": 0.0,
+        "ms": 0.0
+      },
+      "q6": {
+        "launches": 8.0,
+        "ms": 37.318195
+      }
+    },
+    "6": {
+      "q4": {
+        "launches": 13.0,
+        "ms": 4.902519
+      },
+      "q5": {
+        "launches": 0.0,
+        "ms": 0.0
+      },
+      "q6": {
+        "launches": 7.0,
+        "ms": 33.144040000000004
+      }
+    },
+    "8": {
+      "q4": {
+        "launches": 265.0,
+        "ms": 126.38692850000001
+      },
+      "q5": {
+        "launches": 0.0,
+        "ms": 0.0
+      },
+      "q6": {
+        "launches": 51.0,
+        "ms": 25.6331405
+      }
+    }
+  },
+  "q6_r32_delta_percent": -33.502180695217874,
+  "q6_candidate_r32_over_r8": 3.431579501883523,
+  "gate": {
+    "required_max": 1.25,
+    "passed": false
+  },
+  "numerics": {
+    "C6_R24": {
+      "top1": "240/240",
+      "kl_max": 0.0014633570048211428,
+      "deterministic": true
+    },
+    "C8_R32": {
+      "top1": "240/240",
+      "kl_max": 0.0017202095253945934,
+      "deterministic": true
+    }
+  },
+  "decision": "Two-wave geometry is a real Q6 R32 device-time improvement (-33.5%) but fails flatness at 3.43x R32/R8. Retain default-off and screen lean four-wave decode-cooperative geometry before promotion.",
+  "raw": {
+    "candidate_trace": {
+      "path": "/tmp/wy-w1-rowcurve-two-wave/w1-two-wave_kernel_trace.csv",
+      "size_bytes": 125477750,
+      "sha256": "3e28bdf21212471906ea633ecd0118693d4cc864feaee23b83426ef50ba5a3a9"
+    },
+    "candidate_raw": {
+      "path": "/tmp/wy-w1-rowcurve-two-wave/raw.json",
+      "size_bytes": 1030793,
+      "sha256": "8d296b0f4bb0566a542280cd18519bf3dd3bd43a75835ec40484fa4b13b341e0"
+    }
+  }
+}

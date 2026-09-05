@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_shadow_lifecycle_green",
+  "date": "2026-09-02",
+  "status": "lifecycle_contract_green_route_unselected",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "93ca13f21",
+    "candidate_worktree": true,
+    "module": "hipengine/generation/qwen35_gguf_mtp2.py"
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_used": false
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "execution_profile": "production candidate; current C1 strict fallback unchanged"
+  },
+  "implementation": {
+    "symbols": ["C1ShadowOwnershipError", "C1ShadowSessionLifecycle"],
+    "route_selected": false,
+    "adapter_behavior_changed": false,
+    "properties": [
+      "distinct real/shadow target, provider-checkpoint, hidden, KV, and recurrent resources",
+      "both physical lanes compute; real-only public publication and commit ownership",
+      "input-independent constructor with no prompt/token/candidate inputs",
+      "cancellation restores both checkpoints once",
+      "compaction preserves request/resource ownership",
+      "idempotent exact-once reclaim",
+      "partial reclaim failures retry without duplicating successful cleanup"
+    ]
+  },
+  "validation": {
+    "green_command": "uv run pytest -q tests/test_qwen38_m1_shadow_lifecycle.py",
+    "green_result": "13 passed",
+    "seam_command": "uv run pytest -q tests/test_qwen35_gguf_mtp2_seam.py",
+    "seam_result": "58 passed"
+  },
+  "decision": "Keep the lifecycle contract unselected. Next, acquire concrete request-owned resources and route only qualified production C1 through physical C2; current C1 remains fallback."
+}

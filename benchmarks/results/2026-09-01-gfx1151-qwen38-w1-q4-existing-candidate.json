@@ -1,0 +1,209 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q4_existing_owner_screen",
+  "status": "candidate_default_off",
+  "performance_claim": false,
+  "hardware": "strixhalo AMD Radeon 8060S gfx1151",
+  "model": "Qwen3.8-27B Q4_K_M",
+  "rows": [
+    20,
+    24,
+    32
+  ],
+  "selected_exact_shapes": [
+    "K5120/N1024",
+    "K17408/N5120"
+  ],
+  "selected_variant": "t16_wmma_prefill_shared_b2w2_bf16_bf16_out",
+  "all_shape_summary": {
+    "gguf_q4_k_t16_v1:5120x17408": {
+      "20": {
+        "parent_ms": 0.4727436065673828,
+        "candidate_ms": 0.8873600006103516,
+        "speedup": 0.5327528919967276,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 0.4730222225189209,
+        "candidate_ms": 0.8991180419921875,
+        "speedup": 0.5260957965773209,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 0.47474122047424316,
+        "candidate_ms": 0.9060932159423828,
+        "speedup": 0.5239430249794865,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    },
+    "gguf_q4_k_t16_v1:5120x6144": {
+      "20": {
+        "parent_ms": 0.227905797958374,
+        "candidate_ms": 0.3636265993118286,
+        "speedup": 0.626757774017882,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 0.2289438009262085,
+        "candidate_ms": 0.3581062078475952,
+        "speedup": 0.639318157320645,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 0.22962698936462403,
+        "candidate_ms": 0.3661233901977539,
+        "speedup": 0.6271847019678142,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    },
+    "gguf_q4_k_t16_v1:5120x12288": {
+      "20": {
+        "parent_ms": 0.3893090009689331,
+        "candidate_ms": 0.6537553787231445,
+        "speedup": 0.5954964404718107,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 0.3914370059967041,
+        "candidate_ms": 0.6616221904754639,
+        "speedup": 0.5916322209740341,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 0.3916712045669556,
+        "candidate_ms": 0.6675012111663818,
+        "speedup": 0.5867722754877929,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    },
+    "gguf_q4_k_t16_v1:5120x1024": {
+      "20": {
+        "parent_ms": 0.18185739517211913,
+        "candidate_ms": 0.12670979499816895,
+        "speedup": 1.435227601581607,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 0.18305979967117308,
+        "candidate_ms": 0.12739119529724122,
+        "speedup": 1.4369894186489152,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 0.1846645951271057,
+        "candidate_ms": 0.13288359642028807,
+        "speedup": 1.3896718639601173,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    },
+    "gguf_q4_k_t16_v1:6144x5120": {
+      "20": {
+        "parent_ms": 0.2454967975616455,
+        "candidate_ms": 0.2625247955322266,
+        "speedup": 0.935137563154522,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 0.24654080867767333,
+        "candidate_ms": 0.26320419311523435,
+        "speedup": 0.9366902774597304,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 0.2474966049194336,
+        "candidate_ms": 0.27083261013031007,
+        "speedup": 0.9138360583696016,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    },
+    "gguf_q4_k_t16_v1:17408x5120": {
+      "20": {
+        "parent_ms": 1.0261626243591309,
+        "candidate_ms": 0.8199494361877442,
+        "speedup": 1.2514950057532206,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 1.0257658004760741,
+        "candidate_ms": 0.8277000427246094,
+        "speedup": 1.2392965416547221,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 1.0224173545837403,
+        "candidate_ms": 0.8359576225280761,
+        "speedup": 1.2230492635401524,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    },
+    "gguf_q4_k_t16_v1:5120x10240": {
+      "20": {
+        "parent_ms": 0.26188158988952637,
+        "candidate_ms": 0.4328345775604248,
+        "speedup": 0.6050385146343051,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "24": {
+        "parent_ms": 0.27802999019622804,
+        "candidate_ms": 0.4391143798828125,
+        "speedup": 0.6331607502137064,
+        "exact": true,
+        "max_abs": 0.0
+      },
+      "32": {
+        "parent_ms": 0.29274759292602537,
+        "candidate_ms": 0.44129638671875,
+        "speedup": 0.6633808971397748,
+        "exact": true,
+        "max_abs": 0.0
+      }
+    }
+  },
+  "finding": "All screened Q4 variants are BF16-bit exact. Shared-b2w2 improves K5120/N1024 by 1.39-1.44x and K17408/N5120 by 1.22-1.25x; other large shapes are <=1.03x and excluded.",
+  "raw": {
+    "path": "/tmp/wy-w1-q4-existing-screen.json",
+    "sha256": "f5f38ca8729481e205a7efc1eda71ca550e581ce5e1b095c67b89684dc216ab4",
+    "size_bytes": 40015
+  },
+  "valid_route_full_suite": {
+    "baseline": {
+      "C6_mtp_tok_s": 33.6342520744,
+      "C8_mtp_tok_s": 36.6625089162,
+      "C6_target_ms": 2193.36182,
+      "C8_target_ms": 2295.778182
+    },
+    "q4q6_candidate": {
+      "C6_mtp_tok_s": 33.5713848164,
+      "C8_mtp_tok_s": 36.5720035426,
+      "C6_target_ms": 2229.271239,
+      "C8_target_ms": 2255.904518
+    },
+    "delta_percent": {
+      "C6_mtp": -0.1869,
+      "C8_mtp": -0.2463,
+      "C6_target_ms": 1.6372,
+      "C8_target_ms": -1.7368
+    },
+    "decision": "do not promote: exact Q4 plus qualified Q6 saves 1.74% C8 target stage but complete wall regresses 0.25%; W1 remains open for new dataflow/flatness attribution"
+  }
+}

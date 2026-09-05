@@ -1,0 +1,1649 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z0_operation_complete_attribution",
+  "date": "2026-09-01",
+  "status": "diagnostic_complete",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "source": {
+    "commit": "ce63b3f26dc76adca5b272390bab4ee6610e6e0f",
+    "dirty": false
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a"
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "commands": {
+    "prefill_grid_warm": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/qwen38_prefill_sweep_trace.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --rows 70,72,78,86,92,96,120,134,280,288,312,344,368,384,480,536 --compiler-version-file /tmp/q38-z0-run-20260901-201730/hipcc-version.txt --output /tmp/q38-z0-run-20260901-201730/prefill-grid-warm.json",
+    "prefill_grid_profile": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --output-format csv --output-directory /tmp/q38-z0-run-20260901-201730/prefill-grid-profile --output-file z0-prefill-grid -- .venv/bin/python scripts/qwen38_prefill_sweep_trace.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --rows 70,72,78,86,92,96,120,134,280,288,312,344,368,384,480,536 --compiler-version-file /tmp/q38-z0-run-20260901-201730/hipcc-version.txt --require-cached-build --output /tmp/q38-z0-run-20260901-201730/prefill-grid-profile-raw.json",
+    "mtp_profile": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --hip-runtime-trace --memory-copy-trace --marker-trace --output-format csv --output-directory /tmp/q38-z0-run-20260901-201730/mtp-profile --output-file z0-mtp -- .venv/bin/python /tmp/q38-z0-run-20260901-201730/z0_mtp_profile_driver.py"
+  },
+  "raw_sources": {
+    "full_prefill": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-c1c8.json",
+      "sha256": "88bff2ef12f33e585bc4ea271867558cf8e173a65e250321a7cdaaf8ae4b0f11"
+    },
+    "prefill_grid_raw": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-grid-profile-raw.json",
+      "sha256": "4bba6fbc2dab3354d1ba3f070ef90ab3b63dc07235fb53307b58b9f2c8f8ec32"
+    },
+    "prefill_grid_kernel": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-grid-profile/z0-prefill-grid_kernel_trace.csv",
+      "sha256": "c64c2bccc5cbb60dea49af19d6bde1a4cae0bfbebca97824f21ccf39e9f24335"
+    },
+    "prefill_grid_hip_api": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-grid-profile/z0-prefill-grid_hip_api_trace.csv",
+      "sha256": "58bf18deca552ead1d33474671521508fdab86983982f91bfbda56dfb7bb7ff1"
+    },
+    "prefill_grid_memory_copy": {
+      "path": "/tmp/q38-z0-run-20260901-201730/prefill-grid-profile/z0-prefill-grid_memory_copy_trace.csv",
+      "sha256": "7cb545a3a5bc88a170e3cc603e03617fbaf1d260acf4e38bc9039844eace55c2"
+    },
+    "mtp_raw": {
+      "path": "/tmp/q38-z0-run-20260901-201730/mtp-profile-raw.json",
+      "sha256": "73df571b47ffa9fcde9714148d143c5b43142d1cc8131c3eff88e8b2360e722a"
+    },
+    "mtp_kernel": {
+      "path": "/tmp/q38-z0-run-20260901-201730/mtp-profile/z0-mtp_kernel_trace.csv",
+      "sha256": "ee6a0a6d7b8bb6a2becf1636971118fe1b66f245dc6619b0f40dd24dd9e3b3e2"
+    },
+    "mtp_hip_api": {
+      "path": "/tmp/q38-z0-run-20260901-201730/mtp-profile/z0-mtp_hip_api_trace.csv",
+      "sha256": "eb56754d22a0994022bc3f1aebb42268eb5565eb36a5cc0ae0e36e91b9e32770"
+    },
+    "mtp_memory_copy": {
+      "path": "/tmp/q38-z0-run-20260901-201730/mtp-profile/z0-mtp_memory_copy_trace.csv",
+      "sha256": "06e5f55dd7eec1eac23aeeb9a36992817fa668aed2e78472860f4876f57bc770"
+    }
+  },
+  "c2_c8_grouped_prefill": {
+    "2": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "request_prompt_lengths": [
+          36,
+          36
+        ],
+        "grouped_rows": 72,
+        "request_start_spread_ms": 0.261461129412055,
+        "request_completion_spread_ms": 0.49758399836719036,
+        "server_complete_wall_ms": 459.20017012394965,
+        "direct_tick_wall_ms": 399.174692,
+        "cross_run_server_minus_direct_tick_ms": 60.025478123949654
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "request_prompt_lengths": [
+          46,
+          46
+        ],
+        "grouped_rows": 92,
+        "request_start_spread_ms": 1.014024019241333,
+        "request_completion_spread_ms": 0.7301399018615484,
+        "server_complete_wall_ms": 484.8295650444925,
+        "direct_tick_wall_ms": 429.483283,
+        "cross_run_server_minus_direct_tick_ms": 55.34628204449251
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "request_prompt_lengths": [
+          43,
+          43
+        ],
+        "grouped_rows": 86,
+        "request_start_spread_ms": 0.18581794574856758,
+        "request_completion_spread_ms": 0.7874290458858013,
+        "server_complete_wall_ms": 487.1823519933969,
+        "direct_tick_wall_ms": 425.975811,
+        "cross_run_server_minus_direct_tick_ms": 61.20654099339686
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "request_prompt_lengths": [
+          48,
+          48
+        ],
+        "grouped_rows": 96,
+        "request_start_spread_ms": 1.029794104397297,
+        "request_completion_spread_ms": 0.25205290876328945,
+        "server_complete_wall_ms": 490.77891395427287,
+        "direct_tick_wall_ms": 434.982334,
+        "cross_run_server_minus_direct_tick_ms": 55.796579954272886
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "request_prompt_lengths": [
+          35,
+          35
+        ],
+        "grouped_rows": 70,
+        "request_start_spread_ms": 0.25154207833111286,
+        "request_completion_spread_ms": 0.5035451613366604,
+        "server_complete_wall_ms": 458.33284012041986,
+        "direct_tick_wall_ms": 399.612573,
+        "cross_run_server_minus_direct_tick_ms": 58.72026712041986
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "request_prompt_lengths": [
+          36,
+          36
+        ],
+        "grouped_rows": 72,
+        "request_start_spread_ms": 0.28546503745019436,
+        "request_completion_spread_ms": 0.23580295965075493,
+        "server_complete_wall_ms": 457.60567393153906,
+        "direct_tick_wall_ms": 399.174692,
+        "cross_run_server_minus_direct_tick_ms": 58.430981931539065
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "request_prompt_lengths": [
+          39,
+          39
+        ],
+        "grouped_rows": 78,
+        "request_start_spread_ms": 0.19773095846176147,
+        "request_completion_spread_ms": 0.5114900413900614,
+        "server_complete_wall_ms": 459.82438907958567,
+        "direct_tick_wall_ms": 409.301349,
+        "cross_run_server_minus_direct_tick_ms": 50.523040079585655
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "request_prompt_lengths": [
+          39,
+          39
+        ],
+        "grouped_rows": 78,
+        "request_start_spread_ms": 0.24123303592205048,
+        "request_completion_spread_ms": 0.5263281054794788,
+        "server_complete_wall_ms": 465.3017420787364,
+        "direct_tick_wall_ms": 409.301349,
+        "cross_run_server_minus_direct_tick_ms": 56.00039307873641
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "request_prompt_lengths": [
+          60,
+          60
+        ],
+        "grouped_rows": 120,
+        "request_start_spread_ms": 0.2691249828785658,
+        "request_completion_spread_ms": 0.4993169568479061,
+        "server_complete_wall_ms": 611.8765859864652,
+        "direct_tick_wall_ms": 553.5726,
+        "cross_run_server_minus_direct_tick_ms": 58.30398598646525
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "request_prompt_lengths": [
+          67,
+          67
+        ],
+        "grouped_rows": 134,
+        "request_start_spread_ms": 0.27653900906443596,
+        "request_completion_spread_ms": 0.6587570533156395,
+        "server_complete_wall_ms": 651.3843860011548,
+        "direct_tick_wall_ms": 595.969233,
+        "cross_run_server_minus_direct_tick_ms": 55.41515300115475
+      }
+    ],
+    "8": [
+      {
+        "prompt_id": "code_merge_intervals",
+        "request_prompt_lengths": [
+          36,
+          36,
+          36,
+          36,
+          36,
+          36,
+          36,
+          36
+        ],
+        "grouped_rows": 288,
+        "request_start_spread_ms": 2.080857055261731,
+        "request_completion_spread_ms": 3.677242901176214,
+        "server_complete_wall_ms": 1069.7888480499387,
+        "direct_tick_wall_ms": 987.715908,
+        "cross_run_server_minus_direct_tick_ms": 82.07294004993867
+      },
+      {
+        "prompt_id": "code_topological_sort",
+        "request_prompt_lengths": [
+          46,
+          46,
+          46,
+          46,
+          46,
+          46,
+          46,
+          46
+        ],
+        "grouped_rows": 368,
+        "request_start_spread_ms": 1.9042349886149168,
+        "request_completion_spread_ms": 3.6144850309938192,
+        "server_complete_wall_ms": 1221.548352157697,
+        "direct_tick_wall_ms": 1162.628923,
+        "cross_run_server_minus_direct_tick_ms": 58.919429157697095
+      },
+      {
+        "prompt_id": "code_lru_cache",
+        "request_prompt_lengths": [
+          43,
+          43,
+          43,
+          43,
+          43,
+          43,
+          43,
+          43
+        ],
+        "grouped_rows": 344,
+        "request_start_spread_ms": 2.8247018344700336,
+        "request_completion_spread_ms": 4.755136091262102,
+        "server_complete_wall_ms": 1209.8249020054936,
+        "direct_tick_wall_ms": 1132.354843,
+        "cross_run_server_minus_direct_tick_ms": 77.47005900549357
+      },
+      {
+        "prompt_id": "code_markdown_table",
+        "request_prompt_lengths": [
+          48,
+          48,
+          48,
+          48,
+          48,
+          48,
+          48,
+          48
+        ],
+        "grouped_rows": 384,
+        "request_start_spread_ms": 3.6168198566883802,
+        "request_completion_spread_ms": 3.6063699517399073,
+        "server_complete_wall_ms": 1265.6522239558399,
+        "direct_tick_wall_ms": 1216.297139,
+        "cross_run_server_minus_direct_tick_ms": 49.35508495583986
+      },
+      {
+        "prompt_id": "general_en_plan",
+        "request_prompt_lengths": [
+          35,
+          35,
+          35,
+          35,
+          35,
+          35,
+          35,
+          35
+        ],
+        "grouped_rows": 280,
+        "request_start_spread_ms": 2.9882099479436874,
+        "request_completion_spread_ms": 3.925338853150606,
+        "server_complete_wall_ms": 1176.822513807565,
+        "direct_tick_wall_ms": 1094.574038,
+        "cross_run_server_minus_direct_tick_ms": 82.248475807565
+      },
+      {
+        "prompt_id": "general_en_explain",
+        "request_prompt_lengths": [
+          36,
+          36,
+          36,
+          36,
+          36,
+          36,
+          36,
+          36
+        ],
+        "grouped_rows": 288,
+        "request_start_spread_ms": 1.5035821124911308,
+        "request_completion_spread_ms": 4.427872831001878,
+        "server_complete_wall_ms": 1069.2647949326783,
+        "direct_tick_wall_ms": 987.715908,
+        "cross_run_server_minus_direct_tick_ms": 81.54888693267833
+      },
+      {
+        "prompt_id": "general_ja_plan",
+        "request_prompt_lengths": [
+          39,
+          39,
+          39,
+          39,
+          39,
+          39,
+          39,
+          39
+        ],
+        "grouped_rows": 312,
+        "request_start_spread_ms": 2.6732480619102716,
+        "request_completion_spread_ms": 3.7998228799551725,
+        "server_complete_wall_ms": 1117.278469959274,
+        "direct_tick_wall_ms": 1040.284849,
+        "cross_run_server_minus_direct_tick_ms": 76.99362095927404
+      },
+      {
+        "prompt_id": "general_ja_explain",
+        "request_prompt_lengths": [
+          39,
+          39,
+          39,
+          39,
+          39,
+          39,
+          39,
+          39
+        ],
+        "grouped_rows": 312,
+        "request_start_spread_ms": 4.612599033862352,
+        "request_completion_spread_ms": 1.9183510448783636,
+        "server_complete_wall_ms": 1116.3540920242667,
+        "direct_tick_wall_ms": 1040.284849,
+        "cross_run_server_minus_direct_tick_ms": 76.06924302426683
+      },
+      {
+        "prompt_id": "mixed_ja_en_translate",
+        "request_prompt_lengths": [
+          60,
+          60,
+          60,
+          60,
+          60,
+          60,
+          60,
+          60
+        ],
+        "grouped_rows": 480,
+        "request_start_spread_ms": 1.4122009743005037,
+        "request_completion_spread_ms": 4.236652981489897,
+        "server_complete_wall_ms": 1588.7801270000637,
+        "direct_tick_wall_ms": 1564.687428,
+        "cross_run_server_minus_direct_tick_ms": 24.092699000063703
+      },
+      {
+        "prompt_id": "mixed_ja_en_review",
+        "request_prompt_lengths": [
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67,
+          67
+        ],
+        "grouped_rows": 536,
+        "request_start_spread_ms": 1.829142915084958,
+        "request_completion_spread_ms": 4.105116939172149,
+        "server_complete_wall_ms": 1833.0806829035282,
+        "direct_tick_wall_ms": 1686.794008,
+        "cross_run_server_minus_direct_tick_ms": 146.28667490352814
+      }
+    ]
+  },
+  "server_scheduler_residual_diagnostic": {
+    "2": {
+      "mean_ms": 56.97687023140129,
+      "min_ms": 50.523040079585655,
+      "max_ms": 61.20654099339686,
+      "note": "Cross-run diagnostic difference between standardized server complete wall and the matching fixed-row direct tick; includes server/scheduler/barrier effects and run variance."
+    },
+    "8": {
+      "mean_ms": 75.50571137963452,
+      "min_ms": 24.092699000063703,
+      "max_ms": 146.28667490352814,
+      "note": "Cross-run diagnostic difference between standardized server complete wall and the matching fixed-row direct tick; includes server/scheduler/barrier effects and run variance."
+    }
+  },
+  "prefill_exact_grid": {
+    "70": {
+      "wall_ms": 399.612573,
+      "gpu_event_ms": 399.608642578125,
+      "traced_kernel_ms": 390.650412,
+      "trace_coverage_of_gpu_span": 0.9775824904077903,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 253.314709,
+          "gpu_share": 0.6484434707315757
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 27.917121,
+          "gpu_share": 0.07146318074278647
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 78.755826,
+          "gpu_share": 0.20160179941138778
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 17.093292,
+          "gpu_share": 0.043755980986908576
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 13.569464,
+          "gpu_share": 0.03473556812734143
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 349.810351,
+        "event_api": 0.024345,
+        "launch": 17.396668999999985,
+        "memory_management": 0.09513,
+        "other": 0.06588100000000122,
+        "synchronization": 0.022933
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "72": {
+      "wall_ms": 399.174692,
+      "gpu_event_ms": 399.1692810058594,
+      "traced_kernel_ms": 390.713718,
+      "trace_coverage_of_gpu_span": 0.9788170998916741,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 252.426366,
+          "gpu_share": 0.6460647639712512
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 27.946412,
+          "gpu_share": 0.07152656974281103
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 79.043334,
+          "gpu_share": 0.2023049879195693
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 17.403411,
+          "gpu_share": 0.04454261572663799
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 13.894195,
+          "gpu_share": 0.03556106263973051
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 350.833168,
+        "event_api": 0.020609,
+        "launch": 17.03320200000002,
+        "memory_management": 0.07673400000000001,
+        "other": 0.06460600000000125,
+        "synchronization": 0.005871
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "78": {
+      "wall_ms": 409.301349,
+      "gpu_event_ms": 409.293701171875,
+      "traced_kernel_ms": 400.337012,
+      "trace_coverage_of_gpu_span": 0.9781167187615385,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 257.31594,
+          "gpu_share": 0.6427483152619423
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 28.403271,
+          "gpu_share": 0.07094840134341612
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 80.663085,
+          "gpu_share": 0.20148795285508098
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 18.752639,
+          "gpu_share": 0.046842131598864
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 15.202077,
+          "gpu_share": 0.03797319894069649
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 361.84227699999997,
+        "event_api": 0.022332,
+        "launch": 16.18818000000001,
+        "memory_management": 0.099316,
+        "other": 0.06552100000000122,
+        "synchronization": 0.060503
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "86": {
+      "wall_ms": 425.975811,
+      "gpu_event_ms": 425.9681091308594,
+      "traced_kernel_ms": 416.786334,
+      "trace_coverage_of_gpu_span": 0.9784449236127236,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 270.732006,
+          "gpu_share": 0.6495702567829396
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 29.452002,
+          "gpu_share": 0.07066450983971082
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 80.78111,
+          "gpu_share": 0.19381899887341314
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 19.564513,
+          "gpu_share": 0.04694134956929754
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 16.256703,
+          "gpu_share": 0.03900488493463896
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 371.512899,
+        "event_api": 0.023444,
+        "launch": 18.33017800000001,
+        "memory_management": 0.102001,
+        "other": 0.07340700000000142,
+        "synchronization": 0.025748
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "92": {
+      "wall_ms": 429.483283,
+      "gpu_event_ms": 429.47540283203125,
+      "traced_kernel_ms": 420.119157,
+      "trace_coverage_of_gpu_span": 0.9782147108534397,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 272.153281,
+          "gpu_share": 0.6478002168322927
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 29.502182,
+          "gpu_share": 0.07022336760520541
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 80.466192,
+          "gpu_share": 0.19153183247961247
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 20.561796,
+          "gpu_share": 0.04894277172892642
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 17.435706,
+          "gpu_share": 0.04150181135396309
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 377.745312,
+        "event_api": 0.022412,
+        "launch": 18.807348999999995,
+        "memory_management": 0.125386,
+        "other": 0.06643900000000125,
+        "synchronization": 0.038332
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "96": {
+      "wall_ms": 434.982334,
+      "gpu_event_ms": 434.9750061035156,
+      "traced_kernel_ms": 425.338614,
+      "trace_coverage_of_gpu_span": 0.9778461015729664,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 275.015329,
+          "gpu_share": 0.6465797365860604
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 29.651372,
+          "gpu_share": 0.06971239154881903
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 81.058544,
+          "gpu_share": 0.1905741480598326
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 21.316293,
+          "gpu_share": 0.05011605412340955
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 18.297076,
+          "gpu_share": 0.04301766968187845
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 380.387674,
+        "event_api": 0.023614,
+        "launch": 19.36478399999999,
+        "memory_management": 0.150763,
+        "other": 0.07202200000000183,
+        "synchronization": 0.024175
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "120": {
+      "wall_ms": 553.5726,
+      "gpu_event_ms": 553.565673828125,
+      "traced_kernel_ms": 543.061678,
+      "trace_coverage_of_gpu_span": 0.9810248425349685,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 356.397389,
+          "gpu_share": 0.6562742381538473
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 33.105504,
+          "gpu_share": 0.06096085461585452
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 106.158097,
+          "gpu_share": 0.19548073690443685
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 24.382724,
+          "gpu_share": 0.04489862751832767
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 23.017964,
+          "gpu_share": 0.042385542807533545
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 501.539079,
+        "event_api": 0.023423,
+        "launch": 18.67256699999998,
+        "memory_management": 0.10983599999999999,
+        "other": 0.06576100000000121,
+        "synchronization": 0.023965
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "134": {
+      "wall_ms": 595.969233,
+      "gpu_event_ms": 595.9625854492188,
+      "traced_kernel_ms": 585.737299,
+      "trace_coverage_of_gpu_span": 0.9828424020251015,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 367.50863,
+          "gpu_share": 0.6274291062348754
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 34.251048,
+          "gpu_share": 0.05847510148060418
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 131.386211,
+          "gpu_share": 0.2243091078958248
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 26.91624,
+          "gpu_share": 0.04595275056915916
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 25.67517,
+          "gpu_share": 0.043833933819536396
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 543.144528,
+        "event_api": 0.023424,
+        "launch": 18.778441,
+        "memory_management": 0.103655,
+        "other": 0.07064500000000097,
+        "synchronization": 0.024486
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "280": {
+      "wall_ms": 1094.574038,
+      "gpu_event_ms": 1094.566162109375,
+      "traced_kernel_ms": 1082.879498,
+      "trace_coverage_of_gpu_span": 0.9893230171789221,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 654.220332,
+          "gpu_share": 0.6041487840598123
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 43.021548,
+          "gpu_share": 0.03972884155573883
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 247.910357,
+          "gpu_share": 0.22893623663378287
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 62.186201,
+          "gpu_share": 0.057426704554711216
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 75.54106,
+          "gpu_share": 0.06975943319595473
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 1041.4780550000003,
+        "event_api": 0.024475,
+        "launch": 18.98030399999997,
+        "memory_management": 0.116078,
+        "other": 0.06784900000000141,
+        "synchronization": 0.025067
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "288": {
+      "wall_ms": 987.715908,
+      "gpu_event_ms": 987.70849609375,
+      "traced_kernel_ms": 975.961944,
+      "trace_coverage_of_gpu_span": 0.9881072683487021,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 624.567661,
+          "gpu_share": 0.6399508350091979
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 43.154438,
+          "gpu_share": 0.04421733681861677
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 164.897735,
+          "gpu_share": 0.16895918535938323
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 64.171884,
+          "gpu_share": 0.06575244495393973
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 79.170226,
+          "gpu_share": 0.08112019785886242
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 933.61595,
+        "event_api": 0.024255,
+        "launch": 20.05330600000003,
+        "memory_management": 0.102202,
+        "other": 0.06939800000000149,
+        "synchronization": 0.026229
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "312": {
+      "wall_ms": 1040.284849,
+      "gpu_event_ms": 1040.2781982421875,
+      "traced_kernel_ms": 1028.6680259999998,
+      "trace_coverage_of_gpu_span": 0.9888393582968421,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 657.916268,
+          "gpu_share": 0.6395807504179196
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 44.639267,
+          "gpu_share": 0.043395211935944825
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 165.663572,
+          "gpu_share": 0.1610466815462193
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 71.072278,
+          "gpu_share": 0.06909155937933276
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 89.376641,
+          "gpu_share": 0.08688579672058362
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 989.353352,
+        "event_api": 0.024265,
+        "launch": 18.246492000000003,
+        "memory_management": 0.109085,
+        "other": 0.0676220000000013,
+        "synchronization": 0.023233
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "344": {
+      "wall_ms": 1132.354843,
+      "gpu_event_ms": 1132.34814453125,
+      "traced_kernel_ms": 1120.506794,
+      "trace_coverage_of_gpu_span": 0.989542659129669,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 679.830465,
+          "gpu_share": 0.6067169504373394
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 48.427656,
+          "gpu_share": 0.04321942201449963
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 200.567876,
+          "gpu_share": 0.17899746532014338
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 86.643335,
+          "gpu_share": 0.07732513132803012
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 105.037462,
+          "gpu_share": 0.09374103089998757
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 1065.51503,
+        "event_api": 0.022863,
+        "launch": 22.324430999999958,
+        "memory_management": 0.104587,
+        "other": 0.08973699999999991,
+        "synchronization": 0.024035
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "368": {
+      "wall_ms": 1162.628923,
+      "gpu_event_ms": 1162.6226806640625,
+      "traced_kernel_ms": 1150.9641570000001,
+      "trace_coverage_of_gpu_span": 0.989972220688656,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 671.861711,
+          "gpu_share": 0.5837381702234885
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 54.042783,
+          "gpu_share": 0.04695435793662165
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 211.523189,
+          "gpu_share": 0.18377912788469222
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 96.285802,
+          "gpu_share": 0.08365664683335573
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 117.250672,
+          "gpu_share": 0.10187169712184181
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 1108.5811469999999,
+        "event_api": 0.023454,
+        "launch": 18.94622699999999,
+        "memory_management": 0.103554,
+        "other": 0.07145800000000047,
+        "synchronization": 0.024706
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "384": {
+      "wall_ms": 1216.297139,
+      "gpu_event_ms": 1216.291015625,
+      "traced_kernel_ms": 1204.2466200000001,
+      "trace_coverage_of_gpu_span": 0.9900974392885646,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 703.859309,
+          "gpu_share": 0.5844810334614018
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 56.301826,
+          "gpu_share": 0.04675273740855506
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 216.323798,
+          "gpu_share": 0.17963413341363582
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 102.705595,
+          "gpu_share": 0.08528618083229496
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 125.056092,
+          "gpu_share": 0.10384591488411235
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 1165.664478,
+        "event_api": 0.023383,
+        "launch": 18.052826999999976,
+        "memory_management": 0.105027,
+        "other": 0.06649100000000122,
+        "synchronization": 0.025427
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "480": {
+      "wall_ms": 1564.687428,
+      "gpu_event_ms": 1564.681640625,
+      "traced_kernel_ms": 1551.994173,
+      "trace_coverage_of_gpu_span": 0.9918913424331278,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 289,
+          "gpu_ms": 819.351715,
+          "gpu_share": 0.527934788193306
+        },
+        "q5": {
+          "dispatches": 48,
+          "gpu_ms": 109.175498,
+          "gpu_share": 0.07034530148329365
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 300.25871,
+          "gpu_share": 0.1934663900313497
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 142.769454,
+          "gpu_share": 0.09199097295837591
+        },
+        "other": {
+          "dispatches": 1313,
+          "gpu_ms": 180.438796,
+          "gpu_share": 0.1162625473336748
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 1510.070078,
+        "event_api": 0.009649,
+        "launch": 19.63767,
+        "memory_management": 0.10927400000000001,
+        "other": 0.07206100000000164,
+        "synchronization": 0.023364
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 101,
+        "event_api": 1,
+        "launch": 1854,
+        "memory_management": 2,
+        "other": 1856,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    },
+    "536": {
+      "wall_ms": 1686.794008,
+      "gpu_event_ms": 1686.7882080078125,
+      "traced_kernel_ms": 1635.747556,
+      "trace_coverage_of_gpu_span": 0.9697409243404101,
+      "kernel_families": {
+        "q4": {
+          "dispatches": 225,
+          "gpu_ms": 1028.180372,
+          "gpu_share": 0.6285691017715939
+        },
+        "q5": {
+          "dispatches": 576,
+          "gpu_ms": 75.995906,
+          "gpu_share": 0.04645943423313909
+        },
+        "q6": {
+          "dispatches": 65,
+          "gpu_ms": 302.752417,
+          "gpu_share": 0.1850850492727253
+        },
+        "gdn": {
+          "dispatches": 240,
+          "gpu_ms": 160.819571,
+          "gpu_share": 0.09831564192781835
+        },
+        "other": {
+          "dispatches": 1361,
+          "gpu_ms": 67.99929,
+          "gpu_share": 0.04157077279472334
+        }
+      },
+      "summed_hip_api_overlap_ms": {
+        "copy_or_memset_api": 1570.2698269999999,
+        "event_api": 0.023394,
+        "launch": 20.604234999999978,
+        "memory_management": 0.29833,
+        "other": 19.142519999997823,
+        "synchronization": 0.025768
+      },
+      "hip_api_calls": {
+        "copy_or_memset_api": 117,
+        "event_api": 1,
+        "launch": 2350,
+        "memory_management": 2,
+        "other": 2400,
+        "synchronization": 1
+      },
+      "memory_copy_ms": {},
+      "memory_copy_calls": {}
+    }
+  },
+  "mtp_operation_complete": {
+    "5": {
+      "correctness_eligible": false,
+      "average_request_cycles": 9.6,
+      "physical_cycle_windows": 24,
+      "operation_wall_ms_per_average_request_cycle": 582.2466780227842,
+      "telemetry_stage_ms_per_average_request_cycle": {
+        "accept": 296.83067380877526,
+        "proposal": 44.349427868534505,
+        "provider_update": 5.5061884874400375,
+        "selected_commit": 3.217990548970799,
+        "target": 99.17742979166667
+      },
+      "telemetry_stage_sum_ms_per_average_request_cycle": 449.08171050538726,
+      "operation_wall_minus_stage_sum_ms_per_average_request_cycle": 133.16496751739692,
+      "cycle_window_host_ms_per_average_request_cycle": 401.7324659375,
+      "cycle_window_kernel_ms_per_average_request_cycle": 387.1563249999994,
+      "cycle_window_kernel_family_ms_per_average_request_cycle": {
+        "copy": 0.4311860416666646,
+        "other": 24.243799791666895,
+        "q4": 244.69461864583258,
+        "q5": 24.179602499999955,
+        "q6": 93.60711802083334
+      },
+      "cycle_window_kernel_calls_per_average_request_cycle": {
+        "copy": 298.125,
+        "other": 1541.875,
+        "q4": 727.2916666666667,
+        "q5": 120.0,
+        "q6": 215.0
+      },
+      "cycle_window_summed_hip_api_overlap_ms_per_average_request_cycle": {
+        "copy_or_memset_api": 301.74755312500014,
+        "launch": 32.54658864583333,
+        "memory_management": 0.003777916666666667,
+        "other": 0.08090749999996356,
+        "synchronization": 5.104555416666666
+      },
+      "cycle_window_hip_api_calls_per_average_request_cycle": {
+        "copy_or_memset_api": 276.5625,
+        "launch": 2607.3958333333335,
+        "memory_management": 0.5208333333333334,
+        "other": 2607.3958333333335,
+        "synchronization": 3.854166666666667
+      },
+      "cycle_window_memory_copy_ms_per_average_request_cycle": {},
+      "cycle_window_memory_copy_calls_per_average_request_cycle": {},
+      "note": "API durations are clipped to and summed across physical cycle windows; overlapping host calls may overlap one another and are not additive wall time.",
+      "functional_kernel_ms_per_average_request_cycle": {
+        "attention_or_kv": 0.8882880208333337,
+        "copy_kernel": 0.4311860416666646,
+        "gdn_or_linear_state": 9.437349062499976,
+        "norm_activation_sampling": 4.329279583333347,
+        "other": 5.593316250000035,
+        "q4": 244.69461864583258,
+        "q5": 24.179602499999955,
+        "q6": 93.60711802083334,
+        "state_commit": 3.995566875
+      },
+      "functional_kernel_calls_per_average_request_cycle": {
+        "attention_or_kv": 124.0625,
+        "copy_kernel": 298.125,
+        "gdn_or_linear_state": 240.0,
+        "norm_activation_sampling": 529.7916666666667,
+        "other": 633.0208333333334,
+        "q4": 727.2916666666667,
+        "q5": 120.0,
+        "q6": 215.0,
+        "state_commit": 15.0
+      },
+      "top_kernels_total": [
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 5372,
+          "gpu_ms": 1748.1552659999961
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 512,
+          "gpu_ms": 346.05680000000007
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "calls": 46,
+          "gpu_ms": 219.61839799999998
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 600,
+          "gpu_ms": 200.3149330000002
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 640,
+          "gpu_ms": 180.9921159999998
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 360,
+          "gpu_ms": 131.814579
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 16, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 336,
+          "gpu_ms": 125.98747800000002
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 392,
+          "gpu_ms": 122.994545
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 4, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 768,
+          "gpu_ms": 97.55483500000017
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_col8_kernel<unsigned short, unsigned short, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 384,
+          "gpu_ms": 83.110529
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_bf16_kernel<float>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "calls": 16,
+          "gpu_ms": 73.22765199999999
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 417,
+          "gpu_ms": 67.21931399999998
+        }
+      ],
+      "interpretation": "Correctness-ineligible diagnostic only: current-head C5 failed mtp_self_exact."
+    },
+    "7": {
+      "correctness_eligible": true,
+      "average_request_cycles": 8.0,
+      "physical_cycle_windows": 16,
+      "operation_wall_ms_per_average_request_cycle": 647.5633695081342,
+      "telemetry_stage_ms_per_average_request_cycle": {
+        "accept": 292.5204577331897,
+        "proposal": 49.79092685971409,
+        "provider_update": 10.195779206696898,
+        "selected_commit": 4.687531240051612,
+        "target": 82.087318
+      },
+      "telemetry_stage_sum_ms_per_average_request_cycle": 439.28201303965227,
+      "operation_wall_minus_stage_sum_ms_per_average_request_cycle": 208.28135646848193,
+      "cycle_window_host_ms_per_average_request_cycle": 385.022067625,
+      "cycle_window_kernel_ms_per_average_request_cycle": 370.59398399999975,
+      "cycle_window_kernel_family_ms_per_average_request_cycle": {
+        "copy": 0.5810866249999971,
+        "other": 27.06451875000009,
+        "q4": 206.74235762499958,
+        "q5": 27.413676500000022,
+        "q6": 108.79234450000006
+      },
+      "cycle_window_kernel_calls_per_average_request_cycle": {
+        "copy": 406.25,
+        "other": 1196.875,
+        "q4": 638.5,
+        "q5": 96.0,
+        "q6": 230.125
+      },
+      "cycle_window_summed_hip_api_overlap_ms_per_average_request_cycle": {
+        "copy_or_memset_api": 287.65437737499997,
+        "launch": 31.579421250000056,
+        "other": 0.07312287499997608,
+        "synchronization": 8.089101375
+      },
+      "cycle_window_hip_api_calls_per_average_request_cycle": {
+        "copy_or_memset_api": 379.125,
+        "launch": 2189.0,
+        "other": 2189.0,
+        "synchronization": 4.25
+      },
+      "cycle_window_memory_copy_ms_per_average_request_cycle": {},
+      "cycle_window_memory_copy_calls_per_average_request_cycle": {},
+      "note": "API durations are clipped to and summed across physical cycle windows; overlapping host calls may overlap one another and are not additive wall time.",
+      "functional_kernel_ms_per_average_request_cycle": {
+        "attention_or_kv": 1.0302026250000011,
+        "copy_kernel": 0.5810866249999971,
+        "gdn_or_linear_state": 11.085643124999988,
+        "norm_activation_sampling": 3.4334097499999983,
+        "other": 5.7959282499999905,
+        "q4": 206.74235762499958,
+        "q5": 27.413676500000022,
+        "q6": 108.79234450000006,
+        "state_commit": 5.719335000000001
+      },
+      "functional_kernel_calls_per_average_request_cycle": {
+        "attention_or_kv": 102.75,
+        "copy_kernel": 406.25,
+        "gdn_or_linear_state": 192.0,
+        "norm_activation_sampling": 361.5,
+        "other": 519.625,
+        "q4": 638.5,
+        "q5": 96.0,
+        "q6": 230.125,
+        "state_commit": 21.0
+      },
+      "top_kernels_total": [
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 2424,
+          "gpu_ms": 705.6870880000017
+        },
+        {
+          "name": "(anonymous namespace)::gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 448,
+          "gpu_ms": 369.0671000000001
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 880,
+          "gpu_ms": 294.1993020000002
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "calls": 52,
+          "gpu_ms": 247.0582520000001
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 1088,
+          "gpu_ms": 183.27781600000006
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 224,
+          "gpu_ms": 149.93415500000015
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 360,
+          "gpu_ms": 131.80441699999992
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 16, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 336,
+          "gpu_ms": 125.89896099999994
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 392,
+          "gpu_ms": 122.9479260000001
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 12, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 336,
+          "gpu_ms": 78.04729499999996
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 4, false>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 280,
+          "gpu_ms": 77.08281400000004
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16 const*, _Float16*, unsigned short*, int const*, long const*, float, long, long, long, long, long)",
+          "calls": 768,
+          "gpu_ms": 75.22373100000009
+        }
+      ],
+      "interpretation": "Correctness-passing one-prompt attribution diagnostic; full-suite baseline remains the performance denominator."
+    },
+    "8": {
+      "correctness_eligible": true,
+      "average_request_cycles": 8.0,
+      "physical_cycle_windows": 16,
+      "operation_wall_ms_per_average_request_cycle": 661.9195421226323,
+      "telemetry_stage_ms_per_average_request_cycle": {
+        "accept": 284.81921524507925,
+        "proposal": 51.73020693473518,
+        "provider_update": 10.715535987401381,
+        "selected_commit": 5.952870211331174,
+        "target": 86.337461625
+      },
+      "telemetry_stage_sum_ms_per_average_request_cycle": 439.555290003547,
+      "operation_wall_minus_stage_sum_ms_per_average_request_cycle": 222.36425211908528,
+      "cycle_window_host_ms_per_average_request_cycle": 382.099414875,
+      "cycle_window_kernel_ms_per_average_request_cycle": 367.30216512500004,
+      "cycle_window_kernel_family_ms_per_average_request_cycle": {
+        "copy": 0.6443751249999946,
+        "other": 30.063693374999964,
+        "q4": 181.9457385000001,
+        "q5": 33.61093287500002,
+        "q6": 121.03742524999997
+      },
+      "cycle_window_kernel_calls_per_average_request_cycle": {
+        "copy": 459.5,
+        "other": 1259.125,
+        "q4": 575.5,
+        "q5": 96.0,
+        "q6": 252.0
+      },
+      "cycle_window_summed_hip_api_overlap_ms_per_average_request_cycle": {
+        "copy_or_memset_api": 279.3851321250004,
+        "launch": 32.14441299999996,
+        "other": 0.0760616249999847,
+        "synchronization": 8.00665875
+      },
+      "cycle_window_hip_api_calls_per_average_request_cycle": {
+        "copy_or_memset_api": 428.5,
+        "launch": 2214.0,
+        "other": 2214.0,
+        "synchronization": 4.25
+      },
+      "cycle_window_memory_copy_ms_per_average_request_cycle": {},
+      "cycle_window_memory_copy_calls_per_average_request_cycle": {},
+      "note": "API durations are clipped to and summed across physical cycle windows; overlapping host calls may overlap one another and are not additive wall time.",
+      "functional_kernel_ms_per_average_request_cycle": {
+        "attention_or_kv": 1.1454298749999985,
+        "copy_kernel": 0.6443751249999946,
+        "gdn_or_linear_state": 12.219644125000004,
+        "norm_activation_sampling": 3.744226000000006,
+        "other": 6.377186875000009,
+        "q4": 181.9457385000001,
+        "q5": 33.61093287500002,
+        "q6": 121.03742524999997,
+        "state_commit": 6.577206499999999
+      },
+      "functional_kernel_calls_per_average_request_cycle": {
+        "attention_or_kv": 102.75,
+        "copy_kernel": 459.5,
+        "gdn_or_linear_state": 192.0,
+        "norm_activation_sampling": 417.5,
+        "other": 522.875,
+        "q4": 575.5,
+        "q5": 96.0,
+        "q6": 252.0,
+        "state_commit": 24.0
+      },
+      "top_kernels_total": [
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 3320,
+          "gpu_ms": 1089.1100740000024
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<unsigned short, 8, true>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 1200,
+          "gpu_ms": 400.66120399999977
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 4, false>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+          "calls": 60,
+          "gpu_ms": 285.02235900000005
+        },
+        {
+          "name": "void (anonymous namespace)::q6_k_t16_gemv_rowtile_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 720,
+          "gpu_ms": 263.51450400000033
+        },
+        {
+          "name": "void (anonymous namespace)::q5_k_t16_dense_rowtile_gemv_kernel<unsigned short, 16, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 672,
+          "gpu_ms": 251.73646800000006
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 1>(unsigned short const*, unsigned char const*, unsigned short*, long, long, long)",
+          "calls": 784,
+          "gpu_ms": 245.709059
+        },
+        {
+          "name": "void (anonymous namespace)::qwen35_gdn_prefill_recurrent_rmsnorm_gate_decode_order_segments_state_rows_kernel<unsigned short, _Float16>(float const*, unsigned short const*, unsigned short const*, unsigned short const*, float const*, float const*, float const*, _Float16 const*, _Float16*, unsigned short*, int const*, long const*, float, long, long, long, long, long)",
+          "calls": 768,
+          "gpu_ms": 82.254847
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_silu_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 128,
+          "gpu_ms": 64.31988900000002
+        },
+        {
+          "name": "(anonymous namespace)::linear_state_pair_commit_chunked_i32_kernel(unsigned long const*, unsigned long const*, long, unsigned long const*, unsigned long const*, long, int const*, long, long)",
+          "calls": 64,
+          "gpu_ms": 50.397960999999995
+        },
+        {
+          "name": "void (anonymous namespace)::q4_k_t16_dense_rowtile_gemv_kernel<unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, long, long)",
+          "calls": 272,
+          "gpu_ms": 45.601044000000016
+        },
+        {
+          "name": "(anonymous namespace)::dense_gemv_bf16_f32w_bf16_out_kernel(unsigned short const*, float const*, unsigned short*, long, long, long)",
+          "calls": 1536,
+          "gpu_ms": 22.444833000000006
+        },
+        {
+          "name": "void (anonymous namespace)::gguf_k_pack8_prefill_out_kernel<unsigned short, unsigned short, 8>(unsigned short const*, unsigned char const*, unsigned short*, int, int, int, int)",
+          "calls": 18,
+          "gpu_ms": 19.276021999999998
+        }
+      ],
+      "interpretation": "Correctness-passing one-prompt attribution diagnostic; full-suite baseline remains the performance denominator."
+    }
+  },
+  "findings": {
+    "prefill": "All exact C2/C8 grouped row shapes are GPU-bound: wall minus HIP-event span stays below 0.04 ms. No memory-copy engine events fall inside any prefill tick. Synchronous hipMemcpy API spans wait on queued GPU work and are not copy overhead.",
+    "mtp": "At correctness-passing C7/C8, operation wall is 647.6/661.9 ms per average request cycle; telemetry stage sums explain 439.3/439.6 ms, leaving 208.3/222.4 ms outside named stages. Cycle windows contain no memory-copy engine events; copy kernels are under 0.7 ms/cycle. Q4/Q5/Q6 kernels dominate traced cycle work.",
+    "kv": "Attention-or-KV and state-commit kernels are reported separately in functional_kernel_ms_per_average_request_cycle; provider update and selected commit are also explicit telemetry stages.",
+    "scheduler_server": "The MTP wall-minus-stage residual is an upper bound spanning scheduler, server, inter-group waiting, and uninstrumented work; this artifact does not claim those causes are individually resolved. The independent prefill server-minus-direct diagnostic is reported by prompt and includes cross-run variance.",
+    "c5": "C5 attribution is retained only as failure localization because explicit MTP failed self-exactness. No C5 throughput result is claim-eligible."
+  }
+}

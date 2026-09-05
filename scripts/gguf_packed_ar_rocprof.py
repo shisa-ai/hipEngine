@@ -1235,6 +1235,9 @@ def _run_parent(args: argparse.Namespace) -> dict[str, Any]:
             "HIP_VISIBLE_DEVICES": profile_env.get("HIP_VISIBLE_DEVICES"),
             "ROCR_VISIBLE_DEVICES": profile_env.get("ROCR_VISIBLE_DEVICES"),
             "GPU_MAX_HW_QUEUES": profile_env.get("GPU_MAX_HW_QUEUES"),
+            "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK": profile_env.get(
+                "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK"
+            ),
             "HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN": "1",
             "HIPENGINE_GGUF_GDN_PREFILL_MODE": "exact",
         },

@@ -1,0 +1,284 @@
+{
+ "schema_version": 1,
+ "date": "2026-08-30",
+ "status": "measured_blocked_default_retained",
+ "campaign": "QWEN38-GFX1151-SCALING-CAMPAIGN M1",
+ "title": "Single-group wide MTP verify (capability width bound 8): exactness/ownership pass, C6-C8 regress, production bound reverted to certified 4",
+ "host": {
+  "backend": "hip_gfx1151",
+  "device": "Radeon AI PRO / gfx1151",
+  "memory": "unified 125 GiB"
+ },
+ "source": {
+  "wide_experiment_commit": "0e7b4f31a6ccd8c18aeb1251c0e90ce81695d853",
+  "default_revert_commit": "f78556bf9",
+  "wide_experiment_dirty": false
+ },
+ "model": {
+  "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "revision": null,
+  "fingerprint": {
+   "algorithm": "sha256-sampled-v1",
+   "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+   "size_bytes": 17106775008,
+   "sampled_bytes": 3145728,
+   "sample_offsets": [
+    0,
+    8552863216,
+    17105726432
+   ],
+   "exists": true,
+   "path_type": "file"
+  }
+ },
+ "protocol": {
+  "command": ".venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,2,3,4,5,6,7,8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/m1b-ar-mtp-c1c8.json (plus scripts/mtp_cycle_accounting.py)",
+  "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "candidate_budget": 3,
+  "common_horizon": 24,
+  "batch_window_ms": 50,
+  "max_sequence_length": 1024,
+  "execution_profile": "production",
+  "diagnostic_plan": "gguf-c1-c8-generation2-diagnostic (static max_realized_group_rows 8)",
+  "wide_bound": {
+   "production": 8
+  },
+  "reverted_bound": {}
+ },
+ "result": {
+  "wide_cells_exact": 80,
+  "wide_cells": 80,
+  "wide_engaged_all": true,
+  "acceptance_rate": 0.7889447236180904,
+  "target_passes_per_cycle_by_width": {
+   "1": 1.0,
+   "2": 1.0,
+   "3": 1.0,
+   "4": 1.0,
+   "5": 1.0,
+   "6": 1.0,
+   "7": 1.0,
+   "8": 1.0
+  },
+  "mtp_tok_s_wide": {
+   "1": {
+    "ar_tok_s": 11.097,
+    "mtp_tok_s": 7.843,
+    "exact": true,
+    "engaged": true
+   },
+   "2": {
+    "ar_tok_s": 18.363,
+    "mtp_tok_s": 25.235,
+    "exact": true,
+    "engaged": true
+   },
+   "3": {
+    "ar_tok_s": 24.549,
+    "mtp_tok_s": 29.581,
+    "exact": true,
+    "engaged": true
+   },
+   "4": {
+    "ar_tok_s": 31.579,
+    "mtp_tok_s": 29.818,
+    "exact": true,
+    "engaged": true
+   },
+   "5": {
+    "ar_tok_s": 36.051,
+    "mtp_tok_s": 22.503,
+    "exact": true,
+    "engaged": true
+   },
+   "6": {
+    "ar_tok_s": 39.364,
+    "mtp_tok_s": 24.806,
+    "exact": true,
+    "engaged": true
+   },
+   "7": {
+    "ar_tok_s": 43.033,
+    "mtp_tok_s": 23.926,
+    "exact": true,
+    "engaged": true
+   },
+   "8": {
+    "ar_tok_s": 46.261,
+    "mtp_tok_s": 26.676,
+    "exact": true,
+    "engaged": true
+   }
+  },
+  "mtp_tok_s_m0_default": {
+   "1": {
+    "ar_tok_s": 11.119,
+    "mtp_tok_s": 7.842,
+    "exact": true,
+    "engaged": true
+   },
+   "2": {
+    "ar_tok_s": 18.268,
+    "mtp_tok_s": 25.33,
+    "exact": true,
+    "engaged": true
+   },
+   "3": {
+    "ar_tok_s": 24.944,
+    "mtp_tok_s": 29.62,
+    "exact": true,
+    "engaged": true
+   },
+   "4": {
+    "ar_tok_s": 31.421,
+    "mtp_tok_s": 29.867,
+    "exact": true,
+    "engaged": true
+   },
+   "5": {
+    "ar_tok_s": 36.137,
+    "mtp_tok_s": 18.912,
+    "exact": true,
+    "engaged": true
+   },
+   "6": {
+    "ar_tok_s": 40.498,
+    "mtp_tok_s": 28.346,
+    "exact": true,
+    "engaged": true
+   },
+   "7": {
+    "ar_tok_s": 43.862,
+    "mtp_tok_s": 29.744,
+    "exact": true,
+    "engaged": true
+   },
+   "8": {
+    "ar_tok_s": 47.19,
+    "mtp_tok_s": 29.506,
+    "exact": true,
+    "engaged": true
+   }
+  },
+  "delta_pct_vs_m0": {
+   "1": 0.01,
+   "2": -0.38,
+   "3": -0.13,
+   "4": -0.16,
+   "5": 18.99,
+   "6": -12.49,
+   "7": -19.56,
+   "8": -9.59
+  },
+  "c8_member_sum_ms_m0_to_wide": {
+   "target_ms_total": [
+    5683.696736115962,
+    6322.144381934777
+   ],
+   "proposal_ms_member_sum": [
+    19300.872216932476,
+    70265.57080447674
+   ],
+   "accept_ms_member_sum": [
+    107905.20817320794,
+    182987.50052414834
+   ],
+   "selected_commit_ms_member_sum": [
+    1330.3942177444696,
+    3924.9247051775455
+   ],
+   "complete_ms_per_committed_token": [
+    34.436718702636426,
+    38.11404836439275
+   ],
+   "ms_per_target_row": [
+    2.631341081535168,
+    2.9269186953401745
+   ]
+  },
+  "targets": {
+   "C5": {
+    "target": 33.0,
+    "measured_wide": 22.503
+   },
+   "C8": {
+    "target": 45.0,
+    "measured_wide": 26.676
+   }
+  }
+ },
+ "rocprof_attribution": {
+  "method": "rocprofv3 --kernel-trace width-8 MTP-only, unprofiled warmup, HIPENGINE_COMPILER_VERSION_FILE pinned; whole-process family totals",
+  "split_total_kernel_ms": 12284.2,
+  "wide_total_kernel_ms": 13190.9,
+  "wide_only_owners_ms": {
+   "q6_k_t16_qmicro_planar_gemv_bf16_direct": {
+    "ms": 4265.6,
+    "launches": 116
+   },
+   "qk_t16_selected_direct_gemv": {
+    "ms": 1473.2,
+    "launches": 672
+   },
+   "gguf_q4_t16_dense_wmma_prefill_bf16_false2": {
+    "ms": 1867.9,
+    "launches": 3696
+   }
+  },
+  "split_only_owners_ms": {
+   "gguf_q4_t16_dense_wmma_prefill_bf16_false1": {
+    "ms": 3722.2,
+    "launches": 7392
+   },
+   "gguf_q4_t16_dense_wmma_prefill_shared_b_false1": {
+    "ms": 2286.3,
+    "launches": 2812
+   },
+   "q5_k_t16_dense_rowtile_gemv": {
+    "ms": 502.4,
+    "launches": 1344
+   }
+  }
+ },
+ "decision": {
+  "default_reverted": true,
+  "reason": "C6 -12.49%, C7 -19.56%, C8 -9.59% tok/s versus the retained two-subgroup default; campaign targets missed; non-regressive-default rule",
+  "mechanism_retained": "capability-owned profile-keyed bound + server batch-route width publication; R20-R32 Q6 chunk rows removed as unengaged at the reverted bound",
+  "m2_entry": "rows17-32 Q4/Q6 verify owners (or chunked R9/R12/R16 decomposition), rows5-8 proposal-head owner, C8 accept-interval scaling"
+ },
+ "raw_sources": {
+  "wide_ar_mtp_json_sha256": "95cb46c3b63bc9efc53321f9363d7ed637e68ee53ba13868e58e8306752dc609",
+  "wide_accounting_sha256": "55be65f162de19fe49548aaf78f15fc9ef657b15e9b289c06036eb565411ff8a",
+  "m0_ar_mtp_json_sha256": "a5e036e805a86c8f4be86b5b76653be2a3328ed1fd8ce149edeb8003c69eb024",
+  "m0_accounting_sha256": "99072f059b0447e8633dff13487e41dd14d35a1b15f2cd55839ef4849e646e5a"
+ },
+ "default_refreeze_at_revert_head": {
+  "mtp_tok_s": {
+   "1": 7.851,
+   "2": 25.366,
+   "3": 29.654,
+   "4": 29.885,
+   "5": 18.937,
+   "6": 28.329,
+   "7": 29.73,
+   "8": 29.229
+  },
+  "exact_cells": "80/80",
+  "acceptance_rate_C8": 0.7889447236180904,
+  "delta_pct_vs_m0": {
+   "1": 0.11,
+   "2": 0.14,
+   "3": 0.11,
+   "4": 0.06,
+   "5": 0.13,
+   "6": -0.06,
+   "7": -0.05,
+   "8": -0.94
+  },
+  "verdict": "reverted default reproduces the M0 re-freeze within protocol noise; passes/cycle 1.00 C1-C4, 2.00 C5-C8",
+  "raw_sha256": {
+   "ar_mtp": "9f0c2f5bcf91a278306167021bf39acae9d370c45e964fc447bfbfce8201d304",
+   "accounting": "338b4dba64264adecf4e9cbb8793fdd50784a25d438a77a1241337a05cd28604"
+  }
+ }
+}

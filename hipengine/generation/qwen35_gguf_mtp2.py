@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import os
 import time
 from typing import Any, Callable, Mapping, Sequence
@@ -25,6 +25,7 @@ from hipengine.kernels.backends import backend_package_capability
 from hipengine.kernels.hip_gfx1100.fused.gguf_ops import (
     gguf_rmsnorm_bf16_f32_weight,
 )
+from hipengine.kernels.policy import GGUFModelGeometry
 from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
     ACCEPT_PACKED_PAYLOAD_FIELDS,
     build_dflash_accept,
@@ -33,6 +34,11 @@ from hipengine.kernels.hip_gfx1100.speculative.dflash_accept import (
 from hipengine.kvcache import ClaimLifetime, ResourceClaimSet
 from hipengine.loading.materialize import float_array_to_bf16_bits
 from hipengine.generation.deadline import raise_if_generation_deadline_expired
+from hipengine.runtime.gguf_linear import (
+    mtp_serving_target_use_wmma_prefill,
+    target_verifier_wide_q6_shared4_leaf_session,
+    target_verifier_wide_q6_shared4_policy_enabled,
+)
 from hipengine.runtime.qwen35_gguf_mtp import (
     Qwen35GGUFTransactionalVerifier,
     _StreamingNextNPromptSink,
@@ -262,6 +268,13 @@ class _PhysicalAcceptPending:
     tail_seconds: float = 0.0
 
 
+@dataclass(slots=True)
+class _C1ShadowAdapterState:
+    lifecycle: C1ShadowSessionLifecycle
+    provider: Any
+    resource_bundle: Mapping[str, Any]
+
+
 class _PhysicalTargetCommitError(RuntimeError):
     """Target state may be committed; AR fallback requires canonical rebuild."""
 
@@ -313,6 +326,272 @@ def _device_chain_oracle_trace_rows(
             }
         )
     return tuple(traces)
+
+
+class C1ShadowOwnershipError(RuntimeError):
+    """The physical C2 shadow lease violated request/resource ownership."""
+
+
+@dataclass(slots=True)
+class C1ShadowSessionLifecycle:
+    """Request-owned resource lease for logical-C1 physical-C2 execution.
+
+    The padding policy is intentionally resource-only. Both lanes participate
+    in physical computation, but only ``request_id`` may publish output or own
+    the public request commit. The adapter supplies concrete restore/reclaim
+    callbacks so provider pools, target sessions, and device resources keep
+    their native lifecycle implementations.
+    """
+
+    request_id: int
+    real_slot: int
+    shadow_slot: int
+    target_session: Any
+    shadow_target_session: Any
+    provider_checkpoint: Any
+    shadow_provider_checkpoint: Any
+    hidden_row: Any
+    shadow_hidden_row: Any
+    kv_owner: Any
+    shadow_kv_owner: Any
+    recurrent_owner: Any
+    shadow_recurrent_owner: Any
+    restore_provider_checkpoint: Callable[[str, Any], None]
+    reclaim: Callable[[str, str, Any, str], None]
+    closed: bool = field(default=False, init=False)
+    _restored_lanes: set[str] = field(default_factory=set, init=False)
+    _reclaimed_resources: set[tuple[str, str]] = field(
+        default_factory=set,
+        init=False,
+    )
+    _reclaim_reason: str | None = field(default=None, init=False)
+
+    _SURFACES = (
+        "target_session",
+        "provider_checkpoint",
+        "hidden_row",
+        "kv_owner",
+        "recurrent_owner",
+    )
+
+    def __post_init__(self) -> None:
+        self.request_id = int(self.request_id)
+        if self.request_id < 0:
+            raise C1ShadowOwnershipError("request_id must be non-negative")
+        self._set_slots(self.real_slot, self.shadow_slot)
+        for surface in self._SURFACES:
+            real = getattr(self, surface)
+            shadow = getattr(self, f"shadow_{surface}")
+            if real is None or shadow is None:
+                raise C1ShadowOwnershipError(f"{surface} owners must be present")
+            if real is shadow:
+                raise C1ShadowOwnershipError(
+                    f"real and shadow {surface} owners must be distinct"
+                )
+        if not callable(self.restore_provider_checkpoint):
+            raise C1ShadowOwnershipError(
+                "restore_provider_checkpoint must be callable"
+            )
+        if not callable(self.reclaim):
+            raise C1ShadowOwnershipError("reclaim must be callable")
+
+    @property
+    def shadow_request_id(self) -> int:
+        return -(int(self.request_id) + 1)
+
+    @property
+    def physical_slots(self) -> tuple[int, int]:
+        return int(self.real_slot), int(self.shadow_slot)
+
+    @property
+    def target_sessions(self) -> tuple[Any, Any]:
+        return self.target_session, self.shadow_target_session
+
+    @property
+    def provider_checkpoints(self) -> tuple[Any, Any]:
+        return self.provider_checkpoint, self.shadow_provider_checkpoint
+
+    @property
+    def hidden_rows(self) -> tuple[Any, Any]:
+        return self.hidden_row, self.shadow_hidden_row
+
+    @property
+    def kv_owners(self) -> tuple[Any, Any]:
+        return self.kv_owner, self.shadow_kv_owner
+
+    @property
+    def recurrent_owners(self) -> tuple[Any, Any]:
+        return self.recurrent_owner, self.shadow_recurrent_owner
+
+    @property
+    def compute_mask(self) -> tuple[bool, bool]:
+        return True, True
+
+    @property
+    def publish_mask(self) -> tuple[bool, bool]:
+        return True, False
+
+    @property
+    def request_commit_mask(self) -> tuple[bool, bool]:
+        return True, False
+
+    def _require_open(self) -> None:
+        if self.closed:
+            raise C1ShadowOwnershipError("shadow lifecycle is closed")
+
+    def _set_slots(self, real_slot: int, shadow_slot: int) -> None:
+        real = int(real_slot)
+        shadow = int(shadow_slot)
+        if real < 0 or shadow < 0:
+            raise C1ShadowOwnershipError("physical slots must be non-negative")
+        if real == shadow:
+            raise C1ShadowOwnershipError("physical slots must be distinct")
+        self.real_slot = real
+        self.shadow_slot = shadow
+
+    def assert_publish_owner(self, request_id: int) -> None:
+        self._require_open()
+        requested = int(request_id)
+        if requested == self.shadow_request_id:
+            raise C1ShadowOwnershipError("shadow request cannot publish")
+        if requested != self.request_id:
+            raise C1ShadowOwnershipError("request does not own publication")
+
+    def assert_request_commit_owner(self, request_id: int) -> None:
+        self._require_open()
+        requested = int(request_id)
+        if requested == self.shadow_request_id:
+            raise C1ShadowOwnershipError("shadow request cannot own public commit")
+        if requested != self.request_id:
+            raise C1ShadowOwnershipError("request does not own public commit")
+
+    def compact(self, *, real_slot: int, shadow_slot: int) -> None:
+        self._require_open()
+        self._set_slots(real_slot, shadow_slot)
+
+    def cancel(self, request_id: int) -> None:
+        if self.closed:
+            return
+        requested = int(request_id)
+        if requested != self.request_id:
+            raise C1ShadowOwnershipError("only the real request may cancel shadow")
+        for lane, checkpoint in zip(
+            ("real", "shadow"), self.provider_checkpoints, strict=True
+        ):
+            if lane in self._restored_lanes:
+                continue
+            self.restore_provider_checkpoint(lane, checkpoint)
+            self._restored_lanes.add(lane)
+        self.close(reason="cancelled")
+
+    def close(self, *, reason: str = "teardown") -> None:
+        if self.closed:
+            return
+        parsed_reason = str(reason)
+        if not parsed_reason:
+            raise C1ShadowOwnershipError("reclaim reason must be non-empty")
+        if self._reclaim_reason is None:
+            self._reclaim_reason = parsed_reason
+        elif self._reclaim_reason != parsed_reason:
+            raise C1ShadowOwnershipError("reclaim reason changed during retry")
+        for surface in self._SURFACES:
+            for lane, resource in (
+                ("real", getattr(self, surface)),
+                ("shadow", getattr(self, f"shadow_{surface}")),
+            ):
+                key = (surface, lane)
+                if key in self._reclaimed_resources:
+                    continue
+                self.reclaim(surface, lane, resource, parsed_reason)
+                self._reclaimed_resources.add(key)
+        self.closed = True
+
+
+def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, ...]:
+    """Resolve package-owned model/quant/profile prompt-streaming widths."""
+
+    shared_runner = getattr(owner, "_shared_runner", None)
+    weights = getattr(shared_runner, "weights", None)
+    if weights is None:
+        return ()
+    geometry = getattr(weights, "geometry", None)
+    if geometry is None:
+        geometry = GGUFModelGeometry.try_from_config(getattr(weights, "config", None))
+    if not isinstance(geometry, GGUFModelGeometry):
+        return ()
+    file_type_name = str(getattr(weights, "file_type_name", "") or "")
+    profile = getattr(generator, "execution_profile", None)
+    profile = str(getattr(profile, "value", profile) or "")
+    policies = backend_package_capability(
+        str(getattr(generator, "backend", "")),
+        "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
+        {},
+    )
+    if not isinstance(policies, Mapping):
+        raise RuntimeError("backend prompt-streaming policies must be a mapping")
+    raw = policies.get((geometry, file_type_name, profile), ())
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        raise RuntimeError("backend prompt-streaming widths must be a sequence")
+    widths = tuple(sorted({int(value) for value in raw}))
+    if any(value < 1 or value > _MTP2_MAX_PHYSICAL_REQUESTS for value in widths):
+        raise RuntimeError(
+            "backend prompt-streaming widths must be within "
+            f"[1, {_MTP2_MAX_PHYSICAL_REQUESTS}]"
+        )
+    return widths
+
+
+# Every C1-C4 depth has independent coverage. Wider cells must be listed by the
+# active backend package and execution profile; a scalar maximum cannot express
+# the measured C8-K3 win without also admitting slower C5-C7 cells.
+_MTP2_CERTIFIED_WIDTH_DEPTHS = tuple(
+    (width, depth)
+    for width in range(1, 5)
+    for depth in range(1, 4)
+)
+_MTP2_MAX_PHYSICAL_REQUESTS = 8
+_MTP2_MAX_CANDIDATE_DEPTH = 3
+
+
+def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
+    """Resolve the package-owned physical request-width/candidate-depth cells."""
+
+    profile_value = getattr(generator, "execution_profile", None)
+    profile = str(getattr(profile_value, "value", profile_value) or "")
+    backend = str(getattr(generator, "backend", "") or "")
+    if not backend:
+        return _MTP2_CERTIFIED_WIDTH_DEPTHS
+    table = backend_package_capability(
+        backend,
+        "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
+        {},
+    )
+    if not isinstance(table, Mapping):
+        raise RuntimeError("backend MTP2 physical width/depth policies must be a mapping")
+    raw = table.get(profile, _MTP2_CERTIFIED_WIDTH_DEPTHS)
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        raise RuntimeError("backend MTP2 physical width/depth policy must be a sequence")
+    cells: set[tuple[int, int]] = set()
+    for item in raw:
+        if not isinstance(item, Sequence) or isinstance(item, (str, bytes, bytearray)):
+            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
+        values = tuple(item)
+        if len(values) != 2:
+            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
+        try:
+            width, depth = (int(value) for value in values)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "backend MTP2 physical width/depth cells must be integer pairs"
+            ) from exc
+        if not 1 <= width <= _MTP2_MAX_PHYSICAL_REQUESTS:
+            raise RuntimeError("backend MTP2 physical widths must be within [1, 8]")
+        if not 1 <= depth <= _MTP2_MAX_CANDIDATE_DEPTH:
+            raise RuntimeError("backend MTP2 candidate depths must be within [1, 3]")
+        cells.add((width, depth))
+    if not cells:
+        raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
+    return tuple(sorted(cells))
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -425,6 +704,14 @@ class Qwen35GGUFMTP2Adapter:
         self.production_exact_target_row_counts = tuple(sorted(exact_target_rows))
         self._target_pad_token_scratch: DeviceBuffer | None = None
         self._target_pad_token_capacity = 0
+        self.physical_width_depths = _physical_width_depths(self.generator)
+        self.physical_max_requests = max(
+            width for width, _depth in self.physical_width_depths
+        )
+        self.physical_prompt_streaming_widths = _physical_prompt_streaming_widths(
+            owner,
+            self.generator,
+        )
         use_ngram = (
             _env_enabled(_NGRAM_MOD_ENV)
             if ngram_enabled is None
@@ -435,6 +722,7 @@ class Qwen35GGUFMTP2Adapter:
             if use_ngram
             else None
         )
+        self.physical_prompt_streaming = bool(self.physical_prompt_streaming_widths)
         self.device_chain_qualification_oracle = os.environ.get(
             "HIPENGINE_SPECDEC2_DEVICE_CHAIN_ORACLE",
             "0",
@@ -445,30 +733,27 @@ class Qwen35GGUFMTP2Adapter:
         self._post_reject_pending: set[int] = set()
         if self.candidate_budget not in {1, 2, 3}:
             raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
-        package_max_requests = (
-            max(
-                1,
-                int(
-                    backend_package_capability(
-                        str(self.generator.backend),
-                        "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
-                        4,
-                    )
-                ),
-            )
-            if str(profile) == "production"
-            else 4
+        policy_max_requests = max(
+            width for width, _depth in self.physical_width_depths
         )
-        configured_max_requests = min(
-            package_max_requests,
+        self._configured_physical_max_requests = min(
+            policy_max_requests,
             _positive_env(
                 _PHYSICAL_MAX_REQUESTS_ENV,
-                package_max_requests,
+                policy_max_requests,
             ),
         )
-        self.physical_max_requests = min(
-            max(1, int(getattr(self.owner, "capacity", package_max_requests))),
-            configured_max_requests,
+        physical_capacity = min(
+            max(1, int(getattr(self.owner, "capacity", policy_max_requests))),
+            self._configured_physical_max_requests,
+        )
+        self.physical_max_requests = max(
+            (
+                width
+                for width, _depth in self.physical_width_depths
+                if width <= physical_capacity
+            ),
+            default=0,
         )
         frontier_rows = self.physical_max_requests * (self.candidate_budget + 1)
         padded_frontier_rows = frontier_rows
@@ -491,6 +776,7 @@ class Qwen35GGUFMTP2Adapter:
         self._prompt_streaming_group_keys: dict[int, tuple[int, ...]] = {}
         self._prompt_streaming_norm_buffers: dict[int, DeviceBuffer] = {}
         self._states: dict[int, _MTP2RequestState] = {}
+        self._c1_shadow_states: dict[int, _C1ShadowAdapterState] = {}
         self._provider_groups: dict[tuple[int, ...], _MTP2ProviderGroup] = {}
         self._disabled_requests: set[int] = set()
         self._active_claims: ResourceClaimSet | None = None
@@ -506,6 +792,56 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_repair_hidden: Tensor | None = None
         self._cycle_ngram_tokens: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
+
+    def _physical_width_depth_policy(self) -> tuple[tuple[int, int], ...]:
+        """Return policy cells that fit this adapter's resident capacity."""
+
+        cells = getattr(self, "physical_width_depths", None)
+        if cells is None:
+            try:
+                cells = _physical_width_depths(self.generator)
+            except (AttributeError, RuntimeError, ValueError):
+                # Partially constructed test doubles retain the certified
+                # C1-C4 cells; real adapters fail closed in __init__.
+                cells = _MTP2_CERTIFIED_WIDTH_DEPTHS
+            self.physical_width_depths = tuple(cells)
+        capacity = min(
+            max(
+                1,
+                int(getattr(self.owner, "capacity", _MTP2_MAX_PHYSICAL_REQUESTS)),
+            ),
+            int(
+                getattr(
+                    self,
+                    "_configured_physical_max_requests",
+                    _MTP2_MAX_PHYSICAL_REQUESTS,
+                )
+            ),
+        )
+        return tuple(
+            (int(width), int(depth))
+            for width, depth in cells
+            if int(width) <= capacity
+        )
+
+    def _physical_width_depth_admitted(self, width: int, depth: int) -> bool:
+        return (int(width), int(depth)) in self._physical_width_depth_policy()
+
+    def _max_physical_requests(self) -> int:
+        """Return the largest listed width that fits resident capacity."""
+
+        cells = self._physical_width_depth_policy()
+        if not cells:
+            return 0
+        bound = max(width for width, _depth in cells)
+        self.physical_max_requests = int(bound)
+        return int(bound)
+
+    @property
+    def physical_request_bound(self) -> int:
+        """Public coalescing/plan width bound owned by this adapter's capability."""
+
+        return self._max_physical_requests()
 
     def _target_profile_supported(self, target: Any) -> bool:
         runner = getattr(target, "runner", None)
@@ -577,6 +913,207 @@ class Qwen35GGUFMTP2Adapter:
             eligibility_by_request[rid] = static_eligibility
         self._disabled_requests.discard(rid)
 
+    def acquire_c1_shadow_lifecycle(
+        self,
+        request_id: int,
+        *,
+        real_slot: int,
+        shadow_slot: int,
+    ) -> C1ShadowSessionLifecycle:
+        """Acquire concrete C1 shadow resources through owner/provider pools.
+
+        This API is unselected until the physical-C2 target route lands. The
+        resident owner supplies and reclaims the shadow target/hidden/KV/state
+        bundle; the adapter owns provider request/checkpoint lifetime.
+        """
+
+        rid = int(request_id)
+        shadow_states = getattr(self, "_c1_shadow_states", None)
+        if shadow_states is None:
+            shadow_states = {}
+            self._c1_shadow_states = shadow_states
+        if rid in shadow_states:
+            raise C1ShadowOwnershipError(
+                f"request_id {rid} already owns a C1 shadow lifecycle"
+            )
+        state = self._states.get(rid)
+        if state is None:
+            raise C1ShadowOwnershipError("C1 shadow requires an active provider state")
+        row = self.owner._row(rid)
+        if row.lease is None or row.slot is None:
+            raise C1ShadowOwnershipError("C1 shadow requires an active target row")
+        real_target = row.lease.session
+        real_hidden = state.root_hidden_buffer
+        real_kv = row.kv_allocation
+        real_recurrent = getattr(real_target, "scratch", None)
+        if real_kv is None or real_recurrent is None:
+            raise C1ShadowOwnershipError(
+                "C1 shadow requires live KV and recurrent owners"
+            )
+        acquire = getattr(self.owner, "acquire_c1_shadow_resources", None)
+        reclaim = getattr(self.owner, "reclaim_c1_shadow_resource", None)
+        abort = getattr(self.owner, "abort_c1_shadow_resources", None)
+        if not callable(acquire) or not callable(reclaim) or not callable(abort):
+            raise C1ShadowOwnershipError(
+                "resident owner has no C1 shadow resource-pool ABI"
+            )
+        shadow_id = -(rid + 1)
+        bundle: Mapping[str, Any] | None = None
+        captured: list[Any] = []
+        shadow_provider_open = False
+        try:
+            bundle = acquire(
+                request_id=rid,
+                shadow_request_id=shadow_id,
+                real_slot=int(real_slot),
+                shadow_slot=int(shadow_slot),
+            )
+            if not isinstance(bundle, dict):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow resource bundle must be a mutable mapping"
+                )
+            required = (
+                "target_session",
+                "hidden_row",
+                "kv_owner",
+                "recurrent_owner",
+            )
+            missing = [name for name in required if bundle.get(name) is None]
+            if missing:
+                raise C1ShadowOwnershipError(
+                    "C1 shadow resource bundle missing: " + ", ".join(missing)
+                )
+            shadow_target = bundle["target_session"]
+            clone_target = getattr(shadow_target, "clone_current_state_from", None)
+            if not callable(clone_target):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow target has no arbitrary state-clone ABI"
+                )
+            bundle["target_state_clone_bytes"] = int(
+                clone_target(real_target, stream=0)
+            )
+            shadow_hidden = bundle["hidden_row"]
+            if int(getattr(shadow_hidden, "nbytes", 0)) != int(
+                getattr(real_hidden, "nbytes", -1)
+            ):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow hidden-row size does not match the real owner"
+                )
+            real_target.runtime.memcpy_async(
+                int(shadow_hidden.ptr),
+                int(real_hidden.ptr),
+                int(real_hidden.nbytes),
+                HipMemcpyKind.DEVICE_TO_DEVICE,
+                0,
+            )
+            real_target.runtime.device_synchronize()
+            state.provider.reset_request(shadow_id)
+            shadow_provider_open = True
+            executor = state.provider.executor
+            clone_provider = getattr(executor, "clone_request_state", None)
+            if not callable(clone_provider):
+                raise C1ShadowOwnershipError(
+                    "C1 shadow provider has no exact request-state clone ABI"
+                )
+            clone_provider(rid, shadow_id)
+            real_checkpoint = executor.capture_request_checkpoint(rid)
+            captured.append(real_checkpoint)
+            shadow_checkpoint = executor.capture_request_checkpoint(shadow_id)
+            captured.append(shadow_checkpoint)
+
+            def restore_checkpoint(lane: str, checkpoint: Any) -> None:
+                del lane
+                executor.restore_request_checkpoint(checkpoint)
+
+            def reclaim_resource(
+                surface: str,
+                lane: str,
+                resource: Any,
+                reason: str,
+            ) -> None:
+                if surface == "provider_checkpoint":
+                    executor.release_request_checkpoint(resource)
+                    return
+                reclaim(
+                    bundle,
+                    surface=surface,
+                    lane=lane,
+                    resource=resource,
+                    reason=reason,
+                )
+
+            lifecycle = C1ShadowSessionLifecycle(
+                request_id=rid,
+                real_slot=int(real_slot),
+                shadow_slot=int(shadow_slot),
+                target_session=real_target,
+                shadow_target_session=bundle["target_session"],
+                provider_checkpoint=real_checkpoint,
+                shadow_provider_checkpoint=shadow_checkpoint,
+                hidden_row=real_hidden,
+                shadow_hidden_row=bundle["hidden_row"],
+                kv_owner=real_kv,
+                shadow_kv_owner=bundle["kv_owner"],
+                recurrent_owner=real_recurrent,
+                shadow_recurrent_owner=bundle["recurrent_owner"],
+                restore_provider_checkpoint=restore_checkpoint,
+                reclaim=reclaim_resource,
+            )
+            shadow_states[rid] = _C1ShadowAdapterState(
+                lifecycle=lifecycle,
+                provider=state.provider,
+                resource_bundle=bundle,
+            )
+            return lifecycle
+        except Exception:
+            executor = getattr(state.provider, "executor", None)
+            release_checkpoint = getattr(
+                executor,
+                "release_request_checkpoint",
+                None,
+            )
+            if callable(release_checkpoint):
+                for checkpoint in captured:
+                    release_checkpoint(checkpoint)
+            if shadow_provider_open:
+                state.provider.release_request(shadow_id)
+            if bundle is not None:
+                abort(bundle, reason="acquire_failed")
+            raise
+
+    def drop_c1_shadow_lifecycle(
+        self,
+        request_id: int,
+        *,
+        reason: str = "teardown",
+        cancel: bool = False,
+    ) -> None:
+        """Restore/reclaim one request's shadow resources exactly once."""
+
+        rid = int(request_id)
+        shadow_states = getattr(self, "_c1_shadow_states", None)
+        if shadow_states is None:
+            return
+        shadow_state = shadow_states.get(rid)
+        if shadow_state is None:
+            return
+        if cancel:
+            shadow_state.lifecycle.cancel(rid)
+        else:
+            shadow_state.lifecycle.close(reason=str(reason))
+        if not shadow_state.lifecycle.closed:
+            raise C1ShadowOwnershipError("C1 shadow cleanup did not close")
+        shadow_state.provider.release_request(
+            shadow_state.lifecycle.shadow_request_id
+        )
+        shadow_states.pop(rid, None)
+
+    def _physical_prompt_streaming_admitted(self, request_count: int) -> bool:
+        if not bool(self.physical_prompt_streaming):
+            return False
+        widths = tuple(getattr(self, "physical_prompt_streaming_widths", ()))
+        return not widths or int(request_count) in widths
+
     def begin_prompt_streaming(
         self,
         request_ids: Sequence[int],
@@ -606,7 +1143,7 @@ class Qwen35GGUFMTP2Adapter:
         if (
             int(getattr(self.owner, "capacity", 1)) > 1
             and not automatic_singleton
-            and not bool(self.physical_prompt_streaming)
+            and not self._physical_prompt_streaming_admitted(len(ids))
         ):
             for row in rows:
                 row.mtp2_prompt_fallback_reason = "physical_streaming_category_rejected"
@@ -665,10 +1202,7 @@ class Qwen35GGUFMTP2Adapter:
             provider_capacity = (
                 1
                 if automatic_singleton
-                else max(
-                    len(ids),
-                    int(getattr(self, "physical_max_requests", 4)),
-                )
+                else max(len(ids), self._max_physical_requests())
             )
             provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
                 targets[0],
@@ -1019,10 +1553,7 @@ class Qwen35GGUFMTP2Adapter:
         request_semantics: Sequence[SpeculativeRequestSemantics],
     ) -> SpeculativeCapability | None:
         semantics = tuple(request_semantics)
-        physical_max_requests = min(
-            int(getattr(self, "physical_max_requests", 4)),
-            max(1, int(getattr(self.owner, "capacity", 4))),
-        )
+        physical_max_requests = self._max_physical_requests()
         if not self.enabled or not (
             1 <= len(semantics) <= physical_max_requests
         ):
@@ -1047,6 +1578,11 @@ class Qwen35GGUFMTP2Adapter:
             self.candidate_budget,
             *(static_candidate_bounds or (self.candidate_budget,)),
         )
+        if not self._physical_width_depth_admitted(
+            len(semantics),
+            max_candidate_count,
+        ):
+            return None
         singleton_only = tuple(
             self._singleton_only(item.request_id)
             for item in semantics
@@ -1153,7 +1689,12 @@ class Qwen35GGUFMTP2Adapter:
             max_requests=max_requests,
             max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
-            proposal_widths=tuple(range(1, max_requests + 1)),
+            proposal_widths=tuple(
+                width
+                for width in (1, 2, 4, 8)
+                if (width, max_candidate_count)
+                in self._physical_width_depth_policy()
+            ),
             target_row_buckets=tuple(range(2, max_frontier_rows + 1)),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
@@ -1170,7 +1711,7 @@ class Qwen35GGUFMTP2Adapter:
         if not self.enabled or not ids:
             return 0
         eligibility = tuple(self._static_eligibility(request_id) for request_id in ids)
-        physical_max_requests = int(getattr(self, "physical_max_requests", 4))
+        physical_max_requests = self._max_physical_requests()
         owner_capacity = max(1, int(getattr(self.owner, "capacity", 1)))
         static_bounds = [
             0 if row is None else int(row.max_realized_group_rows)
@@ -1178,17 +1719,26 @@ class Qwen35GGUFMTP2Adapter:
         ]
         valid = not any(row is None or not row.eligible for row in eligibility)
         bound = (
-            min(
-                physical_max_requests,
-                owner_capacity,
-                *static_bounds,
-            )
+            min(physical_max_requests, owner_capacity, *static_bounds)
             if valid
             else 0
         )
         # Exact automatic-singleton evidence must fail the composed due group to
         # K0; it may not be reinterpreted as many independently profitable C1s.
         resolved = bound if bound > 1 else 0
+        # M5 whole-batch routing: over-width due batches measured slower as MTP
+        # sub-groups fall through to one full-batch AR decode.
+        route = backend_package_capability(
+            str(getattr(self.generator, "backend", "") or ""),
+            "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS",
+            {},
+        )
+        if resolved and isinstance(route, Mapping):
+            profile_value = getattr(self.generator, "execution_profile", None)
+            profile = str(getattr(profile_value, "value", profile_value) or "")
+            threshold = route.get(profile)
+            if threshold is not None and len(ids) > int(threshold):
+                resolved = 0
         self._last_partition_contract = {
             "request_ids": list(ids),
             "static_max_realized_group_rows": static_bounds,
@@ -1200,6 +1750,12 @@ class Qwen35GGUFMTP2Adapter:
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
         request_ids = tuple(int(value) for value in plan.speculative_request_ids)
+        candidate_counts = tuple(
+            int(value)
+            for value in getattr(plan, "candidate_counts", ())
+            if int(value) > 0
+        )
+        realized_depth = max(candidate_counts, default=self.candidate_budget)
         physical_singleton = bool(
             len(request_ids) == 1
             and (eligibility := self._static_eligibility(request_ids[0])) is not None
@@ -1213,11 +1769,10 @@ class Qwen35GGUFMTP2Adapter:
             # mixed positive-K/K0 group needs a separately declared partition;
             # this adapter must fail it closed before provider mutation.
             and tuple(int(value) for value in plan.request_ids) == request_ids
-            and 1
-            <= len(request_ids)
-            <= min(
-                int(getattr(self, "physical_max_requests", 4)),
-                max(1, int(getattr(self.owner, "capacity", 1))),
+            and 1 <= len(request_ids) <= self._max_physical_requests()
+            and self._physical_width_depth_admitted(
+                len(request_ids),
+                realized_depth,
             )
             and not (
                 len(request_ids) == 1
@@ -1324,10 +1879,7 @@ class Qwen35GGUFMTP2Adapter:
     ) -> tuple[Tensor, Tensor]:
         """Return stable max-width proposal and repair BF16 slabs."""
 
-        physical_max_requests = min(
-            int(getattr(self, "physical_max_requests", 4)),
-            max(1, int(getattr(self.owner, "capacity", 1))),
-        )
+        physical_max_requests = self._max_physical_requests()
         shape = (
             physical_max_requests,
             int(hidden_size),
@@ -1352,9 +1904,7 @@ class Qwen35GGUFMTP2Adapter:
             ngram_tokens = (
                 workspace.reserve_tensor(
                     "gguf_mtp2/cycle/ngram_tokens",
-                    (
-                        physical_max_requests * self.candidate_budget,
-                    ),
+                    (physical_max_requests * self.candidate_budget,),
                     DType.INT32,
                 )
                 if getattr(self, "_ngram", None) is not None
@@ -1476,10 +2026,7 @@ class Qwen35GGUFMTP2Adapter:
                 {
                     "gguf_mtp2.result_rows": requests,
                     "gguf_mtp2.cycle_hidden_rows": 2
-                    * min(
-                        int(getattr(self, "physical_max_requests", 4)),
-                        max(1, int(getattr(self.owner, "capacity", 1))),
-                    ),
+                    * self._max_physical_requests(),
                 },
                 lifetime=ClaimLifetime.WORK_ITEM,
             ),
@@ -1509,6 +2056,36 @@ class Qwen35GGUFMTP2Adapter:
             if request_id not in self._states:
                 self.owner._flush_row_owner(self.owner._row(request_id))
         self._ensure_request_states(ids)
+        self._ensure_active_singleton_target_verifier(ids)
+
+    def _ensure_active_singleton_target_verifier(
+        self,
+        request_ids: tuple[int, ...],
+    ) -> None:
+        """Keep a physical provider but use the exact C1 target when alone."""
+
+        if len(request_ids) != 1:
+            return
+        request_id = int(request_ids[0])
+        state = self._states[request_id]
+        if state.verifier is not None:
+            return
+        row = self.owner._row(request_id)
+        if row.lease is None:
+            raise RuntimeError("GGUF MTP2 singleton request has no target session")
+        target = row.lease.session
+        state.verifier = Qwen35GGUFTransactionalVerifier(
+            target,
+            max_candidate_budget=self.candidate_budget,
+            quant=self.quant,
+            target_verify_mode=_target_verify_mode_for_context(
+                self.target_verify_mode,
+                backend=self.generator.backend,
+                end_position=(
+                    int(target.position) + self.candidate_budget + 1
+                ),
+            ),
+        )
 
     def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
         missing = tuple(request_id for request_id in ids if request_id not in self._states)
@@ -1634,13 +2211,10 @@ class Qwen35GGUFMTP2Adapter:
     ) -> CandidateGraph:
         del stream
         ids = tuple(int(value) for value in plan.speculative_request_ids)
-        physical_max_requests = min(
-            int(getattr(self, "physical_max_requests", 4)),
-            max(1, int(getattr(self.owner, "capacity", 1))),
-        )
+        physical_max_requests = self._max_physical_requests()
         if not (1 <= len(ids) <= physical_max_requests):
             raise NotImplementedError(
-                "GGUF MTP2 proposal exceeds physical request capacity"
+                f"GGUF MTP2 supports c1 through c{physical_max_requests} proposal"
             )
         states = tuple(self._states[request_id] for request_id in ids)
         if len({state.provider_group_key for state in states}) != 1:
@@ -2021,7 +2595,7 @@ class Qwen35GGUFMTP2Adapter:
         target_seconds = 0.0
         provider_update_seconds = 0.0
         try:
-            target_started = time.perf_counter()
+            target_started_ns = time.perf_counter_ns()
             prepared = state.verifier.prepare(
                 batch,
                 transaction_id=transaction_id,
@@ -2040,7 +2614,8 @@ class Qwen35GGUFMTP2Adapter:
                     int(batch.candidate_count) == int(self.candidate_budget)
                 ),
             )
-            target_seconds = time.perf_counter() - target_started
+            target_finished_ns = time.perf_counter_ns()
+            target_seconds = (target_finished_ns - target_started_ns) / 1e9
             cancelled = tuple(int(value) for value in cancelled_request_ids())
             if cancelled:
                 state.verifier.rollback(prepared)
@@ -2122,6 +2697,7 @@ class Qwen35GGUFMTP2Adapter:
             if prepared.native_device_accept_commit:
                 row.mtp2_device_accept_calls += 1
             state.verifier.finish(prepared)
+            cycle_profile_finished_ns = time.perf_counter_ns()
             prepared = None
             self._release_provider_checkpoint(state)
             next_token = None if summary.next_tokens is None else summary.next_tokens[0]
@@ -2141,7 +2717,15 @@ class Qwen35GGUFMTP2Adapter:
             row.mtp2_accepted_counts.append(accepted)
             row.mtp2_proposal_ms += float(state.last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
+            row.mtp2_target_pass_start_ns.append(int(target_started_ns))
+            row.mtp2_target_pass_end_ns.append(int(target_finished_ns))
+            row.mtp2_cycle_profile_start_ns.append(int(target_started_ns))
+            row.mtp2_cycle_profile_end_ns.append(int(cycle_profile_finished_ns))
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
+            row.mtp2_provider_update_pass_ms.append(
+                float(provider_update_seconds) * 1000.0
+            )
             accept = AcceptResult(
                 request_ids=plan.request_ids,
                 accepted_counts=summary.accepted_counts,
@@ -2249,15 +2833,12 @@ class Qwen35GGUFMTP2Adapter:
         runtime: Any,
     ) -> tuple[TargetVerifyBufferOwner, Tensor, Tensor]:
         if self._batch_accept_workspace is None:
-            max_requests = min(
-                int(getattr(self, "physical_max_requests", 4)),
-                max(1, int(getattr(self.owner, "capacity", 4))),
-            )
+            max_requests = self._max_physical_requests()
             max_rows = int(
                 getattr(
                     self,
                     "physical_accept_max_rows",
-                    _PHYSICAL_ACCEPT_MIN_ROWS,
+                    max_requests * (self.candidate_budget + 1),
                 )
             )
             bucket = f"gguf-mtp2-physical-r{max_rows}-c{max_requests}"
@@ -3020,7 +3601,16 @@ class Qwen35GGUFMTP2Adapter:
                 "resident_slot": int(plan.resident_slots[plan.request_ids.index(request_id)]),
                 "transaction_id": int(transaction_id),
                 "bulk_attention_mode": "bulk",
-                "use_wmma_prefill": False,
+                "use_wmma_prefill": mtp_serving_target_use_wmma_prefill(
+                    getattr(self.generator, "execution_profile", None),
+                    profile_fell_back_to_strict=bool(
+                        getattr(
+                            self.generator,
+                            "execution_profile_fell_back_to_strict",
+                            True,
+                        )
+                    ),
+                ),
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
                 "defer_state_scatter": True,
@@ -3055,7 +3645,7 @@ class Qwen35GGUFMTP2Adapter:
         verify_batch = getattr(owner, "verify_target_blocks_batch", None)
         if not callable(verify_batch):
             raise RuntimeError("physical target owner has no packed verifier")
-        target_started = time.perf_counter()
+        target_started_ns = time.perf_counter_ns()
         device_result = batch is None or ngram_proposal is not None
         with (
             target_verifier_active_slots_session(len(jobs)),
@@ -3089,13 +3679,21 @@ class Qwen35GGUFMTP2Adapter:
             moe_physical_c2_exact_linear_session(
                 bool(getattr(self, "moe_physical_c2_exact_linear", False))
             ),
+            target_verifier_wide_q6_shared4_leaf_session(
+                target_verifier_wide_q6_shared4_policy_enabled()
+                and plan.declared_logical_c >= 8
+            ),
         ):
             results = list(verify_batch(jobs, device_result=device_result))
-        target_seconds = time.perf_counter() - target_started
+        target_finished_ns = time.perf_counter_ns()
+        target_seconds = (target_finished_ns - target_started_ns) / 1e9
         physical_target_rows = sum(len(job["input_token_ids"]) for job in jobs)
         for row in rows:
             row.mtp2_target_batch_calls += 1
             row.mtp2_target_physical_rows.append(physical_target_rows)
+            row.mtp2_target_pass_ms.append(float(target_seconds) * 1000.0)
+            row.mtp2_target_pass_start_ns.append(int(target_started_ns))
+            row.mtp2_target_pass_end_ns.append(int(target_finished_ns))
         if len(results) != len(ids):
             raise RuntimeError("physical target verifier returned wrong result count")
         candidate_readback_seconds = 0.0
@@ -3355,6 +3953,7 @@ class Qwen35GGUFMTP2Adapter:
             commit_seconds = time.perf_counter() - commit_started
             if int(commit_contract.get("requests", 0)) != len(ids):
                 raise RuntimeError("physical selected-state commit omitted requests")
+        cycle_profile_finished_ns = time.perf_counter_ns()
         for row in rows:
             row.mtp2_device_accept_calls += 1
         for row in rows:
@@ -3405,12 +4004,18 @@ class Qwen35GGUFMTP2Adapter:
                 self._post_reject_pending.add(int(request_id))
             row.mtp2_proposal_ms += float(states[index].last_proposal_seconds) * 1000.0
             row.mtp2_target_ms += float(target_seconds) * 1000.0
+            row.mtp2_cycle_profile_start_ns.append(int(target_started_ns))
+            row.mtp2_cycle_profile_end_ns.append(int(cycle_profile_finished_ns))
             row.mtp2_provider_update_ms += float(provider_update_seconds) * 1000.0
             row.mtp2_accept_ms += float(accept_seconds) * 1000.0
             row.mtp2_accept_enqueue_ms += accept_enqueue_seconds * 1000.0
             row.mtp2_accept_upload_ms += accept_upload_seconds * 1000.0
             row.mtp2_accept_tail_ms += accept_tail_seconds * 1000.0
             row.mtp2_target_readback_ms += float(bounded_readback_seconds) * 1000.0
+            row.mtp2_accept_pass_ms.append(float(accept_seconds) * 1000.0)
+            row.mtp2_provider_update_pass_ms.append(
+                float(provider_update_seconds) * 1000.0
+            )
             row.mtp2_selected_commit_ms += float(commit_seconds) * 1000.0
             row.mtp2_candidate_readback_ms += (
                 float(candidate_readback_seconds) * 1000.0
@@ -4082,7 +4687,7 @@ class Qwen35GGUFMTP2Adapter:
         )
         provider_capacity = max(
             len(request_ids),
-            int(getattr(self, "physical_max_requests", 4)),
+            self._max_physical_requests(),
         )
         provider, pool_key, _reused = self.generator._acquire_dense_mtp_draft_provider(
             targets[0],
@@ -4384,6 +4989,7 @@ class Qwen35GGUFMTP2Adapter:
     def _drop_request(self, request_id: int, *, disable: bool) -> None:
         rid = int(request_id)
         self._post_reject_pending.discard(rid)
+        self.drop_c1_shadow_lifecycle(rid, reason="request_drop")
         state = self._states.pop(rid, None)
         if state is not None:
             target = self.owner._row(rid).lease.session
@@ -4409,4 +5015,8 @@ class Qwen35GGUFMTP2Adapter:
             self._disabled_requests.add(rid)
 
 
-__all__ = ["Qwen35GGUFMTP2Adapter"]
+__all__ = [
+    "C1ShadowOwnershipError",
+    "C1ShadowSessionLifecycle",
+    "Qwen35GGUFMTP2Adapter",
+]

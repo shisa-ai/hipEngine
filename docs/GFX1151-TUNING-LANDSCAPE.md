@@ -137,7 +137,7 @@ retained gfx1151 policy now disables that route at every row count.
 **Measured crossover on gfx1151 (2026-08-20, retained): NO aotriton crossover —
 native wins at every prefill length 64-2048 (~2-5% faster on the serialized
 full-attention slice, never slower).** AOTriton's tiled flash is tuned for
-larger GPUs (gfx1100's 96 CU / 48 MiB MALL); on the 40-CU 8060S the native
+larger GPUs (gfx1100's 96 CU / 96 MiB MALL); on the 40-CU 8060S the native
 `causal_gqa_gate_bf16` scan wins and drops the aotriton wrapper overhead (bf16
 query conversion, head-major KV copy, stream bridge). Retained: gfx1151 routes
 all full-attention prefill to native via `GGUF_AOTRITON_PREFILL = False`

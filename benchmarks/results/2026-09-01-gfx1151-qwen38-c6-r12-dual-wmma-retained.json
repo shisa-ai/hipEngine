@@ -1,0 +1,155 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c6_r12_dual_wmma_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_intermediate",
+  "performance_claim": true,
+  "performance_claim_scope": "C6/K1 physical R12 only",
+  "promotion": false,
+  "source": {
+    "commit": "ff2e8423bdd109a6b90f4d19c40dc0b4d3c26dff",
+    "dirty": false
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_version": "7.15.26333-0000000",
+    "amd_clang": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard_q4_k_m",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "widths": [6, 8],
+    "candidate_budget": 1,
+    "max_tokens": 24,
+    "batch_window_ms": 50,
+    "sampling": "raw greedy, no prompt cache",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "execution_profile": "production",
+    "profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "correctness_contract": "BF16 parent parity and CPU-relative primitive smoke plus mtp_self_exact/engaged/budget full-suite gates; production promotion remains separate"
+  },
+  "comparison": {
+    "order": ["control", "candidate"],
+    "same_python_process": true,
+    "control": "At the clean candidate commit, set GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS to {}. The previously retained direct-resident verifier state path remains enabled in both arms.",
+    "candidate": "Use the committed package map {(12, 5120, 17408): dense_dual_wmma_smallm_bf16_bf16_out}. R16 is absent.",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python .multiloop/active/qwen38-wide-mtp/q38-c6c8-115x-r2/publish_r12_pair.py",
+    "benchmark_argv": "scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 6,8 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact",
+    "control_raw": {
+      "path": "/tmp/q38-r12-control.json",
+      "sha256": "95bdca27091ea927dd0fee8fd8a1969bea2b25b782863c537c92e7b9ae4e1018",
+      "size_bytes": 5658952
+    },
+    "candidate_raw": {
+      "path": "/tmp/q38-r12-candidate.json",
+      "sha256": "8935e3e520c84ebfdde1050f7a23b3da3f87b7b78fbe193f4c13996ef56ef9c2",
+      "size_bytes": 5659070
+    },
+    "pair_summary": {
+      "path": "/tmp/q38-r12-pair-summary.json",
+      "sha256": "d869714a3e4c75153d0bd33e3a5a9079a0116f89476b252608e8b4497aa6c04f",
+      "size_bytes": 2752
+    }
+  },
+  "mechanism": {
+    "kernel": "gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel",
+    "registry_key": ["hip_gfx1151", "linear_pair_silu", "gguf_q4_k_t16_v1", "dense_dual_wmma_smallm_bf16_bf16_out"],
+    "admitted_shape": [12, 5120, 17408],
+    "replaced_chain": "R8+R4 exact dense dual rowtile gate/up+SiLU",
+    "schedule": "64 threads / two wave32s / one 16x16 output-row tile; one matrix per wave; independent BF16 gate/up boundaries before SiLU",
+    "strict_fallback": "R8+R4 dense_dual_rowtile_bf16_bf16_out composition",
+    "excluded": {
+      "R16": "focused screen 44.175 versus retained 44.679 tok/s; package map deliberately omits R16"
+    }
+  },
+  "results": {
+    "6": {
+      "control": {
+        "ar_tok_s": 39.965555335716935,
+        "mtp_tok_s": 35.9557346810403,
+        "mtp_vs_ar": 0.899668086155853
+      },
+      "candidate": {
+        "ar_tok_s": 39.97319956237486,
+        "mtp_tok_s": 37.12956067528576,
+        "mtp_vs_ar": 0.9288613641584573
+      },
+      "mtp_speedup": 1.0326464194003642,
+      "mtp_delta_pct": 3.26464194003642,
+      "ar_control_ratio": 1.0001912703725424,
+      "scopes": {
+        "train_mtp_speedup": 1.0325152834927716,
+        "heldout_mtp_speedup": 1.0328366242740845,
+        "categories_mtp_speedup": {
+          "code": 1.031399967621688,
+          "general_en": 1.0352769101852919,
+          "general_ja": 1.0347401763103816,
+          "mixed_ja_en": 1.0309722714936462
+        }
+      }
+    },
+    "8_control_cell": {
+      "control": {
+        "ar_tok_s": 47.392370621344085,
+        "mtp_tok_s": 42.6198837944728,
+        "mtp_vs_ar": 0.8992984152448812
+      },
+      "candidate": {
+        "ar_tok_s": 47.29601907588987,
+        "mtp_tok_s": 42.5558060853685,
+        "mtp_vs_ar": 0.8997756453261878
+      },
+      "mtp_speedup": 0.9984965301779494,
+      "ar_control_ratio": 0.9979669397375361,
+      "interpretation": "The R12 package key cannot engage at C8/R16. The -0.15% MTP movement tracks a -0.20% paired AR movement and is reported as run noise, not a C8 mechanism or win."
+    }
+  },
+  "correctness": {
+    "control_cells": 20,
+    "control_exact_cells": 20,
+    "control_engaged_cells": 20,
+    "control_budget_conformed_cells": 20,
+    "candidate_cells": 20,
+    "candidate_exact_cells": 20,
+    "candidate_engaged_cells": 20,
+    "candidate_budget_conformed_cells": 20,
+    "control_acceptance": 0.9565217391304348,
+    "candidate_acceptance": 0.9565217391304348,
+    "accepted_proposed_control": [1540, 1610],
+    "accepted_proposed_candidate": [1540, 1610],
+    "parent_parity": "R12/R16 BF16-bit exact to unfused shared-B projection+SiLU chain",
+    "cpu_reference": "R12/R16 pass CPU-relative primitive smoke at rtol 0.012 / atol 0.5",
+    "tests": "57/57 tests/test_gguf_q4_k_t16_dense.py plus 3/3 focused dispatch nodes"
+  },
+  "kernel_trace": {
+    "command": "cache-only rocprofv3 --kernel-trace --marker-trace on warmed C6/K1 final child",
+    "path": "/tmp/q38-c6-r12-smallm-rocprof/q38-c6-r12-smallm_kernel_trace.csv",
+    "sha256": "2eb8a5bb90d12e2c49b427165fa6d9f0d01729f65d2e5d0ea92bae41eb8dc25d",
+    "size_bytes": 23576316,
+    "expected_kernel_calls": 768,
+    "expected_kernel_total_ms": 631.572407,
+    "duration_us_min": 799.862,
+    "duration_us_max": 861.176,
+    "call_identity": "64 target layers x 12 K1 cycles"
+  },
+  "decision": {
+    "retain": true,
+    "automatic_mtp_promotion": false,
+    "reason": "Exact C6-only improvement with positive train, heldout, and every category; C8 is an unchanged control. C6 and C8 remain below own AR and the 1.15x campaign target.",
+    "next": "Continue the C8/R16 target wall independently; require repeated same-host economics and complete production numerical/task/determinism/isolation/lifecycle/serving gates before promotion."
+  }
+}

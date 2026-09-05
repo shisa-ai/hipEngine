@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y5-nongemm-tail-closure",
+  "status": "closed_by_perfect-removal_bound",
+  "source_commit": "5022f9330",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "c8_like_rows288": {
+    "tick_wall_ms": 990.820392,
+    "gdn_ms": 64.517662,
+    "other_ms": 79.357328,
+    "all_nongemm_tail_ms": 143.87499,
+    "perfect_y5_wall_pct": 14.520794198591746,
+    "largest_named_families": [
+      {"name": "qwen35_paged_full_attn_prefill_gqa_gate_bf16_kernel<true>", "dispatches": 16, "ms": 45.412348, "wall_pct": 4.583},
+      {"name": "qwen35_gdn_prefill_recurrent_compact_normalized_segments_wave32_xor_kernel<float>", "dispatches": 48, "ms": 42.548615, "wall_pct": 4.294},
+      {"name": "dense_gemv_bf16_f32w_bf16_out_kernel", "dispatches": 96, "ms": 16.309115, "wall_pct": 1.646},
+      {"name": "qwen35_gdn_prefill_rmsnorm_gate_bf16_kernel", "dispatches": 48, "ms": 13.631811, "wall_pct": 1.376},
+      {"name": "silu_mul_separate_out_kernel", "dispatches": 64, "ms": 5.728589, "wall_pct": 0.578}
+    ]
+  },
+  "target_math": {
+    "retained_c8_prefill_tok_s": 239.658,
+    "target_c8_prefill_tok_s": 305.847,
+    "required_wall_reduction_pct": 21.641212763244365,
+    "perfect_y3_residual_ms": 45.917,
+    "perfect_y3_residual_wall_pct": 4.634,
+    "perfect_y3_plus_all_y5_wall_pct": 19.155034709862935,
+    "shortfall_pct_points": 2.4861780533814297
+  },
+  "named_blockers": [
+    "The GDN recurrent owner is already the retained compact peer-wave normalized-segments path; Y2 measured no multiplicity opportunity.",
+    "Full-attention prefill is the existing split path; even deleting it completely would remove only 4.58% wall.",
+    "Every remaining named non-GEMM family is below 2% individually.",
+    "Perfect removal of every GDN and other dispatch plus perfect realization of the full residual Y3 rate-match ceiling still cannot reach the C8 target."
+  ],
+  "decision": "Close Y5 without implementation. Its physically impossible perfect-removal ceiling, combined with Y3's perfect residual ceiling, remains 2.49 percentage points short of the frozen C8 target."
+}

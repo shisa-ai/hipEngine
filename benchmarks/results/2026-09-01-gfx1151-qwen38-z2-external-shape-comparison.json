@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z2_external_shape_comparison",
+  "date": "2026-09-01",
+  "status": "measured_with_external_instrumentation_bound",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop (AMD Ryzen AI Max 300 Series)",
+    "gpu": "AMD Strix Halo Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": {
+    "path": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10
+  },
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "commands": {
+    "one_group_full_suite": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-z0-run-20260901-201730/z0_budget_full_driver.py",
+    "accounting": ".venv/bin/python scripts/mtp_cycle_accounting.py --ar-mtp-raw /tmp/q38-z0-run-20260901-201730/budget-c5c8-full.json --output /tmp/q38-z0-run-20260901-201730/budget-c5c8-full-accounting.json"
+  },
+  "external_protocol": "2026-08-30 final six-engine C1-C8: same 10 prompts/categories/heldouts, raw greedy, cache off, D24, K3, complete barrier wall",
+  "widths": {
+    "5": {
+      "hipengine": {
+        "candidate_budget": 3,
+        "cycles": 355,
+        "candidate_tokens": 995,
+        "accepted_draft_tokens": 785,
+        "acceptance": 0.7889447236180904,
+        "generated_tokens": 1200,
+        "proposal_physical_rows": [
+          5
+        ],
+        "target_physical_rows": [
+          10,
+          15,
+          20
+        ],
+        "target_row_expected": 20,
+        "quant_family_ms_per_cycle_k1_only": null,
+        "classified_kernel_calls_per_cycle_k1_only": null
+      },
+      "external_leader": {
+        "name": "mainline_vulkan",
+        "commit": "4e97ac86",
+        "candidate_budget": 3,
+        "draft_tokens": 969,
+        "accepted_draft_tokens": 785,
+        "acceptance": 0.8101135190918473,
+        "generated_tokens": 1200,
+        "tok_s": 32.713,
+        "proposal_physical_rows": null,
+        "target_physical_rows": null,
+        "quant_family_ownership": null,
+        "launch_count": null
+      },
+      "comparison": {
+        "acceptance_delta_hipengine_minus_external": -0.02116879547375683,
+        "token_budget_equal_k3": true,
+        "geometry_comparison": "external unavailable"
+      }
+    },
+    "6": {
+      "hipengine": {
+        "candidate_budget": 3,
+        "cycles": 426,
+        "candidate_tokens": 1194,
+        "accepted_draft_tokens": 942,
+        "acceptance": 0.7889447236180904,
+        "generated_tokens": 1440,
+        "proposal_physical_rows": [
+          6
+        ],
+        "target_physical_rows": [
+          12,
+          18,
+          24
+        ],
+        "target_row_expected": 24,
+        "quant_family_ms_per_cycle_k1_only": {
+          "q4": 162.45734475000015,
+          "q5": 14.738245749999999,
+          "q6": 54.890339749999924
+        },
+        "classified_kernel_calls_per_cycle_k1_only": 2278.1666666666665
+      },
+      "external_leader": {
+        "name": "laurent_vulkan",
+        "commit": "c28d538df",
+        "candidate_budget": 3,
+        "draft_tokens": 1289,
+        "accepted_draft_tokens": 911,
+        "acceptance": 0.7067494181536075,
+        "generated_tokens": 1440,
+        "tok_s": 37.154,
+        "proposal_physical_rows": null,
+        "target_physical_rows": null,
+        "quant_family_ownership": null,
+        "launch_count": null
+      },
+      "comparison": {
+        "acceptance_delta_hipengine_minus_external": 0.08219530546448295,
+        "token_budget_equal_k3": true,
+        "geometry_comparison": "external unavailable"
+      }
+    },
+    "7": {
+      "hipengine": {
+        "candidate_budget": 3,
+        "cycles": 497,
+        "candidate_tokens": 1393,
+        "accepted_draft_tokens": 1099,
+        "acceptance": 0.7889447236180904,
+        "generated_tokens": 1680,
+        "proposal_physical_rows": [
+          7
+        ],
+        "target_physical_rows": [
+          14,
+          21,
+          28
+        ],
+        "target_row_expected": 28,
+        "quant_family_ms_per_cycle_k1_only": null,
+        "classified_kernel_calls_per_cycle_k1_only": null
+      },
+      "external_leader": {
+        "name": "stock_hip",
+        "commit": "9d57ce456",
+        "candidate_budget": 3,
+        "draft_tokens": 1394,
+        "accepted_draft_tokens": 1086,
+        "acceptance": 0.7790530846484935,
+        "generated_tokens": 1680,
+        "tok_s": 46.084,
+        "proposal_physical_rows": null,
+        "target_physical_rows": null,
+        "quant_family_ownership": null,
+        "launch_count": null
+      },
+      "comparison": {
+        "acceptance_delta_hipengine_minus_external": 0.009891638969596883,
+        "token_budget_equal_k3": true,
+        "geometry_comparison": "external unavailable"
+      }
+    },
+    "8": {
+      "hipengine": {
+        "candidate_budget": 3,
+        "cycles": 568,
+        "candidate_tokens": 1592,
+        "accepted_draft_tokens": 1256,
+        "acceptance": 0.7889447236180904,
+        "generated_tokens": 1920,
+        "proposal_physical_rows": [
+          8
+        ],
+        "target_physical_rows": [
+          16,
+          24,
+          32
+        ],
+        "target_row_expected": 32,
+        "quant_family_ms_per_cycle_k1_only": {
+          "q4": 120.37679766666679,
+          "q5": 17.197097499999995,
+          "q6": 65.23147708333326
+        },
+        "classified_kernel_calls_per_cycle_k1_only": 2261.5
+      },
+      "external_leader": {
+        "name": "stock_hip",
+        "commit": "9d57ce456",
+        "candidate_budget": 3,
+        "draft_tokens": 1560,
+        "accepted_draft_tokens": 1256,
+        "acceptance": 0.8051282051282052,
+        "generated_tokens": 1920,
+        "tok_s": 56.222,
+        "proposal_physical_rows": null,
+        "target_physical_rows": null,
+        "quant_family_ownership": null,
+        "launch_count": null
+      },
+      "comparison": {
+        "acceptance_delta_hipengine_minus_external": -0.016183481510114728,
+        "token_budget_equal_k3": true,
+        "geometry_comparison": "external unavailable"
+      }
+    }
+  },
+  "instrumentation_bound": "External HTTP telemetry exposes complete wall, generated tokens, draft_n, and draft_n_accepted, but not physical target rows, quant-family kernels, or launch counts. Those fields remain null; no cross-runtime geometry or kernel-owner equality is inferred."
+}

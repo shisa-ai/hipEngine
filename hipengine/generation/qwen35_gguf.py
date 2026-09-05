@@ -20,7 +20,8 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
-from hipengine.core.memory import memory_stats
+from hipengine.core.dtype import DType
+from hipengine.core.memory import free, malloc, memory_stats
 from hipengine.dispatch import (
     RequestState,
     SlotMove,
@@ -214,7 +215,44 @@ _GGUF_MTP_SERVER_DEFAULT_VERIFY_MODE = "native"
 _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET = 3
 _GGUF_PUBLIC_USE_WMMA_PREFILL = True
 _GGUF_PUBLIC_USE_GEMV_DECODE = True
-_MTP_SERVING_TARGET_USE_WMMA_PREFILL = False
+from hipengine.runtime.gguf_linear import (
+    mtp_serving_target_use_wmma_prefill as _mtp_serving_target_use_wmma_prefill,
+    prefill_f16_staging_for as _prefill_f16_staging_for_profile,
+    q6_integer_mmq_for as _q6_integer_mmq_for_profile,
+)
+
+
+def _prefill_f16_staging_for(generator: object) -> bool:
+    """Profile-scoped B2 prefill activation staging for one generator."""
+
+    return _prefill_f16_staging_for_profile(
+        getattr(generator, "execution_profile", None),
+        profile_fell_back_to_strict=bool(
+            getattr(generator, "execution_profile_fell_back_to_strict", True)
+        ),
+    )
+
+
+def _q6_integer_mmq_for(generator: object) -> bool:
+    """Profile-scoped B5 integer-MMQ resolution for one generator."""
+
+    return _q6_integer_mmq_for_profile(
+        getattr(generator, "execution_profile", None),
+        profile_fell_back_to_strict=bool(
+            getattr(generator, "execution_profile_fell_back_to_strict", True)
+        ),
+    )
+
+
+def _mtp_serving_target_wmma_for(generator: object) -> bool:
+    """Profile-scoped B1 transfer resolution for one generator."""
+
+    return _mtp_serving_target_use_wmma_prefill(
+        getattr(generator, "execution_profile", None),
+        profile_fell_back_to_strict=bool(
+            getattr(generator, "execution_profile_fell_back_to_strict", True)
+        ),
+    )
 
 # Diagnostic escape hatch for the resident sessions' prefill route (docs/REFACTOR.md, "All-GEMV
 # small-row prefill A/B"). Both shipping call sites below passed `use_wmma_prefill=True` literally,
@@ -1264,7 +1302,7 @@ class Qwen35GGUFBringupGenerator:
                                                     "session": session,
                                                     "input_token_ids": warm_verify_tokens_for(slot_index),
                                                     "bulk_attention_mode": "bulk",
-                                                    "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                                                    "use_wmma_prefill": _mtp_serving_target_wmma_for(self),
                                                     "capture_linear_state_rows": True,
                                                     "defer_linear_state_commit": True,
                                                     "defer_state_scatter": _gguf_mtp_server_defer_verify_scatter_enabled(),
@@ -1397,28 +1435,27 @@ class Qwen35GGUFBringupGenerator:
             reset = getattr(session, "reset", None)
             if callable(reset):
                 reset()
+            self._configure_session(session)
             return session, key, True
         session_kwargs = (
             {}
             if max_sequence_length is None
             else {"max_sequence_length": int(max_sequence_length)}
         )
-        return (
-            Qwen35GGUFResidentSession(
-                self.model_path,
-                backend=self.backend,
-                runtime=shared_runner.runtime,
-                shared_runner=shared_runner,
-                use_wmma_prefill=use_wmma_prefill,
-                use_gemv_decode=use_gemv_decode,
-                defer_kv_allocation=bool(defer_kv_allocation),
-                max_batch_size=int(max_batch_size),
-                **self._prepared_session_kv_kwargs(),
-                **session_kwargs,
-            ),
-            key,
-            False,
+        session = Qwen35GGUFResidentSession(
+            self.model_path,
+            backend=self.backend,
+            runtime=shared_runner.runtime,
+            shared_runner=shared_runner,
+            use_wmma_prefill=use_wmma_prefill,
+            use_gemv_decode=use_gemv_decode,
+            defer_kv_allocation=bool(defer_kv_allocation),
+            max_batch_size=int(max_batch_size),
+            **self._prepared_session_kv_kwargs(),
+            **session_kwargs,
         )
+        self._configure_session(session)
+        return session, key, False
 
     def _release_shared_session(
         self,
@@ -1601,6 +1638,8 @@ class Qwen35GGUFBringupGenerator:
             "bulk_prefill_attention_mode",
             "bulk",
         )
+        session.use_prefill_f16_staging = _prefill_f16_staging_for(self)
+        session.use_q6_integer_mmq = _q6_integer_mmq_for(self)
         prefill_quant = getattr(self, "prefill_quant", None)
         if prefill_quant is not None:
             session.select_prefill_quant(prefill_quant)
@@ -3637,7 +3676,7 @@ class Qwen35GGUFBringupGenerator:
                     block_result = slot.session.verify_target_block(
                         drafted.block_inputs,
                         bulk_attention_mode="bulk",
-                        use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                        use_wmma_prefill=_mtp_serving_target_wmma_for(self),
                         capture_linear_state_rows=True,
                         defer_linear_state_commit=True,
                     )
@@ -3767,7 +3806,7 @@ class Qwen35GGUFBringupGenerator:
                 "session": drafted.slot.session,
                 "input_token_ids": tuple(int(token) for token in drafted.block_inputs),
                 "bulk_attention_mode": "bulk",
-                "use_wmma_prefill": _MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                "use_wmma_prefill": _mtp_serving_target_wmma_for(self),
                 "capture_linear_state_rows": True,
                 "defer_linear_state_commit": True,
                 "defer_state_scatter": defer_state_scatter,
@@ -4192,7 +4231,7 @@ class Qwen35GGUFBringupGenerator:
                     block_result = session.verify_target_block(
                         block_inputs,
                         bulk_attention_mode="bulk",
-                        use_wmma_prefill=_MTP_SERVING_TARGET_USE_WMMA_PREFILL,
+                        use_wmma_prefill=_mtp_serving_target_wmma_for(self),
                         capture_linear_state_rows=True,
                         defer_linear_state_commit=True,
                     )
@@ -4957,6 +4996,13 @@ class _GGUFResidentLoopRow:
     mtp2_proposal_physical_rows: list[int] = field(default_factory=list)
     mtp2_target_batch_calls: int = 0
     mtp2_target_physical_rows: list[int] = field(default_factory=list)
+    mtp2_target_pass_ms: list[float] = field(default_factory=list)
+    mtp2_target_pass_start_ns: list[int] = field(default_factory=list)
+    mtp2_target_pass_end_ns: list[int] = field(default_factory=list)
+    mtp2_cycle_profile_start_ns: list[int] = field(default_factory=list)
+    mtp2_cycle_profile_end_ns: list[int] = field(default_factory=list)
+    mtp2_accept_pass_ms: list[float] = field(default_factory=list)
+    mtp2_provider_update_pass_ms: list[float] = field(default_factory=list)
     mtp2_candidate_device_handoffs: int = 0
     mtp2_candidate_d2h_after_target: int = 0
     mtp2_device_chain_oracle_trace: list[dict[str, Any]] = field(default_factory=list)
@@ -5088,6 +5134,7 @@ class Qwen35GGUFResidentModelRunner:
         self._kv_graph_invalidation_count = 0
         self._packed_workspace_release_events = 0
         self._packed_workspace_released_bytes = 0
+        self._c1_shadow_resource_bundles: dict[int, dict[str, Any]] = {}
         self._route_counts: Counter[str] = Counter()
         self._fallback_reasons: Counter[str] = Counter()
         self._last_execution_manifest: dict[str, Any] = {}
@@ -5534,6 +5581,180 @@ class Qwen35GGUFResidentModelRunner:
                 idle_grace_seconds=float(config.kv_pool_idle_grace_seconds),
             )
         self._sample_kv_hip_memory()
+
+    def acquire_c1_shadow_resources(
+        self,
+        *,
+        request_id: int,
+        shadow_request_id: int,
+        real_slot: int,
+        shadow_slot: int,
+    ) -> Mapping[str, Any]:
+        """Reserve one unselected physical-C2 shadow resource bundle.
+
+        This is an ownership-only ABI for B3. It borrows one available resident
+        session, binds an independently keyed KV allocation, and owns one hidden
+        row. It does not clone state or select physical target execution.
+        """
+
+        rid = int(request_id)
+        shadow_id = int(shadow_request_id)
+        if rid < 0 or shadow_id != -(rid + 1):
+            raise ValueError("C1 shadow request ID does not match real ownership")
+        if int(real_slot) < 0 or int(shadow_slot) < 0 or int(real_slot) == int(shadow_slot):
+            raise ValueError("C1 shadow physical slots must be distinct and non-negative")
+        bundles = getattr(self, "_c1_shadow_resource_bundles", None)
+        if bundles is None:
+            bundles = {}
+            self._c1_shadow_resource_bundles = bundles
+        if rid in bundles:
+            raise RuntimeError(f"request_id {rid} already owns C1 shadow resources")
+        pool = self._kv_pool
+        if pool is None:
+            raise RuntimeError("C1 shadow requires the dynamic KV pool")
+        row = self._row(rid)
+        if row.lease is None or row.kv_allocation is None:
+            raise RuntimeError("C1 shadow requires admitted real target resources")
+        lease = self._available[-1] if self._available else None
+        if lease is None or lease is row.lease:
+            raise RuntimeError("C1 shadow requires one additional resident session")
+        shadow_target = lease.session
+        scratch = getattr(shadow_target, "scratch", None)
+        if scratch is None:
+            raise RuntimeError("C1 shadow target has no recurrent-state owner")
+        real_blocks = tuple(int(value) for value in row.kv_allocation.block_ids)
+        if not real_blocks:
+            raise RuntimeError("C1 shadow real KV allocation has no pages")
+        allocation = None
+        hidden_row = None
+        bound = False
+        try:
+            allocation = pool.allocate(
+                shadow_id,
+                len(real_blocks),
+                now_seconds=time.monotonic(),
+            )
+            shadow_target.bind_device_kv_allocation(pool, allocation)
+            bound = True
+            hidden_size = int(getattr(self._shared_runner, "hidden_size", 0))
+            if hidden_size <= 0:
+                raise RuntimeError("C1 shadow shared runner has no hidden size")
+            hidden_row = malloc(
+                hidden_size * DType.BF16.itemsize,
+                runtime=shadow_target.runtime,
+            )
+            if not self._available or self._available[-1] is not lease:
+                raise RuntimeError(
+                    "GGUF available-session order changed during C1 shadow acquisition"
+                )
+            self._available.pop()
+            bundle: dict[str, Any] = {
+                "request_id": rid,
+                "shadow_request_id": shadow_id,
+                "real_slot": int(real_slot),
+                "shadow_slot": int(shadow_slot),
+                "lease": lease,
+                "target_session": shadow_target,
+                "hidden_row": hidden_row,
+                "kv_owner": allocation,
+                "recurrent_owner": scratch,
+                "pool": pool,
+                "reclaimed": set(),
+                "finalized": False,
+            }
+            bundles[rid] = bundle
+            return bundle
+        except Exception:
+            if hidden_row is not None:
+                free(hidden_row, runtime=shadow_target.runtime)
+            if bound:
+                shadow_target.invalidate_device_kv_graphs()
+                shadow_target.unbind_device_kv_allocation()
+            if allocation is not None:
+                pool.release(shadow_id, now_seconds=time.monotonic())
+            raise
+
+    @staticmethod
+    def _c1_shadow_expected_reclaims() -> set[tuple[str, str]]:
+        return {
+            (surface, lane)
+            for surface in (
+                "target_session",
+                "hidden_row",
+                "kv_owner",
+                "recurrent_owner",
+            )
+            for lane in ("real", "shadow")
+        }
+
+    def _finalize_c1_shadow_bundle(
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        reason: str,
+    ) -> None:
+        mutable = bundle if isinstance(bundle, dict) else None
+        if mutable is None:
+            raise TypeError("C1 shadow resource bundle must be mutable")
+        if bool(mutable.get("finalized", False)):
+            return
+        shadow_target = mutable["target_session"]
+        allocation = mutable["kv_owner"]
+        hidden_row = mutable["hidden_row"]
+        pool = mutable["pool"]
+        shadow_id = int(mutable["shadow_request_id"])
+        lease = mutable["lease"]
+        if hidden_row is not None:
+            free(hidden_row, runtime=shadow_target.runtime)
+            mutable["hidden_row"] = None
+        if allocation is not None:
+            shadow_target.invalidate_device_kv_graphs()
+            shadow_target.unbind_device_kv_allocation()
+            pool.release(shadow_id, now_seconds=time.monotonic())
+            mutable["kv_owner"] = None
+        reset = getattr(shadow_target, "reset", None)
+        if callable(reset):
+            reset()
+        if lease in self._available:
+            raise RuntimeError("C1 shadow session lease was already returned")
+        self._available.append(lease)
+        mutable["finalized"] = True
+        mutable["finalize_reason"] = str(reason)
+        self._c1_shadow_resource_bundles.pop(int(mutable["request_id"]), None)
+
+    def reclaim_c1_shadow_resource(
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        surface: str,
+        lane: str,
+        resource: Any,
+        reason: str,
+    ) -> None:
+        """Return one lifecycle claim; finalize after all eight claims return."""
+
+        del resource
+        key = (str(surface), str(lane))
+        expected = self._c1_shadow_expected_reclaims()
+        if key not in expected:
+            raise ValueError(f"unsupported C1 shadow reclaim surface: {key!r}")
+        mutable = bundle if isinstance(bundle, dict) else None
+        if mutable is None:
+            raise TypeError("C1 shadow resource bundle must be mutable")
+        reclaimed = mutable["reclaimed"]
+        reclaimed.add(key)
+        if reclaimed == expected:
+            self._finalize_c1_shadow_bundle(mutable, reason=str(reason))
+
+    def abort_c1_shadow_resources(
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        reason: str,
+    ) -> None:
+        """Abort a partial adapter acquisition and return the whole bundle."""
+
+        self._finalize_c1_shadow_bundle(bundle, reason=str(reason))
 
     def reserve_admission(self, request: RequestState) -> None:
         """Reserve and bind real device KV before scheduler slot publication."""
@@ -6083,7 +6304,7 @@ class Qwen35GGUFResidentModelRunner:
         capability_name = (
             "GGUF_SPECDEC2_MTP2_C1"
             if int(self.capacity) == 1
-            else "GGUF_SPECDEC2_MTP2_C4"
+            else "GGUF_SPECDEC2_MTP2_PHYSICAL"
         )
         enabled = bool(
             backend_package_capability(
@@ -6194,6 +6415,13 @@ class Qwen35GGUFResidentModelRunner:
         adapter = self._resolved_mtp2_adapter()
         resolve = None if adapter is None else getattr(adapter, "partition_max_requests", None)
         return 0 if not callable(resolve) else int(resolve(work.request_ids))
+
+    @property
+    def server_mtp_batch_max_active_requests(self) -> int | None:
+        """Explicit-MTP batch-route width owned by the resolved adapter."""
+
+        adapter = self._resolved_mtp2_adapter()
+        return None if adapter is None else int(adapter.physical_request_bound)
 
     def speculative_claims_fit(self, plan) -> bool:
         adapter = self._resolved_mtp2_adapter()
@@ -8058,14 +8286,23 @@ class Qwen35GGUFResidentModelRunner:
         if graph is None and graph_eligible:
             minimum_fn = getattr(execution_owner, "decode_graph_min_replay_steps", None)
             minimum = minimum_fn() if callable(minimum_fn) else None
+            packed_minimum_fn = getattr(
+                execution_owner,
+                "packed_decode_graph_min_replay_steps",
+                None,
+            )
             remaining = min(
                 max(0, int(row.request.max_tokens) - len(slot.generated_ids))
                 for row, slot in zip(rows, concrete, strict=True)
             )
             scaled_minimum = (
-                None
-                if minimum is None
-                else max(1, (int(minimum) + width - 1) // width)
+                packed_minimum_fn(width)
+                if callable(packed_minimum_fn)
+                else (
+                    None
+                    if minimum is None
+                    else max(1, (int(minimum) + width - 1) // width)
+                )
             )
             capture = getattr(execution_owner, "capture_packed_decode_graph", None)
             if (
@@ -8836,6 +9073,21 @@ class Qwen35GGUFResidentModelRunner:
             "specdec2_mtp2_target_batch_calls": int(row.mtp2_target_batch_calls),
             "specdec2_mtp2_target_physical_rows": list(
                 row.mtp2_target_physical_rows
+            ),
+            "specdec2_mtp2_target_pass_ms": list(row.mtp2_target_pass_ms),
+            "specdec2_mtp2_target_pass_start_ns": list(
+                row.mtp2_target_pass_start_ns
+            ),
+            "specdec2_mtp2_target_pass_end_ns": list(row.mtp2_target_pass_end_ns),
+            "specdec2_mtp2_cycle_profile_start_ns": list(
+                row.mtp2_cycle_profile_start_ns
+            ),
+            "specdec2_mtp2_cycle_profile_end_ns": list(
+                row.mtp2_cycle_profile_end_ns
+            ),
+            "specdec2_mtp2_accept_pass_ms": list(row.mtp2_accept_pass_ms),
+            "specdec2_mtp2_provider_update_pass_ms": list(
+                row.mtp2_provider_update_pass_ms
             ),
             "specdec2_mtp2_candidate_device_handoffs": int(
                 row.mtp2_candidate_device_handoffs

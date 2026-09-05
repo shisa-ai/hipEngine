@@ -2643,6 +2643,104 @@ class Qwen35GGUFNextNExecutor:
             free(backup, runtime=self.runtime)
         checkpoint.released = True
 
+    def clone_request_state(
+        self,
+        source_request_id: int,
+        destination_request_id: int,
+    ) -> None:
+        """Clone exact provider state into a distinct request-owned slot."""
+
+        source_id = int(source_request_id)
+        destination_id = int(destination_request_id)
+        if source_id == destination_id:
+            raise ValueError("NextN clone source and destination must differ")
+        source_slot = self._request_slots.get(source_id)
+        if source_slot is None:
+            raise ValueError("NextN clone source request is not active")
+        destination_slot = self._slot(destination_id)
+        if destination_slot == source_slot:
+            raise RuntimeError("NextN clone requires distinct request slots")
+        source = self.scratch.for_slot(source_slot, span_role="decode")
+        destination = self.scratch.for_slot(destination_slot, span_role="decode")
+        for source_pair, destination_pair in zip(
+            zip(source.layer_conv_states, source.layer_recurrent_states, strict=True),
+            zip(
+                destination.layer_conv_states,
+                destination.layer_recurrent_states,
+                strict=True,
+            ),
+            strict=True,
+        ):
+            for origin, target in zip(source_pair, destination_pair, strict=True):
+                if (origin is None) != (target is None):
+                    raise ValueError("NextN clone state layout mismatch")
+                if origin is None:
+                    continue
+                if int(origin.nbytes) != int(target.nbytes):
+                    raise ValueError("NextN clone state size mismatch")
+                self.runtime.memcpy(
+                    target.ptr,
+                    origin.ptr,
+                    origin.nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+        position = int(source.position_host[0])
+        context = int(source.context_host[0])
+        if context != position + 1:
+            raise RuntimeError("NextN clone source cursor is inconsistent")
+        physical_slots = int(getattr(self.scratch, "slot_count", 1))
+        max_positions = int(source.max_positions)
+        visible_rows = min(context, max_positions)
+        for source_pair, destination_pair in zip(
+            zip(source.full_key_caches, source.full_value_caches, strict=True),
+            zip(
+                destination.full_key_caches,
+                destination.full_value_caches,
+                strict=True,
+            ),
+            strict=True,
+        ):
+            for origin, target in zip(source_pair, destination_pair, strict=True):
+                if (origin is None) != (target is None):
+                    raise ValueError("NextN clone KV layout mismatch")
+                if origin is None:
+                    continue
+                slot_nbytes, remainder = divmod(int(origin.nbytes), physical_slots)
+                if remainder or int(target.nbytes) != int(origin.nbytes):
+                    raise ValueError("NextN clone KV slot layout mismatch")
+                row_nbytes, remainder = divmod(slot_nbytes, max_positions)
+                if remainder:
+                    raise ValueError("NextN clone KV position layout mismatch")
+                self.runtime.memcpy(
+                    int(target.ptr) + destination_slot * slot_nbytes,
+                    int(origin.ptr) + source_slot * slot_nbytes,
+                    visible_rows * row_nbytes,
+                    HipMemcpyKind.DEVICE_TO_DEVICE,
+                )
+        destination.position_host[0] = position
+        destination.context_host[0] = context
+        self._set_batch_session_position(destination_slot, position)
+        copy_host_to_device(
+            destination.position_buf,
+            host_array_ptr(destination.position_host),
+            destination.position_host.nbytes,
+            runtime=self.runtime,
+        )
+        copy_host_to_device(
+            destination.context_buf,
+            host_array_ptr(destination.context_host),
+            destination.context_host.nbytes,
+            runtime=self.runtime,
+        )
+        metadata = self._provider_root_state_metadata.get(source_id)
+        if metadata is not None:
+            self._provider_root_state_metadata[destination_id] = (
+                destination_slot,
+                int(metadata[1]),
+                int(metadata[2]),
+            )
+        self.runtime.device_synchronize()
+
     def request_state_fingerprint(self, request_id: int) -> dict[str, object]:
         """Return exact visible provider state/KV/cursor hashes for gates."""
 

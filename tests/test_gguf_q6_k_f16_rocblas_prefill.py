@@ -867,7 +867,9 @@ def test_q6_t16_f16_rocblas_actual_shapes_use_bounded_workspace_and_pass_quality
         None,
     )
     if model is None:
-        pytest.skip("local dense Q4_K_M GGUF fixture not found")
+        pytest.skip(
+            "local Qwen3.6/Qwen3.8 dense Q4_K_M GGUF fixture is not present"
+        )
     reader = __import__(
         "hipengine.loading.gguf", fromlist=["GGUFReader"]
     ).GGUFReader(model)

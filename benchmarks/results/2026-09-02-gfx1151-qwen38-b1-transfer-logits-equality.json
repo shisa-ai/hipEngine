@@ -1,0 +1,64 @@
+{
+  "kind": "qwen38_b1_teacher_forced_logits_equality",
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "prompt_suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "decode_steps": 12,
+  "rows_per_job": 4,
+  "widths": [
+    [
+      5,
+      0
+    ],
+    [
+      7,
+      0
+    ],
+    [
+      8,
+      0
+    ],
+    [
+      8,
+      2
+    ]
+  ],
+  "env": "HIPENGINE_GGUF_MTP_SERVING_TARGET_WMMA_PREFILL",
+  "per_width": {
+    "5+0": {
+      "rows": 60,
+      "bit_identical_rows": 0,
+      "max_abs_delta": 0.3954640030860901,
+      "mean_kl": 2.8263533700749004e-05,
+      "p95_kl": 0.0002093459661409724,
+      "max_kl": 0.0004895002930425107,
+      "top1_agreement": 1.0
+    },
+    "7+0": {
+      "rows": 84,
+      "bit_identical_rows": 0,
+      "max_abs_delta": 0.3954640030860901,
+      "mean_kl": 3.163091470673042e-05,
+      "p95_kl": 0.00020342272109701278,
+      "max_kl": 0.0004895002930425107,
+      "top1_agreement": 1.0
+    },
+    "8+0": {
+      "rows": 96,
+      "bit_identical_rows": 0,
+      "max_abs_delta": 0.3954640030860901,
+      "mean_kl": 5.224686360300971e-05,
+      "p95_kl": 0.0002967325272038579,
+      "max_kl": 0.0006493548862636089,
+      "top1_agreement": 1.0
+    },
+    "8+2": {
+      "rows": 96,
+      "bit_identical_rows": 0,
+      "max_abs_delta": 0.3755378723144531,
+      "mean_kl": 5.719671474725222e-05,
+      "p95_kl": 0.0002967325272038579,
+      "max_kl": 0.0006493548862636089,
+      "top1_agreement": 1.0
+    }
+  }
+}

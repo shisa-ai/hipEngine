@@ -43,7 +43,7 @@ _ARTIFACT_SHA256 = (
     "f9b9669ec935585fe425617db138751c75aa3f0aa12d67e7139061bcb9c8c4c3"
 )
 _POST_MERGE_PACKAGE_SHA256 = (
-    "a1dd1141a83c5c4390fbd5d32d19618722543b42a82904ccf43be52db05238d5"
+    "3ad3c08b4243a3636c88e4f55cd087f2aaa7d35f2e801093627b4d3c6bb651a8"
 )
 _POST_MERGE_SOURCE_SHA256 = {
     # Maple P1 templates the existing stable parallel count/scatter bodies so
@@ -58,7 +58,7 @@ _POST_MERGE_SOURCE_SHA256 = {
     # Later Qwen3.8 and execution-profile package policies are orthogonal to
     # H7U's unchanged gfx1151 parallel-compaction owner.
     "hipengine/kernels/hip_gfx1151/__init__.py": (
-        "fb30ffbf954bb9a1255f2cd55f0484aade2ee54f50ca765dec078a866f9d0842"
+        "ae4375a31bf62afe3ef341dfaf26cbd1c6bf456097f63567d521c59ab3a0c82b"
     ),
     "hipengine/runtime/laguna_moe.py": (
         "b37bc2a1aaadbf94700dad9a67f90815b69d783a8a82fcc47b5496a17de83987"

@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-closure-y4-resolution",
+  "status": "closed",
+  "source_commit": "7b784cf55",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "y3": {
+    "retained": {"candidate": "adjacent-column scheduling-only pair decode", "rows288_wall_delta_pct": -0.50, "rows536_wall_delta_pct": -1.87, "rows1024_wall_delta_pct": -0.18, "exact_cells": "6/6", "c1c8_generated_id_rows": "160/160", "collateral_ar_wall_pct": 0.16, "collateral_mtp_wall_pct": -0.15},
+    "post_retention_residual_upper_bound_wall_pct": {"rows288": 4.63, "rows536": 4.95, "rows1024": 5.54},
+    "measured_blockers": [
+      {"name": "whole-workgroup barrier separation", "evidence": "326-instruction decode region contains zero WMMA; no named split barrier"},
+      {"name": "dedicated producer under-partitioning and handoff", "wide_rows288_regression_pct": 27.88},
+      {"name": "one-column scheduling", "status": "superseded by retained pair"},
+      {"name": "four-column quartet dependency/serialization", "wide_rows288_regression_pct": 4.75, "narrow_rows288_regression_pct": 6.09},
+      {"name": "explicit shared-byte dependency chain", "wide_rows288_regression_pct": 8.67, "narrow_rows288_regression_pct": 10.18},
+      {"name": "WMMA reassociation", "status": "excluded from exact Y3 because it changes strict accumulation order; T1/T2 requires a separate complete production campaign"}
+    ],
+    "closure": "Exact algorithmic overlap/decode ladder exhausted. The maximum residual Y3 rate-match ceiling is 5.54% wall, far below the remaining approximately 21.6% wall reduction needed to move retained C8 prefill 239.658 to 305.847 tok/s."
+  },
+  "y4": {
+    "status": "condition_not_met_never_opened",
+    "condition": "Y3 trace shows tensor-rate-bound",
+    "measured_q6_effective_tf_s": [14.58, 14.65, 14.84],
+    "bf16_roof_tf_s": 59.4,
+    "reason": "The post-pair body remains issue/dequant/LDS-bound far below the BF16 tensor roof. P3 already shows format-only INT8 loses at the same issue structure; INT4 roof work therefore does not open."
+  },
+  "next": "Size Y5 non-GEMM tail from the post-pair trace."
+}

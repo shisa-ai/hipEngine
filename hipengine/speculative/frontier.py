@@ -225,6 +225,7 @@ class SpecRequestPlan:
     target_row_decomposition: tuple[int, ...]
     context_bucket_size: int
     execution_route: str
+    declared_logical_c: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operation_id", _required_text(self.operation_id, "operation_id"))
@@ -235,6 +236,10 @@ class SpecRequestPlan:
         request_ids = _unique_nonnegative(self.request_ids, "request_ids")
         if not request_ids:
             raise ValueError("request_ids must be non-empty")
+        logical_c = int(self.declared_logical_c) or len(request_ids)
+        if logical_c < len(request_ids):
+            raise ValueError("declared_logical_c cannot be smaller than request_ids")
+        object.__setattr__(self, "declared_logical_c", logical_c)
         slots = _unique_nonnegative(self.resident_slots, "resident_slots")
         if len(slots) != len(request_ids):
             raise ValueError("resident_slots must align with request_ids")

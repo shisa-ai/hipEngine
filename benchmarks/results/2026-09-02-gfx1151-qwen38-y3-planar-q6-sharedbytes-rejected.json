@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y3-planar-q6-shared-byte-pair",
+  "status": "rejected_and_scope_reverted",
+  "source_commit": "5724a989c",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "rows": 288,
+  "candidate": "specialized adjacent-column pair sharing qmicro record address, low-byte load, and high-byte load",
+  "bound_wall_pct": 4.63,
+  "results": {
+    "wide_planar_17408x5120": {"parent_ms": 3.6417991638183596, "candidate_ms": 3.9575031280517576, "speedup": 0.9202264776506149, "regression_pct": 8.669, "exact": true, "mismatch_count": 0, "max_abs": 0.0},
+    "narrow_planar_5120x1024": {"parent_ms": 0.3431715965270996, "candidate_ms": 0.37810940742492677, "speedup": 0.9075986732629391, "regression_pct": 10.181, "exact": true, "mismatch_count": 0, "max_abs": 0.0}
+  },
+  "decision": "Reject and scope-revert. Explicit byte sharing preserves exact output but increases dependency chains and regresses both binding rows288 leaves; no full-wall run is warranted.",
+  "raw": "/tmp/y3-q6-shared4r6-sharedbytes-rows288-smoke.json",
+  "rejected_patch": "/tmp/y3-shared4r6-sharedbytes-rejected.diff"
+}

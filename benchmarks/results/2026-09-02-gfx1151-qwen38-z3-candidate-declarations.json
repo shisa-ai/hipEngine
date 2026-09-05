@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_z3_candidate_declarations",
+  "date": "2026-09-02",
+  "status": "declared_before_implementation",
+  "performance_claim": false,
+  "source_artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-z2-mechanism-bounds.json",
+  "execution_profile_contract": "docs/EXECUTION-PROFILES.md:235-244",
+  "candidates": [
+    {
+      "id": "P1_F16_ACTIVATION_B",
+      "class": "T1",
+      "scope": "Qwen3.8 standard-Q4_K_M prefill Q4/Q5 T16 matmul owners; grouped C2 rows72 and C8 rows288 first. No matching in-tree sole-T16 F16-activation body exists; implementation is blocked pending a new registered T16 input-F16 variant.",
+      "stateful_surfaces": ["none; prefill activation staging only", "downstream target hidden/logits may drift"],
+      "strict_fallback": "registered current BF16 activation-B Q4/Q5/Q6 owners for every shape",
+      "expected_mechanism": "halve activation-B staging/shared-memory bytes where the current owner can preserve occupancy",
+      "can_alter_discrete_decisions": true,
+      "bound": "17.5%/16.95% optimistic C2/C8 prefill wall from Q4+Q5 family deltas only; still clears the matched-gap entry thresholds",
+      "admission": "blocked before implementation: existing f16_rocblas_t16 variants dequantize quantized weights to an F16 source and are not Laurent's F16 activation-B mechanism"
+    },
+    {
+      "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+      "class": "T2",
+      "scope": "C1 K3 target verification R4 and accept/commit route across all target layers; compare with the C2-shaped production verifier association",
+      "stateful_surfaces": ["full-attention KV", "Conv/GDN recurrent state", "provider checkpoint", "selected-state commit", "generated-token and position ownership"],
+      "strict_fallback": "current registered C1 production/strict target verifier and accept route",
+      "expected_mechanism": "remove the width-specific target/accept association responsible for 15.33% C1 acceptance versus 78.89% C2 despite identical proposal IDs on 240/240 teacher contexts",
+      "can_alter_discrete_decisions": true,
+      "bound": "49.39% optimistic complete C1 wall from external acceptance; 60.78% accept-boundary ceiling",
+      "admission": "production only after complete T2 full-logit, lifecycle, isolation, deterministic-repeat, category/heldout, and task gates"
+    },
+    {
+      "id": "M2_C2_DRAFT_DEPTH",
+      "class": "T3",
+      "scope": "C2 speculative candidate policy K3 to K2/K1; proposal rows and target R8 to corresponding shallower geometry",
+      "stateful_surfaces": ["draft checkpoint depth", "target verify rows", "accepted-token schedule", "KV/recurrent commit depth", "cycle count"],
+      "strict_fallback": "current K3 serving policy",
+      "expected_mechanism": "trade proposal/target work for more cycles; only complete-wall screening can decide",
+      "can_alter_discrete_decisions": true,
+      "bound": "17.79% optimistic C2 wall; no bound at C1 or wide primary cells",
+      "admission": "explicit experiment only; cannot become ordinary production default in this campaign"
+    },
+    {
+      "id": "M3_ACCEPT_BOUNDARY_DATAFLOW",
+      "class": "T0 initially; reclassify T2 if arithmetic association changes or T3 if acceptance/decision policy changes",
+      "scope": "C1-C8 accept/synchronization/commit boundary after packed target verification",
+      "stateful_surfaces": ["target stream/event lifetime", "candidate token/results buffers", "provider checkpoint", "KV and Conv/GDN selected-state commit", "request cancellation/compaction", "host scheduler ownership"],
+      "strict_fallback": "current synchronous accept/commit boundary and registered strict target chain",
+      "expected_mechanism": "retire target completion and selected-state ownership without charging the current 40.38-65.18% aggregate accept boundary; preserve exact ordering and bytes",
+      "can_alter_discrete_decisions": false,
+      "fail_closed_rule": "Any changed accepted count, token, position, state byte, lifecycle owner, or cancellation result rejects T0 and requires reclassification.",
+      "bound": "40.38-65.18% optimistic complete-wall upper bound",
+      "admission": "investigation candidate; no wide target kernel opens before measured complete-cycle improvement"
+    }
+  ],
+  "rejected": [
+    "Wide C5-C8 target-kernel work: zero target-only pass budget",
+    "Launch-count reduction: Laurent uses more dispatches",
+    "Prompt chunking: hipEngine already owns one grouped tick"
+  ]
+}

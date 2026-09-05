@@ -19,7 +19,11 @@ import pytest
 
 import hipengine.runtime.gguf_linear as gl
 from hipengine.kernels.registry import KernelKey, _KERNELS, register, resolve
-from hipengine.loading.qwen35_gguf_materialize import LAYOUT_GGUF_Q8_0_T16, LAYOUT_RAW_GGUF
+from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q4_K_T16,
+    LAYOUT_GGUF_Q8_0_T16,
+    LAYOUT_RAW_GGUF,
+)
 from hipengine.runtime.gguf_linear import launch_gguf_linear, launch_gguf_linear_pair
 
 _KEY = KernelKey("hip_gfx1100", "linear", "gguf_q8_0", "pack8_gemv_bf16_bf16_out")
@@ -87,6 +91,74 @@ def test_dispatch_cache_memoizes_and_invalidates_on_registry_change(monkeypatch)
             _KERNELS.pop(_KEY, None)
         else:
             register(_KEY, saved, replace=True)
+        gl.clear_gguf_linear_dispatch_cache()
+
+
+def test_prefill_f16_staging_works_after_bf16_dispatch_cache_hit(monkeypatch) -> None:
+    """An env-on launch may reuse a dispatch cached by an env-off launch."""
+
+    gl.clear_gguf_linear_dispatch_cache()
+    key = KernelKey(
+        "hip_gfx1151",
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    )
+    weight = _fake_weight(
+        layout=LAYOUT_GGUF_Q4_K_T16,
+        quant_key="gguf_q4_k_t16_v1",
+    )
+    calls: list[str] = []
+    saved = resolve(
+        backend=key.backend,
+        layer=key.layer,
+        quant=key.quant,
+        variant=key.variant,
+        missing="none",
+    )
+
+    register(key, lambda *args, **kwargs: None, replace=True)
+    monkeypatch.setitem(
+        gl._LAUNCH_ABI,
+        "t16",
+        lambda *args, **kwargs: calls.append("bf16"),
+    )
+    monkeypatch.setattr(
+        gl,
+        "_launch_prefill_f16_staged",
+        lambda *args, **kwargs: calls.append("f16") or True,
+    )
+    try:
+        monkeypatch.setenv(gl.PREFILL_F16_STAGING_ENV, "0")
+        launch_gguf_linear(
+            weight,
+            x_ptr=1,
+            out_ptr=2,
+            rows=72,
+            in_features=5_120,
+            out_features=6_144,
+            backend="hip_gfx1151",
+            runtime="rt",
+            use_wmma_prefill=True,
+        )
+        monkeypatch.setenv(gl.PREFILL_F16_STAGING_ENV, "1")
+        launch_gguf_linear(
+            weight,
+            x_ptr=1,
+            out_ptr=2,
+            rows=72,
+            in_features=5_120,
+            out_features=6_144,
+            backend="hip_gfx1151",
+            runtime="rt",
+            use_wmma_prefill=True,
+        )
+        assert calls == ["bf16", "f16"]
+    finally:
+        if saved is None:
+            _KERNELS.pop(key, None)
+        else:
+            register(key, saved, replace=True)
         gl.clear_gguf_linear_dispatch_cache()
 
 

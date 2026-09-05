@@ -1,0 +1,506 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b2_f16_retention_gates",
+  "date": "2026-09-02",
+  "status": "retention_eligible_pending_profile_default",
+  "performance_claim": false,
+  "source_commit": "29b408cc714c5577e8b8bf6c558d93ae862b5b15",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Strix Halo Radeon Graphics / 1002:1586",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "revision": null,
+    "fingerprint": {
+      "algorithm": "sha256-sampled-v1",
+      "value": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "size_bytes": 17106775008,
+      "sampled_bytes": 3145728,
+      "sample_offsets": [
+        0,
+        8552863216,
+        17105726432
+      ],
+      "exists": true,
+      "path_type": "file"
+    }
+  },
+  "prompt_suite": "/home/lhl/hipEngine/benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "runtime_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "per_width": {
+    "2": {
+      "control": {
+        "ar_wall_seconds": 6.2834498304873705,
+        "second_arm_wall_seconds": 5.015727053629234,
+        "combined_wall_seconds": 11.299176884116605,
+        "prompt_tokens": 898,
+        "second_arm_prompt_tok_s": 179.03685555421785
+      },
+      "candidate": {
+        "ar_wall_seconds": 4.961488883243874,
+        "second_arm_wall_seconds": 4.28863514168188,
+        "combined_wall_seconds": 9.250124024925753,
+        "prompt_tokens": 898,
+        "second_arm_prompt_tok_s": 209.3906266989712
+      },
+      "candidate_repeat": {
+        "ar_wall_seconds": 4.969655147055164,
+        "second_arm_wall_seconds": 4.296462299535051,
+        "combined_wall_seconds": 9.266117446590215,
+        "prompt_tokens": 898,
+        "second_arm_prompt_tok_s": 209.00916554002546
+      },
+      "wall_reduction_pct": 18.13453210092879,
+      "speedup_pct": 22.151625790847685,
+      "repeat_wall_delta_pct": 0.1728995375777087,
+      "prompt_throughput_gain_pct": 16.95392328623717
+    },
+    "8": {
+      "control": {
+        "ar_wall_seconds": 14.38983590900898,
+        "second_arm_wall_seconds": 12.629094362957403,
+        "combined_wall_seconds": 27.018930271966383,
+        "prompt_tokens": 3592,
+        "second_arm_prompt_tok_s": 284.4226115322847
+      },
+      "candidate": {
+        "ar_wall_seconds": 11.599218728020787,
+        "second_arm_wall_seconds": 10.731858510058373,
+        "combined_wall_seconds": 22.33107723807916,
+        "prompt_tokens": 3592,
+        "second_arm_prompt_tok_s": 334.7043754474976
+      },
+      "candidate_repeat": {
+        "ar_wall_seconds": 11.68542950693518,
+        "second_arm_wall_seconds": 10.742059606360272,
+        "combined_wall_seconds": 22.42748911329545,
+        "prompt_tokens": 3592,
+        "second_arm_prompt_tok_s": 334.3865265719817
+      },
+      "wall_reduction_pct": 17.35025401339122,
+      "speedup_pct": 20.992507364998268,
+      "repeat_wall_delta_pct": 0.43173857753664446,
+      "prompt_throughput_gain_pct": 17.67853956629095
+    }
+  },
+  "quality": {
+    "summary": {
+      "rows": 90,
+      "mean_kl": 0.0,
+      "p95_kl": 0.0,
+      "p99_kl": 0.0,
+      "max_kl": 0.0,
+      "top1_agreement": 1.0,
+      "max_abs_logit_delta": 0.0,
+      "bit_identical_rows": 90
+    },
+    "scopes": {
+      "category": {
+        "code": {
+          "rows": 36,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 36
+        },
+        "general_en": {
+          "rows": 18,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 18
+        },
+        "general_ja": {
+          "rows": 18,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 18
+        },
+        "mixed_ja_en": {
+          "rows": 18,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 18
+        }
+      },
+      "width": {
+        "2": {
+          "rows": 18,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 18
+        },
+        "8": {
+          "rows": 72,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 72
+        }
+      },
+      "transition": {
+        "decode_1": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_2": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_3": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_4": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_5": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_6": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_7": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "decode_8": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        },
+        "prefill_tail": {
+          "rows": 10,
+          "mean_kl": 0.0,
+          "p95_kl": 0.0,
+          "p99_kl": 0.0,
+          "max_kl": 0.0,
+          "top1_agreement": 1.0,
+          "max_abs_logit_delta": 0.0,
+          "bit_identical_rows": 10
+        }
+      }
+    },
+    "strict_repeat_bit_exact": true,
+    "candidate_repeat_bit_exact": true,
+    "controls_exact": true,
+    "isolation": [
+      {
+        "scenario": "c2",
+        "width": 2,
+        "focal_prompt_id": "code_merge_intervals",
+        "neighbors_a": [
+          "code_topological_sort"
+        ],
+        "neighbors_b": [
+          "mixed_ja_en_translate"
+        ],
+        "strict_focal_bit_exact": true,
+        "candidate_focal_bit_exact": true,
+        "candidate_matches_strict_a": true,
+        "candidate_matches_strict_b": true
+      },
+      {
+        "scenario": "c8",
+        "width": 8,
+        "focal_prompt_id": "code_merge_intervals",
+        "neighbors_a": [
+          "code_topological_sort",
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain"
+        ],
+        "neighbors_b": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "general_en_plan",
+          "general_en_explain",
+          "general_ja_plan",
+          "general_ja_explain",
+          "mixed_ja_en_translate"
+        ],
+        "strict_focal_bit_exact": true,
+        "candidate_focal_bit_exact": true,
+        "candidate_matches_strict_a": true,
+        "candidate_matches_strict_b": true
+      }
+    ],
+    "train_rows": 54,
+    "heldout_rows": 36,
+    "bf16_relative_note": "Derived exactly: candidate and BF16-activation fallback logits are byte-identical, so both have identical metrics against any aligned BF16/full-precision teacher."
+  },
+  "task_d24": {
+    "control_candidate_ids": {
+      "cells": 40,
+      "equal": 40,
+      "mismatches": [],
+      "passed": true
+    },
+    "candidate_repeat_ids": {
+      "cells": 40,
+      "equal": 40,
+      "mismatches": [],
+      "passed": true
+    },
+    "automatic_k0_all_cells": true,
+    "cells": 60,
+    "note": "Exact output IDs imply every deterministic task scorer is unchanged."
+  },
+  "kernel_trace": {
+    "path": "/tmp/q38-b2-run/pf6-rocprof/gfx1151/3588041_kernel_trace.csv",
+    "sha256": "e57103eefa0210c696e52b545a7c1147b2aade45a9ce94e40eaea39c80a8fcac",
+    "bytes": 1509612,
+    "rows": 6630,
+    "families": {
+      "cast": {
+        "calls": 1008,
+        "duration_ms_sum": 16.228237,
+        "duration_ms_median": 0.0080755,
+        "kernel_names": [
+          "gguf_cast_bf16_to_f16_kernel(unsigned short const*, _Float16*, long)"
+        ]
+      },
+      "q4_f16": {
+        "calls": 864,
+        "duration_ms_sum": 809.387468,
+        "duration_ms_median": 0.8507165,
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 2, 1, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, 3, 1, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<2, 2, 4, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 4, 4, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<3, 8, 3, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)"
+        ]
+      },
+      "q5_f16": {
+        "calls": 144,
+        "duration_ms_sum": 69.562652,
+        "duration_ms_median": 0.369794,
+        "kernel_names": [
+          "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_bf16_kernel<3, 1, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)",
+          "void (anonymous namespace)::gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<8, 3, 2, _Float16>(_Float16 const*, unsigned char const*, unsigned short*, long, long, long)"
+        ]
+      }
+    },
+    "expected_families_observed": true
+  },
+  "lifecycle": {
+    "passed": true,
+    "artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-lifecycle.json"
+  },
+  "cast_correction": {
+    "passed": true,
+    "artifact": "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-cast-correction.json"
+  },
+  "candidate_evidence": {
+    "candidate_id": "P1_F16_ACTIVATION_B",
+    "declared_class": "T1",
+    "checks": {
+      "implemented": true,
+      "strict_fallback_registered": true,
+      "full_category_suite": true,
+      "heldouts": true,
+      "complete_wall_improved": true,
+      "controls_exact": true,
+      "production_numerics": true,
+      "deterministic": true,
+      "isolation": true,
+      "lifecycle": true,
+      "bf16_relative": true,
+      "task_quality": true,
+      "expected_kernel_trace": true
+    }
+  },
+  "candidate_gate": {
+    "schema": 1,
+    "candidate_id": "P1_F16_ACTIVATION_B",
+    "declared_class": "T1",
+    "passed": true,
+    "required_checks": [
+      "implemented",
+      "strict_fallback_registered",
+      "full_category_suite",
+      "heldouts",
+      "complete_wall_improved",
+      "controls_exact",
+      "production_numerics",
+      "deterministic",
+      "isolation",
+      "lifecycle",
+      "bf16_relative",
+      "task_quality",
+      "expected_kernel_trace"
+    ],
+    "failures": []
+  },
+  "checks": {
+    "implemented": true,
+    "strict_fallback_registered": true,
+    "full_category_suite": true,
+    "heldouts": true,
+    "complete_wall_improved": true,
+    "controls_exact": true,
+    "production_numerics": true,
+    "deterministic": true,
+    "isolation": true,
+    "lifecycle": true,
+    "bf16_relative": true,
+    "task_quality": true,
+    "expected_kernel_trace": true
+  },
+  "decision": {
+    "eligible": true,
+    "default_changed": false,
+    "next": "profile-scoped production default with strict/fallback/env override tests and clean default confirmation"
+  },
+  "raw_sources": [
+    {
+      "role": "control",
+      "path": "/tmp/q38-b2-run/pf6-off.json",
+      "sha256": "64db3461e0717eb5a2edb6b7c1beff1d6994dcfe25e94cbd3b8a307e827dad23",
+      "bytes": 1010447
+    },
+    {
+      "role": "candidate",
+      "path": "/tmp/q38-b2-run/pf6-on.json",
+      "sha256": "ad40791c13488ab0adea0623b8abc990c09778dc3784c18271a97c5b4e7ee0b8",
+      "bytes": 1010446
+    },
+    {
+      "role": "candidate_repeat",
+      "path": "/tmp/q38-b2-run/pf6-on-rep.json",
+      "sha256": "bc94ecda90130feb9d277c6b6b89479d73ef70592b2983f1ce9b82c6ef61fe3b",
+      "bytes": 1010432
+    },
+    {
+      "role": "screen",
+      "path": "/tmp/q38-b2-run/pf6-screen.json",
+      "sha256": "ed6819403104cd2752ff20c7344df393d28ef64e51e9ddbe66e8e0dcfe9ec2b3",
+      "bytes": 9830
+    },
+    {
+      "role": "quality",
+      "path": "/tmp/q38-b2-run/pf6-quality.json",
+      "sha256": "ae6394f8b6279d41a8788ef557b2cabf9859f39385001e6d693aef06af39384b",
+      "bytes": 5690
+    },
+    {
+      "role": "task_control",
+      "path": "/tmp/q38-b2-run/pf8-off.json",
+      "sha256": "6a5796f017bb2db819335bf5ce874ac78183146e59809db40c1bd5d1fd4e43f6",
+      "bytes": 4680647
+    },
+    {
+      "role": "task_candidate",
+      "path": "/tmp/q38-b2-run/pf8-on.json",
+      "sha256": "0188aa5ca3e93665fdb46638f74fdd5370d933f4a08e80c24b9faf3feb1274bc",
+      "bytes": 4680644
+    },
+    {
+      "role": "task_repeat",
+      "path": "/tmp/q38-b2-run/pf8-on-rep.json",
+      "sha256": "bba690b577e78a401bcdba8f218b33a1d3813768e92b2cabf696081ad1d7025e",
+      "bytes": 4645056
+    },
+    {
+      "role": "lifecycle",
+      "path": "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-lifecycle.json",
+      "sha256": "ece49995ecce041d1ee070e80ae7ea6d1b0b8e9e043797c5aab681e472519d36",
+      "bytes": 3438
+    },
+    {
+      "role": "cast_correction",
+      "path": "benchmarks/results/2026-09-02-gfx1151-qwen38-b2-f16-cast-correction.json",
+      "sha256": "5189eb5a83c00e8fc5be5210675e9f96cbe7e4438d5b81e03f090798955678e9",
+      "bytes": 4477
+    }
+  ],
+  "commands": {
+    "prefill": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 HIPENGINE_GGUF_PREFILL_F16_STAGING=<0|1> .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 2,8 --expected-mtp-widths none --max-tokens 1 --batch-window-ms 50 --correctness-contract mtp_self_exact --output <arm.json>",
+    "quality": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-b2-run/pf6_quality.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --compiler-version-file /tmp/q38-z0-run-20260901-201730/hipcc-version.txt --output /tmp/q38-b2-run/pf6-quality.json",
+    "task": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 HIPENGINE_GGUF_PREFILL_F16_STAGING=<0|1> .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 2,8 --expected-mtp-widths none --max-tokens 24 --candidate-budget 2 --batch-window-ms 50 --correctness-contract mtp_self_exact --output <arm.json>",
+    "trace": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_PREFILL_F16_STAGING=1 GPU_MAX_HW_QUEUES=2 rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/q38-b2-run/pf6-rocprof -- .venv/bin/python scripts/qwen38_prefill_sweep_trace.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --rows 72,288 --max-sequence-length 1152 --compiler-version-file /tmp/q38-z0-run-20260901-201730/hipcc-version.txt --require-cached-build --output /tmp/q38-b2-run/pf6-trace-raw.json",
+    "candidate_gate": "python3 scripts/qwen38_z3_candidate_gate.py <evidence.json>"
+  }
+}

@@ -1,0 +1,428 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_w1_q6_shared4_candidate",
+  "date": "2026-09-01",
+  "status": "candidate_default_off",
+  "performance_claim": false,
+  "source": {
+    "base_commit": "66316b7a95c156ee07e9906fe5e53d8e9aa47d85",
+    "dirty_candidate": true
+  },
+  "scope": {
+    "backend": "hip_gfx1151",
+    "model": "Qwen3.8-27B standard Q4_K_M",
+    "rows": [
+      32
+    ],
+    "quants": [
+      "gguf_q6_k_t16_v1",
+      "gguf_q6_k_t16_qmicro_planar_v1"
+    ],
+    "arithmetic_class": "T2",
+    "automatic_serving": "K0 unchanged"
+  },
+  "mechanism": "Reuse existing four-wave B-stationary shared4 WMMA bodies through separate registry variants and a default-off target-verifier context; current chunk/direct owners remain strict fallbacks.",
+  "sized_bound": {
+    "source": "2026-09-01 W0 sweep economics",
+    "c6_r24_family_time_saving_upper_s_71_cycles": 33.915657302875,
+    "c8_r32_family_time_saving_upper_s_71_cycles": 44.780539725875
+  },
+  "leaf_screen": {
+    "rows": [
+      8,
+      20,
+      24,
+      32
+    ],
+    "results": {
+      "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+        "8": {
+          "exact": false,
+          "mismatch_count": 4160,
+          "max_abs": 0.0078125,
+          "parent_ms": 0.4122436046600342,
+          "shared4_ms": 1.9025938034057617,
+          "speedup": 0.21667452291818273
+        },
+        "20": {
+          "exact": false,
+          "mismatch_count": 10319,
+          "max_abs": 0.0078125,
+          "parent_ms": 6.489462280273438,
+          "shared4_ms": 2.0965097427368162,
+          "speedup": 3.095364714023219
+        },
+        "24": {
+          "exact": false,
+          "mismatch_count": 12505,
+          "max_abs": 0.0078125,
+          "parent_ms": 7.758695220947265,
+          "shared4_ms": 2.1061195373535155,
+          "speedup": 3.6838816996572765
+        },
+        "32": {
+          "exact": false,
+          "mismatch_count": 16574,
+          "max_abs": 0.00390625,
+          "parent_ms": 10.33997802734375,
+          "shared4_ms": 2.114679718017578,
+          "speedup": 4.889618952338106
+        }
+      },
+      "gguf_q6_k_t16_v1:5120x10240": {
+        "8": {
+          "exact": false,
+          "mismatch_count": 8175,
+          "max_abs": 0.0078125,
+          "parent_ms": 0.37489140033721924,
+          "shared4_ms": 0.8417553901672363,
+          "speedup": 0.4453685770431924
+        },
+        "20": {
+          "exact": false,
+          "mismatch_count": 20792,
+          "max_abs": 0.0078125,
+          "parent_ms": 3.342413330078125,
+          "shared4_ms": 0.9219697952270508,
+          "speedup": 3.625295912492446
+        },
+        "24": {
+          "exact": false,
+          "mismatch_count": 25333,
+          "max_abs": 0.0078125,
+          "parent_ms": 3.9937793731689455,
+          "shared4_ms": 0.9281576156616211,
+          "speedup": 4.3029107403509785
+        },
+        "32": {
+          "exact": false,
+          "mismatch_count": 33653,
+          "max_abs": 0.0078125,
+          "parent_ms": 5.331377029418945,
+          "shared4_ms": 0.9301692008972168,
+          "speedup": 5.731620681781808
+        }
+      },
+      "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+        "8": {
+          "exact": false,
+          "mismatch_count": 813,
+          "max_abs": 0.00390625,
+          "parent_ms": 0.02865380048751831,
+          "shared4_ms": 0.18424960374832153,
+          "speedup": 0.1555162122717962
+        },
+        "20": {
+          "exact": false,
+          "mismatch_count": 2018,
+          "max_abs": 0.00390625,
+          "parent_ms": 0.1904613971710205,
+          "shared4_ms": 0.20338959693908693,
+          "speedup": 0.9364362781448538
+        },
+        "24": {
+          "exact": false,
+          "mismatch_count": 2517,
+          "max_abs": 0.00390625,
+          "parent_ms": 0.2149333953857422,
+          "shared4_ms": 0.2035979986190796,
+          "speedup": 1.0556753840585167
+        },
+        "32": {
+          "exact": false,
+          "mismatch_count": 3398,
+          "max_abs": 0.00390625,
+          "parent_ms": 0.2794663906097412,
+          "shared4_ms": 0.20483241081237794,
+          "speedup": 1.364366066392327
+        }
+      }
+    }
+  },
+  "numerical_smoke": {
+    "scope": "one canonical prompt, C8/K3/R32, 24 strict-teacher rows, three candidate repeats; screen only",
+    "hard_gates_passed": true,
+    "measurement_valid": false,
+    "summary": {
+      "candidate_teacher_nll_mean": 0.01782859207196188,
+      "kl_max": 0.0006708941041763214,
+      "kl_mean": 5.229960801808644e-05,
+      "kl_p50": 5.285821954890026e-08,
+      "kl_p95": 0.00021096337501421626,
+      "kl_p99": 0.000566974172284071,
+      "max_abs_logit_delta": 0.5894671678543091,
+      "rows": 24,
+      "strict_margin_min": 1.7087860107421875,
+      "strict_teacher_nll_mean": 0.01791480026845508,
+      "teacher_delta_p_mean": 9.779328967351082e-05,
+      "teacher_nll_delta": -8.620819649319753e-05,
+      "top1_agreement": 1.0,
+      "top1_matches": 24,
+      "topk_overlap_mean": 1.0
+    },
+    "repeat_determinism": {
+      "mismatches": [],
+      "passed": true,
+      "runs": 3,
+      "trajectory_sha256_by_capture": [
+        [
+          "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b",
+          "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b",
+          "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b"
+        ]
+      ]
+    },
+    "control": {
+      "final_group_padding": 7,
+      "input_tokens_exact": true,
+      "request_positions_exact": true,
+      "same_width_grouping": true
+    }
+  },
+  "correctness": {
+    "exact_first": "failed: shared4 reassociates WMMA; maximum BF16 value delta 0.0078125",
+    "t2_smoke": "passed hard distribution and repeat gates with 24/24 top-1; full canonical+heldout C6/C8 packets still required",
+    "strict_fallback": "existing R8 chunk/direct Q6 path"
+  },
+  "decision": {
+    "retain_candidate": true,
+    "promote": false,
+    "next": "Full C6/R24 and C8/R32 strict-teacher packets pass (240 rows each, 100% top-1, deterministic). Wire the default-off context into a run-owned full-suite performance candidate, then require flatness and rocprof identity before promotion."
+  },
+  "commands": {
+    "leaf": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python .multiloop/active/qwen38-scaling-extensions/wy-dataflow-prefill-r1/w1_q6_shared4_screen.py",
+    "smoke": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/qwen38_q4_verifier_numerics.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --concurrency 8 --candidate-budget 3 --limit 1 --decode-steps 24 --repeat-runs 3 --compiler-version-file /tmp/hipengine-review-hipcc-version.txt --require-cached-build --output /tmp/wy-w1-q6-r32-numerics-smoke.json"
+  },
+  "raw_sources": {
+    "leaf": {
+      "path": "/tmp/wy-w1-q6-shared4-screen.json",
+      "size_bytes": 2987,
+      "sha256": "49760e7a90be8d06f961fbcef7011cf7f3aa21fd7288a51d116d949674ddc27b"
+    },
+    "numerical_smoke": {
+      "path": "/tmp/wy-w1-q6-r32-numerics-smoke.json",
+      "size_bytes": 10269,
+      "sha256": "7e8e2ee9454004731dfc91b8a073cac37bae49a03b1ee9c43b6be7695c6e9609"
+    }
+  },
+  "full_numerical_gates": {
+    "C6_R24": {
+      "status": "passed",
+      "measurement_valid": true,
+      "hard_gates_passed": true,
+      "summary": {
+        "candidate_teacher_nll_mean": 0.17544779432299384,
+        "kl_max": 0.0014633570048211428,
+        "kl_mean": 7.823067829780227e-05,
+        "kl_p50": 4.267303011684815e-06,
+        "kl_p95": 0.0004085524066393631,
+        "kl_p99": 0.0007823251951146972,
+        "max_abs_logit_delta": 0.647362232208252,
+        "rows": 240,
+        "strict_margin_min": 0.04146385192871094,
+        "strict_teacher_nll_mean": 0.17407610719807345,
+        "teacher_delta_p_mean": -0.0004910274233250648,
+        "teacher_nll_delta": 0.00137168712492039,
+        "top1_agreement": 1.0,
+        "top1_matches": 240,
+        "topk_overlap_mean": 0.985
+      },
+      "repeat_determinism": {
+        "mismatches": [],
+        "passed": true,
+        "runs": 3,
+        "trajectory_sha256_by_capture": [
+          [
+            "f8cb95535ee5b74e4859d568ee81dcfa92e35cb6ea10bb92613be93eda6e7502",
+            "f8cb95535ee5b74e4859d568ee81dcfa92e35cb6ea10bb92613be93eda6e7502",
+            "f8cb95535ee5b74e4859d568ee81dcfa92e35cb6ea10bb92613be93eda6e7502"
+          ],
+          [
+            "36c28c3dd0df9a217d8f01ab410a38ebef1c97f677efe7fe50bf4e76ebf3e7a2",
+            "36c28c3dd0df9a217d8f01ab410a38ebef1c97f677efe7fe50bf4e76ebf3e7a2",
+            "36c28c3dd0df9a217d8f01ab410a38ebef1c97f677efe7fe50bf4e76ebf3e7a2"
+          ],
+          [
+            "6e68cf377066078e14333aeadc649afeaf91c3749c9e0a5d3e7147d03f44644d",
+            "6e68cf377066078e14333aeadc649afeaf91c3749c9e0a5d3e7147d03f44644d",
+            "6e68cf377066078e14333aeadc649afeaf91c3749c9e0a5d3e7147d03f44644d"
+          ],
+          [
+            "eb08ad4a77dd6f6742104c48a046a7c21e8c4e942fd273116d3360012627ac82",
+            "eb08ad4a77dd6f6742104c48a046a7c21e8c4e942fd273116d3360012627ac82",
+            "eb08ad4a77dd6f6742104c48a046a7c21e8c4e942fd273116d3360012627ac82"
+          ],
+          [
+            "527881c10440a5827dbd024f7ee2b578e1b0ad45d50fbf4a22bca4cf73d9beb9",
+            "527881c10440a5827dbd024f7ee2b578e1b0ad45d50fbf4a22bca4cf73d9beb9",
+            "527881c10440a5827dbd024f7ee2b578e1b0ad45d50fbf4a22bca4cf73d9beb9"
+          ],
+          [
+            "8bd067e04f474027744fc2bebcc07756169ba91de34b3a8d812499f39da39884",
+            "8bd067e04f474027744fc2bebcc07756169ba91de34b3a8d812499f39da39884",
+            "8bd067e04f474027744fc2bebcc07756169ba91de34b3a8d812499f39da39884"
+          ],
+          [
+            "8392085583d629ee251e63634126553706fe846f2621ec0b4a539e608eebf3d9",
+            "8392085583d629ee251e63634126553706fe846f2621ec0b4a539e608eebf3d9",
+            "8392085583d629ee251e63634126553706fe846f2621ec0b4a539e608eebf3d9"
+          ],
+          [
+            "e9fbcf58ee89d14d721d24dbcc7fed8d3902832cd3659ed7ab1e4e65e5c82b96",
+            "e9fbcf58ee89d14d721d24dbcc7fed8d3902832cd3659ed7ab1e4e65e5c82b96",
+            "e9fbcf58ee89d14d721d24dbcc7fed8d3902832cd3659ed7ab1e4e65e5c82b96"
+          ],
+          [
+            "b6496c284fe20ad19a214ed38fdc6f92e90a07eb9e4642a5ab15cec21a7e2fb8",
+            "b6496c284fe20ad19a214ed38fdc6f92e90a07eb9e4642a5ab15cec21a7e2fb8",
+            "b6496c284fe20ad19a214ed38fdc6f92e90a07eb9e4642a5ab15cec21a7e2fb8"
+          ],
+          [
+            "becef60905d62513708b5a434ad22294a623d3627f39e35af85defa07a8f4410",
+            "becef60905d62513708b5a434ad22294a623d3627f39e35af85defa07a8f4410",
+            "becef60905d62513708b5a434ad22294a623d3627f39e35af85defa07a8f4410"
+          ]
+        ]
+      },
+      "raw": {
+        "path": "/tmp/wy-w1-q6-c6-r24-numerics.json",
+        "size_bytes": 19997,
+        "sha256": "ea2b194185108e08fc878488c3f3e2df71d99749c7cc034421e2b5e9b825c3df"
+      }
+    },
+    "C8_R32": {
+      "status": "passed",
+      "measurement_valid": true,
+      "hard_gates_passed": true,
+      "summary": {
+        "candidate_teacher_nll_mean": 0.17475733611337543,
+        "kl_max": 0.0017202095253945934,
+        "kl_mean": 8.591328163740231e-05,
+        "kl_p50": 4.611591895512534e-06,
+        "kl_p95": 0.0004981702063113738,
+        "kl_p99": 0.0007606168948130547,
+        "max_abs_logit_delta": 0.8412189483642578,
+        "rows": 240,
+        "strict_margin_min": 0.04146385192871094,
+        "strict_teacher_nll_mean": 0.17407610719807345,
+        "teacher_delta_p_mean": -0.0001732419336222551,
+        "teacher_nll_delta": 0.000681228915301979,
+        "top1_agreement": 1.0,
+        "top1_matches": 240,
+        "topk_overlap_mean": 0.9908333333333333
+      },
+      "repeat_determinism": {
+        "mismatches": [],
+        "passed": true,
+        "runs": 3,
+        "trajectory_sha256_by_capture": [
+          [
+            "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b",
+            "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b",
+            "ea5f04ade74eda34e818725ab71f5f3414c03a96276dd9680ee67103fa0a084b"
+          ],
+          [
+            "a3927068557a29277691603a2f86e4f39d2f95e1a69848d6dd1965029e0924b4",
+            "a3927068557a29277691603a2f86e4f39d2f95e1a69848d6dd1965029e0924b4",
+            "a3927068557a29277691603a2f86e4f39d2f95e1a69848d6dd1965029e0924b4"
+          ],
+          [
+            "fc67475233a6f394fa46a073249e5e3d7ae0f6ada2f2010e7abbb1d626fbe739",
+            "fc67475233a6f394fa46a073249e5e3d7ae0f6ada2f2010e7abbb1d626fbe739",
+            "fc67475233a6f394fa46a073249e5e3d7ae0f6ada2f2010e7abbb1d626fbe739"
+          ],
+          [
+            "16f8d14f5e54a61bb342ededc95eb4971c44b0a7dfd40a5abb879b1660e3ac5d",
+            "16f8d14f5e54a61bb342ededc95eb4971c44b0a7dfd40a5abb879b1660e3ac5d",
+            "16f8d14f5e54a61bb342ededc95eb4971c44b0a7dfd40a5abb879b1660e3ac5d"
+          ],
+          [
+            "b2b265c6c502b5e435d6719e27b61c81d756f493c7385c5f53270062b624345c",
+            "b2b265c6c502b5e435d6719e27b61c81d756f493c7385c5f53270062b624345c",
+            "b2b265c6c502b5e435d6719e27b61c81d756f493c7385c5f53270062b624345c"
+          ],
+          [
+            "0ab2d6aec99757de90211fd6c0c9c1728240e77756b7faa5c95d30ec776bc97d",
+            "0ab2d6aec99757de90211fd6c0c9c1728240e77756b7faa5c95d30ec776bc97d",
+            "0ab2d6aec99757de90211fd6c0c9c1728240e77756b7faa5c95d30ec776bc97d"
+          ],
+          [
+            "c5df5e2a8f9b9b276df380ff8abdf98d8bf92ff37c35eb70ad3891981d7f02c0",
+            "c5df5e2a8f9b9b276df380ff8abdf98d8bf92ff37c35eb70ad3891981d7f02c0",
+            "c5df5e2a8f9b9b276df380ff8abdf98d8bf92ff37c35eb70ad3891981d7f02c0"
+          ],
+          [
+            "5ba6c009b5167e9a2f42f370d45de953c6ba3313c8bce9ecb33365b95a281cb6",
+            "5ba6c009b5167e9a2f42f370d45de953c6ba3313c8bce9ecb33365b95a281cb6",
+            "5ba6c009b5167e9a2f42f370d45de953c6ba3313c8bce9ecb33365b95a281cb6"
+          ],
+          [
+            "f24ba0f12508fdbeaaf0a615956031efa2164ab2c3fbec91f2acad2f85d7b553",
+            "f24ba0f12508fdbeaaf0a615956031efa2164ab2c3fbec91f2acad2f85d7b553",
+            "f24ba0f12508fdbeaaf0a615956031efa2164ab2c3fbec91f2acad2f85d7b553"
+          ],
+          [
+            "9c824403c8263bfc9ddb33b9420ca29479ccedd48be173b39659ec984acf3c9e",
+            "9c824403c8263bfc9ddb33b9420ca29479ccedd48be173b39659ec984acf3c9e",
+            "9c824403c8263bfc9ddb33b9420ca29479ccedd48be173b39659ec984acf3c9e"
+          ]
+        ]
+      },
+      "raw": {
+        "path": "/tmp/wy-w1-q6-c8-r32-numerics.json",
+        "size_bytes": 20034,
+        "sha256": "b55f02140f2ac0c18e619303930b4045279b9a8a7331b6fef2ffc7affe83770b"
+      }
+    }
+  },
+  "matched_k3_performance": {
+    "baseline": {
+      "C6": 33.6970880043,
+      "C8": 36.6831983496
+    },
+    "candidate": {
+      "C6": 32.428317193,
+      "C8": 39.2983986894
+    },
+    "delta_percent": {
+      "C6": -3.765,
+      "C8": 7.129
+    },
+    "acceptance_identical": true,
+    "decision": "exclude R24; retain default-off R32-only candidate"
+  },
+  "valid_route_full_suite": {
+    "candidate": {
+      "C6": {
+        "ar_tok_s": 40.3070850676,
+        "mtp_tok_s": 33.6042053543,
+        "ratio": 0.8337046774,
+        "target_ms": 2175.630367
+      },
+      "C8": {
+        "ar_tok_s": 47.5247246395,
+        "mtp_tok_s": 36.5959940367,
+        "ratio": 0.7700411589,
+        "target_ms": 2271.596906
+      }
+    },
+    "matched_baseline": {
+      "C6": {
+        "mtp_tok_s": 33.6342520744,
+        "target_ms": 2193.36182
+      },
+      "C8": {
+        "mtp_tok_s": 36.6625089162,
+        "target_ms": 2295.778182
+      }
+    },
+    "delta": {
+      "C6_mtp_percent": -0.0893,
+      "C8_mtp_percent": -0.1814,
+      "C6_target_ms_percent": -0.8084,
+      "C8_target_ms_percent": -1.0533
+    },
+    "route_identity": "C6 zero candidate leaves; C8 candidate leaves present; 20/20 exact/engaged/budget",
+    "decision": "do not promote Q6-only candidate; target-stage saving is real but complete-wall neutral and W1 remains open for Q4/Q5 plus complete-family flatness"
+  }
+}

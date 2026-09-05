@@ -81,7 +81,7 @@ L1 math:
 | Saved launches | `1/layer × 8 layers = 8/cycle` |
 | Saved dispatch | `8 × 3.6 µs = 28.8 µs/cycle` |
 | Added redundant compute | none; RMSNorm already does the hidden reduction |
-| HBM effect | avoids rereading `hidden_attn` for RMSNorm (`16 × 2048 × 2 B = 64 KiB/layer`) but must still write `hidden_attn` because MLP residual needs it |
+| VRAM effect | avoids rereading `hidden_attn` for RMSNorm (`16 × 2048 × 2 B = 64 KiB/layer`) but must still write `hidden_attn` because MLP residual needs it |
 | Added kernel complexity | low; one block/row RMSNorm with add folded into the load path |
 
 Verdict: **PASS-small**. Implement as `dflash_add_rmsnorm_bf16(input, residual, weight, hidden_out, norm_out, rows, hidden, ...)`. Keep existing `dflash_add_bf16 + dflash_rmsnorm_bf16` fallback registered.
@@ -136,7 +136,7 @@ L1 math:
 | Saved launches | one next-layer input RMSNorm for layers 1..39 = `~39/pass` |
 | Saved dispatch | `39 × 3.6 µs = 140 µs/pass` |
 | Added redundant compute | none if combine kernel already has row-wise hidden output and adds an RMS reduction before store |
-| HBM effect | avoids one read of `next_hidden` per layer (`rows × hidden × 2 B`; small but positive) |
+| VRAM effect | avoids one read of `next_hidden` per layer (`rows × hidden × 2 B`; small but positive) |
 | API cost | high: next layer must consume `next_norm` for projections while raw `next_hidden` remains available for residual/capture |
 
 Verdict: **PASS-small / API-risk**. This is the most plausible verifier-side add+rmsnorm fuse, but the API work may exceed the value. Shortlist only after C5 if a clean `normalized_hidden` side-buffer already exists.
@@ -161,7 +161,7 @@ L1 math:
 | Saved launches | `2/full-attn layer × 10 layers = 20/pass` (3 prepare launches → 1) |
 | Saved dispatch | `20 × 3.6 µs = 72 µs/pass` |
 | Added redundant compute | none; same per-head reductions as existing `qwen35_head_rmsnorm_partial_rotary_positions_f32_bf16` |
-| HBM effect | avoids intermediate qgate/split and fp16→f32 temporary traffic |
+| VRAM effect | avoids intermediate qgate/split and fp16→f32 temporary traffic |
 | Numerical risk | medium: must match current BF16/FP32 cast order and RoPE exactly |
 
 Verdict: **PASS-small**. Best verifier starter for R3.6 because it avoids the M13.B.1 GEMV-fusion failure mode and has bounded per-head work.
@@ -266,7 +266,7 @@ Verdict: **Already done for hot path**. No R3.6 action unless a future profile s
 
 This is the corrected version of the M13.B.1/B.2 attempts:
 
-- Rotate once per source row into HBM scratch.
+- Rotate once per source row into VRAM scratch.
 - GEMV blocks read the staged rotated vector.
 - Use a keyed/persistent barrier so the launcher does **not** need a `hipMemsetAsync(barrier, 0, 8)` per call.
 

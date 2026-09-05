@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c8_k3_width_depth_policy_retained",
+  "created_at": "2026-09-05T02:12:00Z",
+  "status": "retained_exact_explicit_c8",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "Replace the scalar physical-MTP width ceiling with a profile-owned width/depth policy. The gfx1151 Qwen3.8 Q4_K_M production package preserves C1-C4/K1-K3 and admits explicit C8/K3; C5-C7 remain on AR. gfx1100 behavior is unchanged.",
+  "hardware": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "software": {
+    "candidate_commit": "cc99792702e38fe73ff678dcb4de8e2ab9475b23",
+    "candidate_clean": true,
+    "rocm": "HIP version: 7.15.26333-0000000",
+    "compiler": "AMD clang 23.0.0git 8f497e0992fb7513f7f78a6f6f1056c375e961",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "policy": {
+    "owner": "backend execution-profile package",
+    "gfx1151_qwen38_q4km_production": [[1, 1], [1, 2], [1, 3], [2, 1], [2, 2], [2, 3], [3, 1], [3, 2], [3, 3], [4, 1], [4, 2], [4, 3], [8, 3]],
+    "rejected_intermediate_widths": [5, 6, 7],
+    "strict_fallback_key": "gguf_target_ar",
+    "serving_scope": "explicit only; automatic_eligible=false; greedy_fast; context 1-128; output horizon 24; resident capacity 8",
+    "gfx1100_change": "none"
+  },
+  "correctness": {
+    "red_green": {
+      "red": "Ten policy tests failed under the scalar physical_max_requests=4 design because it could not represent an admitted C8 cell while rejecting C5-C7.",
+      "green": "Capability, planner, adapter capacity, and execution now resolve exact profile-owned width/depth cells; 128 focused tests passed before the hardware packet."
+    },
+    "final_cpu_validation": {
+      "policy_engine_backend_serving_tests": 157,
+      "packed_execution_manifest_tests": 17,
+      "compileall": true,
+      "passed": true
+    },
+    "full_prompt_suite": {
+      "prompts": 10,
+      "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+      "heldout_prompts": 4,
+      "widths": [5, 6, 7, 8],
+      "cells": 40,
+      "deterministic_cells": 40,
+      "ar_equal_cells": 40,
+      "route_expectation_cells": 40,
+      "c5_c7_mtp_engaged_cells": 0,
+      "c8_mtp_engaged_cells": 10,
+      "candidate_budget": 3,
+      "max_tokens": 24,
+      "correctness_contract": "mtp_self_exact plus generated-ID equality to true same-protocol AR",
+      "passed": true
+    },
+    "dynamic_lifecycle": {
+      "sequence": "physical C8/K3 -> cancel three rows -> C5 AR -> refill three rows -> physical C8/K3 -> cancel all but one survivor -> drain",
+      "mtp_cycles": 44,
+      "physical_c8_cycles": 4,
+      "c8_proposal_widths": [8],
+      "c8_target_rows": [32],
+      "candidate_counts": [3, 3, 3, 3, 3, 3, 3, 3],
+      "c5_c7_mtp_cycles": 0,
+      "five_survivors_used_ar": true,
+      "middle_cancellations": 3,
+      "post_refill_cancellations": 7,
+      "all_cancel_reasons_exact": true,
+      "survivor_matches_independent_ar": true,
+      "loop_drained": true,
+      "service_drained": true,
+      "provider_drained": true,
+      "final_active_allocations": 0,
+      "final_allocated_bytes": 0,
+      "passed": true
+    },
+    "production_profile_inheritance": {
+      "profile_gate_artifact": "benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json",
+      "q6_row8_artifact": "benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json",
+      "basis": "The width policy changes admission and ownership, not arithmetic. The full suite is generated-ID equal to AR, the lifecycle survivor is AR-equal, and the C8 target uses the exact package-owned Q6 row-8 primitive covered by the parent 216-row production-profile gate."
+    }
+  },
+  "performance": {
+    "protocol": "OpenAI server barrier-to-last-completion wall time; full ten-prompt mtp-bench category suite; natural greedy output; 24-token horizon; one warmup per arm; true no-MTP AR baseline; candidate budget 3; resident capacity 8; cached builds required",
+    "metric": "aggregate generated tokens per second",
+    "widths": {
+      "5": {"ar_tok_s": 39.035289712482545, "mtp_requested_k0_tok_s": 33.17961205706194, "ratio": 0.8499901576611559, "mtp_engaged": false},
+      "6": {"ar_tok_s": 43.47213366813485, "mtp_requested_k0_tok_s": 35.69930151353002, "ratio": 0.8211996628934196, "mtp_engaged": false},
+      "7": {"ar_tok_s": 47.02752620510214, "mtp_requested_k0_tok_s": 38.74418970268737, "ratio": 0.8238619555217835, "mtp_engaged": false},
+      "8": {"ar_tok_s": 52.02514146273464, "mtp_tok_s": 52.1034192680222, "ratio": 1.0015046149435967, "percent": 0.15046149435967, "mtp_engaged": true}
+    },
+    "c8_categories": {
+      "code": {"ar_tok_s": 53.404097928854846, "mtp_tok_s": 53.700715411499544, "ratio": 1.005554208275175},
+      "general_en": {"ar_tok_s": 55.42415642005397, "mtp_tok_s": 57.274208423338195, "ratio": 1.0333798856452208},
+      "general_ja": {"ar_tok_s": 51.96635482422224, "mtp_tok_s": 52.707745750830604, "ratio": 1.0142667487284058},
+      "mixed_ja_en": {"ar_tok_s": 46.79199822044064, "mtp_tok_s": 44.86894303839874, "ratio": 0.958902050453536}
+    },
+    "c8_acceptance": {
+      "all": 0.7849462365591398,
+      "train": 0.7807017543859649,
+      "heldout": 0.7916666666666666,
+      "proposed_draft_tokens": 1488,
+      "accepted_draft_tokens": 1168
+    },
+    "corroborating_prior_same_host_ratio": 1.0057,
+    "interpretation": "C8 is an exact complete-wall gain overall and is independently consistent in sign with the prior same-host B5 suite. C5-C7 are not admitted. The diagnostic K0-arm rates at C5-C7 include forced static-eligibility setup and are not promoted as product routes. Mixed Japanese/English is slower in this run, so the retained C8 scope remains explicit rather than automatic."
+  },
+  "commands": {
+    "focused_tests": ".venv/bin/python -m pytest tests/test_qwen35_gguf_mtp2_seam.py tests/test_specdec2_engine_loop.py tests/test_gfx1151_backend.py tests/test_speculative_mtp_serving_capability.py -q",
+    "full_suite": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/hipEngine/.venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 5,6,7,8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --expected-mtp-widths 8 --output /tmp/20260905-gfx1151-mtp-width-policy-full-suite.json",
+    "lifecycle": "PYTHONPATH=/tmp/hipengine-mtp-width-policy-a036 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 /home/lhl/hipEngine/.venv/bin/python /tmp/qwen38_c8_width_policy_lifecycle.py /tmp/20260905-gfx1151-c8-k3-width-policy-lifecycle.json"
+  },
+  "raw_artifacts": {
+    "full_suite": {"path": "/tmp/20260905-gfx1151-mtp-width-policy-full-suite.json", "sha256": "8794cf848403e759f5edf9819127afa1520090013b68dc8c251ff6ad98d6e85a"},
+    "lifecycle": {"path": "/tmp/20260905-gfx1151-c8-k3-width-policy-lifecycle.json", "sha256": "b6237d600471c6ff402410622dfa569e62d9953035d82fe169e1b96df9c52fe8"},
+    "lifecycle_harness": {"path": "/tmp/qwen38_c8_width_policy_lifecycle.py", "sha256": "05b5d60314f9911cc976a5ef749082c3d0ca686e18b2b1c306b428306dc35839"}
+  },
+  "rollback": "Remove the (8, 3) cell from the gfx1151-qwen38-q4km-b5 production GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS package policy; all rejected widths fail closed to gguf_target_ar."
+}

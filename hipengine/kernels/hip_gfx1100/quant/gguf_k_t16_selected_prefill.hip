@@ -519,20 +519,22 @@ __global__ void gguf_k_t16_selected_wmma_prefill_compact_kernel(
 }
 
 // Dense one-expert Q4T16 prefill over the same bytes and arithmetic as the
-// selected producer above. One wave owns 48 output columns and a compile-time
-// number of independent 16-row tiles. The default keeps four tiles/64 rows;
-// the strict small-M sibling instantiates one tile to avoid invalid-row work.
+// selected producer above. One wave owns OUT_TILES 16-column output tiles and
+// a compile-time number of independent 16-row tiles. The default keeps three
+// out tiles/48 columns and four row tiles/64 rows; the strict small-M sibling
+// instantiates one row tile to avoid invalid-row work; the 16-column
+// instantiation triples in-flight block count for latency-bound low-M slabs.
 // Every output retains the same K16 WMMA association and BF16 store.
-template <bool qmicro = false, int ROW_TILES_PER_BLOCK = 4>
+template <bool qmicro = false, int ROW_TILES_PER_BLOCK = 4, int OUT_TILES_PER_BLOCK_ = 3, typename scalar_t = uint16_t>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
-    const uint16_t* __restrict__ x,
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int OUT_TILES_PER_BLOCK = 3;
+  constexpr int OUT_TILES_PER_BLOCK = OUT_TILES_PER_BLOCK_;
   const int64_t col_tile_base =
       static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
   const int64_t row_base =
@@ -600,7 +602,7 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
         for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
           const int64_t input_row = row_base + tn * 16 + lane16;
           const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
+          a_reg[tn] = load_compact_row_half16<scalar_t>(
               x,
               valid_row ? input_row : 0,
               in_features,
@@ -650,24 +652,27 @@ __global__ void gguf_q4_t16_dense_wmma_prefill_bf16_kernel(
   }
 }
 
-// Cooperative dense Q4T16 producer body. Four waves keep the same 48-column
-// arithmetic owner as the single-wave kernel and share one decoded K256 weight
-// slab through LDS. ROW_TILES_PER_WAVE controls only row ownership/padding:
-// four is the retained 256-row parent; one is the exact 64-row occupancy
-// candidate. Every output retains the same FP16 operand, K16 WMMA sequence,
-// FP32 accumulator, and BF16 store.
-template <int ROW_TILES_PER_WAVE, bool SKIP_INACTIVE_WAVES = false>
-__device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body(
-    const uint16_t* __restrict__ x,
+// Parameterized cooperative dense Q4T16 producer. The geometry and activation
+// scalar are package-selected; the optional inactive-wave skip preserves the
+// independently qualified gfx1100 row64 tail without changing main's default
+// gfx1151 instantiations.
+template <
+    int OUT_TILES_PER_BLOCK_ = 3,
+    int WAVES_PER_BLOCK_ = 4,
+    int ROW_TILES_PER_WAVE_ = 4,
+    typename scalar_t = uint16_t,
+    bool SKIP_INACTIVE_WAVES = false>
+__launch_bounds__((WAVES_PER_BLOCK_ > 4 ? 256 : 128), 1)
+__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
-    int64_t out_features,
-    half_t* __restrict__ weight_tile) {
-  static_assert(ROW_TILES_PER_WAVE > 0, "row tiles per wave must be positive");
-  constexpr int OUT_TILES_PER_BLOCK = 3;
-  constexpr int WAVES_PER_BLOCK = 4;
+    int64_t out_features) {
+  constexpr int OUT_TILES_PER_BLOCK = OUT_TILES_PER_BLOCK_;
+  constexpr int ROW_TILES_PER_WAVE = ROW_TILES_PER_WAVE_;
+  constexpr int WAVES_PER_BLOCK = WAVES_PER_BLOCK_;
   constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
   constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
   const int64_t col_tile_base =
@@ -686,6 +691,7 @@ __device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_bod
   const int64_t blocks_per_row = in_features / QK_K;
   const int64_t out_tiles = out_features / T16_COLS;
 
+  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
   float8_t acc[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
 #pragma unroll
   for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
@@ -771,7 +777,7 @@ __device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_bod
           for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
             const int64_t input_row = row_base + tn * 16 + lane16;
             const bool valid_row = input_row < rows;
-            a_reg[tn] = load_compact_row_half16<uint16_t>(
+            a_reg[tn] = load_compact_row_half16<scalar_t>(
                 x,
                 valid_row ? input_row : 0,
                 in_features,
@@ -817,48 +823,6 @@ __device__ __forceinline__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_bod
       }
     }
   }
-}
-
-__launch_bounds__(128, 1)
-__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel(
-    const uint16_t* __restrict__ x,
-    const uint8_t* __restrict__ tiles,
-    uint16_t* __restrict__ out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features) {
-  constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
-  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
-  gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<4>(
-      x, tiles, out, rows, in_features, out_features, weight_tile);
-}
-
-__launch_bounds__(128, 1)
-__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel(
-    const uint16_t* __restrict__ x,
-    const uint8_t* __restrict__ tiles,
-    uint16_t* __restrict__ out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features) {
-  constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
-  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
-  gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<1>(
-      x, tiles, out, rows, in_features, out_features, weight_tile);
-}
-
-__launch_bounds__(128, 1)
-__global__ void gguf_q4_t16_dense_wmma_prefill_shared_b_row64_tail_bf16_kernel(
-    const uint16_t* __restrict__ x,
-    const uint8_t* __restrict__ tiles,
-    uint16_t* __restrict__ out,
-    int64_t rows,
-    int64_t in_features,
-    int64_t out_features) {
-  constexpr int OUT_COLS_PER_BLOCK = 3 * T16_COLS;
-  __shared__ half_t weight_tile[QK_K * OUT_COLS_PER_BLOCK];
-  gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_body<1, true>(
-      x, tiles, out, rows, in_features, out_features, weight_tile);
 }
 
 // Exact unequal-width same-input Q4T16 pair. The paired kernel owns the
@@ -1183,6 +1147,136 @@ __global__ void gguf_q4_qmicro_expand_dual_metadata_kernel(
   *output = qmicro_unpack_record(source);
 }
 
+// Low-M operation-complete Q4T16 gate/up. Two waves own the same 16x16
+// output/row tile, one matrix per wave. Both waves preserve the parent's K16
+// WMMA sequence and independent BF16 projection boundary; the final SiLU reads
+// the two rounded shared tiles. This removes the 256-row generic body's idle
+// waves and accumulator footprint at verifier R12/R16.
+__launch_bounds__(64, 1)
+__global__ void gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel(
+    const uint16_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles_a,
+    const uint8_t* __restrict__ tiles_b,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int MATRICES = 2;
+  constexpr int ROWS_PER_BLOCK = 16;
+  constexpr int OUT_COLS_PER_BLOCK = T16_COLS;
+  union SharedStorage {
+    half_t weights[MATRICES][QK_K * OUT_COLS_PER_BLOCK];
+    uint16_t rounded[MATRICES][ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK];
+  };
+  __shared__ SharedStorage shared;
+
+  const int wave = threadIdx.x >> 5;
+  const int lane16 = threadIdx.x & 15;
+  const int half_id = (threadIdx.x & 31) >> 4;
+  const int64_t col_tile = static_cast<int64_t>(blockIdx.x);
+  const int64_t block_row_base =
+      static_cast<int64_t>(blockIdx.y) * ROWS_PER_BLOCK;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+  float8_t acc = zero_float8();
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    const int decode_pair = threadIdx.x >> 2;
+    const int matrix = decode_pair / (T16_COLS / 2);
+    const int tile_pair = decode_pair % (T16_COLS / 2);
+    const int tile_col0 = tile_pair * 2;
+    const uint8_t* __restrict__ tiles = matrix == 0 ? tiles_a : tiles_b;
+    const uint8_t* __restrict__ tile = k_t16_tile_ptr(
+        tiles, 0, col_tile, blk, out_tiles, blocks_per_row,
+        Q4_T16_BLOCK_BYTES);
+    const float d0 = fp16_bytes_to_float(
+        tile + Q4_T16_D_OFFSET + tile_col0 * 2);
+    const float d1 = fp16_bytes_to_float(
+        tile + Q4_T16_D_OFFSET + (tile_col0 + 1) * 2);
+    const float dmin0 = fp16_bytes_to_float(
+        tile + Q4_T16_DMIN_OFFSET + tile_col0 * 2);
+    const float dmin1 = fp16_bytes_to_float(
+        tile + Q4_T16_DMIN_OFFSET + (tile_col0 + 1) * 2);
+    const int k_segment = (threadIdx.x & 3) * 8;
+#pragma unroll
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+      const uint16_t scale_pair = *reinterpret_cast<const uint16_t*>(
+          tile + Q4_T16_SCALE_OFFSET + sb * T16_COLS + tile_col0);
+      const uint16_t min_pair = *reinterpret_cast<const uint16_t*>(
+          tile + Q4_T16_MIN_OFFSET + sb * T16_COLS + tile_col0);
+      const float scale0 = d0 * static_cast<float>(scale_pair & 0xFFu);
+      const float scale1 = d1 * static_cast<float>(scale_pair >> 8);
+      const float min0 = dmin0 * static_cast<float>(min_pair & 0xFFu);
+      const float min1 = dmin1 * static_cast<float>(min_pair >> 8);
+#pragma unroll
+      for (int kk = 0; kk < 8; ++kk) {
+        const int lane32 = k_segment + kk;
+        const uint8_t packed = tile[
+            Q4_T16_Q_OFFSET +
+            (sb * Q4_SUBBLOCK + lane32) * (T16_COLS / 2) + tile_pair];
+        const int k = sb * Q4_SUBBLOCK + lane32;
+        shared.weights[matrix][tile_col0 * QK_K + k] =
+            static_cast<half_t>(
+                scale0 * static_cast<float>(packed & 0x0Fu) - min0);
+        shared.weights[matrix][(tile_col0 + 1) * QK_K + k] =
+            static_cast<half_t>(
+                scale1 * static_cast<float>(packed >> 4) - min1);
+      }
+    }
+    __syncthreads();
+
+    const int64_t block_k_base = blk * QK_K;
+#pragma unroll 1
+    for (int sb = 0; sb < Q4_SUBBLOCKS; ++sb) {
+#pragma unroll
+      for (int kt = 0; kt < K_TILES_PER_SUBBLOCK; ++kt) {
+        const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+        const int64_t input_row = block_row_base + lane16;
+        const bool valid_row = input_row < rows;
+        const half16_t a = load_compact_row_half16<uint16_t>(
+            x, valid_row ? input_row : 0, in_features,
+            block_k_base + k_off, valid_row);
+        half16_t b;
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+          b[kk] = shared.weights[wave][lane16 * QK_K + k_off + kk];
+        }
+        acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a, b, acc);
+      }
+    }
+    __syncthreads();
+  }
+
+  const int64_t out_col = col_tile * T16_COLS + lane16;
+  if (out_col < out_features) {
+#pragma unroll
+    for (int j = 0; j < 8; ++j) {
+      const int local_row = half_id + j * 2;
+      const int64_t out_row = block_row_base + local_row;
+      if (out_row < rows) {
+        shared.rounded[wave][local_row * T16_COLS + lane16] =
+            float_to_bf16_bits(acc[j]);
+      }
+    }
+  }
+  __syncthreads();
+
+  constexpr int RESULT_COUNT = ROWS_PER_BLOCK * OUT_COLS_PER_BLOCK;
+  for (int index = threadIdx.x; index < RESULT_COUNT; index += blockDim.x) {
+    const int local_row = index / OUT_COLS_PER_BLOCK;
+    const int local_col = index - local_row * OUT_COLS_PER_BLOCK;
+    const int64_t out_row = block_row_base + local_row;
+    const int64_t result_col = col_tile * T16_COLS + local_col;
+    if (out_row < rows && result_col < out_features) {
+      const float gate = bf16_bits_to_float(shared.rounded[0][index]);
+      const float up = bf16_bits_to_float(shared.rounded[1][index]);
+      const float sig = 1.0f / (1.0f + expf(-gate));
+      out[out_row * out_features + result_col] =
+          float_to_bf16_bits(gate * sig * up);
+    }
+  }
+}
+
 // Operation-complete dense Q4T16 gate/up prefill. Four waves own one 32-column
 // x 256-row tile. Each wave loads each activation K16 fragment once, then
 // applies independently decoded gate and up fragments with the retained WMMA
@@ -1402,19 +1496,22 @@ __global__ void gguf_q4_t16_dense_dual_wmma_prefill_silu_bf16_kernel(
 }
 
 // Dense one-expert Q5T16 prefill over the same bytes and arithmetic as the
-// selected producer above. One wave owns 32 output columns x 64 input rows,
-// preserving each output's K16 WMMA association while amortizing activation
-// and weight transport in both matrix dimensions.
+// selected producer above. One wave owns OUT_TILES 16-column output tiles x
+// ROW_TILES 16-row tiles, preserving each output's K16 WMMA association
+// while amortizing activation and weight transport in both matrix
+// dimensions. The default keeps 32 columns x 64 rows; the low-VGPR
+// instantiations shrink the accumulator footprint for latency-bound slabs.
+template <int ROW_TILES_PER_BLOCK_ = 4, int OUT_TILES_PER_BLOCK_ = 2, typename scalar_t = uint16_t>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
-    const uint16_t* __restrict__ x,
+    const scalar_t* __restrict__ x,
     const uint8_t* __restrict__ tiles,
     uint16_t* __restrict__ out,
     int64_t rows,
     int64_t in_features,
     int64_t out_features) {
-  constexpr int OUT_TILES_PER_BLOCK = 2;
-  constexpr int ROW_TILES_PER_BLOCK = 4;
+  constexpr int ROW_TILES_PER_BLOCK = ROW_TILES_PER_BLOCK_;
+  constexpr int OUT_TILES_PER_BLOCK = OUT_TILES_PER_BLOCK_;
   const int64_t col_tile_base =
       static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
   const int64_t row_base =
@@ -1478,7 +1575,7 @@ __global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
         for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
           const int64_t input_row = row_base + tn * 16 + lane16;
           const bool valid_row = input_row < rows;
-          a_reg[tn] = load_compact_row_half16<uint16_t>(
+          a_reg[tn] = load_compact_row_half16<scalar_t>(
               x,
               valid_row ? input_row : 0,
               in_features,
@@ -1515,6 +1612,135 @@ __global__ void gguf_q5_t16_dense_wmma_prefill_bf16_kernel(
     }
 #pragma unroll
     for (int tn = 0; tn < ROW_TILES_PER_BLOCK; ++tn) {
+#pragma unroll
+      for (int j = 0; j < 8; ++j) {
+        const int64_t out_row = row_base + tn * 16 + half_id + j * 2;
+        if (out_row < rows) {
+          out[out_row * out_features + out_col] =
+              float_to_scalar<uint16_t>(acc[tm][tn][j]);
+        }
+      }
+    }
+  }
+}
+
+// Shared-weight Q5T16 companion for high-M slabs. One workgroup decodes one
+// 32-column output slab into LDS, then eight waves consume three independent
+// M16 tiles each. This preserves the parent kernel's K16 WMMA order while
+// reducing the rows288 weight sweep from five workgroups to one.
+template <int WAVES_PER_BLOCK, int ROW_TILES_PER_WAVE, int OUT_TILES_PER_BLOCK, typename scalar_t = uint16_t>
+__global__ __launch_bounds__((WAVES_PER_BLOCK > 4 ? 256 : 128), 1)
+void gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel(
+    const scalar_t* __restrict__ x,
+    const uint8_t* __restrict__ tiles,
+    uint16_t* __restrict__ out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features) {
+  constexpr int OUT_COLS_PER_BLOCK = OUT_TILES_PER_BLOCK * T16_COLS;
+  constexpr int ROWS_PER_WAVE = ROW_TILES_PER_WAVE * 16;
+  constexpr int ROWS_PER_BLOCK = WAVES_PER_BLOCK * ROWS_PER_WAVE;
+  __shared__ half_t weight_tile[OUT_COLS_PER_BLOCK * QK_K];
+
+  const int tid = threadIdx.x;
+  const int wave = tid >> 5;
+  const int lane16 = tid & 15;
+  const int half_id = (tid & 31) >> 4;
+  const int64_t col_tile_base =
+      static_cast<int64_t>(blockIdx.x) * OUT_TILES_PER_BLOCK;
+  const int64_t row_base =
+      static_cast<int64_t>(blockIdx.y) * ROWS_PER_BLOCK +
+      wave * ROWS_PER_WAVE;
+  const int64_t blocks_per_row = in_features / QK_K;
+  const int64_t out_tiles = out_features / T16_COLS;
+
+  float8_t acc[OUT_TILES_PER_BLOCK][ROW_TILES_PER_WAVE];
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+      acc[tm][tn] = zero_float8();
+    }
+  }
+
+  for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
+    constexpr int DECODE_UNITS = OUT_COLS_PER_BLOCK * Q4_SUBBLOCKS *
+                                 K_TILES_PER_SUBBLOCK;
+    for (int decode_unit = tid; decode_unit < DECODE_UNITS;
+         decode_unit += blockDim.x) {
+      const int local_col = decode_unit /
+                            (Q4_SUBBLOCKS * K_TILES_PER_SUBBLOCK);
+      const int local_kt = decode_unit %
+                           (Q4_SUBBLOCKS * K_TILES_PER_SUBBLOCK);
+      const int sb = local_kt / K_TILES_PER_SUBBLOCK;
+      const int kt = local_kt % K_TILES_PER_SUBBLOCK;
+      const int tm = local_col / T16_COLS;
+      const int col = local_col % T16_COLS;
+      const int64_t col_tile = col_tile_base + tm;
+      const int64_t safe_col_tile =
+          col_tile < out_tiles ? col_tile : out_tiles - 1;
+      const uint8_t* __restrict__ tile = k_t16_tile_ptr(
+          tiles, 0, safe_col_tile, blk, out_tiles, blocks_per_row,
+          Q5_T16_BLOCK_BYTES);
+      const float d = fp16_bytes_to_float(
+          tile + Q5_T16_D_OFFSET + col * 2);
+      const float dmin = fp16_bytes_to_float(
+          tile + Q5_T16_DMIN_OFFSET + col * 2);
+      const float scale = d * static_cast<float>(
+          tile[Q5_T16_SCALE_OFFSET + sb * T16_COLS + col]);
+      const float min_value = dmin * static_cast<float>(
+          tile[Q5_T16_MIN_OFFSET + sb * T16_COLS + col]);
+      const int k_off = sb * Q4_SUBBLOCK + kt * K_TILE;
+#pragma unroll
+      for (int kk = 0; kk < K_TILE; ++kk) {
+        const int q = q5_t16_quant(tile, sb, kt * K_TILE + kk, col);
+        weight_tile[local_col * QK_K + k_off + kk] =
+            static_cast<half_t>(scale * static_cast<float>(q) - min_value);
+      }
+    }
+    __syncthreads();
+
+    const int64_t block_k_base = blk * QK_K;
+#if defined(__gfx1100__)
+#pragma unroll 1
+#else
+#pragma unroll
+#endif
+    for (int kt = 0; kt < Q4_SUBBLOCKS * K_TILES_PER_SUBBLOCK; ++kt) {
+      const int k_off = kt * K_TILE;
+      half16_t a[ROW_TILES_PER_WAVE];
+#pragma unroll
+      for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+        const int64_t input_row = row_base + tn * 16 + lane16;
+        const bool valid_row = input_row < rows;
+        a[tn] = load_compact_row_half16<scalar_t>(
+            x, valid_row ? input_row : 0, in_features,
+            block_k_base + k_off, valid_row);
+      }
+#pragma unroll
+      for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+        half16_t b;
+#pragma unroll
+        for (int kk = 0; kk < K_TILE; ++kk) {
+          b[kk] = weight_tile[
+              (tm * T16_COLS + lane16) * QK_K + k_off + kk];
+        }
+#pragma unroll
+        for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
+          acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+              a[tn], b, acc[tm][tn]);
+        }
+      }
+    }
+    __syncthreads();
+  }
+
+#pragma unroll
+  for (int tm = 0; tm < OUT_TILES_PER_BLOCK; ++tm) {
+    const int64_t out_col = (col_tile_base + tm) * T16_COLS + lane16;
+    if (out_col >= out_features) continue;
+#pragma unroll
+    for (int tn = 0; tn < ROW_TILES_PER_WAVE; ++tn) {
 #pragma unroll
       for (int j = 0; j < 8; ++j) {
         const int64_t out_row = row_base + tn * 16 + half_id + j * 2;
@@ -1726,9 +1952,9 @@ int launch_k_t16_selected(
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool qmicro = false>
+template <bool qmicro = false, typename scalar_t = uint16_t>
 int launch_q4_t16_dense_wmma_prefill_bf16(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -1749,7 +1975,77 @@ int launch_q4_t16_dense_wmma_prefill_bf16(
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<qmicro>),
+      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<qmicro, 4, 3, scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <int LOWVGPR_ROW_TILES, typename scalar_t = uint16_t>
+static int launch_q4_t16_dense_wmma_prefill_lowvgpr_impl(
+    const scalar_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream);
+
+int launch_q4_t16_dense_wmma_prefill_lowvgpr_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  // Low-VGPR 32-row-block owner for latency-bound low-M slabs.
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_impl<2>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+int launch_q4_t16_dense_wmma_prefill_lowvgpr48_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  // Low-VGPR 48-row-block owner: one row-block for slabs up to 48 rows.
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_impl<3>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+template <int LOWVGPR_ROW_TILES, typename scalar_t>
+static int launch_q4_t16_dense_wmma_prefill_lowvgpr_impl(
+    const scalar_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>(
+          (rows + LOWVGPR_ROW_TILES * 16 - 1) / (LOWVGPR_ROW_TILES * 16)));
+  hipLaunchKernelGGL(
+      (gguf_q4_t16_dense_wmma_prefill_bf16_kernel<false, LOWVGPR_ROW_TILES, 1, scalar_t>),
       grid,
       block,
       0,
@@ -1797,8 +2093,14 @@ int launch_q4_t16_dense_wmma_smallm_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
-int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
-    const uint16_t* x,
+template <
+    int Q4_SHARED_OUT_TILES = 3,
+    int Q4_SHARED_WAVES = 4,
+    int Q4_SHARED_ROW_TILES = 4,
+    typename scalar_t = uint16_t,
+    bool SKIP_INACTIVE_WAVES = false>
+int launch_q4_t16_dense_wmma_prefill_shared_b_impl(
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -1810,16 +2112,19 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
       out_features <= 0 || (out_features % T16_COLS) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  constexpr int Q4_DENSE_TILE_COLS = 3 * T16_COLS;
-  constexpr int Q4_DENSE_TILE_ROWS = 4 * 4 * 16;
-  const dim3 block(128);
+  constexpr int Q4_DENSE_TILE_COLS = Q4_SHARED_OUT_TILES * T16_COLS;
+  constexpr int Q4_DENSE_TILE_ROWS =
+      Q4_SHARED_WAVES * Q4_SHARED_ROW_TILES * 16;
+  const dim3 block(Q4_SHARED_WAVES * 32);
   const dim3 grid(
       static_cast<unsigned int>(
           (out_features + Q4_DENSE_TILE_COLS - 1) / Q4_DENSE_TILE_COLS),
       static_cast<unsigned int>(
           (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel,
+      (gguf_q4_t16_dense_wmma_prefill_shared_b_bf16_kernel<
+          Q4_SHARED_OUT_TILES, Q4_SHARED_WAVES, Q4_SHARED_ROW_TILES,
+          scalar_t, SKIP_INACTIVE_WAVES>),
       grid,
       block,
       0,
@@ -1841,46 +2146,49 @@ int launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  if (x == nullptr || tiles == nullptr || out == nullptr || rows <= 0 ||
-      in_features <= 0 || (in_features % QK_K) != 0 ||
-      out_features <= 0 || (out_features % T16_COLS) != 0) {
+  constexpr int Q4_DENSE_TILE_ROWS = 4 * 1 * 16;
+  if ((rows % Q4_DENSE_TILE_ROWS) == 0) {
+    return launch_q4_t16_dense_wmma_prefill_shared_b_impl<
+        3, 4, 1, uint16_t, false>(
+        x, tiles, out, rows, in_features, out_features, stream);
+  }
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<
+      3, 4, 1, uint16_t, true>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+int launch_q4_t16_dense_dual_wmma_smallm_silu_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles_a == nullptr || tiles_b == nullptr ||
+      out == nullptr || rows < 2 || rows > 16 || in_features <= 0 ||
+      (in_features % QK_K) != 0 || out_features <= 0 ||
+      (out_features % T16_COLS) != 0) {
     return static_cast<int>(hipErrorInvalidValue);
   }
-  constexpr int Q4_DENSE_TILE_COLS = 3 * T16_COLS;
-  constexpr int Q4_DENSE_TILE_ROWS = 4 * 1 * 16;
-  const dim3 block(128);
+  const dim3 block(64);
   const dim3 grid(
-      static_cast<unsigned int>(
-          (out_features + Q4_DENSE_TILE_COLS - 1) / Q4_DENSE_TILE_COLS),
-      static_cast<unsigned int>(
-          (rows + Q4_DENSE_TILE_ROWS - 1) / Q4_DENSE_TILE_ROWS));
-  if ((rows % Q4_DENSE_TILE_ROWS) == 0) {
-    hipLaunchKernelGGL(
-        gguf_q4_t16_dense_wmma_prefill_shared_b_row64_bf16_kernel,
-        grid,
-        block,
-        0,
-        stream,
-        x,
-        tiles,
-        out,
-        rows,
-        in_features,
-        out_features);
-  } else {
-    hipLaunchKernelGGL(
-        gguf_q4_t16_dense_wmma_prefill_shared_b_row64_tail_bf16_kernel,
-        grid,
-        block,
-        0,
-        stream,
-        x,
-        tiles,
-        out,
-        rows,
-        in_features,
-        out_features);
-  }
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>((rows + 15) / 16));
+  hipLaunchKernelGGL(
+      gguf_q4_t16_dense_dual_wmma_smallm_silu_bf16_kernel,
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles_a,
+      tiles_b,
+      out,
+      rows,
+      in_features,
+      out_features);
   return static_cast<int>(hipGetLastError());
 }
 
@@ -2022,8 +2330,9 @@ int launch_q4_t16_dense_unequal_dual_wmma_prefill_bf16(
   return static_cast<int>(hipGetLastError());
 }
 
+template <typename scalar_t = uint16_t>
 int launch_q5_t16_dense_wmma_prefill_bf16(
-    const uint16_t* x,
+    const scalar_t* x,
     const uint8_t* tiles,
     uint16_t* out,
     int64_t rows,
@@ -2044,7 +2353,85 @@ int launch_q5_t16_dense_wmma_prefill_bf16(
       static_cast<unsigned int>(
           (rows + Q5_DENSE_TILE_ROWS - 1) / Q5_DENSE_TILE_ROWS));
   hipLaunchKernelGGL(
-      gguf_q5_t16_dense_wmma_prefill_bf16_kernel,
+      (gguf_q5_t16_dense_wmma_prefill_bf16_kernel<4, 2, scalar_t>),
+      grid,
+      block,
+      0,
+      stream,
+      x,
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+template <int WAVES = 8, int ROW_TILES = 3, typename scalar_t = uint16_t>
+int launch_q5_t16_dense_wmma_prefill_shared_bf16(
+    const scalar_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  constexpr int OUT_TILES = 2;
+  const dim3 block(WAVES * 32);
+  const dim3 grid(
+      static_cast<unsigned int>((out_features + OUT_TILES * T16_COLS - 1) /
+                                (OUT_TILES * T16_COLS)),
+      static_cast<unsigned int>((rows + WAVES * ROW_TILES * 16 - 1) /
+                                (WAVES * ROW_TILES * 16)));
+  hipLaunchKernelGGL(
+      (gguf_q5_t16_dense_wmma_prefill_shared_bf16_kernel<
+          WAVES, ROW_TILES, OUT_TILES, scalar_t>),
+      grid, block, 0, stream, x, tiles, out, rows, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+int launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_shared_bf16<8, 3>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+template <int Q5_LOWVGPR_ROW_TILES, typename scalar_t = uint16_t>
+static int launch_q5_t16_dense_wmma_prefill_lowvgpr_impl(
+    const scalar_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  if (x == nullptr || tiles == nullptr || out == nullptr || rows <= 0 ||
+      in_features <= 0 || (in_features % QK_K) != 0 ||
+      out_features <= 0 || (out_features % T16_COLS) != 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  // Low-VGPR instantiation for latency-bound low-M slabs: one 16-column
+  // out tile per 32-thread block with a 16/24-float accumulator; identical
+  // per-tile K16 WMMA order to the 32-column owner.
+  const dim3 block(32);
+  const dim3 grid(
+      static_cast<unsigned int>(out_features / T16_COLS),
+      static_cast<unsigned int>(
+          (rows + Q5_LOWVGPR_ROW_TILES * 16 - 1) /
+              (Q5_LOWVGPR_ROW_TILES * 16)));
+  hipLaunchKernelGGL(
+      (gguf_q5_t16_dense_wmma_prefill_bf16_kernel<Q5_LOWVGPR_ROW_TILES, 1, scalar_t>),
       grid,
       block,
       0,
@@ -2112,6 +2499,28 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_bf16_bf16_out(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
+// B2 P1: F16-staged activation sibling (x bits are IEEE half). Identical
+// weights, schedule, and BF16 store; only the activation operand encoding
+// differs, so the per-element BF16->F16 WMMA converts disappear in favor of
+// one vectorized half16 load per row tile.
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_bf16<false, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
 extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out(
     const uint16_t* x,
     const uint8_t* tiles,
@@ -2122,6 +2531,68 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_smallm_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_bf16(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_impl<2, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr48_bf16(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_lowvgpr_impl<3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_qmicro_t16_wmma_prefill_bf16_bf16_out(
@@ -2144,7 +2615,7 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out(
     int64_t in_features,
     int64_t out_features,
     hipStream_t stream) {
-  return launch_q4_t16_dense_wmma_prefill_shared_b_bf16(
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 4>(
       x, tiles, out, rows, in_features, out_features, stream);
 }
 
@@ -2158,6 +2629,163 @@ extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_row64_bf16_bf16_out
     hipStream_t stream) {
   return launch_q4_t16_dense_wmma_prefill_shared_b_row64_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1: F16-staged activation sibling of the shared-B owner (x bits are
+// IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 4, 4, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2, 1>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2, 1, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 8, 3>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<3, 8, 3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 2, 4, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 4>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_wmma_prefill_shared_b_impl<2, 4, 4, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_smallm_silu_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles_a,
+    const uint8_t* tiles_b,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q4_t16_dense_dual_wmma_smallm_silu_bf16(
+      x, tiles_a, tiles_b, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_t16_dense_dual_wmma_prefill_silu_bf16_bf16_out(
@@ -2287,6 +2915,104 @@ extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_bf16_bf16_out(
     hipStream_t stream) {
   return launch_q5_t16_dense_wmma_prefill_bf16(
       x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1: F16-staged activation sibling of the Q5 dense owner (x bits are
+// IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_bf16<half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles,
+      out,
+      rows,
+      in_features,
+      out_features,
+      stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_shared8r3_bf16(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_shared_bf16<8, 3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<2>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<2, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles, out, rows, in_features, out_features, stream);
+}
+
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<3>(
+      x, tiles, out, rows, in_features, out_features, stream);
+}
+
+// B2 P1 F16-staged sibling (x bits are IEEE half).
+extern "C" int hipengine_gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out(
+    const uint16_t* x,
+    const uint8_t* tiles,
+    uint16_t* out,
+    int64_t rows,
+    int64_t in_features,
+    int64_t out_features,
+    hipStream_t stream) {
+  return launch_q5_t16_dense_wmma_prefill_lowvgpr_impl<3, half_t>(
+      reinterpret_cast<const half_t*>(x),
+      tiles, out, rows, in_features, out_features, stream);
 }
 
 extern "C" int hipengine_gguf_q5_k_qmicro_t16_selected_wmma_prefill_compact_bf16_bf16_out(

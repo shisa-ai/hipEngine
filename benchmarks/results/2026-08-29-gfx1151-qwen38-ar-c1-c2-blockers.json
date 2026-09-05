@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "blocked",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": [
+    "P3.1 partial closure: C1/C2 measured blockers"
+  ],
+  "title": "Qwen3.8 standard-Q4 AR C1/C2 blocker attribution",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)"
+  },
+  "source": {
+    "commit": "f8513d905",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "protocol": {
+    "server_evidence": "benchmarks/results/2026-08-29-gfx1151-qwen38-packed-c2-short-graph-retained.json",
+    "profile_shape": "prompt64/D24 direct production owner, transition3, cached rocprofv3 kernel+HIP+copy traces",
+    "compiler_version_file": "/tmp/hipengine-hipcc-version.txt",
+    "require_cached_build": true,
+    "compiler_ran_inside_profiler": false,
+    "execution_profile": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
+  },
+  "c1": {
+    "current_tok_s": 11.121671115697076,
+    "target_tok_s": 11.336,
+    "gap_pct": -1.891,
+    "aggregate_wall_seconds": 21.579490842996165,
+    "target_wall_seconds": 21.171489061397317,
+    "gap_ms_per_request": 40.800178159884834,
+    "required_ms_per_decode_transition": 1.7739207895602103,
+    "profile": {
+      "wall_ms": 81.771791,
+      "kernel_sum_ms": 78.959968,
+      "kernel_fraction_pct": 96.562,
+      "launches": 592,
+      "queues": 1,
+      "wall_minus_kernel_sum_ms": 2.811823
+    },
+    "named_blocker": "Device-critical serial-C1 Q4/Q5/Q6 projection wall. Submission is only 2.81 ms/transition and short-horizon graph capture is neutral; the retained/rejected owner ladder already closes norm, attention, Q8 activation, Q4/Q5/Q6 geometry, and payload compaction. Another target win requires a new operation-complete fusion/dataflow, not threshold or graph tuning.",
+    "prior_evidence": [
+      "worklog/entries/20260815T051351.082938Z-lhl-qwen38-dense-c1-fused-silu-c387d5.md",
+      "worklog/entries/20260815T194232.294727Z-pi-qwen38-gfx1151-p5-planar-q6-c1-col8-69355b.md",
+      "worklog/entries/20260816T023623.739028Z-pi-qwen38-gfx1151-p5-q4-single-c1-col4-b0ce60.md",
+      "worklog/entries/20260816T031640.863243Z-pi-qwen38-gfx1151-p5-fixed5120-norm-29ffcd.md",
+      "worklog/entries/20260816T041205.530358Z-pi-qwen38-gfx1151-post-norm-profile-cbab28.md",
+      "worklog/entries/20260816T140958.457567Z-lhl-qwen38-dense-pair-strict-default-4b8d92.md"
+    ]
+  },
+  "c2": {
+    "current_tok_s": 18.07240693598259,
+    "target_tok_s": 20.056,
+    "gap_pct": -9.891,
+    "aggregate_wall_seconds": 26.55982690630481,
+    "target_wall_seconds": 23.932987634623053,
+    "gap_ms_per_request": 262.6839271681757,
+    "eager_profile": {
+      "wall_ms": 97.276963,
+      "kernel_sum_ms": 81.557784,
+      "launches": 880,
+      "wall_minus_kernel_sum_ms": 15.719179
+    },
+    "graph_replay_profile": {
+      "wall_ms": 85.257975,
+      "kernel_sum_ms": 81.383586,
+      "kernel_fraction_pct": 95.456,
+      "launches": 872,
+      "queues": 2,
+      "wall_minus_kernel_sum_ms": 3.874389,
+      "capture_record_step_ms": 84.763868
+    },
+    "complete_wall_attribution_projection": {
+      "suite_prompt_tokens_per_c1_sweep": 449,
+      "current_prefill_tok_s": 142.8760087505565,
+      "external_prefill_target_tok_s": 194.07,
+      "prefill_gap_ms_per_request": 165.79736001295425,
+      "capture_record_ms_per_request": 84.763868,
+      "prefill_plus_capture_ms_per_request": 250.5612280129543,
+      "unattributed_remainder_ms_per_request": 12.12269915522142,
+      "projected_tok_s_if_capture_record_were_free": 18.668189411780084,
+      "note": "Projection combines the retained C2 prefill row with the clean D24 AR row; physical-grouping variance remains as documented in P2.2."
+    },
+    "named_blocker": "The eager launch gap is fixed. Steady graph replay is 95.5% device-kernel time, while one graph-record model step plus the already-measured GPU-bound C2 prefill deficit account for about 250.6 of the 262.7 ms/request comparator gap. Even free graph capture projects only 18.67 tok/s. Closing C2 therefore requires the P2.2 high-row Q4/prefill algorithm or a new operation-complete row-2 fusion, not more graph-threshold tuning.",
+    "rejected_reopen": "Multi-step graph replay previously changed complete AR by at most +0.032%; do not reopen without a new runtime/driver premise.",
+    "prior_evidence": [
+      "benchmarks/results/2026-08-29-gfx1151-qwen38-prefill-c2-c8-attribution.json",
+      "worklog/entries/20260815T210149.755420Z-pi-qwen38-gfx1151-p5-multistep-graph-replay-329294.md"
+    ]
+  },
+  "correctness": {
+    "server_cells_exact": "20/20",
+    "graph_route": "all measured C2 cells capture once and replay all 23 transitions",
+    "c1_route": "all measured C1 cells remain eager",
+    "math_change": false
+  },
+  "verdict": {
+    "p3_status": "partial",
+    "closed_win_widths": [3, 4, 5, 6, 7, 8],
+    "blocked_widths": [1, 2],
+    "next": "Move to P4. Reopen P3 C1 only for a new operation-complete serial dataflow; reopen C2 with the P2.2 high-row Q4/prefill algorithm or a new row-2 fusion."
+  }
+}

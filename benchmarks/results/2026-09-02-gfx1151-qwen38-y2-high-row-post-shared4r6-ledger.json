@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-high-row-post-shared4r6-ledger",
+  "status": "measurement_only",
+  "source_commit": "ae98b67b1",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "points": [
+    {"rows": 288, "tick_wall_ms": 991.734441, "q5_sweeps": 1.0, "q6_sweeps": 1.0, "q6_gpu_ms": 166.10},
+    {"rows": 536, "tick_wall_ms": 1706.658044, "q5_sweeps": 4.0, "q6_sweeps": 1.77, "q6_gpu_ms": 310.16},
+    {"rows": 1024, "tick_wall_ms": 2783.564521, "q5_sweeps": 4.0, "q6_sweeps": 3.78, "q6_gpu_ms": 587.02}
+  ],
+  "trace_decomposition": {
+    "planar_shared4r6_gridY1": {"hits": 80, "gpu_ms": 244.192484},
+    "planar_shared4r6_gridY2": {"hits": 40, "gpu_ms": 222.466956},
+    "planar_shared4r6_gridY3": {"hits": 32, "gpu_ms": 416.37044},
+    "narrow_rows1024_fallback_gridY16": {"hits": 8, "gpu_ms": 8.80961}
+  },
+  "decision": "Rows288 reaches one sweep. Rows536/1024 remain above one sweep because shared4r6 capacity is 384 rows. The narrow rows1024 fallback is only 8.81 ms, but wide gridY2/gridY3 remains material; screen larger four-wave row-tile bodies before Y2 closure."
+}

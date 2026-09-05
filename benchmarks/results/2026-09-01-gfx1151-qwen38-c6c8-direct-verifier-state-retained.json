@@ -1,0 +1,150 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c6c8_direct_verifier_state_retained",
+  "date": "2026-09-01",
+  "status": "retained_exact_intermediate",
+  "performance_claim": true,
+  "promotion": false,
+  "source": {
+    "commit": "5f7b3cb6b1b193c134ca93799c76be30e3a7084e",
+    "dirty": false
+  },
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "cpu": "AMD RYZEN AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target_arch": "gfx1151",
+    "hip_version": "7.15.26333-0000000",
+    "amd_clang": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard_q4_k_m",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "size_bytes": 17106775008,
+    "kv": "BF16"
+  },
+  "protocol": {
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "widths": [6, 8],
+    "candidate_budget": 1,
+    "max_tokens": 24,
+    "batch_window_ms": 50,
+    "sampling": "raw greedy, no prompt cache",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "execution_profile": "production",
+    "profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b",
+    "correctness_contract": "mtp_self_exact plus engaged route and candidate-budget conformance; production promotion remains separately gated"
+  },
+  "comparison": {
+    "order": ["control", "candidate"],
+    "same_python_process": true,
+    "control": "At clean candidate commit, replace _packed_verify_initial_linear_state with the prior strict behavior: return (layout, packed_state, True). AR is unchanged by this override.",
+    "candidate": "Use committed direct resident initial-state binding; candidate captures and selected-row commit remain unchanged.",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-review-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python .multiloop/active/qwen38-wide-mtp/q38-c6c8-115x-r2/publish_pair.py",
+    "benchmark_argv": "scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 6,8 --max-tokens 24 --candidate-budget 1 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact",
+    "control_raw": {
+      "path": "/tmp/q38-directstate-control.json",
+      "sha256": "9cc3ed87c6cf5a4fbceee8d4bdabac817ba527efa0e5279b7f5c618ab2acaa93",
+      "size_bytes": 5658623
+    },
+    "candidate_raw": {
+      "path": "/tmp/q38-directstate-candidate.json",
+      "sha256": "e7849174b533299c73ce07f037732346afd85419dc3188499f4e1a54c3b4d924",
+      "size_bytes": 5658917
+    },
+    "pair_summary": {
+      "path": "/tmp/q38-directstate-pair-summary.json",
+      "sha256": "c7702d459a677580e8e9ea2366688711e08d21b239588ea3dc7428b727b42342",
+      "size_bytes": 2757
+    }
+  },
+  "mechanism": {
+    "removed_control_imports_c8_k1": 9216,
+    "removed_control_import_bytes_c8_k1": 8002732032,
+    "control_copy_kernels_c8_k1": 17309,
+    "control_copy_kernel_ms_c8_k1": 90.062,
+    "ar_copy_kernels_c8": 796,
+    "ar_copy_kernel_ms_c8": 6.318,
+    "ownership": "Read-only verifier roots address stable resident Conv/GDN slab rows through state_indices. Candidate row captures and accepted selected-row commit remain separate and exact.",
+    "fallback": "Capability/ownership misses copy initial Conv/GDN state into the packed verifier exactly as before."
+  },
+  "results": {
+    "6": {
+      "control": {
+        "ar_tok_s": 40.31213434450383,
+        "mtp_tok_s": 35.458350959021935,
+        "mtp_vs_ar": 0.8795949789211877
+      },
+      "candidate": {
+        "ar_tok_s": 40.01391169877123,
+        "mtp_tok_s": 35.966018538846804,
+        "mtp_vs_ar": 0.8988378544342933
+      },
+      "mtp_speedup": 1.0143172924316635,
+      "mtp_delta_pct": 1.43172924316635,
+      "ar_control_ratio": 0.9926021618407992,
+      "scopes": {
+        "train_mtp_speedup": 1.0146373635729418,
+        "heldout_mtp_speedup": 1.0138537044030604,
+        "categories_mtp_speedup": {
+          "code": 1.015683938787158,
+          "general_en": 1.0168566876428544,
+          "general_ja": 1.0156981329182224,
+          "mixed_ja_en": 1.008743148227293
+        }
+      }
+    },
+    "8": {
+      "control": {
+        "ar_tok_s": 47.66902671675425,
+        "mtp_tok_s": 41.841777863141786,
+        "mtp_vs_ar": 0.8777560765350311
+      },
+      "candidate": {
+        "ar_tok_s": 47.379927898728674,
+        "mtp_tok_s": 42.59355989696812,
+        "mtp_vs_ar": 0.8989789935520567
+      },
+      "mtp_speedup": 1.0179672583771486,
+      "mtp_delta_pct": 1.79672583771486,
+      "ar_control_ratio": 0.9939352901047596,
+      "scopes": {
+        "train_mtp_speedup": 1.017947190599941,
+        "heldout_mtp_speedup": 1.0179960337559755,
+        "categories_mtp_speedup": {
+          "code": 1.0175824854028692,
+          "general_en": 1.0204043289377194,
+          "general_ja": 1.0200665542516905,
+          "mixed_ja_en": 1.0147769653663157
+        }
+      }
+    }
+  },
+  "correctness": {
+    "control_cells": 20,
+    "control_exact_cells": 20,
+    "control_engaged_cells": 20,
+    "control_budget_conformed_cells": 20,
+    "candidate_cells": 20,
+    "candidate_exact_cells": 20,
+    "candidate_engaged_cells": 20,
+    "candidate_budget_conformed_cells": 20,
+    "control_acceptance": 0.9565217391304348,
+    "candidate_acceptance": 0.9565217391304348,
+    "accepted_proposed_control": [1540, 1610],
+    "accepted_proposed_candidate": [1540, 1610],
+    "focused_tests": "117 passed: tests/test_gguf_packed_verify_layout.py tests/test_qwen35_gguf_mtp2_seam.py; configured loop guard 97 passed"
+  },
+  "decision": {
+    "retain": true,
+    "automatic_mtp_promotion": false,
+    "reason": "Exact verifier-local improvement at both widths and every train/heldout/category scope. C6/C8 remain below own AR and the 1.15x campaign target, so automatic serving remains K0.",
+    "next": "Continue reducing physical K1 target-cycle cost; require repeated same-host economics and complete production numerical/task/determinism/isolation/lifecycle/serving gates before any promotion."
+  }
+}

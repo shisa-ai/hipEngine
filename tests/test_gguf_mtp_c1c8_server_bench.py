@@ -20,6 +20,7 @@ from scripts.gguf_mtp_c1c8_server_bench import (
     _render_messages,
     _resident_observability,
     _response_attribution,
+    _select_diagnostic_prompts,
     build_parser,
     summarize,
     summarize_acceptance,
@@ -61,6 +62,21 @@ def test_mtp_c1c8_parser_defaults_to_production_profile() -> None:
     assert attribution.capture_prefill_attribution is True
     assert normal_owner.widths == (2,)
     assert normal_owner.resident_capacity == 4
+    assert default.diagnostic_prompt_count == 0
+
+
+def test_mtp_c1c8_diagnostic_prompt_subset_is_fail_closed() -> None:
+    prompts = tuple({"id": str(index)} for index in range(10))
+    assert _select_diagnostic_prompts(
+        prompts, count=1, generation2_diagnostic=True
+    ) == ({"id": "0"},)
+    assert _select_diagnostic_prompts(
+        prompts, count=0, generation2_diagnostic=False
+    ) == prompts
+    with pytest.raises(ValueError, match="generation2-diagnostic"):
+        _select_diagnostic_prompts(prompts, count=1, generation2_diagnostic=False)
+    with pytest.raises(ValueError, match="between 1 and 10"):
+        _select_diagnostic_prompts(prompts, count=11, generation2_diagnostic=True)
 
 
 def test_mtp_c1c8_request_mode_separates_explicit_and_automatic() -> None:
@@ -394,7 +410,7 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     assert frontend_c1["key"]["realized_group_rows"] == 1
     assert frontend_c1["static_eligibility"]["eligible"] is True
     assert frontend_c1["static_eligibility"]["max_candidate_count"] == 1
-    assert frontend_c1["static_eligibility"]["max_realized_group_rows"] == 4
+    assert frontend_c1["static_eligibility"]["max_realized_group_rows"] == 8
     assert frontend_c1["static_eligibility"]["automatic_eligible"] is False
     owner = SimpleNamespace(speculative_candidate_budget=1)
     _install_diagnostic_plan(owner)
@@ -410,7 +426,10 @@ def test_mtp_c1c8_diagnostic_plan_is_content_agnostic_and_bounded() -> None:
     assert _diagnostic_plan(**{**base, "candidate_budget": 1})["admitted"] is True
     assert _diagnostic_plan(**{**base, "candidate_budget": 3})["admitted"] is True
     assert _diagnostic_plan(**{**base, "candidate_budget": 4})["admitted"] is False
-    assert _diagnostic_plan(**{**base, "realized_group_rows": 5})["admitted"] is False
+    # M1 protocol: single-group wide verify admits rows5-8 through C8/R32.
+    assert _diagnostic_plan(**{**base, "realized_group_rows": 5})["admitted"] is True
+    assert _diagnostic_plan(**{**base, "realized_group_rows": 8})["admitted"] is True
+    assert _diagnostic_plan(**{**base, "realized_group_rows": 9})["admitted"] is False
     assert _diagnostic_plan(**{**base, "context_tokens": 96})["admitted"] is False
 
     wide = _diagnostic_plan(

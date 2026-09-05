@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b3_m1_arbitrary_state_clone_red",
+  "date": "2026-09-02",
+  "status": "red_prerequisite_complete",
+  "performance_claim": false,
+  "source_commit": "4fbc6d164",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S / 1002:1586",
+    "architecture": "gfx1151",
+    "gpu_used": false
+  },
+  "candidate_scope": {
+    "id": "M1_C1_ACCEPT_ROUTE_PARITY",
+    "class": "T2",
+    "model": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "observed_prompt_boundaries": [36, 46, 43, 48, 35, 36, 39, 39, 60, 67]
+  },
+  "audit": {
+    "existing_shared_prefix_clone": "clone_prefix_state_from requires a positive 256-token-aligned boundary and shared prefix pages",
+    "existing_snapshot_clone": "capture/clone_prefix_state_snapshot also requires a positive 256-token-aligned boundary and shared pages",
+    "viable_private_copy_primitives": [
+      "_gguf_device_kv_copy_segments maps arbitrary logical ranges over independent page tables",
+      "_packed_kv_copy_planes and _copy_packed_kv_rows copy every storage/mirror/scale plane",
+      "existing linear-state D2D copy and _commit_prefix_state_clone publish the recurrent boundary"
+    ],
+    "decision": "A viable exact path exists: add clone_current_state_from for independent KV at arbitrary current boundaries. Do not fabricate shared-prefix ownership."
+  },
+  "red": {
+    "path": "tests/test_gguf_device_kv_binding.py::test_gguf_current_state_clone_copies_private_kv_at_arbitrary_boundary",
+    "command": "uv run pytest -q tests/test_gguf_device_kv_binding.py::test_gguf_current_state_clone_copies_private_kv_at_arbitrary_boundary",
+    "observed": "failed: Qwen35GGUFResidentSession.clone_current_state_from absent",
+    "fixture": "300-token non-page boundary, noncontiguous source pages, independent destination pages, BF16 K/V plus Conv/GDN state",
+    "expected": "copy 300 K/V rows across segmented physical pages, copy recurrent state, publish position 300, keep independent backing"
+  }
+}

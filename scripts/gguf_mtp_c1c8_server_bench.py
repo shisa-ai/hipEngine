@@ -90,6 +90,21 @@ def load_prompt_suite(path: Path) -> tuple[dict[str, Any], ...]:
     return tuple(rows)
 
 
+def _select_diagnostic_prompts(
+    prompts: tuple[dict[str, Any], ...],
+    *,
+    count: int,
+    generation2_diagnostic: bool,
+) -> tuple[dict[str, Any], ...]:
+    if count == 0:
+        return prompts
+    if not generation2_diagnostic:
+        raise ValueError("diagnostic prompt subsets require --generation2-diagnostic")
+    if count < 1 or count > len(prompts):
+        raise ValueError(f"diagnostic prompt count must be between 1 and {len(prompts)}")
+    return prompts[:count]
+
+
 def _parse_widths(raw: str) -> tuple[int, ...]:
     widths = tuple(int(part.strip()) for part in str(raw).split(",") if part.strip())
     if not widths or len(set(widths)) != len(widths) or any(width not in range(1, 9) for width in widths):
@@ -387,9 +402,12 @@ def _backend_mtp_engaged(payload: Mapping[str, Any], *, width: int) -> bool:
 def _diagnostic_plan(**kwargs: Any) -> dict[str, Any]:
     rows = int(kwargs["realized_group_rows"])
     budget = int(kwargs.get("candidate_budget", 2))
+    # The caller owns the diagnostic width. This supports the independently
+    # qualified gfx1100/gfx1151 C8 protocols without turning the diagnostic
+    # resolver into production admission.
     max_realized_group_rows = max(
         1,
-        int(kwargs.get("max_realized_group_rows", 4)),
+        int(kwargs.get("max_realized_group_rows", 8)),
     )
     admitted = bool(
         1 <= rows <= max_realized_group_rows
@@ -991,7 +1009,11 @@ def verdict_reasons(
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
-    prompts = load_prompt_suite(Path(args.prompts).resolve())
+    prompts = _select_diagnostic_prompts(
+        load_prompt_suite(Path(args.prompts).resolve()),
+        count=int(args.diagnostic_prompt_count),
+        generation2_diagnostic=bool(args.generation2_diagnostic),
+    )
     widths = tuple(args.widths)
     resident_capacity = (
         max(widths)
@@ -1028,7 +1050,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if args.generation2_diagnostic:
         import hipengine.kernels.hip_gfx1100 as backend_package
 
-        backend_package.GGUF_SPECDEC2_MTP2_C4 = True
+        backend_package.GGUF_SPECDEC2_MTP2_PHYSICAL = True
     started = time.perf_counter()
     initial_memory = memory_stats()
     llm = LLM(
@@ -1054,17 +1076,18 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             ),
         }
         if args.generation2_diagnostic:
-            diagnostic_max_requests = (
-                int(
-                    backend_package_capability(
-                        str(args.backend),
-                        "GGUF_SPECDEC2_MTP2_MAX_REQUESTS",
-                        4,
-                    )
+            if str(args.execution_profile) == "production":
+                width_depths = backend_package_capability(
+                    str(args.backend),
+                    "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
+                    {},
                 )
-                if str(args.execution_profile) == "production"
-                else 4
-            )
+                diagnostic_max_requests = max(
+                    (int(cell[0]) for cell in width_depths.get("production", ())),
+                    default=4,
+                )
+            else:
+                diagnostic_max_requests = 4
             _install_diagnostic_plan(
                 llm,
                 max_realized_group_rows=diagnostic_max_requests,
@@ -1202,7 +1225,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "protocol": {
             "prompts": str(Path(args.prompts).resolve()),
-            "prompt_ids": list(FULL_PROMPT_IDS),
+            "prompt_ids": [str(prompt["id"]) for prompt in prompts],
+            "full_prompt_suite": len(prompts) == len(FULL_PROMPT_IDS),
+            "diagnostic_prompt_count": int(args.diagnostic_prompt_count),
+            "performance_claim_eligible": len(prompts) == len(FULL_PROMPT_IDS),
             "widths": list(widths),
             "resident_capacity": resident_capacity,
             "expected_mtp_widths": list(expected_mtp_widths),
@@ -1285,6 +1311,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "capture response stage timings and wrap the actual resident native-prefill "
             "entry point to record group sizes; intended for one-token AR attribution"
+        ),
+    )
+    parser.add_argument(
+        "--diagnostic-prompt-count",
+        type=int,
+        default=0,
+        help=(
+            "Profile only the first N canonical prompts. Requires "
+            "--generation2-diagnostic; resulting rows are ineligible for performance claims."
         ),
     )
     parser.add_argument(

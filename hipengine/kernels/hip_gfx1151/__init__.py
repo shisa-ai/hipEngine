@@ -38,20 +38,54 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_prefill import (
     gguf_q4_k_pack8_wmma_prefill_gfx1151_bf16_bf16_out,
     gguf_q6_k_wmma_prefill_16x32_bf16_bf16_out,
 )
+from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_q8_1_selected_prefill import (
+    gguf_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64_bf16_bf16_out,
+)
 from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
     gguf_q4_k_pack8_dual_prefill_bf16_bf16_out,
     gguf_q4_k_pack8_dual_silu_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
     gguf_q4_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out,
     gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2r1_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out,
+    gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
+    gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out,
+    gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out,
     gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared6r1_bf16_bf16_out,
+    gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
     gguf_q4_k_t16_dense_dual_interleaved_tile2_local32_silu_bf16_bf16_out,
@@ -87,15 +121,534 @@ def gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
     out_features: int,
     **kwargs,
 ):
-    """Select the admitted strict one-row-tile WMMA owner for physical rows."""
+    """Select the admitted strict one-row-tile WMMA owner for physical rows.
 
-    fn = (
-        gguf_q4_k_t16_wmma_prefill_smallm_bf16_bf16_out
-        if int(rows) in GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
-        else gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    Owner bands follow measured owner crossovers on the six physical Qwen3.8
+    dense prefill shapes (synthetic Q4T16 microbench, bit-exact siblings):
+    the low-VGPR 16-column owners (one out tile per 32-thread block, 16/24-
+    float accumulators) roughly double effective weight bandwidth at rows
+    17-144 where the 48-column owners are latency-bound at ~2 waves/SIMD
+    (248 VGPRs). Per-shape periodic bands select 32-row/48-row low-VGPR,
+    48-column, or shared-B owners; rows145+ keep shared-B. Unadmitted shapes
+    retain the shared-B fail-closed fallback.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        row_count <= GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS
+        and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
+    ):
+        # Scaling-campaign M2j (2026-08-31 rows2-20 sibling screens, all six
+        # physical shapes, bit-exact vs shared-B): the 16-column low-VGPR
+        # owner beats the one-row-tile smallm at every physical verify row
+        # (1.19-1.65x at rows2-16), and the 32-thread shared-B sibling beats
+        # even low-VGPR on the N5120 down-projection (0.716-0.727 ms vs
+        # 0.772-0.775 ms). The former smallm band {6,8,12,16} is superseded
+        # here; the smallm launcher stays registered under its explicit
+        # variant for inventory and rollback.
+        fn = (
+            gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+            if shape == (17_408, 5_120)
+            else gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+        )
+    elif (
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_PLAIN128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w4_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS
+        <= row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_bf16_bf16_out
+    else:
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
     )
+
+
+def gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """Select measured low-VGPR Q5 owners on physical low-M shapes.
+
+    Rows 17-32 take the 32-row/16-column owner on all six shapes. Later
+    periodic bands through row144 select 32-row, 48-row, or plain owners by
+    measured shape crossover. Shape and row misses retain plain. This
+    selector is registered only for
+    the dense linear prefill key; compact MoE and verifier aliases keep their
+    independently qualified owners.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS <= row_count
+        <= GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
+    elif (
+        17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_bf16_bf16_out
+    else:
+        fn = gguf_q5_k_t16_wmma_prefill_bf16_bf16_out
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """F16-staged twin of the Q4 dense prefill router (B2 P1).
+
+    Same band ladder as the BF16 router; every band body is the registered
+    input-F16 sibling. The BF16 router remains the selected strict fallback.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        row_count <= GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS
+        and shape in GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES
+    ):
+        fn = (
+            gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+            if shape == (17_408, 5_120)
+            else gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+        )
+    elif (
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_PLAIN128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w4_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS
+        <= row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_fp16_in_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES
+    ):
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b2w2_fp16_in_bf16_out
+    else:
+        fn = gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out
+    return fn(
+        x_ptr,
+        tiles_ptr,
+        out_ptr,
+        rows,
+        in_features,
+        out_features,
+        **kwargs,
+    )
+
+
+def gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out(
+    x_ptr: int,
+    tiles_ptr: int,
+    out_ptr: int,
+    rows: int,
+    in_features: int,
+    out_features: int,
+    **kwargs,
+):
+    """F16-staged twin of the Q5 dense prefill router (B2 P1)."""
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS <= row_count
+        <= GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_shared8r3_fp16_in_bf16_out
+    elif (
+        17 <= row_count <= GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    elif (
+        GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q5_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q5_k_t16_wmma_prefill_lowvgpr48_fp16_in_bf16_out
+    else:
+        fn = gguf_q5_k_t16_wmma_prefill_fp16_in_bf16_out
     return fn(
         x_ptr,
         tiles_ptr,
@@ -118,11 +671,28 @@ def gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out(
 ):
     """Select shared-weight WMMA only for the admitted standard-Q6 QKV."""
 
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
     fn = (
-        gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
-        if int(rows) >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        gguf_q6_k_t16_wmma_prefill_shared3r1_bf16_bf16_out
+        if GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
+        <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared6r1_bf16_bf16_out
+        if GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS <= row_count
+        <= GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
+        if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS <= row_count
+        <= GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared8r3_bf16_bf16_out
+        if GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MIN_ROWS <= row_count
+        <= GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MAX_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
+        else gguf_q6_k_t16_wmma_prefill_shared4_bf16_bf16_out
+        if row_count >= GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS
+        and shape in GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES
         else gguf_q6_k_t16_wmma_prefill_bf16_bf16_out
     )
     return fn(
@@ -145,15 +715,137 @@ def gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1151_bf16_bf16_out(
     out_features: int,
     **kwargs,
 ):
-    """Select shared-weight WMMA only for the admitted wide Q6 down shape."""
+    """Select shared-weight WMMA only for the admitted wide Q6 down shape.
 
-    fn = (
-        gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
-        if int(rows) >= GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS
-        and (int(in_features), int(out_features))
-        in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
-        else gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
-    )
+    Rows17-144 use measured periodic low-VGPR/shared4 bands (bit-exact
+    siblings; low-VGPR cuts 184 -> 88 VGPR). Rows145-255 keep plain, and the
+    six physical shapes use shared4 from row256. Shape misses keep plain.
+    """
+
+    row_count = int(rows)
+    shape = (int(in_features), int(out_features))
+    if (
+        row_count == GGUF_Q6_PLANAR_PREFILL_SHARED4R9_ROWS
+        and shape == GGUF_Q6_PLANAR_PREFILL_SHARED4R9_SHAPE
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r9_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MIN_ROWS <= row_count
+        <= GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE.get(shape, -1)
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r6_bf16_bf16_out
+    elif (
+        GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS <= row_count
+        <= GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared3r1_bf16_bf16_out
+    elif (
+        row_count == GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r4_bf16_bf16_out
+    elif (
+        row_count == GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4r3_bf16_bf16_out
+    elif (
+        17 <= row_count <= GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape == (5_120, 17_408)
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_LOWVGPR80_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS
+        < row_count
+        <= GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_LOWVGPR96_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        and shape in GGUF_Q4_T16_DENSE_LOWM_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_LOWVGPR128_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_LOWVGPR48_128_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_SHARED4_128_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_LOWVGPR48_144_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_lowvgpr48_bf16_bf16_out
+    elif (
+        GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS
+        < row_count
+        <= GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS
+        and shape in GGUF_Q6_PLANAR_SHARED4_144_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
+    elif (
+        row_count >= GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS
+        and shape in GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES
+    ):
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_shared4_bf16_bf16_out
+    else:
+        fn = gguf_q6_k_t16_qmicro_planar_wmma_prefill_bf16_bf16_out
     return fn(
         x_ptr,
         tiles_ptr,
@@ -786,6 +1478,12 @@ GGUF_DECODE_GRAPH_SUBMISSION_POLICIES = {
         "transport": "hipgraph"
     },
 }
+# Qwen3.8 dense Q4_K packed C2 has 880 eager launches per transition. The exact
+# ten-prompt D24 gate admits HIP graph capture at all 23 remaining transitions;
+# scalar C1 and every unlisted model/quant/width retain the global floor above.
+GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {2: 23},
+}
 # SH3-M1 admits loader-time host ownership only for private c1 sessions. Q8_0
 # retains its CPU-copy route. Qwen3.8 Q4_K uses an anonymous immutable host
 # copy: directly registering the file-backed mmap corrupted complete-model
@@ -1067,6 +1765,10 @@ GGUF_DENSE_Q5_T16_QKV = True
 # Narrow K/V K5120/N1024 loses to shared-B and remains on that fallback; all
 # peer backends, rows, and shape misses retain their source registrations.
 GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS = frozenset({6, 8, 12, 16})
+# Supersession bound (scaling-campaign M2j): physical rows at or below this
+# ceiling route to the measured low-VGPR/shared-B2W2 siblings below instead of
+# the one-row-tile smallm owner. The smallm launcher remains registered.
+GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS = 16
 GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES = frozenset(
     {
         (5_120, 6_144),
@@ -1076,6 +1778,142 @@ GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES = frozenset(
         (6_144, 5_120),
         (17_408, 5_120),
     }
+)
+# Measured 2026-08-29 low-M dense prefill bands (parity campaign P2.3/P2.1).
+# Outputs are bit-exact strict siblings with the same per-tile K16 WMMA/BF16
+# association. Seven-point rows52-80 screens extend the original rows17-48
+# low-VGPR policy through 80 without prompt-specific row checks; unadmitted
+# shapes and rows >80 retain shared-B fail-closed.
+GGUF_Q4_T16_DENSE_LOWM_MAX_ROWS = 80
+GGUF_Q4_T16_DENSE_LOWM_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (5_120, 17_408),
+        (6_144, 5_120),
+        (17_408, 5_120),
+    }
+)
+GGUF_Q4_T16_DENSE_LOWVGPR_MAX_ROWS = 32
+GGUF_Q4_T16_DENSE_LOWVGPR48_MAX_ROWS = 48
+GGUF_Q4_T16_DENSE_LOWVGPR64_MAX_ROWS = 64
+GGUF_Q4_T16_DENSE_LOWVGPR48_SHAPES = frozenset(
+    {
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (5_120, 17_408),
+    }
+)
+GGUF_Q4_T16_DENSE_LOWVGPR64_SHAPES = frozenset(
+    GGUF_Q4_T16_DENSE_LOWM_SHAPES - {(5_120, 17_408)}
+)
+GGUF_Q4_T16_DENSE_LOWVGPR80_SHAPES = frozenset({(17_408, 5_120)})
+# At rows65-80, Q6 planar keeps `<2,1>` on these four shapes and uses
+# `<3,1>` on the other two. Rows49-64 use `<2,1>` on all six.
+GGUF_Q6_PLANAR_LOWVGPR80_SHAPES = frozenset(
+    {
+        (17_408, 5_120),
+        (5_120, 12_288),
+        (6_144, 5_120),
+        (5_120, 17_408),
+    }
+)
+# Q5 uses separately measured per-band shape sets. The 96/112-VGPR owners
+# preserve the plain owner's per-tile order; row/shape misses retain plain.
+GGUF_Q5_T16_DENSE_LOWM_SHAPES = GGUF_Q4_T16_DENSE_LOWM_SHAPES
+# Y2: exact shared-weight one-sweep owner for the sole physical Qwen3.8 Q5
+# recurrent output shape. Every row/shape miss retains the prior exact owner.
+GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS = 256
+GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS = 384
+GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES = frozenset({(6_144, 5_120)})
+GGUF_Q5_T16_DENSE_LOWVGPR_MAX_ROWS = 32
+GGUF_Q5_T16_DENSE_LOWVGPR48_MAX_ROWS = 48
+GGUF_Q5_T16_DENSE_LOWVGPR64_MAX_ROWS = 64
+GGUF_Q5_T16_DENSE_LOWVGPR80_MAX_ROWS = 80
+GGUF_Q5_T16_DENSE_LOWVGPR_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q5_T16_DENSE_LOWVGPR48_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (5_120, 10_240),
+        (5_120, 12_288),
+        (6_144, 5_120),
+    }
+)
+GGUF_Q5_T16_DENSE_LOWVGPR64_SHAPES = frozenset(
+    {
+        (5_120, 6_144),
+        (17_408, 5_120),
+        (5_120, 10_240),
+        (6_144, 5_120),
+    }
+)
+GGUF_Q5_T16_DENSE_LOWVGPR80_SHAPES = frozenset({(5_120, 12_288)})
+# High-row periodic bands (rows81-144) from the rows96/120/134 screen. The
+# cut points follow 32/48/64-row owner capacities rather than benchmark prompt
+# lengths. Q4 rows145+ retain shared-B; Q5 rows145+ retain plain.
+GGUF_Q4_T16_DENSE_LOWVGPR96_MAX_ROWS = 96
+GGUF_Q4_T16_DENSE_LOWVGPR128_MAX_ROWS = 128
+GGUF_Q4_T16_DENSE_LOWVGPR144_MAX_ROWS = 144
+GGUF_Q4_T16_DENSE_LOWVGPR96_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 12_288)}
+)
+GGUF_Q4_T16_DENSE_PLAIN128_SHAPES = frozenset({(5_120, 6_144)})
+GGUF_Q4_T16_DENSE_LOWVGPR128_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 10_240)}
+)
+GGUF_Q4_T16_DENSE_LOWVGPR48_128_SHAPES = frozenset(
+    {(5_120, 12_288), (6_144, 5_120)}
+)
+GGUF_Q4_T16_DENSE_LOWVGPR48_144_SHAPES = frozenset(
+    {(5_120, 6_144), (17_408, 5_120), (5_120, 12_288), (6_144, 5_120)}
+)
+# Reduced-accumulator shared-B variants preserve the same per-output K16
+# schedule. Capacity-periodic screens at rows192/256/320/384 admit only these
+# shape bands; rows385+ retain the 48-column/4-wave parent.
+GGUF_Q4_T16_DENSE_SHARED2_192_MAX_ROWS = 192
+GGUF_Q4_T16_DENSE_SHARED2_256_MAX_ROWS = 256
+GGUF_Q4_T16_DENSE_SHARED2_384_MAX_ROWS = 384
+GGUF_Q4_T16_DENSE_SHARED2W4_192_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q4_T16_DENSE_SHARED2W2_192_SHAPES = frozenset({(6_144, 5_120)})
+GGUF_Q4_T16_DENSE_SHARED2W2_256_SHAPES = frozenset(
+    {(17_408, 5_120), (6_144, 5_120)}
+)
+GGUF_Q4_T16_DENSE_SHARED2W2_384_SHAPES = frozenset(
+    GGUF_Q4_T16_DENSE_LOWM_SHAPES - {(5_120, 12_288)}
+)
+# Y1 exact one-sweep row band. Eight waves x three row tiles cover 384 rows
+# while retaining the parent's 48-column ownership. Rows288/320/384 actual-
+# weight screens admit only these three consistently positive shapes.
+GGUF_Q4_T16_DENSE_SHARED3W8R3_384_MIN_ROWS = 288
+GGUF_Q4_T16_DENSE_SHARED3W8R3_384_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 12_288), (5_120, 17_408)}
+)
+GGUF_Q5_T16_DENSE_LOWVGPR96_MAX_ROWS = 96
+GGUF_Q5_T16_DENSE_LOWVGPR128_MAX_ROWS = 128
+GGUF_Q5_T16_DENSE_LOWVGPR144_MAX_ROWS = 144
+GGUF_Q5_T16_DENSE_LOWVGPR96_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 12_288)}
+)
+GGUF_Q5_T16_DENSE_LOWVGPR48_128_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 10_240), (5_120, 12_288), (6_144, 5_120)}
+)
+GGUF_Q6_PLANAR_LOWVGPR96_MAX_ROWS = 96
+GGUF_Q6_PLANAR_LOWVGPR128_MAX_ROWS = 128
+GGUF_Q6_PLANAR_LOWVGPR144_MAX_ROWS = 144
+GGUF_Q6_PLANAR_LOWVGPR96_SHAPES = frozenset(
+    {(17_408, 5_120), (5_120, 12_288)}
+)
+GGUF_Q6_PLANAR_LOWVGPR128_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q6_PLANAR_LOWVGPR48_128_SHAPES = frozenset({(6_144, 5_120)})
+GGUF_Q6_PLANAR_SHARED4_128_SHAPES = frozenset(
+    {(5_120, 10_240), (5_120, 17_408)}
+)
+GGUF_Q6_PLANAR_LOWVGPR48_144_SHAPES = frozenset(
+    {(17_408, 5_120), (6_144, 5_120)}
+)
+GGUF_Q6_PLANAR_SHARED4_144_SHAPES = frozenset(
+    GGUF_Q4_T16_DENSE_LOWM_SHAPES - GGUF_Q6_PLANAR_LOWVGPR48_144_SHAPES
 )
 # Exact standard-Q4 two-wave/16-column output ownership. The shape map is the
 # independently qualified physical-row8 scope. ``rows_by_shape`` narrows the
@@ -1113,8 +1951,64 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT = {
 # listed. C3/K1 R6 already fits the exact native Q5/Q6 rowtile scope.
 GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
     "gguf_q5_k_t16_v1": frozenset({9, 12}),
-    "gguf_q6_k_t16_v1": frozenset({9, 12}),
-    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12}),
+    # M1 measured the R20-R32 chunk classes under the single-group wide cycle;
+    # they stay unengaged at the certified width-4 default and return when a
+    # profile re-lists a bound >= 5.
+    "gguf_q6_k_t16_v1": frozenset({9, 12, 16}),
+    "gguf_q6_k_t16_qmicro_planar_v1": frozenset({9, 12, 16}),
+}
+# E2 standard-Q6 true-R12: exact one-sweep col8 wins its actual K5120/N10240
+# target shape. Planar K5120/N1024 and K17408/N5120 lose their all-shape leaf
+# screen and retain R8+R4.
+GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS = {
+    ("gguf_q4_k_t16_v1", 16, 5_120, 1_024): (
+        "t16_wmma_prefill_shared_b2r1_bf16_bf16_out"
+    ),
+    ("gguf_q4_k_t16_v1", 16, 17_408, 5_120): (
+        "t16_wmma_prefill_shared_b2r1_bf16_bf16_out"
+    ),
+    ("gguf_q6_k_t16_v1", 12, 5_120, 10_240): (
+        "t16_gemv_rowtile12_col8_bf16_bf16_out"
+    ),
+    ("gguf_q5_k_t16_v1", 12, 6_144, 5_120): (
+        "t16_gemv_rowtile12_col8_bf16_bf16_out"
+    ),
+    ("gguf_q5_k_t16_v1", 16, 6_144, 5_120): (
+        "t16_gemv_rowtile16_col8_bf16_bf16_out"
+    ),
+}
+# B5 changed-arithmetic candidate. Generic dispatch reads this backend-owned
+# map only while a caller-owned integer-MMQ workspace context is active.
+# Standard Q6 QKV and all Q4/Q5 shapes remain on their current owners.
+GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY = {
+    "gguf_q6_k_t16_qmicro_planar_v1": {
+        "min_rows": 17,
+        "max_rows": 48,
+        "shapes": frozenset({(17_408, 5_120), (5_120, 1_024)}),
+        "variant": "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+    }
+}
+
+# W1 candidate: C8/R32 packed verification emits mixed physical R20/R24/R32
+# subshapes, so all three must share the candidate transaction. This table is
+# inert unless the explicit outer logical-width context is active.
+GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS = {
+    ("gguf_q4_k_t16_v1", rows, in_features, out_features): (
+        "t16_wmma_prefill_shared_b2w2_bf16_bf16_out"
+    )
+    for rows in (20, 24, 32)
+    for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
+} | {
+    ("gguf_q6_k_t16_v1", rows, 5_120, 10_240): (
+        "t16_wmma_prefill_shared4_bf16_bf16_out"
+    )
+    for rows in (20, 24, 32)
+} | {
+    ("gguf_q6_k_t16_qmicro_planar_v1", rows, in_features, out_features): (
+        "t16_wmma_prefill_shared4_bf16_bf16_out"
+    )
+    for rows in (20, 24, 32)
+    for in_features, out_features in ((5_120, 1_024), (17_408, 5_120))
 }
 # Profile-qualified T2 production owner: use per-row-direct-equivalent Q4
 # rowtiles for C2/K3 R8 and bounded C3/K1-K3 R6/R9/R12 physical targets on
@@ -1122,6 +2016,11 @@ GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT = {
 # native-verify divergence localized there; strict small-M/shared-B WMMA
 # remains the manifest fallback.
 GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS = frozenset({6, 8, 9, 12})
+# Successor C6/K1 screen: one exact two-wave R12 gate/up owner replaces the
+# R8+R4 rowtile chain. R16 regresses and deliberately remains absent.
+GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS = {
+    (12, 5_120, 17_408): "dense_dual_wmma_smallm_bf16_bf16_out",
+}
 GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES = frozenset(
     {
         (5_120, 6_144),
@@ -1210,15 +2109,40 @@ GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # 24 tensors while planar remains the sole owner for down, narrow V, and root.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",)
 # Qwen3.8-27B P4: four waves preserve the exact standard-Q6 48x64 sequence
-# while sharing one decoded 48x256 slab. Both actual K5120/N10240 QKV weights
-# improve 2.96-3.55x at 512/1K/4K; short rows and shape misses retain 16x16.
-GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS = 512
+# while sharing one decoded 48x256 slab. The rows96-536 screen is bit-exact
+# and positive at every point; shape misses and rows<96 retain 16x16.
+GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS = 33
+GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS = 48
+GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES = frozenset({(5_120, 10_240)})
+GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS = 49
+GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS = 96
+GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES = frozenset(
+    {(5_120, 1_024), (17_408, 5_120)}
+)
+GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS = 96
 GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES = frozenset({(5_120, 10_240)})
-# The planar sibling uses the same shared schedule. All 32 K17408/N5120
-# FFN-down owners improve 1.42-1.50x; rows below 512, narrow V, and root retain
-# the one-wave fallback.
-GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS = 512
-GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS = 256
+GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS = 384
+GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MIN_ROWS = 385
+GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MAX_ROWS = 1_024
+# The planar sibling uses the same exact shared schedule. The six-shape
+# rows256/384/480/536 screen admits shared4 from row256; rows145-255 retain
+# plain, and the periodic rows81-144 bands above select separately.
+GGUF_Q6_PLANAR_PREFILL_SHARED4R9_ROWS = 536
+GGUF_Q6_PLANAR_PREFILL_SHARED4R9_SHAPE = (17_408, 5_120)
+GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MIN_ROWS = 288
+GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE = {
+    (17_408, 5_120): 1_024,
+    (5_120, 1_024): 536,
+}
+GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS = 256
+GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES = frozenset({(17_408, 5_120)})
+GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS = 256
+GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES = frozenset(
+    {(5_120, 1_024), (17_408, 5_120)}
+)
+GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS = 256
+GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES = GGUF_Q4_T16_DENSE_LOWM_SHAPES
 GGUF_DENSE_T16_F16_ROCBLAS_PREFILL_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): True,
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_S"): True,
@@ -1262,12 +2186,73 @@ GGUF_DIRECT_RESIDENT_LINEAR_STATE = True
 # Same-length full-prompt rows may enter one native prefill call. This is scoped
 # independently from decode widths and falls back before mutation on misses.
 GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
+# Long packed-prefill rounds sample only each slot's final tail. Intermediate
+# target-hidden rows and host hidden-seed capture remain intact; C5-C8 512-row
+# performance and lifecycle evidence own this gfx1151-only default.
+GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # SPECDEC2 S3 admits construction of the dense NextN c1 staged adapter on
 # gfx1151. S4 additionally admits the physical c2/c4 adapter; arithmetic/default
 # promotion remains independently gated by each phase's correctness and
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
-GGUF_SPECDEC2_MTP2_C4 = True
+# Production MTP admission is intentionally non-monotonic. C1-C4 retain their
+# certified K1-K3 cells; the B5 suite admits only the profitable wide C8-K3
+# cell. C5-C7 and shallower C8 remain on one full-width AR step. Keeping width
+# and depth together prevents a scalar C8 maximum from silently broadening the
+# three measured-losing widths.
+GGUF_SPECDEC2_MTP2_PHYSICAL = True
+GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
+    str, tuple[tuple[int, int], ...]
+] = {
+    "production": (
+        *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
+        (8, 3),
+    )
+}
+# M5 whole-batch routing (scaling campaign, 2026-08-31): measured at the
+# current head, MTP sub-group interleaving reaches only 0.74-0.80x of own AR
+# at physical widths 5-8 (C5-C8 28.0/32.7/33.1/35.5 vs AR 36.1/40.8/43.7/47.8
+# tok/s), so a due batch wider than the production bound must fall through to
+# one full-batch AR decode instead of chaining MTP sub-groups. Widths <= 4
+# keep the certified MTP cycle (1.19-1.56x AR).
+GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS: dict[str, int] = {"production": 4}
+# E1a/E7 admit the exact shifted prompt-streaming path for measured Qwen3.8
+# standard-Q4 production physical-C2/C3 groups. Scaling-campaign screens
+# (2026-08-31): width 1 engages the same exact path (C1 +24.1% screen,
+# IDs/acceptance/route/budget identical); width 4 now repeats that result at
+# the current head (C4 34.182->35.618, gate 34.596 PASS, every category >=
+# own AR, per-cell IDs exact, acceptance 92/121 vs 93/120 baseline). The
+# historical 628/796->624/800 C4 drift did not reproduce; the binding frozen
+# contract is per-cell output self-exactness (see the M4 decision entry),
+# with acceptance trajectory an observational diagnostic. Strict C1,
+# other models/quants/profiles, and peers retain replay.
+GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M", "production"): (1, 2, 3, 4),
+}
+# E1b reuses the exact Q6 F32 small-B rowtile only for physical proposal-head
+# dimensions/rows2-4 that have actual Qwen3.8 evidence. Wide request groups
+# already lower proposals into rows4 subgroups, so rows5-8 are not runtime keys.
+# NextN adapts the source
+# model to a one-block geometry and does not carry its file-type label, so this
+# key uses the immutable H/N head shape; primitive resolution still requires
+# Q6 T16. The direct producer remains the strict policy-miss fallback. The
+# rowtile wrapper selects its col8 body at rows3/4 and 16-column body at rows2.
+GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES = frozenset(
+    {
+        (5120, 248320, 2),
+        (5120, 248320, 3),
+        (5120, 248320, 4),
+        # Scaling-campaign M2: the single wide proposal carries rows5-8.
+        # The planar T16 rowtile body is bit-identical to the direct parent
+        # across rows 2-8 (tests/test_qwen38_nextn_proposal_head_rowtile.py);
+        # without these keys the wide proposal head fell to the per-row
+        # direct gemv (measured 36.7 ms/launch vs ~4.8 ms chunked sweeps).
+        (5120, 248320, 5),
+        (5120, 248320, 6),
+        (5120, 248320, 7),
+        (5120, 248320, 8),
+    }
+)
 GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT = 65544
 GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT = 65544
 # F4's clean all-candidate, all-workload production gate selects fair:256 at
@@ -2245,6 +3230,28 @@ _GFX1151_OVERRIDES = {
     ): gguf_q4_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
     (
         "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_wmma_prefill_bf16_bf16_out",
+    ): gguf_q5_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
+    # B2 P1: F16-staged activation siblings, admitted unselected; the
+    # bf16 routers above stay the selected strict fallback.
+    (
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_fp16_in_bf16_out",
+    ): gguf_q4_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out,
+    (
+        "linear",
+        "gguf_q4_k_t16_v1",
+        "t16_wmma_prefill_shared_b_fp16_in_bf16_out",
+    ): gguf_q4_k_t16_wmma_prefill_shared_b_fp16_in_bf16_out,
+    (
+        "linear",
+        "gguf_q5_k_t16_v1",
+        "t16_wmma_prefill_fp16_in_bf16_out",
+    ): gguf_q5_k_t16_wmma_prefill_gfx1151_fp16_in_bf16_out,
+    (
+        "linear",
         "gguf_q6_k_t16_v1",
         "t16_wmma_prefill_bf16_bf16_out",
     ): gguf_q6_k_t16_wmma_prefill_gfx1151_bf16_bf16_out,
@@ -2298,6 +3305,18 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
             _GFX1151_OVERRIDES.get((key.layer, key.quant, key.variant), source_fn),
             replace=replace,
         )
+    q6_integer_mmq_key = KernelKey(
+        BACKEND,
+        "linear",
+        "gguf_q6_k_t16_qmicro_planar_v1",
+        "t16_q8_1_planar_integer_mmq64x64_bf16_bf16_out",
+    )
+    if replace or not is_registered(q6_integer_mmq_key):
+        register(
+            q6_integer_mmq_key,
+            gguf_q6_k_t16_qmicro_planar_dense_q8_1_mmq64x64_bf16_bf16_out,
+            replace=replace,
+        )
     for variant, fn in (
         (
             "t16_wmma_prefill_single_wave_bf16_bf16_out",
@@ -2310,6 +3329,10 @@ def register_gfx1151_kernels(*, replace: bool = False) -> None:
         (
             "t16_wmma_prefill_shared_b_bf16_bf16_out",
             gguf_q4_k_t16_wmma_prefill_shared_b_bf16_bf16_out,
+        ),
+        (
+            "t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out",
+            gguf_q4_k_t16_wmma_prefill_shared_b3w8r3_bf16_bf16_out,
         ),
     ):
         key = KernelKey(BACKEND, "linear", "gguf_q4_k_t16_v1", variant)
@@ -2390,6 +3413,7 @@ __all__ = [
     "GGUF_COMPACT_WMMA_NO_READ_MAX_SELECTED_ROWS",
     "GGUF_DECODE_GRAPH_MIN_REPLAY_STEPS",
     "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES",
+    "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY",
     "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
     "GGUF_GDN_INDEXED_SINGLETON_DECODE",
     "GGUF_GDN_PREFILL_AUTO_MODE",
@@ -2422,6 +3446,7 @@ __all__ = [
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_T16_PHYSICAL_SMALLM_ROWS",
+    "GGUF_Q4_T16_PHYSICAL_SMALLM_MAX_ROWS",
     "GGUF_Q4_T16_PHYSICAL_SMALLM_SHAPES",
     "GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS",
     "GGUF_Q4_T16_SELECTED_PREFILL_AUTO_MODE",
@@ -2447,10 +3472,32 @@ __all__ = [
     "GGUF_Q4_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q5_T16_F16_ROCBLAS_PREFILL_POLICIES",
     "GGUF_Q6_T16_F16_ROCBLAS_PREFILL_POLICIES",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R9_ROWS",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R9_SHAPE",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MIN_ROWS",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R6_MAX_ROWS_BY_SHAPE",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R4_ROWS",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R4_SHAPES",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R3_ROWS",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED4R3_SHAPES",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_PLANAR_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q5_T16_DENSE_SHARED8R3_MIN_ROWS",
+    "GGUF_Q5_T16_DENSE_SHARED8R3_MAX_ROWS",
+    "GGUF_Q5_T16_DENSE_SHARED8R3_SHAPES",
+    "GGUF_Q6_PREFILL_SHARED3R1_MIN_ROWS",
+    "GGUF_Q6_PREFILL_SHARED3R1_MAX_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED3R1_SHAPES",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MIN_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED6R1_MAX_ROWS",
+    "GGUF_Q6_DENSE_INTEGER_MMQ_PREFILL_POLICY",
+    "GGUF_Q6_PLANAR_PREFILL_SHARED3R1_SHAPES",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_MIN_ROWS",
     "GGUF_Q6_STANDARD_PREFILL_SHARED4_SHAPES",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MIN_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_MAX_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MIN_ROWS",
+    "GGUF_Q6_STANDARD_PREFILL_SHARED8R3_HIGH_MAX_ROWS",
     "GGUF_Q6_Q4_T16_MIXED_GRID_DECODE_SHAPES",
     "GGUF_NARROW_KV_PAIR_DECODE_SHAPES",
     "GGUF_T16_F16_ROCBLAS_MAX_ROWS_BY_QUANT_SHAPE",
@@ -2460,6 +3507,9 @@ __all__ = [
     "GGUF_T16_NATIVE_ROWTILE_VARIANTS_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_SHAPES_BY_QUANT",
     "GGUF_T16_TARGET_VERIFIER_ROWTILE_CHUNK_ROWS_BY_QUANT",
+    "GGUF_T16_TARGET_VERIFIER_TRUE_ROWTILE_VARIANTS",
+    "GGUF_T16_TARGET_VERIFIER_WIDE_Q6_SHARED4_VARIANTS",
+    "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_PAIR_VARIANTS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_ROWS",
     "GGUF_T16_TARGET_VERIFIER_PRODUCTION_Q4_ROWTILE_SHAPES",
     "GGUF_T16_C1_VARIANTS_BY_QUANT_SHAPE",
@@ -2469,12 +3519,17 @@ __all__ = [
     "GGUF_Q6_LM_HEAD_MAX_CHUNK",
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
-    "GGUF_SPECDEC2_MTP2_C4",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
+    "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS",
+    "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
+    "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
     "GGUF_SPECDEC2_NATIVE_TARGET_MAX_CONTEXT",
     "GGUF_FUSED_LINEAR_STATE_TRANSFER",
     "GGUF_DIRECT_RESIDENT_LINEAR_STATE",
     "GGUF_C2_PACKED_PREFILL_MAX_ROWS",
+    "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS",
     "GGUF_Q8_T16_DECODE_ROWTILE_ALL",
     "GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS",

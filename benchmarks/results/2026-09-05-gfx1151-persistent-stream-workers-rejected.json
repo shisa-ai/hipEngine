@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_persistent_stream_workers_rejected",
+  "created_at": "2026-09-05T03:50:00Z",
+  "status": "rejected_no_live_product_owner",
+  "passed": true,
+  "performance_claim": false,
+  "decision": "Do not add a persistent ThreadPoolExecutor to the GGUF model loop. The measured staged gfx1151 Qwen3.8 server path constructs no generation-side pools. The three per-cycle pool sites belong to direct compatibility/control loops, and an out-of-tree reusable-pool diagnostic did not produce a consistent complete-wall win.",
+  "hardware": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "software": {
+    "source_commit": "6d4fb90ce0f9a4d46178fc27c8028d7fd4dea7b9",
+    "tracked_source_clean": true,
+    "python": "3.13.13",
+    "rocm": "HIP version: 7.15.26333-0000000",
+    "compiler": "AMD clang 23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+    "execution_profile": "production"
+  },
+  "models": {
+    "qwen38_dense": {
+      "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106775008,
+      "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "bf16"
+    },
+    "qwen36_moe": {
+      "path": "/home/lhl/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+      "size_bytes": 22663387424,
+      "sampled_sha256": "936659d614707776d8e6ca1fb8595991159e78361bff2e3a3616aa91564c89fb",
+      "quant": "gguf_q4_k_m",
+      "kv_dtype": "bf16"
+    }
+  },
+  "source_inventory": {
+    "path": "hipengine/generation/qwen35_gguf.py",
+    "thread_pool_executor_sites": 3,
+    "sites": [
+      {
+        "method": "_try_step_ar_serving_slot_chunks_streams",
+        "purpose": "direct packed-AR control chunks"
+      },
+      {
+        "method": "_try_draft_mtp_serving_slots_streams",
+        "purpose": "direct MoE MTP-control draft slots"
+      },
+      {
+        "method": "_try_verify_mtp_serving_cycle_chunks_streams",
+        "purpose": "direct MoE MTP-control verifier chunks"
+      }
+    ],
+    "product_owner": "Qwen35GGUFResidentModelRunner through SubmitPollTextGenerator and EngineService",
+    "direct_loop_status": "compatibility/control/oracle path tracked by docs/REFACTOR.md under GGUF duplicate AR loop ownership"
+  },
+  "reachability": {
+    "live_qwen38_c8_k3_server": {
+      "prompt": "code_merge_intervals",
+      "width": 8,
+      "max_tokens": 24,
+      "candidate_budget": 3,
+      "generation_executor_constructions": 0,
+      "benchmark_request_fanout_executor_constructions": 4,
+      "mtp_engaged": true,
+      "rows_self_exact": true,
+      "ar_mtp_generated_ids_equal": true,
+      "final_active_allocations": 0,
+      "performance_claim_eligible": false
+    },
+    "direct_qwen38_dense_c8_control": {
+      "width": 8,
+      "max_tokens": 24,
+      "generation_executor_constructions": 0,
+      "rows_self_exact": true,
+      "reason": "the dense direct MTP control does not use the three MoE/stream-chunk pool sites"
+    },
+    "direct_qwen36_moe_c8_control": {
+      "width": 8,
+      "max_tokens": 24,
+      "group_cycles": 8,
+      "draft_pool": {
+        "constructions": 8,
+        "workers": 8,
+        "submissions_per_construction": 8
+      },
+      "verify_pool": {
+        "constructions": 8,
+        "workers": 2,
+        "submissions_per_construction": 2
+      },
+      "rows_self_exact": true,
+      "draft_stream_batch_ms": 322.403,
+      "target_verify_stream_chunks_ms": 909.819,
+      "slots_cycle_wall_ms": 1491.917
+    },
+    "direct_qwen36_moe_packed_ar_c9_control": {
+      "width": 9,
+      "max_tokens": 8,
+      "decode_cycles_with_pool": 7,
+      "pool_workers": 2,
+      "submissions_per_construction": 2,
+      "rows_self_exact": true,
+      "execution_path": "gguf_packed_ar_server_decode"
+    },
+    "live_qwen36_moe_c8_limitation": {
+      "status": "failed_before_decode",
+      "error": "MoE MTP2 prefill lost its target-hidden sink",
+      "generation_executor_constructions_before_failure": 0,
+      "final_output_mask_disabled_control": "same failure",
+      "interpretation": "not caused by the 2026-09-05 packed-prefill final-output mask; outside this Qwen3.8 application campaign"
+    }
+  },
+  "host_executor_microbenchmark": {
+    "protocol": "Five trials of 200 cycles per worker count. Each cycle submits one no-op per worker and waits for all results. The control constructs and closes a pool every cycle; the candidate reuses one warmed pool.",
+    "rows": {
+      "2": {
+        "per_cycle_pool_median_of_trial_medians_ms": 0.0383615,
+        "persistent_pool_median_of_trial_medians_ms": 0.015023,
+        "estimated_saved_ms": 0.0233385
+      },
+      "4": {
+        "per_cycle_pool_median_of_trial_medians_ms": 0.0742195,
+        "persistent_pool_median_of_trial_medians_ms": 0.027066,
+        "estimated_saved_ms": 0.0475595
+      },
+      "8": {
+        "per_cycle_pool_median_of_trial_medians_ms": 0.1281505,
+        "persistent_pool_median_of_trial_medians_ms": 0.0492725,
+        "estimated_saved_ms": 0.067251
+      }
+    },
+    "legacy_c8_draft_plus_verify_estimate": {
+      "estimated_saved_ms_per_group_cycle": 0.0905895,
+      "estimated_saved_ms_over_eight_cycles": 0.724716,
+      "percent_of_measured_legacy_cycle_wall": 0.04857616073816439
+    },
+    "legacy_ar_c9_estimate": {
+      "estimated_saved_ms_over_seven_cycles": 0.1633695
+    }
+  },
+  "legacy_moe_persistent_pool_ab": {
+    "scope": "out-of-tree diagnostic only; one prompt; direct compatibility/control path; not a product or throughput claim",
+    "protocol": {
+      "width": 8,
+      "max_tokens": 24,
+      "candidate_budget": 2,
+      "warmups_per_arm": 1,
+      "measured_sequence": [
+        "control",
+        "candidate",
+        "candidate",
+        "control",
+        "control",
+        "candidate",
+        "candidate",
+        "control"
+      ],
+      "runs_per_arm": 4,
+      "candidate_physical_pools": 2
+    },
+    "correctness": {
+      "all_rows_self_exact": true,
+      "all_generated_id_sha256_equal": true,
+      "threads_before": ["MainThread"],
+      "threads_after_pool_shutdown": ["MainThread", "hipengine-engine-service"],
+      "threads_after_model_close": ["MainThread"]
+    },
+    "complete_call_wall_ms": {
+      "control": [2172.4310349673033, 2091.1165301222354, 2061.0317850951105, 2236.9221670087427],
+      "candidate": [2095.7029280252755, 2115.84439012222, 2069.1108889877796, 2078.1353360507637],
+      "control_median": 2131.7737825447693,
+      "candidate_median": 2086.9191320380196,
+      "candidate_median_delta_percent": -2.1040999225164114,
+      "paired_candidate_wins": "2/4"
+    },
+    "cycle_wall_ms": {
+      "control_median": 1261.908,
+      "candidate_median": 1217.6185,
+      "candidate_median_delta_percent": -3.5097249561774624,
+      "paired_candidate_wins": "2/4"
+    },
+    "draft_stream_batch_ms": {
+      "control_median": 329.99,
+      "candidate_median": 323.317,
+      "candidate_median_delta_percent": -2.022182490378499,
+      "paired_candidate_wins": "4/4"
+    },
+    "target_verify_stream_chunks_ms": {
+      "control_median": 689.615,
+      "candidate_median": 664.6185,
+      "candidate_median_delta_percent": -3.6247036389869702,
+      "paired_candidate_wins": "2/4"
+    },
+    "interpretation": "The draft sub-window consistently improves, which indicates real HIP thread-local startup cost beyond Python pool construction. Complete call and cycle walls win only two of four counterbalanced pairs, however, and this direct loop is not the staged product owner. The result does not satisfy the complete-server/load retention gate."
+  },
+  "commands": {
+    "source_inventory": "git grep -n 'ThreadPoolExecutor' -- hipengine",
+    "live_qwen38_trace": "PYTHONPATH=/tmp/pooltrace:$PWD HIPENGINE_POOLTRACE_DIR=/tmp/pooltrace-output HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --diagnostic-prompt-count 1 --correctness-contract mtp_self_exact --expected-mtp-widths 8 --output /tmp/20260905-gfx1151-worker-trace-c8.json",
+    "host_microbenchmark": ".venv/bin/python /tmp/gfx1151_executor_microbench.py",
+    "legacy_moe_pool_trace": "PYTHONPATH=/tmp/pooltrace:$PWD HIPENGINE_POOLTRACE_DIR=/tmp/pooltrace-legacy-moe-cached HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET=3 .venv/bin/python /tmp/gfx1151_legacy_worker_trace.py",
+    "legacy_ar_pool_trace": "PYTHONPATH=/tmp/pooltrace:$PWD HIPENGINE_POOLTRACE_DIR=/tmp/pooltrace-legacy-ar HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python /tmp/gfx1151_legacy_ar_worker_trace.py",
+    "legacy_moe_ab": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET=3 .venv/bin/python /tmp/gfx1151_legacy_worker_ab.py"
+  },
+  "raw_artifacts": {
+    "executor_microbenchmark": {
+      "path": "/tmp/20260905-gfx1151-executor-microbench.json",
+      "sha256": "59c3d0cbff0f13cbbf2316f09001e5434458566002c3ec13317206696c04a568"
+    },
+    "live_qwen38_trace": {
+      "path": "/tmp/20260905-gfx1151-worker-trace-c8.json",
+      "sha256": "e695025b66ad5a2f4bd13f73c9061d941aeb1f42b329c90211e48608e43b8844"
+    },
+    "legacy_dense_trace": {
+      "path": "/tmp/20260905-gfx1151-worker-trace-legacy-c8.json",
+      "sha256": "3ba754f56ee0388bad0420f818bb66ddd4664e3f3066df09434a4b4f1aa9bb0d"
+    },
+    "legacy_moe_trace": {
+      "path": "/tmp/20260905-gfx1151-worker-trace-legacy-moe-c8.json",
+      "sha256": "144885960cbbfce2f805d1118f1289d59dea9c01be669367ad9e495e85e2b5f7"
+    },
+    "legacy_ar_trace": {
+      "path": "/tmp/20260905-gfx1151-worker-trace-legacy-ar-c9.json",
+      "sha256": "f5100691e9d6c169e9709c5650611bfa363bc66cd666bec1e1efa5bf635f6414"
+    },
+    "legacy_moe_ab": {
+      "path": "/tmp/20260905-gfx1151-worker-legacy-moe-ab.json",
+      "sha256": "5464a28d3cb995cd704d7de0bdd22790ba05a5c6496d7f22d532a76a5eab92b3"
+    }
+  },
+  "follow_up": "Do not transfer persistent stream workers to gfx1100. Reopen only if a W7900 profile identifies executor construction on a live product owner and a complete same-host server/load A/B is consistently positive."
+}

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-high-row-current-ledger",
+  "status": "measurement_only",
+  "source_commit": "abeac15ab",
+  "physical_host": {"hostname": "gfx1151", "gpu": "AMD Radeon 8060S", "architecture": "gfx1151"},
+  "points": [
+    {"rows": 288, "tick_wall_ms": 1074.940534, "q5_sweeps": 1.0, "q5_gpu_ms": 43.08, "q6_sweeps": 4.40, "q6_gpu_ms": 248.25, "q6_family_ceiling_ms": 191.83},
+    {"rows": 536, "tick_wall_ms": 1859.535665, "q5_sweeps": 4.0, "q5_gpu_ms": 76.14, "q6_sweeps": 8.18, "q6_gpu_ms": 468.03, "q6_family_ceiling_ms": 410.82},
+    {"rows": 1024, "tick_wall_ms": 3062.538099, "q5_sweeps": 4.0, "q5_gpu_ms": 116.53, "q6_sweeps": 14.48, "q6_gpu_ms": 870.54, "q6_family_ceiling_ms": 810.42}
+  ],
+  "trace_decomposition": {"planar_gridY32_ms": 702.981037, "planar_gridY17_ms": 373.262129, "planar_gridY9_ms": 402.941089, "standard_shared8r3_retained": true},
+  "decision": "Y2 cannot close: high-row planar Q6 remains materially above the 2% threshold after standard-Q6 retention. Screen exact planar shared8r3 against the 191.83/410.82/810.42 ms family-wide bounds."
+}

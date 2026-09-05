@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_c1_singleton_target_retained",
+  "date": "2026-09-03",
+  "status": "retained_active_c1_default",
+  "performance_claim": true,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop / Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "software": {
+    "measurement_commit": "b58a70c82f35c75ee9b7efcf4560f19d76b4680f",
+    "tracked_tree_dirty": false,
+    "hip_arch": "gfx1151",
+    "gpu_max_hw_queues": 2,
+    "compiler_version_file": "/tmp/q38-z0-run-20260901-201730/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "sampled_fingerprint": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "standard_q4_k_m",
+    "kv": "bf16"
+  },
+  "execution_profile": {
+    "requested": "production",
+    "resolved": "production",
+    "manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "change": {
+    "scope": "Generation-2 Qwen3.8 Q4_K_M explicit K3 serving when exactly one request is active under a resident owner with capacity greater than one",
+    "mechanism": "Qwen35GGUFMTP2Adapter keeps its wide physical NextN provider but lazily attaches the existing request-local Qwen35GGUFTransactionalVerifier for an active singleton",
+    "c1_target": "single-request transactional target verifier",
+    "c2_plus_target": "unchanged packed physical target verifier",
+    "resident_capacity_changed": false,
+    "provider_capacity_changed": false,
+    "env_flag_added": false,
+    "strict_fallback": "gguf_target_ar"
+  },
+  "protocol": {
+    "description": "one-group D24 explicit K3, ten canonical prompts, raw greedy, no prompt cache, batch-window 50 ms, complete barrier-to-last-completion wall",
+    "prompt_suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+    "prompts": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout": "6 train / 4 heldout",
+    "widths": [1, 3],
+    "resident_capacity": 3,
+    "candidate_budget": 3,
+    "max_tokens": 24,
+    "correctness_contract": "mtp_self_exact",
+    "generation2_diagnostic": true
+  },
+  "performance": {
+    "baseline": {
+      "commit": "822d60f530312eb4e7ab8b9dfdb5ff1f8ffcef8a",
+      "note": "same-host, same-suite, same width-1/3, capacity-3 protocol; the then-present rows<8 floor was subsequently proven inert and reverted",
+      "c1": {
+        "ar_tok_s": 11.477228015686638,
+        "mtp_tok_s": 8.541038070977539,
+        "mtp_over_ar": 0.7441725527543736,
+        "draft_acceptance": 0.152317880794702,
+        "ar_mtp_equal_cells": "0/10"
+      },
+      "c3": {
+        "ar_tok_s": 24.89826381128418,
+        "mtp_tok_s": 32.869081100370146,
+        "mtp_over_ar": 1.32013546605099,
+        "draft_acceptance": 0.7889447236180904,
+        "ar_mtp_equal_cells": "10/10"
+      }
+    },
+    "retained": {
+      "c1": {
+        "ar_tok_s": 11.518109985479192,
+        "mtp_tok_s": 19.42835596100267,
+        "mtp_over_ar": 1.686765969894008,
+        "mtp_improvement_percent": 127.47066339652852,
+        "mtp_wall_reduction_percent": 56.03828708861711,
+        "draft_acceptance": 0.7889447236180904,
+        "ar_mtp_equal_cells": "10/10",
+        "mtp_self_exact_cells": "10/10",
+        "engaged_cells": "10/10",
+        "budget_conformed_cells": "10/10"
+      },
+      "c3": {
+        "ar_tok_s": 24.525937495140614,
+        "mtp_tok_s": 32.91889894997578,
+        "mtp_over_ar": 1.342207569292635,
+        "mtp_improvement_percent": 0.15156447317010713,
+        "draft_acceptance": 0.7889447236180904,
+        "ar_mtp_equal_cells": "10/10",
+        "mtp_self_exact_cells": "10/10",
+        "engaged_cells": "10/10",
+        "budget_conformed_cells": "10/10"
+      }
+    },
+    "category_mtp_tok_s": {
+      "c1": {
+        "code": 19.808955153075768,
+        "general_en": 20.815789236264198,
+        "general_ja": 18.45368539700428,
+        "mixed_ja_en": 18.463406857132554
+      },
+      "c3": {
+        "code": 33.34885835076637,
+        "general_en": 35.155916490778154,
+        "general_ja": 31.546006715533096,
+        "mixed_ja_en": 31.474335188998754
+      }
+    }
+  },
+  "correctness": {
+    "all_20_cells_self_exact_engaged_budget_conformed": true,
+    "c1_greedy_ar_equality_restored": true,
+    "c3_packed_collateral_greedy_ar_equality": true,
+    "c1_accepted_draft_tokens": 157,
+    "c1_proposed_draft_tokens": 199,
+    "c3_accepted_draft_tokens": 471,
+    "c3_proposed_draft_tokens": 597,
+    "final_current_allocated_bytes": 0,
+    "final_active_allocations": 0
+  },
+  "validation": {
+    "red": "tests/test_qwen35_gguf_mtp2_seam.py::test_mtp2_wide_provider_lazily_adds_singleton_target_verifier failed before the change because state.verifier remained None",
+    "green": "tests/test_qwen35_gguf_mtp2_seam.py: 59 passed",
+    "focused_bundle": "tests/test_specdec2_c1_gate.py tests/test_specdec2_s6_failure_gate.py tests/test_mtp_cycle_accounting.py tests/test_generation_qwen35_gguf_sampling.py: 131 passed, 1 skipped",
+    "gpu_gate_status": "complete/passed",
+    "gpu_gate_elapsed_seconds": 140.4830601660069
+  },
+  "commands": {
+    "gpu_gate": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py --model /home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --execution-profile production --widths 1,3 --resident-capacity 3 --expected-mtp-widths 1,3 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/q38-c1-singleton-target-c13.json",
+    "seam": ".venv/bin/python -m pytest tests/test_qwen35_gguf_mtp2_seam.py -q",
+    "focused_bundle": ".venv/bin/python -m pytest tests/test_specdec2_c1_gate.py tests/test_specdec2_s6_failure_gate.py tests/test_mtp_cycle_accounting.py tests/test_generation_qwen35_gguf_sampling.py -q"
+  },
+  "raw_evidence": {
+    "baseline": {
+      "path": "/tmp/q38-c1floor-ar-mtp-c13.json",
+      "sha256": "50354c768c9ca2add6c91528501aa6250a82e10ab64fb9508efd6221ae87a5be"
+    },
+    "retained": {
+      "path": "/tmp/q38-c1-singleton-target-c13.json",
+      "sha256": "7050611329d8bba0c05a4ebbb27cdef847a93e2af721602e389ec2adcccfcc58"
+    }
+  },
+  "decision": "Retain active-singleton target routing as the default inside the qualified Generation-2 MTP2 route. Exactly one active request uses the request-local transactional target verifier while the wide physical NextN provider remains resident; C2+ continues through the packed physical target path. The public automatic policy is unchanged: production C2-C8 remains K0 outside explicit diagnostic admission."
+}

@@ -119,7 +119,7 @@ says otherwise:
 The gfx1151 tuning rule is therefore: retest retained W7900 defaults first, but
 also retest the **operating point**. Strix Halo’s compute:memory balance may make
 B=2/B=3 verifier rows more attractive than they were on W7900, especially if
-larger rows amortize host/readback/sampler overhead without exploding HBM traffic.
+larger rows amortize host/readback/sampler overhead without exploding memory traffic.
 
 ### llama.cpp Audit — What It Is Doing Differently
 

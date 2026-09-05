@@ -204,7 +204,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="strict",
         execution_profile_manifest_sha256=(
-            "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
+            "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -224,6 +224,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s1.json",
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s2.json",
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s3.json",
+            "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
         ),
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
@@ -239,7 +240,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="strict",
         execution_profile_manifest_sha256=(
-            "af82558349e40e6f1e9e383da3340d7eb0a03dc62734d03c464fd432867a692e"
+            "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -257,6 +258,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s4-auto.json",
             "benchmarks/results/2026-08-26-gfx1151-qwen38-q4km-mtp-serving-s5-closure.json",
             "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
+            "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
         ),
         strict_fallback_key="gguf_target_ar",
         automatic_eligible=True,
@@ -306,7 +308,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="production",
         execution_profile_manifest_sha256=(
-            "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
+            "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -319,14 +321,15 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         max_context_tokens=128,
         min_output_horizon_tokens=24,
         max_output_horizon_tokens=24,
-        reason="qualified_automatic_production_cap4_c1_or_c2_k3_d24",
+        reason="diagnostic_production_cap4_c1_or_c2_after_ar_rebase",
         evidence_artifacts=(
             "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
             "benchmarks/results/2026-08-27-gfx1151-qwen38-realized-singleton-auto.json",
+            "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
         ),
         max_realized_group_rows=2,
         strict_fallback_key="gguf_target_ar",
-        automatic_eligible=True,
+        automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1151-production-bf16-c2-k3-d24",
@@ -339,7 +342,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         weight_quant="gguf_q4_k_m",
         execution_profile="production",
         execution_profile_manifest_sha256=(
-            "534a8bac3ca74428e3c1a60e9c3cbd91254f8963ddfcd678949052783331c565"
+            "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
         ),
         kv_storage="bf16",
         kv_layout="uniform",
@@ -352,13 +355,47 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         max_context_tokens=128,
         min_output_horizon_tokens=24,
         max_output_horizon_tokens=24,
-        reason="qualified_automatic_production_c2_k3_d24",
+        reason="diagnostic_production_c2_after_ar_rebase",
         evidence_artifacts=(
             "benchmarks/results/2026-08-28-gfx1151-qwen38-c2-production-q4-rowtile-retained.json",
             "benchmarks/results/2026-08-27-gfx1151-qwen38-dynamic-admission-d3-lifecycle.json",
+            "benchmarks/results/2026-08-29-gfx1151-qwen38-mtp-e0-current-baseline.json",
         ),
         strict_fallback_key="gguf_target_ar",
-        automatic_eligible=True,
+        automatic_eligible=False,
+    ),
+    SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1151-production-bf16-c8-k3-d24",
+        artifact_sha256=(
+            "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+        ),
+        artifact_size_bytes=17_106_775_008,
+        backend="hip_gfx1151",
+        target_arch="gfx1151",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=8,
+        resident_capacity=8,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=1,
+        max_context_tokens=128,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_explicit_production_c8_k3_after_q6_lm_head_rebase",
+        evidence_artifacts=(
+            "benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json",
+            "benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json",
+            "benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json",
+        ),
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1100-production-bf16-c2-k2-d24",

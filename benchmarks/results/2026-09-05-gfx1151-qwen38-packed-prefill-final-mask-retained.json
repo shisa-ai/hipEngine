@@ -1,0 +1,763 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_packed_prefill_final_output_mask_retained",
+  "created_at": "2026-09-05T03:03:52Z",
+  "status": "retained_exact_launch_subwindow_reduction",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "Enable a profile-package final-output mask for gfx1151 packed prefill. Each slot is sampled only in the bounded round that reaches its final prompt token; hidden-seed capture and target-hidden streaming remain independent. Keep gfx1100 on the unmasked fallback pending W7900 qualification.",
+  "hardware": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "software": {
+    "control_commit": "5794ff228affc171e09606d668c7593333c1a584",
+    "measured_candidate_commit": "38fb958306ff5a49ea465fa22e38b0f268b66303",
+    "final_candidate_commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+    "all_measured_revisions_clean": true,
+    "rocm": "HIP version: 7.15.26333-0000000",
+    "compiler": "AMD clang 23.0.0git 8f497e0992fb7513f7f78a6f6f1056c375e961",
+    "execution_profile": "production",
+    "execution_profile_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "strict_manifest_sha256": "393155123c5e09700ff017f949f338fb5f519579e2f05bea3ffef7a43a09a71b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "policy": {
+    "owner": "backend execution-profile package",
+    "capability": "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
+    "hip_gfx1151": true,
+    "hip_gfx1100": false,
+    "scope": "multi-round packed prefill; user-visible sample/logits only on each slot final round",
+    "preserved_sinks": [
+      "FP32 all-row hidden-seed capture",
+      "streamed target-hidden chunk sinks"
+    ],
+    "fallback": "unmasked per-round sampling for packages without the capability"
+  },
+  "correctness": {
+    "red_green": {
+      "red": "The new final-round ownership test failed under the unmasked path because every bounded round requested a sample.",
+      "green": "The runtime computes per-chunk final slot indices, requests samples only for those slots on the qualified package, and keeps hidden-seed/target-hidden normalization independent."
+    },
+    "focused_cpu": {
+      "command": ".venv/bin/python -m pytest tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_gguf_mtp2_seam.py -q",
+      "passed": true,
+      "passed_tests": 239,
+      "skipped_tests": 1
+    },
+    "backend_scope": {
+      "command": ".venv/bin/python -m pytest tests/test_gfx1151_backend.py::test_gfx1151_backend_scopes_packed_prefill_final_output_mask -q",
+      "passed": true
+    },
+    "final_cpu_bundle": {
+      "command": ".venv/bin/python -m pytest tests/test_gguf_packed_verify_layout.py tests/test_generation_qwen35_gguf_sampling.py tests/test_qwen35_gguf_mtp2_seam.py tests/test_gfx1151_backend.py -q",
+      "passed": true
+    },
+    "six_round_control_candidate": {
+      "rows": 8,
+      "prompt_tokens_per_row": 512,
+      "chunks": 6,
+      "chunk_rows": [
+        768,
+        768,
+        768,
+        768,
+        768,
+        256
+      ],
+      "intermediate_tail_samples": 40,
+      "candidate_lm_head_sample_rows": 8,
+      "tokens_exact": true,
+      "positions_exact": true,
+      "conv_gdn_and_live_kv_exact": true,
+      "state_slots": 8,
+      "hidden_seed_sha256_exact": true,
+      "hidden_seed_slots": 8,
+      "memory_zero_after_each_run": true
+    },
+    "mtp_target_hidden_streaming": {
+      "prompt_characters": 1696,
+      "requests": 4,
+      "candidate_budget": 3,
+      "cycles": 2,
+      "checks": {
+        "ar_mtp_outputs_exact": true,
+        "final_mask_enabled": true,
+        "loop_drained": true,
+        "mtp_c4_engaged": true,
+        "mtp_target_hidden_streamed": true,
+        "multiple_scheduler_prefill_chunks": true,
+        "prompt_streaming_reported": true,
+        "sample_ownership_exact": true,
+        "service_drained": true
+      },
+      "passed": true,
+      "final_active_allocations": 0,
+      "final_allocated_bytes": 0
+    },
+    "cancellation_and_readmission_diagnostic": {
+      "harness_status": "failed",
+      "harness_passed": false,
+      "binding_result": "mechanics pass; cN-to-c1 state bytes retain the pre-existing production-profile arithmetic difference and are not an exact gate for this unit",
+      "original_tokens_exact": true,
+      "newcomer_tokens_exact": true,
+      "declared_widths_only": true,
+      "no_serial_fallback": true,
+      "cancelled_sessions_reused_by_newcomers": true,
+      "inactive_sessions_unchanged": true,
+      "final_active_request_ids": [],
+      "final_available_sessions": 8,
+      "final_scheduler_active": 0,
+      "memory_passed": true,
+      "c1_state_bit_exact": false
+    },
+    "production_profile_inheritance": {
+      "artifact": "benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json",
+      "rows": 216,
+      "mean_kl": 8.576966516756423e-05,
+      "p95_kl": 0.0004905268493445377,
+      "p99_kl": 0.0009683075757518455,
+      "max_kl": 0.002230657367184759,
+      "top1_agreement": 1.0,
+      "strict_repeat_bit_exact": true,
+      "candidate_repeat_bit_exact": true,
+      "passed": true,
+      "basis": "The mask changes only post-trunk output ownership. The direct control/candidate gate proves all Conv/GDN and live-KV hashes exact; the inherited gate remains the production arithmetic contract."
+    }
+  },
+  "performance": {
+    "protocol": "Direct resident physical C5-C8; identical 512-token prompts at each width; production route; eight decode steps retained only to check trajectory non-regression; one warmup per arm; C5-C7 use three and C8 uses five measured runs per clean A/B/B/A process; cached builds required.",
+    "metric": "prefill wall seconds and aggregate prompt tokens per second",
+    "arms": {
+      "A1": {
+        "commit": "5794ff228affc171e09606d668c7593333c1a584",
+        "clean": true,
+        "prefill_seconds_samples": [
+          14.568897878052667,
+          14.569412948098034,
+          14.572777549969032,
+          14.593297431943938,
+          14.584023370873183
+        ],
+        "prefill_seconds_median": 14.572777549969032,
+        "prefill_tok_s_samples": [
+          281.14686740789256,
+          281.1369280692063,
+          281.0720184230565,
+          280.6767983111259,
+          280.85528223853646
+        ],
+        "prefill_tok_s_median": 281.0720184230565,
+        "trajectory_hashes": [
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223"
+        ]
+      },
+      "A2": {
+        "commit": "5794ff228affc171e09606d668c7593333c1a584",
+        "clean": true,
+        "prefill_seconds_samples": [
+          14.56492323987186,
+          14.568531113909557,
+          14.567962408997118,
+          14.575708711054176,
+          14.582831213017926
+        ],
+        "prefill_seconds_median": 14.568531113909557,
+        "prefill_tok_s_samples": [
+          281.22358989075155,
+          281.1539453067628,
+          281.16492100984044,
+          281.01549510890027,
+          280.8782423774848
+        ],
+        "prefill_tok_s_median": 281.1539453067628,
+        "trajectory_hashes": [
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223"
+        ]
+      },
+      "B1": {
+        "commit": "38fb958306ff5a49ea465fa22e38b0f268b66303",
+        "clean": true,
+        "prefill_seconds_samples": [
+          14.55403266986832,
+          14.555546327959746,
+          14.577059725066647,
+          14.590381267014891,
+          14.592990301083773
+        ],
+        "prefill_seconds_median": 14.577059725066647,
+        "prefill_tok_s_samples": [
+          281.43402539421805,
+          281.40475855117813,
+          280.98945035922003,
+          280.73289690242746,
+          280.68270556554836
+        ],
+        "prefill_tok_s_median": 280.98945035922003,
+        "trajectory_hashes": [
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223"
+        ]
+      },
+      "B2": {
+        "commit": "38fb958306ff5a49ea465fa22e38b0f268b66303",
+        "clean": true,
+        "prefill_seconds_samples": [
+          14.551199442939833,
+          14.536872962024063,
+          14.549664170946926,
+          14.577655150089413,
+          14.589990935055539
+        ],
+        "prefill_seconds_median": 14.551199442939833,
+        "prefill_tok_s_samples": [
+          281.48882269546226,
+          281.76623753267546,
+          281.5185252302234,
+          280.9779733316628,
+          280.7404074637561
+        ],
+        "prefill_tok_s_median": 281.48882269546226,
+        "trajectory_hashes": [
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+          "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+          "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+          "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+          "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223"
+        ]
+      }
+    },
+    "pooled": {
+      "candidate_prefill_seconds_mean": 14.567539295204915,
+      "candidate_prefill_seconds_median": 14.566303026513197,
+      "control_prefill_seconds_mean": 14.57483658657875,
+      "control_prefill_seconds_median": 14.571095249033533,
+      "mean_delta_ms": -7.2972913738347245,
+      "mean_delta_percent": -0.05006774059171937,
+      "median_delta_ms": -4.792222520336509,
+      "median_delta_percent": -0.03288855393800416
+    },
+    "c5_c7_counterbalanced": {
+      "c5": {
+        "arms": {
+          "A1": {
+            "commit": "5794ff228affc171e09606d668c7593333c1a584",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              8.8008474400267,
+              8.80244229407981,
+              8.815611560130492
+            ],
+            "prefill_seconds_median": 8.80244229407981,
+            "prefill_tok_s_samples": [
+              290.88107906029484,
+              290.828376315714,
+              290.3939202105799
+            ],
+            "prefill_tok_s_median": 290.828376315714,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7"
+            ]
+          },
+          "B1": {
+            "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              8.790481229079887,
+              8.788597861072049,
+              8.792355961166322
+            ],
+            "prefill_seconds_median": 8.790481229079887,
+            "prefill_tok_s_samples": [
+              291.22410176262434,
+              291.2865101427825,
+              291.16200610017285
+            ],
+            "prefill_tok_s_median": 291.22410176262434,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7"
+            ]
+          },
+          "B2": {
+            "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              8.767724562203512,
+              8.777943005785346,
+              8.773338058032095
+            ],
+            "prefill_seconds_median": 8.773338058032095,
+            "prefill_tok_s_samples": [
+              291.9799751734695,
+              291.6400799495692,
+              291.79315593068816
+            ],
+            "prefill_tok_s_median": 291.79315593068816,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7"
+            ]
+          },
+          "A2": {
+            "commit": "5794ff228affc171e09606d668c7593333c1a584",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              8.790186339057982,
+              8.791873440844938,
+              8.78623623214662
+            ],
+            "prefill_seconds_median": 8.790186339057982,
+            "prefill_tok_s_samples": [
+              291.23387164444887,
+              291.1779858098108,
+              291.3648042643796
+            ],
+            "prefill_tok_s_median": 291.23387164444887,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7"
+            ]
+          }
+        },
+        "pooled": {
+          "control_prefill_seconds_median": 8.79636044043582,
+          "candidate_prefill_seconds_median": 8.783270433428697,
+          "median_delta_ms": -13.09000700712204,
+          "median_delta_percent": -0.14881162607831566,
+          "control_prefill_seconds_mean": 8.797866217714423,
+          "candidate_prefill_seconds_mean": 8.781740112889869,
+          "mean_delta_ms": -16.126104824554233,
+          "mean_delta_percent": -0.18329563584502662
+        },
+        "all_trajectory_hashes_exact": true
+      },
+      "c6": {
+        "arms": {
+          "A1": {
+            "commit": "5794ff228affc171e09606d668c7593333c1a584",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              10.275847770972177,
+              10.293742228997871,
+              10.300348439952359
+            ],
+            "prefill_seconds_median": 10.293742228997871,
+            "prefill_tok_s_samples": [
+              298.95343610266076,
+              298.433740777582,
+              298.2423379081542
+            ],
+            "prefill_tok_s_median": 298.433740777582,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d"
+            ]
+          },
+          "B1": {
+            "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              10.283766681095585,
+              10.297520654974505,
+              10.288647921057418
+            ],
+            "prefill_seconds_median": 10.288647921057418,
+            "prefill_tok_s_samples": [
+              298.7232300444144,
+              298.32423773930327,
+              298.5815068773657
+            ],
+            "prefill_tok_s_median": 298.5815068773657,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d"
+            ]
+          },
+          "B2": {
+            "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              10.282390092033893,
+              10.271548259072006,
+              10.278947308892384
+            ],
+            "prefill_seconds_median": 10.278947308892384,
+            "prefill_tok_s_samples": [
+              298.7632226071621,
+              299.0785734065707,
+              298.86328898119683
+            ],
+            "prefill_tok_s_median": 298.86328898119683,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d"
+            ]
+          },
+          "A2": {
+            "commit": "5794ff228affc171e09606d668c7593333c1a584",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              10.310914092930034,
+              10.325783926993608,
+              10.326808383921161
+            ],
+            "prefill_seconds_median": 10.325783926993608,
+            "prefill_tok_s_samples": [
+              297.93672726905976,
+              297.50767803393546,
+              297.478164190894
+            ],
+            "prefill_tok_s_median": 297.50767803393546,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d"
+            ]
+          }
+        },
+        "pooled": {
+          "control_prefill_seconds_median": 10.305631266441196,
+          "candidate_prefill_seconds_median": 10.283078386564739,
+          "median_delta_ms": -22.552879876457155,
+          "median_delta_percent": -0.2188403533308736,
+          "control_prefill_seconds_mean": 10.305574140627868,
+          "candidate_prefill_seconds_mean": 10.283803486187631,
+          "mean_delta_ms": -21.77065444023718,
+          "mean_delta_percent": -0.21125125241115983
+        },
+        "all_trajectory_hashes_exact": true
+      },
+      "c7": {
+        "arms": {
+          "A1": {
+            "commit": "5794ff228affc171e09606d668c7593333c1a584",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              12.98262268002145,
+              12.9838990541175,
+              12.98082925984636
+            ],
+            "prefill_seconds_median": 12.98262268002145,
+            "prefill_tok_s_samples": [
+              276.0613235348282,
+              276.03418549864875,
+              276.09946392919585
+            ],
+            "prefill_tok_s_median": 276.0613235348282,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87"
+            ]
+          },
+          "B1": {
+            "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              12.96778496610932,
+              12.956523551838472,
+              12.977062792982906
+            ],
+            "prefill_seconds_median": 12.96778496610932,
+            "prefill_tok_s_samples": [
+              276.37719235525657,
+              276.61741096371844,
+              276.179599126081
+            ],
+            "prefill_tok_s_median": 276.37719235525657,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87"
+            ]
+          },
+          "B2": {
+            "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              12.95663477992639,
+              12.973881016951054,
+              12.95854363986291
+            ],
+            "prefill_seconds_median": 12.95854363986291,
+            "prefill_tok_s_samples": [
+              276.61503630191555,
+              276.24733071910526,
+              276.5742894884379
+            ],
+            "prefill_tok_s_median": 276.5742894884379,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87"
+            ]
+          },
+          "A2": {
+            "commit": "5794ff228affc171e09606d668c7593333c1a584",
+            "clean": true,
+            "passed": true,
+            "prefill_seconds_samples": [
+              13.019203702919185,
+              12.99884898494929,
+              13.012945087859407
+            ],
+            "prefill_seconds_median": 13.012945087859407,
+            "prefill_tok_s_samples": [
+              275.2856535454922,
+              275.7167195456869,
+              275.41805300813405
+            ],
+            "prefill_tok_s_median": 275.41805300813405,
+            "trajectory_hashes": [
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+              "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+              "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+              "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+              "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87"
+            ]
+          }
+        },
+        "pooled": {
+          "control_prefill_seconds_median": 12.991374019533396,
+          "candidate_prefill_seconds_median": 12.963164302986115,
+          "median_delta_ms": -28.20971654728055,
+          "median_delta_percent": -0.2171419012713005,
+          "control_prefill_seconds_mean": 12.996391461618865,
+          "candidate_prefill_seconds_mean": 12.96507179127851,
+          "mean_delta_ms": -31.319670340355543,
+          "mean_delta_percent": -0.24098743434167735
+        },
+        "all_trajectory_hashes_exact": true
+      }
+    },
+    "final_source_confirmation": {
+      "commit": "f691b7edc7d9981ee46d0e9a6f38fff466eafd97",
+      "clean": true,
+      "passed": true,
+      "prefill_seconds_samples": [
+        14.535982951056212,
+        14.520705899922177,
+        14.516110139898956,
+        14.571760308928788,
+        14.557369142072275
+      ],
+      "prefill_seconds_median": 14.535982951056212,
+      "prefill_tok_s_samples": [
+        281.7834895508306,
+        282.07995039841364,
+        282.1692561247342,
+        281.0916397993585,
+        281.36952220041906
+      ],
+      "prefill_tok_s_median": 281.7834895508306,
+      "trajectory_hashes": [
+        "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+        "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+        "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+        "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223",
+        "3cedf3702805b3f436b912eed7d1794227379c117ce7ee1c6c6bd231221d57b7",
+        "c6c49e8c85e7c3b848e6e3457463d685db29e6093c6ce847bd319e3d083e5e8d",
+        "e8876d8c983e3612a9cafd4a1c327b482060c053d4d3397f6b7d1d5f2a279e87",
+        "dc966605a5b60353bc6566286da2c491b8d8f9b4492ac6a56e521a16b7130223"
+      ]
+    },
+    "kernel_trace": {
+      "control_total_dispatches": 24318,
+      "candidate_total_dispatches": 24248,
+      "dispatches_removed": 70,
+      "q6_lm_head_kernel": "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>(unsigned short const*, unsigned char const*, float*, long, long, long)",
+      "control_q6_lm_head_launches": 6,
+      "candidate_q6_lm_head_launches": 1,
+      "q6_lm_head_launches_removed": 5,
+      "control_q6_lm_head_duration_ms": 34.598781,
+      "candidate_q6_lm_head_duration_ms": 5.755764,
+      "q6_lm_head_duration_ms_removed": 28.843017,
+      "candidate_chunk_count": 6,
+      "candidate_intermediate_tail_samples_skipped": 40,
+      "candidate_final_sample_rows": 8
+    },
+    "interpretation": "All pooled C5-C8 complete-prefill medians are positive: C5/C6/C7 improve 0.149%/0.219%/0.217%, and C8 improves 0.033%. C8 varies enough that it is not a standalone throughput headline. Retention is strengthened by exact ownership plus the matched reduction of five Q6 head launches, 28.843 ms of Q6 head work, and 70 total dispatches. The final scoped source independently confirms the same exact C8 trajectory and positive sign."
+  },
+  "commands": {
+    "abba": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 GPU_MAX_HW_QUEUES=2 HIPENGINE_COMPILER_VERSION_FILE=/tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant gguf_q4_k_m --configurations native_c8 --prompt-length 512 --decode-steps 8 --warmup-runs 1 --measured-runs 5 --route production --compiler-version-file /tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt --require-cached-build --json <arm.json>",
+    "trace": "rocprofv3 --kernel-trace --marker-trace -f csv -d <output> -- .venv/bin/python /tmp/qwen38_prefill_final_mask_trace.py",
+    "state_hidden": "HIPENGINE_PREFILL_MASK_CAPTURE_STATE=1 .venv/bin/python /tmp/qwen38_prefill_final_mask_trace.py",
+    "mtp_streaming": ".venv/bin/python /tmp/qwen38_prefill_final_mask_mtp_streaming.py /tmp/20260905-prefill-mask-c4-mtp-streaming.json",
+    "lifecycle_diagnostic": "/home/lhl/hipEngine/.venv/bin/python scripts/gguf_arbitrary_c_lifecycle.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --rows 8 --cancel-slots 2 6 --prompt-length 512 --original-max-tokens 5 --newcomer-max-tokens 3 --prefill-chunk-size 256 --gdn-prefill-mode exact --compiler-version-file /tmp/20260905-gfx1151-q6-lmhead-hipcc-version.txt --require-cached-build --json /tmp/20260905-prefill-mask-c8-lifecycle.json"
+  },
+  "raw_artifacts": {
+    "summary": {
+      "path": "/tmp/20260905-prefill-mask-summary.json",
+      "sha256": "4bde1abf02d54b025e01d3b0bce42f3ce43a3704f079e245afde1d545f66b1fb"
+    },
+    "A1": {
+      "path": "/tmp/20260905-prefill-mask-A1.json",
+      "sha256": "e3195fc560880bb0151b0ac5d2410e30a66b35581bc38944d27e30cf97434bfb"
+    },
+    "B1": {
+      "path": "/tmp/20260905-prefill-mask-B1.json",
+      "sha256": "46c8ab5578bdc1ce6881074141dde6dbefaaf14eb0c8dbc087a4eb2fcfd0b611"
+    },
+    "B2": {
+      "path": "/tmp/20260905-prefill-mask-B2.json",
+      "sha256": "badf2a4408e121e955351994d1a6cd4595b0016e44d3f9ca89381599dd45289e"
+    },
+    "A2": {
+      "path": "/tmp/20260905-prefill-mask-A2.json",
+      "sha256": "dd7b72c23c82f966a62e0c8abee33eab5cd4d0d1e9655037e7438c62f53275a6"
+    },
+    "final_candidate": {
+      "path": "/tmp/20260905-prefill-mask-final-candidate.json",
+      "sha256": "749b07ac22b60df66ce03c265a55eee5a9e2b93fa0759c1d28508d86c6305e2e"
+    },
+    "trace_control": {
+      "path": "/tmp/20260905-prefill-mask-trace-A/gfx1151/1758419_kernel_trace.csv",
+      "sha256": "dff1bd027167f155673ca8ed87dc49dd959ef9d392f9200592d7acc6d19b6bda"
+    },
+    "trace_candidate": {
+      "path": "/tmp/20260905-prefill-mask-trace-B/gfx1151/1757442_kernel_trace.csv",
+      "sha256": "8ed13651a6f1874a2b8ec52248f7eced5c85a3cccea85dc93afea72d5b98ff78"
+    },
+    "hidden_control": {
+      "path": "/tmp/prefill-mask-hidden-A.json",
+      "sha256": "c6f49444eabe042b28e5aba77711718ea21b973b2153777d1a7e0880bc9e4be7"
+    },
+    "hidden_candidate": {
+      "path": "/tmp/prefill-mask-hidden-B.json",
+      "sha256": "4bc8d672fc9180b7f68925dfc631eed181adc645b0df43eb7896ee73ade83f45"
+    },
+    "state_control": {
+      "path": "/tmp/prefill-mask-state-A.json",
+      "sha256": "810a4e549c1f62c83830c8dd2427fc27d61e391960920a7b1104e4f98d663350"
+    },
+    "state_candidate": {
+      "path": "/tmp/prefill-mask-state-B.json",
+      "sha256": "9245e93cf6578dea57d8ae7d463c6d841d7bb76ead3c52285128675838b82241"
+    },
+    "mtp_streaming": {
+      "path": "/tmp/20260905-prefill-mask-c4-mtp-streaming.json",
+      "sha256": "21d57e405f5abf19f73bcb990c716b378b70d0501aa386beefa91933dd4b9376"
+    },
+    "lifecycle_diagnostic": {
+      "path": "/tmp/20260905-prefill-mask-c8-lifecycle.json",
+      "sha256": "79272a49afc115f5edd8a21eb454ec5bf10cf491a847f2b9291e6573c57f3faa"
+    },
+    "trace_harness": {
+      "path": "/tmp/qwen38_prefill_final_mask_trace.py",
+      "sha256": "313de9b16d0cf7bdee90d47d5acba0b8121e54bf63dd477a71842397cc85fbba"
+    },
+    "mtp_harness": {
+      "path": "/tmp/qwen38_prefill_final_mask_mtp_streaming.py",
+      "sha256": "52ee79342a4eec34e7af3c617bf6405d32b0765444805ce454f287b3ff4e3841"
+    },
+    "c5_c7_A1": {
+      "path": "/tmp/20260905-prefill-mask-c5c7-A1.json",
+      "sha256": "86f24343aee1bdeeff0404e6a2961c917fccee134b74de21fe330077955a79c6"
+    },
+    "c5_c7_B1": {
+      "path": "/tmp/20260905-prefill-mask-c5c7-B1.json",
+      "sha256": "9dc2d26b4f61e228197173189c7337bc7afc2804d1bd2cb30036e8cbf7e3c95d"
+    },
+    "c5_c7_B2": {
+      "path": "/tmp/20260905-prefill-mask-c5c7-B2.json",
+      "sha256": "afe82b5f2ae176edc3450776fa3b9b65005bc12c5c55965b649a023578654206"
+    },
+    "c5_c7_A2": {
+      "path": "/tmp/20260905-prefill-mask-c5c7-A2.json",
+      "sha256": "3eb18b228476bb0013d4e22955187461a5a3bccf8f736b875a42792aed50a900"
+    }
+  },
+  "rollback": "Set GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK=False in the gfx1151 backend package. The unchanged unmasked runtime path samples every bounded round; gfx1100 already uses it.",
+  "limitations": [
+    "C8 A/B/B/A complete wall improves only 0.033%; C5-C7 improve 0.149%-0.219%. These small wall changes are reported as corroboration, not a standalone throughput headline.",
+    "The generic cancellation harness exits failed because current production C8 state bytes intentionally differ from independent c1; token, route, cancellation, inactive-slot, reclamation, and memory checks pass, and the 216-row production numerical gate remains binding."
+  ]
+}

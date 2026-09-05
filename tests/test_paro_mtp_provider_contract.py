@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -10,21 +11,30 @@ from hipengine.speculative import mtp_native, paro_mtp_profiles
 from scripts import mtp_chain_e2e_smoke
 
 
+_ROUTE_ENV = (
+    paro_mtp_profiles.PARO_MTP_CONTRACT_ENV,
+    paro_mtp_profiles.PARO_MTP_ROUTE_ENV,
+    paro_mtp_profiles.PARO_MTP_CHAIN_ATTN_MODE_ENV,
+    paro_mtp_profiles.GDN_EXACT_ENV,
+    paro_mtp_profiles.LINEAR_EXACT_ENV,
+    paro_mtp_profiles.MOE_EXACT_ENV,
+    paro_mtp_profiles.FULL_ATTN_EXACT_SUFFIX_ENV,
+)
+
+
 @pytest.fixture(autouse=True)
 def _isolate_route_environment(monkeypatch: pytest.MonkeyPatch):
-    """Prevent the profile binder's process-env contract from leaking across tests."""
+    """Prevent process-owned route bindings from leaking across tests."""
 
-    for name in (
-        paro_mtp_profiles.PARO_MTP_CONTRACT_ENV,
-        paro_mtp_profiles.PARO_MTP_ROUTE_ENV,
-        paro_mtp_profiles.PARO_MTP_CHAIN_ATTN_MODE_ENV,
-        paro_mtp_profiles.GDN_EXACT_ENV,
-        paro_mtp_profiles.LINEAR_EXACT_ENV,
-        paro_mtp_profiles.MOE_EXACT_ENV,
-        paro_mtp_profiles.FULL_ATTN_EXACT_SUFFIX_ENV,
-    ):
+    before = {name: os.environ.get(name) for name in _ROUTE_ENV}
+    for name in _ROUTE_ENV:
         monkeypatch.delenv(name, raising=False)
     yield
+    for name, value in before.items():
+        if value is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = value
 
 
 def _step_result() -> mtp_native.NativeMtpStepResult:
@@ -106,8 +116,6 @@ def test_w8a16_target_head_binding_is_full_vocab_and_borrowed() -> None:
 
 
 def test_borrowed_w8_head_rejects_closed_owner() -> None:
-    import pytest
-
     owner = SimpleNamespace(closed=False)
     head = mtp_native.NativeMtpW8A16Head(
         weight_int8_ptr=0x1000,
@@ -133,8 +141,6 @@ def test_target_contract_scope_fails_closed_outside_b1_graph_off_chain() -> None
         ar_fallback_zero_streak=0,
         overlap_verify_commit_proposer=False,
     )
-
-    import pytest
 
     with pytest.raises(ValueError, match="B=1 only"):
         validate(

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w6_prompt_streaming_bound",
+  "status": "blocked_compound",
+  "performance_claim": false,
+  "measured": {
+    "C6_streaming_tok_s_runs": [
+      38.616,
+      38.599,
+      38.602
+    ],
+    "C6_gain_approx_percent": 4.0,
+    "C8_engaged": false,
+    "retained_k1_ratios": {
+      "C6": 0.929,
+      "C8": 0.9192
+    }
+  },
+  "optimistic_compound": {
+    "assumption": "grant C8 the same 4% gain despite no engagement",
+    "ratios": {
+      "C6": 0.9661600000000001,
+      "C8": 0.955968
+    },
+    "target": 1.15,
+    "remaining_ratio_shortfall": {
+      "C6": 0.18383999999999978,
+      "C8": 0.19403199999999987
+    }
+  },
+  "decision": "Close W6 measured-blocked. C6 gain is real but even optimistic symmetric 4% reaches only 0.966x/0.956x, below 1.15x. C8 engagement implementation cannot cover the compound gap; preserve reverted evidence."
+}

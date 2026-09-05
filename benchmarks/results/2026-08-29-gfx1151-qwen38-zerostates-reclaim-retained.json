@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.1 (third retained unit: reclaim-path template scan removal)"],
+  "title": "zero_states reclaim memsets issued directly (template scan removed)",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "tuned_profile": "accelerator-performance"
+  },
+  "attribution": {
+    "method": "Phase-count instrumentation of the C1 prefill arm (22 requests): 22 prefill (433 ms avg) + 22 delivery/reclaim decode passes (45 ms avg); py-spy leaf attribution inside the decode pass: _zero 856/900 ms (~39 ms/request) - the per-buffer np.all(zeros == 0) host scan over immutable state-sized templates before every memset (~96 buffers/request).",
+    "templates": "conv_zero/recurrent_zero are np.zeros arrays constructed once at allocation (qwen35_gguf_runner.py:28450-28453) and never mutated; buffers are allocated from those template sizes, so every _zero call took the memset branch after rescanning the same constant."
+  },
+  "change": {
+    "file": "hipengine/runtime/qwen35_gguf_runner.py",
+    "summary": "zero_states issues state-buffer memsets directly (async on the given stream, sync on stream 0 - the same branch _zero would have taken), removing the per-call host template scan. Bytes written are identical; no arithmetic, ordering, or ownership change. _zero is unchanged for its other callers."
+  },
+  "measurements": {
+    "server_prefill_frozen_protocol": {
+      "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact",
+      "c1": {"before_tok_s": 93.26, "after_tok_s": 102.21, "delta_pct": 9.6, "cumulative_vs_frozen_pct": 42.8},
+      "c2": {"before_tok_s": 88.35, "after_tok_s": 97.18, "cumulative_vs_frozen_pct": 29.8},
+      "correctness": "every cell ar_self_exact / mtp_self_exact / ar_mtp_equal passed"
+    }
+  },
+  "gates": {
+    "behavior": "tests/test_gguf_packed_verify_layout.py (zero_states call-order gate) passes; tests/test_qwen35_gguf_full_attention_gpu.py skips on a missing local 0.8B fixture (pre-existing, unrelated)",
+    "full_suite": "only the 3 pre-existing test_specdec2_perf_bridge ordering flakes; compileall, check_fixtures, smoke registry, smoke cpu-fixtures OK"
+  },
+  "parity_context": {
+    "frozen_c1_winner": {"engine": "Nathan", "tok_s": 138.95},
+    "hipengine_c1_now_tok_s": 102.21,
+    "remaining_gap_pct": 36.0,
+    "remaining_walls": [
+      "prefill GPU wall ~418 ms isolated (deep T16 wmma bandwidth work; Q5/Q6 families ~146 ms)",
+      "residual host/reclaim ~5-15 ms/request"
+    ]
+  }
+}

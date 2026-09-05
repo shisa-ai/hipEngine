@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1_q6_two_wave_x3_screen",
+  "status": "rejected",
+  "performance_claim": false,
+  "comparison": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "two_wave_x2_r32_ms": 0.7095791816711425,
+      "two_wave_x3_r32_ms": 1.3078164100646972,
+      "delta_percent": 84.30873450720968
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "two_wave_x2_r32_ms": 0.3814836025238037,
+      "two_wave_x3_r32_ms": 0.495127010345459,
+      "delta_percent": 29.78985389406461
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "two_wave_x2_r32_ms": 0.10853159427642822,
+      "two_wave_x3_r32_ms": 0.12336699962615967,
+      "delta_percent": 13.669204298193494
+    }
+  },
+  "decision": "revert x3 output slab: all actual shapes regress (planar-down 84.3%, standard-qkv 29.8%, narrow 13.7%). x2 is the best screened slab width.",
+  "raw": {
+    "path": "/tmp/wy-w1-q6-shared4-screen.json",
+    "sha256": "ab1258a2bb3e640f7323b14faa59da029b655aee5cda723f7ea7ead9fcca3f5d",
+    "size_bytes": 2986
+  }
+}

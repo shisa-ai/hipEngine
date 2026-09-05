@@ -332,6 +332,52 @@ def test_gguf_packed_verify_initial_state_uses_fused_pair_copy_when_enabled() ->
     assert len(fused_calls) == 1
 
 
+def test_gguf_packed_verify_binds_direct_resident_initial_state() -> None:
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    slab = SimpleNamespace(
+        slot_count=8,
+        layer_conv_states=(object(),),
+        layer_recurrent_states=(object(),),
+    )
+    sessions = (SimpleNamespace(), SimpleNamespace())
+    owner._direct_resident_linear_state = MethodType(
+        lambda self, selected: ((3, 6), slab) if selected == sessions else None,
+        owner,
+    )
+    layout = _build_gguf_packed_verify_layout(
+        (
+            _GGUFPackedVerifySlotBlock(input_token_ids=(11, 12), start_position=4),
+            _GGUFPackedVerifySlotBlock(input_token_ids=(21, 22), start_position=7),
+        ),
+        slot_capacity=16,
+    )
+    packed_state = SimpleNamespace(
+        layer_conv_states=("packed-conv",),
+        layer_recurrent_states=("packed-recurrent",),
+    )
+
+    direct_layout, state_owner, imported = owner._packed_verify_initial_linear_state(
+        sessions,
+        layout,
+        packed_state,
+    )
+
+    assert direct_layout.state_indices.tolist() == [3, 6]
+    assert state_owner is slab
+    assert imported is False
+
+    owner._direct_resident_linear_state = MethodType(
+        lambda self, selected: None,
+        owner,
+    )
+    fallback_layout, fallback_owner, imported = (
+        owner._packed_verify_initial_linear_state(sessions, layout, packed_state)
+    )
+    assert fallback_layout is layout
+    assert fallback_owner is packed_state
+    assert imported is True
+
+
 def test_gguf_fused_linear_state_pair_copy_batches_and_caches_tables(monkeypatch) -> None:
     owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
     owner._buffers = ()
@@ -765,6 +811,62 @@ def test_gguf_packed_ar_prefill_executes_each_round_with_all_active_slots(
     assert owner.last_packed_prefill_plan["chunk_rows"] == [8, 8, 8]
     assert owner.last_packed_prefill_plan["slot_indices"] == [[0, 1, 2, 3]] * 3
     assert owner.last_packed_prefill_plan["all_active_slots_represented"] is True
+
+
+def test_gguf_packed_ar_prefill_samples_only_each_slots_final_round(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[tuple[int, ...], tuple[int, ...]]] = []
+    sessions = tuple(SimpleNamespace(position=0) for _ in range(2))
+    session_index = {id(session): index for index, session in enumerate(sessions)}
+
+    def fake_single_slab(self, prompt_token_ids, *, sessions, **kwargs):
+        del self
+        sample_slots = kwargs.get("_sample_output_slot_indices")
+        assert sample_slots is not None
+        sample_slot_set = set(int(index) for index in sample_slots)
+        global_slots = tuple(session_index[id(session)] for session in sessions)
+        calls.append((global_slots, tuple(sorted(sample_slot_set))))
+        results = []
+        for local_index, (session, prompt) in enumerate(
+            zip(sessions, prompt_token_ids, strict=True)
+        ):
+            tokens = tuple(int(token) for token in prompt)
+            session.position += len(tokens)
+            results.append(
+                SimpleNamespace(token_id=tokens[-1])
+                if local_index in sample_slot_set
+                else None
+            )
+        return results
+
+    monkeypatch.setattr(
+        gguf_runner.Qwen35GGUFResidentSession,
+        "_prefill_batch_native_single_slab",
+        fake_single_slab,
+        raising=False,
+    )
+    owner = object.__new__(gguf_runner.Qwen35GGUFResidentSession)
+    owner.backend = "hip_gfx1151"
+    owner._bulk_prefill_scratch = SimpleNamespace(rows=4)
+
+    results = owner.prefill_batch_native(
+        ((10, 11, 12), (20, 21, 22, 23, 24)),
+        sessions=sessions,
+    )
+
+    assert calls == [
+        ((0, 1), ()),
+        ((0, 1), (0,)),
+        ((1,), (0,)),
+    ]
+    assert [result.token_id for result in results] == [12, 24]
+    assert owner.last_packed_prefill_plan["chunk_final_output_slot_indices"] == [
+        [],
+        [0],
+        [1],
+    ]
+    assert owner.last_packed_prefill_plan["intermediate_tail_samples"] == 3
 
 
 def test_gguf_packed_ar_prefill_forwards_unsampled_rounds(

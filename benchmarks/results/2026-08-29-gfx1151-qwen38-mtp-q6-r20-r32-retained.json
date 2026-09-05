@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "retained_wide_exact_nonparity_corrected_attribution",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "title": "Qwen3.8 Q4_K_M exact Q6 R16 provider-group carryover",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "control_commit": "0c59aaeaee5971c62f85a1a1c5116623223a1475",
+    "candidate_commit": "11b62f717e13491daa87f9b94865263b9408494f",
+    "tracked_dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+    "prompt_count": 10,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "heldout_included": true,
+    "sampling": "raw greedy",
+    "widths": [5, 6, 7, 8],
+    "logical_concurrencies": [5, 6, 7, 8],
+    "physical_target_group_rows": {
+      "5": [[16, 4]],
+      "6": [[16, 8]],
+      "7": [[16, 12]],
+      "8": [[16, 16]]
+    },
+    "candidate_budget": 3,
+    "common_horizon": 24,
+    "batch_window_ms": 50,
+    "max_sequence_length": 1024,
+    "execution_profile": "production",
+    "production_manifest_sha256": "af20ee3b22921dc9a0c988dd1c3f5c471932f0ecda4e557ec2ba4bbc8ef5d95f",
+    "correctness": "R16 actual-weight BF16-bit parent parity plus full-suite exact IDs/acceptance",
+    "timing": "blocking OpenAI barrier-to-last-completion complete wall",
+    "anti_gaming": "row/quant package policy only; full categories/heldouts; no content selector"
+  },
+  "commands": {
+    "clean_c5_c8": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 5,6,7,8 --resident-capacity 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths 5,6,7,8 --generation2-diagnostic --correctness-contract mtp_self_exact --output /tmp/p370-q6-wide-c5c8-clean.json",
+    "actual_red": "HIPENGINE_HIP_ARCH=gfx1151 pytest tests/test_qwen38_q6_t16_r16_chunk.py -q",
+    "rejected_hypothetical_leaf_micro": "5 warmups + 15 counterbalanced HIP-event pairs for 4 unengaged logical row buckets x 3 actual Q6 shapes; /tmp/p370-q6-wide-micro.json",
+    "trace": "cached-only one-prompt C8 server kernel/HIP/copy/allocation trace"
+  },
+  "attribution_correction": {
+    "supersedes": "logical R20/R24/R28/R32 policy-key engagement",
+    "reason": "resident-capacity-8 does not imply one operation-complete target group; the provider partitions C5-C8 into physical C4-or-smaller groups",
+    "engaged_q6_policy_rows": [4, 8, 12, 16],
+    "unengaged_removed_policy_rows": [20, 24, 28, 32],
+    "measured_rates_unchanged": true
+  },
+  "leaf_screen": {
+    "cases": 12,
+    "status": "hypothetical logical-row screen; exact but unengaged and removed",
+    "counterbalanced_pairs_per_case": 15,
+    "warmups_per_arm": 5,
+    "candidate_wins": 180,
+    "candidate_losses": 0,
+    "delta_range_pct": [-84.16519233400204, -59.03360506586086],
+    "actual_shapes": ["standard Q6 K5120/N10240", "planar Q6 K5120/N1024", "planar Q6 K17408/N5120"],
+    "every_bf16_output_bit_exact": true,
+    "guard_words_exact": true
+  },
+  "complete_wall": {
+    "columns": ["width", "control_mtp_tok_s", "candidate_mtp_tok_s", "mtp_uplift_pct", "candidate_ar_tok_s", "mtp_vs_ar", "external_target", "gap_to_external_pct", "accepted", "proposed"],
+    "rows": [
+      [5, 15.243695775617372, 17.970381649710376, 17.887301834338622, 35.39106980304647, 0.5077659915260172, 32.74, -45.111845908031846, 785, 995],
+      [6, 20.82951926121899, 26.904178638447267, 29.163704169295237, 39.797235440141364, 0.6760313459188285, 36.023, -25.31388657677799, 942, 1194],
+      [7, 23.245294235003094, 28.205211134014057, 21.337294546017183, 43.34073326149676, 0.6507783558676229, 42.304, -33.3273186128639, 1099, 1393],
+      [8, 19.649791466384148, 27.392945632276543, 39.405782901762535, 47.229171710796486, 0.5800005513544625, 54.834, -50.043867614479076, 1256, 1592]
+    ],
+    "mtp_wall_reduction_pct": {"5": 15.173221844940343, "6": 22.578869471775352, "7": 17.585108210835376, "8": 28.266964312040976},
+    "exact_cells": 40,
+    "engaged_cells": 40,
+    "budget_conformed_cells": 40,
+    "draft_acceptance": 0.7889447236180904
+  },
+  "c8_trace": {
+    "scope": "whole one-prompt process; BF16 Q6 dispatch evidence only",
+    "parent_q6_bf16_kernel_ms": 8706.972,
+    "candidate_q6_bf16_kernel_ms": 3210.308,
+    "approximate_q6_process_family_reduction_pct": 63.12945533763058,
+    "candidate_planar_rowtile8_calls": 4240,
+    "candidate_standard_rowtile8_calls": 2544,
+    "candidate_direct_standard_or_planar_calls": 0,
+    "compiler_ran_inside_profiler": false
+  },
+  "scope": {
+    "enabled": "hip_gfx1151 production target verifier standard/planar Q6 physical provider-group R16 and measured R4/R8/R12 remainder owners",
+    "unchanged": ["Q4", "Q5", "proposal subgroups", "prompt replay", "strict misses", "AR", "peer backends"]
+  },
+  "decision": {
+    "retained_widths": [5, 6, 7, 8],
+    "external_parity_passed": [],
+    "automatic_widths": [],
+    "named_remaining_blocker": "R16/remainder provider-group Q4/Q5 target work plus prompt replay. Direct R16 Q6 is removed, but every width remains 25-50% below external and all categories below AR.",
+    "next": "Attribute R16 provider-group Q4/Q5 families; do not screen logical R20-R32 keys because they cannot engage under the current provider partition."
+  },
+  "raw_sources": [
+    ["/tmp/p370-q6-wide-micro.json", "b9dd59a1c00dd720657aeb55e0796b0705ac5b02b5d0f9effb4c02fae463e6b3", 11977],
+    ["/tmp/p310-post-e2-mtp-c1c8-clean.json", "2c5900b6137295d25b521ca1b6cdb045f0321b661ff695749240b246b79eeeb7", 20675296],
+    ["/tmp/p370-q6-wide-c5c8-clean.json", "00a3a0b3cf5c5d7eb0bc8dadb1b93811d04c4ddbe9f1170523cf19a67716778b", 11001542],
+    ["/tmp/p380-postq6-c8-marker.json", "00cb764d609ccba7be2ef479fa9cad6593328801875948ac3df740262de337da", 190421],
+    ["/tmp/p380-postq6-c8-marker-rocprof/gfx1151/4136373_kernel_trace.csv", "4426b14a1077ff2eb9c183cb0133801e83d027c9bb78758285f3d43e755f6d25", 30087737]
+  ]
+}

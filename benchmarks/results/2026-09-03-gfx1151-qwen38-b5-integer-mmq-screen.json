@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_b5_integer_mmq_screen",
+  "date": "2026-09-03",
+  "status": "screen_positive_planar_q6_implementation_pending",
+  "performance_claim": false,
+  "physical_host": {
+    "hostname": "gfx1151",
+    "machine": "Framework Desktop / Ryzen AI MAX+ 395",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "pci_id": "1002:1586"
+  },
+  "software": {
+    "commit": "ed1da4495ead87c683493e6104283aceae5df93d",
+    "tracked_dirty": ["docs/QWEN38-GFX1151-BUILD-CAMPAIGN.md"],
+    "hip_arch": "gfx1151",
+    "gpu_max_hw_queues": 2,
+    "compiler_version_file": "/tmp/q38-z0-run-20260901-201730/hipcc-version.txt",
+    "require_cached_build": true
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+    "quant": "standard_q4_k_m"
+  },
+  "protocol": {
+    "rows": [20, 28],
+    "warmups": 2,
+    "samples": 9,
+    "burst": 3,
+    "timing": "counter-rotated HIP events",
+    "candidate_boundary": "BF16-to-Q8_1 pack plus existing T16 integer MMQ consumer",
+    "a_boundary": "current B1/B2 A owner; Q4 includes BF16-to-FP16 cast",
+    "quality": "actual immutable weights; finite BF16 output and relative-L2 diagnostic",
+    "command": "HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/q38-z0-run-20260901-201730/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 GPU_MAX_HW_QUEUES=2 .venv/bin/python /tmp/q38-b5-six-shape-screen.py"
+  },
+  "model_role_counts": {
+    "q4_gate_up_pairs_k5120_n17408x2": 64,
+    "q4_ffn_down_k17408_n5120": 32,
+    "q6_ffn_down_k17408_n5120": 32,
+    "q6_attn_qkv_k5120_n10240": 24,
+    "q6_attn_v_k5120_n1024": 8,
+    "q5_ssm_out_k6144_n5120": 48
+  },
+  "results": {
+    "20": {
+      "q4_gate_up": {"a_ms": 0.6239916483561198, "integer_ms": 0.9179516633351644, "a_over_integer": 0.6797652570169009, "wins": "0/9", "relative_l2": 0.005195284727960825},
+      "q4_ffn_down": {"a_ms": 0.4798993269602458, "integer_ms": 0.9646879831949869, "a_over_integer": 0.4974658493939656, "wins": "0/9", "relative_l2": 0.012921356596052647},
+      "q6_ffn_down_planar_integer": {"a_ms": 1.003229300181071, "integer_ms": 0.8369706471761068, "a_over_integer": 1.1986433497589335, "wins": "9/9", "relative_l2": 0.005855868104845285},
+      "q6_attn_qkv_planar_integer": {"a_ms": 0.47729599475860596, "integer_ms": 0.3374199867248535, "a_over_integer": 1.4145457102036259, "wins": "9/9", "relative_l2": 0.005929445847868919, "residency_note": "would require standard-to-planar owner conversion"},
+      "q6_attn_v_planar_integer": {"a_ms": 0.5424983501434326, "integer_ms": 0.22569032510121664, "a_over_integer": 2.403728870079545, "wins": "9/9", "relative_l2": 0.005815470591187477},
+      "weighted_planar_resident_q6_a_ms": 36.44332440694173,
+      "weighted_planar_resident_q6_integer_ms": 28.58858331044515,
+      "weighted_planar_resident_q6_saving_ms": 7.854741096496582
+    },
+    "28": {
+      "q4_gate_up": {"a_ms": 0.7304913202921549, "integer_ms": 1.1597503026326497, "a_over_integer": 0.6298694802096013, "wins": "0/9", "relative_l2": 0.005210273899137974},
+      "q4_ffn_down": {"a_ms": 0.4804083506266276, "integer_ms": 1.1572252909342449, "a_over_integer": 0.41513813635959074, "wins": "0/9", "relative_l2": 0.012811757624149323},
+      "q6_ffn_down_planar_integer": {"a_ms": 1.006649653116862, "integer_ms": 0.841245969136556, "a_over_integer": 1.1966175055199066, "wins": "9/9", "relative_l2": 0.005841136444360018},
+      "q6_attn_qkv_planar_integer": {"a_ms": 0.48239898681640625, "integer_ms": 0.33867565790812176, "a_over_integer": 1.4243686416555947, "wins": "9/9", "relative_l2": 0.0058470238000154495, "residency_note": "would require standard-to-planar owner conversion"},
+      "q6_attn_v_planar_integer": {"a_ms": 0.5431796709696451, "integer_ms": 0.22650500138600668, "a_over_integer": 2.398091290019534, "wins": "9/9", "relative_l2": 0.005827699787914753},
+      "weighted_planar_resident_q6_a_ms": 36.55822626749675,
+      "weighted_planar_resident_q6_integer_ms": 28.731911023457844,
+      "weighted_planar_resident_q6_saving_ms": 7.826315244038906
+    }
+  },
+  "rejected_subroutes": {
+    "q4": "Both binding Q4 operations lose every pair: gate/up is 1.47-1.59x slower and down is 2.01-2.41x slower than current A/B2.",
+    "q6_standard_qkv": "The sole-resident standard and qmicro consumers do not win both rows; planar integer wins but requires a separate residency change, so it is not part of the first registered unit.",
+    "q5_ssm_out": "Not rebuilt in this screen; the prior source-shaped T16 body was removed after a rows512 loss. It remains on B2 A unless a retained selective Q6 unit leaves a measured reason to reopen it."
+  },
+  "correctness_diagnostic": {
+    "all_outputs_finite": true,
+    "relative_l2_range": [0.005195284727960825, 0.012921356596052647],
+    "candidate_arithmetic": "T2; leaf diagnostics are not a substitute for the full production-profile gate"
+  },
+  "ownership": {
+    "resident_delta_bytes_in_screen": 0,
+    "tracked_teardown_bytes": 0,
+    "candidate_workspace": "transient Q8_1; registration requires request/session ownership before integration"
+  },
+  "evidence": {
+    "screen_script": {"path": "/tmp/q38-b5-six-shape-screen.py", "sha256": "f3f14115bd0a674d507237f332679b1573b284da86eb79ef2090a8c3356ac13a"},
+    "raw_result": {"path": "/tmp/q38-b5-six-shape-screen.json", "sha256": "f9619dfa18b07e6a7d12a90f128543a2da58d88cb3f65d263cc84dba5f1697ec"}
+  },
+  "decision": "Proceed only with the two already-planar Q6 shapes at rows17-48. Add a registered gfx1151-only composite variant with session-owned bounded Q8 workspace and current A as strict/default fallback; run the complete T2 gate before any default flip. Reject Q4 and leave standard Q6/Q5 on A for this unit."
+}

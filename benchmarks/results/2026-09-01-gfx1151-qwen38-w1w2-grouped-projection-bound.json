@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "date": "2026-09-01",
+  "kind": "gfx1151_qwen38_w1w2_grouped_projection_bound",
+  "status": "blocked_below_threshold",
+  "performance_claim": false,
+  "model_topology": {
+    "linear_attention_layers": 48,
+    "full_attention_layers": 16,
+    "linear_same_input_group": "attn_qkv(Q6 K5120/N10240)+attn_gate(Q4 K5120/N6144); launch_pair already attempted, mixed quant falls back",
+    "full_same_input_group": "attn_q(Q4 K5120/N12288)+attn_k(Q4 K5120/N1024)+attn_v(Q6 K5120/N1024); launch_triple already attempted, mixed quant falls back",
+    "dense_ffn_group": "gate+up Q4 pair_silu already attempted"
+  },
+  "current_r32_target_window": {
+    "host_ms_median": 51.22291,
+    "kernel_sum_ms_median": 49.015942,
+    "non_kernel_gap_ms": 2.206968,
+    "non_kernel_gap_percent_host": 4.3085,
+    "launches_median": 61,
+    "dominant_q6_kernel_ms_total_across_8_passes": 270.32
+  },
+  "bound": "A grouped same-input owner cannot avoid reading distinct projection weights. Its strict upper bound is activation reread plus all non-kernel target gap: <=2.21 ms/pass (4.31% of target, much less of complete wall). Dominant Q6 device work remains. This cannot cover the remaining ~20% complete-wall gap.",
+  "decision": "Do not build cross-projection grouping as W1/W2 solution. Required dataflow is within-tensor persistent/M-loop weight reuse that reduces Q6 device time without multiplying dispatches."
+}

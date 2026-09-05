@@ -1,0 +1,278 @@
+{
+  "schema": 1,
+  "kind": "gfx1151-qwen38-y2-q6-shared3r1-retained",
+  "created_at": "2026-09-01T10:12:00Z",
+  "status": "validated_retained",
+  "source_commit_before_unit": "c37e424b57507ff8a51c38cd633d5ad06090fbc5",
+  "physical_host": {
+    "hostname": "gfx1151",
+    "gpu": "AMD Radeon 8060S",
+    "architecture": "gfx1151"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169"
+  },
+  "pre_code_full_wall_bounds": {
+    "35": {
+      "q6_single_sweep_savings_ms": 37.20437382112551,
+      "share": 0.129881
+    },
+    "48": {
+      "q6_single_sweep_savings_ms": 37.933548035558466,
+      "share": 0.13182
+    }
+  },
+  "candidate": {
+    "geometry": "2 output tiles, 3 waves, 1 row tile/wave; 48-row single sweep",
+    "scope": "rows33-48; standard K5120/N10240 and planar K17408/N5120,K5120/N1024",
+    "strict_fallback": "existing gfx1151 standard/planar selectors"
+  },
+  "direct_current_owner_comparison": {
+    "gguf_q6_k_t16_qmicro_planar_v1:17408x5120": {
+      "35": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 1.1667969703674317,
+        "candidate_ms": 0.9607624053955078,
+        "speedup": 1.2144490290365886
+      },
+      "48": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 1.1851515769958496,
+        "candidate_ms": 0.9669261932373047,
+        "speedup": 1.225689804749128
+      }
+    },
+    "gguf_q6_k_t16_v1:5120x10240": {
+      "35": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.8361927986145019,
+        "candidate_ms": 0.7486845970153808,
+        "speedup": 1.1168825990917552
+      },
+      "48": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.8351107597351074,
+        "candidate_ms": 0.6814866065979004,
+        "speedup": 1.2254250511306826
+      }
+    },
+    "gguf_q6_k_t16_qmicro_planar_v1:5120x1024": {
+      "35": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.5377528190612793,
+        "candidate_ms": 0.0966211974620819,
+        "speedup": 5.565578084170561
+      },
+      "48": {
+        "exact": true,
+        "mismatch_count": 0,
+        "max_abs": 0.0,
+        "parent_ms": 0.5387306213378906,
+        "candidate_ms": 0.09704599976539612,
+        "speedup": 5.551291373577944
+      }
+    }
+  },
+  "complete_ticks": {
+    "35": {
+      "control_wall_ms": 281.275813,
+      "candidate_wall_ms": 265.882693,
+      "wall_reduction_pct": 5.472607059889645,
+      "throughput_improvement_pct": 5.789440383018851,
+      "control_gpu_ms": 281.2707214355469,
+      "candidate_gpu_ms": 265.8770751953125,
+      "control_next_token_id": 248068,
+      "candidate_next_token_id": 248068
+    },
+    "48": {
+      "control_wall_ms": 286.328141,
+      "candidate_wall_ms": 269.312778,
+      "wall_reduction_pct": 5.94260939234752,
+      "throughput_improvement_pct": 6.318067462807142,
+      "control_gpu_ms": 286.32073974609375,
+      "candidate_gpu_ms": 269.3051452636719,
+      "control_next_token_id": 17885,
+      "candidate_next_token_id": 17885
+    }
+  },
+  "rocprof": {
+    "standard": {
+      "kernel": "q6_k_t16_wmma_prefill_shared_bf16_kernel<3,1,2>",
+      "grid_y": 1,
+      "threads": 128,
+      "vgpr": 176,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "sample_duration_ms": 0.711855
+    },
+    "planar": {
+      "kernel": "q6_k_t16_qmicro_planar_wmma_prefill_shared_bf16_kernel<3,1,2>",
+      "grid_y": 1,
+      "threads": 128,
+      "vgpr": 176,
+      "lds_bytes": 16384,
+      "scratch_bytes": 0,
+      "sample_duration_ms": 0.997391
+    }
+  },
+  "limitations": [
+    "Y2 remains open for high-row Q5/Q6 multiplicity."
+  ],
+  "raw_sources": [
+    {
+      "path": "/tmp/y2-q6-shared3r1-r35-r48.log",
+      "sha256": "201138dad360ab83b3762c3ec7d29a5a8ee2ae8d9cfe9a76aff4649a3bdaa4c3",
+      "bytes": 1415
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-r35-r48-full-pair.json",
+      "sha256": "cfec6000f59c6ada2f930e16e6e096dc559e0f2a553d7e0722e15e31dcfd713f",
+      "bytes": 392478
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-rocprof/gfx1151/2405723_kernel_trace.csv",
+      "sha256": "3e5c868d9f5a7a49071f6c3d2c8de4eeb5fa0177418bc390e3fa7681d16000ff",
+      "bytes": 142348
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-c1c8-control.json",
+      "sha256": "a3c438861a67c3d558916c839fd34507c53bed541fa3eadc8409423fe47575ce",
+      "bytes": 3735600
+    },
+    {
+      "path": "/tmp/y2-q6-shared3r1-c1c8-candidate.json",
+      "sha256": "23ae99f1623163a9b0563680345371d56d5e0dcc8c6cada3987f7b6cd6bf57c8",
+      "bytes": 3735579
+    }
+  ],
+  "c1_c8_collateral": {
+    "protocol": "frozen standard Q4_K_M ten-prompt, D1 AR-exact collateral, widths C1-C8; control disables only shared3r1",
+    "control_passed": true,
+    "candidate_passed": true,
+    "exact_cells": {
+      "control": 80,
+      "candidate": 80
+    },
+    "by_width": {
+      "1": {
+        "ar": {
+          "control_wall_seconds": 3.0447088598739356,
+          "candidate_wall_seconds": 2.9222783383447677,
+          "wall_delta_pct": -4.021091249238095
+        },
+        "mtp": {
+          "control_wall_seconds": 3.0478041511960328,
+          "candidate_wall_seconds": 2.922492189100012,
+          "wall_delta_pct": -4.111549032664885
+        }
+      },
+      "2": {
+        "ar": {
+          "control_wall_seconds": 6.440476955380291,
+          "candidate_wall_seconds": 6.307961802231148,
+          "wall_delta_pct": -2.057536329486298
+        },
+        "mtp": {
+          "control_wall_seconds": 5.112794215558097,
+          "candidate_wall_seconds": 5.122979219071567,
+          "wall_delta_pct": 0.19920620866136218
+        }
+      },
+      "3": {
+        "ar": {
+          "control_wall_seconds": 8.144491025945172,
+          "candidate_wall_seconds": 7.891601204173639,
+          "wall_delta_pct": -3.105041444160528
+        },
+        "mtp": {
+          "control_wall_seconds": 6.625180399045348,
+          "candidate_wall_seconds": 6.631110742222518,
+          "wall_delta_pct": 0.08951217657444666
+        }
+      },
+      "4": {
+        "ar": {
+          "control_wall_seconds": 9.643032947089523,
+          "candidate_wall_seconds": 9.519183721393347,
+          "wall_delta_pct": -1.2843389250635773
+        },
+        "mtp": {
+          "control_wall_seconds": 7.790623941691592,
+          "candidate_wall_seconds": 7.7975449045188725,
+          "wall_delta_pct": 0.08883708004749913
+        }
+      },
+      "5": {
+        "ar": {
+          "control_wall_seconds": 10.797582453815266,
+          "candidate_wall_seconds": 10.678322029998526,
+          "wall_delta_pct": -1.1045104246886317
+        },
+        "mtp": {
+          "control_wall_seconds": 9.064167820150033,
+          "candidate_wall_seconds": 9.07040636613965,
+          "wall_delta_pct": 0.06882646166093132
+        }
+      },
+      "6": {
+        "ar": {
+          "control_wall_seconds": 12.091997293988243,
+          "candidate_wall_seconds": 11.643833676120266,
+          "wall_delta_pct": -3.706282816411055
+        },
+        "mtp": {
+          "control_wall_seconds": 10.703942570835352,
+          "candidate_wall_seconds": 10.661868656985462,
+          "wall_delta_pct": -0.39306931601564843
+        }
+      },
+      "7": {
+        "ar": {
+          "control_wall_seconds": 13.654317219275981,
+          "candidate_wall_seconds": 13.541603959398344,
+          "wall_delta_pct": -0.8254770858737492
+        },
+        "mtp": {
+          "control_wall_seconds": 12.17487851716578,
+          "candidate_wall_seconds": 12.18691670964472,
+          "wall_delta_pct": 0.09887731086570817
+        }
+      },
+      "8": {
+        "ar": {
+          "control_wall_seconds": 15.146555658895522,
+          "candidate_wall_seconds": 15.08479765499942,
+          "wall_delta_pct": -0.4077362886118041
+        },
+        "mtp": {
+          "control_wall_seconds": 13.736522832885385,
+          "candidate_wall_seconds": 13.758588820230216,
+          "wall_delta_pct": 0.16063735789093592
+        }
+      }
+    },
+    "aggregate": {
+      "ar": {
+        "control_wall_seconds": 78.96316241426393,
+        "candidate_wall_seconds": 77.58958238665946,
+        "wall_delta_pct": -1.7395200313764958
+      },
+      "mtp": {
+        "control_wall_seconds": 68.25591444852762,
+        "candidate_wall_seconds": 68.15190760791302,
+        "wall_delta_pct": -0.15237777041728906
+      }
+    }
+  }
+}

@@ -699,6 +699,16 @@ class SubmitPollTextGenerator:
     def __getattr__(self, name: str):
         return getattr(self._inner, name)
 
+    @property
+    def server_mtp_batch_max_active_requests(self) -> int | None:
+        """Expose the resident runner's explicit-MTP batch-route width bound."""
+
+        return getattr(
+            self._runner,
+            "server_mtp_batch_max_active_requests",
+            None,
+        )
+
     def generate(self, request: GenerationRequest) -> list[str]:
         return [output.text for output in self.generate_detailed(request)]
 
@@ -2488,6 +2498,7 @@ class ResidentEngineLoop:
             graph_available=graph_available,
             target_physical_available=target_available,
             suppress_speculation=suppression,
+            declared_logical_c=work.declared_logical_c,
         )
         claims_fit = getattr(self.runner, "speculative_claims_fit", None)
         if plan.has_speculative_rows and callable(claims_fit) and not bool(claims_fit(plan)):
@@ -2503,6 +2514,7 @@ class ResidentEngineLoop:
                 graph_available=graph_available,
                 target_physical_available=target_available,
                 suppress_speculation=suppression,
+                declared_logical_c=work.declared_logical_c,
             )
         self._last_speculative_plan = plan
         self._recent_speculative_plans.append(plan)

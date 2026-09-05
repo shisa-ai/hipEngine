@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "accepted",
+  "campaign": "docs/QWEN38-GFX1151-PARITY-CAMPAIGN.md",
+  "items": ["P2.2 high-row exact prefill reuse retained; C5 one-run status superseded"],
+  "title": "High-row exact prefill reuse lifts C3-C8",
+  "superseded_measurement_note": "The one-run C5 parity status is superseded by clean pre-unit/candidate repeats at 212.216/212.207 tok/s in the Q4 shared2 artifact; the implementation remains retained for broad C3-C8 wins.",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)"
+  },
+  "source": {
+    "commit": "9b0c31f13",
+    "control_commit": "58f9fdecde2fdfcbfc217d02470bd9029edb34bc",
+    "dirty": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5"
+  },
+  "change": {
+    "files": [
+      "hipengine/kernels/hip_gfx1151/__init__.py",
+      "tests/test_gfx1151_backend.py"
+    ],
+    "summary": "Add exact Q4/Q5/Q6-planar periodic per-shape selector bands at rows81-96, 97-128, and 129-144; admit Q6-planar shared4 on six physical shapes from row256; lower standard-Q6 QKV shared4 threshold from row512 to row96. Existing bodies only; no arithmetic or registry-key changes.",
+    "fallbacks": "Q4 rows145+ retain shared-B; Q5 rows145+ retain plain; Q6-planar rows145-255 retain plain; all shape misses retain prior owners."
+  },
+  "selection_evidence": {
+    "rows": [96, 120, 134, 256, 384, 480, 536],
+    "shapes": [
+      [5120, 6144],
+      [17408, 5120],
+      [5120, 10240],
+      [5120, 12288],
+      [6144, 5120],
+      [5120, 17408]
+    ],
+    "q4_q5_q6_planar": "warmup4 + 20-iteration medians; every candidate bit-exact on all screened rows/shapes",
+    "standard_q6_qkv": {
+      "shape": [5120, 10240],
+      "row134_plain_ms": 2.318,
+      "row134_shared4_ms": 1.114,
+      "row536_plain_ms": 8.576,
+      "row536_shared4_ms": 3.218,
+      "all_screen_points_positive": true,
+      "exact": true
+    },
+    "high_row_blocker": "Q4 shared-B remains the best existing Q4 owner above row144, so further C8 Q4 progress needs a new high-row kernel/fusion rather than selector extension."
+  },
+  "isolated_real_model": {
+    "command_template": "HIPENGINE_HIP_ARCH=gfx1151 .venv/bin/python3 scripts/qwen35_gguf_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --quant gguf_q4_k_m --prompt-length {134|536} --decode-tokens 0 --warmup-decode-tokens 0 --warmup-runs 1 --measured-runs 3 --persistent-session --force-bulk-prefill --bulk-prefill-attention-mode bulk --use-wmma-prefill --use-gemv-decode --no-graph-replay-decode --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build",
+    "row134": {
+      "control_median_ms": 663.62,
+      "candidate_median_ms": 570.65,
+      "delta_pct": -14.0,
+      "candidate_runs_ms": [570.65, 570.12, 571.59]
+    },
+    "row536": {
+      "control_median_ms": 1660.87,
+      "candidate_median_ms": 1660.62,
+      "verdict": "neutral complete-model wall; exact Q6 leaf reductions retained while Q4 remains dominant"
+    }
+  },
+  "server_prefill_frozen_protocol": {
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1151 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 1,2,3,4,5,6,7,8 --max-tokens 1 --candidate-budget 3 --batch-window-ms 50 --max-sequence-length 1024 --expected-mtp-widths '' --correctness-contract ar_exact --output /tmp/p216-server-c1c8-refreeze.json",
+    "columns": ["width", "wall_s", "tok_s", "delta_vs_frozen_pct", "delta_vs_winner_pct", "status"],
+    "rows": [
+      [1, 3.0593690113164485, 146.762289328019, 105.1, 5.6, "parity"],
+      [2, 6.572802500799298, 136.62360916683514, 82.5, -29.6, "open; stable versus repeatable 136.7-136.9 range"],
+      [3, 8.134257432539016, 165.59593929393864, 58.4, -8.0, "open"],
+      [4, 9.520548813277856, 188.64458711615495, 51.7, -2.0, "open"],
+      [5, 10.265328751411289, 218.6973310222875, 54.6, 0.6, "superseded unstable one-run grouping result; C5 remains open"],
+      [6, 11.952231415780261, 225.39724226249274, 48.1, -7.4, "open"],
+      [7, 13.4009816814214, 234.5350568128403, 44.7, -4.5, "open"],
+      [8, 14.475883193779737, 248.13684608504417, 46.0, -16.4, "open"]
+    ],
+    "delta_vs_prior_refreeze_pct": {
+      "c1": 0.0,
+      "c2": "neutral versus stable range; prior 139.77 row contained one 469 ms favorable batching arm",
+      "c3": 8.0,
+      "c4": 8.0,
+      "c5": 9.7,
+      "c6": 4.9,
+      "c7": 3.4,
+      "c8": 8.6
+    },
+    "correctness": "all 80 cells passed ar_self_exact, mtp_self_exact, ar_mtp_equal, route expectation, and budget conformance"
+  },
+  "trace": {
+    "scope": "cache-only isolated row134",
+    "expected_names": "Q4 shared-B + <false,3,1>; Q5 <3,1>; Q6 planar plain + <3,1>; standard-Q6 shared4",
+    "no_compiler_inside_profiler": true
+  },
+  "parity_context": {
+    "closed_prefill_cells": [1],
+    "open_prefill_cells": [2, 3, 4, 5, 6, 7, 8],
+    "next": "C4 is 2.0% and C7 4.5% below comparator; C8 remains a Q4 high-row new-kernel blocker."
+  },
+  "gates": {
+    "tests": "gfx1151 backend + selected-prefill bundle 100/100",
+    "red_green": "high-row route matrix failed RED on old owners and passed GREEN",
+    "exactness": "all synthetic screens and all 80 server cells exact",
+    "full_suite": "configured broad suite retains the known specdec2 order failure documented in prior iterations"
+  }
+}

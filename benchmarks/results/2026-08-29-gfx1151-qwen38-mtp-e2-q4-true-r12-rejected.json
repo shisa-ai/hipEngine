@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-29",
+  "status": "rejected_leaf_candidates",
+  "campaign": "docs/QWEN38-Q4KM-MTP-ACCEPTANCE.md",
+  "title": "Qwen3.8 Q4_K_M E2 exact true-R12 Q4 morphology screen",
+  "host": {
+    "physical_host": "gfx1151",
+    "cpu": "AMD Ryzen AI MAX+ 395 w/ Radeon 8060S",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "target": "gfx1151",
+    "hip_runtime": "7.15.26.33 (TheRock)",
+    "gpu_max_hw_queues": 2
+  },
+  "source": {
+    "base_commit": "47542dc45",
+    "candidate_code_committed": false,
+    "retained_runtime_changes": false
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "standard Q4_K_M",
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "size_bytes": 17106775008,
+    "kv_dtype": "bf16"
+  },
+  "protocol": {
+    "rows": 12,
+    "parent": "current exact R8+R4 standard-Q4 T16 rowtiles",
+    "warmups_per_arm": 5,
+    "counterbalanced_pairs": 15,
+    "timing": "HIP event",
+    "shapes": [
+      [5120, 6144, "single attn_gate"],
+      [5120, 10240, "single attn_qkv"],
+      [5120, 12288, "single attn_q"],
+      [6144, 5120, "single attn_output"],
+      [17408, 5120, "single ffn_down"],
+      [5120, 17408, "dual ffn_gate+ffn_up+SiLU"]
+    ],
+    "command": "GPU_MAX_HW_QUEUES=2 HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1151 HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 .venv/bin/python3 /tmp/p280_q4_r12_micro.py"
+  },
+  "candidates": {
+    "register_bounded_col4": {
+      "design": "one exact R12 launch; four output columns/block; 48 FP32 accumulators/wave for single and dual matrix waves",
+      "columns": ["shape", "parent_ms", "candidate_ms", "candidate_delta_pct", "paired_wins"],
+      "rows": [
+        ["single K5120/N6144", 0.13509300351142883, 0.15533199906349182, 14.98152755953106, 0],
+        ["single K5120/N10240", 0.20422400534152985, 0.27146899700164795, 32.92707512403468, 0],
+        ["single K5120/N12288", 0.25900599360466003, 0.3615590035915375, 39.59484047439137, 0],
+        ["single K6144/N5120", 0.12611700594425201, 0.18254299461841583, 44.74098338419643, 0],
+        ["single K17408/N5120", 0.5077530145645142, 0.6611610054969788, 30.213112779652995, 0],
+        ["dual K5120/N17408", 0.9632880091667175, 1.0510519742965698, 9.110874867608043, 0]
+      ],
+      "verdict": "reject: slower on every actual shape and 0/15 paired wins per shape"
+    },
+    "shared_weight_multiwave": {
+      "design": "one exact R12 launch; one global compact tile staged in LDS; four 3-row waves for single and eight waves for dual",
+      "columns": ["shape", "parent_ms", "candidate_ms", "candidate_delta_pct", "paired_wins"],
+      "rows": [
+        ["single K5120/N6144", 0.1388999968767166, 0.2770000100135803, 99.42405776973276, 0],
+        ["single K5120/N10240", 0.20658700168132782, 0.4349760115146637, 110.55342687321583, 0],
+        ["single K5120/N12288", 0.25824499130249023, 0.618241012096405, 139.40096920301562, 0],
+        ["single K6144/N5120", 0.12707799673080444, 0.30549299716949463, 140.3980272183826, 0],
+        ["single K17408/N5120", 0.4583800137042999, 1.2361600399017334, 169.68017866048973, 0],
+        ["dual K5120/N17408", 0.9527080059051514, 1.6475319862365723, 72.93147281482963, 0]
+      ],
+      "verdict": "reject: LDS/barrier and larger-block cost overwhelms eliminated duplicate global reads; slower on every shape"
+    }
+  },
+  "correctness": {
+    "red_first": true,
+    "actual_shapes_checked": [
+      [5120, 6144, "single"],
+      [5120, 17408, "dual+SiLU"]
+    ],
+    "col4_every_bf16_output_exact_vs_r8_r4": true,
+    "shared_every_bf16_output_exact_vs_r8_r4": true,
+    "guard_words_exact": true,
+    "note": "Candidates were rejected on speed before broadening the actual-output RED to every shape or runtime admission."
+  },
+  "decision": {
+    "q4_true_r12_route_retained": false,
+    "current_r8_r4_parent_retained": true,
+    "named_blocker": "At R12 on gfx1151, reducing Q4 sweep count with exact register-bounded or shared-weight morphologies costs more in extra column workgroups, waves, LDS traffic, and barriers than the second cached weight sweep.",
+    "no_complete_wall_run": "Both operation leaves fail all-shape microbench falsifiers; runtime integration cannot improve complete wall.",
+    "next": "Proceed to E2 Q6, whose standard/planar kernels and register geometry differ; do not retune Q4 thresholds without a new dataflow premise."
+  },
+  "raw_sources": [
+    ["/tmp/p280-q4-r12-micro.json", "eef8e2d08c258242fc3e0d852d147b9303ad6a69f1336ec4568eeca679a64863", 5964],
+    ["/tmp/p280-q4-r12-shared-micro.json", "9401105ee2c2d15d899dcfac2a2cfbd08eba31c8b21c1866fda29a4f80284c37", 5931]
+  ]
+}

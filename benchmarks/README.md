@@ -90,7 +90,7 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The W7900 C8/K3 row is automatic only for its exact production Qwen3.8 `Q4_K_M` capacity-8 D24 key; misses use K0. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models/protocols; compare matching rows only. RX 7900 XTX cross-engine rows share Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. W7900 C8/K3 is automatic only for exact production Qwen3.8 `Q4_K_M` capacity-8 D24 key; misses use K0. Strix Halo production C1-C8 is explicit, with strict C1 automatic. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
@@ -103,6 +103,8 @@ resident-capacity-8 C8/K3/D24 key (**98.643 vs 88.250 tok/s, 1.1178x AR**).
 Capacity-8 C1-C7 and every model/quant/profile/budget/context/horizon/sampling
 miss remain K0. The exact evidence links are carried in the model sections
 below.
+
+Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
@@ -154,11 +156,10 @@ route validation is **98.643 tok/s (1.1178x AR)** with 10/10 exact cells.
 [`C8 automatic promotion`](results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json);
 [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
-On Strix Halo, Qwen3.8 `Q4_K_M` automatic MTP retains strict C1/B3 at
-**15.609 vs 9.807 tok/s (1.5916x)** and production C2/K3 at **17.031 tok/s
-(1.1441x AR)** for context 1-128/D24. Explicit C3/K3 is **19.934 tok/s
-(0.9589x AR)**, so automatic C3-C8 remains K0. `Q4_K_S` uses FP16 recurrent
-state with FP32 rollback; its exact W8192 DMS sidecar remains default-off.
+On Strix Halo, the current automatic Qwen3.8 `Q4_K_M` route is strict C1/K3;
+production C1-C8 remains explicit/K0 as summarized above. `Q4_K_S` uses FP16
+recurrent state with FP32 rollback; its exact W8192 DMS sidecar remains
+default-off.
 
 ### Agentic quality (quality-only; no speed claim)
 
