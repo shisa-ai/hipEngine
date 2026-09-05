@@ -231,6 +231,12 @@ the original arm order. That diagnostic does not waive the full-suite finding;
 the harness now preserves original fixture indices for focused comparisons.
 [Subset-order audit](results/2026-09-05-framework-qwen4exp-qsa-subset-order-audit.json).
 
+The corrected-order three-case rerun still finds mixed-language decode
+down 0.64%; English/Japanese are effectively flat and all 18 trajectories
+are exact. A 2880 MHz clock snapshot during the affected section is a
+lead, not a causal diagnosis. QSA remains default-off.
+[Corrected followup](results/2026-09-05-framework-qwen4exp-qsa-corrected-followup.json).
+
 The subsequent Framework code-case owner diagnostic at `cf9c55920` has 100%
 role coverage and traced/unprofiled final-logit equality:
 
