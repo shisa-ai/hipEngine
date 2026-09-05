@@ -1,0 +1,223 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_q6_lm_head_c8_partition_confirmed",
+  "created_at": "2026-09-05T18:29:08Z",
+  "status": "confirmed_existing_default_no_route_changed",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Physical width-8 production MTP verifier root-logit partition on the physical W7900. Control and candidate differ only by HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6 versus the hip_gfx1100 package default 8. This confirms an already-promoted default; it does not introduce a new retained rate row.",
+  "decision": "Audit packet E closes with no capability change. The audit's RED premise (that the W7900-resolved lm-head rowtile caps at 6 rows) does not hold at this revision: Qwen3.8-27B's root.lm_head resolves to gguf_q6_k_t16_qmicro_planar_v1, whose registered rowtile advertises _hipengine_max_rows = 8, and GGUF_Q6_LM_HEAD_MAX_CHUNK is already 8. The rows-8 single-launch partition is confirmed by trace and is faster than the 6+2 partition, so the existing default stands and HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK stays as the documented rollback.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+  },
+  "software": {
+    "commit": "41c8d959a",
+    "tracked_clean": true,
+    "audit_plan": "docs/20260905-gfx1100-audit.md work packet E",
+    "supersedes_premise_from": "audit starting revision 58b7e77ff, which branched before 86c92a784 (2026-09-02) raised GGUF_Q6_LM_HEAD_MAX_CHUNK to 8 on hip_gfx1100; merge cca981f08 brought that onto main"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "lm_head": {
+      "allocation_names": [
+        "tiles"
+      ],
+      "layout": "gguf_q6_k_t16_qmicro_planar_v1",
+      "quant_key": "gguf_q6_k_t16_qmicro_planar_v1",
+      "shape": [
+        248320,
+        5120
+      ],
+      "slot_path": "root.lm_head"
+    }
+  },
+  "resolution_red": {
+    "tool": "scripts/gfx1100_packet_e_lm_head_resolution.py",
+    "verify_lm_head_rowtile_max_rows": 8,
+    "resolved_rowtile_key": [
+      "hip_gfx1100",
+      "linear",
+      "gguf_q6_k_t16_qmicro_planar_v1",
+      "t16_gemv_rowtile_bf16_f32_out"
+    ],
+    "resolved_rowtile_function": "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
+    "sibling_bound": "gguf_q6_k_t16_v1 advertises _hipengine_max_rows = 6; this head does not resolve to it",
+    "effective_partition_rows_8": {
+      "4": {
+        "launches": 2,
+        "partition": [
+          4,
+          4
+        ]
+      },
+      "6": {
+        "launches": 2,
+        "partition": [
+          6,
+          2
+        ]
+      },
+      "8": {
+        "launches": 1,
+        "partition": [
+          8
+        ]
+      }
+    }
+  },
+  "route_trace": {
+    "harness": "rocprofv3 --kernel-trace --marker-trace over scripts/specdec2_perf_bridge.py --profile-child (C8/K3 production, budget 3, cached build, hipcc never inside the profiler)",
+    "full_vocab_root_head_grid_x": 3973120,
+    "default_chunk8": {
+      "launches_per_head_call": 1,
+      "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true>",
+      "launches": 34,
+      "median_us": 2482.62,
+      "total_us": 92131.8,
+      "workgroup_x": 128,
+      "vgpr": 112,
+      "lds": 1024,
+      "scratch": 0
+    },
+    "control_chunk6": {
+      "launches_per_head_call": 2,
+      "kernels": [
+        "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 6, false>",
+        "q6_k_t16_qmicro_planar_gemv_rowtile_kernel<float, 2>"
+      ],
+      "rows6": {
+        "launches": 37,
+        "median_us": 2077.017,
+        "total_us": 90779.6,
+        "workgroup_x": 128,
+        "vgpr": 104,
+        "lds": 1024,
+        "scratch": 0
+      },
+      "rows2": {
+        "launches": 25,
+        "median_us": 1515.692,
+        "total_us": 38071.8,
+        "workgroup_x": 128,
+        "vgpr": 96,
+        "lds": 512,
+        "scratch": 0
+      },
+      "pair_median_us": 3592.709
+    },
+    "per_call_speedup": 1.4471,
+    "chunk_independent_control": "both arms show an identical 9 x col8<float, 8, true> at grid_x=2097152 (the smaller proposal head), confirming the flag isolates the verifier root head"
+  },
+  "workload": {
+    "harness": "scripts/gguf_mtp_c1c8_server_bench.py",
+    "prompts": "benchmarks/prompts/mtpbench-code-general-ja.jsonl (full 10-prompt canonical suite)",
+    "widths": [
+      8
+    ],
+    "resident_capacity": 8,
+    "max_tokens": 24,
+    "candidate_budget": 3,
+    "batch_window_ms": 20,
+    "execution_profile": "production",
+    "correctness_contract": "ar_exact",
+    "counterbalance": "r1 control->candidate, r2 candidate->control; fresh process per arm",
+    "command": "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=<6-or-unset> .venv/bin/python3 scripts/gguf_mtp_c1c8_server_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant Q4_K_M --execution-profile production --prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl --widths 8 --resident-capacity 8 --expected-mtp-widths 8 --max-tokens 24 --candidate-budget 3 --batch-window-ms 20 --max-sequence-length 1024 --correctness-contract ar_exact --output <arm>.json"
+  },
+  "performance": {
+    "metric": "aggregate generated tokens / summed cell wall seconds at width 8",
+    "orders": {
+      "r1": {
+        "sequence": "control(6) then candidate(8)",
+        "mtp_control_chunk6_tok_s": 91.604,
+        "mtp_candidate_chunk8_tok_s": 91.7,
+        "mtp_delta_pct": 0.104,
+        "ar_control_chunk6_tok_s": 92.118,
+        "ar_candidate_chunk8_tok_s": 92.419,
+        "ar_delta_pct": 0.327
+      },
+      "r2": {
+        "sequence": "candidate(8) then control(6)",
+        "mtp_control_chunk6_tok_s": 90.376,
+        "mtp_candidate_chunk8_tok_s": 91.228,
+        "mtp_delta_pct": 0.942,
+        "ar_control_chunk6_tok_s": 90.726,
+        "ar_candidate_chunk8_tok_s": 91.961,
+        "ar_delta_pct": 1.361
+      }
+    },
+    "pooled": {
+      "mtp_control_chunk6_tok_s": 90.99,
+      "mtp_candidate_chunk8_tok_s": 91.464,
+      "mtp_delta_pct": 0.52,
+      "ar_control_chunk6_tok_s": 91.422,
+      "ar_candidate_chunk8_tok_s": 92.19,
+      "ar_delta_pct": 0.84
+    },
+    "mtp_categories_pooled": {
+      "code": {
+        "control_chunk6_tok_s": 93.653,
+        "candidate_chunk8_tok_s": 94.144,
+        "delta_pct": 0.525
+      },
+      "general_en": {
+        "control_chunk6_tok_s": 97.484,
+        "candidate_chunk8_tok_s": 98.162,
+        "delta_pct": 0.696
+      },
+      "general_ja": {
+        "control_chunk6_tok_s": 85.7,
+        "candidate_chunk8_tok_s": 86.126,
+        "delta_pct": 0.497
+      },
+      "mixed_ja_en": {
+        "control_chunk6_tok_s": 85.699,
+        "candidate_chunk8_tok_s": 86.027,
+        "delta_pct": 0.383
+      }
+    },
+    "ar_is_a_negative_control": "the AR arm reaches the root head through launch_gguf_linear's planar rowtile leaf, which ignores GGUF_Q6_LM_HEAD_MAX_CHUNK, so its delta measures session drift rather than the flip",
+    "attribution": "The model-level MTP delta is not attributable to the partition at this sample size: the AR negative control, which the flag cannot reach, moved by more than the MTP arm did in both orders and pooled. One control arm (r1, 91.604) also outranks one candidate arm (r2, 91.228). The attributable, repeatable evidence for this packet is the launch-count and device sub-window reduction in route_trace, not the aggregate rate."
+  },
+  "correctness": {
+    "cells_exact_per_arm": {
+      "r1-control-chunk6": 10,
+      "r1-candidate-chunk8": 10,
+      "r2-candidate-chunk8": 10,
+      "r2-control-chunk6": 10
+    },
+    "cells_engaged_per_arm": {
+      "r1-control-chunk6": 10,
+      "r1-candidate-chunk8": 10,
+      "r2-candidate-chunk8": 10,
+      "r2-control-chunk6": 10
+    },
+    "route_expectation_passed_per_arm": {
+      "r1-control-chunk6": true,
+      "r1-candidate-chunk8": true,
+      "r2-candidate-chunk8": true,
+      "r2-control-chunk6": true
+    },
+    "contract": "ar_exact: ar_self_exact, mtp_self_exact, and ar_mtp_equal on every cell",
+    "primitive_bit_parity": "tests/test_gguf_q6_planar_rowtile_dispatch_route.py::test_planar_q6_rowtile_launch_bitexact_vs_per_row_decode covers rows 2/4/5/7/8 against the per-row planar decode kernel",
+    "registry_pin": "tests/test_qwen35_gguf_verify_lm_head_top1.py::test_gfx1100_lm_head_rowtile_width_bound_comes_from_the_resolved_quant pins the 6/8 primitive bounds and the package chunk 8"
+  },
+  "limitations": [
+    "Width 8 only. Widths 2-6 partition identically under chunk 6 and chunk 8, so they cannot separate the two arms; width 7 would split as 5+2 under chunk 6 and was not measured.",
+    "One run per arm per order (10 prompts each). The comparison rests on the two-order agreement plus the device-time trace, not on repeated sampling.",
+    "This confirms an existing default. The retained rate rows for this route remain the 2026-09-02 C5-C8 packet's; no topline row changes."
+  ],
+  "disposition": "packet E closed: GGUF_Q6_LM_HEAD_MAX_CHUNK stays 8 on hip_gfx1100; no capability, route, or kernel changed; HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK remains the documented rollback",
+  "reference_evidence": [
+    "benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-q6-root-f32-rows8-retained.json",
+    "benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json"
+  ]
+}
