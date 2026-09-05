@@ -785,6 +785,9 @@ Eight coordinates per lane preserve the parent 256-element score tree;
 an explicit product register boundary prevents compiler contraction across
 the parent's rounding point. `strict_rows_spans` remains its fallback.
 The candidate is not selected by runtime until whole-model admission.
+Its separately registered `strict_h256_page256_wave_rows_spans` sibling
+specializes 256-token page addressing to remove runtime division/modulo;
+it rejects other page sizes and retains the generic H256 wave parent.
 
 External repositories are references, never the development tree. Before porting an externally derived family:
 
