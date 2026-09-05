@@ -4840,3 +4840,7 @@ under the manifest; retain rollback and registered strict fallbacks.
   Promote supported winning shapes after admission and retain the registered
   bundled/serial strict fallback. Do not reopen the rejected independent-team
   or wider serial-output sweeps: this path shares each activation load.
+- Admission selector `HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL=1` is initially
+  default-off, guarded by rows>=64, supported K and registry availability.
+  Remove the environment selector when the admitted profile owns dispatch
+  directly and rollback needs expire; retain smaller-row/bundled fallbacks.
