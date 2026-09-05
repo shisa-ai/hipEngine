@@ -1038,8 +1038,14 @@ Phase-0 targets (driven by the current research focus):
 Qwen3.8-Flash-Next gap-closure priority (source review 2026-09-05): routed
 prefill MoE, dense/GR, D=256 sparse QSA, then GDN; see the
 [halo campaign's ordered work](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#6-punchlist).
-The GDN tile-16 Hv=48 repair is committed; live-route one-residency validation
-remains before promotion.
+The GDN tile-16 Hv=48 owner was promoted in `22dc56268` after live-route
+one-residency validation. Active execution now uses Framework Desktop host
+`gfx1151` (machine ID `55ea6c509d0b49eea8de7094a1023668`) and targets
+halo-box Vulkan despite reported screening variance; historical `zbook` rates
+are not cross-host deltas. The performance campaign's active contract records
+native FP8 as the remote full-model reference and llama.cpp as the same-Q4
+implementation reference; production does not require cross-engine generated
+output equality.
 The historical Q8 admission packet's route-coverage finding and subsequent
 natural-text failure leave D1 re-qualification/scope/fallback with the owner;
 the status row above records historical admission, not resolution of that audit.
