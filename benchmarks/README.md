@@ -100,19 +100,12 @@ C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
 production/BF16 C2/K2 only at resident capacity 2, context 4-95, and D24
 (**36.726 vs 30.720 tok/s, 1.1970x AR**) and now also enables the exact
 resident-capacity-8 C8/K3/D24 key (98.643 vs 88.250 tok/s, 1.1178x AR).
-Capacity-8 C1-C7 and every model/quant/profile/budget/context/horizon/sampling
-miss remain K0. The exact evidence links are carried in the model sections
-below.
+Capacity-8 C1-C7 and every other scope miss remain K0. Evidence links are in
+the model sections below.
 
-The C8/K3 rate above is **under review and should not be relied on**. Re-running
-its own source commit on the same W7900 on 2026-09-06, under the same protocol
-and with an identical model fingerprint, runtime-profile manifest, and
-acceptance ledger, measured 91.884 MTP against 92.631 AR — MTP slightly below
-AR rather than 1.1178x above it. The route is unchanged and still produces
-exact tokens, so this is a measurement-reproduction question, not a correctness
-one, and it is not a regression from any later change: the original commit and
-the current one measure the same today. Cause unresolved. See
-[`MTP width/depth policy unchanged`](results/2026-09-06-gfx1100-mtp-width-depth-policy-unchanged.json).
+The C8/K3 rate is **under review**: re-running its own commit on 2026-09-06 gave
+91.884 MTP against 92.631 AR at identical fingerprint/manifest/protocol/acceptance;
+tokens stay exact ([artifact](results/2026-09-06-gfx1100-mtp-width-depth-policy-unchanged.json)).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -150,25 +143,15 @@ The ten-prompt suite includes four heldouts and uses raw greedy sampling, a
 20 ms batch window, capacity 8, and a 1,024-token session limit. Prefill is D1;
 AR and K3 are D24. Every row is a counterbalanced two-run mean from the
 [2026-09-04 P8 final-closure recapture](results/2026-09-04-w7900-q4km-k3-c8-p8-final-closure-matrix.json)
-on one physical host; the recapture found and fixed a width-1 K3 exactness
-regression (single-session direct-resident verify route scope, commit
-29b06611f) before recording these rows. The binding two-order D24 suite in the
-same packet puts the retained C8 candidate at **95.240 tok/s mean**
-(+5.49% vs its control, positive in both orders, 40/40 ar_exact cells):
-above both the published (94.735) and fresh (92.345) current-llama.cpp
-exact-peer rows, below both the published (101.072) and fresh (95.830)
-Laurent strongest-peer rows. hipEngine uses BF16 KV; the peers use F16 KV.
-This recapture forced K3 and remains the peer-comparison record. A separate
-post-closure production gate reviewed the retained grouped-Q6 DP4A candidate on
-the final stack (**95.708→97.674 tok/s, +2.05%**, both orders and every slice
-positive), then promoted the exact capacity-8 C8/K3 key; its clean automatic
-route validation is **98.643 tok/s (1.1178x AR)** with 10/10 exact cells.
-The direct packed-AR decode route now uses the singleton-indexed GDN
-recurrence on this backend (retained 2026-09-05 after independent W7900
-qualification): direct graph decode at 512/128 improves **c2 +7.40%, c4
-+6.06%, native C8 +5.91%** with exact trajectories and byte-identical state
-differentials ([singleton GDN retention](results/2026-09-05-gfx1100-gdn-singleton-retained.json)).
-The server-protocol rows above predate that route change.
+on one physical host. Its binding two-order D24 suite puts the C8 candidate at
+**95.240 tok/s mean**: above the published (94.735) and fresh (92.345)
+current-llama.cpp exact-peer rows, below the published (101.072) and fresh
+(95.830) Laurent strongest-peer rows. hipEngine uses BF16 KV; the peers use
+F16 KV. A later production gate promoted the exact capacity-8 C8/K3 key, whose
+automatic route validation recorded **98.643 tok/s (1.1178x AR)**.
+The direct packed-AR decode route uses the singleton-indexed GDN recurrence
+(2026-09-05): 512/128 graph decode improves **c2 +7.40%, c4 +6.06%, native C8
++5.91%**, exact ([artifact](results/2026-09-05-gfx1100-gdn-singleton-retained.json)).
 [`C8 automatic promotion`](results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json);
 [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
@@ -192,13 +175,10 @@ implementation is retained. [`Final`](results/2026-08-26-zbook-agentic-quality2-
 
 See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), the
 [`harness catalog`](HARNESSES.md), and [`BENCHMARK.md`](../docs/BENCHMARK.md).
-Retained C1-C8 optimization history remains in the result artifacts and
-[`CHANGELOG.md`](CHANGELOG.md), not in this current-row scoreboard.
+Optimization history lives there, not in this current-row scoreboard.
 
 The current Qwen3.8 C8/K3 product route is automatic only for its exact
-production key. The clean retained packet records **98.643 tok/s**, 1.1178x its
-same-run AR rate, with all ten task cells exact; detailed optimization and peer
-history remains in the campaign and result artifacts.
+production key; its recorded rate is under review as noted above.
 
 ## Evidence status
 
@@ -311,7 +291,7 @@ resets per shape with state-bound PM4 graph decode.
 | 4K/128 | **878.721 tok/s** | **26.747 tok/s** | 16.204 GiB |
 
 All nine IDs are stable/finite; prefill/decode CV is at most 0.733%/0.475%, and
-the ten-prompt gate is exact. [`Current-default evidence`](results/2026-08-23-w7900-qwen36-27b-current-default-publication.json). Qwen3.8 details remain in the XTX tables above.
+the ten-prompt gate is exact. Qwen3.8 details remain in the XTX tables above.
 
 ### Radeon 8060S: Qwen3.8-27B Dense GGUF retained campaign state
 
@@ -394,18 +374,10 @@ transport. Server c9/c13 are declared grouped execution, not native widths.
 All 189 server request rows and 24,192 generated IDs pass the exact gate.
 Evidence: [`context-scoped C8 server refresh`](results/2026-08-08-gfx1100-context-scoped-c8-server-refresh.json).
 
-Two further exact width-8 owners entered this backend's direct packed-AR
-decode route on 2026-09-05, each qualified on this same W7900 host at 512/128
-against the route immediately preceding it: an exact Q8T16 qkv+gate pair
-rowtile moves native c8 decode 275.244 → 282.160 tok/s (+2.51%), and the exact
-Q4 selected gate/up duplicate-expert pair-reuse owner then moves it
-284.772 → 298.924 tok/s (+4.97%). Both are on by default with no environment
-flag and engage only at physical width 8; narrower widths keep their existing
-per-row owners. Both pass candidate-versus-rollback state and lifecycle
-differentials and a width-8 kernel census with exact tokens. The table above
-uses the separate server-refresh protocol and predates both changes.
-Evidence: [`Q8T16 pair rowtile`](results/2026-09-05-gfx1100-gguf-q8t16-pair-rowtile-c8-retained.json),
-[`Q4 selected pair reuse`](results/2026-09-05-gfx1100-gguf-q4-selected-pairreuse-c8-retained.json).
+Two exact width-8 owners joined it on 2026-09-05, each measured here at 512/128
+against the route before it: a Q8T16 pair rowtile (+2.51%) and a Q4 pair-reuse
+owner (+4.97%), both in [`CHANGELOG.md`](CHANGELOG.md). The table above predates
+them.
 
 ### Maple-Preview 2-bit on Radeon 8060S
 
@@ -425,7 +397,7 @@ and [`D1 helper`](results/2026-08-08-gfx1151-maple-d1-batched-affine4-rowreuse-r
 | RX 7900 XTX / Qwen3.8-27B Dense `Q4_K_M` | Exact/default natural25 B3 | 35.287 | **62.440** | **1.7695x** | Clean idle-card correction; exact greedy and GPU/CPU acceptance, retained fusion improves matched AR 3.764% and B3 0.439% with every category non-regressive. [`artifact`](results/2026-08-15-qwen38-27b-xtx-clean-idle-performance-correction.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Exact natural25 B3 | 11.692 | **21.158** | **1.8095x** | Clean current-main direct-leaf snapshot; all ten prompts and 30 MTP comparisons are exact, GPU/CPU acceptance agrees, and cached profiling confirms the qualified scalar-C1 and native Q4 rows4/2 owners. [`artifact`](results/2026-08-26-gfx1151-qwen38-current-main-ar-mtp.json) |
 | W7900 / Qwen3.6-27B Dense `Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 30.736 | **34.341** | **1.1173x** | Latest-source 10/10 engaged/exact; all categories non-regressive; blocking/SSE/static-intent/cancel/drain pass. [`artifact`](results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json) |
-| W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. [`artifact`](results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json) |
+| W7900 / Qwen3.6-35B-A3B `UD-Q4_K_M` | Public production/BF16 resident-C2 K2 D24, automatic | 80.973 | **93.644** | **1.1565x** | Latest-source 10/10 engaged and MTP self-exact; three-run ratio 1.1368x; all categories non-regressive; strict-teacher, blocking/SSE/cancel/drain pass. Shares the artifact linked in the row above. |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public strict/BF16 normal-cap4 realized-C1 B3, automatic | 9.807 | **15.609** | **1.5916x** | Current-source 10/10 >1.10x; all categories positive; 78.57% acceptance; C2-C8 group at normal AR width and select pure K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-dynamic-admission-d7-closure.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Public production/BF16 C1 B3, c68-128/h24, explicit | 9.350 | **13.088** | **1.3998x** | 10/10 >1.10x; all slices positive; 87.63% acceptance; numerics/blocking/SSE pass. c129+/auto K0. [`artifact`](results/2026-08-27-gfx1151-qwen38-c68-c128-production-explicit.json) |
 | Radeon 8060S / Qwen3.8-27B Dense `Q4_K_M` | Production/BF16 C3 K3 D24, explicit diagnostic | 20.788 | **19.934** | **0.9589x** | Scoped R6/R9/R12 reuse improves MTP 4.53%; 10/10 exact and 1,296 numerical rows pass, but mixed/aggregate trail AR, so automatic C3 remains K0. [`artifact`](results/2026-08-28-gfx1151-qwen38-c3-production-rowtiles-retained.json) |
