@@ -32,8 +32,9 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
+    p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
     p.add_argument("--full-kv", action="store_true")
     args = p.parse_args()
@@ -55,7 +56,7 @@ def main():
     flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
             if args.route_package == "q5k-row4"
             else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
-    if args.route_package == "q4-bundle":
+    if args.route_package in {"q4-bundle", "prefill-bundle"}:
         flag = "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"
     from hipengine.kernels.registry import KernelKey, register, resolve
     key = (KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
@@ -64,7 +65,7 @@ def main():
            KernelKey("hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
                      "strict_h256_page256_wave_rows_spans"
                      if args.route_package == "qsa-h256-page256" else "strict_h256_wave_rows_spans"))
-    if args.route_package == "q4-bundle":
+    if args.route_package in {"q4-bundle", "prefill-bundle"}:
         key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q4_k",
                         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
@@ -75,6 +76,21 @@ def main():
         return original(*a, **kw)
 
     register(key, counted, replace=True)
+    qsa_calls = [0]
+    qsa_original = None
+    if args.route_package == "prefill-bundle":
+        qsa_key = KernelKey(
+            "hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
+            "strict_h256_page256_wave_rows_spans")
+        qsa_original = resolve(
+            backend=qsa_key.backend, layer=qsa_key.layer, quant=qsa_key.quant,
+            variant=qsa_key.variant)
+
+        def counted_qsa(*a, **kw):
+            qsa_calls[0] += 1
+            return qsa_original(*a, **kw)
+
+        register(qsa_key, counted_qsa, replace=True)
     report = {
         "source": _git_metadata(ROOT), "host": _host_metadata(), "command": sys.argv,
         "manifest_sha256": resolved.manifest_sha256,
@@ -92,13 +108,16 @@ def main():
     try:
         if args.route_package == "q5k-row4":
             assert os.environ[flag] == "1", "production must select row4 without an override"
+        if args.route_package == "prefill-bundle":
+            assert os.environ[flag] == "1"
+            assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
         if args.case_id and not set(args.case_id) <= {c["id"] for c in fixture["cases"]}:
             raise ValueError("unknown case id")
         for case in fixture["cases"]:
             if args.case_id:
                 if case["id"] not in args.case_id:
                     continue
-            elif case["prompt_tokens"] != 512 and case["id"] != "code-p4096":
+            elif not args.all_cases and case["prompt_tokens"] != 512 and case["id"] != "code-p4096":
                 continue
             baseline = None
             summaries = []
@@ -106,7 +125,11 @@ def main():
                 os.environ[flag] = (
                     "page256" if args.route_package == "qsa-h256-page256" and enabled == "1"
                     else enabled)
+                if args.route_package == "prefill-bundle":
+                    os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = (
+                        "page256" if enabled == "1" else "0")
                 start_calls = calls[0]
+                start_qsa_calls = qsa_calls[0]
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 logits = first.logits.copy()
                 token = int(first.token_id)
@@ -132,8 +155,11 @@ def main():
                     state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
                 expected = enabled == "1" and (
-                    args.route_package in {"q5k-row4","q4-bundle"} or case["prompt_tokens"] > 2051)
+                    args.route_package in {"q5k-row4","q4-bundle","prefill-bundle"} or case["prompt_tokens"] > 2051)
                 assert (invoked > 0) == expected, f"route not engaged correctly: {case['id']}"
+                invoked_qsa = qsa_calls[0] - start_qsa_calls
+                if args.route_package == "prefill-bundle":
+                    assert (invoked_qsa > 0) == (enabled == "1" and case["prompt_tokens"] > 2051)
                 actual = (logits, next_logits, state)
                 if baseline is None:
                     baseline = actual
@@ -148,6 +174,7 @@ def main():
                     "prefill_logits_sha256": hashlib.sha256(logits).hexdigest(),
                     "step_logits_sha256": hashlib.sha256(next_logits).hexdigest(),
                     "candidate_calls": invoked,
+                    "qsa_candidate_calls": invoked_qsa,
                     "step_seconds": step_seconds,
                     "full_kv_sha256": state.get("full_kv_sha256"),
                 })
@@ -156,6 +183,9 @@ def main():
     finally:
         os.environ[flag] = "1"
         register(key, original, replace=True)
+        if qsa_original is not None:
+            register(qsa_key, qsa_original, replace=True)
+            os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = "page256"
         generator.close()
         report["memory_after_close"] = memory_stats()
         args.output.write_text(json.dumps(report, indent=2) + "\n")

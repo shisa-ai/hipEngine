@@ -783,14 +783,16 @@ The Q4_K selected-prefill family has a separately registered exact bundled
 publication sibling of its row8/output4/expertgrid64 owner. It preserves
 per-row FMA and wave/serial-wave reduction order while publishing all
 gate/up row sums in one LDS phase. The existing owner remains strict
-fallback; runtime admission is separate from registration.
+fallback. Qwen4Exp production selects bundled publication in its exact
+grouped-Q4 prefill branch; the WMMA suffix and c1 decode remain separate.
 
 The Qwen4Exp `attention/qwen4_exp_qsa.{hip,py}` family registers a separate
 `strict_h256_wave_rows_spans` candidate for D=256 paged BF16 sparse rows.
 Eight coordinates per lane preserve the parent 256-element score tree;
 an explicit product register boundary prevents compiler contraction across
 the parent's rounding point. `strict_rows_spans` remains its fallback.
-The candidate is not selected by runtime until whole-model admission.
+Qwen4Exp production selects its qualified page256 sibling for sparse rows;
+strict retains the original rows owner.
 Its separately registered `strict_h256_page256_wave_rows_spans` sibling
 specializes 256-token page addressing to remove runtime division/modulo;
 it rejects other page sizes and retains the generic H256 wave parent.

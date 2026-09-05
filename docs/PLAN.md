@@ -1038,6 +1038,13 @@ Phase-0 targets (driven by the current research focus):
 Qwen3.8-Flash-Next gap-closure priority (source review 2026-09-05): routed
 prefill MoE, dense/GR, D=256 sparse QSA, then GDN; see the
 [halo campaign's ordered work](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#6-punchlist).
+The 2026-09-05 owner decision retains exact page256 QSA and bundled-Q4
+publication in production despite their measured small hot-decode losses;
+strict keeps the previous owners. Separate component prefill gains are
+about19-20% for p4096 QSA and 2.45-3.47% for bundled-Q4. Do not add those
+ratios or claim a combined rate without measurement. Correctness gates are
+unchanged, and decode optimization, D1, and comparator closure remain open.
+See the [promotion packet](../benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
 The GDN tile-16 Hv=48 owner was promoted in `22dc56268` after live-route
 one-residency validation. Active execution now uses Framework Desktop host
 `gfx1151` (machine ID `55ea6c509d0b49eea8de7094a1023668`) and targets

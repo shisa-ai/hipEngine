@@ -77,6 +77,12 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+The later 2026-09-05 owner decision retains exact QSA page256 and bundled-Q4
+prefill in production, accepting the recorded small hot-decode tradeoffs
+as follow-up work. The table below remains the pinned earlier comparator
+screen, not a measurement of the combined new defaults.
+[Promotion evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json).
+
 Execution follows the main campaign's **active execution contract**: exclusive
 Framework host `gfx1151`, halo-box Vulkan as the working performance target
 despite screening variance, native FP8 remote quality reference, and same-Q4
