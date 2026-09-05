@@ -356,6 +356,63 @@ def qwen4_exp_gdn_prefill_columnwarps_f32(
         runtime.check(int(error))
 
 
+def qwen4_exp_gdn_prefill_tiled16_f32(
+    conv_ptr: int,
+    output_gate_ptr: int,
+    alpha_ptr: int,
+    beta_logits_ptr: int,
+    dt_bias_ptr: int,
+    a_ptr: int,
+    norm_weight_ptr: int,
+    recurrent_state_ptr: int,
+    core_ptr: int,
+    tokens: int,
+    num_k_heads: int,
+    num_v_heads: int,
+    head_k_dim: int,
+    head_v_dim: int,
+    *,
+    stream: int = 0,
+    library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    """Run exact token-tile-16 Qwen4Exp GDN prefill for the 16K/32V shape."""
+
+    if tokens < 16:
+        raise ValueError("tile-16 GDN prefill requires at least 16 tokens")
+    if num_k_heads != 16 or num_v_heads != 32:
+        raise ValueError("tile-16 GDN prefill requires 16 key and 32 value heads")
+    if head_k_dim != 128 or head_v_dim != 128:
+        raise ValueError("tile-16 GDN prefill requires 128x128 heads")
+    library = library or build_qwen4_exp_gdn(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = signed_kernel_fn(
+        library,
+        "hipengine_qwen4_exp_gdn_prefill_tiled16_f32",
+        _PREFILL_ARGS,
+        ctypes.c_int,
+    )
+    error = fn(
+        conv_ptr,
+        output_gate_ptr,
+        alpha_ptr,
+        beta_logits_ptr,
+        dt_bias_ptr,
+        a_ptr,
+        norm_weight_ptr,
+        recurrent_state_ptr,
+        core_ptr,
+        tokens,
+        num_k_heads,
+        num_v_heads,
+        head_k_dim,
+        head_v_dim,
+        stream,
+    )
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
+
 def qwen4_exp_gdn_prefill_f32(
     conv_ptr: int,
     output_gate_ptr: int,
@@ -477,6 +534,7 @@ def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
         "qwen4exp_sigmoid_strict_prefill": qwen4_exp_gdn_prefill_f32,
         "qwen4exp_sigmoid_peer_prefill": qwen4_exp_gdn_peer_prefill_f32,
         "qwen4exp_gdn_columnwarps_prefill": qwen4_exp_gdn_prefill_columnwarps_f32,
+        "qwen4exp_gdn_tiled16_prefill": qwen4_exp_gdn_prefill_tiled16_f32,
         "qwen4exp_gdn_w32_prefill": qwen4_exp_gdn_prefill_w32_f32,
     }
     for variant, function in registrations.items():
@@ -517,6 +575,7 @@ register_qwen4_exp_gdn_kernels()
 
 __all__ = [
     "qwen4_exp_gdn_prefill_columnwarps_f32",
+    "qwen4_exp_gdn_prefill_tiled16_f32",
     "qwen4_exp_gdn_prefill_w32_f32",
     "build_qwen4_exp_gdn",
     "plan_qwen4_exp_gdn_build",
