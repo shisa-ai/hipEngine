@@ -4802,3 +4802,6 @@ score-product register boundary: removing it changes arithmetic under the
 current HIP compiler. Preserve `strict_rows_spans` and the separate decode
 ordered parent. Remove the flag/route if the complete-model gate fails;
 otherwise retain an opt-out only while it is useful for rollback and bisection.
+The page256 addressing sibling is standalone only. Prefer it only after
+the same model/clock gates; remove redundant generic runtime dispatch if
+the specialization covers all qualified shapes, but retain a strict fallback.

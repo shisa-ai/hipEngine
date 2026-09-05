@@ -26,7 +26,11 @@ def main():
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--page256", action="store_true")
+    parser.add_argument("--compare-generic", action="store_true")
     args = parser.parse_args()
+    if args.compare_generic and not args.page256:
+        parser.error("--compare-generic requires --page256")
     if args.pairs < 1 or not 1 <= args.selected <= 4352 or any(r <= 0 for r in args.rows):
         parser.error("positive rows/pairs and selected in 1..4352 required")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
@@ -40,18 +44,25 @@ def main():
         "geometry": {"query_heads":24,"kv_heads":2,"head_dim":256,"capacity":4352,"block_size":256},
         "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
         "cases": [],
+        "page256": args.page256,
+        "baseline": "generic_h256_wave" if args.compare_generic else "strict_rows",
     }
     for rows in args.rows:
-        f = Fixture(rows, args.selected)
+        f = Fixture(rows, args.selected, page256=args.page256)
         try:
             f.run(False)
+            expected = f.download(False).view(np.uint32)
             f.run(True)
             timing = {"parent": [], "candidate": []}
             for pair in range(args.pairs):
                 for candidate in ((False, True) if pair % 2 == 0 else (True, False)):
+                    if args.compare_generic:
+                        f.page256 = candidate
                     start = time.perf_counter()
-                    f.run(candidate)
+                    f.run(True if args.compare_generic else candidate)
                     timing["candidate" if candidate else "parent"].append(time.perf_counter()-start)
+                    np.testing.assert_array_equal(
+                        f.download(True if args.compare_generic else candidate).view(np.uint32), expected)
                 np.testing.assert_array_equal(f.download(True).view(np.uint32), f.download(False).view(np.uint32))
             report["cases"].append({
                 "rows": rows, "selected_stride": args.selected,
