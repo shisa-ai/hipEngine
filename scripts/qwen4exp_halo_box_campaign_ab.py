@@ -39,6 +39,7 @@ BEFORE_COMMIT = "0436e138b5fe6a43b1b1bae5df6c33fff2110148"
 FORKB_ENV = "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"
 Q5_M1_ENV = "HIPENGINE_QWEN4_EXP_PROFILE_Q5_1_DOWN_M1"
 ROW4_ENV = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+QSA_H256_ENV = "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"
 _BASE_SEQUENCE = ("before", "after", "after", "before", "before", "after")
 
 
@@ -182,10 +183,11 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package == "q5k-row4":
+    if route_package in {"q5k-row4", "qsa-h256-wave"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
-        environment[ROW4_ENV] = "1" if mode == "after" else "0"
+        flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
+        environment[flag] = "1" if mode == "after" else "0"
         return
     if mode == "before":
         environment[Q5_M1_ENV] = "0"
@@ -203,6 +205,14 @@ def validate_row4_engagement(mode: str, calls: int) -> None:
         raise ValueError(f"invalid row4 engagement: {mode} calls={calls}")
 
 
+def validate_qsa_h256_engagement(mode: str, calls: int, prompt_tokens: int) -> None:
+    if prompt_tokens not in {512, 1024, 4096} or mode not in {"before", "after"}:
+        raise ValueError("QSA engagement check requires a canonical shape and arm")
+    expected = mode == "after" and prompt_tokens == 4096
+    if (calls > 0) != expected:
+        raise ValueError(f"invalid QSA engagement: {mode} p{prompt_tokens} calls={calls}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-root", type=Path, required=True)
@@ -213,7 +223,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -334,11 +344,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package == "q5k-row4":
+    if args.route_package in {"q5k-row4", "qsa-h256-wave"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
-        row4_key = KernelKey(
+        row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
             "selected_grouped_row4_gemv_bf16_bf16_out")
+            if args.route_package == "q5k-row4" else KernelKey(
+                "hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
+                "strict_h256_wave_rows_spans"))
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -352,6 +365,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             "before": {"q5_k_gate_up": "selected_gemv_bf16_bf16_out"},
             "after": {"q5_k_gate_up": row4_key.variant},
         }
+        if args.route_package == "qsa-h256-wave":
+            artifact["arms"] = {
+                "before": {"sparse_prefill": "strict_rows_spans"},
+                "after": {"sparse_prefill": row4_key.variant},
+            }
     artifact["route_package"] = args.route_package
     artifact["diagnostic_subset"] = bool(args.case_id)
 
@@ -362,7 +380,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             generator.runner, case=case, repetition=repetition, transitions=transitions)
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            validate_row4_engagement(mode, calls)
+            if args.route_package == "qsa-h256-wave":
+                validate_qsa_h256_engagement(mode, calls, int(case["prompt_tokens"]))
+            else:
+                validate_row4_engagement(mode, calls)
             row["candidate_calls"] = calls
         return row
 

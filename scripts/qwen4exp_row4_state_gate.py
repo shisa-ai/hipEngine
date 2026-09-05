@@ -31,6 +31,8 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave"), default="q5k-row4")
+    p.add_argument("--case-id", action="append")
     args = p.parse_args()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
@@ -45,28 +47,56 @@ def main():
         model_path=args.model_root, weight_index=index,
         model_plugin=resolve_model(index.architecture or ""),
         backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=512))
-    flag = "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+    flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
+            if args.route_package == "q5k-row4"
+            else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
+    from hipengine.kernels.registry import KernelKey, register, resolve
+    key = (KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
+                     "selected_grouped_row4_gemv_bf16_bf16_out")
+           if args.route_package == "q5k-row4" else
+           KernelKey("hip_gfx1151", "qsa_sparse_attention", "bf16_kv",
+                     "strict_h256_wave_rows_spans"))
+    original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    calls = [0]
+
+    def counted(*a, **kw):
+        calls[0] += 1
+        return original(*a, **kw)
+
+    register(key, counted, replace=True)
     report = {
         "source": _git_metadata(ROOT), "host": _host_metadata(), "command": sys.argv,
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
         "fixture_sha256": digest, "cases": [],
+        "route_package": args.route_package,
         "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; not full KV payload",
     }
     try:
-        assert os.environ[flag] == "1", "production must select row4 without an override"
+        if args.route_package == "q5k-row4":
+            assert os.environ[flag] == "1", "production must select row4 without an override"
+        if args.case_id and not set(args.case_id) <= {c["id"] for c in fixture["cases"]}:
+            raise ValueError("unknown case id")
         for case in fixture["cases"]:
-            if case["prompt_tokens"] != 512 and case["id"] != "code-p4096":
+            if args.case_id:
+                if case["id"] not in args.case_id:
+                    continue
+            elif case["prompt_tokens"] != 512 and case["id"] != "code-p4096":
                 continue
             baseline = None
             summaries = []
             for enabled in ("0", "1", "0"):
                 os.environ[flag] = enabled
+                start_calls = calls[0]
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 logits = first.logits.copy()
                 next_row = generator.runner.step(int(first.token_id))
                 next_logits = next_row.logits.copy()
                 state = _state_summary(generator.runner)
+                invoked = calls[0] - start_calls
+                expected = enabled == "1" and (
+                    args.route_package == "q5k-row4" or case["prompt_tokens"] > 2051)
+                assert (invoked > 0) == expected, f"route not engaged correctly: {case['id']}"
                 actual = (logits, next_logits, state)
                 if baseline is None:
                     baseline = actual
@@ -80,11 +110,13 @@ def main():
                     "layout_sha256": state["layout_sha256"],
                     "prefill_logits_sha256": hashlib.sha256(logits).hexdigest(),
                     "step_logits_sha256": hashlib.sha256(next_logits).hexdigest(),
+                    "candidate_calls": invoked,
                 })
             report["cases"].append({"id": case["id"], "exact": True, "captures": summaries})
             print(case["id"], "full logits/state exact", flush=True)
     finally:
         os.environ[flag] = "1"
+        register(key, original, replace=True)
         generator.close()
         report["memory_after_close"] = memory_stats()
         args.output.write_text(json.dumps(report, indent=2) + "\n")
