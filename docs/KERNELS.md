@@ -779,6 +779,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+The Q4_K selected-prefill family has a separately registered exact bundled
+publication sibling of its row8/output4/expertgrid64 owner. It preserves
+per-row FMA and wave/serial-wave reduction order while publishing all
+gate/up row sums in one LDS phase. The existing owner remains strict
+fallback; runtime admission is separate from registration.
+
 The Qwen4Exp `attention/qwen4_exp_qsa.{hip,py}` family registers a separate
 `strict_h256_wave_rows_spans` candidate for D=256 paged BF16 sparse rows.
 Eight coordinates per lane preserve the parent 256-element score tree;

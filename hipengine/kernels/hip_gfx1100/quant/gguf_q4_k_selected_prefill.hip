@@ -177,7 +177,8 @@ __device__ inline float reduce_block_sum_strict(float value, float* wave_sums) {
 // Exact grouped counterpart of the selected dual scalar prefill kernel. The
 // column assignment and wave/block reduction tree are unchanged; only Q4_K
 // weight dequantization is shared across up to eight rows of one expert.
-template <int ROW_BATCH, int OUT_BATCH, bool PAIR_BLOCK_WEIGHTS = false>
+template <int ROW_BATCH, int OUT_BATCH, bool PAIR_BLOCK_WEIGHTS = false,
+          bool BUNDLED_PUBLICATION = false>
 __global__ __launch_bounds__(128, 2)
 void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
     const uint16_t* __restrict__ input,
@@ -190,7 +191,7 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
     int64_t num_experts,
     int64_t in_features,
     int64_t out_features) {
-  __shared__ float wave_sums[8];
+  __shared__ float wave_sums[BUNDLED_PUBLICATION ? 2 * ROW_BATCH * 4 : 8];
   constexpr int MAX_Q4_BLOCKS = 16;
   __shared__ float d_scales_a[MAX_Q4_BLOCKS * Q4_K_SUBBLOCKS];
   __shared__ float dmin_mins_a[MAX_Q4_BLOCKS * Q4_K_SUBBLOCKS];
@@ -282,6 +283,35 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
             }
           }
         }
+        if constexpr (BUNDLED_PUBLICATION) {
+#pragma unroll
+          for (int row = 0; row < ROW_BATCH; ++row) {
+#pragma unroll
+            for (int offset = 16; offset > 0; offset >>= 1) {
+              acc_a[row] += __shfl_down(acc_a[row], offset);
+              acc_b[row] += __shfl_down(acc_b[row], offset);
+            }
+            if ((threadIdx.x & 31) == 0) {
+              const int wave = threadIdx.x >> 5;
+              wave_sums[row * 4 + wave] = acc_a[row];
+              wave_sums[(ROW_BATCH + row) * 4 + wave] = acc_b[row];
+            }
+          }
+          __syncthreads();
+          if (threadIdx.x < 2 * ROW_BATCH) {
+            const int row = threadIdx.x % ROW_BATCH;
+            float total = 0.0f;
+#pragma unroll
+            for (int wave = 0; wave < 4; ++wave) {
+              total += wave_sums[threadIdx.x * 4 + wave];
+            }
+            if (base + row < end) {
+              uint16_t* target = threadIdx.x < ROW_BATCH ? output_a : output_b;
+              target[(base + row) * out_features + out] = float_to_bf16_bits(total);
+            }
+          }
+          __syncthreads();
+        } else {
 #pragma unroll
         for (int row = 0; row < ROW_BATCH; ++row) {
           const float total = reduce_block_sum_strict(acc_a[row], wave_sums);
@@ -297,6 +327,7 @@ void gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel(
             output_b[(base + row) * out_features + out] = float_to_bf16_bits(total);
           }
           __syncthreads();
+        }
         }
       }
     }
@@ -1771,6 +1802,27 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgr
       static_cast<const uint8_t*>(qweight_b),
       static_cast<uint16_t*>(output_a), static_cast<uint16_t*>(output_b),
       compact_rows, num_experts, in_features, out_features);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out(
+    const void* input, const void* expert_start,
+    const void* qweight_a, const void* qweight_b, void* output_a, void* output_b,
+    int64_t compact_rows, int64_t num_experts, int64_t in_features,
+    int64_t out_features, hipStream_t stream) {
+  if (!input || !expert_start || !qweight_a || !qweight_b || !output_a ||
+      !output_b || compact_rows <= 0 || num_experts <= 0 || in_features <= 0 ||
+      in_features % QK_K || in_features > 4096 || out_features <= 0) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(
+      (gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true, true>),
+      dim3(static_cast<uint32_t>((out_features + 3) / 4),
+           static_cast<uint32_t>(num_experts < 64 ? num_experts : 64)),
+      dim3(128), 0, stream, static_cast<const uint16_t*>(input),
+      static_cast<const int64_t*>(expert_start), static_cast<const uint8_t*>(qweight_a),
+      static_cast<const uint8_t*>(qweight_b), static_cast<uint16_t*>(output_a),
+      static_cast<uint16_t*>(output_b), compact_rows, num_experts, in_features, out_features);
   return static_cast<int>(hipGetLastError());
 }
 

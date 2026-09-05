@@ -4807,3 +4807,11 @@ the same model/clock gates; remove redundant generic runtime dispatch if
 the specialization covers all qualified shapes, but retain a strict fallback.
 It can now be tested through the existing QSA flag's explicit `page256`
 value and a separately counted A/B arm; the flag's default remains off.
+
+## Qwen4Exp Q4 bundled publication (2026-09-05)
+
+The separately registered exact Q4 gate/up bundle variant is a standalone
+candidate. Promote only after complete-owner and full-model validation;
+remove the alternative if it fails that gate. Preserve the prior exact
+grouped-Q4 owner as strict fallback. No runtime flag is introduced by this
+leaf unit.

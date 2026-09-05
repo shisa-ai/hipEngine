@@ -186,6 +186,12 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
+Standalone exact Q4 gate/up bundled publication reduces the actual-weight
+gate/up+SiLU boundary at tokens512 from30.39 to24.97 ms (1.217x), all pairs
+exact. Timing variability and whole-model admission remain open; this is
+not a production gain.
+[Q4 bundle](results/2026-09-05-framework-qwen4exp-q4-bundle.json).
+
 The current same-host comparator screen ran on the Framework Desktop (physical
 host `gfx1151`, machine ID `55ea6c509d0b49eea8de7094a1023668`, Ryzen AI Max+
 395 / Radeon 8060S) with the verified four-part Unsloth `UD-Q4_K_XL` artifact,
