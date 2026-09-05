@@ -205,6 +205,11 @@ It identifies FFN/linear/GR as the largest prefill gaps and QSA as the largest
 decode gap; HIP kernel sums and Vulkan query intervals remain diagnostic.
 [Generated family evidence](results/2026-09-05-framework-qwen4exp-family-alignment.json).
 
+The larger Q4 row-batch screen is rejected: exact RB16/32 variants lose
+against RB8 in all12 final actual-weight, synthetic-routing cells across
+tokens512/1024/2048. Production is unchanged.
+[Screen evidence](results/2026-09-05-framework-qwen4exp-q4-rowbatch-rejected.json).
+
 Latest full-suite production retention adds exact Q4 output-pair reuse:
 
 | Shape | Parent prefill | Q4 pair prefill | Gain | Decode before -> after |
