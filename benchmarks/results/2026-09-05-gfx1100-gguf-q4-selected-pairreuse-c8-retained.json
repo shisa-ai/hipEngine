@@ -1,0 +1,128 @@
+{
+ "schema": 1,
+ "kind": "gfx1100_gguf_q4_selected_pairreuse_c8_retained",
+ "created_at": "2026-09-05T17:50:00Z",
+ "status": "retained_exact_default_committed",
+ "passed": true,
+ "performance_claim": true,
+ "claim_scope": "clean cached p512/d128 direct native-c8 graph model-step decode throughput on the physical W7900; same-host same-protocol control vs candidate where the candidate differs only by the package Q4 selected pairreuse floor",
+ "decision": "Admit the exact Q4 selected gate/up pair-reuse dual owner on hip_gfx1100 at physical c8 (x_rows=8, rows=64) through GGUF_Q4_T16_SELECTED_PAIRREUSE_MIN_ROWS=8 (retention commit 7e7b2cecb). All other widths keep the per-row dual owner; explicit env 0 rolls back; selected-down and Q6-down pair reuse stay floored 0 (packets D2/D3 unqualified).",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocr_visible_devices": "0",
+  "gpu_max_hw_queues": 1,
+  "rocm": "HIP version: 7.2.53211-3d9ef42",
+  "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+ },
+ "software": {
+  "control_commit": "a3293a5fd (package Q4 selected pairreuse floor 0; docs-only lineage from code commit 3c0e02d2a)",
+  "retention_commit": "7e7b2cecb62f436383da1850dabba52f6dd92287 (package Q4 selected pairreuse floor 8)",
+  "audit_plan": "docs/20260905-gfx1100-audit.md work packet D1",
+  "gfx1151_reference": "benchmarks/results/2026-07-20-gfx1151-gguf-selected-expert-pairreuse-c8-retained.json"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "moe": "256 experts, top_k 8, Q4_T16 selected gate/up, Q6_T16 down",
+  "kv_dtype": "bf16"
+ },
+ "workload": {
+  "configuration": "native_c8 (one physical eight-row decode group)",
+  "prompt_length": 512,
+  "decode_steps": 128,
+  "prompt_token_id": 9707,
+  "expected_token_id": 9707,
+  "sampling": "greedy_top1",
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "command": ".venv/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-gfx1100-hipcc-version.txt --require-cached-build --json <artifact>"
+ },
+ "performance": {
+  "metric": "decode_tok_s_aggregate median, 3 measured runs each arm",
+  "native_c8": {
+   "control": 284.772,
+   "candidate": 298.924,
+   "delta_pct": 4.97,
+   "control_samples": [285.888, 284.772, 283.365],
+   "candidate_samples": [300.953, 298.924, 298.161],
+   "sample_ranges_separated": true
+  },
+  "prefill_native_c8_tok_s": {
+   "control": 1196.269,
+   "candidate": 1189.463
+  },
+  "env_cross_check": {
+   "note": "independent env-on run (HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=1) at the same kernel-code baseline confirms the floor and env produce the same route and rate",
+   "decode_median": 298.999,
+   "samples": [300.287, 298.999, 297.505],
+   "commit": "a9c540c97"
+  },
+  "interpretation": "candidate range [298.161, 300.953] lies fully above the control range [283.365, 285.888]"
+ },
+ "expert_id_distributions": {
+  "artifact": "benchmarks/results/2026-09-05-gfx1100-gguf-q4-selected-pairreuse-natural-reuse.json",
+  "natural": {
+   "unit": "one layer-step = 64 selected lanes (8 rows x top-8)",
+   "scope": "960 layer-steps = 40 MoE layers x 24 decode steps, 8 distinct natural mtpbench-code-general-ja prompts, packed-AR c8 decode",
+   "within_step_duplicate_lane_fraction": 0.61556,
+   "within_step_unique_experts_mean": 24.6042,
+   "within_step_unique_experts_histogram_note": "88.1% of layer-steps have <= 32 unique experts of 64 lanes"
+  },
+  "direct_fixture": {
+   "note": "the p512/d128 direct bench repeats four distinct prompt trajectories to eight rows (two rows per prompt)",
+   "modeled_pairwise_duplicate_bound": ">= 16 paired lanes of 64 (duplicate fraction 0.5); cross-prompt coincidental collisions only increase pairing"
+  },
+  "conclusion": "measured natural reuse (0.616 duplicate lanes) exceeds the fixture (0.5), so the fixture bench understates the natural reuse opportunity; the retained route amortizes duplicates within one model step at c8"
+ },
+ "correctness": {
+  "primitive_bit_parity": [
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_direct_dual_pairreuse_matches_production_bits",
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_q4_t16_compact_pairreuse_matches_direct_bits_beyond_64_lanes",
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_q5_t16_direct_pairreuse_matches_production_bits",
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_q6_t16_direct_pairreuse_matches_production_bits",
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_t16_compact_down_pairreuse_matches_direct_bits_beyond_64_lanes"
+  ],
+  "red_green_policy": {
+   "test": "tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_gfx1100_q4_selected_pairreuse_floor_admits_c8_only",
+   "red": "floor 0: assert 0 == 8 failed at control commit",
+   "green": "floor 8: admits c8 only; env 0 rolls back; parity test updated (gfx1100 == gfx1151 == 8)"
+  },
+  "state_lifecycle_differentials": {
+   "protocol": "scripts/gguf_packed_ar_state_oracle.py steady c2/c4/c8 + shrink_sparse c8 + scripts/gguf_arbitrary_c_lifecycle.py cancel/compact c8; rollback arm (env unset, floor 0) vs candidate arm (env on, floor 0)",
+   "result": "arm-identical on every semantic axis for all 5 configurations (verdicts, mismatch fingerprints, trajectory hashes)",
+   "known_qualified_divergence": "the documented pre-existing packed-vs-strict-C1 prefill-layer-1 mismatch appears identically in both arms",
+   "kv_byte_note": "full-attention K/V byte hashes differ between arms (address-dependent split-K scratch, outside the semantic contract; C2 precedent); GDN conv/recurrent state hashes match exactly",
+   "lifecycle_provenance_note": "the lifecycle arm's sole raw-JSON difference is the git-dirty provenance flag from concurrent test edits; comparator: scripts/diff_differential_arms.py"
+  },
+  "c8_census": {
+   "command": ".venv/bin/python3 scripts/gguf_packed_ar_rocprof.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --decode-mode graph --packed-concurrency 8 --prompt-length 512 --prompt-token-id 9707 --expected-token-id 9707 --skip-warmbuild --raw-root /tmp/gfx1100-d1-c8-trace --out /tmp/gfx1100-d1-c8-profile.json",
+   "route_check_passed": true,
+   "tokens_exact": true,
+   "scalar_fallbacks": 0,
+   "pairreuse_kernel": "q4_k_t16_selected_dual_pairreuse_direct_gemv_kernel",
+   "pairreuse_dispatches": 80,
+   "pairreuse_duration_ns_median": 88921,
+   "pairreuse_shape": "128 threads, grid 4096x64, VGPR 200, LDS 1536, scratch 0",
+   "c3_family_subcheck_note": "the c3 family sub-check failures (full_attention, moe_ffn, lm_head) match the C2 census at the same values and are the pre-existing stale expectations of that diagnostic layer, not route regressions"
+  },
+  "bundle": "compact MoE routing + rowtile policy + gfx1151 backend + T16 selected decode: 114 passed"
+ },
+ "gates": [
+  "primitive bit-parity with three synthetic ID distributions (unique/uniform/paired)",
+  "RED->GREEN package-floor policy test",
+  "paired same-protocol A/B with separated ranges",
+  "state/lifecycle differentials arm-identical on 5/5 configs",
+  "c8 profiler census with the pairreuse symbol, exact tokens, zero fallbacks",
+  "natural expert-ID distribution measured and exceeding the fixture bound"
+ ],
+ "limitations": [
+  "The retained route is pinned to physical c8 by the geometry gate; widths 2/4 and c1 keep the per-row dual owner and were not perf-claimed.",
+  "The A/B uses the deterministic four-trajectory fixture; natural-prompt grouping is covered by the distribution artifact, not a separate natural-prompt throughput claim.",
+  "D2 (Q5 selected down) and D3 (Q6 selected down) pair reuse remain unqualified on gfx1100 (floors 0).",
+  "The lifecycle differential's raw JSON carries a git-dirty provenance flag difference from concurrent edits; all semantic axes are arm-identical."
+ ],
+ "disposition": "retained as default at physical c8; floor 8; rollback via HIPENGINE_GGUF_T16_SELECTED_PAIRREUSE=0"
+}
