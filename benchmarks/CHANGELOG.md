@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 Framework Qwen4Exp QSA fixed-clock control] Separate2700-MHz mixed p4096 lane: prefill93.01→112.25 tok/s (+20.69%), decode14.800→14.798 (-0.017%), exact outputs and all phase clocks2700 MHz. Original2900 high policy restored; no default promotion. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json`.
+
 - [2026-09-05 Framework Qwen4Exp QSA phase clocks] Page256 long-case diagnostic preserves exact outputs but repeats mixed decode loss; late after clocks average2880–2882 versus parent2898 MHz. Correlation only, no promoted metric or default change. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-phase-clocks.json`.
 
 - [2026-09-05 Framework Qwen4Exp QSA page256] Standalone address specialization: generic-wave rows512 28.134→27.560 ms (-2.04%), both arms checked exact, 20 focused tests and cached trace pass. No runtime promotion or power claim. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-page256.json`.
