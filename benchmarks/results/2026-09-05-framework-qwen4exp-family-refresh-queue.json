@@ -3,7 +3,7 @@
   "kind": "qwen4exp_framework_family_refresh_queue",
   "date": "2026-09-05",
   "date_basis": "UTC",
-  "status": "instrumentation_smoke_passed_full_refresh_pending",
+  "status": "baselines_captured_family_alignment_in_progress",
   "performance_claim": false,
   "priority": "before further kernel optimization",
   "host": {
@@ -46,13 +46,15 @@
     },
     {
       "id": "freeze",
-      "status": "queued",
+      "status": "completed",
+      "controller_commit": "bd451a417c9d54ca8d6d737cb55dfb9a47a27309",
       "depends_on": ["instrumentation"],
       "requirements": ["Pin final controller and runtime commits separately, both binary hashes, host identity, fixture, full model identity, compiler/driver, clock policy, profile manifest and clean tracked source."]
     },
     {
       "id": "unprofiled_baselines",
-      "status": "queued",
+      "status": "completed_screening_variance",
+      "evidence": "benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json",
       "depends_on": ["freeze"],
       "helper": "scripts/qwen4exp_canonical_ar_bench.py",
       "engines": ["hipengine combined production default", "halo-box Vulkan target", "halo-box HIP diagnostic"],
@@ -64,7 +66,7 @@
     },
     {
       "id": "owner_profiles",
-      "status": "queued",
+      "status": "in_progress",
       "depends_on": ["unprofiled_baselines"],
       "hipengine": "cached rocprofv3 kernel+HIP API+ROCTX traces; scripts/qwen4exp_role_analyze.py",
       "vulkan": "GGML_VK_PERF_LOGGER=1, frequency1, explicitly recorded concurrency setting; request-bounded graph sections plus semantic metadata",

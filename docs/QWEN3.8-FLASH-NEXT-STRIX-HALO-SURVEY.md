@@ -27,6 +27,22 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
+**Latest frozen refresh, 2026-09-05 UTC:** hipEngine `bd451a417` versus
+halo-box `b212548e0`, full12-case canonical AR, UD-Q4_K_XL/BF16 KV on
+Framework `gfx1151`, logger/profiler off:
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
+| --- | ---: | ---: | ---: |
+| hipEngine combined production | 153.96 / 19.38 | 152.30 / 18.75 | 142.03 / 14.42 |
+| halo-box Vulkan | 316.28 / 25.27 | 391.68 / 25.30 | 425.72 / 24.51 |
+| halo-box HIP | 282.76 / 21.08 | 368.33 / 20.56 | 351.08 / 18.83 |
+
+All36 samples/12 cases per engine repeat outputs; clean teardown.
+Every lane exceeds2% per-case variation somewhere, so these remain screening
+rates, not statistical closure. Vulkan target factors at p4096 are2.997x
+prefill and1.700x decode. [Full evidence and variance](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
+Older snapshots below retain their named revisions; do not mix their cells.
+
 The newer Q4 pair admission measures combined-stack prefill
 **153.78/151.21/141.30 tok/s**, with all72 trajectories exact and all request
 walls improved. Its A/B decode is19.383/18.512/12.899 tok/s with drift.
