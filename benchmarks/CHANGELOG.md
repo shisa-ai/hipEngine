@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 UTC Framework frozen baselines] Combined hipEngine PP153.96/152.30/142.03 and TG19.38/18.75/14.42 versus halo-box Vulkan PP316.28/391.68/425.72 and TG25.27/25.30/24.51 at512/1K/4K; all108 samples repeat outputs, clean teardown,36m18s. Same-protocol screening refresh, not old-to-new speedup: all lanes fail at least one2% CV metric. `benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json`.
+
 - [2026-09-05 UTC Framework Qwen4Exp Q4 pair production] Prefill p512145.21->153.78 (+5.90%), p1024142.82->151.21 (+5.87%), p4096134.01->141.30 tok/s (+5.44%); all72 trajectories exact, all12 request walls1.67-3.90% faster. Decode p1024/p4096 -0.23%/-1.63% retained as explicit debt. A/B34m53s, default state/KV gate passes. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json`.
 
 - [2026-09-05 UTC Framework Qwen4Exp Q4 output pair] Actual gate/up+SiLU tokens512 25.155->18.696 ms (-25.68%,1.345x); independent layer4/skewed map26.412->18.344 ms (1.440x). Shared original-BF16 activation loads, exact outputs,16 tests,88 VGPR/zero scratch; model admission pending. Fresh role trace confirms GDN0.780s and MoE15.512s. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json`.

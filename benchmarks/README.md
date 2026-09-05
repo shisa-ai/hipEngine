@@ -186,6 +186,20 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
+Fresh combined-default Framework `gfx1151` baseline, UD-Q4_K_XL/BF16 KV,
+four categories, p512/p1024/p4096 + tg128:
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
+| --- | ---: | ---: | ---: |
+| hipEngine | 153.96 / 19.38 | 152.30 / 18.75 | 142.03 / 14.42 |
+| halo-box Vulkan | 316.28 / 25.27 | 391.68 / 25.30 | 425.72 / 24.51 |
+| halo-box HIP | 282.76 / 21.08 | 368.33 / 20.56 | 351.08 / 18.83 |
+
+Weighted tok/s,36 samples per engine, all outputs repeat, clean teardown.
+All lanes exceed2% per-case CV somewhere; these are sequential screening
+comparisons, not statistical parity. The family alignment is still in progress.
+[Frozen baseline evidence](results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
+
 Latest full-suite production retention adds exact Q4 output-pair reuse:
 
 | Shape | Parent prefill | Q4 pair prefill | Gain | Decode before -> after |
