@@ -6,13 +6,14 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import numpy as np
 
-from hipengine.core.memory import memory_stats
+from hipengine.core.memory import memory_stats, copy_device_to_host, host_array_ptr
 from hipengine.execution_profiles import ExecutionProfile, resolve_runtime_profile
 from hipengine.generation.qwen4_exp_gguf import Qwen4ExpGGUFTextGenerator
 from hipengine.generation.qwen4_exp_profiles import (
@@ -33,7 +34,11 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
+    p.add_argument("--decode-steps", type=int, default=1)
+    p.add_argument("--full-kv", action="store_true")
     args = p.parse_args()
+    if not 1 <= args.decode_steps <= 128:
+        p.error("--decode-steps must be in 1..128")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     register_gfx1151_kernels(replace=True)
@@ -70,7 +75,13 @@ def main():
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
         "fixture_sha256": digest, "cases": [],
         "route_package": args.route_package,
-        "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; not full KV payload",
+        "decode_steps": args.decode_steps,
+        "full_kv": args.full_kv,
+        "scope": (
+            "full logits and snapshot decode buffers/PLE/attention positions/index counts; "
+            + ("full KV payload included" if args.full_kv else "not full KV payload")
+        ),
+        "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
     }
     try:
         if args.route_package == "q5k-row4":
@@ -90,9 +101,27 @@ def main():
                 start_calls = calls[0]
                 first = generator.runner.prefill(case["prompt_token_ids"])
                 logits = first.logits.copy()
-                next_row = generator.runner.step(int(first.token_id))
-                next_logits = next_row.logits.copy()
+                token = int(first.token_id)
+                step_logits = []
+                step_seconds = []
+                for _ in range(args.decode_steps):
+                    start = time.perf_counter()
+                    next_row = generator.runner.step(token)
+                    generator.runner.runtime.device_synchronize()
+                    step_seconds.append(time.perf_counter() - start)
+                    token = int(next_row.token_id)
+                    step_logits.append(next_row.logits.copy())
+                next_logits = np.stack(step_logits)
                 state = _state_summary(generator.runner)
+                if args.full_kv:
+                    kv_digest = hashlib.sha256()
+                    for attention in generator.runner.attention_states:
+                        for buffer in (attention.key_cache, attention.value_cache):
+                            raw = np.empty(buffer.nbytes, dtype=np.uint8)
+                            copy_device_to_host(
+                                host_array_ptr(raw), buffer, runtime=generator.runner.runtime)
+                            kv_digest.update(raw)
+                    state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
                 expected = enabled == "1" and (
                     args.route_package == "q5k-row4" or case["prompt_tokens"] > 2051)
@@ -111,6 +140,8 @@ def main():
                     "prefill_logits_sha256": hashlib.sha256(logits).hexdigest(),
                     "step_logits_sha256": hashlib.sha256(next_logits).hexdigest(),
                     "candidate_calls": invoked,
+                    "step_seconds": step_seconds,
+                    "full_kv_sha256": state.get("full_kv_sha256"),
                 })
             report["cases"].append({"id": case["id"], "exact": True, "captures": summaries})
             print(case["id"], "full logits/state exact", flush=True)

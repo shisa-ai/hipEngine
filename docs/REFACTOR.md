@@ -4792,6 +4792,10 @@ Always retain selected-GEMV strict fallback.
 
 `strict_h256_wave_rows_spans` has default-off prefill wiring through
 `HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL` for D256 rows>=16.
+The first complete A/B passes 72/72 exact trajectories and improves p4096
+prefill 19.29%, but long decode is 0.48% lower overall. This concrete phase
+regression is pending original-protocol focused confirmation; the English
+full-KV/state diagnostic alone cannot waive it.
 Promote only after the complete-model gate and actual transition/isolation
 evidence; remove an unneeded candidate if those gates reject it. Keep the
 score-product register boundary: removing it changes arithmetic under the

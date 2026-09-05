@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 Framework Qwen4Exp QSA full-suite audit] Pending decode followup, default remains off: p4096 prefill 97.83→116.70 tok/s (+19.29%) but decode 15.27→15.20 (-0.48%); 72/72 exact trajectories and clean teardown, English full-logit/full-KV followup exact. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fullsuite-audit.json`.
+
 - [2026-09-05 Framework Qwen4Exp H256 wave QSA] Standalone attention at rows512/selected2051: 171.93→28.02 ms (-83.71%, 6.14x), exact score-tree preservation with register-rounded products removes block barriers; 12 focused tests and cached trace pass, no runtime default change. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-h256-wave.json`.
 
 - [2026-09-05 Framework Qwen4Exp Q5_K row4 production] Promote exact grouped gate/up after clean same-residency 12-case tg128 A/B: p512 118.919→122.575 (+3.07%), p1024 117.716→121.472 (+3.19%), p4096 95.421→97.850 pp/s (+2.55%); all 72 trajectories exact, all cases faster, decode within 0.02%, zero final ownership. `benchmarks/results/2026-09-05-framework-qwen4exp-row4-production.json`.
