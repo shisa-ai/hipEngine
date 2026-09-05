@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 Framework Qwen4Exp Q4 bundle] Standalone actual gate/up+SiLU tokens512 30.385→24.967 ms (-17.83%), exact outputs, 11 tests and cached trace pass; bundle wave publication removes repeated barriers, whole-model admission pending. `benchmarks/results/2026-09-05-framework-qwen4exp-q4-bundle.json`.
+
 - [2026-09-05 Framework Qwen4Exp QSA fixed-clock control] Separate2700-MHz mixed p4096 lane: prefill93.01→112.25 tok/s (+20.69%), decode14.800→14.798 (-0.017%), exact outputs and all phase clocks2700 MHz. Original2900 high policy restored; no default promotion. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-fixed-clock-control.json`.
 
 - [2026-09-05 Framework Qwen4Exp QSA phase clocks] Page256 long-case diagnostic preserves exact outputs but repeats mixed decode loss; late after clocks average2880–2882 versus parent2898 MHz. Correlation only, no promoted metric or default change. `benchmarks/results/2026-09-05-framework-qwen4exp-qsa-phase-clocks.json`.

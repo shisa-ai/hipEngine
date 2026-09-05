@@ -1,0 +1,165 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q4_bundle_gate_up_silu",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "6c7863f8285092bd8fd78a701744772a6a3ce9cc",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_bundle_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--rows",
+    "64",
+    "512",
+    "--pairs",
+    "10",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--output",
+    "/tmp/qwen4exp-q4-bundle-screen.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "weights": [
+    {
+      "tensor": "blk.0.ffn_gate_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+    },
+    {
+      "tensor": "blk.0.ffn_up_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+    }
+  ],
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "boundary": "grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine",
+  "cases": [
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "active_experts": 380,
+      "seconds": {
+        "parent": [
+          0.007421137997880578,
+          0.007448198972269893,
+          0.007482743123546243,
+          0.007458578096702695,
+          0.0074799570720642805,
+          0.007494193967431784,
+          0.007483253953978419,
+          0.0074628961738198996,
+          0.007484216010197997,
+          0.007489966927096248
+        ],
+        "candidate": [
+          0.005921873962506652,
+          0.005963501986116171,
+          0.005889181979000568,
+          0.005940909031778574,
+          0.005906675010919571,
+          0.0060178840067237616,
+          0.005902537144720554,
+          0.005928456084802747,
+          0.0058956448920071125,
+          0.005980763817206025
+        ]
+      },
+      "speedup": 1.2626399548262188,
+      "all_pairs_exact": true
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "active_experts": 512,
+      "seconds": {
+        "parent": [
+          0.030386126833036542,
+          0.030335311079397798,
+          0.03056265809573233,
+          0.030305315041914582,
+          0.03038401296362281,
+          0.030500560998916626,
+          0.030406505102291703,
+          0.030336594209074974,
+          0.030344428028911352,
+          0.030423606978729367
+        ],
+        "candidate": [
+          0.024967797799035907,
+          0.025167201878502965,
+          0.024652194930240512,
+          0.025082302978262305,
+          0.022354512941092253,
+          0.025181358912959695,
+          0.02496680594049394,
+          0.02500081993639469,
+          0.02312470809556544,
+          0.02166229416616261
+        ]
+      },
+      "speedup": 1.2169945337636021,
+      "all_pairs_exact": true
+    }
+  ],
+  "date": "2026-09-05",
+  "status": "standalone_candidate_runtime_pending",
+  "performance_claim": false,
+  "source_sha256": {
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip": "8efdf88aa0dca9f4554eb4386a6711af9b69bccc3bd427f7fba3100c8677fb50",
+    "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.py": "04fd5181a235dd24b0dfe15d3fbeabd9fc95f3c41f5f736a824dfbcd3f2fe66e"
+  },
+  "raw_sha256": "7da395f1db7d0665b29b88413e780d9fe90e61d66a8b2593c7809483bc405497",
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "cwd": "/home/lhl/hipEngine",
+  "python": ".venv/bin/python",
+  "correctness": "11 focused tests pass: exact BF16 gate/up outputs, SiLU, CPU-reference small case, 512-expert binding shape, uneven/empty experts, tails, strict fallback registration",
+  "trace": {
+    "path": "/tmp/qwen4exp-q4-bundle-trace/gfx1151/2239918_kernel_trace.csv",
+    "sha256": "4b21aa6d23110d9c2739088b987202a3e9cf6180b7b5c13e15e1291538f12309",
+    "symbol": "gguf_q4_k_selected_dual_grouped_rowbatch_bf16_kernel<8, 4, true, true>",
+    "duration_ns": [
+      25008082,
+      24009884
+    ],
+    "vgpr": 56,
+    "lds": 2560,
+    "scratch": 0,
+    "command": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/bin/rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-bundle-trace -- .venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --rows 512 --pairs 1 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --output /tmp/qwen4exp-q4-bundle-traced.json"
+  },
+  "limitations": [
+    "Development-tree actual-weight boundary screen; no whole-model or power claim.",
+    "Candidate512-token timing CV5.45%, though every pair wins; retain distribution rather than use a single fastest row.",
+    "Routing/down/combine excluded from boundary; full-model admission pending."
+  ]
+}
