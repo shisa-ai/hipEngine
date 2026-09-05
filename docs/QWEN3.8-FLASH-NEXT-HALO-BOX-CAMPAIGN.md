@@ -1,19 +1,22 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
-Status: **Source/impact review 2026-09-05 at `3574a1bd2`, synchronized with
-concurrent Hv48 repair `617038db9`. No GPU execution by this review. Start
-with section 6's revised work order.** The main
-engineering priorities are routed MoE, dense/GR projections, p4096 sparse
-QSA, then GDN. The retained PF-1/PF-3 T0 package remains production. PF-0 is
-complete; D1 is still an owner decision. Individual rejected levers do not
-close their parent bottleneck.
+Status: **Current Framework Desktop comparator screen completed 2026-09-05 at
+hipEngine `c0cfdc3ef`, upstream llama.cpp `4d9176092`, and halo-box master
+`b212548e0`.** Section 0 is the current c=1 overview. The original HB/PF
+campaign evidence below remains tied to the power- and heat-limited `zbook` and
+its pinned historical revisions; do not rewrite it as a cross-host delta. The
+retained PF-1/PF-3/PF-5 T0 package is production. PF-0 is complete; D1 remains
+an owner decision. Individual rejected levers do not close their parent
+bottleneck.
 
 **Correct the geometry before the next kernel unit:** binding GDN is
 Hk=16/Hv=48/D=128, and QSA is 24 query heads/2 KV heads/D=256. The
-PF-5 tile-16 candidate initially accepted **Hv=32 only**. Concurrent commit
-`617038db9` repaired Hv48 coverage; actual-route whole-model A/B remains pending.
-HB-2 demonstrates the non-KDA 32-warp GDN path, not PR11's H=32 KDA tile-16
-path. The prior PF-2 rejection's wave32 explanation is also incompatible
+PF-5 tile-16 candidate initially accepted **Hv=32 only**. Commit `617038db9`
+repaired Hv48 coverage, and the subsequent engagement-verified whole-model A/B
+promoted it at weighted prefill **89.435→89.873 (+0.49%)**,
+**88.553→88.966 (+0.47%)**, and **72.661→72.929 tok/s (+0.37%)** for
+p512/p1024/p4096, with all 72 trajectories exact. HB-2 demonstrates the
+non-KDA 32-warp GDN path, not PR11's H=32 KDA tile-16 path. The prior PF-2 rejection's wave32 explanation is also incompatible
 with D=256. Section 5.3 records these corrections and the actual Q8 tile
 geometry; section 5.4 explains the remaining costs.
 
@@ -72,7 +75,43 @@ its pre-existing MMQ and attention architecture also matters. Matching a
 microbenchmark alone does not close the aggregate gap. This campaign does
 not relax any correctness, evidence, or anti-gaming rule.
 
-## 1. Source identity and claim summary
+## 0. Current Framework Desktop c=1 overview
+
+This is the active same-host snapshot. It uses the verified four-part Unsloth
+`UD-Q4_K_XL` artifact, BF16 K/V, the canonical code/English/Japanese/mixed
+fixture at p512/p1024/p4096, 128 decode transitions, one warmup, and three
+measured requests per case. Cells are weighted prompt-processing / decode
+tokens per second.
+
+| Engine and backend | p512 | p1024 | p4096 | Repeated output |
+| --- | ---: | ---: | ---: | --- |
+| hipEngine production `c0cfdc3ef`, HIP | 118.44 / 19.92 | 117.79 / 19.22 | 95.14 / 15.21 | **12/12** |
+| Upstream llama.cpp `4d9176092`, HIP | 283.85 / 21.06 | 367.97 / 20.79 | 395.02 / 19.63 | **11/12**; `mixed_ja_en-p4096` varies |
+| Upstream llama.cpp `4d9176092`, Vulkan | 230.35 / 24.94 | 305.47 / 24.59 | 357.44 / 23.53 | **11/12**; `mixed_ja_en-p4096` varies |
+| halo-box master `b212548e0`, HIP | 265.69 / 21.02 | 368.90 / 20.50 | 356.62 / 18.63 | **12/12** |
+| halo-box master `b212548e0`, Vulkan | **298.97 / 24.92** | **369.72 / 24.52** | **402.46 / 23.47** | **12/12** |
+
+Physical host `gfx1151`, machine ID `55ea6c509d0b49eea8de7094a1023668`,
+Framework Desktop / Ryzen AI Max+ 395 / Radeon 8060S, kernel
+`7.1.6-1-cachyos`, accelerator-performance profile, performance CPU governors,
+and high GPU clock policy. The external servers used `-ngl 999 -fa on -ctk
+bf16 -ctv bf16 -c 4352 -b 8192 -ub 2048 -t 4`; all exited cleanly. hipEngine
+used production manifest `86e5c619…`, required cached JIT artifacts, did not
+fall back to strict, and repeated all 36 measured outputs.
+
+The screen does **not** freeze a new closure target. Every external lane exceeds
+the 2% maximum per-case coefficient-of-variation rule on at least one metric;
+halo-box Vulkan is the fastest repeatable raw row but reaches 19.8%/8.0%/4.3%
+maximum per-case prefill variation at p512/p1024/p4096. The two upstream lanes
+also fail output repeatability on one case. Relative to halo-box Vulkan,
+hipEngine reaches 39.6%/31.9%/23.6% of prefill throughput and
+79.9%/78.4%/64.8% of decode throughput. These are same-host screening ratios,
+not `zbook` old-to-new deltas. See the
+[compact packet](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-current-comparators.json)
+and the active
+[Strix Halo survey](QWEN3.8-FLASH-NEXT-STRIX-HALO-SURVEY.md).
+
+## 1. Historical source identity and claim summary
 
 Lane source: [halo-box/strix-llama.cpp](https://github.com/halo-box/strix-llama.cpp)
 [PR #11](https://github.com/halo-box/strix-llama.cpp/pull/11) by
@@ -115,7 +154,7 @@ or denies each by kernel-name census, never by assumption.
 | M8 | Elementwise/recurrent specializations: transposed concat tile-16, direct-index contiguous mul, quantize/norm/sumrows gfx1151 paths | **Yes** where shapes match; map per kernel in HB-3 |
 | M9 | Vulkan: cooperative-matrix dequant selection for wide prompt matmuls and large MoE batches, tiled recurrent concat, direct-index mul | Backend-disjoint; design evidence only, per main-campaign scope rules |
 
-## 2. Objective and boundaries
+## 2. Historical `zbook` objective and boundaries
 
 ### In scope
 
@@ -146,7 +185,7 @@ or denies each by kernel-name census, never by assumption.
   read-only references (`a7ad7b7f` citations only, `scripts/check_lineage.py`
   on every port).
 
-## 3. Topline matrix (c=1..8)
+## 3. Historical `zbook` topline matrix (c=1..8)
 
 These tables are the campaign scoreboard. Every cell starts as `TBD` and is
 filled only from a measured, identity-pinned run under section 4's protocol.
@@ -636,8 +675,8 @@ that experiment; the next mechanisms above remain open.
 | PF-1 | **Done** 2026-09-04 — retained the bit-exact fork-(b) grouped selected Q8_0 down as a production owner, together with PF-3 Q5_1 M1. The kernel remains **47.42→32.42 ms median (−31.6%)** at the p4096 compact shape and the real MoE layer remains **−6.9%/−8.2%/−8.7%** at rows 512/1024/4096. The correcting whole-model packet uses one Python process, one resident generator, one warmup per mode/case, and an ABBA order reversed by adjacent cases: combined PF-1/PF-3 prefill improves **+3.13%/+3.09%/+2.51%** at p512/p1024/p4096, all 12 cases win, and all 72 measured outputs are cross-mode exact. Production selects `selected_grouped_gemv_bf16_bf16_out`; strict keeps `selected_gemv_bf16_bf16_out`. The earlier process-separated and pre-wiring-fix runs remain invalid diagnostics. The dense-projection retile/precision axes remain closed. | Artifact: [`halo PF-1/PF-3 production refresh`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json). |
 | PF-2 | **Prior candidate unpromoted; cause reopened by source audit.** The 2026-09-03 ordered three-pass route failed p4096 cross-mode output equality; its process-separated timing diagnostic was negative at p512/p1024/p4096. The env flag/runner branch were removed; registered strict variants and their small fixtures remain. The stored wave32 explanation is wrong for binding D=256, and the timing cannot establish a launch-overhead cause. | [Historical artifact](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf2-qsa-ordered-prefill-ab.json). Section 5.3 corrects the interpretation; actual-shape RED/localization precedes the new section-6 mechanism. No restoration of the failed route. |
 | PF-3 | **Done** 2026-09-04 — Q4_K gate/up M1 remains closed as a bit-exact measured loss (+57% to +123% at rows 16/64/512). The fused single-loop logical256 Q5_1 down remains a **−10.6%** binding-shape kernel win (9,423.0→8,425.6 µs), and the valid combined one-residency PF-1/PF-3 packet restores it as the production exact-grouped-down owner. Production selects `selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out`; strict keeps the preceding expertgrid64 owner. Uneven counts, empty experts, 64/512-expert fixtures, kernel trace, and bit parity remain covered; the superseded process-separated packet is diagnostic only. A later T0 M2 hierarchical-reduction candidate improved the 512-row leaf by 6.99% but failed the binding one-process/one-residency whole-model gate: weighted prefill changed +0.083%/-0.152%/-0.095% at p512/p1024/p4096, with 8/12 cases negative. M2 was removed; M1 remains production. | Artifacts: [`halo PF-1/PF-3 production refresh`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json), [`PF-3 schedule A/B`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json), and [`Q5_1 M2 whole-model rejection`](../benchmarks/results/2026-09-05-gfx1151-qwen38-flash-next-q51-m2-whole-model-ab.json). |
-| PF-4 | **Review pending** 2026-09-04 — routing lever 1 is closed by its large kernel-level loss, but lever 2's whole-model rejection used separate model processes and must be repeated in one residency. Lever 1 (M2 routing compaction) closed 2026-09-04 — measured loss. The `top10_parallel_i64` candidate (port of halo-box `a7ad7b7f` `mm_ids_helper_top10_parallel`: per-expert 256-thread blocks, 8-warp any-scan + `shfl_up` exclusive scan + shared store, replacing the 5-op memset+count+prefix+memset+scatter_gather chain) is bit-exact vs the incumbent chain at rows 16/64/512/4096 (`expert_start` equality, lane permutation, per-expert lane sets, weights bit-equal, gather bit-equal) but is **slower at the production gate**: +30.8% (rows=64), +83.1% (rows=512), +114.6% (rows=4096); only below-gate rows=16 wins (−24.7%, launch-count dominated). Source-supported cost: the per-expert-block mechanism scans O(E×T) work (512 blocks each walking T/8 tokens). The earlier E≤32 design claim is withdrawn: HB-2 observes this helper on the same 512-expert payload. The in-tree loss remains measured; different map/gather boundaries prevent a universal transfer conclusion. No whole-model A/B warranted (kernel-level loss at the gate shape, PF-2/Q4_K-M1 closure precedent). The candidate stays registered as a strict variant with its 7 RED-first tests; the incumbent 5-op chain stays production. Artifact: [`pf4-m2-group-map-kernel-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-m2-group-map-kernel-ab.json). **Lever 2 (M5/combine) kernel stage — exact win; binding whole-model adjudication remains pending.** The M5 *port* itself is closed as blocked/no-delta (declaration entry 3ff110: the incumbent `weighted_lanes_sum` already implements the M5 mechanism with fmaf, direct store, and half the expert-read traffic; F32 boundary blocked per HB-3). The admissible candidate is the hipEngine-internal T0 fusion `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` (3 launches → 2, preserves the routed BF16 rounding boundary exactly): bit-exact at rows 1/16/64/512 and faster at every shape (−26.1%/−24.3%/−6.1%/−2.3%). Wiring was completed for the historical diagnostic; one-residency counterbalanced A/B remains before promotion. Artifact: [`pf4-lever2-fused-combine-kernel-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json). **Lever 2 historical diagnostic (2026-09-04) — provisional whole-model loss.** The wired candidate (commits 455e176ab–fbb64edfa) ran a process-separated counterbalanced whole-model diagnostic (12 cases, p512/p1024/p4096, 4 fresh-process arms, deterministic in all arms): prefill **−1.69% mean, negative in all 12/12 cases** (min −2.03%, max −0.87%), decode −0.19% (noise-level). The process-separated run suggests that the kernel-level exact win does not survive whole-model prefill, but it cannot close the lever under section 6.5; the unfused chain stays production while the fused variant remains registered and bit-exact as an opt-in (`HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`). Artifact: [`pf4-lever2-fused-combine-whole-model-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-whole-model-ab.json). | Repeat lever 2 in the committed one-residency A/B before treating the whole-model loss as binding; keep the unfused default until then. |
-| PF-5 | **Open, Hv48 kernel repair complete.** The w32 in-tree variant remains rejected. Tile-16 at `3574a1bd2` covered Hv=32 only; concurrent `617038db9` extends the wrapper/launcher/tests to binding Hv=48 and records exact output/state parity, a binding leaf win and trace. No default changed. The first registry-only whole-model A/B ran columnwarps in both arms and is invalid/no-op, not a rejection. | [w32 artifact](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json), [Hv48 correction](../worklog/entries/20260905T022638.146026Z-lhl-qwen4exp-pf5-gdn-tiled16-hv48-correction-c178a9.md). Correct the live-route A/B with per-sample invocation counts, then complete one-residency validation; handle serial-prefix work separately. |
+| PF-4 | **Done 2026-09-04 — both levers closed as measured losses.** Lever 1 (`top10_parallel_i64`) is bit-exact but slower at the production gate: +30.8%/+83.1%/+114.6% at rows 64/512/4096; the incumbent 5-op route stays production. Lever 2 (`weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w`) is bit-exact and wins its isolated chain by 26.1%/24.3%/6.1%/2.3% at rows 1/16/64/512, but the binding one-residency counterbalanced A/B loses 1.69% mean prefill with all 12/12 cases negative; decode changes −0.19%. The unfused chain stays production and the fused variant remains an explicit opt-in. | [`routing artifact`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-m2-group-map-kernel-ab.json), [`fusion kernel artifact`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json), and [`one-residency whole-model rejection`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-whole-model-ab.json). |
+| PF-5 | **Done 2026-09-05 — tile-16 promoted.** The w32 variant remains rejected. Tile-16 at `3574a1bd2` covered Hv=32 only; `617038db9` extended it to binding Hv=48 with exact output/state parity. After invalidating a no-op registry-only A/B, a fail-closed engagement-verified one-residency A/B improved weighted prefill 89.435→89.873 (+0.49%), 88.553→88.966 (+0.47%), and 72.661→72.929 tok/s (+0.37%) at p512/p1024/p4096; all 12 cases were non-negative and all 72 trajectories exact. | [w32 rejection](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json), [Hv48 repair](../worklog/entries/20260905T022638.146026Z-lhl-qwen4exp-pf5-gdn-tiled16-hv48-correction-c178a9.md), and [whole-model promotion](../benchmarks/results/2026-09-05-gfx1151-qwen38-flash-next-pf5-gdn-tiled16-whole-model-ab.json). |
 
 ### 6.1 PF-1 execution checklist
 
