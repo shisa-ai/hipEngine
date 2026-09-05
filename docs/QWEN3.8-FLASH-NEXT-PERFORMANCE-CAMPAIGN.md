@@ -53,6 +53,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-GDN refresh / next Q4 kernel (2026-09-05 UTC):** full p4096 role
+attribution is100%; the GDN owner now costs0.780s, including0.473s serial
+register recurrence, while routed MoE still costs15.512s. Logits match the
+prior profile exactly and teardown is zero. The new T0 shared-activation Q4
+output pair measures1.345x at tokens512 (actual layer0 gate/up+SiLU),
+and1.440x on an independent layer4/skewed map. All actual-weight outputs
+are exact;16 focused tests and cached zero-scratch trace pass.
+This differs from the exhausted serial-width/independent-team schedules
+because one activation load feeds two output accumulations. Next is full-model
+admission; current production still selects the bundled Q4 parent.
+[Q4 pair and owner evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json).
+
 **Serial GDN retention (2026-09-05 UTC):** clean `e235f4480` full12-case,
 72-sample A/B measures p512 **131.60->145.49 (+10.55%)**, p1024
 **129.83->143.10 (+10.23%)**, p4096 **122.67->134.32 tok/s (+9.50%)**.
