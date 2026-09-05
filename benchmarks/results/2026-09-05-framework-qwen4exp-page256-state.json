@@ -1,0 +1,111 @@
+{
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "8d58c13571be9fee0738ed0fe29af4b926574d0b",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_row4_state_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--route-package",
+    "qsa-h256-page256",
+    "--case-id",
+    "mixed_ja_en-p4096",
+    "--full-kv",
+    "--output",
+    "/tmp/qwen4exp-page256-mixed-state.json"
+  ],
+  "manifest_sha256": "b3afcd551017d40f792ad5f9d4564098c0cd9cd74e92a2c6b7f144a3782b4510",
+  "strict_manifest_sha256": "204f20b6426b67a9145c0d30e1ec8c17a4b1217ec515075751c64b49921400f7",
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "cases": [
+    {
+      "id": "mixed_ja_en-p4096",
+      "exact": true,
+      "captures": [
+        {
+          "enabled": "0",
+          "state_sha256": "715e2a35130def87a338f2b634f053457ed04b64fe459d5f3996d0ca8db81c10",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "55fb30246551138e17789989afea2923cc90d23c992e8ae528ae28386304b9f0",
+          "step_logits_sha256": "1e8ebb10ba8e25086b536823a81446e61f4249069b705655f00c6864449c655d",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.34113523410633206
+          ],
+          "full_kv_sha256": "9cb3e329dfccd8b02929849a9d5c535cb878739da024be493986f16b93040205"
+        },
+        {
+          "enabled": "1",
+          "state_sha256": "715e2a35130def87a338f2b634f053457ed04b64fe459d5f3996d0ca8db81c10",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "55fb30246551138e17789989afea2923cc90d23c992e8ae528ae28386304b9f0",
+          "step_logits_sha256": "1e8ebb10ba8e25086b536823a81446e61f4249069b705655f00c6864449c655d",
+          "candidate_calls": 48,
+          "step_seconds": [
+            0.06562831811606884
+          ],
+          "full_kv_sha256": "9cb3e329dfccd8b02929849a9d5c535cb878739da024be493986f16b93040205"
+        },
+        {
+          "enabled": "0",
+          "state_sha256": "715e2a35130def87a338f2b634f053457ed04b64fe459d5f3996d0ca8db81c10",
+          "layout_sha256": "321d1cc362e81e5c97b1f9418d4d17392a89b9a5911287b5df75d91b520617f5",
+          "prefill_logits_sha256": "55fb30246551138e17789989afea2923cc90d23c992e8ae528ae28386304b9f0",
+          "step_logits_sha256": "1e8ebb10ba8e25086b536823a81446e61f4249069b705655f00c6864449c655d",
+          "candidate_calls": 0,
+          "step_seconds": [
+            0.06619349890388548
+          ],
+          "full_kv_sha256": "9cb3e329dfccd8b02929849a9d5c535cb878739da024be493986f16b93040205"
+        }
+      ]
+    }
+  ],
+  "route_package": "qsa-h256-page256",
+  "decode_steps": 1,
+  "full_kv": true,
+  "scope": "full logits and snapshot decode buffers/PLE/attention positions/index counts; full KV payload included",
+  "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 83546258180,
+    "total_allocated_bytes": 83556743940,
+    "total_freed_bytes": 83556743940,
+    "active_allocations": 0,
+    "peak_allocations": 1645
+  },
+  "schema": 1,
+  "date": "2026-09-05",
+  "kind": "qwen4exp_page256_mixed_state_gate",
+  "status": "accepted_state_gate_not_performance",
+  "performance_claim": false,
+  "environment": {
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151"
+  },
+  "source_sha256": {
+    "hipengine/runtime/qwen4_exp_runner.py": "3c6517296e72c0f27a7a1f97ec50c544a15ac2de526653c010ea8c21cab4bdab",
+    "scripts/qwen4exp_row4_state_gate.py": "f23c9ae73d6afe2d5c5dcdb0d17c4b7d24468e68bdc9b2d2891172edb43bb024"
+  },
+  "raw_sha256": "47cdcc5601d2a575a9ad97447d791546eac404c537dd5d13c5c2f9d4fdc3eef1",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL BF16 KV",
+  "runtime_default_changed": false
+}

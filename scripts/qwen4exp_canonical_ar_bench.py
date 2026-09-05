@@ -654,19 +654,21 @@ def _hipengine_case_sample(
     token_ids = [int(token_id) for token_id in case["prompt_token_ids"]]
     memory_before = _process_memory_snapshot()
     runtime.device_synchronize()
-    started = time.perf_counter_ns()
+    prefill_started = time.perf_counter_ns()
     result = runner.prefill(token_ids)
     runtime.device_synchronize()
-    prefill_ms = (time.perf_counter_ns() - started) / 1_000_000.0
+    prefill_ended = time.perf_counter_ns()
+    prefill_ms = (prefill_ended - prefill_started) / 1_000_000.0
     output_ids = [int(result.token_id)]
     current = int(result.token_id)
-    started = time.perf_counter_ns()
+    decode_started = time.perf_counter_ns()
     for _ in range(int(transitions)):
         result = runner.step(current)
         current = int(result.token_id)
         output_ids.append(current)
     runtime.device_synchronize()
-    decode_ms = (time.perf_counter_ns() - started) / 1_000_000.0
+    decode_ended = time.perf_counter_ns()
+    decode_ms = (decode_ended - decode_started) / 1_000_000.0
     client_wall_s = (prefill_ms + decode_ms) / 1000.0
     memory_after = _process_memory_snapshot()
     memory_delta = {
@@ -691,6 +693,10 @@ def _hipengine_case_sample(
         "memory_before": memory_before,
         "memory_after": memory_after,
         "memory_delta": memory_delta,
+        "phase_windows_ns": {
+            "prefill": [prefill_started, prefill_ended],
+            "decode": [decode_started, decode_ended],
+        },
     }
 
 

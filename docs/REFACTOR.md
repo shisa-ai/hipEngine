@@ -4805,3 +4805,5 @@ otherwise retain an opt-out only while it is useful for rollback and bisection.
 The page256 addressing sibling is standalone only. Prefer it only after
 the same model/clock gates; remove redundant generic runtime dispatch if
 the specialization covers all qualified shapes, but retain a strict fallback.
+It can now be tested through the existing QSA flag's explicit `page256`
+value and a separately counted A/B arm; the flag's default remains off.
