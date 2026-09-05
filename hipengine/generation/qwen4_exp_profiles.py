@@ -102,6 +102,16 @@ def _selection(
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            "moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "gguf_q4_k",
+        ),
+        _selection(
+            "qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16",
+            "strict_rows_spans", "strict_rows_spans", "bf16_kv",
+        ),
+        _selection(
             "linear",
             "ungrouped_prefill_rows_ge64_q5k_gate_up",
             "selected_gemv_bf16_bf16_out",
@@ -209,6 +219,18 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out",
+            "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
+            "gguf_q4_k",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json",
+        ),
+        _selection(
+            "qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16",
+            "strict_h256_page256_wave_rows_spans", "strict_rows_spans", "bf16_kv",
+            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json",
+        ),
         _selection(
             "linear",
             "ungrouped_prefill_rows_ge64_q5k_gate_up",
@@ -345,6 +367,8 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         PROFILE_Q5_1_DOWN_M1_ENV: "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",

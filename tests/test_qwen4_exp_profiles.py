@@ -52,6 +52,8 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS",
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL",
+        "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
     )
     for name in environment_names:
@@ -235,6 +237,13 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
+    selected = _selection_map(production)
+    assert selected[("moe_linear", "prefill_rows_ge2_exact_grouped_q4_gate_up")]["selected_variant"] == (
+        "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
+    assert selected[("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16")]["selected_variant"] == (
+        "strict_h256_page256_wave_rows_spans")
     row4 = _selection_map(production)[("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up")]
     assert row4["selected_variant"] == "selected_grouped_row4_gemv_bf16_bf16_out"
     assert row4["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
@@ -302,6 +311,8 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ[PROFILE_Q5_1_DOWN_M1_ENV] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_K_MMQ_PREFILL"] == "0"
