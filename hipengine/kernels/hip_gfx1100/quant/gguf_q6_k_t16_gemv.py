@@ -1228,7 +1228,7 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
 ) -> None:
-    """Exact planar-qmicro FP32 rowtile with a 16-column rows=2 owner."""
+    """Exact planar-qmicro FP32 rowtile for rows 2-8."""
 
     if rows < 2 or rows > 8:
         raise ValueError("qmicro planar rowtile requires rows in [2, 8]")
@@ -1249,7 +1249,7 @@ def gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out(
 setattr(
     gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
     "_hipengine_max_rows",
-    4,
+    8,
 )
 
 

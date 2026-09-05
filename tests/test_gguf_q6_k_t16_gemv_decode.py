@@ -303,7 +303,7 @@ def test_p9_h3_q6_t16_wrappers_validate_args() -> None:
             gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out,
             "_hipengine_max_rows",
         )
-        == 4
+        == 8
     )
     with pytest.raises(ValueError, match="positive multiple of 256"):
         gguf_q6_k_t16_gemv_decode_bf16_f32_out(0, 0, 0, 1, 128, 16)

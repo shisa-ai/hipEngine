@@ -354,10 +354,10 @@ fallback count is not a success metric.
   `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT[gguf_q5_k_t16_v1]=8` and
   `[gguf_q6_k_t16_qmicro_planar_v1]=8`); the planar-Q6 export no longer falls
   to per-row for rows 5+. The separate FP32 LM-head rowtiles publish their own
-  primitive bounds (standard Q6=6, planar-qmicro=4), which the chunk planner
-  intersects with backend package policy (gfx1100=6, gfx1151=5). Remaining
-  generic fallback ladders still demonstrate why one model-wide max-row value
-  or variant name is not honest coverage.
+  primitive bounds (standard Q6=6, planar-qmicro=8), which the chunk planner
+  intersects with model/backend package policy: gfx1100=6 and
+  Qwen3.8/gfx1151=8. Remaining generic fallback ladders still demonstrate why
+  one model-wide max-row value or variant name is not honest coverage.
 - Removal trigger: compact D1/D2 schemas, strict group-cost map, and direct
   c3/c5/c6/c7 lifecycle are present. Still required: clean actual-server
   direct/masked/composed c1-c32 route telemetry; counterbalanced same-shape D2-
@@ -2135,6 +2135,12 @@ shorter-horizon audit establishes a lower break-even.
   SDK helper, fold the owner-specific orchestrator and duplicate guard/snapshot
   code into that helper; do not retain multiple near-identical rocprof parents.
   Remove neither fail-closed cache-only behavior nor compiler-version pinning.
+- `scripts/gguf_packed_ar_rocprof.py` still classifies every standard
+  `q6_k_t16_gemv` kernel as LM-head while classifying the planar-qmicro F32
+  LM-head rowtile as a dense projection. Exact-signature trace review remains
+  authoritative. Replace the substring rule with output-type-aware matching and
+  add the effective LM-head chunk plan to the execution manifest before using
+  the generic family count as a gate.
 
 ## Post-Optimal-Path Cleanup Targets
 
@@ -2409,17 +2415,20 @@ should be boring.
   direct/server refreshes and an independent gfx1100 transfer. Keep the old
   per-row and 16-column rowtile bodies as unsupported-width fallbacks.
 
-## `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (gfx1151 C8 rollback)
-- The physical-C8 Q6T16 lm-head reads the full ~417 MiB head twice. The prior
-  **6+2** partition uses 200/88 VGPR; gfx1151 now defaults to exact **5+3** at
-  168/104 VGPR. Isolated wall improves **4.865 -> 4.815 ms (-1.02%)** and
-  clean direct C8 improves **152.192 -> 152.709 tok/s (+0.340%)**.
-- `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=6` restores 6+2. gfx1100 package
-  metadata remains 6 pending independent W7900 transfer. Values outside [2,6]
-  are invalid.
-- Remove after one release window plus defaults-only gfx1151 direct/server
-  refresh and gfx1100 transfer. Keep `_small_b_rowtile_chunks` and all 2-6 row
-  kernels because they remain exact fallbacks for arbitrary packed widths.
+## `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` (Qwen3.8/gfx1151 C8 rollback)
+- The existing exact planar-qmicro Q6T16 LM-head rowtile supports rows 2-8. Its
+  wrapper now publishes that full bound, and runtime direct-route selection
+  applies the
+  active package or environment limit before deciding whether to use one
+  launch. The `gfx1151-qwen38-q4km-b5` package owns one physical rows-8 launch;
+  the gfx1100 package remains at 6 and other packages keep their own limits.
+- `HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4` restores the prior Qwen3.8 4+4 route.
+  Values outside [2,8] are invalid. Keep this rollback while the package-owned
+  route accumulates ordinary serving coverage.
+- Remove the environment selector after one release window plus defaults-only
+  Qwen3.8/gfx1151 direct and server refreshes. Keep
+  `_small_b_rowtile_chunks` and the smaller exact row kernels because package
+  limits and arbitrary packed widths still consume them.
 
 ## `HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL` (gfx1151 c4/c8 rollback; c2 diagnostic)
 - Added 2026-07-01 as a default-off runtime hook for broad Q8T16 verifier
