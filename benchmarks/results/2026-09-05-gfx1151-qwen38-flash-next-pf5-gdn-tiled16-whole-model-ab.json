@@ -1,0 +1,127 @@
+{
+  "schema": 1,
+  "kind": "hipengine_qwen4exp_pf5_gdn_tiled16_same_residency_ab",
+  "status": "retained",
+  "performance_claim": true,
+  "created": "2026-09-05",
+  "candidate": "T0 Qwen4Exp GDN prefill token-tile-16: cooperative per-head raw-Q/K staging across 16 tokens (qwen4exp_gdn_tiled16_prefill, binding Hk=16/Hv=48/D=128)",
+  "conclusion": "The tile-16 owner is bit-exact to the columnwarp parent in outputs and final FP32 state and improves weighted prefill at all three canonical shapes with all 12/12 category/shape cases non-negative. It is promoted as the production default inside the existing GDN colwarps gate; the columnwarp parent stays registered and remains the non-envelope and opt-out fallback, with the serial strict route registered below both.",
+  "hardware": {
+    "hostname": "zbook",
+    "machine_id": "87c566d30a5645cf8d12ed7ef6b6e1e8",
+    "arch": "gfx1151",
+    "kernel": "6.18.42-1-cachyos-lts",
+    "rocm_platform": "10.0.0",
+    "cpu_governors": {"performance": 32},
+    "gpu_clock_policy": "power_dpm_force_performance_level=auto (accelerator-performance tuned profile active)"
+  },
+  "software": {
+    "candidate_commit": "617038db96ba84b21bcc7dbe39581409819ad1e0",
+    "tracked_clean_during_run": false,
+    "dirty_scope_note": "Only unrelated staged documentation owned by a concurrent session (docs/PLAN.md, two campaign docs, one worklog entry); no runtime, kernel, test, or benchmark code was dirty. The harness recorded provenance via --allow-dirty-smoke and fail-closed per-sample route-invocation counts.",
+    "hip_version": "7.15.26333-0000000",
+    "clang_version": "23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "family": "Qwen3.8-Flash-Next / qwen4exp",
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "model_root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082"
+  },
+  "profile": {
+    "requested": "production",
+    "manifest_sha256": "86e5c619d932ca7fe6e0edfd4eb524c54e6a678defc9d7d5546f847d351ab7a3",
+    "strict_manifest_sha256": "0499701275d719398a1426a5922768394045f0b23b427c0b8dd7e4ee134bc92b",
+    "fell_back_to_strict": false,
+    "arithmetic_class": "T0",
+    "fallbacks": [
+      "qwen4exp_gdn_columnwarps_prefill (parent; non-envelope shapes and HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0 opt-out)",
+      "qwen4exp_sigmoid_strict_prefill (serial strict oracle/fallback)"
+    ]
+  },
+  "protocol": {
+    "boundary": "synchronized runner.prefill including first greedy output, followed by exactly 128 runner.step transitions and a final device synchronize",
+    "one_python_process": true,
+    "one_model_residency": true,
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "prompt_tokens": [512, 1024, 4096],
+    "case_count": 12,
+    "warmups_per_mode_per_case": 1,
+    "measured_repetitions_per_mode_per_case": 3,
+    "measured_samples": 72,
+    "prefill_chunk_size": 512,
+    "arm_order_even_case": ["before", "after", "after", "before", "before", "after"],
+    "arm_order_odd_case": ["after", "before", "before", "after", "after", "before"],
+    "before_variant": "qwen4exp_gdn_columnwarps_prefill",
+    "after_variant": "qwen4exp_gdn_tiled16_prefill",
+    "route_control": "The harness replaces the live hipengine.runtime.qwen4_exp_runner columnwarp module global plus both exact hip_gfx1100/hip_gfx1151 registry keys with a counting wrapper around the selected arm, and fails closed when any warmup or measured sample records zero selected-arm invocations. Recorded per-case GDN prefill invocations: 15 (p512), 30 (p1024), 120 (p4096) per arm.",
+    "harness_provenance": "An earlier 2026-09-05 A/B was invalidated as a no-op: the production runner calls its imported columnwarp function directly, so replacing only the registry key left both arms on the parent. The invalid run is superseded by this engaged run; its numbers must not be cited as a tile-16 rejection.",
+    "command": "HIPENGINE_COMPILER_VERSION_FILE=/tmp/hipengine-halo-prefill-loop/hipcc-version.txt HIPENGINE_REQUIRE_CACHED_BUILD=1 env -u HIPENGINE_HIP_ARCH .venv/bin/python /tmp/pf5_tiled16_wall_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --fixture benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json --output /tmp/qwen4exp-pf5-gdn-tiled16-hv48-engaged-wall-ab.json --warmups-per-mode 1 --repetitions-per-mode 3 --prefill-chunk-size 512 --compiler-version-file /tmp/hipengine-halo-prefill-loop/hipcc-version.txt --require-cached-build --allow-dirty-smoke",
+    "raw_artifact": "/tmp/qwen4exp-pf5-gdn-tiled16-hv48-engaged-wall-ab.json",
+    "raw_artifact_sha256": "5bf55977290ccf429cc49622a54a856cf196c04a1159daa23117bd76b80f306f"
+  },
+  "correctness": {
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "mismatched_case_ids": [],
+    "max_prefill_cv_before": 0.015928,
+    "max_prefill_cv_after": 0.015885,
+    "all_per_case_prefill_cv_le_0_02": true
+  },
+  "results_by_shape": {
+    "p512": {
+      "columnwarps_prefill_tok_s_weighted": 89.43492181077119,
+      "tiled16_prefill_tok_s_weighted": 89.87321081315912,
+      "tiled16_over_columnwarps": 1.0049006472361577,
+      "delta_pct": 0.49006472361577,
+      "decode_delta_pct": 0.18528337341428
+    },
+    "p1024": {
+      "columnwarps_prefill_tok_s_weighted": 88.55257701678504,
+      "tiled16_prefill_tok_s_weighted": 88.96555249020469,
+      "tiled16_over_columnwarps": 1.0046636189180735,
+      "delta_pct": 0.46636189180735,
+      "decode_delta_pct": 0.22115988908735
+    },
+    "p4096": {
+      "columnwarps_prefill_tok_s_weighted": 72.66051077846082,
+      "tiled16_prefill_tok_s_weighted": 72.92892398808308,
+      "tiled16_over_columnwarps": 1.003694072705333,
+      "delta_pct": 0.3694072705333,
+      "decode_delta_pct": -0.10485031636374
+    }
+  },
+  "per_case_prefill_ratio": {
+    "code-p512": 1.001543, "code-p1024": 1.004191, "code-p4096": 1.00177,
+    "general_en-p512": 1.007344, "general_en-p1024": 1.005014, "general_en-p4096": 1.004735,
+    "general_ja-p512": 1.002997, "general_ja-p1024": 1.00289, "general_ja-p4096": 1.003865,
+    "mixed_ja_en-p512": 1.007496, "mixed_ja_en-p1024": 1.006515, "mixed_ja_en-p4096": 1.004299
+  },
+  "aggregate": {
+    "geometric_mean_shape_ratio_tiled16_over_columnwarps": 1.0044193106341501,
+    "positive_cases": 12,
+    "total_cases": 12,
+    "code_only_geometric_mean_ratio_tiled16_over_columnwarps": 1.00250084,
+    "inferred_screening_metric_geomean_code_prefill_ratio_to_frozen_halo_pr11": 0.30445494,
+    "inferred_screening_metric_note": "Loop baseline 0.303695451897 multiplied by the measured code-only after/before geomean; the frozen-halo-PR11 ratio has not been remeasured with the loop's profile-gap verifier and is refreshed at the next stable-clock closure verify.",
+    "decode_note": "Decode is path-untouched (tile-16 selects prefill only); decode deltas are same-residency noise."
+  },
+  "prior_leaf_evidence": {
+    "kind": "interleaved alternating-order 40-pair kernel A/B at binding Hk=16/Hv=48/D=128",
+    "rows_16": {"columnwarps_us": 263.756, "tiled16_us": 202.216, "delta_pct": -23.332},
+    "rows_64": {"columnwarps_us": 586.654, "tiled16_us": 415.978, "delta_pct": -29.093},
+    "rows_512": {"columnwarps_us": 4545.697, "tiled16_us": 2941.644, "delta_pct": -35.287},
+    "parity": "bit-exact core output and final FP32 state vs the columnwarp parent at Hv=32 (rows 16) and Hv=48 (rows 16/17/64)",
+    "rocprof": "cached trace recorded qwen4_exp_gdn_prefill_tiled_f32_kernel<16,16,4> at 247105 ns vs the columnwarp parent at 330382 ns (local 512, grid 48x8, LDS 16896, VGPR 56, SGPR 128, scratch 0)",
+    "lineage": "in-tree T0 adaptation of cooperative staging from read-only halo-box PR11 gated_delta_net.cu at a7ad7b7f; the external tile-16 branch is H=32 KDA and inactive on this payload"
+  },
+  "disposition": {
+    "default_changed": true,
+    "candidate_promoted": true,
+    "selection": "qwen4_exp_gdn_tile16_prefill_selected() inside the HIPENGINE_QWEN4_EXP_GDN_COLWARPS_PREFILL gate; opt-out HIPENGINE_QWEN4_EXP_GDN_TILE16_PREFILL=0 forces the columnwarp parent",
+    "reason": "Bit-exact T0 route wins weighted prefill at all three shapes with 12/12 cases non-negative, per-case CV under 2%, and fail-closed engagement proof; retained per the exact/non-regressive promotion rule."
+  }
+}
