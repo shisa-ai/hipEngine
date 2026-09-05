@@ -501,6 +501,118 @@ called. Not every exact leaf kernel needs three separate files; the principle is
 separation of selection from final evidence. For sampling, speculative, routing,
 and adaptive policies the committed train and heldout suites are mandatory.
 
+### 4.9 rocprofv3 toolchain traps
+
+These are properties of the current `rocprofv3` 1.3.x stack and the hipEngine
+profiling wrappers on the W7900 host, not of the kernels under test. Each trap
+has silently destroyed profiling runs: a sweep log that looks like a null
+result, a hang that mimics a stale JIT cache, a clean-looking packet produced
+from the wrong model. Check this list before trusting — or rerunning — a
+failed profile.
+
+**A profiler-injected tree poisons every compiler probe it spawns.** Injected
+libraries and `ROCPROF_*=1` are inherited by children, so the JIT path's
+`clang++ --version` / `hipcc --version` probe loads the profiler and deadlocks
+in `futex_wait` forever. The strays accumulate: 77 orphaned
+`clang++ --version` processes, 11 to 46 days old, were collected on one host,
+each with profiler libraries mapped and `ROCPROF_KERNEL_TRACE=1` in its
+environment; an interrupted profile is what strands the child. The live
+waiter hangs with the GPU at 0% and no error, which reads exactly like the
+stale-JIT-cache symptom but is a second, different cause. The profiling
+discipline — prebuild the `.so`, pass a precomputed compiler-version file,
+and require a cached build — is what avoids it, and it is a pair, not an
+option: `HIPENGINE_REQUIRE_CACHED_BUILD=1` alone still lets the builder run
+`hipcc --version` to compute the cache key, so the run deadlocks anyway.
+`HIPENGINE_COMPILER_VERSION_FILE` (or an explicit `compiler_version`) is what
+removes the probe. Clean up strays outside a profiling session rather than
+during one.
+
+**Hardware PMC counters cannot be collected with `rocprofv3` on this stack.**
+Every attempt (`--pmc SQ_INSTS ...`, or an input file with `pmc:` lines or a
+`{"jobs":[{"pmc": [...]}]}` JSON) hangs before the profiled application
+starts: the app timer reads `0.000000 sec` and nothing is written to the
+output directory. Worse, `timeout N` cannot kill it — `rocprofv3` installs a
+SIGTERM handler that then blocks forever waiting for children. Always wrap
+such attempts as `timeout -k 10 <seconds> rocprofv3 ...`, or clean up with
+`pkill -9 -f rocprofv3`. For resource inspection, use code-object metadata
+(VGPR/LDS/workgroup) plus kernel-trace durations, and compare walls against
+the roofline bounds in [section 2](#2-hardware-model).
+
+**The flags are not what they look like.** `-i/--input` is an input file and
+`-d/--output_dir` is the directory; `-o/--output_file` is the name prefix and
+the format is `-F`. Passing `-i <dir> -d csv` fails with "does not have a
+recognized extension" and then writes into a stray `csv/` directory.
+
+**Wrapper defaults profile the wrong path.** `mtp_verifier_rocprof.py`
+defaults to a safetensors PARO model, so it cannot describe the GGUF path at
+all. `gguf_mtp_verifier_rocprof.py --mode` defaults to `serial-step`, the
+historical verifier, not the native block verifier the resident route
+reaches. Its baseline child is `scripts/mtp_chain_e2e_smoke.py`, which is
+safetensors-only, so a GGUF `--model` is accepted by argparse and then dies in
+`_run_ar_baseline`. Pass model, mode, and backend explicitly on every
+invocation, and treat an empty or suspiciously small sweep log as a failed
+run, not a null result.
+
+**The verify wrapper rejects `--backend`, and callers pass it anyway.** Its
+parser takes `--mode`, `--roctx-sdk`, `--out`, `--top` and friends but not
+`--backend`, so a whole budget ladder can vanish with nothing but a usage
+error in the log — the failed arms produce byte-identical argparse output.
+The wrapper is single-backend by construction; do not pass `--backend` from a
+driver script, and treat argparse exit code 2 in a sweep log as "every arm
+in this file failed", never as a null result.
+
+**`block-verify` rejects its own padding.** With `--block-rows` beyond the
+prompt tail the child raises `ValueError: token_id 2147483647 outside
+[0, 248320)` from the runner's `verify()`. A row sweep is the only cheap way
+to separate launch overhead from real kernel work in the MTP verify path, so
+the padding contract must be fixed first — see `docs/REFACTOR.md`.
+
+**`block-verify` on a Q4/Q5 repack needs captured-prefill GDN state.** The
+verify path picks F32 activations unless `use_prefill_gdn_capture` or
+`prefill_score_ready` selects bf16; with F32, both dense-Q8 escapes require
+`gguf_q8_0_t16_v1`, so a `q5_k_t16_v1` repack raises
+`unsupported GGUF linear dispatch`. `--block-wmma-prefill` alone does not
+clear it; `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` does. Do not
+substitute `--verify-dense-q8-dp4a-f32`: nothing under `hipengine/` reads
+that argument — the switch is the env var
+`HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` — and the route stays closed to a q5
+repack anyway.
+
+**Raw MMQ32 consumers take the non-kmajor d4s4 producer.** The
+`gguf_q5_k_mmq32_*` / `gguf_q6_k_mmq32_*` raw owners (and their pipe/mb4
+diagnostic variants) are fed by `gguf_q8_1_d4s4_f32_quantize_bf16` +
+`q8_1_d4s4_f32_nbytes` in production; kmajor is routed only to the rows==32
+source-layout owner. Feeding a raw owner from the kmajor quantizer still runs
+and stays self-consistent, but it skews relative timing and fails the
+CPU-reference outer floor (KL around 46) because the activation bytes are
+interpreted in the wrong layout. Any leaf A/B against a raw owner must use
+the non-kmajor producer.
+
+**Marker tracing needs a ROCTX shim that the default probe cannot find.** The
+self-contained wrappers call `_prepare_roctx_override`, which requires a pip
+ROCm SDK `librocprofiler-sdk-roctx.so.1`. The default probe checks
+`sys.prefix`, but the SDK copies live under mambaforge env site-packages
+(`_rocm_sdk_{core,devel}/lib`) while the wrappers run under `.venv` — and
+`rocprofv3` itself comes from the mamba env that has the matching library.
+Four wrappers (`gguf_mtp_verifier_rocprof.py`,
+`gguf_continuous_owner_rocprof.py`, `gguf_decode_rocprof.py`,
+`gguf_packed_ar_rocprof.py`) now probe those locations plus the prefix of
+`which("rocprofv3")`, falling back to legacy `libroctx64`; the remaining four
+(`gguf_mtp_draft_rocprof.py`, `gguf_sh_c0_profile.py`,
+`qwen35_rocprof_audit.py`, `mtp_verifier_rocprof.py`) still need
+`--roctx-sdk` under `.venv`. `docs/REFACTOR.md` tracks extraction into a
+shared module. When markers are not needed, sidestep the shim entirely:
+kernel tracing needs no ROCTX, so drive the wrapper's own `--child` mode
+under a direct `rocprofv3 --kernel-trace` and roll up with
+`scripts/gguf_kernel_trace_rollup.py`.
+
+**The server benchmark produces clean-looking packets from the wrong model.**
+`gguf_mtp_c1c8_server_bench.py` accepts neither `--require-mtp`, `--tag` nor
+`--max-run-seconds`, and its `--model` default is
+`Qwen3.6-27B-Q4_K_M.gguf` — omitting `--model` benchmarks the wrong model
+without any error. Always diff the written `protocol` block against a
+retained packet before trusting a comparison.
+
 ## 5. Core kernel-tuning rules
 
 ### 5.1 Fix layout before instruction selection
