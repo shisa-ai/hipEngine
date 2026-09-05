@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-05 UTC Framework Qwen4Exp register GDN production] Exact serial-prefix state reuse improves p512131.60->145.49 (+10.55%), p1024129.83->143.10 (+10.23%), p4096122.67->134.32 tok/s (+9.50%); all72 trajectories exact, all12 request walls3.28-6.79% faster. Retain under prefill-first direction; decode p1024/p4096 -0.45%/-3.63% remains explicit debt amid drift. A/B36m11s. `benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register-production.json`.
+
 - [2026-09-05 UTC Framework Qwen4Exp serial GDN] Register-state candidate tokens512 21.072->2.808 ms (-86.67%, 7.50x), exact state/output; explicit launch bound reduces scratch480->24 bytes. Kernel retained, model admission pending. `benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register.json`.
 
 - [2026-09-05 UTC Framework Qwen4Exp Q5_1 pair2 production] Exact output-pair reuse improves same-residency prefill p512126.88→132.13 (+4.14%), p1024125.37→130.60 (+4.17%), p4096118.40→122.82 tok/s (+3.73%); all72 trajectories exact, all12 cases improve, clean teardown. Decode paired aggregate within0.04% despite drift. `benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json`.

@@ -784,9 +784,13 @@ The Qwen4Exp serial GDN family registers the T0
 It retains serial arithmetic and the FP32 state boundary while keeping state
 across tokens. Framework gfx1151 complete-kernel tokens512 is 21.072->2.808 ms;
 256 VGPR and 24-byte scratch are an explicit reviewed tradeoff.
-The original strict serial kernel remains registered and selected.
-Whole-model admission is pending; suffix tile16 scope is unchanged.
-Evidence: `2026-09-05-framework-qwen4exp-gdn-register.json`.
+Production now selects it at Hk16/Hv48/D128 and rows>=2 in the serial
+branch only; strict retains the original registered serial kernel.
+The full12-case A/B preserves all72 trajectories, improves prefill9.50-10.55%,
+and speeds every complete request3.28-6.79%. Decode p4096 loses3.63%;
+retention follows the owner's prefill-first direction, with decode followup.
+Suffix tile16 scope is unchanged. Evidence:
+`2026-09-05-framework-qwen4exp-gdn-register-production.json`.
 
 The Qwen4Exp Q5_1 selected family registers an exact output-pair prefill
 candidate that reuses BF16 activation loads across two output columns.
