@@ -738,3 +738,153 @@ def test_profiler_census_requires_runtime_manifest_launch_accounting() -> None:
     assert census["c1_reference"]["dispatches"] == 1
     assert census["c4"]["buckets"]["exact_row_local"]["dispatches"] == exact_count
     assert census["c4"]["buckets"]["packed_native"]["dispatches"] == 1
+
+
+def _dense_routes() -> dict[str, object]:
+    return {
+        "full_attention_decode_path": "kv_live_spans_batch",
+        "moe_decode_path": "dense_ffn_rows",
+        "moe_top_k": 0,
+        "lm_head_decode_path": "q6_rowtile_f32_logits",
+        "sampler_decode_path": "argmax_i32_rows",
+        "metadata_prepare_path": "host_upload",
+    }
+
+
+def _dense_census_rows(*, selected_leak: bool = False) -> list[KernelTraceRow]:
+    rows: list[KernelTraceRow] = [
+        *[
+            KernelTraceRow(
+                kernel="qwen35_paged_full_attn_decode_context_tensor_batch_kernel",
+                duration_ns=10,
+                grid_y=8,
+            )
+            for _ in range(10)
+        ],
+        *[
+            KernelTraceRow(
+                kernel="qwen35_write_paged_kv_mixed_value_prompt_position_tensor_kernel",
+                duration_ns=10,
+                grid_y=8,
+            )
+            for _ in range(10)
+        ],
+        *[
+            KernelTraceRow(
+                kernel=(
+                    "void (anonymous namespace)::q4_k_t16_dense_dual_rowtile_"
+                    "silu_gemv_kernel<...>(unsigned short const*, unsigned char "
+                    "const*, unsigned short*, long, long, long)"
+                ),
+                duration_ns=10,
+            )
+            for _ in range(40)
+        ],
+        *[
+            KernelTraceRow(
+                kernel=(
+                    "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_"
+                    "rowtile_col8_kernel<...>(unsigned short const*, unsigned "
+                    "char const*, unsigned short*, long, long, long)"
+                ),
+                duration_ns=10,
+            )
+            for _ in range(40)
+        ],
+        KernelTraceRow(
+            kernel=(
+                "void (anonymous namespace)::q6_k_t16_qmicro_planar_gemv_"
+                "rowtile_col8_kernel<...>(unsigned short const*, unsigned char "
+                "const*, float*, long, long, long)"
+            ),
+            duration_ns=10,
+        ),
+        KernelTraceRow(kernel="argmax_rows_stage1_i32_kernel", duration_ns=10, grid_y=8),
+        KernelTraceRow(kernel="argmax_rows_stage2_i32_kernel", duration_ns=10),
+        *[
+            KernelTraceRow(kernel="__amd_rocclr_copyBuffer", duration_ns=10)
+            for _ in range(10)
+        ],
+    ]
+    if selected_leak:
+        rows.append(
+            KernelTraceRow(
+                kernel="q4_k_t16_selected_dual_direct_gemv_kernel",
+                duration_ns=10,
+                grid_y=64,
+            )
+        )
+    return rows
+
+
+def test_packed_c3_profiler_census_accepts_dense_ffn_with_qmicro_lm_head() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=8,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513,) * 8,
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_dense_routes(),
+    )
+
+    census = build_c3_family_census(
+        _dense_census_rows(),
+        manifest=manifest,
+        lm_head_max_chunk=8,
+    )
+
+    assert census["route_check_passed"] is True
+    assert census["moe_ffn"]["passed"] is True
+    assert census["moe_ffn"]["dense_gate_up_dispatches"] == 40
+    assert census["moe_ffn"]["dense_down_dispatches"] == 40
+    assert census["moe_ffn"]["selected_gate_up_dispatches"] == 0
+    assert census["moe_ffn"]["selected_down_dispatches"] == 0
+    assert census["moe_ffn"]["combine_dispatches"] == 0
+    assert census["lm_head_sampler"]["passed"] is True
+    assert census["lm_head_sampler"]["expected_lm_head_dispatches"] == 1
+    assert census["lm_head_sampler"]["lm_head_dispatches"] == 1
+
+
+def test_packed_c3_profiler_census_rejects_selected_leak_on_dense_route() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=8,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513,) * 8,
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_dense_routes(),
+    )
+
+    census = build_c3_family_census(
+        _dense_census_rows(selected_leak=True),
+        manifest=manifest,
+        lm_head_max_chunk=8,
+    )
+
+    assert census["moe_ffn"]["passed"] is False
+    assert census["route_check_passed"] is False
+
+
+def test_packed_c3_profiler_census_default_chunk_keeps_legacy_partition() -> None:
+    manifest = build_packed_decode_execution_manifest(
+        rows=8,
+        layer_types=_layer_types(),
+        imported_slot_indices=(),
+        import_positions=(513,) * 8,
+        scatter_state=False,
+        blocks_per_slot=4,
+        linear_attention_decode_path="indexed_batch",
+        **_dense_routes(),
+    )
+
+    census = build_c3_family_census(_dense_census_rows(), manifest=manifest)
+
+    # Default chunk 6 expects the 6+2 partition; the rows-8 qmicro owner
+    # launches once, so the stale expectation must fail rather than pass.
+    assert census["lm_head_sampler"]["expected_lm_head_dispatches"] == 2
+    assert census["lm_head_sampler"]["lm_head_dispatches"] == 1
+    assert census["lm_head_sampler"]["passed"] is False
