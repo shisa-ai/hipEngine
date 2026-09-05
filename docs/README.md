@@ -16,7 +16,7 @@ working on.
 | [`PRODUCTION-NUMERICS-CAMPAIGN.md`](PRODUCTION-NUMERICS-CAMPAIGN.md) | Approved evaluator, calibration, historical-recovery, c1, and c>N/A4 campaign. |
 | [`IMPLEMENTATION.md`](IMPLEMENTATION.md) | Current implementation status, concrete milestones, and integration notes. |
 | [`API.md`](API.md) | OpenAI-compatible FastAPI server usage, endpoint support, and current limitations. |
-| [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Active cross-path gfx1151/gfx1100 PARO, GGUF, concurrency, MTP/DFlash, and HIP/Vulkan optimization ledger. |
+| [`SOL-OPTIMIZATION.md`](SOL-OPTIMIZATION.md) | Closed first-generation gfx1151/gfx1100 PARO/GGUF optimization ledger (`SOL-R0`-`R9`, `SOL-E1`/`E2`); its concurrency premise is superseded by [`CONCURRENCY.md`](CONCURRENCY.md) and it is retained as a dated record. |
 | [`OPTIMIZE.md`](OPTIMIZE.md) | Active optimization board for Qwen3.5-35B-A3B-PARO MoE; accepted/rejected/deferred candidates. |
 | [`OPTIMIZE-DENSE.md`](OPTIMIZE-DENSE.md) | Active optimization board for Qwen3.6-27B-PARO dense; mirror lane structure to `OPTIMIZE.md`. |
 | [`QWEN35-08B-GFX1151-VULKAN-PARITY.md`](QWEN35-08B-GFX1151-VULKAN-PARITY.md) | Active Radeon 8060S campaign to profile every Qwen3.5-0.8B dense GGUF module and match or beat llama.cpp Vulkan before 27B transfer. |
