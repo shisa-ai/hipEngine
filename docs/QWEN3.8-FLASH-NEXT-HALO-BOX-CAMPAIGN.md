@@ -1,11 +1,20 @@
 # Qwen3.8-Flash-Next halo-box Follow-up Campaign
 
-Status: **Review remediation partially complete 2026-09-04. HB-0 through
-HB-3 remain complete/blocked. A committed one-process, one-residency A/B now
-validates the combined PF-1/PF-3 T0 package, so both exact routes are restored
-as production defaults with their preceding strict fallbacks. PF-4's
-one-residency adjudication, PF-5's tile-16 lever, and section 6.4 D1's owner
-decision remain open.**
+Status: **Source/impact review updated 2026-09-05 at hipEngine `3574a1bd2`,
+without GPU execution. Start with section 6's revised work order.** The main
+engineering priorities are routed MoE, dense/GR projections, p4096 sparse
+QSA, then GDN. The retained PF-1/PF-3 T0 package remains production. PF-0 is
+complete; D1 is still an owner decision. Individual rejected levers do not
+close their parent bottleneck.
+
+**Correct the geometry before the next kernel unit:** binding GDN is
+Hk=16/Hv=48/D=128, and QSA is 24 query heads/2 KV heads/D=256. The committed
+PF-5 tile-16 candidate accepts **Hv=32 only** and is not ready for this model.
+HB-2 demonstrates the non-KDA 32-warp GDN path, not PR11's H=32 KDA tile-16
+path. The prior PF-2 rejection's wave32 explanation is also incompatible
+with D=256. Section 5.3 records these corrections and the actual Q8 tile
+geometry; section 5.4 explains the remaining costs.
+
 Frozen traces confirm M1, M2, M5 weighted-sum, M6, and M8 activation; M3, M4,
 M5 shared-mul-add, and M7 are inactive on this payload/graph. HB-3's pinned
 test harnesses do not expose identical operation-complete boundaries against
@@ -55,10 +64,10 @@ measured comparator, (b) profiles it role-by-role against hipEngine, and (c)
 converts every confirmed per-mechanism advantage into a `W/C/O/s` candidate for
 the main campaign's impact queue.
 
-The premise, stated explicitly: matching or beating each matched
-microbenchmark family one at a time is how the aggregate gap closes. This
-campaign exists to enumerate those families from the halo-box diff, measure
-each one on both engines, and feed the winners into the main campaign. It does
+The execution unit is an exclusive, operation-complete hipEngine owner,
+ranked by recoverable request time. The halo-box diff supplies mechanisms;
+its pre-existing MMQ and attention architecture also matters. Matching a
+microbenchmark alone does not close the aggregate gap. This campaign does
 not relax any correctness, evidence, or anti-gaming rule.
 
 ## 1. Source identity and claim summary
@@ -99,8 +108,8 @@ or denies each by kernel-name census, never by assumption.
 | M3 | Device-built routed-compact MMQ, `mmq.cu` `build_mmq_routed_descriptors` + `mul_mat_q_routed_compact`, gated `(Q6_K && J==32) \|\| (Q8_0 && J==48)` with `nchannels_y == 256` | **Expected no** — our routed experts are Q4_K/Q5_1; verify at runtime |
 | M4 | J48 dispatch specialization for MoE-id MMQ: Q8_0 (`mmq_use_rdna3_5_q8_id_j48`), IQ2_XS/IQ3_XXS (12288-col), J64 for IQ3_S/IQ4_NL/IQ4_XS at `nchannels_y == 512` | **Expected no** on Q4_K_XL; **yes** on the IQ4_XS diagnostic arm |
 | M5 | Fused weighted top-10 expert-output sum, `args.cu` `ggml_cuda_op_weighted_expert_sum` with `<10, 2560>` specialization, plus fused shared-expert `shared_mul_add_f32` (mul+add+residual) | **Yes** — n_embd 2560 matches Qwen4Exp |
-| M6 | GDN tuning, `gated_delta_net.cu`: 32 warps/block (vs 4) for S_v=128, H∈{32,48,64}; token-tile-16 state-in-register prefill kernel for H=32, `n_tokens >= 16`, single sequence | **Yes** — matches Qwen4Exp GDN geometry |
-| M7 | Decode FA GQA opt, `fattn*`: gated to `Q->ne[1]==1`, `gqa_ratio==6`, **Q8_0 K/V only**; faster FA tile variants were rejected by the authors for changing logits | **No** under the BF16-KV baseline; Q8_0-KV diagnostic arm only |
+| M6 | GDN tuning, `gated_delta_net.cu`: 32 warps/block (vs 4) for S_v=128, H∈{48,64}, non-KDA; token-tile-16 state-in-register KDA prefill kernel for H=32, `n_tokens >= 16`, single sequence | **Partial** — binding Hv=48 non-KDA uses 32 warps; H=32 KDA tile-16 is inactive (section 5.3) |
+| M7 | Decode FA GQA opt, `fattn*`: gated to `Q->ne[1]==1`, `gqa_ratio==6`, **Q8_0 K/V only**; faster FA tile variants were rejected by the authors for changing logits | **No** — binding BF16 KV and GQA=12 both fail the gate; changing KV alone does not activate it |
 | M8 | Elementwise/recurrent specializations: transposed concat tile-16, direct-index contiguous mul, quantize/norm/sumrows gfx1151 paths | **Yes** where shapes match; map per kernel in HB-3 |
 | M9 | Vulkan: cooperative-matrix dequant selection for wide prompt matmuls and large MoE batches, tiled recurrent concat, direct-index mul | Backend-disjoint; design evidence only, per main-campaign scope rules |
 
@@ -119,7 +128,7 @@ or denies each by kernel-name census, never by assumption.
 - Binding arm: pinned `UD-Q4_K_XL` + BF16 K/V through the canonical exact-token
   fixture and protocols of the main campaign.
 - Diagnostic arms (separate denominators, never mixed into binding rows):
-  UD-**IQ4_XS** matching the PR's tested quant, and Q8_0 K/V to exercise M7.
+  UD-**IQ4_XS** matching the PR's tested quant, and Q8_0 K/V as a separate cache diagnostic. M7 also requires GQA=6; the binding model has GQA=12.
 - Concurrency extension c=1..8 (section 3) as the topline matrix.
 
 ### Out of scope
@@ -147,6 +156,29 @@ c=2..8 are extension rungs that must not average away a c=1 result.
 Lanes: **hipEngine** (named production, pinned UD-Q4_K_XL, BF16 K/V),
 **upstream HIP** (patched `f1793c1c4`, existing comparator),
 **HB-base** (halo-box `6c84c7d5`), **HB-PR11** (halo-box `a7ad7b7f`).
+
+### 3.0 Latest production refresh (2026-09-04; screening comparator)
+
+The [PF-1/PF-3 refresh artifact](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json)
+contains exact commands, source/binary/profile hashes, correctness, and physical
+host identity: `zbook`, machine ID `87c566d30a5645cf8d12ed7ef6b6e1e8`, Ryzen AI
+Max+ Pro 395 / Radeon 8060S, gfx1151, UD-Q4_K_XL, BF16 K/V, c=1, four canonical
+categories, tg128. These are existing measurements, not a new benchmark.
+
+| Shape | hipEngine pp / tg128 tok/s | HB-PR11 pp / tg128 tok/s | HB/hipEngine prefill rate | hipEngine decode rate deficit vs HB |
+| --- | ---: | ---: | ---: | ---: |
+| p512 | 89.34 / 14.84 | 240.11 / 18.04 | 2.69x | 17.8% |
+| p1024 | 88.54 / 14.79 | 324.64 / 17.24 | 3.67x | 14.2% |
+| p4096 | 72.58 / 12.40 | 349.49 / 15.10 | 4.82x | 17.9% |
+
+Thus the approximate 15% decode deficit is consistent with this screen;
+prefill approaches 5x at p4096, with a smaller short-prompt gap. Rate deficit
+is `1 - hipEngine/HB`; HB's rate advantage uses the other denominator. Matching
+these prefill rates would require approximately 63%/73%/79% less prefill wall.
+HB p512/p1024 prefill CV reaches 10.0%/9.7%, so those magnitudes remain
+screening-only; p4096 CV is 1.26%. Five matched thermal pairs for campaign
+closure remain outstanding. Sections 3.1/3.2 preserve **historical HB-1 arm B**,
+not the current production row.
 
 ### 3.1 Prefill tok/s, UD-Q4_K_XL, BF16 K/V (canonical p512/p1024/p4096)
 
@@ -265,7 +297,7 @@ that is a match-ledger result, not a failure.
 | M3 | Routed-compact descriptor MMQ (Q6_K J32 / Q8_0 J48) | **No** — zero builder or routed-compact MMQ symbols in all six PR11 windows | Routed MoE operation owner | n/a on binding payload | n/a | n/a | Inactive; no HB-3 row |
 | M4 | J48/J64 MoE-id dispatch (Q8_0/IQ2_XS/IQ3_XXS/IQ4_XS) | **No** — zero J48/J64 specialization symbols; expert payload is Q4_K/Q5_1 | Routed MoE operation owner | n/a on binding payload | n/a | n/a | Inactive; IQ4_XS remains excluded |
 | M5 | Fused weighted top-10 sum + shared mul-add-residual | **Partial** — weighted `10×2560` kernel active; `shared_mul_add_f32` absent | Elementwise/materialization; GR read/tail | F32 `[T,10,2560]` + weights → F32 `[T,2560]`, T=1/512/1024/2048 | blocked — base catalog lacks the PR case | blocked — shipped hipEngine owner consumes BF16 or fuses extra work | **Blocked before timing** |
-| M6 | 32-warp GDN + tile-16 state-in-register prefill | **Yes** — workgroup Y changes 4→32; core p4096 prefill kernel sum 2,139.377→647.976 ms | GDN mixer (655 ms/1.233 s/4.983 s; 2.670 ms live-513) | Hk=16, Hv=32, Dk=Dv=128, T=1/512/1024/2048; normalized Q/K through core+state | blocked — catalog geometry/boundary differs | blocked — state layout and prepare/post boundary differ | **Blocked before timing** |
+| M6 | 32-warp non-KDA GDN; separate KDA tile-16 | **Partial** — workgroup Y changes 4→32; core p4096 prefill kernel sum 2,139.377→647.976 ms | GDN mixer (655 ms/1.233 s/4.983 s; 2.670 ms live-513) | Hk=16, Hv=48, Dk=Dv=128, T=1/512/1024/2048; normalized Q/K through core+state | blocked — catalog geometry/boundary differs | blocked — state layout and prepare/post boundary differ | **Blocked before timing** |
 | M7 | Q8_0-KV decode FA GQA opt | **No by contract** — BF16 K/V; zero Q8-KV/GQA-opt symbols | QSA/FA decode owners | n/a under BF16 K/V | n/a | n/a | Inactive; Q8_0 K/V excluded |
 | M8 | Elementwise/recurrent specializations (concat/mul/quantize/norm/sumrows) | **Yes, partial** — transposed concat, contiguous binary, dual L2 norm, four-column Q8 matvec, RMS128, and sum-4 symbols present | Elementwise/materialization; GR read/tail | Six separate operation-complete rows; four-column Q8 deduplicated from M1 | blocked — PR symbols are internal graph selections | blocked — no six shared stride/dtype/output fixtures | **Blocked before timing** |
 
@@ -305,9 +337,11 @@ p512/p1024/p4096, aligned family-by-family against rocprofv3 device traces of
 pinned upstream llama.cpp `f1793c1c4` running the same exact canonical token
 fixtures on the same host. hipEngine prefill commits `3ddb748d`/`6e32efcf`;
 HB-1's later production lane (manifest `37d59564…`) measured 83.366/82.908/69.200
-pp tok/s versus the profile packet's unprofiled 85.711 pp at p1024, so the
-ledger still ranks current production within ~3% and stays the ranking basis
-until a retained prefill unit lands (protocol item 5).
+pp tok/s versus the profile packet's unprofiled 85.711 pp at p1024, so it was
+a useful initial ranking. PF-1/PF-3 and other units have since
+landed. Keep this ledger as **historical scale evidence**, not a fresh route
+census or a claim that every current owner remains within 3%. Source inspection
+supports the priorities below; remeasure changed owners when the GPU is free.
 
 Device-time totals per profiled request (hipEngine vs llama.cpp, ms):
 
@@ -317,17 +351,19 @@ Device-time totals per profiled request (hipEngine vs llama.cpp, ms):
 | p1024 | 11,183.7 | 2,971.9 | 8,211.8 | 3.76x |
 | p4096 | 54,558.9 | 10,802.0 | 43,756.8 | 5.05x |
 
-Per-family rows (device ms; llama.cpp advantage in parentheses; rows grouped
-by workstream, largest deficits first):
+Historical classifier buckets (device ms; bucket ratios in parentheses).
+The labels are not exclusive semantic operations: `dense_other` includes
+selected experts, and `dense_quant_q8` includes matrix compute. Do not interpret
+the 23–26x bucket ratio as a matched dense-kernel ratio (section 5.3).
 
 | Family | p512 | p1024 | p4096 | PR11 mechanism (HB-2) | Workstream |
 | --- | ---: | ---: | ---: | --- | --- |
-| Dense projection compute | 1,181.3 vs 50.4 (23.4x) | 2,173.3 vs 94.6 (23.0x) | 8,767.0 vs 337.7 (26.0x) | M1 Q8_0 MMQ tile retune (active) | **PF-1** |
+| Mixed projection bucket (`dense_other`) | 1,181.3 vs 50.4 (23.4x) | 2,173.3 vs 94.6 (23.0x) | 8,767.0 vs 337.7 (26.0x) | M1 Q8_0 MMQ tile retune (active) | **PF-1** |
 | QSA attention | 51.0 vs 12.9 (3.9x) | 180.1 vs 48.8 (3.7x) | 10,229.2 vs 526.0 (19.5x) | none under BF16 K/V (M7 inactive) | **PF-2** (native) |
 | MoE gate/up Q4_K | 1,368.5 vs 700.3 (2.0x) | 2,528.6 vs 851.7 (3.0x) | 10,233.3 vs 1,906.5 (5.4x) | M1 Q4_K tile retune (active) | **PF-3** |
 | MoE down Q5_1 | 1,173.9 vs 501.4 (2.3x) | 2,192.8 vs 625.0 (3.5x) | 8,782.4 vs 1,454.1 (6.0x) | none measured (M1 Q5_1 did not retune) | **PF-3** (native) |
-| Dense Q8 quantize | 957.4 vs 269.0 (3.6x) | 1,802.3 vs 451.2 (4.0x) | 7,241.7 vs 1,592.1 (4.6x) | M8 quantize/elementwise paths (active, partial) | **PF-1** |
-| GDN | 655.2 vs 83.3 (7.9x) | 1,233.0 vs 222.5 (5.5x) | 4,982.8 vs 1,845.3 (2.7x) | M6 32-warp + tile-16 (active; their p4096 kernel sum 2,139.4→648.0 ms) | **PF-5** |
+| Q8 MMQ compute + packing (`dense_quant_q8`) | 957.4 vs 269.0 (3.6x) | 1,802.3 vs 451.2 (4.0x) | 7,241.7 vs 1,592.1 (4.6x) | M8 quantize/elementwise paths (active, partial) | **PF-1** |
+| GDN | 655.2 vs 83.3 (7.9x) | 1,233.0 vs 222.5 (5.5x) | 4,982.8 vs 1,845.3 (2.7x) | M6 non-KDA 32-warp (active; p4096 core 2,139.4→648.0 ms); KDA tile-16 inactive | **PF-5** |
 | MoE routing | 120.2 vs 21.6 (5.6x) | 225.0 vs 45.3 (5.0x) | 903.0 vs 269.5 (3.4x) | M2 parallel top-10 compaction (active, prefill) | **PF-4** |
 | Elementwise/materialization | 457.6 vs 272.2 (1.7x) | 848.5 vs 632.9 (1.3x) | 3,419.5 vs 2,870.8 (1.2x) | M5 weighted top-10 sum (active) + M8 set (partial) | **PF-4** |
 
@@ -340,11 +376,12 @@ Reading rules and caveats, binding on any use of these rows:
 - llama.cpp family sums come from the pinned `f1793c1c4` patched-HIP lane,
   which HB-1 shows is slower than HB-PR11; closing to these rows therefore
   understates, not overstates, the remaining external gap.
-- The QSA row grows superlinearly with context (3.7x → 19.5x): chunked-512
-  prefill re-attends history without the reuse the retained ordered-QSA
-  decode route introduced for decode. PF-2 is the only workstream with no
-  external reference mechanism under BF16 K/V; it resumes the main
-  campaign's P4 QSA prefill subowner evidence
+- The QSA ratio grows from 3.7x to 19.5x as p4096 crosses the dense-to-sparse
+  transition. Each query must attend its own history; chunking alone does not
+  prove redundant computation. The sparse implementation's per-key reduction
+  and synchronization are the actionable costs (section 5.4). M7 is inactive,
+  but halo-box's existing masked Flash Attention is relevant BF16 design
+  evidence. PF-2 resumes the main campaign's P4 QSA prefill subowner evidence
   ([`p4-qsa-prefill-subowner`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p4-qsa-prefill-subowner.json),
   [`dense-other subowners`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json)).
 - HB-3's matching blocker stands: these are role-aligned whole-request rows,
@@ -352,32 +389,229 @@ Reading rules and caveats, binding on any use of these rows:
   whole-model same-session A/B plus their RED gates, using HB-2 only as
   mechanism-existence evidence.
 
+### 5.3 Source audit corrections (2026-09-05)
+
+Audit basis: hipEngine `3574a1bd2` and read-only halo-box
+`/home/lhl/halo-box-strix-llama/hb-pr11` at `a7ad7b7f`. These are code findings,
+not new timings. They supersede conflicting explanations in earlier PF rows
+and worklogs; stored measurements and immutable entries are preserved.
+
+1. **Use binding geometry.** The validated model contract in
+   [`qwen4_exp_gguf.py`](../hipengine/loading/qwen4_exp_gguf.py)
+   (`_geometry_errors`) requires QSA 24 query heads, 2 KV heads,
+   key/value dimension **256**; indexer dimension 128 is a different tensor.
+   GDN is **16 K heads, 48 V heads, D=128**, inner width 6144.
+   [`Qwen4ExpRunner._prefill_chunk`](../hipengine/runtime/qwen4_exp_runner.py)
+   passes these config fields directly to the mixers. PR11
+   `ggml/src/ggml-cuda/gated_delta_net.cu:310–322` selects 32 warps for
+   H=48/64 non-KDA, whereas tile-16 requires **KDA and H=32**. HB-2's M6
+   symbols are `gated_delta_net_cuda<128,false,false>`: its retained census
+   proves the former, not the latter. GDN tile-16 remains an adaptation idea,
+   not a measured-active mechanism on this payload.
+2. **PF-5's new candidate has a binding-shape gap.** Both
+   [`qwen4_exp_gdn.py`](../hipengine/kernels/hip_gfx1100/linear_attn/qwen4_exp_gdn.py)
+   and the raw launcher in its `.hip` reject `num_v_heads != 32`;
+   [`test_qwen4_exp_gdn_tiled16_prefill.py`](../tests/test_qwen4_exp_gdn_tiled16_prefill.py)
+   covers Hv=32 only. The
+   [implementation checkpoint](../worklog/entries/20260905T011450.253353Z-lhl-qwen4exp-pf5-gdn-tiled16-implementation-447dc4.md)
+   reports a 32.1% rows-512 operation-chain improvement at that other shape.
+   It cannot support wiring or promotion at Hv=48. Extend the contract and
+   measure the actual shape before claiming a candidate saving here.
+3. **PF-2's failure is observed; its stated cause is not established.** The
+   runner selects the wave32 sparse rows function only for `head_dim == 128`.
+   D=256 uses `qsa_sparse_attention_paged_bf16_rows_f32_kernel`. The old RED
+   fixture uses 4 query heads/2 KV heads/D=8 and three selected keys, so it
+   does not establish exactness at the binding geometry and selection budget.
+   The [PF-2 artifact](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf2-qsa-ordered-prefill-ab.json)
+   records p4096 output mismatch and process-separated timing; keep the
+   candidate unpromoted, but withdraw “production wave32 caused it” and
+   “extra launches proved the loss.” Reproduce with actual-shape output/state
+   capture, route census and one-residency A/B before attributing a cause.
+4. **Q8 MMQ already tiles both matrix axes and uses matrix instructions.**
+   [`gguf_q8_0_mmq_prefill.hip`](../hipengine/kernels/hip_gfx1100/quant/gguf_q8_0_mmq_prefill.hip)
+   defines M=N=128; `launch_mmq_tile` launches
+   `ceil(out_features/128) × ceil(rows/128)` blocks, each 32×8 threads.
+   It cooperatively stages weights/activations and calls
+   `__builtin_amdgcn_wmma_i32_16x16x16_iu8_w32`. The same M/N and grid formulas
+   exist at profile commit `3ddb748d`. The
+   [PF-1a entry](../worklog/entries/20260902T233138.374147Z-lhl-qwen4exp-pf1a-dense-scope-199383.md)
+   incorrectly inferred one output column per block from trace grid sizes.
+   Reconcile profiler work-item dimensions with launch block counts before
+   any occupancy argument. “Add MMQ tiling” is not a missing feature.
+5. **The family names hide different operations.**
+   [`qwen4exp_trace_analyze.py`](../scripts/qwen4exp_trace_analyze.py)
+   classifies Q8 MMQ **matmul** and packing together as `dense_quant_q8`.
+   PF-1a's historical p4096 split is about 6.926 s matmul versus 0.229 s
+   activation packing, within the 7.242 s bucket. A pack-only optimization
+   cannot remove the matmul deficit. `dense_other` includes selected Q8 down
+   and layer-2 Q5_K gate/up alongside Q8 weights with F32 activations; it
+   does **not** mean F32 weights. The
+   [subowner artifact](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json)
+   splits its historical 8.767 s into approximately 3.086 s selected Q8 down,
+   2.775 s F32-activation coltile, 2.337 s selected Q5_K, plus smaller work.
+   The selected-Q8 part changed with PF-1. Do not assign the whole 23–26x
+   bucket ratio or all 8.767 s to a dense coltile kernel.
+6. **A failed transplant does not disprove its external mechanism.** PF-4's
+   O(E×T) per-expert scan loses to hipEngine's existing map chain, but the
+   earlier “designed for E≤32” explanation is unsupported: halo-box runs the
+   same 512-expert payload and HB-2 observes this helper. Different incumbent
+   maps, output ABIs, gather work and batching matter. Similarly, the PF-5
+   32-warp loss closes that in-tree instantiation, not transfer to gfx1151
+   in general; the external measured host is also gfx1151.
+
+### 5.4 Why prefill is much farther behind than decode
+
+**Inference from source and the historical profile:** too much prefill work
+still follows small-row exact schedules, and the faster arithmetic routes
+cover only admitted shapes/layers. Decode has one new row and cannot amortize
+weight reads across many tokens. Prefill can amortize dequantization, weight
+loads and synchronization across rows and use matrix instructions. A runtime
+can consequently be close on decode yet far behind on prefill. This is not
+proof that host overhead is zero, but the attributed device owners are large
+enough to establish the engineering priority without another GPU run.
+
+Use the historical **exclusive operation roles**, not the mismatched buckets,
+for sizing. Source: the section 5.2 canonical profile, exact category fixture,
+zbook/gfx1151, UD-Q4_K_XL/BF16; seconds per profiled request. These are
+historical owner costs, not predicted savings or a refreshed HB comparison.
+
+| Impact rank | Exclusive owner | p512 | p1024 | p4096 | Main explanation / workstream |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | Routed MoE, all quant types and its local routing/combine | 3.408 | 6.307 | 25.398 | Reuse across routed rows; early exact paths versus matrix suffix. PF-3 plus selected PF-1 tails. |
+| 2 | Dense linear projections + GR read/tail | 1.839 | 3.442 | 13.864 | Exact Q8 coltile coverage and three-plane MMQ cost. PF-1. |
+| 3 | QSA mixer/index/attention | 0.056 | 0.190 | 10.423 | D=256 sparse rows beyond the dense-equivalent budget. PF-2; rank 2 for a p4096-focused unit. |
+| 4 | GDN mixer | 0.655 | 1.233 | 4.983 | Serial early layers versus columnwarp suffix. PF-5. |
+
+Routing/materialization are already included in these owners; adding their
+family rows again double-counts them. At p4096, even making the entire
+historical MoE owner free would yield only about 1.79x complete-wall speedup
+in the artifact's Amdahl model. Closing a roughly 4.8x current screen requires
+several large owners, not one small fusion or a percent-level tile change.
+
+**MoE: fix reuse and coverage before another tile-number sweep.**
+[`run_qwen4_exp_moe`](../hipengine/runtime/qwen4_exp_runner.py) and
+[`qwen4_exp_profiles.py`](../hipengine/generation/qwen4_exp_profiles.py) admit
+WMMA MoE at layers 27–47; earlier layers retain exact grouped Q4_K/Q5_1
+owners. Those exact kernels reuse weights across small row batches, but still
+perform scalar dequantized accumulation and ordered reductions. Q5_1 M1 in
+[`qwen4_exp_q5_1.hip`](../hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip)
+keeps the logical256 tree; its output batch still walks output columns.
+Halo-box `mmq.cu`/`mmq.cuh` instead use expert row maps, activation
+quantization and matrix tiles; `mmq.cu` also quantizes broadcast gate/up input
+once before scattering to expert rows. Compare the full boundaries, including
+hipEngine's fused gate/up and BF16 intermediate roundings.
+
+The current runner uses **512-token chunks** versus the comparator's
+`-ub 2048` upper bound. At p4096 this means eight hipEngine chunks; HB's actual
+ubatches must be read from the trace rather than assumed to equal the bound.
+Each hipEngine chunk has 5120 routed token/expert pairs. Historical telemetry
+shows a median 325–333 active experts and a median seven rows per active
+expert: padding every expert to a large tile wastes work. In a uniform
+512-expert thought experiment, `T*10/512` grows from 10 rows/expert at T=512
+to 40 at T=2048. That is a reuse opportunity, not the measured distribution.
+Explore compact row scheduling, dequantization/metadata reuse and input staging
+on broad/uneven expert counts. Budget the larger scratch against 111-GB-class
+model residency. Chunk growth cannot explain or fix the p512 gap by itself.
+
+**Dense/GR: two distinct problems, both larger than routing cleanup.**
+The exact `gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4>` in
+[`gguf_k_gemv.hip`](../hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip)
+uses 128 logical K lanes, four token rows and eight output columns, repeated
+Q8 block decoding and FP32 FMA/reduction. It is a small reuse tile, not the
+same arithmetic as the admitted Q8 MMQ route. Its attention-gate shapes remain
+outside the production MMQ policy. A bit-exact improvement must preserve the
+K subsequences and reduction tree while reducing repeated dequantization and
+staging costs. Extending MMQ coverage changes arithmetic and is gated.
+
+The already tiled MMQ owner uses **three residual activation planes**. Its
+loop order is `(k_iter, k_half, activation_pass, subblock)`; each plane repeats
+activation staging and integer matrix products followed by scaling. Halo-box's
+Q8 D4 path uses one plane. This is a real difference in work, not evidence for
+an automatic 3x speedup or permission to discard residuals. Preserve planes
+and ordered accumulation for T0 reuse work; a different plane count goes
+through the declared arithmetic/representation contract in sections 6.2–6.4.
+A small number of failed retiles does not exhaust exact dense-kernel designs.
+
+**QSA: a sparse selection can still feed an inefficient attention kernel.**
+The binding D=256 rows kernel in
+[`qwen4_exp_qsa.hip`](../hipengine/kernels/hip_gfx1100/attention/qwen4_exp_qsa.hip)
+assigns one block per query/head, walks selected keys serially, performs a
+block reduction plus barriers for each key, then updates online softmax and
+weighted V. Queries and the 12 query heads per KV head do not cooperatively
+reuse a KV tile. Beyond the approximately 2048-token dense-equivalent budget,
+this becomes expensive: the historical p4096 subowner is 9.418 s sparse
+attention versus 0.129 s index scoring and 0.023 s top-k expansion.
+
+Halo-box `src/models/qwen4exp.cpp:build_attn_qsa` creates an exact selected-key
+mask and calls `build_attn_mha`, using its existing tiled Flash Attention
+backend with BF16 KV. That design evidence is available even though PR11 M7
+is inactive. A hipEngine T0 design can precompute ordered QK work and stage
+KV while preserving each row's arithmetic; a tiled softmax/matrix alternative
+is usually T1/T2 and must preserve exact selection/causality plus pass the
+profile gate. The prior failed three-pass candidate is not permission to
+reintroduce it unchanged or proof that the whole workstream is closed.
+
+**GDN: prioritize the serial prefix, and size the suffix honestly.**
+Before layer 27, `qwen4_exp_gdn_prefill_f32_kernel` keeps each value column's
+K reduction serial and reads/writes recurrent state through a global pointer
+inside the token loop. The later columnwarp owner keeps four state values per
+lane in registers and distributes K work across a wave, changing the reduction
+relative to the serial owner; only its admitted layer suffix is production.
+Tile-16 can amortize repeated Q/K normalization and loads across those column
+warps, but neither the Hv=32 screen nor an eventual Hv=48 suffix win applies
+to the serial prefix. An exact prefix state-residency design must account for
+register pressure/spills and preserve its serial summation order. Expanding
+columnwarps to early layers requires a new numerical gate.
+
+### 5.5 Decode: separate residual portfolio
+
+The section 3.0 screen puts short decode within roughly 14–18% of HB's rate.
+The historical live-513 aligned deltas versus pinned upstream rank selected
+Q5_1 down (3.379 ms/token), selected Q4 gate/up (3.238), Q8 (2.866), GDN
+(2.139), then other projections. These are comparator bucket diagnostics,
+not additive recoverable wall. Prioritize selected-weight access/dequantization,
+reuse of shared inputs, and already-ordered epilogues; do not import large
+prefill tiles into a one-row decode owner.
+
+At long context, first revisit the **residual ordered QSA owner**, not the
+pre-optimization 35-ms deficit. The main campaign already retained exact
+ordered decode at 20.913 ms/token QSA role and 80.061 ms/token complete wall
+in its own counterbalanced packet. Reuse KV across GQA heads / reduce repeated
+loads only with an actual-owner exact oracle. M7's Q8-KV/GQA=6 route is inactive
+under the binding BF16 KV and GQA=12 geometry. Cold PLE, Python submission,
+MTP, and concurrency are separate denominators; none presently outranks the
+large prefill owners. A wall-minus-kernel subtraction across separate profiler
+runs is not evidence that Python or graph capture owns the remaining gap.
+
 ## 6. Punchlist
 
-### Start here (2026-09-03)
+### Start here (2026-09-05): ordered coder work
 
-The goal is unchanged: close the section 5.2 prefill gap against the external
-engines. What changed is that the cheap arithmetic dials on the dense-Q8 family
-are spent, so the next wins come from **exact restructuring** and from
-**workstreams that have never been attempted**, not from more precision
-trading.
+This order supersedes the 2026-09-03 queue. PF numbers remain historical unit
+identifiers, not priority numbers. This review authorizes planning; use the
+existing per-unit gates before changing any runtime default. No GPU work was
+performed for this review.
 
-Ordered queue for the next coder. Do not skip PF-0 if your lever changes
-arithmetic; you may start any `T0` lever immediately in parallel.
+| Order | Work through this | Concrete deliverable / stop rule |
+| ---: | --- | --- |
+| 0 | **Repair the evidence assumptions before choosing a kernel.** Pin actual model dimensions, selected registry owner, layer scope, and profiler grid units. PF-0 already exists. | Add binding-shape RED coverage for GDN 16/48/128 and QSA 24/2/256, including nonzero recurrent state, tile tails, and the 2048-budget transition. Correct the PF-2 causal diagnosis. Keep its failed candidate off. D1 goes to the owner now; it does not block T0 restructuring. |
+| 1 | **PF-3 next: operation-complete routed MoE, including selected Q8/Q5_K tails.** Highest prefill owner at every shape. Start with exact early-layer Q4_K/Q5_1 dequantization/input reuse, then layer-2 Q5_K and the remaining selected Q8 down cost. | Separate layers 0–26 from the admitted WMMA suffix and report gate/up → SiLU → down → ordered combine. Preserve M1/grouped-Q8 defaults. For each new T0 mechanism, declare which repeated load/dequantization/barrier it removes; stop after a negative complete-owner result. An early-layer WMMA/MMQ expansion is a separately declared T1/T2 or T3 candidate, never a flag-only promotion. |
+| 2 | **PF-1 next: dense/GR compute, restored to high priority.** Split exact F32-activation Q8 coltile projections from the existing three-plane MMQ chain. | First target the actual coltile attention-gate shapes with exact block dequantization and reuse while preserving K ownership/reduction. For MMQ, reduce repeated staging/packing across consumers of the same input, preserving all three planes and accumulation order; report matmul separately from packing and repair. Do not repeat the rejected tile/plane settings. D1 owns any numerical route widening. |
+| 3 | **PF-2 next: D=256 sparse prefill attention.** Co-leading owner at p4096; move ahead of order 2 only for an explicitly p4096-focused unit. | Reproduce/localize the old failure on the real shape. Then screen a new tiled QK/KV reuse mechanism preserving selected order, per-row score tree, and online value recurrence. A masked/tiled Flash Attention production alternative requires the full numerical gate. Include selection/mask construction and scratch in the complete owner; score/top-k alone is too small. |
+| 4 | **PF-5 next: correct tile-16 to Hv=48, then address the serial prefix.** Finish the existing candidate as a bounded unit if already in progress; its current Hv=32 screen is non-binding. | Generalize and validate Hk=16/Hv=48/D=128 before runner wiring. A suffix-only T0 candidate compares against columnwarps, then gets one-residency whole-model A/B. Separately target pre-layer-27 serial recurrence with an exact state-residency design, or declare reassociation and pay its profile gate. No extrapolation of the Hv=32 leaf gain to all GDN. |
+| 5 | **Batch-size policy within PF-3/PF-1.** Evaluate 512 → 1024 → 2048 prefill chunks after the principal owners support them; develop its static memory/route map alongside orders 1–2. | Record expert-count distributions, actual GGML ubatches, packed scratch/live memory, PLE/KV/state continuity and route changes. One-process A/B must include p512 unchanged and p1024/p4096. Four times more rows is not a promised 4x win, and a chunk-induced route change is not automatically T0. |
+| 6 | **PF-4 routing/combine cleanup and decode portfolio (section 5.5).** | PF-4 fused combine still needs one-residency adjudication; reuse the committed A/B harness. Routing must improve total map + gather + consumers. Decode: selected Q4/Q5_1 and Q8 first at short context; residual ordered QSA first at long context. Keep graph/launch work behind a measured exclusive owner. |
 
-| # | Do this | Why now | Gate cost |
-| ---: | --- | --- | --- |
-| 1 | **PF-0** — build a natural-text route-covering fixture. | Every remaining arithmetic-changing candidate in this campaign is unadjudicable without it (section 6.2 Rule B + section 6.4 D1). Blocks PF-1c lever 2, PF-3, PF-4, and any PF-5 reassociation. | One fixture unit, no GPU measurement claim. |
-| 2 | **PF-2** — QSA long-context prefill reuse. | Largest single p4096 deficit (10,229 vs 526 ms, 19.5x) and the only workstream with no external mechanism to port, so it is pure hipEngine headroom. Ordered three-pass reuse is expected `T0`. | Exact-parity RED + trace. No numerics packet if it stays `T0`. |
-| 3 | **PF-5** — GDN M6 port (32 warps/block, tile-16 state-in-register). | 4,982.8 vs 1,845.3 ms at p4096 with direct external evidence that the mechanism works (their kernel sum 2,139.4 → 648.0 ms). Launch-geometry and state-residency changes are `T0` if the reduction order is preserved. | Exact-parity RED + trace. |
-| 4 | **PF-3** — MoE Q5_1 down + Q4_K gate/up schedules. | Second-largest combined deficit (Q5_1 down 6.0x, Q4_K gate/up 5.4x at p4096); Q5_1 has no PR11 mechanism, so it is native tile work. | `T0` if exact; otherwise PF-0 first. |
-| 5 | **PF-4** — MoE routing + materialization. | Smaller absolute deficit but M2/M5 are confirmed-active external mechanisms with clear shapes. | `T0` for the routing compaction (integer maps); the fused weighted sum needs PF-0 if it reassociates. |
-| 6 | **PF-1 remainder** — see section 6.3, fork (b). | Still the largest p512/p1024 deficit (23–26x), but the remaining lever is either a coverage-complete numerics packet or a new bit-exact dense kernel. Both are expensive; the four units above are cheaper per unit of gap closed. | High. |
+Prioritize saved request milliseconds, not percentage improvement in a tiny
+leaf. Use `saving = O * (1 - 1/s)` and `new_wall = W - saving` only as a
+labeled projection from one exclusive owner. Do not add cross-engine bucket
+deltas or apply suffix-only speedups to a whole family. Finite rejected T0
+experiments close those mechanisms; they do not establish that all exact
+scheduling is exhausted or that parity is achievable without a separately
+qualified production arithmetic path.
 
-**The one thing not to do:** do not reach for another activation-precision dial
-on the dense-Q8 chain. Three were measured and closed (section 6.1 PF-1d); the
-family is exhausted and the 23x deficit it targets is a schedule problem, not a
-precision problem.
+The following table is the **historical lever ledger**. “Done/rejected” closes
+that experiment; the next mechanisms above remain open.
 
 | Phase | Unit | Exit condition |
 | --- | --- | --- |
@@ -385,31 +619,31 @@ precision problem.
 | HB-1 | **Done** — completed two exact 36-sample arms for each of HB-base, HB-PR11, current hipEngine, and freshly rebuilt patched upstream. Retained arm B shows HB-PR11/base prefill gains of 1.1012x/1.1142x/1.1744x and decode gains of 1.0261x/1.0238x/1.0225x at p512/p1024/p4096. Every lane is cross-arm output-exact. HB-base p512/p1024 prefill drift makes those magnitudes provisional; p4096 direction reproduces. Section 3.4 is explicitly not run because IQ4_XS is excluded by the approved scope. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb1.json`; proceed to frozen-binary HB-2 profiling. |
 | HB-2 | **Done** — profiled frozen HB-base and HB-PR11 over exact p512/p1024/p4096 prefill and live-513/1025/4097 decode. All six pairs are output-exact across lanes and cached decode evaluates one appended token. Kernel-name and launch-geometry census confirms M1, M2, M5 weighted-sum, M6, and M8; denies M3, M4, M5 shared-mul-add, and M7 on this binding graph/payload. The aligned broad-family ledger is diagnostic because kernel sums can overlap. | Artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb2.json`; HB-3 admits only measured-active subfamilies. |
 | HB-3 | **Blocked** — completed the shape/ABI readiness ledger and built pinned base/PR11 `test-backend-ops` binaries (`7af38994…` / `bc640014…`). Available cases pass their own correctness probes, but no active family has an identical operation-complete cross-engine fixture: M1 lacks shared packed weights/dtypes, M2 is internal to `MUL_MAT_ID`, M5 lacks a common F32/BF16 boundary, M6 differs in heads/state/prepare-post ownership, and M8 must split into six stride-aware operations. Timing current surfaces would violate the matching rule. | Block artifact: `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-halo-box-hb3-blocked.json`. Stop for review; no candidate handed off. |
-| HB-4 | **Deferred behind PF-1…PF-5 by the HB-3 review** — IQ4_XS diagnostic arm. Artifact already downloaded and hash-verified (section 3.4); when admitted, exercise M4/J48/J64 and, under Q8_0 K/V, M7; document which mechanisms only exist on that payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
+| HB-4 | **Deferred behind PF-1…PF-5 by the HB-3 review** — IQ4_XS diagnostic arm. Artifact already downloaded and hash-verified (section 3.4); when admitted, census M4/J48/J64; a Q8_0 KV diagnostic still cannot activate M7 without its GQA=6 geometry. Document actual activation on each payload. | Diagnostic tables filled; explicit "different quant, does not bind" label on every row. |
 | HB-5 | **Deferred behind PF-1…PF-5 by the HB-3 review** — concurrency extension. Fill c=2..8 in sections 3.1–3.3 for every lane that supports it; record `unsupported` honestly; keep thermal windows shared across lanes. | Topline matrix complete or explicitly partial; artifact committed. |
 | HB-6 | Port decisions. For each PF unit (and each confirmed deficit): admit (with `W/C/O/s`), defer (named blocker), or reject (measured loss). Update the main campaign's section 4 row and mechanism transfer audit to point at measured rows instead of this doc's hypotheses. | Main campaign cross-references updated; this doc's status line advanced. |
-| PF-0 | **Done** 2026-09-03 — built a natural-text route-covering numerics fixture `benchmarks/fixtures/qwen4exp_natural_ar_pf0.json` (12 cases, three per canonical category, 535–877 prompt tokens, per-case token-ID and source SHA-256 hashes, provenance in `benchmarks/fixtures/natural_sources/`). Every case clears the `rows >= 64` Q8 MMQ policy, giving 100% route-engagement coverage (1548 compared rows) recorded by `scripts/qwen4exp_route_coverage_finding.py --single-fixture`; unique-token ratio recorded per case; no measurement claim. | Neither existing fixture qualifies: the 18-prompt admission suite is natural but 39-71 tokens (11.1% route coverage against the `rows >= 64` Q8 MMQ policy), and `qwen4exp_admission_suite_18prompt.json` records that; the canonical `p512/p1024/p4096` fixture is 100% route-covering but synthetic (`code-p512` holds 104 unique tokens in 512, built by repeating four short prompts). Natural long-form material is being sourced per category at >=512 tokens, keeping the four canonical categories, with per-case token-ID hashes. | Fixture committed with construction provenance and suite hashes; route-engagement coverage >= 50% recorded by `scripts/qwen4exp_route_coverage_finding.py`; unique-token ratio recorded per case; no measurement claim. The incumbent-vs-strict capture has run; its failed calibrated result now informs the open section 6.4 D1 owner decision. |
+| PF-0 | **Done** 2026-09-03 — natural-text fixture `benchmarks/fixtures/qwen4exp_natural_ar_pf0.json`: 12 cases across all four canonical categories, 535–877 prompt tokens, source/token hashes and construction provenance. The route-coverage finding records 100% engagement and 1548 compared rows; no performance claim. | Fixture is available. The incumbent-vs-strict capture failed calibrated gates; section 6.4 D1 remains an owner decision. No new fixture-construction prerequisite on T0 work. |
 | PF-1 | **Done** 2026-09-04 — retained the bit-exact fork-(b) grouped selected Q8_0 down as a production owner, together with PF-3 Q5_1 M1. The kernel remains **47.42→32.42 ms median (−31.6%)** at the p4096 compact shape and the real MoE layer remains **−6.9%/−8.2%/−8.7%** at rows 512/1024/4096. The correcting whole-model packet uses one Python process, one resident generator, one warmup per mode/case, and an ABBA order reversed by adjacent cases: combined PF-1/PF-3 prefill improves **+3.13%/+3.09%/+2.51%** at p512/p1024/p4096, all 12 cases win, and all 72 measured outputs are cross-mode exact. Production selects `selected_grouped_gemv_bf16_bf16_out`; strict keeps `selected_gemv_bf16_bf16_out`. The earlier process-separated and pre-wiring-fix runs remain invalid diagnostics. The dense-projection retile/precision axes remain closed. | Artifact: [`halo PF-1/PF-3 production refresh`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json). |
-| PF-2 | **Done** (rejected 2026-09-03 — measured loss, lever closed.) The ordered three-pass prefill kernels (`strict_ordered_three_pass_rows_spans`, bit-exact vs the strict rows owner at kernel level, traced via rocprofv3) were wired behind the default-off `HIPENGINE_QWEN4_EXP_QSA_ORDERED_PREFILL` flag and evaluated with a process-separated counterbalanced whole-model diagnostic (1 warmup + 3 measured reps per case, canonical p512/p1024/p4096 fixture, 12 cases x 4 categories via `scripts/qwen4exp_candidate_ar.py`). Result: the candidate is **slower at every shape** (p512 86.19→83.38 tok/s, 0.967x; p1024 85.56→83.22, 0.973x; p4096 70.93→68.67, 0.968x) and p4096 outputs are **not bit-identical** to the incumbent production route, which dispatches the wave32 variant (the ordered variant is bit-exact only vs strict rows, not vs wave32). The extra launches of the three-pass split outweigh any reuse benefit. Per the `docs/REFACTOR.md` removal trigger, the env flag and runner branch were deleted; the ordered rows kernels remain registered as a strict variant with their exact-parity RED tests. No promotion, incumbent (wave32/dense) route stays production. | Artifact: [`pf2-qsa-ordered-prefill-ab`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf2-qsa-ordered-prefill-ab.json); the refreshed p4096 QSA role ledger is moot given the whole-model measured loss. |
+| PF-2 | **Prior candidate unpromoted; cause reopened by source audit.** The 2026-09-03 ordered three-pass route failed p4096 cross-mode output equality; its process-separated timing diagnostic was negative at p512/p1024/p4096. The env flag/runner branch were removed; registered strict variants and their small fixtures remain. The stored wave32 explanation is wrong for binding D=256, and the timing cannot establish a launch-overhead cause. | [Historical artifact](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf2-qsa-ordered-prefill-ab.json). Section 5.3 corrects the interpretation; actual-shape RED/localization precedes the new section-6 mechanism. No restoration of the failed route. |
 | PF-3 | **Done** 2026-09-04 — Q4_K gate/up M1 remains closed as a bit-exact measured loss (+57% to +123% at rows 16/64/512). The fused single-loop logical256 Q5_1 down remains a **−10.6%** binding-shape kernel win (9,423.0→8,425.6 µs), and the valid combined one-residency PF-1/PF-3 packet restores it as the production exact-grouped-down owner. Production selects `selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out`; strict keeps the preceding expertgrid64 owner. Uneven counts, empty experts, 64/512-expert fixtures, kernel trace, and bit parity remain covered; the superseded process-separated packet is diagnostic only. A later T0 M2 hierarchical-reduction candidate improved the 512-row leaf by 6.99% but failed the binding one-process/one-residency whole-model gate: weighted prefill changed +0.083%/-0.152%/-0.095% at p512/p1024/p4096, with 8/12 cases negative. M2 was removed; M1 remains production. | Artifacts: [`halo PF-1/PF-3 production refresh`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-halo-pf13-production-refresh.json), [`PF-3 schedule A/B`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf3-moe-schedules-kernel-ab.json), and [`Q5_1 M2 whole-model rejection`](../benchmarks/results/2026-09-05-gfx1151-qwen38-flash-next-q51-m2-whole-model-ab.json). |
-| PF-4 | **Review pending** 2026-09-04 — routing lever 1 is closed by its large kernel-level loss, but lever 2's whole-model rejection used separate model processes and must be repeated in one residency. Lever 1 (M2 routing compaction) closed 2026-09-04 — measured loss. The `top10_parallel_i64` candidate (port of halo-box `a7ad7b7f` `mm_ids_helper_top10_parallel`: per-expert 256-thread blocks, 8-warp any-scan + `shfl_up` exclusive scan + shared store, replacing the 5-op memset+count+prefix+memset+scatter_gather chain) is bit-exact vs the incumbent chain at rows 16/64/512/4096 (`expert_start` equality, lane permutation, per-expert lane sets, weights bit-equal, gather bit-equal) but is **slower at the production gate**: +30.8% (rows=64), +83.1% (rows=512), +114.6% (rows=4096); only below-gate rows=16 wins (−24.7%, launch-count dominated). Root cause: the per-expert-block mechanism scales O(E×T) serialized warp-scan work (512 blocks each walking T/8 tokens) — it was designed for llama-class E≤32, not E=512. No whole-model A/B warranted (kernel-level loss at the gate shape, PF-2/Q4_K-M1 closure precedent). The candidate stays registered as a strict variant with its 7 RED-first tests; the incumbent 5-op chain stays production. Artifact: [`pf4-m2-group-map-kernel-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-m2-group-map-kernel-ab.json). **Lever 2 (M5/combine) kernel stage — exact win measured before wiring; this intermediate status is superseded by the whole-model rejection later in this row.** The M5 *port* itself is closed as blocked/no-delta (declaration entry 3ff110: the incumbent `weighted_lanes_sum` already implements the M5 mechanism with fmaf, direct store, and half the expert-read traffic; F32 boundary blocked per HB-3). The admissible candidate is the hipEngine-internal T0 fusion `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` (3 launches → 2, preserves the routed BF16 rounding boundary exactly): bit-exact at rows 1/16/64/512 and faster at every shape (−26.1%/−24.3%/−6.1%/−2.3%). Runner wiring + whole-model counterbalanced A/B remain before promotion. Artifact: [`pf4-lever2-fused-combine-kernel-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json). **Lever 2 historical diagnostic (2026-09-04) — provisional whole-model loss.** The wired candidate (commits 455e176ab–fbb64edfa) ran a process-separated counterbalanced whole-model diagnostic (12 cases, p512/p1024/p4096, 4 fresh-process arms, deterministic in all arms): prefill **−1.69% mean, negative in all 12/12 cases** (min −2.03%, max −0.87%), decode −0.19% (noise-level). The process-separated run suggests that the kernel-level exact win does not survive whole-model prefill, but it cannot close the lever under section 6.5; the unfused chain stays production while the fused variant remains registered and bit-exact as an opt-in (`HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`). Artifact: [`pf4-lever2-fused-combine-whole-model-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-whole-model-ab.json). | Repeat lever 2 in the committed one-residency A/B before treating the whole-model loss as binding; keep the unfused default until then. |
-| PF-5 | **Open** — lever 1 rejected 2026-09-04 as a measured loss; lever 2 was not attempted. The 32-warp/block (1024-thread) prefill kernel (`hipengine_qwen4_exp_gdn_prefill_w32_f32`, a `WARPS_PER_BLOCK=32` instantiation of the templated columnwarps kernel — identical per-warp arithmetic, block composition only) was evaluated with an interleaved counterbalanced kernel-level A/B vs the production columnwarps owner (24 pairs, median-of-pairs, rows 16/64/256/1024/4096, H∈{32,48,64} covered by the parity RED suite). Result: **w32 slower at every shape ≥64** (p64 +1.6%, p256 +6.4%, p1024 +4.0%, p4096 +3.4%) and only a noise-level −1.6% at rows=16. Parity held bit-exact (0.0 diff vs colwarps) at all shapes. On this hardware (gfx1151, 32-wide wavefronts), 1024-thread blocks reduce occupancy to 1 block/CU and the 8× block-count reduction does not recover the loss; the M6 mechanism does not transfer to this host. No promotion; incumbent columnwarps <4,4> route stays production. The tile-16 state-in-register lever (lever 2) remains open. PF-0 has landed, and the declaration classifies an order-preserving implementation as T0; only a reassociated implementation needs the PF-0 production-numerics packet. w32 remains registered as a strict non-default variant with its exact-parity RED tests. | Artifact: [`pf5-gdn-w32-prefill-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json); rocprofv3 trace confirms the `<32, 4>` instantiation at block=1024 with the norm-gate tail. |
+| PF-4 | **Review pending** 2026-09-04 — routing lever 1 is closed by its large kernel-level loss, but lever 2's whole-model rejection used separate model processes and must be repeated in one residency. Lever 1 (M2 routing compaction) closed 2026-09-04 — measured loss. The `top10_parallel_i64` candidate (port of halo-box `a7ad7b7f` `mm_ids_helper_top10_parallel`: per-expert 256-thread blocks, 8-warp any-scan + `shfl_up` exclusive scan + shared store, replacing the 5-op memset+count+prefix+memset+scatter_gather chain) is bit-exact vs the incumbent chain at rows 16/64/512/4096 (`expert_start` equality, lane permutation, per-expert lane sets, weights bit-equal, gather bit-equal) but is **slower at the production gate**: +30.8% (rows=64), +83.1% (rows=512), +114.6% (rows=4096); only below-gate rows=16 wins (−24.7%, launch-count dominated). Source-supported cost: the per-expert-block mechanism scans O(E×T) work (512 blocks each walking T/8 tokens). The earlier E≤32 design claim is withdrawn: HB-2 observes this helper on the same 512-expert payload. The in-tree loss remains measured; different map/gather boundaries prevent a universal transfer conclusion. No whole-model A/B warranted (kernel-level loss at the gate shape, PF-2/Q4_K-M1 closure precedent). The candidate stays registered as a strict variant with its 7 RED-first tests; the incumbent 5-op chain stays production. Artifact: [`pf4-m2-group-map-kernel-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-m2-group-map-kernel-ab.json). **Lever 2 (M5/combine) kernel stage — exact win; binding whole-model adjudication remains pending.** The M5 *port* itself is closed as blocked/no-delta (declaration entry 3ff110: the incumbent `weighted_lanes_sum` already implements the M5 mechanism with fmaf, direct store, and half the expert-read traffic; F32 boundary blocked per HB-3). The admissible candidate is the hipEngine-internal T0 fusion `weighted_lanes_sum_shared_gate_combine_batch_out_bf16_f32w` (3 launches → 2, preserves the routed BF16 rounding boundary exactly): bit-exact at rows 1/16/64/512 and faster at every shape (−26.1%/−24.3%/−6.1%/−2.3%). Wiring was completed for the historical diagnostic; one-residency counterbalanced A/B remains before promotion. Artifact: [`pf4-lever2-fused-combine-kernel-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-kernel-ab.json). **Lever 2 historical diagnostic (2026-09-04) — provisional whole-model loss.** The wired candidate (commits 455e176ab–fbb64edfa) ran a process-separated counterbalanced whole-model diagnostic (12 cases, p512/p1024/p4096, 4 fresh-process arms, deterministic in all arms): prefill **−1.69% mean, negative in all 12/12 cases** (min −2.03%, max −0.87%), decode −0.19% (noise-level). The process-separated run suggests that the kernel-level exact win does not survive whole-model prefill, but it cannot close the lever under section 6.5; the unfused chain stays production while the fused variant remains registered and bit-exact as an opt-in (`HIPENGINE_QWEN4_EXP_FUSED_COMBINE=1`). Artifact: [`pf4-lever2-fused-combine-whole-model-ab`](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf4-lever2-fused-combine-whole-model-ab.json). | Repeat lever 2 in the committed one-residency A/B before treating the whole-model loss as binding; keep the unfused default until then. |
+| PF-5 | **Open, binding-shape repair required.** The 32-warp in-tree columnwarp variant remains rejected: kernel A/B measured +1.6%/+6.4%/+4.0%/+3.4% time at rows 64/256/1024/4096 with exact output/state. This is an implementation-specific loss on the same GPU architecture where HB's non-KDA mechanism works. Tile-16 was subsequently implemented at `3574a1bd2`, but both wrapper and launcher accept Hv=32 only; the reported rows-512 −32.1% chain screen does not cover binding Hv=48. Columnwarps remain the production suffix and serial recurrence the earlier-layer owner. | [w32 artifact](../benchmarks/results/2026-09-04-gfx1151-qwen38-flash-next-pf5-gdn-w32-prefill-ab.json), [tile-16 checkpoint](../worklog/entries/20260905T011450.253353Z-lhl-qwen4exp-pf5-gdn-tiled16-implementation-447dc4.md). Extend/RED-test Hv=48, then operation-complete screen, trace and one-residency A/B; handle serial-prefix work separately. |
 
 ### 6.1 PF-1 execution checklist
 
-Sub-units of the PF-1 row. Status markers: **Done**, **Blocked** (with named
-prerequisite), or open. The dense-family re-rank from the
+Historical sub-units of PF-1; the current work order is section 6 above.
+The original dense-family re-rank came from the
 [`dense-other subowner audit`](../benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-dense-other-subowners.json)
-orders the work; layer-2 Q5_K WMMA stays rejected on the production-numerics
-gate and is out of PF-1.
+and is corrected by section 5.3. Layer-2 Q5_K WMMA stays rejected on the
+production-numerics gate; a new exact Q5_K owner belongs to PF-3.
 
 | Sub-unit | Scope | Exit condition | Status |
 | --- | --- | --- | --- |
-| PF-1a | Scope and lineage: map the `dense_projection_compute` and `dense_quant_q8` role families to exact in-tree kernels and registry keys; run `scripts/check_lineage.py`; record the halo-box `a7ad7b7f` source files and tile geometry to port. | Mapping table committed to this doc's PF-1 worklog entry; lineage check green; no code change. | **Done** — mapping in [PF-1a entry](../worklog/entries/20260902T233138.374147Z-lhl-qwen4exp-pf1a-dense-scope-199383.md): `dense_quant_q8` = `q8_0_raw_mmq128_q8_1_d4_kernel` (6,926 ms/req, one block per output column) + its quantize kernel in `gguf_q8_0_mmq_prefill.hip`; `dense_projection_compute` = `gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4>` + selected quant8 down in `gguf_k_gemv.hip`; halo-box pinned at `a7ad7b7f` with I=64/128-row SRAM tile geometry; layer-2 Q5_K stays out. |
+| PF-1a | Scope and lineage: map the `dense_projection_compute` and `dense_quant_q8` role families to exact in-tree kernels and registry keys; run `scripts/check_lineage.py`; record the halo-box `a7ad7b7f` source files and tile geometry to port. | Mapping table committed to this doc's PF-1 worklog entry; lineage check green; no code change. | **Done** — mapping in [PF-1a entry](../worklog/entries/20260902T233138.374147Z-lhl-qwen4exp-pf1a-dense-scope-199383.md): `dense_quant_q8` = `q8_0_raw_mmq128_q8_1_d4_kernel` (historical 6,926 ms/req; 128×128 output/token tiles, not one block per output column — section 5.3 corrects the entry) + its quantize kernel in `gguf_q8_0_mmq_prefill.hip`; `dense_projection_compute` = `gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4>` + selected quant8 down in `gguf_k_gemv.hip`; halo-box pinned at `a7ad7b7f` with I=64/128-row SRAM tile geometry; layer-2 Q5_K stays out. |
 | PF-1b | RED oracle: exact-token fixtures plus strict-parity tests for the dense F32 projection (`gguf_k_prefill_out_coltile_rowbatch<float,float,8,8,4>` family) and the dense Q8 activation-quantize + selected Q8_0 down path, green on the current path before any edit. | New tests pass on current kernels; HIP-availability guarded; oracle identity recorded. | **Done** — `tests/test_qwen4exp_pf1_dense_parity.py` (19 tests, green on unmodified kernels): policy-shape MMQ chain determinism + bounded-vs-exact-owner envelope + top-1 at all 7 production shapes; coltile strict bit-parity across 3 variants at 4 attention shapes; selected Q8_0 down vs CPU GEMV oracle at top-10 gather ABI. PF-1c/d variants enter via `MMQ_CHAIN_VARIANTS`/`COLTILE_VARIANTS`/`SELECTED_VARIANTS`. |
-| PF-1c | **Blocked** — lever 1 (extend the admitted MMQ128 chain to coltile-served shapes via policy rows) rejected on the canonical route-covering fixture: the P3 shape row `(2560,6144)` retest is deterministic 3/3 (original blocker confirmed stale/harness-scoped) but fails the same bars as d4x2 (incumbent-relative mean 7.27e-4 passes, median 0, p95 5.26e-3 > 5e-3, top-1 98.67% < 0.99, per-scope code/t1/t10/t14) — while keeping the incumbent's exact arithmetic; the attn_output row `(3072,2560)` is closed by measured-analogy inference (same chain/delta class, not separately measured). Lever 2 (Q8_0 selected WMMA) remains open. | **Blocked on PF-0**, not on a comparison basis. The prior "trajectory vs single-transition basis" blocker is **withdrawn as factually wrong**: both bases are the same 24-step teacher-forced trajectory, and the August harness is durably in-tree (`scripts/qwen4exp_layer2_profile_gate.py`). The real defect is route coverage — the 18-prompt admission fixture dispatches the Q8 MMQ route in only 50 of 450 rows (11.1%), so the 2026-08-29 packet is `route_vacuous_for_scope`. Evidence: [`basis correction`](../worklog/entries/20260903T034205.467427Z-lhl-qwen4exp-pf1-basis-correction-6336a4.md), [`coverage finding`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1-q8-mmq-route-coverage-finding.json), [`admission-suite reconciliation`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1-admission-suite-reconciliation.json), [`p3shape retest`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1c-p3shape-retest.json), [`plane2 dual-basis`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1d-mmq-plane2-dualbasis.json). |
-| PF-1d | Dense Q8 quantize + Q8_0 down MMQ geometry: port the RDNA3.5 128-wide tile shape from `a7ad7b7f` (M1) and the M8 quantize specializations behind registry variants with strict fallbacks. | Same gates as PF-1c per variant. | **Done** (rejected with complete evidence) — tile retiles measured slower (m64x64 0.89x, m32n128 0.35x; bit-exact but weight-traffic-bound); single-plane d4 fails unit numerics (top-1 99.0-99.6%, max_abs 1.5-3.4); two-plane d4x2 (1.38x isolated) fails dual-basis admission (incumbent-relative mean 7.45e-4 passes, median 0, but p95 5.065e-3 > 5e-3 and per-scope failures on code/t1/t10; deterministic 3/3 everywhere). The d4x3 guarded chain is final for this family. Artifacts: plane2-gate, plane2-dualbasis, pf1d worklog entries. |
-| PF-1e | **Blocked** — no arithmetic-changing candidate is currently admissible (PF-1c/PF-1d levers rejected; d4x3 chain and current policy shapes remain production), so there is no retained arithmetic change to whole-model A/B. | Unblocks only if D1's owner decision admits or scope-narrows a candidate; PF-0 already landed and its natural-text incumbent capture failed the calibrated strict gate. |
+| PF-1c | **Blocked** — lever 1 (extend the admitted MMQ128 chain to coltile-served shapes via policy rows) rejected on the canonical route-covering fixture: the P3 shape row `(2560,6144)` retest is deterministic 3/3 (original blocker confirmed stale/harness-scoped) but fails the same bars as d4x2 (incumbent-relative mean 7.27e-4 passes, median 0, p95 5.26e-3 > 5e-3, top-1 98.67% < 0.99, per-scope code/t1/t10/t14) — while keeping the incumbent's exact arithmetic; the attn_output row `(3072,2560)` is closed by measured-analogy inference (same chain/delta class, not separately measured). Lever 2 (Q8_0 selected WMMA) remains open. | **Historical fixture block resolved by PF-0; D1 remains open.** The prior "trajectory vs single-transition basis" blocker is **withdrawn as factually wrong**: both bases are the same 24-step teacher-forced trajectory, and the August harness is durably in-tree (`scripts/qwen4exp_layer2_profile_gate.py`). The real defect is route coverage — the 18-prompt admission fixture dispatches the Q8 MMQ route in only 50 of 450 rows (11.1%), so the 2026-08-29 packet is `route_vacuous_for_scope`. Evidence: [`basis correction`](../worklog/entries/20260903T034205.467427Z-lhl-qwen4exp-pf1-basis-correction-6336a4.md), [`coverage finding`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1-q8-mmq-route-coverage-finding.json), [`admission-suite reconciliation`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1-admission-suite-reconciliation.json), [`p3shape retest`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1c-p3shape-retest.json), [`plane2 dual-basis`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1d-mmq-plane2-dualbasis.json). | Historical candidate unpromoted; PF-0 done, D1 open. |
+| PF-1d | Dense Q8 quantize + Q8_0 down MMQ geometry: port the RDNA3.5 128-wide tile shape from `a7ad7b7f` (M1) and the M8 quantize specializations behind registry variants with strict fallbacks. | Same gates as PF-1c per variant. | **Done** (rejected with complete evidence) — tile retiles measured slower (m64x64 0.89x, m32n128 0.35x; bit-exact but weight-traffic-bound); single-plane d4 fails unit numerics (top-1 99.0-99.6%, max_abs 1.5-3.4); two-plane d4x2 (1.38x isolated) fails dual-basis admission (incumbent-relative mean 7.45e-4 passes, median 0, but p95 5.065e-3 > 5e-3 and per-scope failures on code/t1/t10; deterministic 3/3 everywhere). The d4x3 guarded chain remains incumbent pending D1; these rejected settings do not exhaust structural reuse work. Artifacts: plane2-gate, plane2-dualbasis, pf1d worklog entries. |
+| PF-1e | **Blocked** — no arithmetic-changing candidate is currently admissible (PF-1c/PF-1d levers rejected; d4x3 chain and current policy shapes remain production), so there is no retained arithmetic change to whole-model A/B. | Unblocks only if D1's owner decision admits or scope-narrows a candidate; PF-0 already landed and its natural-text incumbent capture failed the calibrated strict gate. | No default change; exact reuse work remains open. |
 
 **What PF-0 can and cannot reopen.** The PF-1c/PF-1d rejections were measured
 on the canonical fixture, which is route-covering but synthetic (section 7
@@ -458,40 +692,43 @@ worklog entry. Classes are `EXECUTION-PROFILES.md` section 5.
 
 | Class | What it covers | What it costs you | Examples in this campaign |
 | --- | --- | --- | --- |
-| **T0** | Bit-exact: same reduction order, same intermediates, same output bytes. Tiling, launch geometry, occupancy, LDS/SRAM residency, fusion that preserves order, launch-count reduction, layout changes, graph capture, chunk-size policy. | Exact-parity RED vs the registered owner + `rocprofv3 --kernel-trace` + whole-model A/B. **No production-numerics packet.** | PF-1d tile retiles (measured, rejected on speed); M6 warps-per-block and state-in-register; M2 integer routing compaction. |
-| **T1/T2** | Local drift or reassociation: different accumulation order, split-K, WMMA accumulate, online softmax merge, precision of intermediates. | Everything in T0 **plus** a coverage-complete section 6.2 packet on a PF-0 fixture: mean/p95/p99/max KL, top-1 by category/shape/transition, three-repeat determinism, BF16-relative where available, task gates. Expect a full gate run per candidate. | PF-1c lever 1 (policy shape rows, rejected); PF-5 if partial-softmax is reassociated; PF-4 fused weighted expert sum. |
+| **T0** | Bit-exact: same reduction order, same intermediates, same output bytes. Tiling, launch geometry, occupancy, LDS/SRAM residency, fusion that preserves order, launch-count reduction, layout changes, graph capture, chunk-size policy only when route/intermediate arithmetic stays identical. | Exact-parity RED vs the registered owner + `rocprofv3 --kernel-trace` + whole-model A/B. **No production-numerics packet.** | PF-1d tile retiles (measured, rejected on speed); M6 warps-per-block and state-in-register; M2 integer routing compaction. |
+| **T1/T2** | Local drift or reassociation: different accumulation order, split-K, WMMA accumulate, online softmax merge, precision of intermediates. | Everything in T0 **plus** a coverage-complete section 6.2 packet on a PF-0 fixture: mean/p95/p99/max KL, top-1 by category/shape/transition, three-repeat determinism, BF16-relative where available, task gates. Expect a full gate run per candidate. | PF-1c lever 1 (policy shape rows, rejected); PF-5 if the recurrent K reduction is reassociated; PF-2 if softmax is reassociated; PF-4 fused weighted expert sum. |
 | **T3** | Representation/algorithm/decision-policy: activation or weight quantization change, approximate routing, changed acceptance or sampling. | **Not admissible through the drift gate at all.** Needs a declared product-configuration decision, the `EXECUTION-PROFILES.md` section 6.2 BF16-relative and section 6.4 task gates, and its own strict fallback. | Single-plane `d4` (2.40x, rejected as drift; see section 6.2 last bullet). |
 
-Practical consequence for ordering: a `T0` lever can be landed by one coder in
-one unit. A `T1/T2` lever costs a fixture prerequisite plus a multi-hour gate
-per candidate. **Exhaust `T0` on a family before proposing `T1/T2` for it.**
+Prefer a concrete T0 reuse mechanism when it targets a large owner. Bound the
+experiment and stop on a measured loss; do not use “exhaust all T0” as an
+indefinite prerequisite to designing a needed production kernel. T1/T2 still
+requires the complete unchanged gate, now using the existing PF-0 fixture.
 
-The PF-1 fork, stated explicitly, because it is the most likely place to lose
-time: the 23-26x dense-projection deficit sits on shapes served by the exact
-F32 coltile owner (`gguf_k_prefill_out_coltile_rowbatch_kernel<float,float,8,8,4>`,
-PF-1a). Extending the existing MMQ route to those shapes is inherently
-`T1/T2` — that is exactly what PF-1c lever 1 measured and what failed. The two
-honest paths are **(a)** pay the PF-0 + coverage-complete packet cost and
-re-judge, or **(b)** build a *bit-exact* faster dense kernel for those shapes
-(matching coltile's reduction order rather than replacing it), which is `T0`
-and needs no packet. Path (b) is unexplored and is the better first attempt.
+The dense-coltile fork is specific to its historical approximately 2.775 s
+p4096 subowner, not the entire mixed bucket's 23–26x ratio. Either build a
+faster exact kernel preserving its K/reduction order, or declare an MMQ
+coverage expansion with a coverage-complete numerical packet. Existing shape
+and plane rejections remain evidence; this review changes no threshold and
+admits no rejected arithmetic. Reuse/staging improvements to the existing
+three-plane MMQ chain are a separate T0 mechanism.
 
 ### 6.4 Open owner decisions (do not resolve these as a coder)
 
-**D1 — does the shipped Q8 MMQ route re-qualify?** The PF-0 natural-text
-capture landed and the incumbent still fails the calibrated strict gates
-(mean KL 2.01e-3, p99 3.07e-2, max 6.17e-2, top-1 99.67%; general-Japanese
-max and code top-1 fail). This settles the requested capture, not the owner
-decision among re-qualification, scope narrowing, or strict fallback. On the
-canonical fixture the
-incumbent `d4x3` chain measures mean KL 2.73e-3, p95 1.14e-2, max 3.25e-2,
-top-1 96.67% against strict, with all four categories over the `EXECUTION-PROFILES.md` section 6.1 limits
-([`plane2 dual-basis`](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1d-mmq-plane2-dualbasis.json)
-`context_quality`). That is a single-layer isolation, so the full production
-manifest would stack more. It is **not** yet a defect finding, because that
-fixture is synthetic repeated material (PF-0 exists to fix this) and because
-the route's unit-tier evidence at 512/128 rows is sound. The owner must now decide among re-qualified, scope-narrowed, or
-strict-fallback behavior for the affected shapes. The shipped default remains unchanged and this owner decision stays open.
+**D1 — does the shipped Q8 MMQ route re-qualify?** PF-0 is available, and the
+[natural-text capture](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf0-natural-fixture-incumbent-vs-strict.json)
+reports incumbent-vs-strict `context_quality`: mean KL 2.01e-3, p95 8.12e-3,
+p99 3.07e-2, max 6.17e-2, top-1 99.67%. Its mean/tail/max KL exceeds the
+calibrated limits. Code's top-1 is **100%** in this incumbent comparison;
+the earlier code-top-1 failure description mixed in the two-plane candidate's
+`quality` block. General-Japanese max KL and code mean/p95 KL fail in
+`context_quality`. The artifact is explicitly `invalid_or_screen_only`, with
+clean-worktree provenance and calibrated quality listed as blockers: this is
+an adverse diagnostic, not a valid qualification packet.
+
+The earlier [canonical-fixture diagnostic](../benchmarks/results/2026-09-03-gfx1151-qwen38-flash-next-pf1d-mmq-plane2-dualbasis.json)
+is additionally limited by repeated synthetic material. Neither a local
+comparison nor its scalar KL predicts the full stacked-manifest drift. The
+owner must settle evidence admissibility and choose re-qualification, scope
+narrowing, or strict fallback; a clean route-covering packet is required for
+any qualification claim. This review changes neither defaults nor thresholds.
+T0 restructuring may proceed while D1 is open.
 
 **D2 — scope power.** Section 6.2 keeps sub-25-row scope verdicts binding as
 implemented, which means a 12-row transition scope effectively requires 12/12
@@ -499,9 +736,10 @@ top-1. The 2026-08-31 accuracy review already recommended a recalibration
 campaign for this. Any threshold or scope-size change goes through that
 campaign with predeclared rules, never inside a PF unit.
 
-Both decisions are inputs to the owner, not blockers on `T0` work. PF-5's
-order-preserving tile-16 lever and the PF-4 one-residency review are the
-remaining coder-owned work.
+Both decisions are inputs to the owner, not blockers on `T0` work. The full
+section-6 queue remains coder-owned; PF-5 and PF-4 are not its only open work.
+D1 is urgent because it controls which fast dense routes can legitimately
+remain or expand, but no default or numerical threshold changes in this review.
 
 ### 6.5 Per-unit definition of done
 
