@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-04**
+Last updated: **2026-09-05**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -21,7 +21,6 @@ The root README exports this compact retained summary verbatim.
 | Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
 
 #### Multiple requests (total tok/s across all active requests)
-
 | Model and interface | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (engine) | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
@@ -34,6 +33,7 @@ The root README exports this compact retained summary verbatim.
 | Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **36.726 tok/s** | **1.1970x** |
 | Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K3 D24 explicit | **51.769 tok/s** | **1.3376x** |
+| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C8/K3 D24 automatic | **98.643 tok/s** | **1.1178x** |
 | Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
 ### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
 
@@ -90,16 +90,19 @@ The root README exports this compact retained summary verbatim.
 | --- | --- | ---: | ---: |
 | Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
 
-Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+Rows use different models and tests; compare only matching protocols. The RX 7900 XTX cross-engine rows use the same Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. The W7900 C8/K3 row is automatic only for its exact production Qwen3.8 `Q4_K_M` capacity-8 D24 key; misses use K0. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 ## Current default notes
 
 W7900 automatic MTP is deliberately narrow. Qwen3.6 enables only its qualified
-C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 promotes
-production/BF16 C2/K2 only at resident capacity 2, context 4-95, and D24:
-**36.726 vs 30.720 tok/s (1.1970x AR)**. Capacity-8 C1-C8 requests use K0 at
-every width. [`Qwen3.6 final audit`](results/2026-08-28-w7900-dual-model-physical-c2-campaign-final.json).
+C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
+production/BF16 C2/K2 only at resident capacity 2, context 4-95, and D24
+(**36.726 vs 30.720 tok/s, 1.1970x AR**) and now also enables the exact
+resident-capacity-8 C8/K3/D24 key (**98.643 vs 88.250 tok/s, 1.1178x AR**).
+Capacity-8 C1-C7 and every model/quant/profile/budget/context/horizon/sampling
+miss remain K0. The exact evidence links are carried in the model sections
+below.
 
 ### W7900 Qwen3.8 `Q4_K_M` C1-C8
 
@@ -142,9 +145,14 @@ same packet puts the retained C8 candidate at **95.240 tok/s mean**
 (+5.49% vs its control, positive in both orders, 40/40 ar_exact cells):
 above both the published (94.735) and fresh (92.345) current-llama.cpp
 exact-peer rows, below both the published (101.072) and fresh (95.830)
-Laurent strongest-peer rows. hipEngine uses BF16 KV; the peers use F16 KV. K3
-is forced and measures an engine path, not the capacity-8 automatic product
-route. [`Current row provenance`](results/2026-09-02-w7900-qwen38-q4km-c1c8-current-scoreboard.json); [`latest C7 retention`](results/2026-09-02-w7900-q4km-k3-c7-fused-r28-periodic-strict-retained.json); [`exact C8 row32 retention`](results/2026-09-02-w7900-q4km-k3-c8-fused-row32-retained.json); [`latest C8 Q5 retention`](results/2026-09-03-w7900-q4km-k3-c8-q5-source-mmq-retained.json); [`raw-Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json); [`Q6 head-rowtile route retention`](results/2026-09-04-w7900-q4km-k3-c8-q6-head-rowtile-route-retained.json); [`accepted-tail K/V-only retention`](results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json). The remaining C8 peer gap is organized by the [`current profile`](results/2026-09-02-w7900-q4km-k3-c8-current-profile.json) and [`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
+Laurent strongest-peer rows. hipEngine uses BF16 KV; the peers use F16 KV.
+This recapture forced K3 and remains the peer-comparison record. A separate
+post-closure production gate reviewed the retained grouped-Q6 DP4A candidate on
+the final stack (**95.708→97.674 tok/s, +2.05%**, both orders and every slice
+positive), then promoted the exact capacity-8 C8/K3 key; its clean automatic
+route validation is **98.643 tok/s (1.1178x AR)** with 10/10 exact cells.
+[`C8 automatic promotion`](results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json);
+[`dedicated campaign`](../docs/QWEN38-GFX1100-C8-K3-CAMPAIGN.md).
 
 On Strix Halo, Qwen3.8 `Q4_K_M` automatic MTP retains strict C1/B3 at
 **15.609 vs 9.807 tok/s (1.5916x)** and production C2/K3 at **17.031 tok/s
@@ -170,17 +178,10 @@ See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), the
 Retained C1-C8 optimization history remains in the result artifacts and
 [`CHANGELOG.md`](CHANGELOG.md), not in this current-row scoreboard.
 
-The direct prewarmed C8/K3 peer census ranks batch-wide Q5 MMQ first with an
-estimated **11.392 ms/cycle** upside. Two retained owners now realize
-**4.112-4.231 ms/cycle (36.10-37.14%)** of it: raw-Q5 MMQ took a grouped
-**15.05-15.17→12.68-12.79 ms/cycle** and the R32 source-layout FP32-metadata
-MMQ took **12.794→10.940 ms/cycle** in its own packet, raising the current C8
-row **87.508→89.377→90.139 tok/s**. Lower-pressure Q5
-schedules remain first because current/Laurent peers are still **5.10%/12.13%**
-ahead.
-[`Peer/role census`](results/2026-09-02-w7900-q4km-k3-c8-peer-role-census.json);
-[`raw-Q5 retention`](results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json);
-[`source-Q5 retention`](results/2026-09-03-w7900-q4km-k3-c8-q5-source-mmq-retained.json).
+The current Qwen3.8 C8/K3 product route is automatic only for its exact
+production key. The clean retained packet records **98.643 tok/s**, 1.1178x its
+same-run AR rate, with all ten task cells exact; detailed optimization and peer
+history remains in the campaign and result artifacts.
 
 ## Evidence status
 

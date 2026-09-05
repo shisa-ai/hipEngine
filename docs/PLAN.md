@@ -499,16 +499,17 @@ for Qwen3.6 35B MoE and 27B Dense under the production
 numerical/task/serving gates in
 [`MTP-CONCURRENCY2-DUAL-PROMOTION.md`](MTP-CONCURRENCY2-DUAL-PROMOTION.md);
 the prior measured queue remains historical context in
-[`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md). The active
-W7900 Qwen3.8 continuation is the explicit C8/K3 cross-engine campaign in
-[`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md): its
-current-source profile is target-kernel dominated, and its matched-output peer
-census ranks a recurrent-Q5 matrix-tile analogue first with estimated
-11.392 ms/cycle upside. The first retained raw-Q5 MMQ owner saves a measured
-2.496 ms/cycle and raises explicit C8/K3 **87.508→89.377 tok/s (+2.14%)**;
-the source-layout Q5 residual remains first. Capacity-8 automatic routing
-remains K0 unless a separate product gate passes. Source audit and
-rejected alternatives remain in [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
+[`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md). The W7900
+Qwen3.8 explicit C8/K3 cross-engine campaign in
+[`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md) is
+complete: exact-peer closure passed, while the published Laurent threshold is
+the quantified structural blocker. Its authorized post-closure product review
+retains the grouped-Q6 DP4A composition at **95.708→97.674 tok/s (+2.05%)**
+and promotes only the exact production/BF16 `Q4_K_M` capacity-8 C8/K3/D24 key;
+a clean automatic run measures **98.643 vs 88.250 AR tok/s (1.1178x)**.
+Capacity-8 C1-C7 and every model/quant/backend/profile/budget/context/horizon/
+sampling miss remain K0. Source audit and rejected alternatives remain in
+[`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,
 transactional-KV, and plugin invariants below remain binding while Generation-2

@@ -1,12 +1,12 @@
 # Qwen3.8 gfx1100 C8/K3 Optimization Campaign
 
-Status: **active; C8-P2 retained both Q5 MMQ owners (raw D4S4 R24/R32 plus FP32-metadata source-layout R32) and the canonical C8 row is 90.139 tok/s, confirmed at 91.041 tok/s in a fresh single-arm run at `6d6b9c555`; the remaining peer-derived Q5 layout gap is next.**
+Status: **complete at `6929dbfeb` with a post-closure automatic-product review retained at `c1bb38d49` (2026-09-05). Exact-peer closure was achieved; the published Laurent threshold remains the quantified structural blocker. The exact production C8/K3 key is now automatic at 98.643 tok/s (1.1178x same-run AR); all capacity-8 C1-C7 and scope misses remain K0.**
 
-This campaign owns the sole remaining cell in the standardized W7900
-Qwen3.8-27B `Q4_K_M` cross-engine matrix where hipEngine trails the strongest
-HIP peer: explicit Generation-2 C8/K3 decode. It is a profiler-led performance
-campaign, not permission to weaken correctness, change the benchmark workload,
-or promote capacity-8 MTP automatically.
+This campaign owned the last cell in the standardized W7900 Qwen3.8-27B
+`Q4_K_M` cross-engine matrix where hipEngine trailed the strongest HIP peer:
+explicit Generation-2 C8/K3 decode. The post-closure review did not weaken
+correctness or change the workload; it opened the separately required product
+gate and promoted only the exact qualified capacity-8 key.
 
 Authoritative evidence:
 
@@ -17,6 +17,7 @@ Authoritative evidence:
 - [`Grouped Q5 R8 retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-q5-grouped-r8-retained.json)
 - [`Raw-Q5 MMQ retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c8-q5-raw-mmq-retained.json)
 - [`Accepted-tail K/V-only retention`](../benchmarks/results/2026-09-02-w7900-q4km-k3-c5c8-nextn-accepted-tail-kv-only-retained.json)
+- [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json)
 - [`Prior one-group attribution`](../benchmarks/results/2026-08-31-w7900-q4km-one-group-k3-c6c8-attribution.json)
 - [`Execution profiles`](EXECUTION-PROFILES.md), [`testing`](TESTING.md),
   [`benchmark policy`](BENCHMARK.md), [`kernel catalog`](KERNELS.md), and
@@ -43,6 +44,7 @@ metric row from the two-order D24 suite in the same packet):
 | --- | ---: | ---: |
 | hipEngine binding C8/K3 D24 candidate | **95.240** | — |
 | hipEngine explicit C8/K3 (matrix row) | 94.080 | — |
+| hipEngine production automatic C8/K3 (post-review route validation) | **98.643** | one clean run; not a peer recapture |
 | llama.cpp current HIP C8/K3 | 92.345 (94.735 published) | **closed** |
 | llama.cpp Laurent HIP C8/K3 | 95.830 (101.072 published) | **−0.62% (−5.77% vs published)** |
 | hipEngine true AR C8 | 83.939 | current K3 is 1.0739x |
@@ -73,11 +75,13 @@ Small device-wall and launch-count wins compound.
 
 ### 1.2 Explicit diagnostic versus product routing
 
-This campaign optimizes the **explicit C8/K3 engine path**. Capacity-8 automatic
-requests currently select K0/ordinary AR at every width. The independently
-qualified automatic Qwen3.8 key is resident-capacity-2 C2/K2 only. No C8 result
-changes automatic policy unless a separate full economics, quality, serving,
-and negative-key promotion packet passes.
+The campaign optimized the **explicit C8/K3 engine path** first. The independent
+post-closure product review then passed the full-suite composition, production
+numerics, serving-policy, negative-scope, and clean automatic-route checks.
+Qwen3.8 now selects K3 only for production/BF16 `Q4_K_M`, resident capacity 8,
+physical C8, context 4-95, D24, and greedy sampling. Capacity-8 C1-C7 and every
+model/quant/backend/profile/budget/context/horizon/sampling miss select K0. The
+independent resident-capacity-2 C2/K2 key remains qualified and unchanged.
 
 ### 1.3 Non-goals
 
@@ -887,7 +891,10 @@ shows accepted progress—not target execution—is the dominant peer difference
       identical generated IDs, deterministic repeats, and clean drains under
       transactional K/V/state ownership (iter42-45 packets; the iter44 route
       and Q5-source ledgers record identical acceptance ledgers across
-      orders).
+      orders). The post-closure Q6 production candidate is a separately gated
+      T1 exception: its policy is unchanged, but `general_en_plan` incurs one
+      extra rejected proposal cycle per request; final IDs remain exact and
+      every category/heldout throughput slice still improves in both orders.
 - [x] Report K1/K2/K3/K4 screens honestly; only K3 can close this campaign's
       cross-engine K3 cell.
       **RESOLVED (honest report):** K1/K2/K4 screens were **not run** — no
@@ -899,11 +906,17 @@ shows accepted progress—not target execution—is the dominant peer difference
 - [x] If C8 becomes an automatic candidate, open a separate production
       promotion unit covering full economics, quality, blocking/SSE,
       cancellation, overload/recovery, negative scopes, and drain.
-      **RESOLVED (precondition not met):** C8 has not become an automatic
-      candidate — the retained default-path result is 95.754/95.227 MTP
-      aggregate against the 101.072 fresh-peer target, so the promotion
-      unit's precondition does not fire; it opens only if P8's closure suite
-      clears the peer threshold.
+      **SUPERSEDED BY THE AUTHORIZED POST-CLOSURE REVIEW (`c1bb38d49`):** the
+      product gate was opened independently of the peer threshold. Fresh
+      final-stack composition retains grouped-Q6 DP4A at 95.708→97.674 tok/s
+      (+2.05%), positive in both orders and every category/heldout slice, with
+      all final IDs exact. The clean automatic route is 98.643 vs 88.250 AR
+      tok/s (1.1178x), 10/10 exact/engaged/budget-conformed cells. Exact
+      serving evidence and runtime admission restrict the route to Qwen3.8
+      Q4_K_M physical C8/K3; negative scopes remain K0. Existing Generation-2
+      lifecycle/ownership gates remain unchanged because only target Q6
+      arithmetic and the static evidence key changed. Artifact:
+      `benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json`.
 
 Exit: either a fixed generic K3 policy win or a documented reason acceptance
 cannot be changed without quality/gaming risk.
@@ -918,8 +931,9 @@ cannot be changed without quality/gaming risk.
 
 ### C8-P8 — final closure
 
-Status: **complete at `29b06611f` (2026-09-04).** Exact-peer closure achieved;
-strongest-peer remains open as the quantified structural blocker.
+Status: **complete at `6929dbfeb` (2026-09-04); automatic-product post-review
+retained at `c1bb38d49` (2026-09-05).** Exact-peer closure achieved; the
+published strongest-peer threshold remains the quantified structural blocker.
 
 - [x] Run the final tracked-clean C8 candidate/control two-order D24 suite.
       **DONE (iter60):** rollback `4e7611363` (/tmp/hipengine-rollback) vs
@@ -952,11 +966,12 @@ strongest-peer remains open as the quantified structural blocker.
       fresh) — strongest-peer closure not achieved.
 - [x] Confirm C1-C7 non-regression for shared changes and preserve the
       automatic capacity-8 K0 policy unless separately promoted.
-      **DONE (iter60):** fresh hipEngine rows vs the published rollup: AR
-      C1-C7 +0.43%..+3.42%, K3 C1-C7 +3.92%..+22.10%, prefill C1-C7
-      −0.98%..+0.88% — no regression. AR automatic runs recorded
-      engaged=false at every width; the capacity-8 K0 product policy is
-      preserved and no automatic-MTP promotion was made.
+      **DONE (iter60; C8 exception promoted post-review):** fresh hipEngine
+      rows vs the published rollup: AR C1-C7 +0.43%..+3.42%, K3 C1-C7
+      +3.92%..+22.10%, prefill C1-C7 −0.98%..+0.88% — no regression. Iter60
+      correctly preserved K0. The later independent product gate promoted only
+      physical C8/K3; runtime and serving-policy negative tests keep
+      capacity-8 C1-C7 at K0.
 - [x] Update scoreboard, changelog, artifacts, kernel catalog, refactor
       ledger, plan, worklog, and commit.
       **DONE (iter60):** `benchmarks/README.md` C1-C8 tables replaced with
@@ -968,8 +983,10 @@ strongest-peer remains open as the quantified structural blocker.
       **CAMPAIGN CLOSED (iter60) — exact-peer closure achieved; strongest-peer
       recorded as the quantified structural blocker.** Residual: binding
       candidate 95.240 vs fresh Laurent 95.830 (−0.62%) and published 101.072
-      (−5.77%). Structural finding (P6): the 24.850 ms/cycle non-device wall
-      did not grow through P2-P5 device work (cycle 190.307 → 171.224 ms,
+      (−5.77%). The later automatic-product run does not replace this
+      counterbalanced peer-comparison verdict. Structural finding (P6): the
+      24.850 ms/cycle non-device wall did not grow through P2-P5 device work
+      (cycle 190.307 → 171.224 ms,
       −10.03%); the launch-only ceiling cannot repair host-side wall. Exact
       reopen conditions: (1) a host-side wall reduction (batch window /
       scheduler / publication) showing wall-minus-union below 24.850 ms at

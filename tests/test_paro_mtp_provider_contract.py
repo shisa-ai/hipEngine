@@ -3,9 +3,28 @@ from __future__ import annotations
 import inspect
 from types import SimpleNamespace
 
+import pytest
+
 from hipengine.runtime.qwen35_paro_runner import Qwen35ParoBulkVerifyResult, Qwen35ParoResidentSession
-from hipengine.speculative import mtp_native
+from hipengine.speculative import mtp_native, paro_mtp_profiles
 from scripts import mtp_chain_e2e_smoke
+
+
+@pytest.fixture(autouse=True)
+def _isolate_route_environment(monkeypatch: pytest.MonkeyPatch):
+    """Prevent the profile binder's process-env contract from leaking across tests."""
+
+    for name in (
+        paro_mtp_profiles.PARO_MTP_CONTRACT_ENV,
+        paro_mtp_profiles.PARO_MTP_ROUTE_ENV,
+        paro_mtp_profiles.PARO_MTP_CHAIN_ATTN_MODE_ENV,
+        paro_mtp_profiles.GDN_EXACT_ENV,
+        paro_mtp_profiles.LINEAR_EXACT_ENV,
+        paro_mtp_profiles.MOE_EXACT_ENV,
+        paro_mtp_profiles.FULL_ATTN_EXACT_SUFFIX_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+    yield
 
 
 def _step_result() -> mtp_native.NativeMtpStepResult:

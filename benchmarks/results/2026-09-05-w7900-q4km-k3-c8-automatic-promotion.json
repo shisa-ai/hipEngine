@@ -4,7 +4,7 @@
   "date": "2026-09-05",
   "status": "retained_default",
   "performance_claim": true,
-  "decision": "Promote production C8/K3 automatic MTP for the exact Qwen3.8-27B Q4_K_M W7900/gfx1100 key. The reviewed grouped-Q6 DP4A owner remains a fresh +2.054% composition win on final campaign HEAD; automatic scope misses remain K0.",
+  "decision": "Promote production C8/K3 automatic MTP for the exact Qwen3.8-27B Q4_K_M W7900/gfx1100 key. The reviewed grouped-Q6 DP4A owner remains a fresh +2.054% composition win on final campaign HEAD; the clean promoted route runs at 98.643 tok/s (1.1178x AR), while automatic scope misses remain K0.",
   "hardware": {
     "host": "epyc",
     "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
@@ -91,7 +91,7 @@
   },
   "prior_quality_and_lifecycle_gates": {
     "numerics": "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-l4-numerics.json",
-    "numerics_result": "18 prompts, c8_k3_r32, three deterministic repeats, mean/p95/p99/max KL 0.000337/0.001379/0.002978/0.007267, 99.769% top-1; all binding production thresholds passed",
+    "numerics_result": "18 prompts, 432 c8_k3_r32 teacher-forced rows, three deterministic repeats, mean/p95/p99/max KL 0.000140/0.000688/0.001606/0.007267, 99.769% top-1; all binding production thresholds passed",
     "retention": "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-retention-e2e.json",
     "serving_lifecycle": "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json plus committed C1-C8 Generation-2 lifecycle/ownership tests"
   },
@@ -124,8 +124,36 @@
   "validation": {
     "profile_and_q6_tests": "12 passed",
     "serving_capability_tests": "37 passed",
-    "automatic_clean_tree_packet": null,
-    "automatic_clean_tree_status": "scheduled after the promotion commit because the benchmark rejects tracked-dirty source"
+    "affected_lifecycle_policy_bundle": "224/224 tests completed (all specdec2 files plus C1-C8 bench contracts, profiles, serving capability, and grouped-Q6 kernel tests)",
+    "automatic_clean_tree_packet": "/tmp/he-c8-review-auto.json",
+    "automatic_clean_tree_packet_sha256": "b5cfcffdf577f033df34c25365defa46c9184cabf0d00bc07ad9e439710ac193",
+    "automatic_clean_tree_source_commit": "c1bb38d4931283b0312ff413f0f45005571f1fe9",
+    "automatic_clean_tree_source_dirty": false,
+    "automatic_mtp_tok_s": 98.64253046546435,
+    "automatic_ar_tok_s": 88.25046511934349,
+    "automatic_mtp_vs_ar_ratio": 1.1177564937710798,
+    "automatic_exact_cells": "10/10",
+    "automatic_engaged_cells": "10/10",
+    "automatic_budget_conformed_cells": "10/10",
+    "automatic_decision_reason": "qualified_automatic_gfx1100_production_c8_k3_d24",
+    "automatic_runtime_manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+    "automatic_status": "passed",
+    "milestone_suite": {
+      "collected_nodes": 11131,
+      "coverage": "all files covered by the initial start-through-M4 traversal plus the laguna_q5-through-end tail; per focused-repair policy no third broad rerun was spent after isolated repairs",
+      "initial_traversal": "reached 65%, including a pass of all 42 gguf_native_spec_cycle nodes; 13 isolated failures recorded",
+      "second_traversal": "passed 41/42 gguf_native_spec_cycle nodes, then stalled for more than two hours on the final real-model graph/eager node that passed in the initial traversal; stopped for follow-up task #78",
+      "tail_traversal": "5506 passed, 211 skipped, 4 xfailed, 9 isolated failures",
+      "unique_failed_nodes_repaired": 22
+    },
+    "focused_repair_validation": {
+      "profile_env_qwen_roctx_bundle": "260 passed",
+      "readme_dflash_dispatch_and_cross_wrapper_roctx_bundle": "19 passed",
+      "laguna_source_contract_nodes": "8 passed",
+      "q6_actual_shape_gpu_nodes": "2 passed",
+      "worklog_entries": "1470 valid",
+      "json_diff_and_readme_sync": "passed"
+    }
   },
   "raw_packets": {
     "directory": "/tmp/he-c8-review-q6",
