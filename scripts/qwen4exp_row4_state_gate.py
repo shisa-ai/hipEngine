@@ -111,8 +111,8 @@ def main():
         "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
     }
     try:
-        if args.route_package == "q5k-row4":
-            assert os.environ[flag] == "1", "production must select row4 without an override"
+        if args.route_package in {"q5k-row4", "q51-pair"}:
+            assert os.environ[flag] == "1", "production must select the retained route without an override"
         if args.route_package == "prefill-bundle":
             assert os.environ[flag] == "1"
             assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
