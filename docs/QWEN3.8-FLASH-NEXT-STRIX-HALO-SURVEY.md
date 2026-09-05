@@ -27,6 +27,13 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
+The later Q8 wave-scale promotion improves same-suite prefill0.75-1.29%
+with all72 trajectories exact. Its measured after rates are155.45/153.43/
+143.41 tok/s at512/1K/4K; decode has drift.
+[Incremental production evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
+The frozen cross-engine/family rows below precede this promotion and retain
+their original source identity; a current-HE family refresh is pending.
+
 **Latest frozen refresh, 2026-09-05 UTC:** hipEngine `bd451a417` versus
 halo-box `b212548e0`, full12-case canonical AR, UD-Q4_K_XL/BF16 KV on
 Framework `gfx1151`, logger/profiler off:

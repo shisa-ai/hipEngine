@@ -788,9 +788,12 @@ independently1.111x on layer4; shared-down improves1.089x. Both orders and
 mean timings are positive under that condition. Unconditioned attention-gate
 timing reverses by order; the original odd-pair1.20x claim is superseded.
 Both kernels use72 VGPR,
-512-byte LDS and zero scratch in the cached trace. Original coltile remains
-the model default and registered fallback until full-model admission.
-Evidence: `2026-09-05-framework-qwen4exp-q8-wave-scale.json`.
+512-byte LDS and zero scratch in the cached trace. Normal-model full72-trajectory
+A/B now passes exactly and improves prefill0.75-1.29%, with every case's request
+wall positive. Production selects the wave-scale sibling only for the exact
+Q8 F32 coltile prefill route; strict retains original coltile. MMQ/WMMA and
+decode stay unchanged. The adverse unconditioned microbench is preserved,
+not relabeled. Evidence: `2026-09-05-framework-qwen4exp-q8-wave-scale-production.json`.
 
 The Qwen4Exp serial GDN family registers the T0
 `qwen4exp_sigmoid_register_prefill` candidate for Dk=Dv128.
