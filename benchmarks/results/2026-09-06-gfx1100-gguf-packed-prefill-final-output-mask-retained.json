@@ -1,0 +1,302 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_gguf_packed_prefill_final_output_mask_retained",
+  "created_at": "2026-09-05T19:34:18Z",
+  "status": "retained_exact_launch_reduction",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Physical W7900 packed multi-request AR prefill on Qwen3.8-27B Q4_K_M/BF16-KV. Control and candidate differ only by the hip_gfx1100 package value GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK. The retained result is an exact launch and device sub-window reduction, not a throughput rate.",
+  "decision": "Enable GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK on hip_gfx1100 (audit packet F1). Intermediate slot-fair bounded prefill rounds now skip output norm, the full Q6 LM head, and sampling; only each slot's final tail is sampled. Token trajectories, request ownership, cancellation, admission, and compaction are unchanged.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+  },
+  "software": {
+    "audit_plan": "docs/20260905-gfx1100-audit.md work packet F1",
+    "control": "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = False (prior hip_gfx1100 default)",
+    "candidate": "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True (this change)",
+    "gfx1151_precedent": "same capability retained there; this packet qualifies it independently on the W7900"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "reachability": {
+    "bulk_prefill_scratch_rows": 256,
+    "first_splitting_wave": 8,
+    "note": "At the canonical 36-token suite encoding widths 1-7 are single-chunk and the mask is a no-op; width 8 is the first splitting wave. Longer prompts split at every width."
+  },
+  "state_differentials": {
+    "comparator": "scripts/diff_differential_arms.py (semantic axes; address-dependent K/V byte dumps excluded)",
+    "multi_round_512_384": {
+      "control": {
+        "chunk_count": 5,
+        "chunk_rows": [
+          768,
+          768,
+          768,
+          768,
+          128
+        ],
+        "row_capacity": 768,
+        "total_rows": 3200,
+        "chunk_final_output_slot_indices": [
+          [],
+          [],
+          [],
+          [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0
+          ]
+        ],
+        "intermediate_tail_samples": 25,
+        "final_output_mask_enabled": false,
+        "output_norm_rows": 33,
+        "lm_head_sample_rows": 33,
+        "tokens_exact": true,
+        "lifecycle_state_exact": true
+      },
+      "candidate": {
+        "chunk_count": 5,
+        "chunk_rows": [
+          768,
+          768,
+          768,
+          768,
+          128
+        ],
+        "row_capacity": 768,
+        "total_rows": 3200,
+        "chunk_final_output_slot_indices": [
+          [],
+          [],
+          [],
+          [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          [
+            0
+          ]
+        ],
+        "intermediate_tail_samples": 25,
+        "final_output_mask_enabled": true,
+        "output_norm_rows": 8,
+        "lm_head_sample_rows": 8,
+        "tokens_exact": true,
+        "lifecycle_state_exact": true
+      },
+      "differing_fields": [
+        "final_output_mask_enabled",
+        "output_norm_rows",
+        "lm_head_sample_rows"
+      ],
+      "packed_token_trajectory_identical": true
+    },
+    "two_round_64_48": {
+      "control": {
+        "chunk_count": 2,
+        "chunk_rows": [
+          256,
+          144
+        ],
+        "row_capacity": 256,
+        "total_rows": 400,
+        "chunk_final_output_slot_indices": [
+          [],
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        ],
+        "intermediate_tail_samples": 8,
+        "final_output_mask_enabled": false,
+        "output_norm_rows": 16,
+        "lm_head_sample_rows": 16,
+        "tokens_exact": false,
+        "lifecycle_state_exact": true
+      },
+      "candidate": {
+        "chunk_count": 2,
+        "chunk_rows": [
+          256,
+          144
+        ],
+        "row_capacity": 256,
+        "total_rows": 400,
+        "chunk_final_output_slot_indices": [
+          [],
+          [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        ],
+        "intermediate_tail_samples": 8,
+        "final_output_mask_enabled": true,
+        "output_norm_rows": 8,
+        "lm_head_sample_rows": 8,
+        "tokens_exact": false,
+        "lifecycle_state_exact": true
+      },
+      "differing_fields": [
+        "final_output_mask_enabled",
+        "output_norm_rows",
+        "lm_head_sample_rows"
+      ],
+      "packed_token_trajectory_identical": true,
+      "note": "Both arms report tokens_exact false against the strict c1 teacher on this short shape; the verdict and the packed trajectories are identical across arms, so it is the documented pre-existing packed-versus-c1 divergence and not an effect of the mask."
+    },
+    "lifecycle_cancel_and_admission": {
+      "harness": "scripts/gguf_arbitrary_c_lifecycle.py --rows 8 --cancel-slots 2 5 --prompt-length 384 --compact-after-middle-hole",
+      "comparator_verdict": "SAME",
+      "original_tokens_exact": [
+        true,
+        true
+      ],
+      "newcomer_tokens_exact": [
+        true,
+        true
+      ],
+      "cancelled_sessions_reused_by_newcomers": true,
+      "kv_mismatch_location_sets_identical": true,
+      "kv_mismatch_counts": {
+        "cancelled": 64,
+        "newcomers_final": 222,
+        "survivors_final": 160,
+        "survivors_middle_hole": 160,
+        "inactive_sessions_during_middle_hole": 0
+      }
+    }
+  },
+  "route_trace": {
+    "harness": "rocprofv3 --kernel-trace over scripts/gguf_packed_ar_bench.py p512 native_c8, 1 measured run, 1 decode step, cached build",
+    "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, 8, true> at grid_x=3973120 (full 248320-row head)",
+    "control": {
+      "total_dispatches": 24564,
+      "root_head_launches": 7,
+      "root_head_total_us": 15621.2,
+      "root_head_median_us": 2187.47
+    },
+    "candidate": {
+      "total_dispatches": 24494,
+      "root_head_launches": 2,
+      "root_head_total_us": 4659.0,
+      "root_head_median_us": 2329.489
+    },
+    "root_head_launches_removed": 5,
+    "total_dispatches_removed": 70,
+    "root_head_device_us_removed": 10962.2,
+    "interpretation": "A p512 C8 prefill plans six bounded rounds; the control samples the full head once per round plus once for the decode step (7), the candidate samples it once for the final round plus the decode step (2)."
+  },
+  "numerical_gate": {
+    "harness": "scripts/execution_profile_gguf_batch_route_gate.py --packed-prefill-candidate",
+    "mask_engaged_widths_4_8": {
+      "route_profile": "q4_selected_pair_candidate (package floor-driven; no candidate env set)",
+      "rows": 1050,
+      "kl_mean": 7.771402185982617e-05,
+      "kl_p95": 0.00040394302968610083,
+      "kl_p99": 0.0007223887240595372,
+      "kl_max": 0.0021913890982850574,
+      "top1_agreement": 0.9980952380952381,
+      "hard_gates_passed": true,
+      "scope_failures": [],
+      "repeat_determinism_passed": true,
+      "thresholds": {
+        "max_kl_max": 0.05,
+        "mean_kl_max": 0.001,
+        "p95_kl_max": 0.005,
+        "p99_kl_max": 0.02,
+        "per_scope_top1_min": 0.97,
+        "review_kl": 0.02,
+        "top1_min": 0.99
+      },
+      "per_shape_top1": {
+        "c1": 1.0,
+        "c2": 1.0,
+        "c4": 0.9978070175438597,
+        "c8": 0.9979166666666667,
+        "c8_sparse4": 1.0
+      },
+      "note": "width 8 splits prefill into [256, 32], so the mask engages; width 4 is single-chunk."
+    },
+    "single_chunk_widths_3_5_6_7": {
+      "route_profile": "current_package_direct",
+      "rows": 1950,
+      "kl_mean": 7.934741762117568e-05,
+      "kl_max": 0.0021913890982850574,
+      "top1_agreement": 0.997948717948718,
+      "hard_gates_passed": true,
+      "note": "These widths are single-chunk at the canonical encoding, so the mask never engages; this run is route-level non-regression only, and it reproduces the pre-flip ledger figures."
+    },
+    "harness_status_caveat": "Both runs report status invalid_or_screen_only / measurement_valid false because of three pre-existing harness blockers already recorded in docs/REFACTOR.md (route manifest is evidentiary rather than runtime-profile resolved, the adapter omits the complete exact control-plane record schema, and fresh task and BF16-relative verdicts are unavailable). They are properties of the gate harness, not of this change, and applied equally before it."
+  },
+  "performance": {
+    "harness": "scripts/gguf_packed_ar_bench.py native_c8 p512/d128, 1 warmup + 3 measured, counterbalanced control/candidate/candidate/control",
+    "pooled": {
+      "prefill_tok_s": {
+        "control": 378.302,
+        "candidate": 377.613,
+        "delta_pct": -0.182
+      },
+      "decode_tok_s": {
+        "control": 132.029,
+        "candidate": 131.811,
+        "delta_pct": -0.165
+      },
+      "ttft_s": {
+        "control": 10.827,
+        "candidate": 10.847,
+        "delta_pct": 0.181
+      }
+    },
+    "arms_in_time_order": {
+      "control-r1": 379.7548723095189,
+      "candidate-r1": 378.04296417527144,
+      "candidate-r2": 377.1837241308665,
+      "control-r2": 376.84837535408235
+    },
+    "interpretation": "Flat within session drift and not a throughput claim. The four arms decline monotonically in wall-clock order regardless of which arm ran, and the two control arms differ from each other by 0.77% on prefill, more than the 0.18% pooled candidate-control difference. This matches the gfx1151 precedent, where the same capability produced 0.033-0.219% pooled prefill wall changes and was retained as an exact launch reduction rather than a rate win."
+  },
+  "correctness": {
+    "red_green": "tests/test_gfx1151_backend.py::test_packed_prefill_final_output_mask_is_qualified_on_both_backends and the gfx1100 assertion in tests/test_qwen35_gguf_mtp2_seam.py were written RED (asserting the qualified state) and failed on the package value before the flip; both are green after it.",
+    "focused_bundle": "187 passed: gfx1151 backend, mtp2 seam, packed AR state oracle, packed execution manifest, packed prefill grouping probe, slab probe, packed AR bench, packed decode graph"
+  },
+  "limitations": [
+    "Prefill rate, TTFT, and decode rate are flat within drift; no throughput improvement is claimed.",
+    "The mask-engaged numerical gate covers widths 4 and 8 on the canonical suite; widths 1-7 at that encoding are single-chunk and cannot exercise the mask, though longer prompts split at every width.",
+    "The production-profile harness cannot emit a binding qualification verdict until its three recorded control-plane blockers close; the numerical evidence here is a passing screen."
+  ],
+  "disposition": "retained; GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True on hip_gfx1100; the unmasked path remains for packages that do not set the capability"
+}
