@@ -13,6 +13,23 @@ SCRIPT = ROOT / "scripts" / "qwen4exp_canonical_ar_bench.py"
 CATEGORIES = ("code", "general_en", "general_ja", "mixed_ja_en")
 
 
+def test_host_metadata_uses_cached_compiler_without_spawning_hipcc(
+    monkeypatch, tmp_path
+) -> None:
+    module = _load_script()
+    version = tmp_path / "compiler.txt"
+    version.write_text("HIP version: pinned\n")
+    monkeypatch.setenv("HIPENGINE_COMPILER_VERSION_FILE", str(version))
+    monkeypatch.setattr(module, "_rocm_platform_version", lambda: "test")
+
+    def run(command, **kwargs):
+        assert command[0] != "hipcc", "profiler must not spawn the compiler"
+        return SimpleNamespace(stdout="active", stderr="")
+
+    monkeypatch.setattr(module.subprocess, "run", run)
+    assert module._host_metadata()["hipcc_version"] == "HIP version: pinned"
+
+
 def _load_script():
     spec = importlib.util.spec_from_file_location("qwen4exp_canonical_ar_bench", SCRIPT)
     assert spec is not None and spec.loader is not None
