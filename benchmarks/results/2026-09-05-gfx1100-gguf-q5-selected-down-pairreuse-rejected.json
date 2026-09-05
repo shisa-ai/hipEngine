@@ -1,0 +1,72 @@
+{
+ "schema": 1,
+ "kind": "gfx1100_gguf_q5_selected_down_pairreuse_rejected",
+ "created_at": "2026-09-05T18:15:00Z",
+ "status": "rejected_no_route_changed",
+ "passed": true,
+ "performance_claim": false,
+ "claim_scope": "clean cached p512/d128 direct native-c8 graph model-step decode throughput on the physical W7900; same-host same-protocol control vs candidate where the candidate differs only by HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE",
+ "decision": "Reject the Q5T16 selected-down pair-reuse owner on hip_gfx1100: the env-on candidate is flat-to-negative at physical c8 (median -0.67%, overlapping ranges), so GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS stays 0 and the per-row Q5 down owner remains the default. The gfx1151 down-pairreuse outcome does not transfer to the W7900.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocr_visible_devices": "0",
+  "gpu_max_hw_queues": 1,
+  "rocm": "HIP version: 7.2.53211-3d9ef42",
+  "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+ },
+ "software": {
+  "control_commit": "5b94a8fd1 (cumulative D1-retained state: Q4 selected pairreuse floor 8, Q5/Q6 down floors 0)",
+  "candidate_commit": "5b94a8fd1 (same commit; candidate differs only by HIPENGINE_GGUF_T16_SELECTED_DOWN_PAIRREUSE=1)",
+  "audit_plan": "docs/20260905-gfx1100-audit.md work packet D, second cumulative unit (Q5 down)"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "moe_down_tensors": "38 of 41 down tensors are Q5_K (3 are Q6_K), so the Q5-down route engages on the dominant share of MoE layers"
+ },
+ "workload": {
+  "configuration": "native_c8 (one physical eight-row decode group)",
+  "prompt_length": 512,
+  "decode_steps": 128,
+  "prompt_token_id": 9707,
+  "sampling": "greedy_top1",
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "command": ".venv/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-gfx1100-hipcc-version.txt --require-cached-build --json <artifact>"
+ },
+ "performance": {
+  "metric": "decode_tok_s_aggregate median, 3 measured runs each arm",
+  "native_c8": {
+   "control": 300.454,
+   "candidate": 298.438,
+   "delta_pct": -0.67,
+   "control_samples": [301.872, 300.454, 298.957],
+   "candidate_samples": [299.748, 298.438, 297.217],
+   "sample_ranges_separated": false
+  },
+  "prefill_native_c8_tok_s": {
+   "control": 1198.344,
+   "candidate": 1189.166
+  },
+  "interpretation": "the candidate median is below the control median and the ranges overlap; there is no positive signal to chase with more runs, and the down-path reuse does not pay on the W7900"
+ },
+ "correctness": {
+  "primitive_bit_parity": [
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_q5_t16_direct_pairreuse_matches_production_bits (green)",
+   "tests/test_gguf_t16_selected_gemv_decode.py::test_t16_compact_down_pairreuse_matches_direct_bits_beyond_64_lanes (green)"
+  ],
+  "red_green_policy": {
+   "test": "tests/test_qwen35_gguf_compact_moe_gemv_routing.py::test_gfx1100_q5_selected_down_pairreuse_floor_admits_c8_only",
+   "state": "RED retained on purpose: floor 0 fails the test (assert 0 == 8), documenting that the down-pairreuse route stays unqualified; the test goes green only if a future packet qualifies the floor"
+  },
+  "bench_exactness": "both arms produced repeatable trajectories under their own environments"
+ },
+ "limitations": [
+  "The A/B uses the deterministic four-trajectory fixture; the natural-distribution artifact for the gate/up route (duplicate fraction 0.616) does not transfer to the down owner's economics.",
+  "The rejection is a throughput decision at physical c8 on the W7900; it does not re-open the gfx1151 retention."
+ ],
+ "disposition": "rejected; GGUF_Q5_T16_SELECTED_PAIRREUSE_MIN_ROWS stays 0; per-row Q5 down owner remains default; rollback env documented"
+}
