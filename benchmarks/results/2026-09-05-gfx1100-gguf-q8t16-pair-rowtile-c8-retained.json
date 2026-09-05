@@ -1,0 +1,93 @@
+{
+ "schema": 1,
+ "kind": "gfx1100_gguf_q8_t16_pair_rowtile_c8_retained",
+ "created_at": "2026-09-05T17:45:00Z",
+ "status": "retained_exact_default_committed_clean_quality_capture",
+ "passed": true,
+ "performance_claim": true,
+ "claim_scope": "clean cached p512/d128 direct native-c8 graph model-step decode throughput on the physical W7900; same-host same-protocol control vs candidate where the candidate differs only by the package pair-rowtile floor",
+ "decision": "Admit the exact 128-thread Q8T16 qkv+gate dual-split rowtile col8 pair owner on hip_gfx1100 at rows>=8 through GGUF_Q8_T16_DECODE_PAIR_ROWTILE_MIN_ROWS=8 (retention commit 735a4a47d). Rows below the floor keep the per-row dual owner; the broad all-projection rowtile route stays rejected (packet C1, floor 0).",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocr_visible_devices": "0",
+  "gpu_max_hw_queues": 1,
+  "rocm": "HIP version: 7.2.53211-3d9ef42",
+  "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+ },
+ "software": {
+  "control_commit": "741f74dd428663f1bc5a845e6632a5fe5841c9f3 (package pair floor 0)",
+  "retention_commit": "735a4a47d012c697fd147c7da04f806df9d584ea (package pair floor 8; clean quality capture ran at this commit)",
+  "audit_plan": "docs/20260905-gfx1100-audit.md work packet C2",
+  "gfx1151_reference": "benchmarks/results/2026-07-20-gfx1151-gguf-q8t16-pair-rowtile-c8-retained.json"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_dtype": "bf16",
+  "sampling": "greedy_top1",
+  "speculative_decode": false,
+  "route_geometry": "attn_qkv (2048->8192) + attn_gate (2048->4096) on the Qwen3.5-family full-attention layers; same model as the gfx1151 pair retention",
+  "prompt_rows_sha256": "53b8d2a756f5b105803cc6a3b15a8bf43333bb54aa91e0180e8a9d029c0beb70"
+ },
+ "workload": {
+  "prompt_tokens_per_row": 512,
+  "generated_tokens_per_row": 128,
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "command": ".venv/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-gfx1100-hipcc-version.txt --require-cached-build --json <artifact>",
+  "raw_artifacts_tmp": [
+   "/tmp/gfx1100-audit-moe-baseline.json",
+   "/tmp/gfx1100-q8-pair-c8-candidate.json",
+   "/tmp/gfx1100-c2-pair-batch-route-quality-rollback.json",
+   "/tmp/gfx1100-c2-pair-batch-route-quality-clean.json"
+  ]
+ },
+ "performance": {
+  "metric": "decode_tok_s_aggregate median, 3 measured runs each arm",
+  "native_c8": {
+   "control": 275.244,
+   "candidate": 282.16,
+   "delta_pct": 2.512,
+   "control_samples": [276.144, 275.244, 274.936],
+   "candidate_samples": [283.34, 282.16, 280.771],
+   "sample_ranges_separated": true
+  },
+  "prefill_native_c8_tok_s": {"control": 1179.999, "candidate": 1187.4},
+  "interpretation": "candidate range [280.771, 283.34] lies fully above the control range [274.936, 276.144]"
+ },
+ "correctness": {
+  "direct_bench": "width 8 exact (native_c8_rows_match_c4 true) and all measured runs repeatable; measured trajectory hashes identical to the control arm at native_c8",
+  "binding_gate": "candidate-vs-rollback differential (gfx1151 precedent); the standalone packed-vs-strict-c1 oracle fails identically with and without the flip (pre-existing qualified production arithmetic)",
+  "state_lifecycle_differential": "5/5 configurations arm-identical (steady c2/c4/c8, shrink_sparse c8, arbitrary-c8 cancel/compact lifecycle): token exactness flags, initial/final/lifecycle state exactness, first-divergence signature, mismatch counts, and packed trajectories all SAME"
+ },
+ "route_trace": {
+  "harness": "scripts/gguf_packed_ar_rocprof.py c8 census at the retention commit, package floor driving the route (no env)",
+  "kernel": "q8_0_t16_dual_split_rowtile_col8_gemv_kernel",
+  "dispatches": 27,
+  "total_duration_ms": 3.346,
+  "launch_shape": {"count": 27, "grid": [196608, 2, 1], "workgroup": [128, 1, 1], "vgpr": 72, "lds_bytes": 512, "scratch_bytes": 0},
+  "census": "route_check_passed true; c1/c8 tokens exact; scalar_fallbacks 0",
+  "tmp_artifact": "/tmp/gfx1100-c2-c8-profile.json"
+ },
+ "quality_capture": {
+  "harness": "scripts/execution_profile_gguf_batch_route_gate.py --route-profile q8t16_pair_candidate --widths 4,8 --decode-steps 24 --repeat-runs 3 (new profile: candidate arm reaches the route through the package floor with diagnostic envs unset, never through the broad boolean or pair env overrides)",
+  "prompts": "full 18-prompt mtpbench code/general_en/general_ja/mixed_ja_en suite + category heldouts",
+  "dynamic_schedule": [[0, 8], [6, 4], [12, 2], [18, 1]],
+  "sparse_physical_c8_active_slots": [0, 2, 5, 7],
+  "status": "complete",
+  "measurement_valid": true,
+  "tracked_clean": true,
+  "candidate_logits_sha256": "7fa3593310f381af9bbfed92ecc668a428ea80bbd577a2aa172cafd725e2fed8",
+  "rollback_candidate_logits_sha256": "7fa3593310f381af9bbfed92ecc668a428ea80bbd577a2aa172cafd725e2fed8",
+  "strict_logits_sha256": "bf95b12ff18afca8b173dbb8dd1c80c18f7e51f949f187c5980340a919481ada",
+  "repeat_determinism": "3/3 runs, no mismatches, both arms",
+  "interpretation": "candidate and rollback arms produce byte-identical captured logits across the complete natural-prompt matrix, so the capture's nonzero KL surface vs the strict c1 teacher (code kl_max 0.0542/top1 0.9836; general_ja kl_max 0.0618/top1 0.9915) is the pre-existing packed-vs-teacher divergence, identical with and without the flip"
+ },
+ "gates": {
+  "focused_tests": "RED->GREEN: tests/test_qwen35_gguf_q8t16_rowtile_policy.py pair floor admits rows 8 only (failed pre-flip at floor 0, passes at 8); tests/test_gfx1151_backend.py alias test updated to GFX1100 pair floor 8; test_gguf_linear_dispatch.py bundle 185 passed at the retention commit"
+ },
+ "disposition": "retained as the gfx1100 package default at rows>=8; per-row dual owner remains the registered below-floor and strict fallback; no env flag introduced"
+}
