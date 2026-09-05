@@ -107,9 +107,14 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     ) is True
     assert backend_package_capability(
         "hip_gfx1151",
-        "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
+        "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
         {},
-    ) == {}
+    ) == {
+        "production": (
+            *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
+            (8, 3),
+        )
+    }
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_C1", False
     ) is True
@@ -117,7 +122,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL", False
     ) is False
     assert backend_package_capability(
-        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS", {}
+        "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
     ) == {}
     assert backend_package_capability(
         "hip_gfx1151",
@@ -187,25 +192,34 @@ def _width_bound_owner(*, profile: str, capacity: int) -> SimpleNamespace:
     )
 
 
-def test_physical_width_bound_is_package_owned_and_capacity_clamped() -> None:
+def _certified_width_depths() -> tuple[tuple[int, int], ...]:
+    return tuple(
+        (width, depth)
+        for width in range(1, 5)
+        for depth in range(1, 4)
+    )
+
+
+def test_physical_width_depth_policy_is_package_owned_and_capacity_clamped() -> None:
     import hipengine.generation.qwen35_gguf_mtp2 as module
 
-    # Certified default: an empty package table resolves every profile to the
-    # width-4 boundary, capacity-clamped.
+    # An unlisted profile retains every previously certified C1-C4 depth.
     default_adapter = Qwen35GGUFMTP2Adapter(
-        _width_bound_owner(profile="production", capacity=8),
+        _width_bound_owner(profile="strict", capacity=8),
         enabled=True,
         target_verify_mode="packed",
         candidate_budget=3,
     )
+    assert default_adapter.physical_width_depths == _certified_width_depths()
     assert default_adapter.physical_max_requests == 4
     assert default_adapter._max_physical_requests() == 4
 
     real = module.backend_package_capability
+    policy = (*_certified_width_depths(), (8, 3))
 
     def fake(backend: str, name: str, default: object = None) -> object:
-        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS":
-            return {"production": 8}
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS":
+            return {"production": policy}
         return real(backend, name, default)
 
     module.backend_package_capability = fake
@@ -216,6 +230,7 @@ def test_physical_width_bound_is_package_owned_and_capacity_clamped() -> None:
             target_verify_mode="packed",
             candidate_budget=3,
         )
+        assert lifted.physical_width_depths == policy
         assert lifted.physical_max_requests == 8
         assert lifted._max_physical_requests() == 8
         clamped = Qwen35GGUFMTP2Adapter(
@@ -224,28 +239,33 @@ def test_physical_width_bound_is_package_owned_and_capacity_clamped() -> None:
             target_verify_mode="packed",
             candidate_budget=3,
         )
-        assert clamped._max_physical_requests() == 5
-        strict = Qwen35GGUFMTP2Adapter(
-            _width_bound_owner(profile="strict", capacity=8),
-            enabled=True,
-            target_verify_mode="packed",
-            candidate_budget=3,
-        )
-        assert strict.physical_max_requests == 4
-        assert strict._max_physical_requests() == 4
+        # Capacity five cannot turn the hole in the policy into C5 admission.
+        assert clamped._max_physical_requests() == 4
     finally:
         module.backend_package_capability = real
 
 
-@pytest.mark.parametrize("table", ["nope", {"production": 0}, {"production": None}])
-def test_physical_width_bound_misconfiguration_fails_closed(table: object) -> None:
+@pytest.mark.parametrize(
+    "table",
+    [
+        "nope",
+        {"production": 0},
+        {"production": None},
+        {"production": ((0, 3),)},
+        {"production": ((8, 4),)},
+        {"production": ((8,),)},
+    ],
+)
+def test_physical_width_depth_policy_misconfiguration_fails_closed(
+    table: object,
+) -> None:
     owner = _width_bound_owner(profile="production", capacity=8)
     import hipengine.generation.qwen35_gguf_mtp2 as module
 
     real = module.backend_package_capability
 
     def fake(backend: str, name: str, default: object = None) -> object:
-        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS":
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS":
             return table
         return real(backend, name, default)
 
@@ -262,32 +282,109 @@ def test_physical_width_bound_misconfiguration_fails_closed(table: object) -> No
         module.backend_package_capability = real
 
 
-def test_physical_width_bound_admits_wide_groups_when_listed() -> None:
-    # M1 mechanism check: a package-listed bound of 8 admits one 8-request
-    # group (capacity-clamped) while the bound-4 default partitions.
-    import hipengine.generation.qwen35_gguf_mtp2 as module
+def test_physical_width_depth_policy_admits_only_listed_wide_cell() -> None:
+    adapter = Qwen35GGUFMTP2Adapter(
+        _width_bound_owner(profile="production", capacity=8),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
 
-    real = module.backend_package_capability
-
-    def fake(backend: str, name: str, default: object = None) -> object:
-        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS":
-            return {"production": 8}
-        return real(backend, name, default)
-
-    module.backend_package_capability = fake
-    try:
-        adapter = Qwen35GGUFMTP2Adapter(
-            _width_bound_owner(profile="production", capacity=8),
-            enabled=True,
-            target_verify_mode="packed",
-            candidate_budget=3,
-        )
-    finally:
-        module.backend_package_capability = real
     assert adapter._max_physical_requests() == 8
-    max_requests = adapter._max_physical_requests()
-    max_rows = max_requests * (adapter.candidate_budget + 1)
-    assert (max_requests, max_rows) == (8, 32)
+    assert adapter._physical_width_depth_admitted(8, 3) is True
+    for width in (5, 6, 7):
+        assert adapter._physical_width_depth_admitted(width, 3) is False
+    for depth in (1, 2):
+        assert adapter._physical_width_depth_admitted(8, depth) is False
+    max_rows = adapter._max_physical_requests() * (adapter.candidate_budget + 1)
+    assert max_rows == 32
+
+
+def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
+    target = SimpleNamespace(
+        runner=SimpleNamespace(fp16_recurrent_state=False),
+        _target_scratch_owner=SimpleNamespace(slot_count=8),
+        target_layout=SimpleNamespace(max_sequence_length=1024),
+        kv_storage_dtype="bf16",
+    )
+    row = SimpleNamespace(
+        native_greedy=True,
+        first_token_emitted=True,
+        lease=SimpleNamespace(session=target),
+        slot=SimpleNamespace(),
+    )
+    ids = tuple(range(1, 9))
+    adapter = Qwen35GGUFMTP2Adapter(
+        SimpleNamespace(
+            generator=SimpleNamespace(
+                backend="hip_gfx1151",
+                execution_profile="production",
+            ),
+            capacity=8,
+            _shared_runner=None,
+            _row=lambda rid: row,
+        ),
+        enabled=True,
+        target_verify_mode="native",
+        candidate_budget=3,
+    )
+    adapter._intents = {rid: 3 for rid in ids}
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="qualified_test_physical_c8_k3",
+            max_candidate_count=3,
+            max_realized_group_rows=8,
+            automatic_eligible=False,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-c8-k3-{rid}",
+            evidence_fingerprint=f"sha256:test-c8-k3-{rid}",
+        )
+        for rid in ids
+    }
+    adapter._prompt_hidden_rows = {rid: object() for rid in ids}
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+
+    def semantics(width: int) -> tuple[SpeculativeRequestSemantics, ...]:
+        return tuple(
+            SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
+            for rid in ids[:width]
+        )
+
+    for width in (5, 6, 7):
+        assert adapter.partition_max_requests(ids[:width]) == 0
+        assert adapter.capability(semantics(width)) is None
+    # A zero partition bound preserves one whole due group; C8 then reaches the
+    # explicit capability cell rather than chained subgroups.
+    assert adapter.partition_max_requests(ids) == 0
+    c8 = adapter.capability(semantics(8))
+    assert c8 is not None
+    assert c8.max_requests == 8
+    assert c8.max_candidates_per_request == 3
+    assert c8.max_frontier_rows == 32
+
+    for width in (5, 6, 7):
+        assert adapter.claims_fit(
+            SimpleNamespace(
+                speculative_request_ids=ids[:width],
+                candidate_counts=(3,) * width,
+            )
+        ) is False
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            speculative_request_ids=ids,
+            candidate_counts=(3,) * 8,
+        )
+    ) is True
+    for depth in (1, 2):
+        assert adapter.claims_fit(
+            SimpleNamespace(
+                speculative_request_ids=ids,
+                candidate_counts=(depth,) * 8,
+            )
+        ) is False
 
 
 def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:
@@ -3137,9 +3234,11 @@ def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() ->
     # chaining MTP sub-groups.
     from hipengine.kernels.hip_gfx1151 import (
         GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS,
+        GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS,
     )
 
     assert GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS["production"] == 4
+    assert GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS["production"][-1] == (8, 3)
 
     row = SimpleNamespace(
         native_greedy=True,

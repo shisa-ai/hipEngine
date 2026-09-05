@@ -136,6 +136,40 @@ def test_qwen38_q4km_production_c2_k3_d24_is_explicit_after_ar_rebase() -> None:
     assert over_horizon.reason == "output_horizon_not_qualified"
 
 
+def test_qwen38_q4km_production_c8_k3_d24_is_explicit_and_c7_is_not() -> None:
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        execution_profile="production",
+        execution_profile_manifest_sha256=_PRODUCTION_MANIFEST_SHA256,
+        realized_group_rows=8,
+        resident_capacity=8,
+        context_tokens=128,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    c7 = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, realized_group_rows=7),
+    )
+
+    assert decision.admitted is True
+    assert decision.selected_route == "speculative_mtp"
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == (
+        "qualified_explicit_production_c8_k3_after_q6_lm_head_rebase"
+    )
+    assert decision.automatic_eligible is False
+    assert decision.static_eligibility.max_realized_group_rows == 8
+    assert decision.strict_fallback_key == "gguf_target_ar"
+    assert decision.evidence_artifacts[0] == (
+        "benchmarks/results/"
+        "2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json"
+    )
+    assert c7.admitted is False
+    assert c7.reason == "physical_group_not_qualified"
+
+
 def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
     decision = resolve_speculative_mtp_serving_plan((_evidence(),), key=_key())
 

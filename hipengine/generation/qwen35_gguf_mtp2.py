@@ -463,35 +463,57 @@ def _physical_prompt_streaming_widths(owner: Any, generator: Any) -> tuple[int, 
     return widths
 
 
-# Widths above this bound require the backend's explicit per-profile physical
-# admission; width 4 is the independently certified CONCURRENT2 C4 boundary.
-_MTP2_CERTIFIED_PHYSICAL_BOUND = 4
+# Every C1-C4 depth has independent coverage. Wider cells must be listed by the
+# active backend package and execution profile; a scalar maximum cannot express
+# the measured C8-K3 win without also admitting slower C5-C7 cells.
+_MTP2_CERTIFIED_WIDTH_DEPTHS = tuple(
+    (width, depth)
+    for width in range(1, 5)
+    for depth in range(1, 4)
+)
+_MTP2_MAX_PHYSICAL_REQUESTS = 8
+_MTP2_MAX_CANDIDATE_DEPTH = 3
 
 
-def _physical_max_requests(generator: Any) -> int:
-    """Resolve the package-owned physical multi-request width bound."""
+def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
+    """Resolve the package-owned physical request-width/candidate-depth cells."""
 
     profile_value = getattr(generator, "execution_profile", None)
     profile = str(getattr(profile_value, "value", profile_value) or "")
     backend = str(getattr(generator, "backend", "") or "")
     if not backend:
-        # Incomplete metadata cannot unlock wide physical cycles; the
-        # certified C4 boundary applies once a real backend package answers.
-        return _MTP2_CERTIFIED_PHYSICAL_BOUND
+        return _MTP2_CERTIFIED_WIDTH_DEPTHS
     table = backend_package_capability(
         backend,
-        "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
+        "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
         {},
     )
     if not isinstance(table, Mapping):
-        raise RuntimeError("backend MTP2 physical width bounds must be a mapping")
-    try:
-        bound = int(table.get(profile, _MTP2_CERTIFIED_PHYSICAL_BOUND))
-    except (TypeError, ValueError) as exc:
-        raise RuntimeError("backend MTP2 physical width bound must be an int") from exc
-    if bound < 1:
-        raise RuntimeError("backend MTP2 physical width bound must be positive")
-    return bound
+        raise RuntimeError("backend MTP2 physical width/depth policies must be a mapping")
+    raw = table.get(profile, _MTP2_CERTIFIED_WIDTH_DEPTHS)
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes, bytearray)):
+        raise RuntimeError("backend MTP2 physical width/depth policy must be a sequence")
+    cells: set[tuple[int, int]] = set()
+    for item in raw:
+        if not isinstance(item, Sequence) or isinstance(item, (str, bytes, bytearray)):
+            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
+        values = tuple(item)
+        if len(values) != 2:
+            raise RuntimeError("backend MTP2 physical width/depth cells must be pairs")
+        try:
+            width, depth = (int(value) for value in values)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                "backend MTP2 physical width/depth cells must be integer pairs"
+            ) from exc
+        if not 1 <= width <= _MTP2_MAX_PHYSICAL_REQUESTS:
+            raise RuntimeError("backend MTP2 physical widths must be within [1, 8]")
+        if not 1 <= depth <= _MTP2_MAX_CANDIDATE_DEPTH:
+            raise RuntimeError("backend MTP2 candidate depths must be within [1, 3]")
+        cells.add((width, depth))
+    if not cells:
+        raise RuntimeError("backend MTP2 physical width/depth policy must not be empty")
+    return tuple(sorted(cells))
 
 
 class Qwen35GGUFMTP2Adapter:
@@ -514,7 +536,10 @@ class Qwen35GGUFMTP2Adapter:
         self.target_verify_mode = str(target_verify_mode)
         self.candidate_budget = int(candidate_budget)
         self.quant = str(quant)
-        self.physical_max_requests = _physical_max_requests(self.generator)
+        self.physical_width_depths = _physical_width_depths(self.generator)
+        self.physical_max_requests = max(
+            width for width, _depth in self.physical_width_depths
+        )
         self.physical_prompt_streaming_widths = _physical_prompt_streaming_widths(
             owner,
             self.generator,
@@ -559,22 +584,40 @@ class Qwen35GGUFMTP2Adapter:
         self._cycle_ngram_tokens: Tensor | None = None
         self._cycle_workspace_shape: tuple[int, int] | None = None
 
-    def _max_physical_requests(self) -> int:
-        """Return the capability-owned width bound clamped to resident capacity."""
+    def _physical_width_depth_policy(self) -> tuple[tuple[int, int], ...]:
+        """Return policy cells that fit this adapter's resident capacity."""
 
-        bound = getattr(self, "physical_max_requests", None)
-        if bound is None:
+        cells = getattr(self, "physical_width_depths", None)
+        if cells is None:
             try:
-                bound = _physical_max_requests(self.generator)
+                cells = _physical_width_depths(self.generator)
             except (AttributeError, RuntimeError, ValueError):
-                # Partially constructed test doubles resolve to the certified
-                # width-4 boundary; real adapters fail closed in __init__.
-                bound = _MTP2_CERTIFIED_PHYSICAL_BOUND
-            self.physical_max_requests = int(bound)
-        return min(
-            int(bound),
-            max(1, int(getattr(self.owner, "capacity", _MTP2_CERTIFIED_PHYSICAL_BOUND))),
+                # Partially constructed test doubles retain the certified
+                # C1-C4 cells; real adapters fail closed in __init__.
+                cells = _MTP2_CERTIFIED_WIDTH_DEPTHS
+            self.physical_width_depths = tuple(cells)
+        capacity = max(
+            1,
+            int(getattr(self.owner, "capacity", _MTP2_MAX_PHYSICAL_REQUESTS)),
         )
+        return tuple(
+            (int(width), int(depth))
+            for width, depth in cells
+            if int(width) <= capacity
+        )
+
+    def _physical_width_depth_admitted(self, width: int, depth: int) -> bool:
+        return (int(width), int(depth)) in self._physical_width_depth_policy()
+
+    def _max_physical_requests(self) -> int:
+        """Return the largest listed width that fits resident capacity."""
+
+        cells = self._physical_width_depth_policy()
+        if not cells:
+            return 0
+        bound = max(width for width, _depth in cells)
+        self.physical_max_requests = int(bound)
+        return int(bound)
 
     @property
     def physical_request_bound(self) -> int:
@@ -1238,6 +1281,11 @@ class Qwen35GGUFMTP2Adapter:
             self.candidate_budget,
             *(static_candidate_bounds or (self.candidate_budget,)),
         )
+        if not self._physical_width_depth_admitted(
+            len(semantics),
+            max_candidate_count,
+        ):
+            return None
         singleton_only = tuple(
             self._singleton_only(item.request_id)
             for item in semantics
@@ -1377,6 +1425,12 @@ class Qwen35GGUFMTP2Adapter:
 
     def claims_fit(self, plan: SpecRequestPlan) -> bool:
         request_ids = tuple(int(value) for value in plan.speculative_request_ids)
+        candidate_counts = tuple(
+            int(value)
+            for value in getattr(plan, "candidate_counts", ())
+            if int(value) > 0
+        )
+        realized_depth = max(candidate_counts, default=self.candidate_budget)
         physical_singleton = bool(
             len(request_ids) == 1
             and (eligibility := self._static_eligibility(request_ids[0])) is not None
@@ -1387,6 +1441,10 @@ class Qwen35GGUFMTP2Adapter:
             self.enabled
             and self._active_claims is None
             and 1 <= len(request_ids) <= self._max_physical_requests()
+            and self._physical_width_depth_admitted(
+                len(request_ids),
+                realized_depth,
+            )
             and not (
                 len(request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1

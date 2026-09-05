@@ -2191,14 +2191,20 @@ GGUF_C2_PACKED_PREFILL_MAX_ROWS = 8
 # promotion remains independently gated by each phase's correctness and
 # complete-wall packet. These capabilities expose adapters and AR fallback only.
 GGUF_SPECDEC2_MTP2_C1 = True
-# Scaling-campaign M1 measured the production single-group wide cycle (bound 8)
-# exact at 80/80 with unchanged acceptance, but C6-C8 regressed versus the
-# two-subgroup default because rows>16 target verification falls to direct
-# Q6-planar/Q4-selected owners and the single accept interval scales with
-# width (see the M1 blocker artifact). Production retains the certified
-# width-4 default; an admitted profile re-lists its bound to lift the cap.
+# Production MTP admission is intentionally non-monotonic. C1-C4 retain their
+# certified K1-K3 cells; the B5 suite admits only the profitable wide C8-K3
+# cell. C5-C7 and shallower C8 remain on one full-width AR step. Keeping width
+# and depth together prevents a scalar C8 maximum from silently broadening the
+# three measured-losing widths.
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
-GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS: dict[str, int] = {}
+GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
+    str, tuple[tuple[int, int], ...]
+] = {
+    "production": (
+        *((width, depth) for width in range(1, 5) for depth in range(1, 4)),
+        (8, 3),
+    )
+}
 # M5 whole-batch routing (scaling campaign, 2026-08-31): measured at the
 # current head, MTP sub-group interleaving reaches only 0.74-0.80x of own AR
 # at physical widths 5-8 (C5-C8 28.0/32.7/33.1/35.5 vs AR 36.1/40.8/43.7/47.8
@@ -3499,7 +3505,7 @@ __all__ = [
     "GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
-    "GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
     "GGUF_SPECDEC2_MTP2_BATCH_ROUTE_ABOVE_REQUESTS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_PROPOSAL_LM_HEAD_ROWTILE_POLICIES",

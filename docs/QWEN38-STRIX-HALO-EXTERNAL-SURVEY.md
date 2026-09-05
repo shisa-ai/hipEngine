@@ -560,13 +560,17 @@ cycle. Acceptance alone is not enough.
   - Both widths trail the llama.cpp leaders.
 - Keep the AR fallback at C5-C7.
   - Forced K3 is slower than matched AR at those widths.
-- Keep public C2-C8 admission on AR until each width passes the full
-  correctness and serving tests.
+- Keep C8/K3 explicit-only.
+  - The profile-owned production policy admits it after the full
+    correctness, economics, cancellation, refill, and ownership gates passed;
+    C8 remains non-automatic because its complete-wall gain is narrow and the
+    mixed Japanese/English category regressed in the current run.
 
 ## Evidence
 
 ### hipEngine measurements
 
+- [C8 width/depth policy](../benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json)
 - [Active-C1 measurement][L17]
 - [C1-C8 MTP measurements][L15]
 - [C1-C8 prefill measurements][L16]

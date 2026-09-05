@@ -4530,51 +4530,33 @@ should be boring.
   Remove the old simultaneous `run()` in the next cleanup unit; keep only the
   sequential evaluator.
 
-## RF-OI5 — width-4 MTP physical partition and `GGUF_SPECDEC2_MTP2_C4` cap (2026-08-30)
+## RF-OI5 — resolved: profile-owned MTP width/depth policy (2026-09-05)
 
-- **State:** scattered caps resolved (M1, 2026-08-30); the width-4 default
-  itself remains, now as one named capability bound with a measured blocker
-  pointer. M1 landed one capability-owned profile-keyed bound
-  (`GGUF_SPECDEC2_MTP2_PHYSICAL` + `GGUF_SPECDEC2_MTP2_PHYSICAL_MAX_REQUESTS`
-  in `hipengine/kernels/hip_gfx1151/__init__.py`, resolved once by
-  `_physical_max_requests()`/`_max_physical_requests()` in
-  `hipengine/generation/qwen35_gguf_mtp2.py`), re-keyed
-  `_batch_accept_resources()` and its tensors through C8/R32, published the
-  bound to the server explicit-MTP batch route
-  (`server_mtp_batch_max_active_requests`), and measured the bound-8 single
-  cycle: 80/80 exact, acceptance parity, 1.00 passes/cycle — but C6-C8
-  regress (C7 -19.56%). M2a later qualified the rows5-8 proposal head and M2j
-  qualified exact Q4 owners through R16. B1 then routed K3 R17-R48 target work
-  to retained prefill owners, improving the one-group C5-C8 suite by
-  56.3-72.7%, and B5 retained selective planar-Q6 integer MMQ for another
-  1.75-2.08%. The remaining economics are non-monotonic: B5 measures
-  C5/C6/C7 at 0.981/0.953/0.964x own AR while C8 reaches 1.0057x. The
-  production table therefore remains `{}` (certified width-4 bound), not
-  because the wide target owners are still missing, but because the scalar
-  maximum cannot admit C8 without also admitting the three losing widths and
-  no complete dynamic C8 lifecycle gate has qualified that exception. See
-  `benchmarks/results/2026-09-02-gfx1151-qwen38-b1-transfer-full-suite.json`
-  and
-  `benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json`.
-- **Paths:** ~~eleven width-4 cap expressions in
-  `hipengine/generation/qwen35_gguf_mtp2.py`~~ — replaced 2026-08-30 by the
-  resolver above; ~~C4-only `_batch_accept_resources()` owner~~ — now sized
-  through C8/R32 by the bound; `_maybe_run_partitioned_speculative_decode` in
-  `hipengine/generation/engine_loop.py` (one full proposal+verify cycle per
-  subgroup) remains the default-path loop and is the piece M2 deletes; the
-  `GGUF_SPECDEC2_MTP2_C4` gate is renamed `GGUF_SPECDEC2_MTP2_PHYSICAL`.
-- **Why retained:** D4 deliberately decomposed wide due groups into bounded C4
-  frontiers to ship exact C1-C8 ownership. B1/B5 remove the original K3
-  wide-owner blocker, but current same-suite economics favor only C8; C5-C7
-  still lose to one full-width AR step. A scalar maximum cannot represent the
-  profitable set `{1,2,3,4,8}`, so the fail-closed width-4 policy remains.
-- **Removal trigger:** replace the scalar maximum with a profile-owned explicit
-  width/depth policy, then run the complete static and dynamic C8
-  correctness/economics/lifecycle packet without broadening C5-C7. Delete the
-  per-subgroup loop only after C1-C8 remains non-regressive under the resulting
-  width policy; retain the registered strict fallback. The original M1 mandate
-  against scattered caps is satisfied: one named capability bound remains with
-  current blocker evidence.
+- **State:** resolved. The scalar physical-width ceiling is now a package-owned
+  set of `(physical width, maximum draft depth)` cells, resolved by the shared
+  GGUF MTP adapter. The gfx1151 Qwen3.8 Q4_K_M production package preserves
+  every C1-C4/K1-K3 cell and adds C8/K3. C5-C7 have no cell and fail closed to
+  the registered AR fallback. gfx1100 and the other gfx1151 packages preserve
+  their prior contiguous policies.
+- **Evidence:** the current ten-prompt/four-category run measures C8/K3 at
+  52.103 tok/s versus 52.025 true AR (1.0015x) with all ten cells deterministic
+  and AR-equal. C5-C7 execute zero MTP cycles. The physical lifecycle reaches
+  one C8 proposal group and one R32 target group, falls back to C5 AR after
+  three cancellations, re-enters the same C8 shape after three admissions,
+  preserves the surviving row exactly, and drains scheduler, provider, and
+  memory ownership. See
+  `benchmarks/results/2026-09-05-gfx1151-qwen38-c8-k3-width-policy-retained.json`.
+- **Paths:** `GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS` in backend
+  execution-profile package metadata; `_physical_width_depths()` and
+  `_physical_width_depth_policy()` in
+  `hipengine/generation/qwen35_gguf_mtp2.py`; exact C8 explicit-serving
+  evidence in `hipengine/models/qwen35.py`. The wider subgroup loop in
+  `hipengine/generation/engine_loop.py` remains for honest unsupported and
+  arbitrary-C lowering; it is no longer needed to express the qualified C8
+  cell and is not a width-policy blocker.
+- **Rollback:** remove `(8, 3)` from the gfx1151 production package policy.
+  Do not restore a scalar ceiling or broaden C5-C7. The strict fallback remains
+  registered.
 
 ## RF-M5 — production whole-batch AR route for over-width MTP due items (2026-08-31)
 
