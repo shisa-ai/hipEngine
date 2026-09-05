@@ -36,7 +36,7 @@ from scripts.qwen4exp_llamacpp_exact_profile import (
 from scripts.qwen4exp_vulkan_owner_build import PIN, digest
 
 HOST_ID = "55ea6c509d0b49eea8de7094a1023668"
-TAXONOMY = "qwen4exp-semantic-owners-v1"
+TAXONOMY = "qwen4exp-semantic-owners-v2-complete-gr"
 OWNERS = {"moe", "linear", "gr_read", "qsa", "gdn", "ple", "boundary"}
 EMPTY_OPS = {"NONE", "VIEW", "RESHAPE", "PERMUTE", "TRANSPOSE"}
 OWNER_RE = re.compile(r"^HE_OWNER (0x[0-9a-f]+) (\w+) (\w+) (\S+) (\S+)$")
@@ -45,6 +45,8 @@ MODEL_REVISION = "8bdc666649440e9bdc97e16f3f75782c98478ff5"
 MODEL_FINGERPRINT = "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53"
 SHARED_SLOTS = {"shared_gate", "shared_up", "shared_down", "shared_expert_gate"}
 SHARED_WEIGHTS = re.compile(r"(?:^|\.)ffn_(?:gate|up|down|gate_inp)_shexp\.weight$")
+GR_SLOTS = re.compile(r"(?:hc_(?:attn|ffn)|head_hc)_(?:down|up|inject)$")
+GR_WEIGHTS = re.compile(r"(?:^|\.)(?:hc_(?:attn|ffn)|output_hc)_(?:down|up|inject)\.weight$")
 
 
 def model_identity(root):
@@ -79,6 +81,8 @@ def annotated_sections(text):
             weight_name = decode_name(weight)
             if owner == "linear" and SHARED_WEIGHTS.search(weight_name):
                 owner = "moe"
+            elif owner == "linear" and GR_WEIGHTS.search(weight_name):
+                owner = "gr_read"
             owners[ptr] = {
                 "owner": owner,
                 "source_owner": source_owner,
@@ -368,6 +372,8 @@ def normalize_hip_roles(raw):
         family = row["name"].split(":", 1)[0]
         if family == "linear" and row["name"].rsplit(".", 1)[-1] in SHARED_SLOTS:
             family = "moe"
+        elif family == "linear" and GR_SLOTS.fullmatch(row["name"].rsplit(".", 1)[-1]):
+            family = "gr_read"
         family = {
             "qsa_prefill": "qsa",
             "qsa_decode": "qsa",
@@ -602,6 +608,7 @@ def join_captures(hip, vk):
         "limits": [
             "HIP kernel durations versus Vulkan query intervals: semantic alignment, not identical instruments.",
             "MoE is the complete FFN including shared projections and router; fine source roles remain available.",
+            "GR includes down/up/inject projections plus read/mixing; residual combine remains boundary.",
             "Unprofiled canonical AR remains the throughput source of truth.",
             "Fixed-live decode profiles are not tg128-average family costs.",
         ],
@@ -619,6 +626,41 @@ def refresh_vulkan_sections(capture):
             raise ValueError("invalid request section bounds")
         case["prefill_profile"] = summarize_sections(sections[start:split])
         case["decode_profile"] = summarize_sections(sections[split:end])
+    capture["original_taxonomy"] = capture.get("taxonomy")
+    capture["taxonomy"] = TAXONOMY
+    return capture
+
+
+def refresh_hip_sections(capture):
+    for case in capture["cases"]:
+        child = Path(case["raw_path"])
+        if digest(child) != case["raw_sha256"]:
+            raise ValueError("HIP source capture changed")
+        prefix = (
+            f"qwen4exp_prefill_p{case['prompt_tokens']}_0"
+            if case["phase"] == "prefill"
+            else f"qwen4exp_decode_live{case['live_count']}_rep*"
+        )
+        paths = sorted(child.parent.glob(prefix + ".roles.json"))
+        expected = 1 if case["phase"] == "prefill" else 3
+        if len(paths) != expected:
+            raise ValueError("HIP role repetition count mismatch")
+        profiles = [normalize_hip_roles(json.loads(path.read_text())) for path in paths]
+        owner_ms = {
+            owner: sum(p["owner_ms"].get(owner, 0) for p in profiles) / expected
+            for owner in sorted(OWNERS)
+        }
+        case["profile"] = {
+            "owner_ms": owner_ms,
+            "total_device_ms": sum(owner_ms.values()),
+            "profiled_window_ms": sum(p["profiled_window_ms"] for p in profiles) / expected,
+            "coverage_fraction": 1.0,
+            "matched_gap_eligible": True,
+            "repetitions": expected,
+        }
+        case["role_sources"] = {str(path): digest(path) for path in paths}
+    capture["original_taxonomy"] = capture.get("taxonomy")
+    capture["taxonomy"] = TAXONOMY
     return capture
 
 
@@ -832,7 +874,10 @@ def render_comparison(result):
             ratio = (
                 f"{row['hip_over_vulkan']:.3f}x" if row["hip_over_vulkan"] is not None else "n/a"
             )
-            label = "MoE/FFN (routed + shared)" if row["owner"] == "moe" else row["owner"]
+            label = {
+                "moe": "MoE/FFN (routed + shared)",
+                "gr_read": "GR projections + read/mix",
+            }.get(row["owner"], row["owner"])
             lines.append(
                 f"| {label} | {row['hipengine_ms']:.3f} | {row['vulkan_ms']:.3f} | {ratio} |"
             )
@@ -892,6 +937,7 @@ def main():
         ]
         compare_reference(reference, vk)
         refresh_vulkan_sections(vk)
+        refresh_hip_sections(he)
         result = join_captures(he, vk)
         result["sources"] = {
             str(p): digest(p) for p in (args.hipengine, args.vulkan, args.reference)

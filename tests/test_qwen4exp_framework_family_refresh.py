@@ -75,6 +75,33 @@ def test_shared_projection_normalization_is_the_same_on_both_backends():
         normalize_hip_roles({"roles": [], "unattributed_ms": 1})
 
 
+@pytest.mark.parametrize(
+    "slot,weight",
+    [
+        ("hc_attn_down", "blk.0.hc_attn_down.weight"),
+        ("hc_attn_up", "blk.0.hc_attn_up.weight"),
+        ("hc_ffn_inject", "blk.0.hc_ffn_inject.weight"),
+        ("head_hc_down", "output_hc_down.weight"),
+        ("head_hc_up", "output_hc_up.weight"),
+    ],
+)
+def test_gr_projection_and_fused_mix_have_one_owner(slot, weight):
+    text = f"HE_OWNER 0x1 linear MUL_MAT - {weight.encode().hex()}\n" + section()
+    assert annotated_sections(text)[0]["rows"][0]["owner"] == "gr_read"
+    hip = normalize_hip_roles(
+        {
+            "roles": [
+                {"name": f"linear:layers.*.{slot}", "ms": 2},
+                {"name": "gr_read:layers.*.hc_attn_down", "ms": 3},
+            ],
+            "unattributed_ms": 0,
+            "attributed_ms": 5,
+            "window_ms": 6,
+        }
+    )
+    assert hip["owner_ms"] == {"gr_read": 5}
+
+
 def test_identity_rejects_cross_host_and_cross_fixture():
     capture = {
         "taxonomy": TAXONOMY,
