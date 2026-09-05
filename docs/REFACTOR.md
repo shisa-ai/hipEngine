@@ -5050,7 +5050,7 @@ MTP verify path, and it is currently impossible, which is why the per-row verify
 open on 2026-08-30. Fix: have the harness submit a real prompt long enough to fill the block
 (`--prompt-ids` sized to `block_rows + prompt`), or give `verify()` an explicit padding token
 it accepts. Also consider a `--roctx-sdk auto` that degrades to plain kernel tracing when no
-pip ROCm SDK exists - see the profiling traps section in `docs/KERNELS.md`.
+pip ROCm SDK exists - see the profiling traps section in `docs/RDNA3-TUNING-GUIDE.md`.
 
 ## gfx1100 prefill route booleans are duplicated and inert-by-pooling (2026-08-30)
 

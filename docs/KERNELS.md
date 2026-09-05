@@ -533,7 +533,7 @@ the child, including lazy libraries that do not expose per-call cache flags.
 
 Check expected kernel identity, plausible duration, workgroup/grid, VGPR, LDS, and scratch. `Scratch_Size > 0` on a hot path is a review trigger. Some profiler versions expose start/end timestamps instead of `DurationNs`; subtract them. Raw profiler dumps stay outside Git.
 
-For MTP, profile the final child (`scripts/mtp_verifier_rocprof.py` or the final smoke), not the parent economics/prompt-suite harness that launches nested Python processes.
+For MTP, profile the final child (`scripts/mtp_verifier_rocprof.py` or the final smoke), not the parent economics/prompt-suite harness that launches nested Python processes. Wrapper defaults, flag syntax, padding, compiler-probe, and PMC-counter traps for `rocprofv3` on this toolchain are cataloged in [`RDNA3-TUNING-GUIDE.md`](RDNA3-TUNING-GUIDE.md), section 4.9.
 
 ## Registering a kernel
 
@@ -581,135 +581,6 @@ A new or ported kernel lands only when all applicable checks pass:
 6. **Profiler:** cache-only `rocprofv3 --kernel-trace` or Nsight trace names the expected kernel with plausible resources/duration.
 7. **Integration:** run the narrowest applicable strict, production, or batch-invariant model/dynamic gate from `TESTING.md`.
 8. **Evidence:** performance claims follow `BENCHMARK.md` and record profile/schema and selected/fallback manifest hashes in artifact/rollup/changelog/worklog; do not add the narrative here.
-
-## MTP verify profiling traps (W7900, measured 2026-08-30)
-
-Four invocations failed before producing data; each is a property of the tool, not of the
-measurement, so record it instead of rediscovering it.
-
-0. **Raw MMQ32 consumers take the non-kmajor d4s4 producer; kmajor is source-layout-only.**
-   `gguf_q5_k_mmq32_*` / `gguf_q6_k_mmq32_*` raw owners (and their pipe/mb4 diagnostic
-   variants) are fed by `gguf_q8_1_d4s4_f32_quantize_bf16` + `q8_1_d4s4_f32_nbytes` in
-   production (`gguf_linear.py` routes kmajor only to the rows==32 source-layout owner).
-   Feeding a raw owner from `gguf_q8_1_d4s4_f32_quantize_bf16_kmajor` still runs and stays
-   self-consistent (pipe == serial bit-exact), but skews relative timing (measured 2026-09-04:
-   serial mb2 10.170 ms kmajor vs 9.109 ms correct layout per 48-weight R24 pass) and fails
-   the CPU-reference outer floor (KL ~46) because the activation bytes are interpreted in the
-   wrong layout. Any leaf A/B against a raw owner must use the non-kmajor producer. First
-   caught by the outer-floor assert in the C8 iter28 pipe contract test.
-
-1. **The self-contained wrappers cannot run on this host.** `gguf_mtp_verifier_rocprof.py`,
-   `gguf_decode_rocprof.py`, `gguf_packed_ar_rocprof.py`, `gguf_mtp_draft_rocprof.py`,
-   `gguf_continuous_owner_rocprof.py`, `gguf_sh_c0_profile.py`, `qwen35_rocprof_audit.py` and
-   `mtp_verifier_rocprof.py` all call `_prepare_roctx_override`, which raises unless a pip
-   ROCm SDK `librocprofiler-sdk-roctx.so.1` exists under `site-packages/_rocm_sdk_*/lib`.
-   **That blocker was wrong and is retracted.** The sentence above came from a `find`
-   over the project venv, `/opt/rocm*` and `/usr/lib`, which misses where this host keeps
-   the SDK: **12 copies exist**, all under `~/mambaforge/envs/*/lib/python3.12/site-packages/`
-   in `_rocm_sdk_core/lib` and `_rocm_sdk_devel/lib` (including `.so.1.3.2`), in the
-   `therock` and `vllm` envs. The default only probes `sys.prefix`, and the wrappers are run
-   with `.venv/bin/python`, whose prefix has no `_rocm_sdk_core` at all - while
-   `shutil.which('rocprofv3')` is `/home/lhl/mambaforge/envs/therock/bin/rocprofv3`, so the
-   matching library sits in the very env that provides the profiler. Passing it works in the
-   sense that `_prepare_roctx_override(<therock _rocm_sdk_core path>)` returns an override
-   directory instead of raising (verified in plain Python 2026-08-30, no GPU); what is *not*
-   yet verified is that marker tracing then succeeds end to end under `rocprofv3`. The
-   permanent fix is for `_default_roctx_sdk` to also probe the prefix of `which(rocprofv3)`.
-   **Done in one wrapper on 2026-08-30** (commit 7716ccf87):
-   `gguf_packed_ar_rocprof.py` globs
-   `lib/python3*/site-packages/_rocm_sdk_{core,devel}/lib/librocprofiler-sdk-roctx.so*` under the
-   `which(rocprofv3)` prefix, newest python first, then falls back to legacy `libroctx64`. On this
-   host it resolves to the therock copy matching `rocprofv3 1.3.2` with no flag passed. The other
-   seven wrappers still carry the old copy - see `docs/REFACTOR.md`.
-   Kernel tracing needs no ROCTX shim - only markers do - so the
-   working route is the wrapper's own `--child` mode driven under a direct
-   `rocprofv3 --kernel-trace`, rolled up with `gguf_kernel_trace_rollup.py TRACE_DIR`.
-2. **`rocprofv3` flags are not what they look like.** `-i/--input` is an input file and
-   `-d/--output_dir` is the directory; `-o/--output_file` is the name prefix and the format is
-   `-F`. Passing `-i <dir> -d csv` fails with "does not have a recognized extension" and then
-   writes into a stray `csv/` directory.
-3. **Defaults profile the wrong path.** `mtp_verifier_rocprof.py` defaults to
-   `--model /models/hipengine/Qwen3.6-35B-A3B-PARO-...-MTP-BF16`, a safetensors model, so it
-   cannot describe the GGUF path at all. `gguf_mtp_verifier_rocprof.py --mode` defaults to
-   `serial-step`, the historical verifier, not the native block verifier the resident route
-   reaches. Either default silently measures a path we do not ship.
-   Worse, the *GGUF* wrapper is not safe either: its baseline child is
-   `scripts/mtp_chain_e2e_smoke.py`, which mentions GGUF zero times and is
-   safetensors-only, so `--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf` is accepted by
-   argparse and then dies in `_run_ar_baseline` with
-   `MissingConfigError: config.json not found under /models/gguf/...`
-   (`mtp_chain_e2e_smoke.py:1768`). Four K1-K4 budget arms were lost to this on
-   2026-08-30; all four logs differ only in the budget string. That wrapper needs a
-   GGUF baseline child before any GGUF verify claim can be profiled.
-
-4. **`--mode block-verify` rejects its own padding.** With `--block-rows` beyond the prompt
-   tail the child raises `ValueError: token_id 2147483647 outside [0, 248320)` from
-   `qwen35_gguf_runner.py:19000`, so sweeping rows (the direct way to separate launch
-   overhead from real work, since K3 is 4 rows per lane and C8 is 32) needs the padding
-   contract fixed first - see `docs/REFACTOR.md`.
-5. **A profiler-injected tree poisons every compiler probe it spawns.** Under `rocprofv3`, the
-   injected libraries and `ROCPROF_*=1` environment are inherited by children, so even the JIT
-   path's `clang++ --version` probe loads the profiler, deadlocks in `futex_wait` on a control
-   channel whose owner is gone, and never exits. Measured on this host 2026-08-30: **77 orphaned
-   `clang++ --version` processes**, ages 11 to 46 days, states `SN`/`S<`, ppid 1 (about 1.7 per day
-   over 46 days). Six sampled across that range were identical: 15 profiler libraries in
-   `/proc/<pid>/maps`, `ROCPROF_KERNEL_TRACE=1` in `/proc/<pid>/environ`, `wchan=futex_wait`; one
-   also held an `anon_inode:kfd_smi_ev` fd, which is why `rocm-smi --showpids` lists a `clang++` as
-   a GPU process. The parents are gone because they were killed mid-profile - an interrupted
-   profile is what strands the child. Consequences: a live waiter on that probe hangs forever with
-   the GPU idle, which looks exactly like the stale-JIT-cache symptom above and is a second,
-   different cause of it; and the leftovers pollute the SMI pid table. The AGENTS rule - prebuild
-   the `.so` and pass a precomputed compiler-version file with `require_cached` instead of letting
-   the profiled process spawn `hipcc`/`clang` - is what avoids it. Treat that as a **pair, not an
-   option**: measured again on 2026-08-30, `HIPENGINE_REQUIRE_CACHED_BUILD=1` on its own still lets
-   the builder run `hipcc --version` to compute the cache key, so the run deadlocks anyway with the
-   parent blocked in `wchan=anon_pipe_read` and the GPU idle - `HIPENGINE_COMPILER_VERSION_FILE` (or
-   an explicit `compiler_version`) is what removes the probe. In this symptom the *parent* waits in
-   `anon_pipe_read` rather than `futex_wait`. A permanent fix is for the probe
-   in the JIT build path to refuse to spawn when `ROCPROF_*`/`ROCT_*` is in the environment and use
-   the cached file instead. Stranding is host-wide, not MTP-specific, so clean up outside a
-   profiling session rather than during one.
-
-6. **The verify wrapper does not accept `--backend`, and callers pass it.** All four
-   `b1..b4` arms in one sweep died before reaching the GPU with
-   `gguf_mtp_verifier_rocprof.py: error: unrecognized arguments: --backend hip_gfx1100` - the
-   wrapper's parser takes `--mode`, `--roctx-sdk`, `--out`, `--top` and friends, but not
-   `--backend`. The four logs are byte-identical at 1907 bytes, so a whole budget ladder can
-   vanish with nothing but a usage error in it. It is single-backend by construction, so the
-   durable fix is either to accept and ignore the flag or to reject it with a message that names
-   the accepted flags; meanwhile do not pass it from a driver script, and treat an argparse exit
-   code 2 in a sweep log as "every arm in this file failed", never as a null result.
-
-7. **`block-verify` cannot run on a Q4_K_M repack without one specific env, and a wrapper flag
-   implies otherwise.** On a `q5_k_t16_v1` repack the verify path picks F32 activations unless
-   `use_prefill_gdn_capture` or `prefill_score_ready` (`qwen35_gguf_runner.py:8000`); with F32 both
-   dense-Q8 escapes require `quant_key == "gguf_q8_0_t16_v1"` (`_dense_q8_raw_ptr`, :12710), so they
-   are structurally unavailable and the plain fallback raises
-   `unsupported GGUF linear dispatch: layout='gguf_q5_k_t16_v1', activation='f32', output='bf16'`
-   (`gguf_linear.py:2181`). Four arms died identically that way. `--block-wmma-prefill` alone does
-   not clear it; `HIPENGINE_GGUF_VERIFY_CAPTURE_PREFILL_GDN=1` does, by selecting bf16 activations.
-   Do not substitute `--verify-dense-q8-dp4a-f32`: nothing under `hipengine/` reads a
-   `verify_dense_q8_dp4a_f32` argument - the switch is the env var
-   `HIPENGINE_GGUF_DENSE_Q8_DP4A_F32` - and that route stays closed to a q5 repack anyway.
-
-8. **Hardware PMC counters cannot be collected with `rocprofv3` on this stack.**
-   Every attempt (`--pmc SQ_INSTS ...`, or an input file with `pmc:` lines or
-   `{"jobs":[{"pmc": [...]}]}` JSON) hangs before the profiled application ever
-   starts: the app timer reads `0.000000 sec` and nothing is written to the
-   output directory. Worse, once hung, `timeout N` cannot kill it - rocprofv3
-   installs an error signal handler that catches SIGTERM and then blocks
-   forever "waiting for 1 children to exit". Always wrap such attempts as
-   `timeout -k 10 <seconds> rocprofv3 ...` (SIGKILL escalation), or clean up
-   with `pkill -9 -f rocprofv3`. Measured repeatedly on this host (2026-09-03)
-   with `rocprofv3 1.3.2` under the `therock` env. For resource inspection,
-   use code-object metadata (VGPR/LDS/workgroup) plus kernel-trace durations
-   instead, and compare walls against `docs/ROOFLINE.md` bandwidth bounds.
-
-For the server matrix itself: `gguf_mtp_c1c8_server_bench.py` accepts neither
-`--require-mtp`, `--tag` nor `--max-run-seconds`, and its `--model` default is
-`Qwen3.6-27B-Q4_K_M.gguf` - omitting `--model` benchmarks the wrong model and still produces
-a clean-looking packet, so always diff the written `protocol` block against a retained packet
-before trusting a comparison.
 
 ## Per-family port checklist
 
