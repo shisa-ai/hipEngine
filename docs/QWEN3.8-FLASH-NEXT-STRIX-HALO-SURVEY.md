@@ -27,6 +27,13 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
+The newer Q4 pair admission measures combined-stack prefill
+**153.78/151.21/141.30 tok/s**, with all72 trajectories exact and all request
+walls improved. Its A/B decode is19.383/18.512/12.899 tok/s with drift.
+A clean combined-default and halo-box Vulkan baseline refresh is queued;
+the cross-engine table below remains historical to its pinned revisions.
+[Q4 pair packet](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json).
+
 The latest retained hipEngine serial-GDN A/B now measures prefill
 **145.49/143.10/134.32 tok/s** at p512/p1024/p4096 on this physical host.
 All72 trajectories are exact and every complete request improves3.28-6.79%

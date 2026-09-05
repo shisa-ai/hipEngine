@@ -186,34 +186,26 @@ also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen3
 
 ## Qwen3.8-Flash-Next implementation-first status
 
-Next standalone screen: actual Q4 gate/up+SiLU at tokens512, with shared
-activation loads across two outputs:
+Latest full-suite production retention adds exact Q4 output-pair reuse:
 
-| Weight bank / routing | Parent (ms) | Pair2 (ms) | Speedup |
-| --- | ---: | ---: | ---: |
-| Layer0 / uniform | 25.155 | 18.696 | 1.345x |
-| Layer4 / skewed | 26.412 | 18.344 | 1.440x |
-
-All outputs exact,16 focused tests pass, trace has zero scratch. Model admission
-remains pending; these are kernel measurements, not new model rates.
-[Q4 pair screen](results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json).
-
-Latest full-suite production retention adds exact register-state serial GDN:
-
-| Shape | Parent prefill | Register GDN prefill | Gain | Decode before -> after |
+| Shape | Parent prefill | Q4 pair prefill | Gain | Decode before -> after |
 | --- | ---: | ---: | ---: | ---: |
-| p512 | 131.60 | **145.49** | **+10.55%** | 19.435 -> 19.435 |
-| p1024 | 129.83 | **143.10** | **+10.23%** | 18.685 -> 18.602 |
-| p4096 | 122.67 | **134.32** | **+9.50%** | 14.057 -> 13.547 |
+| p512 | 145.21 | **153.78** | **+5.90%** | 19.385 -> 19.383 |
+| p1024 | 142.82 | **151.21** | **+5.87%** | 18.556 -> 18.512 |
+| p4096 | 134.01 | **141.30** | **+5.44%** | 13.113 -> 12.899 |
 
 All rates are tok/s on Framework `gfx1151`, UD-Q4_K_XL/BF16 KV, four
 categories and tg128. This is a same-residency incremental A/B with all72
 trajectories exact, all12 prefill cases positive, and complete-request wall
-speedups of3.28-6.79% per case. Decode losses of0.45%/3.63% at p1024/p4096
+speedups of1.67-3.90% per case. Decode losses of0.23%/1.63% at p1024/p4096
 are retained under the owner's prefill-first direction and remain open work.
 Both arms drift; this is not a stable absolute decode comparison or external
-parity claim. Full A/B elapsed36m11s; teardown is zero.
-[Full timing and promotion evidence](results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
+parity claim. Full A/B elapsed34m53s; teardown is zero.
+[Full timing and promotion evidence](results/2026-09-05-framework-qwen4exp-q4-pair-production.json).
+
+The preceding serial-GDN admission improved prefill9.50-10.55% and remains
+part of this baseline. Its separate decode tradeoff is preserved in its
+[GDN evidence](results/2026-09-05-framework-qwen4exp-gdn-register-production.json).
 
 The preceding Q5_1 pair2 admission improved prefill3.73-4.17% and remains
 part of this measured baseline.
