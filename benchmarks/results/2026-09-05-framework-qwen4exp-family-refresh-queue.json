@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_framework_family_refresh_queue",
+  "date": "2026-09-05",
+  "date_basis": "UTC",
+  "status": "queued_not_run",
+  "performance_claim": false,
+  "priority": "before further kernel optimization",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon 8060S"
+  },
+  "runtime_base_commit": "4e0515346",
+  "production_manifest_sha256": "e509aeda3ccc1553362509e5ceabc11e0f8bde8007d3418f9b1342d997e0276b",
+  "model": {
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "quant": "UD-Q4_K_XL",
+    "kv": "BF16"
+  },
+  "fixture": {
+    "path": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1"
+  },
+  "comparator": {
+    "source": "/home/lhl/halo-box-strix-llama",
+    "commit": "b212548e0ddbf0a14e5a1d81b6ffcf8e4d098faf",
+    "vulkan_binary": "/home/lhl/halo-box-strix-llama/build-vulkan-release-b212548e/bin/llama-server",
+    "hip_binary": "/home/lhl/halo-box-strix-llama/build-hip-release-b212548e/bin/llama-server",
+    "server_args": ["-ngl", "999", "-fa", "on", "-ctk", "bf16", "-ctv", "bf16", "-c", "4352", "-b", "8192", "-ub", "2048", "-t", "4"]
+  },
+  "execution": "serial GPU stages; no clock changes or overlapping GPU jobs; record elapsed time and terminal status per stage",
+  "stages": [
+    {
+      "id": "instrumentation",
+      "status": "queued",
+      "deliverable": "Commit scripts/qwen4exp_framework_family_refresh.py with shared-taxonomy import, capture orchestration, provenance/coverage tests and generated tables.",
+      "requirements": [
+        "Reuse parse_perf_log from scripts/llamacpp_vulkan_perf_summary.py, not its coarse family labels as semantic owners.",
+        "Classify selected matmul before quant type, including Q5_1 and Q8_0.",
+        "Obtain semantic node/source/fusion metadata for ambiguous Vulkan entries; stock unary/layout names alone are insufficient.",
+        "Keep reference repositories read-only; any instrumentation must use an owned profiling copy and recorded patch/hash."
+      ]
+    },
+    {
+      "id": "freeze",
+      "status": "queued",
+      "depends_on": ["instrumentation"],
+      "requirements": ["Pin final controller and runtime commits separately, both binary hashes, host identity, fixture, full model identity, compiler/driver, clock policy, profile manifest and clean tracked source."]
+    },
+    {
+      "id": "unprofiled_baselines",
+      "status": "queued",
+      "depends_on": ["freeze"],
+      "helper": "scripts/qwen4exp_canonical_ar_bench.py",
+      "engines": ["hipengine combined production default", "halo-box Vulkan target", "halo-box HIP diagnostic"],
+      "cases": "all12 canonical cases; code/general_en/general_ja/mixed_ja_en x p512/p1024/p4096",
+      "warmups": 1,
+      "repetitions": 3,
+      "decode_transitions": 128,
+      "requirements": ["Logger/profiler off for throughput rows.", "Per-case repeatability, timing variance and clean teardown.", "Cross-engine generated-ID equality is diagnostic, not production correctness."]
+    },
+    {
+      "id": "owner_profiles",
+      "status": "queued",
+      "depends_on": ["unprofiled_baselines"],
+      "hipengine": "cached rocprofv3 kernel+HIP API+ROCTX traces; scripts/qwen4exp_role_analyze.py",
+      "vulkan": "GGML_VK_PERF_LOGGER=1, frequency1, explicitly recorded concurrency setting; request-bounded graph sections plus semantic metadata",
+      "coverage": "code-p512/p1024/p4096 and all four p4096 categories; prefill and aligned live513/1025/4097 decode diagnostics",
+      "requirements": ["Exclude load/warmup by explicit request windows, not assumed section counts.", "Verify profiling instrumentation preserves outputs vs its uninstrumented engine.", "Keep profiled device sums separate from unprofiled wall/throughput."]
+    },
+    {
+      "id": "join_publish",
+      "status": "queued",
+      "depends_on": ["owner_profiles"],
+      "requirements": [
+        "One versioned taxonomy with exclusive routed MoE, non-routed linear, GR, QSA, GDN, PLE and boundary ownership.",
+        "Reconcile every timestamp exactly once; disclose unclassified and mixed-family fused cost and fail matched-gap publication when unresolved.",
+        "Reject host/model/fixture/phase/context mismatches; never join zbook to Framework.",
+        "Emit starting/current/comparator tables, per-case/category/shape data, device and wall ceilings, and raw hashes.",
+        "Generate the family mapping blocks in docs/QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md after every retained promotion."
+      ]
+    }
+  ],
+  "next_optimization": {
+    "status": "unmeasured_hypothesis_after_refresh",
+    "grid": {"prefill_chunk": [512, 1024, 2048], "q4_row_batch": [8, 16, 32]},
+    "requirements": ["Actual routing distributions and complete MoE boundary.", "Exact gates, VGPR/LDS/scratch, cache/weight-traffic evidence and whole-model wall.", "Do not equate the inferred 1.8x weight-pass reduction with measured speedup."]
+  }
+}

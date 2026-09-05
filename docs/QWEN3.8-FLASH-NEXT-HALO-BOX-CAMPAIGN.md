@@ -463,6 +463,108 @@ Reading rules and caveats, binding on any use of these rows:
   whole-model same-session A/B plus their RED gates, using HB-2 only as
   mechanism-existence evidence.
 
+### 5.2.1 Framework starting and current owner snapshots
+
+These are **same-physical-host diagnostic snapshots**, not joined to the
+historical `zbook` classifier above. Both use UD-Q4_K_XL, BF16 KV and the
+exact `code-p4096` fixture. The Framework arrival snapshot is `cf9c55920`
+from the [owner refresh](../benchmarks/results/2026-09-05-framework-gfx1151-qwen38-flash-next-owner-refresh.json);
+the post-GDN snapshot is `511dd977a` from
+[Q4 pair screen -> owner_refresh](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json).
+The latter precedes Q4 pair production: a new post-Q4 profile is queued,
+not silently inferred from its microbenchmark gain.
+
+| Exclusive owner | Framework arrival (ms) | Post-GDN (ms) | Post-GDN device share | Device zero-cost ceiling | Wall zero-cost ceiling |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Routed MoE | 19,023.675 | 15,511.808 | 53.32% | 2.142x | 2.096x |
+| Non-routed linear | 8,290.897 | 8,165.727 | 28.07% | 1.390x | 1.380x |
+| GR read | 2,638.745 | 2,623.620 | 9.02% | 1.099x | 1.097x |
+| QSA prefill | 8,982.811 | 1,921.000 | 6.60% | 1.071x | 1.069x |
+| GDN | 3,906.453 | 779.854 | 2.68% | 1.028x | 1.027x |
+| PLE | 14.224 | 13.568 | 0.05% | 1.000x | 1.000x |
+| Prefill boundary | 76.563 | 74.891 | 0.26% | 1.003x | 1.003x |
+
+Post-GDN owner sums are **29,090.468 ms**; the profiled wall window is
+**29,661.252 ms**, with 100% launch attribution. Device share uses the first
+denominator. For owner cost `C`, the ceilings are `D/(D-C)` and `W/(W-C)`.
+The 570.784-ms difference is **not automatically Python overhead**. These
+are optimistic sensitivity bounds, not predicted realizable speedups.
+The arrival profiled window is 43,171.036 ms; individual phase gains must
+still be established by their retained same-session A/B packets.
+
+### 5.2.2 Shared-taxonomy target mapping and queued refresh
+
+**Owner-requested next priority: rerun on Framework before further tuning.**
+The [machine-readable queue](../benchmarks/results/2026-09-05-framework-qwen4exp-family-refresh-queue.json)
+is **queued, not run**. It freezes the combined Q4-pair production default,
+then measures halo-box **Vulkan `b212548e0`** as the target and HIP as a
+separate diagnostic. GPU stages run serially.
+
+The second family table must be emitted by a committed refresh script, not
+hand-assembled from different taxonomies. Until those captures pass, the
+honest alignment is:
+
+| Shared family | Post-GDN Framework (ms) | Current halo-box Vulkan family cost | Matched gap |
+| --- | ---: | --- | --- |
+| Routed MoE, including all quant types and local routing/combine | 15,511.808 | Queued | Not established |
+| Non-routed linear + GR read | 10,789.347 | Queued | Not established |
+| QSA prefill, including its non-projection preparation | 1,921.000 | Queued | Not established |
+| GDN recurrence/Conv/norm-gate | 779.854 | Queued | Not established |
+| PLE + boundary | 88.459 | Queued | Not established |
+
+The quoted llama.cpp 3.63/1.93/0.53/1.85-second values belong to the older
+**zbook patched-upstream HIP** classifier. They are not current halo-box
+Vulkan measurements, and the dense/MoE boundaries do not match these rows.
+Do not use their ratios as matched gaps, call GDN 2.4x ahead of the target,
+or turn that hypothetical substitution into proof that there is no hardware
+or implementation limit. The retained QSA/GDN reductions are real; their
+remaining matched Vulkan gaps need the new capture.
+
+Execution order and acceptance:
+
+1. Commit the repeatable capture/join/table generator using
+   `scripts/llamacpp_vulkan_perf_summary.py` for log parsing and
+   `scripts/qwen4exp_role_analyze.py` for HIP attribution. Selected matmul
+   must be classified before quant type: Q5_1 and selected Q8 are MoE, not
+   elementwise/dense. Stock Vulkan unary/layout names can lack ownership;
+   collect node/source/fusion metadata or expose them as unclassified.
+2. Freeze controller/runtime revisions, original and instrumented binary
+   hashes, model/fixture identity, driver/compiler, clocks and production
+   manifest. Keep reference repos read-only. Check instrumented output
+   parity against its own uninstrumented engine.
+3. Run all 12 canonical AR cases at one warmup and three repetitions,
+   including tg128, on the combined hipEngine default, halo-box Vulkan,
+   and halo-box HIP. No profiler/logger in throughput rows.
+4. Separately profile prefill and aligned-context decode. Vulkan uses
+   `GGML_VK_PERF_LOGGER=1`, not rocprofv3; select request-bounded graph
+   sections, including every ubatch. Collect all p4096 categories and code
+   p512/p1024 anchors. Distinguish fixed-live diagnostics from tg128 averages.
+5. Emit both sides under one versioned, exclusive taxonomy. Reconcile sums,
+   disclose unknown/mixed fused cost, reject host/model/fixture/phase/context
+   mismatches, and withhold matched-gap claims until coverage is resolved.
+   Regenerate these tables after every retained promotion.
+
+There **are** combined-stack decode measurements in the GDN and Q4 A/B
+packets, plus post-binder state checks. What remains missing is a fresh
+frozen-default cross-engine baseline with aligned current decode-family
+costs. The 20.913/80.061-ms ordered-QSA figures and its historical comparator
+are `zbook` evidence, not a Framework 35x precedent. Compute the decode
+parity factor from the new matching rows rather than carrying forward 1.54x.
+
+### 5.2.3 Next measured lever after refresh
+
+Queue a joint **prefill chunk {512,1024,2048} x Q4 ROW_BATCH {8,16,32}**
+screen. The current gate/up family uses row batches of eight; heavy experts
+can therefore reread packed weight values over multiple row groups. Larger
+row batches may change the earlier chunk-size tradeoff, so the old
+chunk-only sweep does not close this joint experiment.
+
+The suggested ~800->444 weight passes and ~1.8x traffic ratio are **inferred,
+not measured speedups**. Measure actual expert-count distributions, register
+pressure (pair2 currently uses 88 VGPR), LDS/scratch, cache/weight traffic,
+the complete MoE operation and whole-request wall. Preserve the exact parent
+gate and smaller-row fallback; do not promote on traffic arithmetic alone.
+
 ### 5.3 Source audit corrections (2026-09-05)
 
 Audit basis: hipEngine `3574a1bd2` and read-only halo-box

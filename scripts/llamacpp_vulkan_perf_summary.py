@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 SCHEMA = "hipengine.llamacpp_vulkan_perf_summary.v1"
+CLASSIFIER_VERSION = "2-selected-matmul-first"
 
 _OPERATION_RE = re.compile(
     r"^(?P<name>.+):\s+(?P<count>\d+)\s+x\s+"
@@ -57,6 +58,12 @@ def classify_operation(name: str) -> str:
         return "llama_selected_q5"
     if "MUL_MAT_ID" in upper and "Q6_K" in upper:
         return "llama_selected_q6"
+    if "MUL_MAT_ID" in upper and "Q5_1" in upper:
+        return "llama_selected_q51"
+    if "MUL_MAT_ID" in upper and "Q8_0" in upper:
+        return "llama_selected_q8"
+    if "MUL_MAT_ID" in upper:
+        return "llama_selected_other"
     if "MUL_MAT_VEC Q6_K" in upper:
         return "llama_lm_head"
     if "MUL_MAT" in upper and "Q8_0" in upper:
@@ -217,6 +224,7 @@ def build_summary(
     operations, families = _aggregate_rows(selected)
     return {
         "schema": SCHEMA,
+        "classifier_version": CLASSIFIER_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "label": label,
         "command": command,
