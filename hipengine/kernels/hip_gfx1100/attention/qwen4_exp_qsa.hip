@@ -562,6 +562,73 @@ __global__ void qsa_sparse_attention_paged_bf16_rows_f32_kernel(
   }
 }
 
+// Eight coordinates per lane reproduce the 256-thread parent tree exactly.
+__global__ __launch_bounds__(32) void qsa_sparse_attention_h256_wave_rows_f32_kernel(
+    const float* __restrict__ query,
+    const uint16_t* __restrict__ key_cache,
+    const uint16_t* __restrict__ value_cache,
+    const int64_t* __restrict__ selected_positions,
+    const int32_t* __restrict__ selected_counts,
+    const int32_t* __restrict__ block_tables,
+    float* __restrict__ output,
+    int64_t rows, int64_t selected_stride, int64_t block_size,
+    int64_t block_table_len, int64_t query_heads, int64_t kv_heads,
+    float scale) {
+  const int64_t row = blockIdx.y, head = blockIdx.x;
+  const int lane = threadIdx.x;
+  if (row >= rows) return;
+  const int count = selected_counts[row];
+  if (count <= 0 || count > selected_stride) return;
+  const int64_t kv_head = head / (query_heads / kv_heads);
+  const int64_t out_base = (row * query_heads + head) * 256;
+  float q[8], acc[8] = {};
+#pragma unroll
+  for (int i = 0; i < 8; ++i) q[i] = query[out_base + lane + 32 * i];
+  float maximum = -INFINITY, denominator = 0.0f;
+  for (int s = 0; s < count; ++s) {
+    const int64_t pos = selected_positions[row * selected_stride + s];
+    const int64_t logical = pos / block_size;
+    if (pos < 0 || logical >= block_table_len) continue;
+    const int64_t physical = block_tables[row * block_table_len + logical];
+    const int64_t token = physical * block_size + pos % block_size;
+    const int64_t offset = (token * kv_heads + kv_head) * 256;
+    float p[8];
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      p[i] = __fmul_rn(q[i], bf16_bits_to_float(key_cache[offset + lane + 32 * i]));
+      // The parent rounds through LDS. HIP's __fmul_rn alone still contracts
+      // under this build profile; pin the product before the reduction adds.
+      asm volatile("" : "+v"(p[i]));
+    }
+#pragma unroll
+    for (int i = 0; i < 4; ++i) p[i] += p[i + 4];
+#pragma unroll
+    for (int i = 0; i < 2; ++i) p[i] += p[i + 2];
+    p[0] += p[1];
+    float score = p[0];
+#pragma unroll
+    for (int stride = 16; stride > 0; stride >>= 1) {
+      score += __shfl_down(score, stride);
+    }
+    score = __shfl(score, 0) * scale;
+    const float next_maximum = fmaxf(maximum, score);
+    const float old_scale = isinf(maximum) ? 0.0f : expf(maximum - next_maximum);
+    const float score_scale = expf(score - next_maximum);
+    maximum = next_maximum;
+    denominator = denominator * old_scale + score_scale;
+#pragma unroll
+    for (int i = 0; i < 8; ++i) {
+      acc[i] = acc[i] * old_scale
+          + score_scale * bf16_bits_to_float(value_cache[offset + lane + 32 * i]);
+    }
+  }
+  denominator = fmaxf(denominator, 1.0e-20f);
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    output[out_base + lane + 32 * i] = acc[i] / denominator;
+  }
+}
+
 __global__ __launch_bounds__(32) void qsa_sparse_attention_paged_bf16_wave32_f32_kernel(
     const float* __restrict__ query,
     const uint16_t* __restrict__ key_cache,
@@ -1378,6 +1445,31 @@ extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_rows_f32(
       static_cast<const int32_t*>(block_tables), static_cast<float*>(output),
       rows, selected_stride, block_size, block_table_len, query_heads,
       kv_heads, head_dim, scale);
+  return static_cast<int>(hipGetLastError());
+}
+
+extern "C" int hipengine_qwen4_exp_qsa_sparse_attention_paged_bf16_h256_wave_rows_f32(
+    const void* query, const void* key_cache, const void* value_cache,
+    const void* selected_positions, const void* selected_counts,
+    const void* block_tables, void* output,
+    int64_t rows, int64_t selected_stride, int64_t block_size,
+    int64_t block_table_len, int64_t query_heads, int64_t kv_heads,
+    int64_t head_dim, float scale, hipStream_t stream) {
+  if (!query || !key_cache || !value_cache || !selected_positions ||
+      !selected_counts || !block_tables || !output || rows <= 0 ||
+      selected_stride <= 0 || block_size <= 0 || block_table_len <= 0 ||
+      query_heads <= 0 || kv_heads <= 0 || query_heads % kv_heads || head_dim != 256) {
+    return static_cast<int>(hipErrorInvalidValue);
+  }
+  hipLaunchKernelGGL(qsa_sparse_attention_h256_wave_rows_f32_kernel,
+      dim3(static_cast<uint32_t>(query_heads), static_cast<uint32_t>(rows)),
+      dim3(32), 0, stream,
+      static_cast<const float*>(query), static_cast<const uint16_t*>(key_cache),
+      static_cast<const uint16_t*>(value_cache),
+      static_cast<const int64_t*>(selected_positions),
+      static_cast<const int32_t*>(selected_counts),
+      static_cast<const int32_t*>(block_tables), static_cast<float*>(output),
+      rows, selected_stride, block_size, block_table_len, query_heads, kv_heads, scale);
   return static_cast<int>(hipGetLastError());
 }
 
