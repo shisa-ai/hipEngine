@@ -4810,7 +4810,8 @@ selection when that runtime boundary is migrated; keep rollback capability.
 
 ## Qwen4Exp Q5_1 output-pair reuse (2026-09-05)
 
-The pair2 grouped-down leaf is separately registered and not yet a runtime
-default. Remove it if complete-model validation rejects it; otherwise
-promote through the profile and retain M1 as strict fallback. No new runtime
-flag is introduced by this standalone unit.
+The pair2 grouped-down leaf has default-off runtime wiring through
+`HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL`, guarded by rows>=64 and registry
+capability. Remove it if complete-model timing rejects it; otherwise
+promote through the profile and retain M1 as strict fallback. Its full-logit/
+full-KV state gate passes; full 12-case tg128 timing remains pending.

@@ -3034,6 +3034,18 @@ def qwen4_exp_q4_bundle_prefill_selected(backend: str, quant: str) -> bool:
     )
 
 
+def qwen4_exp_q51_pair_prefill_selected(
+    backend: str, quant: str, *, rows: int, in_features: int
+) -> bool:
+    return (
+        rows >= 64 and in_features <= 4096
+        and os.environ.get("HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL", "0")
+        not in {"", "0", "false", "False"}
+        and is_registered(KernelKey(
+            backend, "moe_linear", quant, "selected_grouped_prefill_pair2_bf16_bf16_out"))
+    )
+
+
 def run_qwen4_exp_moe(
     mixed_ptr: int,
     weights: Mapping[str, GGUFDeviceWeight],
@@ -3590,6 +3602,11 @@ def run_qwen4_exp_moe(
                         "selected_grouped_prefill_compact_rowbatch8_"
                         "bf16_bf16_out"
                     )
+                if qwen4_exp_q51_pair_prefill_selected(
+                    backend, weights["expert_down"].spec.quant_key,
+                    rows=rows, in_features=ffn,
+                ):
+                    grouped_q5_variant = "selected_grouped_prefill_pair2_bf16_bf16_out"
                 grouped_q5_down = resolve(
                     backend=backend,
                     layer="moe_linear",
