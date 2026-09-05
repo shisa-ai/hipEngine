@@ -1,0 +1,273 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_mtp_width_depth_policy_unchanged",
+  "created_at": "2026-09-05T20:02:41Z",
+  "status": "rejected_no_policy_changed_with_blocker",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Physical W7900 production MTP width/depth policy for Qwen3.8-27B Q4_K_M/BF16-KV on the canonical 10-prompt mtp-bench suite, D24, candidate budget 3, batch window 20 ms, greedy. Every row pairs MTP against a same-process AR arm over the same prompts.",
+  "decision": "Audit packet G closes with GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS unchanged on hip_gfx1100. No width qualifies for addition: the only engageable production cell (width 8) does not beat its own AR arm on this host today, and candidate widths 3/4 cannot be admitted by the two policy tables alone.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "gpu_max_hw_queues": "1 for most runs; one control run with the pin removed"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16",
+    "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850"
+  },
+  "policy_at_close": {
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS": {
+      "production": [
+        [
+          1,
+          2
+        ],
+        [
+          1,
+          3
+        ],
+        [
+          2,
+          2
+        ],
+        [
+          8,
+          3
+        ]
+      ],
+      "strict": [
+        [
+          2,
+          2
+        ]
+      ]
+    },
+    "changed": false
+  },
+  "runs": {
+    "explicit_w128_r1": {
+      "source_commit": "4ff6d7047",
+      "tracked_clean": true,
+      "by_width": {
+        "1": {
+          "mtp_tok_s": 23.534,
+          "ar_tok_s": 24.056,
+          "mtp_vs_ar_ratio": 0.9783,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        },
+        "2": {
+          "mtp_tok_s": 39.934,
+          "ar_tok_s": 41.421,
+          "mtp_vs_ar_ratio": 0.9641,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        },
+        "8": {
+          "mtp_tok_s": 90.635,
+          "ar_tok_s": 91.193,
+          "mtp_vs_ar_ratio": 0.9939,
+          "engaged_cells": 10,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": true
+        }
+      }
+    },
+    "explicit_w128_r2": {
+      "source_commit": "4ff6d7047",
+      "tracked_clean": true,
+      "by_width": {
+        "1": {
+          "mtp_tok_s": 23.376,
+          "ar_tok_s": 23.885,
+          "mtp_vs_ar_ratio": 0.9787,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        },
+        "2": {
+          "mtp_tok_s": 39.576,
+          "ar_tok_s": 41.006,
+          "mtp_vs_ar_ratio": 0.9651,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        },
+        "8": {
+          "mtp_tok_s": 89.884,
+          "ar_tok_s": 90.526,
+          "mtp_vs_ar_ratio": 0.9929,
+          "engaged_cells": 10,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": true
+        }
+      }
+    },
+    "automatic_w8_r1": {
+      "source_commit": "4ff6d7047",
+      "tracked_clean": true,
+      "by_width": {
+        "8": {
+          "mtp_tok_s": 91.45,
+          "ar_tok_s": 92.015,
+          "mtp_vs_ar_ratio": 0.9939,
+          "engaged_cells": 10,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": true
+        }
+      }
+    },
+    "automatic_w8_r2": {
+      "source_commit": "4ff6d7047",
+      "tracked_clean": true,
+      "by_width": {
+        "8": {
+          "mtp_tok_s": 91.392,
+          "ar_tok_s": 91.923,
+          "mtp_vs_ar_ratio": 0.9942,
+          "engaged_cells": 10,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": true
+        }
+      }
+    },
+    "automatic_w8_default_queues": {
+      "source_commit": "4ff6d7047",
+      "tracked_clean": true,
+      "by_width": {
+        "8": {
+          "mtp_tok_s": 91.852,
+          "ar_tok_s": 92.48,
+          "mtp_vs_ar_ratio": 0.9932,
+          "engaged_cells": 10,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": true
+        }
+      }
+    },
+    "automatic_w8_at_retained_commit_c1bb38d49": {
+      "source_commit": "c1bb38d49",
+      "tracked_clean": true,
+      "by_width": {
+        "8": {
+          "mtp_tok_s": 91.884,
+          "ar_tok_s": 92.631,
+          "mtp_vs_ar_ratio": 0.9919,
+          "engaged_cells": 10,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": true
+        }
+      }
+    },
+    "candidate_w34_capacity4": {
+      "source_commit": "e4e9fdceb",
+      "tracked_clean": true,
+      "by_width": {
+        "3": {
+          "mtp_tok_s": 57.41,
+          "ar_tok_s": 57.459,
+          "mtp_vs_ar_ratio": 0.9991,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        },
+        "4": {
+          "mtp_tok_s": 67.433,
+          "ar_tok_s": 67.405,
+          "mtp_vs_ar_ratio": 1.0004,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        }
+      }
+    },
+    "candidate_w34_capacity8": {
+      "source_commit": "e4e9fdceb",
+      "tracked_clean": true,
+      "by_width": {
+        "3": {
+          "mtp_tok_s": 57.064,
+          "ar_tok_s": 57.207,
+          "mtp_vs_ar_ratio": 0.9975,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        },
+        "4": {
+          "mtp_tok_s": 67.008,
+          "ar_tok_s": 67.087,
+          "mtp_vs_ar_ratio": 0.9988,
+          "engaged_cells": 0,
+          "exact_cells": 10,
+          "cells": 10,
+          "route_expectation_passed": false
+        }
+      }
+    }
+  },
+  "findings": {
+    "width_8_does_not_beat_ar": "Six independent engaged measurements put the width-8 MTP/AR ratio at 0.9919-0.9942, i.e. MTP is 0.6-0.8% slower than its own AR arm. This holds in explicit and automatic request modes, with GPU_MAX_HW_QUEUES pinned to 1 and with the pin removed, and at both HEAD and the retained promotion commit. Every run is 10/10 exact with the route expectation passing.",
+    "widths_1_and_2_never_engage": "At resident capacity 8 the production route is scoped to the physical C8 serving key, so widths 1 and 2 report engaged 0/10 and run K0. Their table cells are unreachable in this configuration and their apparent 0.96-0.98 ratios compare two AR-equivalent arms, not MTP against AR.",
+    "widths_3_and_4_are_blocked": "Extending both GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS and GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES in an isolated worktree still yields engaged 0/10 at resident capacity 4 and 8. The automatic serving-evidence resolver declines these widths for a reason beyond the two policy tables, so qualifying them is a resolver change, not a policy fill. That is the concrete blocker for this packet."
+  },
+  "retained_row_reproduction": {
+    "retained_artifact": "benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json",
+    "retained_commit": "c1bb38d49",
+    "retained_automatic_mtp_tok_s": 98.64253046546435,
+    "retained_automatic_ar_tok_s": 88.25046511934349,
+    "retained_ratio": 1.1177564937710798,
+    "fresh_same_commit_mtp_tok_s": 91.884,
+    "fresh_same_commit_ar_tok_s": 92.631,
+    "fresh_same_commit_ratio": 0.9919,
+    "controls_that_match": {
+      "model_sampled_fingerprint": "identical",
+      "runtime_profile_manifest_sha256": "identical (2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960)",
+      "protocol": "identical suite, width, resident capacity, budget, horizon, batch window, sampling",
+      "acceptance_ledger_head_vs_old_commit": {
+        "cycles": [
+          504,
+          504
+        ],
+        "proposed_draft_tokens": [
+          1512,
+          1512
+        ],
+        "accepted_draft_tokens": [
+          1168,
+          1168
+        ],
+        "draft_acceptance": [
+          0.7724867724867724,
+          0.7724867724867724
+        ],
+        "note": "byte-identical between HEAD and the retained commit, so the MTP arm performs the same work"
+      }
+    },
+    "conclusion": "The retained 1.1178x row does not reproduce on this host today at its own commit. It is not a code regression from the packets retained since: the retained commit measured today gives the same 0.99 ratio as HEAD, with an identical acceptance ledger. Today's AR is faster than recorded (92.631 versus 88.250) while today's MTP is slower (91.884 versus 98.643), so the two arms moved in opposite directions at a fixed commit. The cause is environmental or temporal and is not resolved here. The row is flagged rather than deleted, and no replacement rate is claimed."
+  },
+  "limitations": [
+    "This packet did not run the full width/depth qualification battery (delayed admission, retirement, cancellation, compaction, isolation, memory recovery, production load gate) because no candidate cell reached the engagement precondition for those gates to mean anything.",
+    "The root cause of the non-reproducing retained row is not identified; only code, model, manifest, queue count, request mode, and acceptance were excluded."
+  ],
+  "disposition": "rejected; GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS unchanged on hip_gfx1100; the retained C8/K3 automatic MTP row is flagged as not currently reproducing and needs its own investigation"
+}
