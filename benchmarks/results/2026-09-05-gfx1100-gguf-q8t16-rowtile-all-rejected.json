@@ -1,0 +1,65 @@
+{
+ "schema": 1,
+ "kind": "gfx1100_gguf_q8_t16_rowtile_all_rejected",
+ "created_at": "2026-09-05T16:55:00Z",
+ "status": "rejected_w7900_c2_c4_regress_c8_flat",
+ "passed": true,
+ "performance_claim": false,
+ "claim_scope": "same-host W7900 control-vs-candidate direct packed-AR decode at c2/c4/native_c8 on the MoE route model; candidate differed from control only by HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1 (broad all-projection + pair Q8T16 rowtile)",
+ "decision": "Keep GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS=0 on hip_gfx1100; do not enable the broad rowtile boolean. The gfx1151 outcome (floor 4: c4/c8 retained, c2 rejected) does not transfer to W7900: the broad route regresses c2 (-2.94%) and c4 (-1.04%) with fully separated sample ranges, and native_c8 is noise-flat (+0.15%, overlapping ranges). No W7900 width qualifies a floor.",
+ "hardware": {
+  "physical_host": "epyc",
+  "gpu": "AMD Radeon Pro W7900",
+  "arch": "gfx1100",
+  "hip_visible_devices": "0",
+  "rocr_visible_devices": "0",
+  "gpu_max_hw_queues": 1,
+  "rocm": "HIP version: 7.2.53211-3d9ef42",
+  "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+ },
+ "software": {
+  "source_commit": "741f74dd428663f1bc5a845e6632a5fe5841c9f3",
+  "candidate_runtime_diff": "environment-only: HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1; tracked sources clean",
+  "tracked_state_at_decision": "HEAD; hip_gfx1100 GGUF_Q8_T16_DECODE_ROWTILE_MIN_ROWS remains 0, GGUF_Q8_T16_DECODE_ROWTILE_ALL remains False",
+  "audit_plan": "docs/20260905-gfx1100-audit.md work packet C1"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "kv_dtype": "bf16",
+  "route_geometry": "attn_qkv (2048->8192) + attn_gate (2048->4096) match _Q8_T16_QWEN35_ATTN_IN/QKV_OUT/GATE_OUT; route reachable on this model (same model as the gfx1151 C-packet evidence)",
+  "prompt_rows_sha256": "53b8d2a756f5b105803cc6a3b15a8bf43333bb54aa91e0180e8a9d029c0beb70"
+ },
+ "workload": {
+  "prompt_tokens_per_row": 512,
+  "generated_tokens_per_row": 128,
+  "warmup_runs": 1,
+  "measured_runs": 3,
+  "command": "HIPENGINE_GGUF_Q8_T16_ROWTILE_ALL=1 .venv/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf --backend hip_gfx1100 --configurations c2,c4,native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-gfx1100-hipcc-version.txt --require-cached-build --json /tmp/gfx1100-c1-rowtile-all-candidate.json",
+  "warm_build": "identical command with --measured-runs 1 and without --require-cached-build compiled the previously unbuilt W7900 Q8T16 rowtile variants outside measurement (/tmp/gfx1100-c1-rowtile-all-warmbuild.json)",
+  "raw_artifacts_tmp": [
+   "/tmp/gfx1100-audit-moe-baseline.json",
+   "/tmp/gfx1100-c1-rowtile-all-candidate.json"
+  ]
+ },
+ "performance": {
+  "metric": "decode_tok_s_aggregate median, 3 measured runs each arm",
+  "c2": {"baseline": 150.481, "candidate": 146.064, "delta_pct": -2.936, "ranges_separated": true},
+  "c4": {"baseline": 216.427, "candidate": 214.188, "delta_pct": -1.035, "ranges_separated": true},
+  "native_c8": {"baseline": 275.244, "candidate": 275.660, "delta_pct": 0.151, "ranges_separated": false},
+  "interpretation": "no affected width improves; c2 and c4 regress with non-overlapping sample ranges (candidate c2 max 146.41 < baseline min 150.12; candidate c4 max 214.52 < baseline min 215.60); the packet promotion rule (at least one affected row or verified sub-window improving, every affected width non-regressive) fails"
+ },
+ "correctness": {
+  "measured": "widths 2/4/8 exact (direct_c1_c8_match_c4_repeating_fixture true at 2/4/8, native_c8_rows_match_c4 true) and all measured runs repeatable on the candidate arm; the width-1 cell is false only because c1 was not part of this three-configuration packet",
+  "route_evidence": "the c2/c4 regressions with fully separated ranges are direct behavioral evidence the rowtile route engaged (kernel family changed) under the candidate env"
+ },
+ "gates": {
+  "focused_tests": "tests/test_gguf_linear_dispatch.py + tests/test_qwen35_gguf_target_rows.py 184 passed / 9 skipped; tests/test_gfx1151_backend.py -k 'alias or rowtile' 5 passed at HEAD package state",
+  "note": "decision is the measured same-source A/B; no package change is proposed, so no RED/GREEN flip is applicable"
+ },
+ "gfx1151_reference": [
+  "benchmarks/results/2026-08-16-gfx1151-q8t16-batch-route-requalification.json",
+  "benchmarks/results/2026-08-16-gfx1151-q8t16-batch-route-retained.json"
+ ],
+ "disposition": "C1 rejected on W7900; floor stays 0. C2 (pair-only HIPENGINE_GGUF_Q8_T16_PAIR_ROWTILE+PAIR_COL8 at native_c8) is still open and must be measured independently; a broad-route loss does not preclude a pair-only win."
+}
