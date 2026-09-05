@@ -2019,7 +2019,7 @@ of small accept summary tensors).
 unfused R3.6 baseline showed `w8a16_linear_multi_row_kernel` running 2x in
 the 4-token verifier window at **1794.52 µs/call** — this is the
 `lm_head_full_vocab` kernel that materializes the
-`[rows=B+1, vocab=248320] FP32 = 4.97 MB/cycle` logits buffer in HBM.  The
+`[rows=B+1, vocab=248320] FP32 = 4.97 MB/cycle` logits buffer in VRAM.  The
 downstream `argmax_rows_stage1/stage2` kernels add only 13 + 3 µs/cycle.
 
 **Implemented fused path (`HIPENGINE_DFLASH_VERIFY_FUSED_LM_HEAD=on`):**
@@ -2080,7 +2080,7 @@ writeback and one argmax kernel launch.
   blocks**, each doing 1024 cooperative dot products.  ~12 active blocks
   per CU, GPU under-occupied; long-running blocks can't fill the machine.
 
-The GEMV is bandwidth-bound at the W7900's ~864 GB/s HBM throughput.  The
+The GEMV is bandwidth-bound at the W7900's ~864 GB/s VRAM throughput.  The
 writeback we eliminated (5 MB / 864 GB/s ≈ 6 µs theoretical) doesn't
 compensate for the 200x reduction in block-level parallelism.  This
 matches the R3.2 cost model's prediction (`~72 µs/pass theoretical
@@ -2160,7 +2160,7 @@ positive or negative.
 | # | Lesson | First learned | Applies to |
 | --- | --- | --- | --- |
 | L1 | **Fusion cost model**: a fuse saving N launches but multiplying per-block work by M loses when M × block_count > N × launch_overhead. For verifier shape, M ≈ `out_packs × top_k` is typically 1000–2000x. Check the math before writing the kernel. | MTP M13.B.1 (2026-05-23) | Every speculative kernel fuse proposal |
-| L2 | **Hidden host overhead**: single-kernel fuses with implicit host-side init (barrier resets, scratch zeros, lazy allocation) swallow the dispatch saving. Count host-side per-kernel cost, not just `hipModuleLaunchKernel` calls. | MTP M13.B.2 (2026-05-23) | Staged HBM kernels with atomic-style barriers |
+| L2 | **Hidden host overhead**: single-kernel fuses with implicit host-side init (barrier resets, scratch zeros, lazy allocation) swallow the dispatch saving. Count host-side per-kernel cost, not just `hipModuleLaunchKernel` calls. | MTP M13.B.2 (2026-05-23) | Staged VRAM kernels with atomic-style barriers |
 | L3 | **ROCm 7.x graph ceiling**: HIP graph capture does not pay at >~1000-node DAGs because `hipGraphLaunch` per-node overhead ≈ direct dispatch. Reduce node count first; capture second. CUDA on consumer NVIDIA does not have this property at the same node count. | MTP M12.1 (2026-05-22) | Any HIP graph capture/replay work |
 | L4 | **Bucket-shape graph keys**: exact-shape graph cache keys do not repeat in decode. Use BeeLlama-style power-of-2 / stride-aligned buckets (`cross_bucket()` shape) for any cross-context-dependent graph. | DFlash Phase D5 (2026-05-18) | Drafter graph capture; any context-dependent graph |
 | L5 | **B+1 MoE linearity**: B+1-row MoE/router cost grows roughly linearly with B in the current "batched" path. Cycle cost in AR-token-eq tracks B+1 closely. Lowering per-row cost is the only way to win at B >= 4. | DFlash 2026-05-19 batched-vs-c1-loop | All speculative budgets B >= 2 |
