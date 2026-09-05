@@ -555,8 +555,12 @@ while HIP prefill exposes them as nested linear roles. The collector
 normalizes shared projection slots/weight names into MoE on both sides,
 preserving their original tags. Consequently these older routed-only
 snapshot numbers are not directly interchangeable with the new complete-FFN
-table. GR up projection remains GR read on both sides; GR down/inject are
-non-FFN linear. Unknown/mixed fusions block matched-gap publication.
+table. Taxonomy v2 also groups all GR down/up/inject projections and read/mixing
+together. This is necessary because HIP small-row up is a nested linear role
+while fused large-row up is inside GR read; residual combine stays boundary.
+Original role/weight tags remain available. Unknown/mixed fusions block
+matched-gap publication, and stored v1 captures are regenerated from raw
+role/log sources before joining rather than relabeled without recomputation.
 
 The quoted llama.cpp 3.63/1.93/0.53/1.85-second values belong to the older
 **zbook patched-upstream HIP** classifier. They are not current halo-box
