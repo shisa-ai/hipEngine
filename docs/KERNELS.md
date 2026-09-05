@@ -294,10 +294,15 @@ sidecar_decode_variants` cover rows 2..8, and gfx1151's
 `GGUF_T16_NATIVE_ROWTILE_MAX_ROWS_BY_QUANT` for Q5 is 8. c8 WMMA prefill is
 eliminated: packed-AR c8 step 312.4 -> 139.8 ms, native_c8 aggregate
 25.2 -> 56.6 tok/s (4.40x c1, 7.1/stream), c4 unchanged (42.5 tok/s agg),
-RED rows 2..8 bit-exact vs c1. The Q6 lm_head rowtile was also extended to
-rows 2..8 (`launch_q6_t16_rowtile`/`_col8` ROW_TILE 5..8), so c8 lm_head is
-one launch instead of the prior 4+4 chunk; `GGUF_Q6_LM_HEAD_MAX_CHUNK` is now
-8 (was 5/4).
+RED rows 2..8 bit-exact vs c1. The planar-qmicro Q6 LM-head rowtile was also
+extended to rows 2..8. Its Python wrapper now advertises all eight rows, and
+runtime direct-route selection intersects that primitive limit with the active
+package or
+`HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK` limit. The
+`gfx1151-qwen38-q4km-b5` package therefore executes physical C8 as one launch;
+the gfx1100 package remains capped at 6, and an environment limit of 4 restores
+the prior 4+4 route. Evidence:
+[`Qwen3.8 Q6 LM-head rows-8 owner`](../benchmarks/results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json).
 
 ### c=N decode combination map (gfx1151 Qwen3.8 Q4_K_S)
 

@@ -26079,19 +26079,8 @@ class Qwen35GGUFResidentSession:
         primitive_max_rows = self._verify_lm_head_rowtile_max_rows()
         if primitive_max_rows < 2:
             return False
-        if rows <= primitive_max_rows:
-            return self._verify_lm_head_rowtile(
-                hidden_ptr,
-                out_ptr,
-                rows,
-                stream=stream,
-                runtime=runtime,
-            )
         if self.runner is None:
             raise RuntimeError("GGUF resident session is closed")
-        hidden_row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
-        logits_row_nbytes = int(self.runner.vocab_size) * DType.FP32.itemsize
-        row_offset = 0
         max_chunk_raw = os.environ.get("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK", "")
         max_chunk = (
             int(max_chunk_raw)
@@ -26107,6 +26096,17 @@ class Qwen35GGUFResidentSession:
         if max_chunk < 2 or max_chunk > 8:
             raise ValueError("HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK must be in [2, 8]")
         max_chunk = min(max_chunk, primitive_max_rows)
+        if rows <= max_chunk:
+            return self._verify_lm_head_rowtile(
+                hidden_ptr,
+                out_ptr,
+                rows,
+                stream=stream,
+                runtime=runtime,
+            )
+        hidden_row_nbytes = int(self.runner.hidden_size) * DType.BF16.itemsize
+        logits_row_nbytes = int(self.runner.vocab_size) * DType.FP32.itemsize
+        row_offset = 0
         for chunk_rows in _small_b_rowtile_chunks(rows, max_chunk=max_chunk):
             if int(chunk_rows) < 2:
                 return False

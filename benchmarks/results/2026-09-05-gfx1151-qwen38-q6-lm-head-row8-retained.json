@@ -1,0 +1,194 @@
+{
+  "schema": 1,
+  "kind": "gfx1151_qwen38_q6_lm_head_row8_reachability_retained",
+  "created_at": "2026-09-05T01:31:58Z",
+  "status": "retained_exact_package_owned_row8",
+  "passed": true,
+  "performance_claim": true,
+  "decision": "Use one exact planar-qmicro Q6 LM-head rows-8 launch for physical C8 under the gfx1151-qwen38-q4km-b5 package. Keep package-specific smaller limits and HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4 as the rollback.",
+  "hardware": {
+    "physical_host": "gfx1151",
+    "gpu": "AMD Radeon 8060S Graphics",
+    "arch": "gfx1151",
+    "hip_visible_devices": "0",
+    "rocr_visible_devices": "0",
+    "gpu_max_hw_queues": 2
+  },
+  "software": {
+    "candidate_commit": "446ce345895b4203375cc68c1a707b9b4be4738c",
+    "candidate_clean": true,
+    "rocm": "HIP version: 7.15.26333-0000000",
+    "compiler": "AMD clang 23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "path": "/home/lhl/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "size_bytes": 17106775008,
+    "sampled_sha256": "e7c9c4c1516de52b534407f0a4f22ad7392fcc796bc83873ca25fa3bf5fcbcb5",
+    "quant": "gguf_q4_k_m",
+    "kv_dtype": "bf16"
+  },
+  "candidate": {
+    "execution_profile": "production",
+    "arithmetic_class": "T0",
+    "affected_surface": "untied root planar-qmicro Q6 LM-head at physical rows 8",
+    "stateful_surfaces_changed": false,
+    "can_change_downstream_decisions": false,
+    "mechanism": "The existing exact rows-8 primitive reads the LM-head weights once instead of running two independent 4-row scans.",
+    "primitive": "gguf_q6_k_t16_qmicro_planar_gemv_rowtile_bf16_f32_out",
+    "primitive_max_rows": 8,
+    "package": "gfx1151-qwen38-q4km-b5",
+    "package_max_chunk": 8,
+    "candidate_partition": [8],
+    "control_partition": [4, 4],
+    "rollback": "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK=4",
+    "peer_policy": "The gfx1100 package remains capped at 6; other model/backend packages retain their own limits."
+  },
+  "correctness": {
+    "oracle": "existing row-local Q6 CPU reference plus the prior 4+4 exact route",
+    "red_green": {
+      "red": "The wrapper advertised only four rows despite an existing rows-8 kernel body; package max 8 could not select it. A second RED showed that direct-route selection bypassed smaller package and environment limits.",
+      "green": "The planar-qmicro wrapper advertises rows 2-8, and runtime selection intersects primitive and package/environment limits before direct dispatch."
+    },
+    "focused_tests": {
+      "command": ".venv/bin/python -m pytest tests/test_qwen35_gguf_verify_lm_head_top1.py tests/test_gguf_q6_k_t16_gemv_decode.py tests/test_gguf_packed_execution_manifest.py tests/test_gfx1151_backend.py tests/test_gguf_packed_ar_bench.py -q",
+      "passed": true,
+      "tests_passed": 146,
+      "coverage": "rows 2-8 GPU-vs-CPU output, rows-8 vs 4+4 F32 bit equality, package selection, environment rollback, gfx1100 cap, execution manifest, and benchmark provenance"
+    },
+    "profiler_harness_tests": {
+      "command": ".venv/bin/python -m pytest tests/test_gguf_packed_ar_rocprof.py -q",
+      "passed": true,
+      "tests_passed": 3
+    },
+    "direct_abba": {
+      "all_four_artifacts_clean": true,
+      "all_measured_runs_repeatable": true,
+      "candidate_control_trajectories_identical": true,
+      "trajectory_rows": 8,
+      "tokens_per_row": 128
+    },
+    "dynamic_lifecycle_differential": {
+      "workload": "rows=8, packed prefill, exact GDN selector, graph decode, shrink_sparse lifecycle, prompt=16, decode=5",
+      "candidate_vs_control_semantic_exact": true,
+      "semantic_sha256": "b6c334ec0291b3740e5a867579b938384c7abe3cf92aef769c976b3e1d924c66",
+      "compared_fields": [
+        "packed/c1 token trajectories",
+        "prefill and final state/KV mismatch lists",
+        "physical group and packed prefill plans",
+        "lifecycle events",
+        "flush and dirty-state outcomes",
+        "first divergence"
+      ],
+      "candidate_tokens_equal_c1": true,
+      "control_tokens_equal_c1": true,
+      "existing_production_vs_c1_byte_drift": "Both arms have the same pre-existing arithmetic divergence beginning at packed prefill layer 0 recurrent state. It is not an ownership or candidate delta and is governed by the production-profile quality gate below."
+    },
+    "production_profile_parent_gate": {
+      "artifact": "benchmarks/results/2026-09-03-gfx1151-qwen38-b5-planar-q6-integer-mmq-retained.json",
+      "artifact_sha256": "94b321c2eb35bb0bda5c7f83b9c4777a79aab7ce6de557bcf59333158929f2f5",
+      "full_vocabulary_rows": 216,
+      "candidate_repeats": 3,
+      "mean_kl": 0.00008576966516756423,
+      "p95_kl": 0.0004905268493445377,
+      "p99_kl": 0.0009683075757518455,
+      "max_kl": 0.002230657367184759,
+      "top1_agreement": 1.0,
+      "category_top1_min": 1.0,
+      "strict_repeat_bit_exact": true,
+      "candidate_repeat_bit_exact": true,
+      "neighbor_and_permutation_isolation_exact": true,
+      "passed": true,
+      "inheritance_basis": "This change is T0 and is bit-exact to the already qualified production route at the changed LM-head boundary and through complete generated trajectories and the matched lifecycle differential."
+    },
+    "cpu_deterministic_checks": {
+      "compileall": true,
+      "cpu_reference_fixtures": "10 passed",
+      "registry_smoke": true,
+      "cpu_fixture_smoke": true,
+      "smoke_add_plan": true
+    }
+  },
+  "performance": {
+    "protocol": "counterbalanced A-B-B-A; physical C8; prompt 512 per row; 128 generated tokens per row; greedy top-1; production route; state-bound HIP graph; one warmup and three measured samples per process; cached builds required",
+    "metric": "aggregate decode tokens per second",
+    "control": {
+      "partition": [4, 4],
+      "samples": [
+        68.81918639057419,
+        68.78677616041975,
+        68.75019312775487,
+        68.71166212109028,
+        68.64907402674045,
+        68.68669847543437
+      ],
+      "median": 68.73092762442258,
+      "range": [68.64907402674045, 68.81918639057419]
+    },
+    "candidate": {
+      "partition": [8],
+      "samples": [
+        71.12127775876195,
+        71.03613655825218,
+        71.05044818872003,
+        71.11420780314542,
+        71.02254818358942,
+        71.00048015491258
+      ],
+      "median": 71.04329237348611,
+      "range": [71.00048015491258, 71.12127775876195]
+    },
+    "delta_percent": 3.3643729671442246,
+    "pair_deltas_percent": [3.2908534963480562, 3.4007307965027156],
+    "wall_seconds_per_1024_tokens": {
+      "control": 14.89867859190854,
+      "candidate": 14.413746404328588,
+      "saved": 0.48493218757995216
+    },
+    "all_samples_separated": true
+  },
+  "kernel_trace": {
+    "workload": "eager physical C8, prompt 16, one profiled transition, package default versus MAX_CHUNK=4",
+    "kernel": "q6_k_t16_qmicro_planar_gemv_rowtile_col8_kernel<float, rows, true>",
+    "candidate_default_package": {
+      "environment_override": null,
+      "dispatches": 1,
+      "total_duration_ns": 5671165,
+      "tokens_exact": true
+    },
+    "control_4_plus_4": {
+      "environment_override": 4,
+      "dispatches": 2,
+      "total_duration_ns": 9491776,
+      "tokens_exact": true
+    },
+    "duration_note": "Profiler durations support mechanism attribution only; the unprofiled A-B-B-A packet owns the performance claim.",
+    "classifier_note": "The legacy profiler family classifier groups the planar F32 LM-head rowtile under dense_projection and separately overmatches BF16 Q6 rowtiles. Dispatch counts above use the exact demangled F32 kernel signature."
+  },
+  "raw_evidence": {
+    "performance": {
+      "p1_control4_sha256": "8fa1a8f786f84db8148289081032f242ad7b922065026e881538377184794354",
+      "p1_candidate8_sha256": "b389f3c57ea53d159788820b6a082e48cc500817cabb2f593dbbe6b74217a7c2",
+      "p2_candidate8_sha256": "0461d1e92f1483e6555e4a3221bce21ca22d4ab989fbc61ea6432ec7ac22bffb",
+      "p2_control4_sha256": "801bb70742397211a4fd8ea947096360d9486e1176ab363894131185318c0226"
+    },
+    "lifecycle": {
+      "candidate8_sha256": "288a052967470a21b5971746be61c358955c302250195803b53d522e40e922fc",
+      "control4_sha256": "6f3d1b790e5c2cad379d329f4f29eb4828ff471f8dc8d9864b4851b9c7eb030c"
+    },
+    "profiler": {
+      "candidate_default_sha256": "1e9890555aedafa012958bd7317d9c2a50475f4ebc56d4840b688066a08e3298",
+      "control4_sha256": "699fbd085dda4a1970ffefffe1ff1cfd1a6cac5cf034714ee9486855694075d1"
+    }
+  },
+  "commands": {
+    "performance": "For p1-control-4, p1-candidate-8, p2-candidate-8, p2-control-4, set HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK to 4,8,8,4 and run scripts/gguf_packed_ar_bench.py --backend hip_gfx1151 --route production --configurations native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --require-cached-build.",
+    "lifecycle": "Run scripts/gguf_packed_ar_state_oracle.py --backend hip_gfx1151 --rows 8 --lifecycle shrink_sparse --prefill-mode packed --gdn-prefill-mode exact --decode-mode graph --prompt-length 16 --decode-steps 5 --require-cached-build under MAX_CHUNK=8 and 4, then compare the declared semantic fields.",
+    "profiler": "Run scripts/gguf_packed_ar_rocprof.py --backend hip_gfx1151 --decode-mode eager --packed-concurrency 8 --prompt-length 16 --skip-warmbuild with the ROCm 7.15 ROCTX library under the package default and MAX_CHUNK=4."
+  },
+  "limitations": [
+    "The retained rate is raw graph decode at physical C8, not complete HTTP serving throughput.",
+    "gfx1100 rows 7-8 are intentionally still chunked by its package limit and were not measurable on this gfx1151-only host.",
+    "The exact LM-head change inherits the current production profile's separately qualified arithmetic; it does not claim packed production state bytes equal strict C1 bytes.",
+    "The profiler family classifier limitation is recorded explicitly; exact-kernel dispatch matching owns the trace comparison."
+  ]
+}

@@ -56,6 +56,7 @@ def test_packed_ar_bench_records_visible_device_provenance_keys() -> None:
         "HIPENGINE_COMPILER_VERSION_FILE",
         "HIPENGINE_SUBMISSION_TRANSPORT",
         "HIPENGINE_GGUF_FP16_RECURRENT_STATE",
+        "HIPENGINE_GGUF_Q6_LM_HEAD_MAX_CHUNK",
         "HIP_VISIBLE_DEVICES",
         "ROCR_VISIBLE_DEVICES",
         "GPU_MAX_HW_QUEUES",

@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-03**
+Last updated: **2026-09-05**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -173,6 +173,12 @@ C3-C7 and trailing only at C2 (-14.2%) and C8 (-1.3%) versus Laurent.
 [`Matched C2/C8 parity`](results/2026-09-01-gfx1151-qwen38-z1-laurent-prefill-parity.json) ·
 [`Current review`](results/2026-08-31-gfx1151-qwen38-reviewed-current-head-c1c8.json) ·
 [`Preserved external matrix`](results/2026-08-30-gfx1151-qwen38-final-six-engine-c1c8.json)
+
+The Qwen3.8/gfx1151 package also uses one rows-8 Q6 LM-head launch at physical
+C8. On the 512-input/128-output raw graph-decode protocol, it measures
+**71.043 versus 68.731 tok/s (+3.36%)** for the prior 4+4 route, with identical
+generated-token trajectories. The gfx1100 package stays capped at 6.
+[`Q6 LM-head rows-8 owner`](results/2026-09-05-gfx1151-qwen38-q6-lm-head-row8-retained.json)
 
 The first retained prefill extension cuts a representative 288-row tick by
 **2.65%** with exact output. Tracked-clean C1-C8 collateral remains exact;
