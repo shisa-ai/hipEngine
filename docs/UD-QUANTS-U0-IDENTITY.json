@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "purpose": "UD-U0 artifact identity pins for the dense UD Q4_K_S / Q4_K_M campaign (docs/UD-QUANTS.md section 3 and U0). Establishes which bytes the audit snapshot in UD-QUANTS-REVIEW-v2.json inspected and which published artifact each local file equals. Diagnostic identity evidence only: not model admission and not a performance claim.",
+  "repository": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF",
+  "pointer_url_pattern": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/raw/<revision>/<filename>",
+  "evidence_policy": {
+    "payload_sha256": "Full-file SHA256 values are prior pinned evidence: K_M from docs/QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md, plain K_M and K_S supplied and verified against the official pinned GitLFS pointers in the parent session. This U0 pass did not rehash any 15-17 GB payload; it refetched the three tiny LFS pointers at the pinned revisions (2026-09-07) and re-checked local file sizes.",
+    "header_identity": "Computed 2026-09-07 by scripts/gguf_quant_route_audit.py (schema v2): SHA256 over raw file bytes [0, data_start_bytes) where data_start is production scan_gguf's tensor_data_offset (tensor-info table end aligned up to general.alignment). Covers magic, version, metadata, descriptor table and alignment padding; excludes every tensor payload byte. Metadata identity, not model bytes. The plain K_M value reproduces the historical docs/UD-QUANTS-REVIEW.json header hash byte-for-byte.",
+    "published_equality": "Matching published size + prior full-payload hash + matching current local size establishes published payload equality, not original download history."
+  },
+  "files": [
+    {
+      "file": "Qwen3.8-27B-Q4_K_M.gguf",
+      "local_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "upstream_revision": "f1bfb127c64f7072bdd2cad55f258b9c8b2910fe",
+      "pointer_url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/raw/f1bfb127c64f7072bdd2cad55f258b9c8b2910fe/Qwen3.8-27B-Q4_K_M.gguf",
+      "published_sha256": "7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169",
+      "published_size_bytes": 17106775008,
+      "local_size_bytes": 17106775008,
+      "local_size_matches_published": true,
+      "header_identity": {
+        "sha256": "2b388fac52efc56320cd60053cdfdf0a5f888ef3de64d2913c220498cced3916",
+        "bytes": 10996704,
+        "boundary": "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version, metadata, tensor-info table and the alignment padding after it; excludes every tensor payload byte (metadata identity, not model bytes)"
+      },
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "disk_tensors": 866
+    },
+    {
+      "file": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "local_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "upstream_revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "pointer_url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/raw/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "published_sha256": "322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482",
+      "published_size_bytes": 16464440224,
+      "local_size_bytes": 16464440224,
+      "local_size_matches_published": true,
+      "header_identity": {
+        "sha256": "ab8269365254d45b888f76452d2f49e894c9491ac854094cc2d57ab4e9105d44",
+        "bytes": 10996640,
+        "boundary": "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version, metadata, tensor-info table and the alignment padding after it; excludes every tensor payload byte (metadata identity, not model bytes)"
+      },
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "disk_tensors": 866
+    },
+    {
+      "file": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "local_path": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "upstream_revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "pointer_url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/raw/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "published_sha256": "75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017",
+      "published_size_bytes": 15358213024,
+      "local_size_bytes": 15358213024,
+      "local_size_matches_published": true,
+      "header_identity": {
+        "sha256": "d2568a4b282a24a3e8841dec0b26848e60d271d9886de6b6a3966f022eb23a39",
+        "bytes": 10996640,
+        "boundary": "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version, metadata, tensor-info table and the alignment padding after it; excludes every tensor payload byte (metadata identity, not model bytes)"
+      },
+      "file_type_name": "MOSTLY_Q4_K_S",
+      "disk_tensors": 866
+    }
+  ]
+}

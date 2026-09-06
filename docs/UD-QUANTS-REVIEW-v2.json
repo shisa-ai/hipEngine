@@ -1,0 +1,1966 @@
+{
+  "schema_version": 2,
+  "schema_notes": "v2: header identity over [0, data_start); per-scope allocation accounting with sidecar reasons and both hypothetical refusal treatments; shared-policy capability resolution with per-capability status; f32_contracted_slots replaces f32_contraction_applied. v1 was the implicit schema of docs/UD-QUANTS-REVIEW.json.",
+  "files": [
+    {
+      "file": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "file_size_on_disk_bytes": 17106775008,
+      "header_identity": {
+        "sha256": "2b388fac52efc56320cd60053cdfdf0a5f888ef3de64d2913c220498cced3916",
+        "bytes": 10996704,
+        "boundary": "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version, metadata, tensor-info table and the alignment padding after it; excludes every tensor payload byte (metadata identity, not model bytes)"
+      },
+      "tensors_parsed": 866,
+      "tensors_declared_in_header": 866,
+      "tensor_table_complete": true,
+      "file_type": 15,
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "dtype_histogram": {
+        "F32": 456,
+        "Q4_K": 294,
+        "Q6_K": 67,
+        "Q5_K": 48,
+        "Q8_0": 1
+      },
+      "stored_weight_gib": 15.922,
+      "backends": [
+        {
+          "backend": "hip_gfx1100",
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "scope": "ar_map_plus_nextn_map",
+          "map_validation_passed": true,
+          "planner_mode": "production_planner",
+          "f32_contracted_slots": 0,
+          "decode_repack_requested": true,
+          "decode_repack_enabled": true,
+          "package_flags": {
+            "dense_q4_t16": true,
+            "dense_q4_qmicro_t16_gate_up": false,
+            "dense_q4_t16_attn_q_08b": false,
+            "dense_q5_t16_ssm_out": true,
+            "dense_q5_raw_mmq_ssm_out": true,
+            "dense_q5_qmicro_planar_ssm_out": false,
+            "dense_q5_t16_ssm_out_08b": false,
+            "dense_q5_t16_qkv": false,
+            "dense_q5_t16_h5120": false,
+            "dense_q6_qmicro_planar": true,
+            "dense_q6_qmicro_planar_excluded_slots": []
+          },
+          "capability_status": {
+            "GGUF_DENSE_Q4_T16": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES": "missing",
+            "GGUF_DENSE_Q4_T16_ATTN_Q_08B": "missing",
+            "GGUF_DENSE_Q5_T16_SSM_OUT": "literal",
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT": "literal",
+            "GGUF_DENSE_Q5_T16_SSM_OUT_08B": "missing",
+            "GGUF_DENSE_Q5_T16_QKV": "missing",
+            "GGUF_DENSE_Q5_T16_H5120": "missing",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "missing",
+            "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "missing"
+          },
+          "fp16_recurrent_state_default_on": false,
+          "ar_consumer_slots": 851,
+          "ar_unique_sources": 851,
+          "routes": {
+            "F32": {
+              "f32-resident": 449
+            },
+            "Q4_K": {
+              "raw-gguf-kernel": 1,
+              "kernel:gguf_q4_k_t16_v1": 288
+            },
+            "Q5_K": {
+              "kernel:gguf_q5_k_t16_v1": 48
+            },
+            "Q6_K": {
+              "kernel:gguf_q6_k_t16_qmicro_planar_v1": 65
+            }
+          },
+          "rejections": {},
+          "rejected_tensors": 0,
+          "bf16_expand_stored_gib": 0.0,
+          "bf16_expand_resident_gib": 0.0,
+          "allocation": {
+            "unique_residents": 851,
+            "accepted_planned_bytes": 18159568896,
+            "accepted_planned_gib": 16.912416,
+            "accepted_planned_bytes_complete": true,
+            "formula_unavailable_residents": [],
+            "residents_by_layout": {
+              "dense_f32": {
+                "count": 449,
+                "planned_bytes": 104953856
+              },
+              "gguf_q4_k_t16_v1": {
+                "count": 288,
+                "planned_bytes": 10790502400
+              },
+              "gguf_q5_k_t16_v1": {
+                "count": 48,
+                "planned_bytes": 2099773440
+              },
+              "gguf_q6_k_t16_qmicro_planar_v1": {
+                "count": 65,
+                "planned_bytes": 4449177600
+              },
+              "raw_gguf": {
+                "count": 1,
+                "planned_bytes": 715161600
+              }
+            },
+            "sidecars": {
+              "raw": {
+                "count": 48,
+                "planned_bytes": 1038090240,
+                "reason": "raw GGUF sidecar (raw-MMQ/verification consumers)"
+              }
+            },
+            "expert_pack8_sidecar_residents": 0,
+            "refused_slot_count": 0,
+            "refused_unique_sources": 0,
+            "refused_source_bytes": 0,
+            "refused_source_gib": 0.0,
+            "refused_bf16_bytes": 0,
+            "refused_bf16_gib": 0.0,
+            "native_refusal_lower_bound_bytes": 18159568896,
+            "native_refusal_lower_bound_gib": 16.912416,
+            "bf16_refusal_scenario_bytes": 18159568896,
+            "bf16_refusal_scenario_gib": 16.912416,
+            "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+          },
+          "nextn_routes": {
+            "own": {
+              "consumer_slots": 15,
+              "unique_sources": 15,
+              "routes": {
+                "F32": {
+                  "f32-resident": 7
+                },
+                "Q4_K": {
+                  "kernel:gguf_q4_k_t16_v1": 5
+                },
+                "Q6_K": {
+                  "raw-gguf-kernel": 2
+                },
+                "Q8_0": {
+                  "raw-gguf-kernel": 1
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 15,
+                "accepted_planned_bytes": 293869568,
+                "accepted_planned_gib": 0.273687,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 7,
+                    "planned_bytes": 104448
+                  },
+                  "gguf_q4_k_t16_v1": {
+                    "count": 5,
+                    "planned_bytes": 160645120
+                  },
+                  "raw_gguf": {
+                    "count": 3,
+                    "planned_bytes": 133120000
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 293869568,
+                "native_refusal_lower_bound_gib": 0.273687,
+                "bf16_refusal_scenario_bytes": 293869568,
+                "bf16_refusal_scenario_gib": 0.273687,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            },
+            "fallback": {
+              "consumer_slots": 3,
+              "unique_sources": 3,
+              "routes": {
+                "F32": {
+                  "f32-resident": 1
+                },
+                "Q4_K": {
+                  "raw-gguf-kernel": 1
+                },
+                "Q6_K": {
+                  "kernel:gguf_q6_k_t16_qmicro_planar_v1": 1
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 3,
+                "accepted_planned_bytes": 1758126080,
+                "accepted_planned_gib": 1.637383,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 1,
+                    "planned_bytes": 20480
+                  },
+                  "gguf_q6_k_t16_qmicro_planar_v1": {
+                    "count": 1,
+                    "planned_bytes": 1042944000
+                  },
+                  "raw_gguf": {
+                    "count": 1,
+                    "planned_bytes": 715161600
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 1758126080,
+                "native_refusal_lower_bound_gib": 1.637383,
+                "bf16_refusal_scenario_bytes": 1758126080,
+                "bf16_refusal_scenario_gib": 1.637383,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            }
+          }
+        },
+        {
+          "backend": "hip_gfx1151",
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "scope": "ar_map_plus_nextn_map",
+          "map_validation_passed": true,
+          "planner_mode": "production_planner",
+          "f32_contracted_slots": 0,
+          "decode_repack_requested": true,
+          "decode_repack_enabled": true,
+          "package_flags": {
+            "dense_q4_t16": true,
+            "dense_q4_qmicro_t16_gate_up": false,
+            "dense_q4_t16_attn_q_08b": true,
+            "dense_q5_t16_ssm_out": true,
+            "dense_q5_raw_mmq_ssm_out": false,
+            "dense_q5_qmicro_planar_ssm_out": false,
+            "dense_q5_t16_ssm_out_08b": true,
+            "dense_q5_t16_qkv": true,
+            "dense_q5_t16_h5120": true,
+            "dense_q6_qmicro_planar": true,
+            "dense_q6_qmicro_planar_excluded_slots": [
+              "attn_qkv"
+            ]
+          },
+          "capability_status": {
+            "GGUF_DENSE_Q4_T16": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES": "literal",
+            "GGUF_DENSE_Q4_T16_ATTN_Q_08B": "literal",
+            "GGUF_DENSE_Q5_T16_SSM_OUT": "literal",
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT": "missing",
+            "GGUF_DENSE_Q5_T16_SSM_OUT_08B": "literal",
+            "GGUF_DENSE_Q5_T16_QKV": "literal",
+            "GGUF_DENSE_Q5_T16_H5120": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "literal",
+            "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "literal"
+          },
+          "fp16_recurrent_state_default_on": false,
+          "ar_consumer_slots": 851,
+          "ar_unique_sources": 851,
+          "routes": {
+            "F32": {
+              "f32-resident": 449
+            },
+            "Q4_K": {
+              "raw-gguf-kernel": 1,
+              "kernel:gguf_q4_k_t16_v1": 288
+            },
+            "Q5_K": {
+              "kernel:gguf_q5_k_t16_v1": 48
+            },
+            "Q6_K": {
+              "kernel:gguf_q6_k_t16_qmicro_planar_v1": 41,
+              "kernel:gguf_q6_k_t16_v1": 24
+            }
+          },
+          "rejections": {},
+          "rejected_tensors": 0,
+          "bf16_expand_stored_gib": 0.0,
+          "bf16_expand_resident_gib": 0.0,
+          "allocation": {
+            "unique_residents": 851,
+            "accepted_planned_bytes": 17121478656,
+            "accepted_planned_gib": 15.94562,
+            "accepted_planned_bytes_complete": true,
+            "formula_unavailable_residents": [],
+            "residents_by_layout": {
+              "dense_f32": {
+                "count": 449,
+                "planned_bytes": 104953856
+              },
+              "gguf_q4_k_t16_v1": {
+                "count": 288,
+                "planned_bytes": 10790502400
+              },
+              "gguf_q5_k_t16_v1": {
+                "count": 48,
+                "planned_bytes": 1061683200
+              },
+              "gguf_q6_k_t16_qmicro_planar_v1": {
+                "count": 41,
+                "planned_bytes": 3416985600
+              },
+              "gguf_q6_k_t16_v1": {
+                "count": 24,
+                "planned_bytes": 1032192000
+              },
+              "raw_gguf": {
+                "count": 1,
+                "planned_bytes": 715161600
+              }
+            },
+            "sidecars": {},
+            "expert_pack8_sidecar_residents": 0,
+            "refused_slot_count": 0,
+            "refused_unique_sources": 0,
+            "refused_source_bytes": 0,
+            "refused_source_gib": 0.0,
+            "refused_bf16_bytes": 0,
+            "refused_bf16_gib": 0.0,
+            "native_refusal_lower_bound_bytes": 17121478656,
+            "native_refusal_lower_bound_gib": 15.94562,
+            "bf16_refusal_scenario_bytes": 17121478656,
+            "bf16_refusal_scenario_gib": 15.94562,
+            "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+          },
+          "nextn_routes": {
+            "own": {
+              "consumer_slots": 15,
+              "unique_sources": 15,
+              "routes": {
+                "F32": {
+                  "f32-resident": 7
+                },
+                "Q4_K": {
+                  "kernel:gguf_q4_k_t16_v1": 5
+                },
+                "Q6_K": {
+                  "raw-gguf-kernel": 2
+                },
+                "Q8_0": {
+                  "raw-gguf-kernel": 1
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 15,
+                "accepted_planned_bytes": 293869568,
+                "accepted_planned_gib": 0.273687,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 7,
+                    "planned_bytes": 104448
+                  },
+                  "gguf_q4_k_t16_v1": {
+                    "count": 5,
+                    "planned_bytes": 160645120
+                  },
+                  "raw_gguf": {
+                    "count": 3,
+                    "planned_bytes": 133120000
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 293869568,
+                "native_refusal_lower_bound_gib": 0.273687,
+                "bf16_refusal_scenario_bytes": 293869568,
+                "bf16_refusal_scenario_gib": 0.273687,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            },
+            "fallback": {
+              "consumer_slots": 3,
+              "unique_sources": 3,
+              "routes": {
+                "F32": {
+                  "f32-resident": 1
+                },
+                "Q4_K": {
+                  "raw-gguf-kernel": 1
+                },
+                "Q6_K": {
+                  "kernel:gguf_q6_k_t16_qmicro_planar_v1": 1
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 3,
+                "accepted_planned_bytes": 1758126080,
+                "accepted_planned_gib": 1.637383,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 1,
+                    "planned_bytes": 20480
+                  },
+                  "gguf_q6_k_t16_qmicro_planar_v1": {
+                    "count": 1,
+                    "planned_bytes": 1042944000
+                  },
+                  "raw_gguf": {
+                    "count": 1,
+                    "planned_bytes": 715161600
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 1758126080,
+                "native_refusal_lower_bound_gib": 1.637383,
+                "bf16_refusal_scenario_bytes": 1758126080,
+                "bf16_refusal_scenario_gib": 1.637383,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            }
+          }
+        }
+      ],
+      "plugin_tensor_map": {},
+      "parser_validation": {
+        "production_scan": "accepted",
+        "production_scan_error": null,
+        "gguf_version": 3,
+        "version_supported": true,
+        "declared_tensor_count": 866,
+        "parsed_tensor_count": 866,
+        "table_complete": true,
+        "data_complete": true,
+        "data_start_bytes": 10996704,
+        "format_valid": true,
+        "status": "complete",
+        "diagnostics": []
+      },
+      "tensor_map": {
+        "available": true,
+        "architecture": "qwen35",
+        "validation_passed": true,
+        "diagnostic": false,
+        "tensors_on_disk": 866,
+        "ar": {
+          "layers": 64,
+          "layer_types": {
+            "full_attention": 16,
+            "linear_attention": 48
+          },
+          "ignored_block_ids": [
+            64
+          ],
+          "consumer_slots": 851,
+          "unique_sources": 851,
+          "root_slots": {
+            "root.lm_head": "output.weight",
+            "root.output_norm": "output_norm.weight",
+            "root.token_embedding": "token_embd.weight"
+          },
+          "aliases": []
+        },
+        "ignored": {
+          "tensor_count": 15,
+          "block_ids": [
+            64
+          ],
+          "nextn_tensor_count": 4
+        },
+        "nextn": {
+          "blocks": 1,
+          "block_id": 64,
+          "validation_passed": true,
+          "diagnostic": false,
+          "missing": [],
+          "unexpected": [],
+          "dtype_errors": [],
+          "shape_errors": [],
+          "own_consumer_slots": 15,
+          "own_unique_sources": 15,
+          "fallback_consumer_slots": 3,
+          "fallback_slots": [
+            {
+              "slot_path": "root.lm_head",
+              "source": "output.weight",
+              "borrows_ar_root": true
+            },
+            {
+              "slot_path": "root.output_norm",
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "borrows_ar_root": false
+            },
+            {
+              "slot_path": "root.token_embedding",
+              "source": "token_embd.weight",
+              "borrows_ar_root": true
+            }
+          ],
+          "ar_borrowed_fallback_slots": [
+            "root.lm_head",
+            "root.token_embedding"
+          ],
+          "aliases": [
+            {
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "consumer_slots": [
+                "nextn:draft.nextn.shared_head_norm",
+                "nextn_fallback:root.output_norm"
+              ],
+              "consumer_count": 2
+            }
+          ]
+        },
+        "combined": {
+          "consumer_slots": 869,
+          "unique_sources": 866,
+          "aliases": [
+            {
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "consumer_slots": [
+                "nextn:draft.nextn.shared_head_norm",
+                "nextn_fallback:root.output_norm"
+              ],
+              "consumer_count": 2
+            },
+            {
+              "source": "output.weight",
+              "consumer_slots": [
+                "ar:root.lm_head",
+                "nextn_fallback:root.lm_head"
+              ],
+              "consumer_count": 2
+            },
+            {
+              "source": "token_embd.weight",
+              "consumer_slots": [
+                "ar:root.token_embedding",
+                "nextn_fallback:root.token_embedding"
+              ],
+              "consumer_count": 2
+            }
+          ],
+          "accounting": "logical consumer slots vs unique physical source tensors; shared sources counted once and reported as aliases; source-identity dedup is not resident-allocation dedup (one source may plan different layouts per consumer)"
+        },
+        "validation": {
+          "passed": true,
+          "missing": [],
+          "unexpected": [],
+          "shape_errors": [],
+          "ignored": [
+            "blk.64.attn_k.weight",
+            "blk.64.attn_k_norm.weight",
+            "blk.64.attn_norm.weight",
+            "blk.64.attn_output.weight",
+            "blk.64.attn_q.weight",
+            "blk.64.attn_q_norm.weight",
+            "blk.64.attn_v.weight",
+            "blk.64.ffn_down.weight",
+            "blk.64.ffn_gate.weight",
+            "blk.64.ffn_up.weight",
+            "blk.64.nextn.eh_proj.weight",
+            "blk.64.nextn.enorm.weight",
+            "blk.64.nextn.hnorm.weight",
+            "blk.64.nextn.shared_head_norm.weight",
+            "blk.64.post_attention_norm.weight"
+          ]
+        }
+      }
+    },
+    {
+      "file": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+      "file_size_on_disk_bytes": 16464440224,
+      "header_identity": {
+        "sha256": "ab8269365254d45b888f76452d2f49e894c9491ac854094cc2d57ab4e9105d44",
+        "bytes": 10996640,
+        "boundary": "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version, metadata, tensor-info table and the alignment padding after it; excludes every tensor payload byte (metadata identity, not model bytes)"
+      },
+      "tensors_parsed": 866,
+      "tensors_declared_in_header": 866,
+      "tensor_table_complete": true,
+      "file_type": 15,
+      "file_type_name": "MOSTLY_Q4_K_M",
+      "dtype_histogram": {
+        "F32": 360,
+        "Q5_K": 131,
+        "IQ4_XS": 117,
+        "Q8_0": 106,
+        "Q4_K": 104,
+        "Q6_K": 30,
+        "Q3_K": 7,
+        "IQ4_NL": 7,
+        "IQ3_S": 4
+      },
+      "stored_weight_gib": 15.323,
+      "backends": [
+        {
+          "backend": "hip_gfx1100",
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "scope": "ar_map_plus_nextn_map",
+          "map_validation_passed": true,
+          "planner_mode": "per_slot_fallback",
+          "f32_contracted_slots": 0,
+          "decode_repack_requested": true,
+          "decode_repack_enabled": false,
+          "package_flags": {
+            "dense_q4_t16": true,
+            "dense_q4_qmicro_t16_gate_up": false,
+            "dense_q4_t16_attn_q_08b": false,
+            "dense_q5_t16_ssm_out": true,
+            "dense_q5_raw_mmq_ssm_out": true,
+            "dense_q5_qmicro_planar_ssm_out": false,
+            "dense_q5_t16_ssm_out_08b": false,
+            "dense_q5_t16_qkv": false,
+            "dense_q5_t16_h5120": false,
+            "dense_q6_qmicro_planar": true,
+            "dense_q6_qmicro_planar_excluded_slots": []
+          },
+          "capability_status": {
+            "GGUF_DENSE_Q4_T16": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES": "missing",
+            "GGUF_DENSE_Q4_T16_ATTN_Q_08B": "missing",
+            "GGUF_DENSE_Q5_T16_SSM_OUT": "literal",
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT": "literal",
+            "GGUF_DENSE_Q5_T16_SSM_OUT_08B": "missing",
+            "GGUF_DENSE_Q5_T16_QKV": "missing",
+            "GGUF_DENSE_Q5_T16_H5120": "missing",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "missing",
+            "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "missing"
+          },
+          "fp16_recurrent_state_default_on": false,
+          "ar_consumer_slots": 851,
+          "ar_unique_sources": 851,
+          "routes": {
+            "F32": {
+              "f32-resident": 353
+            },
+            "IQ4_XS": {
+              "bf16-expand": 117
+            },
+            "Q4_K": {
+              "raw-gguf-kernel": 1,
+              "kernel:gguf_q4_k": 103
+            },
+            "Q5_K": {
+              "bf16-expand": 131
+            },
+            "Q6_K": {
+              "raw-gguf-kernel": 1,
+              "bf16-expand": 23
+            },
+            "Q8_0": {
+              "raw-gguf-kernel": 104
+            }
+          },
+          "rejections": {
+            "IQ3_S": [
+              "layers.11.ffn_gate (17408x5120)",
+              "layers.14.ffn_down (5120x17408)",
+              "layers.15.ffn_down (5120x17408)",
+              "layers.17.ffn_down (5120x17408)"
+            ],
+            "IQ4_NL": [
+              "layers.1.ffn_down (5120x17408)",
+              "layers.2.ffn_down (5120x17408)",
+              "layers.3.ffn_down (5120x17408)",
+              "layers.21.attn_qkv (10240x5120)",
+              "layers.27.ffn_gate (17408x5120)",
+              "layers.27.ffn_up (17408x5120)",
+              "layers.50.ffn_gate (17408x5120)"
+            ],
+            "Q3_K": [
+              "layers.0.ffn_up (17408x5120)",
+              "layers.13.ffn_gate (17408x5120)",
+              "layers.13.ffn_down (5120x17408)",
+              "layers.14.ffn_gate (17408x5120)",
+              "layers.14.ffn_up (17408x5120)",
+              "layers.15.ffn_gate (17408x5120)",
+              "layers.16.ffn_gate (17408x5120)"
+            ]
+          },
+          "rejected_tensors": 18,
+          "bf16_expand_stored_gib": 9.335,
+          "bf16_expand_resident_gib": 30.762,
+          "allocation": {
+            "unique_residents": 833,
+            "accepted_planned_bytes": 39520208896,
+            "accepted_planned_gib": 36.806063,
+            "accepted_planned_bytes_complete": true,
+            "formula_unavailable_residents": [],
+            "residents_by_layout": {
+              "dense_bf16": {
+                "count": 271,
+                "planned_bytes": 33030144000
+              },
+              "dense_f32": {
+                "count": 353,
+                "planned_bytes": 10582016
+              },
+              "q4_k_pack8": {
+                "count": 103,
+                "planned_bytes": 4651745280
+              },
+              "raw_gguf": {
+                "count": 106,
+                "planned_bytes": 1827737600
+              }
+            },
+            "sidecars": {},
+            "expert_pack8_sidecar_residents": 0,
+            "refused_slot_count": 18,
+            "refused_unique_sources": 18,
+            "refused_source_bytes": 751575040,
+            "refused_source_gib": 0.699959,
+            "refused_bf16_bytes": 3135242240,
+            "refused_bf16_gib": 2.919922,
+            "native_refusal_lower_bound_bytes": 40271783936,
+            "native_refusal_lower_bound_gib": 37.506021,
+            "bf16_refusal_scenario_bytes": 42655451136,
+            "bf16_refusal_scenario_gib": 39.725985,
+            "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+          },
+          "nextn_routes": {
+            "own": {
+              "consumer_slots": 15,
+              "unique_sources": 15,
+              "routes": {
+                "F32": {
+                  "f32-resident": 7
+                },
+                "Q6_K": {
+                  "raw-gguf-kernel": 6
+                },
+                "Q8_0": {
+                  "raw-gguf-kernel": 2
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 15,
+                "accepted_planned_bytes": 351008768,
+                "accepted_planned_gib": 0.326902,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 7,
+                    "planned_bytes": 104448
+                  },
+                  "raw_gguf": {
+                    "count": 8,
+                    "planned_bytes": 350904320
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 351008768,
+                "native_refusal_lower_bound_gib": 0.326902,
+                "bf16_refusal_scenario_bytes": 351008768,
+                "bf16_refusal_scenario_gib": 0.326902,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            },
+            "fallback": {
+              "consumer_slots": 3,
+              "unique_sources": 3,
+              "routes": {
+                "F32": {
+                  "f32-resident": 1
+                },
+                "Q4_K": {
+                  "raw-gguf-kernel": 1
+                },
+                "Q6_K": {
+                  "kernel:gguf_q6_k_t16_qmicro_planar_v1": 1
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 3,
+                "accepted_planned_bytes": 1758126080,
+                "accepted_planned_gib": 1.637383,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 1,
+                    "planned_bytes": 20480
+                  },
+                  "gguf_q6_k_t16_qmicro_planar_v1": {
+                    "count": 1,
+                    "planned_bytes": 1042944000
+                  },
+                  "raw_gguf": {
+                    "count": 1,
+                    "planned_bytes": 715161600
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 1758126080,
+                "native_refusal_lower_bound_gib": 1.637383,
+                "bf16_refusal_scenario_bytes": 1758126080,
+                "bf16_refusal_scenario_gib": 1.637383,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            }
+          }
+        },
+        {
+          "backend": "hip_gfx1151",
+          "file_type_name": "MOSTLY_Q4_K_M",
+          "scope": "ar_map_plus_nextn_map",
+          "map_validation_passed": true,
+          "planner_mode": "per_slot_fallback",
+          "f32_contracted_slots": 0,
+          "decode_repack_requested": true,
+          "decode_repack_enabled": false,
+          "package_flags": {
+            "dense_q4_t16": true,
+            "dense_q4_qmicro_t16_gate_up": false,
+            "dense_q4_t16_attn_q_08b": true,
+            "dense_q5_t16_ssm_out": true,
+            "dense_q5_raw_mmq_ssm_out": false,
+            "dense_q5_qmicro_planar_ssm_out": false,
+            "dense_q5_t16_ssm_out_08b": true,
+            "dense_q5_t16_qkv": true,
+            "dense_q5_t16_h5120": true,
+            "dense_q6_qmicro_planar": true,
+            "dense_q6_qmicro_planar_excluded_slots": [
+              "attn_qkv"
+            ]
+          },
+          "capability_status": {
+            "GGUF_DENSE_Q4_T16": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES": "literal",
+            "GGUF_DENSE_Q4_T16_ATTN_Q_08B": "literal",
+            "GGUF_DENSE_Q5_T16_SSM_OUT": "literal",
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT": "missing",
+            "GGUF_DENSE_Q5_T16_SSM_OUT_08B": "literal",
+            "GGUF_DENSE_Q5_T16_QKV": "literal",
+            "GGUF_DENSE_Q5_T16_H5120": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "literal",
+            "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "literal"
+          },
+          "fp16_recurrent_state_default_on": false,
+          "ar_consumer_slots": 851,
+          "ar_unique_sources": 851,
+          "routes": {
+            "F32": {
+              "f32-resident": 353
+            },
+            "IQ4_XS": {
+              "bf16-expand": 117
+            },
+            "Q4_K": {
+              "raw-gguf-kernel": 1,
+              "kernel:gguf_q4_k": 103
+            },
+            "Q5_K": {
+              "bf16-expand": 131
+            },
+            "Q6_K": {
+              "raw-gguf-kernel": 1,
+              "bf16-expand": 23
+            },
+            "Q8_0": {
+              "raw-gguf-kernel": 104
+            }
+          },
+          "rejections": {
+            "IQ3_S": [
+              "layers.11.ffn_gate (17408x5120)",
+              "layers.14.ffn_down (5120x17408)",
+              "layers.15.ffn_down (5120x17408)",
+              "layers.17.ffn_down (5120x17408)"
+            ],
+            "IQ4_NL": [
+              "layers.1.ffn_down (5120x17408)",
+              "layers.2.ffn_down (5120x17408)",
+              "layers.3.ffn_down (5120x17408)",
+              "layers.21.attn_qkv (10240x5120)",
+              "layers.27.ffn_gate (17408x5120)",
+              "layers.27.ffn_up (17408x5120)",
+              "layers.50.ffn_gate (17408x5120)"
+            ],
+            "Q3_K": [
+              "layers.0.ffn_up (17408x5120)",
+              "layers.13.ffn_gate (17408x5120)",
+              "layers.13.ffn_down (5120x17408)",
+              "layers.14.ffn_gate (17408x5120)",
+              "layers.14.ffn_up (17408x5120)",
+              "layers.15.ffn_gate (17408x5120)",
+              "layers.16.ffn_gate (17408x5120)"
+            ]
+          },
+          "rejected_tensors": 18,
+          "bf16_expand_stored_gib": 9.335,
+          "bf16_expand_resident_gib": 30.762,
+          "allocation": {
+            "unique_residents": 833,
+            "accepted_planned_bytes": 39520208896,
+            "accepted_planned_gib": 36.806063,
+            "accepted_planned_bytes_complete": true,
+            "formula_unavailable_residents": [],
+            "residents_by_layout": {
+              "dense_bf16": {
+                "count": 271,
+                "planned_bytes": 33030144000
+              },
+              "dense_f32": {
+                "count": 353,
+                "planned_bytes": 10582016
+              },
+              "q4_k_pack8": {
+                "count": 103,
+                "planned_bytes": 4651745280
+              },
+              "raw_gguf": {
+                "count": 106,
+                "planned_bytes": 1827737600
+              }
+            },
+            "sidecars": {},
+            "expert_pack8_sidecar_residents": 0,
+            "refused_slot_count": 18,
+            "refused_unique_sources": 18,
+            "refused_source_bytes": 751575040,
+            "refused_source_gib": 0.699959,
+            "refused_bf16_bytes": 3135242240,
+            "refused_bf16_gib": 2.919922,
+            "native_refusal_lower_bound_bytes": 40271783936,
+            "native_refusal_lower_bound_gib": 37.506021,
+            "bf16_refusal_scenario_bytes": 42655451136,
+            "bf16_refusal_scenario_gib": 39.725985,
+            "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+          },
+          "nextn_routes": {
+            "own": {
+              "consumer_slots": 15,
+              "unique_sources": 15,
+              "routes": {
+                "F32": {
+                  "f32-resident": 7
+                },
+                "Q6_K": {
+                  "raw-gguf-kernel": 6
+                },
+                "Q8_0": {
+                  "raw-gguf-kernel": 2
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 15,
+                "accepted_planned_bytes": 351008768,
+                "accepted_planned_gib": 0.326902,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 7,
+                    "planned_bytes": 104448
+                  },
+                  "raw_gguf": {
+                    "count": 8,
+                    "planned_bytes": 350904320
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 351008768,
+                "native_refusal_lower_bound_gib": 0.326902,
+                "bf16_refusal_scenario_bytes": 351008768,
+                "bf16_refusal_scenario_gib": 0.326902,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            },
+            "fallback": {
+              "consumer_slots": 3,
+              "unique_sources": 3,
+              "routes": {
+                "F32": {
+                  "f32-resident": 1
+                },
+                "Q4_K": {
+                  "raw-gguf-kernel": 1
+                },
+                "Q6_K": {
+                  "kernel:gguf_q6_k_t16_qmicro_planar_v1": 1
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 3,
+                "accepted_planned_bytes": 1758126080,
+                "accepted_planned_gib": 1.637383,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 1,
+                    "planned_bytes": 20480
+                  },
+                  "gguf_q6_k_t16_qmicro_planar_v1": {
+                    "count": 1,
+                    "planned_bytes": 1042944000
+                  },
+                  "raw_gguf": {
+                    "count": 1,
+                    "planned_bytes": 715161600
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 1758126080,
+                "native_refusal_lower_bound_gib": 1.637383,
+                "bf16_refusal_scenario_bytes": 1758126080,
+                "bf16_refusal_scenario_gib": 1.637383,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            }
+          }
+        }
+      ],
+      "plugin_tensor_map": {},
+      "parser_validation": {
+        "production_scan": "accepted",
+        "production_scan_error": null,
+        "gguf_version": 3,
+        "version_supported": true,
+        "declared_tensor_count": 866,
+        "parsed_tensor_count": 866,
+        "table_complete": true,
+        "data_complete": true,
+        "data_start_bytes": 10996640,
+        "format_valid": true,
+        "status": "complete",
+        "diagnostics": []
+      },
+      "tensor_map": {
+        "available": true,
+        "architecture": "qwen35",
+        "validation_passed": true,
+        "diagnostic": false,
+        "tensors_on_disk": 866,
+        "ar": {
+          "layers": 64,
+          "layer_types": {
+            "full_attention": 16,
+            "linear_attention": 48
+          },
+          "ignored_block_ids": [
+            64
+          ],
+          "consumer_slots": 851,
+          "unique_sources": 851,
+          "root_slots": {
+            "root.lm_head": "output.weight",
+            "root.output_norm": "output_norm.weight",
+            "root.token_embedding": "token_embd.weight"
+          },
+          "aliases": []
+        },
+        "ignored": {
+          "tensor_count": 15,
+          "block_ids": [
+            64
+          ],
+          "nextn_tensor_count": 4
+        },
+        "nextn": {
+          "blocks": 1,
+          "block_id": 64,
+          "validation_passed": false,
+          "diagnostic": true,
+          "missing": [],
+          "unexpected": [],
+          "dtype_errors": [
+            "blk.64.nextn.eh_proj.weight: expected Q8_0, got Q6_K",
+            "blk.64.attn_q.weight: expected Q4_K, got Q6_K",
+            "blk.64.attn_k.weight: expected Q4_K, got Q8_0",
+            "blk.64.attn_v.weight: expected Q6_K, got Q8_0",
+            "blk.64.attn_output.weight: expected Q4_K, got Q6_K",
+            "blk.64.ffn_gate.weight: expected Q4_K, got Q6_K",
+            "blk.64.ffn_up.weight: expected Q4_K, got Q6_K"
+          ],
+          "shape_errors": [],
+          "own_consumer_slots": 15,
+          "own_unique_sources": 15,
+          "fallback_consumer_slots": 3,
+          "fallback_slots": [
+            {
+              "slot_path": "root.lm_head",
+              "source": "output.weight",
+              "borrows_ar_root": true
+            },
+            {
+              "slot_path": "root.output_norm",
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "borrows_ar_root": false
+            },
+            {
+              "slot_path": "root.token_embedding",
+              "source": "token_embd.weight",
+              "borrows_ar_root": true
+            }
+          ],
+          "ar_borrowed_fallback_slots": [
+            "root.lm_head",
+            "root.token_embedding"
+          ],
+          "aliases": [
+            {
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "consumer_slots": [
+                "nextn:draft.nextn.shared_head_norm",
+                "nextn_fallback:root.output_norm"
+              ],
+              "consumer_count": 2
+            }
+          ]
+        },
+        "combined": {
+          "consumer_slots": 869,
+          "unique_sources": 866,
+          "aliases": [
+            {
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "consumer_slots": [
+                "nextn:draft.nextn.shared_head_norm",
+                "nextn_fallback:root.output_norm"
+              ],
+              "consumer_count": 2
+            },
+            {
+              "source": "output.weight",
+              "consumer_slots": [
+                "ar:root.lm_head",
+                "nextn_fallback:root.lm_head"
+              ],
+              "consumer_count": 2
+            },
+            {
+              "source": "token_embd.weight",
+              "consumer_slots": [
+                "ar:root.token_embedding",
+                "nextn_fallback:root.token_embedding"
+              ],
+              "consumer_count": 2
+            }
+          ],
+          "accounting": "logical consumer slots vs unique physical source tensors; shared sources counted once and reported as aliases; source-identity dedup is not resident-allocation dedup (one source may plan different layouts per consumer)"
+        },
+        "validation": {
+          "passed": true,
+          "missing": [],
+          "unexpected": [],
+          "shape_errors": [],
+          "ignored": [
+            "blk.64.attn_k.weight",
+            "blk.64.attn_k_norm.weight",
+            "blk.64.attn_norm.weight",
+            "blk.64.attn_output.weight",
+            "blk.64.attn_q.weight",
+            "blk.64.attn_q_norm.weight",
+            "blk.64.attn_v.weight",
+            "blk.64.ffn_down.weight",
+            "blk.64.ffn_gate.weight",
+            "blk.64.ffn_up.weight",
+            "blk.64.nextn.eh_proj.weight",
+            "blk.64.nextn.enorm.weight",
+            "blk.64.nextn.hnorm.weight",
+            "blk.64.nextn.shared_head_norm.weight",
+            "blk.64.post_attention_norm.weight"
+          ]
+        }
+      }
+    },
+    {
+      "file": "/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf",
+      "file_size_on_disk_bytes": 15358213024,
+      "header_identity": {
+        "sha256": "d2568a4b282a24a3e8841dec0b26848e60d271d9886de6b6a3966f022eb23a39",
+        "bytes": 10996640,
+        "boundary": "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version, metadata, tensor-info table and the alignment padding after it; excludes every tensor payload byte (metadata identity, not model bytes)"
+      },
+      "tensors_parsed": 866,
+      "tensors_declared_in_header": 866,
+      "tensor_table_complete": true,
+      "file_type": 14,
+      "file_type_name": "MOSTLY_Q4_K_S",
+      "dtype_histogram": {
+        "F32": 360,
+        "IQ4_XS": 172,
+        "Q8_0": 99,
+        "Q4_K": 95,
+        "Q5_K": 80,
+        "Q6_K": 18,
+        "IQ3_S": 15,
+        "Q3_K": 13,
+        "IQ4_NL": 7,
+        "IQ3_XXS": 5,
+        "IQ2_XS": 1,
+        "IQ2_S": 1
+      },
+      "stored_weight_gib": 14.293,
+      "backends": [
+        {
+          "backend": "hip_gfx1100",
+          "file_type_name": "MOSTLY_Q4_K_S",
+          "scope": "ar_map_plus_nextn_map",
+          "map_validation_passed": true,
+          "planner_mode": "per_slot_fallback",
+          "f32_contracted_slots": 0,
+          "decode_repack_requested": true,
+          "decode_repack_enabled": false,
+          "package_flags": {
+            "dense_q4_t16": true,
+            "dense_q4_qmicro_t16_gate_up": false,
+            "dense_q4_t16_attn_q_08b": false,
+            "dense_q5_t16_ssm_out": true,
+            "dense_q5_raw_mmq_ssm_out": true,
+            "dense_q5_qmicro_planar_ssm_out": false,
+            "dense_q5_t16_ssm_out_08b": false,
+            "dense_q5_t16_qkv": false,
+            "dense_q5_t16_h5120": false,
+            "dense_q6_qmicro_planar": true,
+            "dense_q6_qmicro_planar_excluded_slots": []
+          },
+          "capability_status": {
+            "GGUF_DENSE_Q4_T16": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES": "missing",
+            "GGUF_DENSE_Q4_T16_ATTN_Q_08B": "missing",
+            "GGUF_DENSE_Q5_T16_SSM_OUT": "literal",
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT": "literal",
+            "GGUF_DENSE_Q5_T16_SSM_OUT_08B": "missing",
+            "GGUF_DENSE_Q5_T16_QKV": "missing",
+            "GGUF_DENSE_Q5_T16_H5120": "missing",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "missing",
+            "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "missing"
+          },
+          "fp16_recurrent_state_default_on": false,
+          "ar_consumer_slots": 851,
+          "ar_unique_sources": 851,
+          "routes": {
+            "F32": {
+              "f32-resident": 353
+            },
+            "IQ2_XS": {
+              "bf16-expand": 1
+            },
+            "IQ4_XS": {
+              "bf16-expand": 172
+            },
+            "Q4_K": {
+              "kernel:gguf_q4_k": 95
+            },
+            "Q5_K": {
+              "bf16-expand": 80
+            },
+            "Q6_K": {
+              "raw-gguf-kernel": 1,
+              "bf16-expand": 11
+            },
+            "Q8_0": {
+              "raw-gguf-kernel": 97
+            }
+          },
+          "rejections": {
+            "IQ2_S": [
+              "layers.0.ffn_up (17408x5120)"
+            ],
+            "IQ3_S": [
+              "layers.1.ffn_gate (17408x5120)",
+              "layers.4.ffn_gate (17408x5120)",
+              "layers.5.ffn_gate (17408x5120)",
+              "layers.7.ffn_up (17408x5120)",
+              "layers.9.ffn_gate (17408x5120)",
+              "layers.9.ffn_down (5120x17408)",
+              "layers.11.ffn_gate (17408x5120)",
+              "layers.12.ffn_up (17408x5120)",
+              "layers.12.ffn_down (5120x17408)",
+              "layers.15.ffn_up (17408x5120)",
+              "layers.15.ffn_down (5120x17408)",
+              "layers.16.ffn_down (5120x17408)",
+              "layers.17.ffn_down (5120x17408)",
+              "layers.18.ffn_down (5120x17408)",
+              "layers.19.ffn_up (17408x5120)"
+            ],
+            "IQ3_XXS": [
+              "layers.10.ffn_gate (17408x5120)",
+              "layers.14.ffn_down (5120x17408)",
+              "layers.15.ffn_gate (17408x5120)",
+              "layers.16.ffn_up (17408x5120)",
+              "layers.17.ffn_gate (17408x5120)"
+            ],
+            "IQ4_NL": [
+              "layers.3.ffn_down (5120x17408)",
+              "layers.3.attn_q (12288x5120)",
+              "layers.6.ssm_out (5120x6144)",
+              "layers.7.attn_output (5120x6144)",
+              "layers.21.attn_qkv (10240x5120)",
+              "layers.25.attn_qkv (10240x5120)",
+              "layers.27.ffn_up (17408x5120)"
+            ],
+            "Q3_K": [
+              "root.token_embedding (248320x5120)",
+              "layers.1.ffn_up (17408x5120)",
+              "layers.12.ffn_gate (17408x5120)",
+              "layers.13.ffn_gate (17408x5120)",
+              "layers.13.ffn_up (17408x5120)",
+              "layers.13.ffn_down (5120x17408)",
+              "layers.14.ffn_gate (17408x5120)",
+              "layers.14.ffn_up (17408x5120)",
+              "layers.16.ffn_gate (17408x5120)",
+              "layers.17.ffn_up (17408x5120)",
+              "layers.18.ffn_gate (17408x5120)",
+              "layers.18.ffn_up (17408x5120)",
+              "layers.19.ffn_gate (17408x5120)"
+            ]
+          },
+          "rejected_tensors": 41,
+          "bf16_expand_stored_gib": 8.358,
+          "bf16_expand_resident_gib": 29.365,
+          "allocation": {
+            "unique_residents": 810,
+            "accepted_planned_bytes": 36519479296,
+            "accepted_planned_gib": 34.011415,
+            "accepted_planned_bytes_complete": true,
+            "formula_unavailable_residents": [],
+            "residents_by_layout": {
+              "dense_bf16": {
+                "count": 264,
+                "planned_bytes": 31530680320
+              },
+              "dense_f32": {
+                "count": 353,
+                "planned_bytes": 10582016
+              },
+              "q4_k_pack8": {
+                "count": 95,
+                "planned_bytes": 3904634880
+              },
+              "raw_gguf": {
+                "count": 98,
+                "planned_bytes": 1073582080
+              }
+            },
+            "sidecars": {},
+            "expert_pack8_sidecar_residents": 0,
+            "refused_slot_count": 41,
+            "refused_unique_sources": 41,
+            "refused_source_bytes": 2009518080,
+            "refused_source_gib": 1.87151,
+            "refused_bf16_bytes": 9243197440,
+            "refused_bf16_gib": 8.608398,
+            "native_refusal_lower_bound_bytes": 38528997376,
+            "native_refusal_lower_bound_gib": 35.882925,
+            "bf16_refusal_scenario_bytes": 45762676736,
+            "bf16_refusal_scenario_gib": 42.619814,
+            "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+          },
+          "nextn_routes": {
+            "own": {
+              "consumer_slots": 15,
+              "unique_sources": 15,
+              "routes": {
+                "F32": {
+                  "f32-resident": 7
+                },
+                "Q6_K": {
+                  "raw-gguf-kernel": 6
+                },
+                "Q8_0": {
+                  "raw-gguf-kernel": 2
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 15,
+                "accepted_planned_bytes": 351008768,
+                "accepted_planned_gib": 0.326902,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 7,
+                    "planned_bytes": 104448
+                  },
+                  "raw_gguf": {
+                    "count": 8,
+                    "planned_bytes": 350904320
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 351008768,
+                "native_refusal_lower_bound_gib": 0.326902,
+                "bf16_refusal_scenario_bytes": 351008768,
+                "bf16_refusal_scenario_gib": 0.326902,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            },
+            "fallback": {
+              "consumer_slots": 3,
+              "unique_sources": 3,
+              "routes": {
+                "F32": {
+                  "f32-resident": 1
+                },
+                "Q6_K": {
+                  "kernel:gguf_q6_k_t16_qmicro_planar_v1": 1
+                }
+              },
+              "rejections": {
+                "Q3_K": [
+                  "root.token_embedding (248320x5120)"
+                ]
+              },
+              "rejected_tensors": 1,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 2,
+                "accepted_planned_bytes": 1042964480,
+                "accepted_planned_gib": 0.971336,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 1,
+                    "planned_bytes": 20480
+                  },
+                  "gguf_q6_k_t16_qmicro_planar_v1": {
+                    "count": 1,
+                    "planned_bytes": 1042944000
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 1,
+                "refused_unique_sources": 1,
+                "refused_source_bytes": 546304000,
+                "refused_source_gib": 0.508785,
+                "refused_bf16_bytes": 2542796800,
+                "refused_bf16_gib": 2.368164,
+                "native_refusal_lower_bound_bytes": 1589268480,
+                "native_refusal_lower_bound_gib": 1.480122,
+                "bf16_refusal_scenario_bytes": 3585761280,
+                "bf16_refusal_scenario_gib": 3.3395,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            }
+          }
+        },
+        {
+          "backend": "hip_gfx1151",
+          "file_type_name": "MOSTLY_Q4_K_S",
+          "scope": "ar_map_plus_nextn_map",
+          "map_validation_passed": true,
+          "planner_mode": "per_slot_fallback",
+          "f32_contracted_slots": 0,
+          "decode_repack_requested": true,
+          "decode_repack_enabled": false,
+          "package_flags": {
+            "dense_q4_t16": true,
+            "dense_q4_qmicro_t16_gate_up": true,
+            "dense_q4_t16_attn_q_08b": true,
+            "dense_q5_t16_ssm_out": true,
+            "dense_q5_raw_mmq_ssm_out": false,
+            "dense_q5_qmicro_planar_ssm_out": false,
+            "dense_q5_t16_ssm_out_08b": true,
+            "dense_q5_t16_qkv": true,
+            "dense_q5_t16_h5120": true,
+            "dense_q6_qmicro_planar": true,
+            "dense_q6_qmicro_planar_excluded_slots": [
+              "attn_qkv"
+            ]
+          },
+          "capability_status": {
+            "GGUF_DENSE_Q4_T16": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP": "literal",
+            "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES": "literal",
+            "GGUF_DENSE_Q4_T16_ATTN_Q_08B": "literal",
+            "GGUF_DENSE_Q5_T16_SSM_OUT": "literal",
+            "GGUF_C8_Q5_RAW_MMQ_SSM_OUT": "missing",
+            "GGUF_DENSE_Q5_T16_SSM_OUT_08B": "literal",
+            "GGUF_DENSE_Q5_T16_QKV": "literal",
+            "GGUF_DENSE_Q5_T16_H5120": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR": "literal",
+            "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "literal",
+            "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "literal"
+          },
+          "fp16_recurrent_state_default_on": true,
+          "ar_consumer_slots": 851,
+          "ar_unique_sources": 851,
+          "routes": {
+            "F32": {
+              "f32-resident": 353
+            },
+            "IQ2_XS": {
+              "bf16-expand": 1
+            },
+            "IQ4_XS": {
+              "bf16-expand": 172
+            },
+            "Q4_K": {
+              "kernel:gguf_q4_k": 95
+            },
+            "Q5_K": {
+              "bf16-expand": 80
+            },
+            "Q6_K": {
+              "raw-gguf-kernel": 1,
+              "bf16-expand": 11
+            },
+            "Q8_0": {
+              "raw-gguf-kernel": 97
+            }
+          },
+          "rejections": {
+            "IQ2_S": [
+              "layers.0.ffn_up (17408x5120)"
+            ],
+            "IQ3_S": [
+              "layers.1.ffn_gate (17408x5120)",
+              "layers.4.ffn_gate (17408x5120)",
+              "layers.5.ffn_gate (17408x5120)",
+              "layers.7.ffn_up (17408x5120)",
+              "layers.9.ffn_gate (17408x5120)",
+              "layers.9.ffn_down (5120x17408)",
+              "layers.11.ffn_gate (17408x5120)",
+              "layers.12.ffn_up (17408x5120)",
+              "layers.12.ffn_down (5120x17408)",
+              "layers.15.ffn_up (17408x5120)",
+              "layers.15.ffn_down (5120x17408)",
+              "layers.16.ffn_down (5120x17408)",
+              "layers.17.ffn_down (5120x17408)",
+              "layers.18.ffn_down (5120x17408)",
+              "layers.19.ffn_up (17408x5120)"
+            ],
+            "IQ3_XXS": [
+              "layers.10.ffn_gate (17408x5120)",
+              "layers.14.ffn_down (5120x17408)",
+              "layers.15.ffn_gate (17408x5120)",
+              "layers.16.ffn_up (17408x5120)",
+              "layers.17.ffn_gate (17408x5120)"
+            ],
+            "IQ4_NL": [
+              "layers.3.ffn_down (5120x17408)",
+              "layers.3.attn_q (12288x5120)",
+              "layers.6.ssm_out (5120x6144)",
+              "layers.7.attn_output (5120x6144)",
+              "layers.21.attn_qkv (10240x5120)",
+              "layers.25.attn_qkv (10240x5120)",
+              "layers.27.ffn_up (17408x5120)"
+            ],
+            "Q3_K": [
+              "root.token_embedding (248320x5120)",
+              "layers.1.ffn_up (17408x5120)",
+              "layers.12.ffn_gate (17408x5120)",
+              "layers.13.ffn_gate (17408x5120)",
+              "layers.13.ffn_up (17408x5120)",
+              "layers.13.ffn_down (5120x17408)",
+              "layers.14.ffn_gate (17408x5120)",
+              "layers.14.ffn_up (17408x5120)",
+              "layers.16.ffn_gate (17408x5120)",
+              "layers.17.ffn_up (17408x5120)",
+              "layers.18.ffn_gate (17408x5120)",
+              "layers.18.ffn_up (17408x5120)",
+              "layers.19.ffn_gate (17408x5120)"
+            ]
+          },
+          "rejected_tensors": 41,
+          "bf16_expand_stored_gib": 8.358,
+          "bf16_expand_resident_gib": 29.365,
+          "allocation": {
+            "unique_residents": 810,
+            "accepted_planned_bytes": 36519479296,
+            "accepted_planned_gib": 34.011415,
+            "accepted_planned_bytes_complete": true,
+            "formula_unavailable_residents": [],
+            "residents_by_layout": {
+              "dense_bf16": {
+                "count": 264,
+                "planned_bytes": 31530680320
+              },
+              "dense_f32": {
+                "count": 353,
+                "planned_bytes": 10582016
+              },
+              "q4_k_pack8": {
+                "count": 95,
+                "planned_bytes": 3904634880
+              },
+              "raw_gguf": {
+                "count": 98,
+                "planned_bytes": 1073582080
+              }
+            },
+            "sidecars": {},
+            "expert_pack8_sidecar_residents": 0,
+            "refused_slot_count": 41,
+            "refused_unique_sources": 41,
+            "refused_source_bytes": 2009518080,
+            "refused_source_gib": 1.87151,
+            "refused_bf16_bytes": 9243197440,
+            "refused_bf16_gib": 8.608398,
+            "native_refusal_lower_bound_bytes": 38528997376,
+            "native_refusal_lower_bound_gib": 35.882925,
+            "bf16_refusal_scenario_bytes": 45762676736,
+            "bf16_refusal_scenario_gib": 42.619814,
+            "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+          },
+          "nextn_routes": {
+            "own": {
+              "consumer_slots": 15,
+              "unique_sources": 15,
+              "routes": {
+                "F32": {
+                  "f32-resident": 7
+                },
+                "Q6_K": {
+                  "raw-gguf-kernel": 6
+                },
+                "Q8_0": {
+                  "raw-gguf-kernel": 2
+                }
+              },
+              "rejections": {},
+              "rejected_tensors": 0,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 15,
+                "accepted_planned_bytes": 351008768,
+                "accepted_planned_gib": 0.326902,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 7,
+                    "planned_bytes": 104448
+                  },
+                  "raw_gguf": {
+                    "count": 8,
+                    "planned_bytes": 350904320
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 0,
+                "refused_unique_sources": 0,
+                "refused_source_bytes": 0,
+                "refused_source_gib": 0.0,
+                "refused_bf16_bytes": 0,
+                "refused_bf16_gib": 0.0,
+                "native_refusal_lower_bound_bytes": 351008768,
+                "native_refusal_lower_bound_gib": 0.326902,
+                "bf16_refusal_scenario_bytes": 351008768,
+                "bf16_refusal_scenario_gib": 0.326902,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            },
+            "fallback": {
+              "consumer_slots": 3,
+              "unique_sources": 3,
+              "routes": {
+                "F32": {
+                  "f32-resident": 1
+                },
+                "Q6_K": {
+                  "kernel:gguf_q6_k_t16_qmicro_planar_v1": 1
+                }
+              },
+              "rejections": {
+                "Q3_K": [
+                  "root.token_embedding (248320x5120)"
+                ]
+              },
+              "rejected_tensors": 1,
+              "bf16_expand_stored_gib": 0.0,
+              "bf16_expand_resident_gib": 0.0,
+              "allocation": {
+                "unique_residents": 2,
+                "accepted_planned_bytes": 1042964480,
+                "accepted_planned_gib": 0.971336,
+                "accepted_planned_bytes_complete": true,
+                "formula_unavailable_residents": [],
+                "residents_by_layout": {
+                  "dense_f32": {
+                    "count": 1,
+                    "planned_bytes": 20480
+                  },
+                  "gguf_q6_k_t16_qmicro_planar_v1": {
+                    "count": 1,
+                    "planned_bytes": 1042944000
+                  }
+                },
+                "sidecars": {},
+                "expert_pack8_sidecar_residents": 0,
+                "refused_slot_count": 1,
+                "refused_unique_sources": 1,
+                "refused_source_bytes": 546304000,
+                "refused_source_gib": 0.508785,
+                "refused_bf16_bytes": 2542796800,
+                "refused_bf16_gib": 2.368164,
+                "native_refusal_lower_bound_bytes": 1589268480,
+                "native_refusal_lower_bound_gib": 1.480122,
+                "bf16_refusal_scenario_bytes": 3585761280,
+                "bf16_refusal_scenario_gib": 3.3395,
+                "accounting": "requested planned weight-allocation bytes from planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout) residents, including sidecars; excludes allocator alignment beyond the formula, runtime scratch, KV, recurrent state, graph pools and measured residency. native_refusal_lower_bound keeps refused tensors at their compressed source size; bf16_refusal_scenario expands them to BF16; refusals are never omitted from these totals and neither treatment is a working load."
+              }
+            }
+          }
+        }
+      ],
+      "plugin_tensor_map": {},
+      "parser_validation": {
+        "production_scan": "accepted",
+        "production_scan_error": null,
+        "gguf_version": 3,
+        "version_supported": true,
+        "declared_tensor_count": 866,
+        "parsed_tensor_count": 866,
+        "table_complete": true,
+        "data_complete": true,
+        "data_start_bytes": 10996640,
+        "format_valid": true,
+        "status": "complete",
+        "diagnostics": []
+      },
+      "tensor_map": {
+        "available": true,
+        "architecture": "qwen35",
+        "validation_passed": true,
+        "diagnostic": false,
+        "tensors_on_disk": 866,
+        "ar": {
+          "layers": 64,
+          "layer_types": {
+            "full_attention": 16,
+            "linear_attention": 48
+          },
+          "ignored_block_ids": [
+            64
+          ],
+          "consumer_slots": 851,
+          "unique_sources": 851,
+          "root_slots": {
+            "root.lm_head": "output.weight",
+            "root.output_norm": "output_norm.weight",
+            "root.token_embedding": "token_embd.weight"
+          },
+          "aliases": []
+        },
+        "ignored": {
+          "tensor_count": 15,
+          "block_ids": [
+            64
+          ],
+          "nextn_tensor_count": 4
+        },
+        "nextn": {
+          "blocks": 1,
+          "block_id": 64,
+          "validation_passed": false,
+          "diagnostic": true,
+          "missing": [],
+          "unexpected": [],
+          "dtype_errors": [
+            "blk.64.nextn.eh_proj.weight: expected Q8_0, got Q6_K",
+            "blk.64.attn_q.weight: expected Q4_K, got Q6_K",
+            "blk.64.attn_k.weight: expected Q4_K, got Q8_0",
+            "blk.64.attn_v.weight: expected Q4_K, got Q8_0",
+            "blk.64.attn_output.weight: expected Q4_K, got Q6_K",
+            "blk.64.ffn_gate.weight: expected Q4_K, got Q6_K",
+            "blk.64.ffn_up.weight: expected Q4_K, got Q6_K",
+            "blk.64.ffn_down.weight: expected Q4_K, got Q6_K"
+          ],
+          "shape_errors": [],
+          "own_consumer_slots": 15,
+          "own_unique_sources": 15,
+          "fallback_consumer_slots": 3,
+          "fallback_slots": [
+            {
+              "slot_path": "root.lm_head",
+              "source": "output.weight",
+              "borrows_ar_root": true
+            },
+            {
+              "slot_path": "root.output_norm",
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "borrows_ar_root": false
+            },
+            {
+              "slot_path": "root.token_embedding",
+              "source": "token_embd.weight",
+              "borrows_ar_root": true
+            }
+          ],
+          "ar_borrowed_fallback_slots": [
+            "root.lm_head",
+            "root.token_embedding"
+          ],
+          "aliases": [
+            {
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "consumer_slots": [
+                "nextn:draft.nextn.shared_head_norm",
+                "nextn_fallback:root.output_norm"
+              ],
+              "consumer_count": 2
+            }
+          ]
+        },
+        "combined": {
+          "consumer_slots": 869,
+          "unique_sources": 866,
+          "aliases": [
+            {
+              "source": "blk.64.nextn.shared_head_norm.weight",
+              "consumer_slots": [
+                "nextn:draft.nextn.shared_head_norm",
+                "nextn_fallback:root.output_norm"
+              ],
+              "consumer_count": 2
+            },
+            {
+              "source": "output.weight",
+              "consumer_slots": [
+                "ar:root.lm_head",
+                "nextn_fallback:root.lm_head"
+              ],
+              "consumer_count": 2
+            },
+            {
+              "source": "token_embd.weight",
+              "consumer_slots": [
+                "ar:root.token_embedding",
+                "nextn_fallback:root.token_embedding"
+              ],
+              "consumer_count": 2
+            }
+          ],
+          "accounting": "logical consumer slots vs unique physical source tensors; shared sources counted once and reported as aliases; source-identity dedup is not resident-allocation dedup (one source may plan different layouts per consumer)"
+        },
+        "validation": {
+          "passed": true,
+          "missing": [],
+          "unexpected": [],
+          "shape_errors": [],
+          "ignored": [
+            "blk.64.attn_k.weight",
+            "blk.64.attn_k_norm.weight",
+            "blk.64.attn_norm.weight",
+            "blk.64.attn_output.weight",
+            "blk.64.attn_q.weight",
+            "blk.64.attn_q_norm.weight",
+            "blk.64.attn_v.weight",
+            "blk.64.ffn_down.weight",
+            "blk.64.ffn_gate.weight",
+            "blk.64.ffn_up.weight",
+            "blk.64.nextn.eh_proj.weight",
+            "blk.64.nextn.enorm.weight",
+            "blk.64.nextn.hnorm.weight",
+            "blk.64.nextn.shared_head_norm.weight",
+            "blk.64.post_attention_norm.weight"
+          ]
+        }
+      }
+    }
+  ]
+}
