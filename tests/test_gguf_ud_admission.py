@@ -1458,3 +1458,127 @@ def test_step_rows_native_admits_contracted_bf16_owner_and_reaches_device_entry(
     # The position owner was staged before the (mocked) device scratch step,
     # proving the entry gate admitted a genuinely contracted resident.
     assert owner.calls == [(0, 0)]
+
+
+# ---------------------------------------------------------------------------
+# U1 review repair 2: rank-3 IQ3_XXS selected experts keep their registered
+# MoE consumers; rank-2 dense IQ3_XXS stays refused
+# ---------------------------------------------------------------------------
+
+
+def _moe_layer_tensors(layer_id: int, *, expert_type: GGMLQuantizationType) -> dict:
+    prefix = f"blk.{layer_id}"
+    tensors = dict(_linear_layer_tensors(layer_id))
+    tensors.pop("ffn_gate")
+    tensors.pop("ffn_up")
+    tensors.pop("ffn_down")
+    tensors.update(
+        {
+            "ffn_gate_inp": _tensor(f"{prefix}.ffn_gate_inp.weight", (4, 8)),
+            "ffn_gate_inp_shexp": _tensor(f"{prefix}.ffn_gate_inp_shexp.weight", (5, 8)),
+            "ffn_gate_exps": _tensor(f"{prefix}.ffn_gate_exps.weight", (4, 5, 8), expert_type),
+            "ffn_up_exps": _tensor(f"{prefix}.ffn_up_exps.weight", (4, 5, 8), expert_type),
+            "ffn_down_exps": _tensor(f"{prefix}.ffn_down_exps.weight", (4, 8, 5), expert_type),
+            "ffn_gate_shexp": _tensor(f"{prefix}.ffn_gate_shexp.weight", (5, 8), GGMLQuantizationType.Q8_0),
+            "ffn_up_shexp": _tensor(f"{prefix}.ffn_up_shexp.weight", (5, 8), GGMLQuantizationType.Q8_0),
+            "ffn_down_shexp": _tensor(f"{prefix}.ffn_down_shexp.weight", (8, 5), GGMLQuantizationType.Q8_0),
+        }
+    )
+    return tensors
+
+
+def _synthetic_moe_model_map(
+    *,
+    expert_type: GGMLQuantizationType = GGMLQuantizationType.IQ3_XXS,
+) -> Qwen35GGUFModelMap:
+    from types import MappingProxyType
+
+    config = _config((LINEAR_ATTENTION,))
+    object.__setattr__(config, "architecture", "qwen35moe")
+    root = {
+        "token_embedding": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
+        "output_norm": _tensor("output_norm.weight", (8,)),
+        "lm_head": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
+    }
+    layers = tuple(
+        Qwen35GGUFLayerMap(
+            layer_id=layer_id,
+            layer_type=LINEAR_ATTENTION,
+            tensors=MappingProxyType(_moe_layer_tensors(layer_id, expert_type=expert_type)),
+        )
+        for layer_id in range(1)
+    )
+    return Qwen35GGUFModelMap(
+        config=config,
+        root_tensors=MappingProxyType(root),
+        layers=layers,
+        validation=None,
+    )
+
+
+def test_rank3_iq3_xxs_selected_experts_keep_their_registered_moe_consumers():
+    """U1 regression: the moe_experts whitelist omitted rank-3 IQ3_XXS even
+    though the materializer keeps it raw and gguf_iq_gemv registers selected
+    gguf_iq3_xxs moe_linear consumers on both HIP backends."""
+
+    report = preflight_qwen35_gguf_artifact(
+        _synthetic_moe_model_map(),
+        backend="hip_gfx1100",
+    )
+    assert report.unsupported == (), report.render_refusals()
+    assert report.supported
+    expert_records = [
+        record
+        for record in report.qualified_records
+        if record.role_class == "moe_experts" and "IQ3_XXS" in record.source_ggml_types
+    ]
+    assert expert_records, "no certified IQ3_XXS expert record"
+    # The contract is the raw rank-3 selected consumer family, not a dense
+    # rank-2 T16/X8 repack: only the raw layout carries IQ3_XXS.
+    iq3_layouts = {record.resident_layout for record in expert_records}
+    assert iq3_layouts == {LAYOUT_RAW_GGUF}
+    assert {record.kernel_layer for record in expert_records} == {"moe_selected"}
+    assert all(record.input_dtype == "bf16" and record.output_dtype == "bf16" for record in expert_records)
+    assert {record.rows_scope for record in expert_records} == {
+        "rows_1_8_row_local",
+        "prefill_rows",
+    }
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        backend_report = preflight_qwen35_gguf_artifact(
+            _synthetic_moe_model_map(), backend=backend
+        )
+        assert backend_report.supported, backend_report.render_refusals()
+
+
+def test_rank2_dense_iq3_xxs_is_refused_not_silently_supported():
+    from types import MappingProxyType
+
+    config = _config((LINEAR_ATTENTION,))
+    root = {
+        "token_embedding": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
+        "output_norm": _tensor("output_norm.weight", (8,)),
+        "lm_head": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
+    }
+    tensors = dict(_linear_layer_tensors(0))
+    tensors["ffn_gate"] = _tensor(
+        "blk.0.ffn_gate.weight", (5, 8), GGMLQuantizationType.IQ3_XXS
+    )
+    dense_iq3_map = Qwen35GGUFModelMap(
+        config=config,
+        root_tensors=MappingProxyType(root),
+        layers=(
+            Qwen35GGUFLayerMap(
+                layer_id=0,
+                layer_type=LINEAR_ATTENTION,
+                tensors=MappingProxyType(tensors),
+            ),
+        ),
+        validation=None,
+    )
+    report = preflight_qwen35_gguf_artifact(dense_iq3_map, backend="hip_gfx1100")
+    assert report.supported is False
+    refusals = [u for u in report.unsupported if u.slot_path == "layers.0.ffn_gate"]
+    assert refusals and refusals[0].stage == "planner_refused"
+    assert "rank-3" in refusals[0].reason
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        report.raise_for_errors()
