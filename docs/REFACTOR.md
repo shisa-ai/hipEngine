@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp mapped Q8 down candidate
+
+- Default-off `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` reuses the existing
+  grouped bundled Q8 kernel only when this invocation built the Q5_K
+  row4 map,rows>=512. Token-major outputs and combine order unchanged.
+- Five full-logit/state/KV cases pass;both binders0. Require canonical
+  A/B before promotion,remove route if rejected. Keep map-ready guard
+  even after any future promotion;allocated scratch is not valid ownership.
+
 ## Qwen4Exp raw MMQ vector staging rollback
 
 - Production `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects

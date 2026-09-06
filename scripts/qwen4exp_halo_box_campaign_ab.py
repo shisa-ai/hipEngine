@@ -220,13 +220,29 @@ def q8_mmq_raw_vector_expected_calls(prompt_tokens: int, chunk_size: int) -> int
     return 242*(full*(chunk_size>=64)+(tail>=64))
 
 
+def q8_bundle_call_in_scope(route_package: str, call_args: Sequence[object]) -> bool:
+    if route_package not in {"q8-mapped-down","q8-down-bundle"}:
+        return True
+    if len(call_args) < 3:
+        raise ValueError("Q8 bundle call requires a lane-map argument")
+    mapped = bool(call_args[2])
+    return mapped if route_package == "q8-mapped-down" else not mapped
+
+
+def q8_mapped_down_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
+    if prompt_tokens < 1 or chunk_size < 1:
+        raise ValueError("positive prompt and chunk sizes required")
+    full,tail = divmod(prompt_tokens,chunk_size)
+    return full*(chunk_size>=512)+(tail>=512)
+
+
 def _apply_mode(
     mode: str,
     *,
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -254,6 +270,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"
         if route_package == "q8-down-bundle":
             flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
+        if route_package == "q8-mapped-down":
+            flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
         if route_package == "q51-fold-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
         if route_package == "q51-register-cache":
@@ -296,7 +314,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -420,7 +438,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -472,7 +490,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             row4_key = KernelKey(
                 "hip_gfx1151", "moe_linear", "gguf_q5_1",
                 "selected_grouped_prefill_pair2_fold128_bf16_bf16_out")
-        if args.route_package == "q8-down-bundle":
+        if args.route_package in {"q8-down-bundle","q8-mapped-down"}:
             row4_key = KernelKey(
                 "hip_gfx1151", "linear", "gguf_q8_0",
                 "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
@@ -489,7 +507,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             quant=row4_key.quant, variant=row4_key.variant)
 
         def counted_row4(*call_args, **call_kwargs):
-            row4_calls[0] += 1
+            if q8_bundle_call_in_scope(args.route_package,call_args):
+                row4_calls[0] += 1
             return original_row4(*call_args, **call_kwargs)
 
         register(row4_key, counted_row4, replace=True)
@@ -562,6 +581,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "before": {"q8_down": "selected_grouped_row4_gemv_bf16_bf16_out"},
                 "after": {"q8_down": row4_key.variant},
             }
+        elif args.route_package == "q8-mapped-down":
+            artifact["arms"] = {
+                "before": {"token_major_q8_down":"selected_gemv_bf16_bf16_out"},
+                "after": {"token_major_q8_down":row4_key.variant},
+            }
         elif args.route_package == "q51-fold-pair":
             artifact["arms"] = {
                 "before": {"q51_down": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"},
@@ -582,7 +606,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             generator.runner, case=case, repetition=repetition, transitions=transitions)
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            if args.route_package == "q8-mmq-raw-vector":
+            if args.route_package == "q8-mapped-down":
+                expected_calls = q8_mapped_down_expected_calls(
+                    int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
+                if calls != expected_calls:
+                    raise AssertionError(f"Mapped Q8 down calls {calls} != {expected_calls}")
+            elif args.route_package == "q8-mmq-raw-vector":
                 expected_calls = q8_mmq_raw_vector_expected_calls(
                     int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
                 if calls != expected_calls:

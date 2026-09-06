@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Mapped Q8 down admission:five full-logit/state/KV cases exact,
+1/8 enabled prefill calls,zero decode/final owners. Current-call map
+ownership explicit;both binders0,throughput A/B pending.
+[State evidence](results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json).
+
 Mapped Q8 down screen:layer2 weights with borrowed code/mixed layer0
 counts80.728->37.969ms /80.566->37.420ms (2.126x/2.153x),40 pairs
 exact. Reuses existing kernel and map ABI;model integration/gates pending.

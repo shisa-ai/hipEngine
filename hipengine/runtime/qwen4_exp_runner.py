@@ -3005,6 +3005,15 @@ def _qwen4_exp_q51_fold128_key(key: KernelKey, *, rows: int) -> KernelKey:
     return candidate if is_registered(candidate) else key
 
 
+def _qwen4_exp_mapped_down_key(*, backend: str, quant: str, rows: int,
+                              map_ready: bool) -> KernelKey | None:
+    if (not map_ready or rows < 512
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN","0") != "1"):
+        return None
+    key = KernelKey(backend,"linear",quant,"selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+    return key if is_registered(key) else None
+
+
 def _qwen4_exp_q8_down_bundle_key(key: KernelKey, *, rows: int) -> KernelKey:
     if (rows < 512 or key.variant != "selected_grouped_row4_gemv_bf16_bf16_out"
             or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL", "0") != "1"):
@@ -3929,6 +3938,7 @@ def run_qwen4_exp_moe(
             and gate_weight.spec.quant_key == up_weight.spec.quant_key
             and is_registered(fused_key)
         )
+        mapped_gate_up_ready = False
         if use_dp4a:
             gguf_q4_k_quantize_bf16_q8_1(
                 scratch.hidden_bf16.ptr,
@@ -4024,6 +4034,7 @@ def run_qwen4_exp_moe(
                     scratch.group_sorted_lanes.ptr, scratch.group_sorted_experts.ptr,
                     scratch.group_sorted_weights.ptr, compact, experts,
                     stream=stream, runtime=active_runtime)
+                mapped_gate_up_ready = True
                 for name, output in (
                     ("expert_gate", scratch.expert_gate),
                     ("expert_up", scratch.expert_up),
@@ -4085,10 +4096,21 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
             )
         else:
-            selected_projection(
-                "expert_down", scratch.expert_intermediate.ptr,
-                scratch.expert_down.ptr, compact, compact, ffn, hidden,
-            )
+            mapped_key = _qwen4_exp_mapped_down_key(
+                backend=backend,quant=down_weight.spec.quant_key,rows=rows,
+                map_ready=mapped_gate_up_ready)
+            if mapped_key is not None:
+                resolve(backend=mapped_key.backend,layer=mapped_key.layer,
+                        quant=mapped_key.quant,variant=mapped_key.variant)(
+                    scratch.expert_intermediate.ptr,scratch.group_expert_start.ptr,
+                    scratch.group_sorted_lanes.ptr,down_weight.allocation("raw").tensor.ptr,
+                    scratch.expert_down.ptr,compact,compact,experts,ffn,hidden,
+                    stream=stream,runtime=active_runtime)
+            else:
+                selected_projection(
+                    "expert_down", scratch.expert_intermediate.ptr,
+                    scratch.expert_down.ptr, compact, compact, ffn, hidden,
+                )
             if rows == 1:
                 weighted_sum_out_bf16_f32w(
                     scratch.expert_down.ptr,
