@@ -1085,6 +1085,7 @@ def _install_diagnostic_plan(llm: Any, *, max_realized_group_rows: int = 8) -> N
     llm.resolve_speculative_mtp_serving_plan = MethodType(resolve, llm)
 
 
+@contextmanager
 def _temporary_environment(updates: Mapping[str, str | None]) -> Iterator[None]:
     previous = {key: os.environ.get(key) for key in updates}
     try:
