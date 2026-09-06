@@ -3,8 +3,9 @@
 Last updated: 2026-09-07.
 Status: verified analysis and coder handoff; **U0 audit/identity/pinning
 complete** (CPU-only, including the startup-isolation review fix:
-`import hipengine` loads no GPU backend package), **no implementation or GPU
-validation**.
+`import hipengine` loads no GPU backend package), **U1 admission implemented,
+then independently reviewed and repaired** (see the U1 review-repair record
+below; still CPU-only, still no GPU validation), **no GPU validation**.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
 U0 audit/identity repair landed on the `ud-quants` branch (see
 [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
@@ -737,8 +738,13 @@ profile binders; proposed `tests/test_gguf_ud_admission.py`.
   tables while plain controls keep the historical key; the packaged
   hot-vocabulary selection appends the preset key to its identity; MTP serving
   evidence already binds `artifact.sha256`; execution profiles fail closed for
-  unregistered quants. Plain K_M/K_S/0.8B/MoE-35B controls pass preflight and
-  reach allocation unchanged (allocation-sentinel tests).
+  unregistered quants. Plain K_M/K_S/0.8B/MoE-35B controls pass preflight.
+  Review repairs tightened this further: unknown (non-pinned) manifests now
+  get an unqualified sentinel identity instead of inheriting plain policy
+  rows or the packaged hot-vocabulary selection (pinned plain-control
+  fingerprints), the packed-decode-graph caller no longer crashes on
+  preset-bound identities, and every certified coverage family is checked
+  against actual registry registrations.
 - [x] Separate per-tensor repack from global F32 contraction; retain existing
   MoE semantics for unchanged manifests. `gguf_ar_decode_repack_veto` and
   `gguf_ar_f32_linear_contraction` are independent predicates over the shared
@@ -762,7 +768,10 @@ profile binders; proposed `tests/test_gguf_ud_admission.py`.
   sole-T16 with no raw allocation, and dense-F32 (plain) alpha/beta are all
   refused; dense-BF16 embeddings have deliberately no certified record (the
   consumer drops rows), so a multirow gather is refused instead of silently
-  resolving a singleton.
+  resolving a singleton. Review repair: the refusal is now also bound at load
+  time (`requested_operations`) and enforced at the actual native execution
+  entries (`step_rows_native` / `capture_native_rows_graph`) before any state
+  mutation or device call, using the real resident records.
 - [x] Keep AR-only and AR+MTP capabilities distinct. Both UD presets carry
   `("ar",)` scopes; `mtp_nextn_draft` is scope-refused for them and for
   unresolved plain artifacts, and `materialize_qwen35_gguf_nextn_weights`
@@ -772,14 +781,35 @@ profile binders; proposed `tests/test_gguf_ud_admission.py`.
 Run after creating the file:
 `.venv/bin/python -m pytest tests/test_gguf_ud_admission.py -q`.
 Exit: unknown layouts fail closed, no plain-artifact certificate reuse for UD.
-U1 is complete: `tests/test_gguf_ud_admission.py` is green on CPU (real-artifact
-tests skip without the pinned files), admission binds to actual
-role/shape/type manifests rather than stamps or histograms, the loader
-preflights before allocation, both K_M/K_S identity callers constrain UD, and
-the native-XL NextN exception recomputes its output-type manifest from the
-actual tensors (claim == reality == certified pin). UD artifacts remain
-refused for execution until U2-U5 deliver the missing dense consumers; the
-refusal lists are the honest per-slot inventory for those units.
+
+#### U1 review repairs (2026-09-07)
+
+The U1 completion claim above was premature. An independent review found six
+real defects in the landed work; the closure paragraph overstated what the
+tests proved, and one claim (allocation-sentinel tests for the plain
+K_M/K_S/0.8B/MoE-35B controls reaching allocation) had no test behind it at
+all. All six are now repaired with RED-then-GREEN tests on CPU; each repair
+has an immutable worklog entry and its own commit on `ud-quants`:
+
+| # | Severity | Defect in the original U1 work | Repair (commit) |
+| --- | --- | --- | --- |
+| F1 | HIGH | `ar_decode_native_rows` was never requested by the materializer nor checked at native execution entry; raw-Q8/sole-T16/dense-F32 alpha/beta could reach the BF16-pointer owner. | Load-time binding + entry checks in `step_rows_native`/`capture_native_rows_graph` (`6a9712ee7`) |
+| F2 | HIGH | The moe_experts whitelist omitted rank-3 IQ3_XXS although the materializer keeps it raw and `gguf_iq_gemv` registers selected-expert consumers. | Raw-only IQ3_XXS moe_experts coverage records with rank/shape/backend/dtype contract; rank-2 dense still refused (`cd73d1cef`) |
+| F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates and misaligned plans (e.g. Q6_K head N=257 T16) passed preflight and failed only mid-materialization, after earlier allocations. | Backend keys restricted to the registered metadata surface; per-slot allocation-accounting check aggregates all planner refusals before any allocation; zero-malloc sentinel test (`d665c01eb`) |
+| F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`) |
+| F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`) |
+| F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
+
+U1 is complete after these repairs: `tests/test_gguf_ud_admission.py` is green
+on CPU (real-artifact tests skip without the pinned files), admission binds to
+actual role/shape/type manifests rather than stamps or histograms, the loader
+preflights backend/materializability/scope before any allocation, both
+K_M/K_S identity callers constrain UD, unknown manifests fall back generically
+instead of inheriting plain-certified behavior, certificates carry their exact
+slot/plan scope, and the native-row BF16-pointer owner contract is enforced at
+the real execution entries. UD artifacts remain refused for execution until
+U2-U5 deliver the missing dense consumers; the refusal lists are the honest
+per-slot inventory for those units.
 
 ### U2. Independent Codec Oracles
 
