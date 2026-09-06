@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 simultaneous pair reduction rejected (September6 UTC):** doubling
+the reduction arena allows both outputs to share barrier stages while keeping
+the exact256-element addition tree. Seven GPU tests and40 two-bank pairs
+are exact, but actual layer0/1 down loses0.657x/0.661x at64/512 tokens.
+Trace72 VGPR/scratch0 unchanged; dynamic LDS8672->16864 bytes.
+Candidate removed; no model A/B warranted.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-dual-reduce-rejected.json).
+
 **Post-Q8-down code4096 refresh (September6 UTC):** clean `e959a095c`
 confirms32 row4 grouped-Q8 calls/1400.674ms, no row1 calls in that prefill
 owner. FFN14.679s, non-GR linear5.370s, GR4.254s, QSA1.919s, GDN0.777s.

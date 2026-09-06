@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q5_1 simultaneous pair reduction rejected: exact but0.661x at512 tokens
+on two actual down banks. Production remains unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q51-dual-reduce-rejected.json).
+
 Post-Q8-row4 code4096 attribution confirms32 production calls. FFN14.679s,
 linear5.370s, GR4.254s remain dominant; this is a code-only diagnostic refresh
 against reused Vulkan, not new throughput or the full-category overview.
