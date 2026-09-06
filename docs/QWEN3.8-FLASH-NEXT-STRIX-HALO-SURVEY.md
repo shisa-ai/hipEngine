@@ -31,7 +31,8 @@ The later MMQ prepack production A/B measures157.75/155.37/144.74 pp/s
 at512/1K/4K (+0.664%/+0.634%/+0.579% against its same-residency parent),
 all72 trajectories exact. Mixed512 request wall loses0.14%; memory rises
 1.67GiB. This is not a refreshed cross-engine comparison. Current family
-tables remain the explicitly named pre-MMQ snapshot pending recapture.
+tables now use post-MMQ production `ef63870f9`, with the prior Vulkan profile
+explicitly reused rather than newly measured.
 [MMQ production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
 
 September6 GR wave-scale production A/B subsequently measures prefill
@@ -39,8 +40,8 @@ September6 GR wave-scale production A/B subsequently measures prefill
 against its same-residency parent), all72 trajectories exact. This is an
 incremental paired result, not a refreshed cross-engine baseline.
 [GR promotion](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
-The post-GR six-case family refresh at clean `9efbf6d23` is also complete:
-p4096 FFN14.407s, non-GR linear5.545s, complete GR4.267s. The unchanged
+The post-MMQ six-case family refresh at clean `ef63870f9` is complete:
+p4096 FFN14.433s, non-GR linear5.367s, complete GR4.282s. The unchanged
 earlier Vulkan profile is explicitly reused for diagnostic family gaps,
 not relabeled as freshly measured throughput.
 [Updated family tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots).
@@ -52,7 +53,7 @@ with all72 trajectories exact. Its measured after rates are155.45/153.43/
 The frozen cross-engine throughput rows below precede this promotion and
 retain their original source identity. Current-HE family costs are refreshed
 separately, with the unchanged prior Vulkan profile explicitly reused:
-[post-GR source packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json).
+[post-MMQ source packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json).
 
 **Latest frozen refresh, 2026-09-05 UTC:** hipEngine `bd451a417` versus
 halo-box `b212548e0`, full12-case canonical AR, UD-Q4_K_XL/BF16 KV on
