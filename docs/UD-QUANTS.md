@@ -799,7 +799,7 @@ has an immutable worklog entry and its own commit on `ud-quants`:
 | F1 | HIGH | `ar_decode_native_rows` was never requested by the materializer nor checked at native execution entry; raw-Q8/sole-T16/dense-F32 alpha/beta could reach the BF16-pointer owner. | Load-time binding + entry checks in `step_rows_native`/`capture_native_rows_graph` (`6a9712ee7`) |
 | F2 | HIGH | The moe_experts whitelist omitted rank-3 IQ3_XXS although the materializer keeps it raw and `gguf_iq_gemv` registers selected-expert consumers. | Raw-only IQ3_XXS moe_experts coverage records with rank/shape/backend/dtype contract; rank-2 dense still refused (`cd73d1cef`) |
 | F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates and misaligned plans (e.g. Q6_K head N=257 T16) passed preflight and failed only mid-materialization, after earlier allocations. | Backend keys restricted to the registered metadata surface; per-slot allocation-accounting check aggregates all planner refusals before any allocation; zero-malloc sentinel test (`d665c01eb`) |
-| F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`). Third-round repair: the contract now binds the actual planned residents and coverage always requires the intended plan (see the round-3 subsection below) |
+| F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`). Third-round repair: the contract now binds the actual planned residents and coverage always requires the intended plan (see the round-3 subsection below). Fourth-round repair: intended-operation defaults and complete qualification accounting — refused reports can no longer supply authorizing contracts (see the round-4 subsection below) |
 | F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`) |
 | F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
 
@@ -900,6 +900,48 @@ still open on two points, both now repaired on CPU with RED-then-GREEN tests
 Re-review status after round 3: F6, F2, and the Q5-planar regression repair
 accepted; F4 repaired here (two round-3 points above) and F1, F3 (concrete
 consumer), F5 still pending re-review. U1 remains open.
+
+#### U1 review repair round 4 (2026-09-07): F4 operation defaults + complete qualification accounting
+
+A fourth review found two HIGH scope holes in the round-3 certificate work
+(`56dba7d3c`), both repaired on CPU with RED-then-GREEN tests (worklog entry
+`ud-u1-f4-operations-and-completeness`):
+
+- **Operation membership was only checked when the caller volunteered an
+  operation set.** Omitted, `certificate_covers_artifact` verified no
+  operations at all: an `ar_decode_c1`-only certificate returned True for a
+  prefill intended plan with identical residents, and (neighboring
+  counterexample) identical residents would likewise have covered an
+  `ar_decode_native_rows` intent. The intended operation set now defaults to
+  the intended contract's own checked operations — the whole intended
+  contract must be certified — and an explicit set must be non-empty and
+  narrow within BOTH the certificate's certified operations and the intended
+  contract's checked operations. Planned resident bytes establish
+  allocations, never row-operation or dtype qualification.
+- **Refused preflight reports could supply authorizing contracts.** The
+  preflight records only successfully qualified slots, and contract
+  self-consistency merely required a nonempty record set, so the refused
+  F32-alpha/beta native-rows report (alpha/beta omitted from its records)
+  compared True against the contracted certificate under an explicit native
+  operation. The contract now binds complete expected-versus-actual
+  qualification: `required_plan_slots` enumerates every slot the preflight
+  tried to qualify (participating or refused — planner, consumer, unknown
+  role class, and unknown `slot_filter` entries, which are now refused
+  instead of silently ignored) and `operation_scope_refusals` records
+  operation-level scope gates (MTP draft). A contract is
+  authorization-capable (`Qwen35GGUFPlanContract.is_complete`) only when its
+  records cover exactly the required accounting and nothing was refused;
+  `certificate_covers_artifact` requires completeness on both the recorded
+  and intended sides, `Qwen35GGUFAdmissionReport.certificate` refuses to
+  mint an incomplete contract, and a named nonempty slot scope with no
+  verified residents fails closed. Refused reports keep their partial
+  contracts for debugging — they can no longer authorize. The digest still
+  covers only successful records (unchanged format); completeness is bound
+  by the enumeration accounting, so the proof is not circular.
+
+Re-review status after round 4: F6, F2, and the Q5-planar regression repair
+accepted; F4 repaired here (the two round-4 points above) and awaiting
+re-review together with F1, F3 (concrete consumer), and F5. U1 remains open.
 
 ### U2. Independent Codec Oracles
 

@@ -2408,6 +2408,383 @@ def test_plan_contract_records_cover_exactly_the_claimed_slot_scope():
     assert subset_contract.resident_plan_digest != full_contract.resident_plan_digest
 
 
+# ---------------------------------------------------------------------------
+# U1 review repair round 4 (F4): intended-operation defaults + complete
+# qualification accounting.  A certificate authorizes an intended use only
+# when (a) the intended operation set -- explicit, or the intended contract's
+# own checked set when omitted -- is certified on BOTH sides (identical
+# residents never confer row-operation qualification), and (b) the intended
+# contract proves COMPLETE successful qualification over its claimed scope:
+# every slot the preflight tried to qualify is recorded, so a refused
+# preflight report can never supply an authorizing contract.
+# ---------------------------------------------------------------------------
+
+
+def test_coverage_without_operations_defaults_to_the_intended_contracts_ops():
+    """RED (F4 round 4, reviewer repro 1): a c1-only certificate must not
+    cover a prefill intended plan just because the planned residents are
+    identical; the default intended operation set is the intended contract's
+    own checked operations."""
+
+    plain_map = _synthetic_model_map()
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    c1_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", operations=(QWEN35_GGUF_OP_AR_DECODE_C1,)
+    )
+    assert c1_report.supported, c1_report.render_refusals()
+    c1_certificate = c1_report.certificate()
+    prefill_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", operations=(QWEN35_GGUF_OP_AR_PREFILL,)
+    )
+    assert prefill_report.supported, prefill_report.render_refusals()
+    # Same residents: the two contracts' planned records agree per slot, so
+    # ONLY the certified operation sets distinguish the intended uses.
+    assert (
+        c1_report.plan_contract.resident_plan_records
+        == prefill_report.plan_contract.resident_plan_records
+    )
+
+    # Omitted operations: the default intended set is the intended
+    # contract's ops, which the c1-only certificate never certified.
+    assert (
+        certificate_covers_artifact(
+            c1_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=prefill_report.plan_contract,
+        )
+        is False
+    )
+    # Explicitly naming the uncertified operation is refused as well.
+    assert (
+        certificate_covers_artifact(
+            c1_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=prefill_report.plan_contract,
+            operations=(QWEN35_GGUF_OP_AR_PREFILL,),
+        )
+        is False
+    )
+    # Explicit narrowing must belong to BOTH qualifications: the certified
+    # op (c1) is still refused because the intended prefill contract never
+    # checked c1.
+    assert (
+        certificate_covers_artifact(
+            c1_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=prefill_report.plan_contract,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+        )
+        is False
+    )
+
+    # An intended contract that checked both operations narrows cleanly to
+    # the certified one, and an explicitly EMPTY operation set authorizes
+    # nothing (fail closed).
+    both_report = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_PREFILL),
+    )
+    assert (
+        certificate_covers_artifact(
+            c1_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=both_report.plan_contract,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+        )
+        is True
+    )
+    assert (
+        certificate_covers_artifact(
+            c1_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=both_report.plan_contract,
+            operations=(),
+        )
+        is False
+    )
+
+
+def test_same_residents_do_not_upgrade_row_operations():
+    """RED (F4 round 4, neighboring counterexample): identical planned
+    residents must not upgrade c1/prefill coverage to the native multirow
+    operation; row-operation qualification is an operation-set fact, not a
+    resident-plan fact."""
+
+    raw_iq_map = _synthetic_model_map(attn_qkv_type=GGMLQuantizationType.IQ4_XS)
+    manifest = build_qwen35_gguf_role_manifest(raw_iq_map)
+    plan_kwargs = dict(decode_repack=True, dense_q4_t16=True, contract_f32_linear=True)
+    ar_report = preflight_qwen35_gguf_artifact(
+        raw_iq_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_PREFILL),
+        **plan_kwargs,
+    )
+    assert ar_report.supported, ar_report.render_refusals()
+    native_report = preflight_qwen35_gguf_artifact(
+        raw_iq_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,),
+        **plan_kwargs,
+    )
+    assert native_report.supported, native_report.render_refusals()
+    # Identical effective residents (contraction produced the BF16 owner).
+    assert (
+        ar_report.plan_contract.resident_plan_records
+        == native_report.plan_contract.resident_plan_records
+    )
+    certificate = ar_report.certificate()
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=native_report.plan_contract,
+        )
+        is False
+    )
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=native_report.plan_contract,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,),
+        )
+        is False
+    )
+
+
+def test_refused_preflight_contracts_never_authorize():
+    """RED (F4 round 4, reviewer repro 2): a refused preflight's plan
+    contract records only the successfully qualified slots; it must never
+    verify as the intended plan of a full-scope certificate, with or without
+    an explicit operation narrowing."""
+
+    raw_iq_map = _synthetic_model_map(attn_qkv_type=GGMLQuantizationType.IQ4_XS)
+    manifest = build_qwen35_gguf_role_manifest(raw_iq_map)
+    plan_kwargs = dict(decode_repack=True, dense_q4_t16=True)
+    ok_report = preflight_qwen35_gguf_artifact(
+        raw_iq_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,),
+        contract_f32_linear=True,
+        **plan_kwargs,
+    )
+    assert ok_report.supported, ok_report.render_refusals()
+    refused_report = preflight_qwen35_gguf_artifact(
+        raw_iq_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,),
+        contract_f32_linear=False,
+        **plan_kwargs,
+    )
+    # alpha/beta stay dense F32 and are refused for the BF16-pointer owner.
+    assert not refused_report.supported
+    assert {
+        u.slot_path
+        for u in refused_report.unsupported
+        if u.role_class == "recurrent_alpha_beta"
+    } == {"layers.0.ssm_alpha", "layers.0.ssm_beta"}
+    # The refused report's records are a strict subset of the certified ones
+    # (alpha/beta omitted): exactly the shape that used to compare True.
+    ok_records = set(ok_report.plan_contract.resident_plan_records)
+    refused_records = set(refused_report.plan_contract.resident_plan_records)
+    assert refused_records < ok_records
+
+    certificate = ok_report.certificate()
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=refused_report.plan_contract,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,),
+        )
+        is False
+    )
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=refused_report.plan_contract,
+        )
+        is False
+    )
+
+    # A refused report cannot mint, and its contract stays available for
+    # debugging while being provably incomplete.
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        refused_report.certificate()
+    assert refused_report.plan_contract is not None
+    assert refused_report.plan_contract.resident_plan_records
+    assert refused_report.plan_contract.is_complete() is False
+    assert ok_report.plan_contract.is_complete() is True
+
+
+def test_plan_contract_accounts_for_every_required_slot():
+    """The contract binds EXPECTED coverage vs ACTUAL qualification:
+    required_plan_slots names every slot the preflight tried to qualify
+    (participating or refused), records carry exactly the qualified ones,
+    and a hollow contract (required slot with no record) fails closed."""
+
+    from dataclasses import replace as dataclass_replace
+
+    plain_map = _synthetic_model_map()
+    report = preflight_qwen35_gguf_artifact(plain_map, backend="hip_gfx1100")
+    contract = report.plan_contract
+    assert contract.is_complete() is True
+    assert set(contract.resident_plan_slots) == set(contract.required_plan_slots)
+    assert contract.required_plan_slots
+
+    # Dropping one record (the digest re-derives) leaves the contract
+    # claiming a required scope it never recorded: incomplete, and coverage
+    # refuses it even against the full certificate it came from.
+    hollow = dataclass_replace(
+        contract, resident_plan_records=contract.resident_plan_records[1:]
+    )
+    assert hollow.is_complete() is False
+    assert (
+        certificate_covers_artifact(
+            report.certificate(),
+            manifest_fingerprint=report.manifest_fingerprint,
+            plan_contract=hollow,
+        )
+        is False
+    )
+
+    # as_dict exports the accounting for audit trails.
+    exported = report.certificate().as_dict()
+    assert exported["plan_contract"]["required_plan_slots"] == list(
+        contract.required_plan_slots
+    )
+    assert exported["plan_contract"]["operation_scope_refusals"] == []
+
+
+def _map_with_extra_root_slot(extra_slot: str) -> Qwen35GGUFModelMap:
+    from types import MappingProxyType
+
+    base = _synthetic_model_map()
+    root = dict(base.root_tensors)
+    root[extra_slot] = _tensor(f"{extra_slot}.weight", (256,))
+    return Qwen35GGUFModelMap(
+        config=base.config,
+        root_tensors=MappingProxyType(root),
+        layers=base.layers,
+        validation=None,
+    )
+
+
+def test_unknown_role_slot_incompletes_the_contract():
+    """A slot with no certified role class is a required-but-refused slot:
+    the report is refused AND the contract is structurally incomplete."""
+
+    mystery_map = _map_with_extra_root_slot("mystery")
+    report = preflight_qwen35_gguf_artifact(mystery_map, backend="hip_gfx1100")
+    assert not report.supported
+    refusals = [u for u in report.unsupported if u.slot_path == "root.mystery"]
+    assert refusals and refusals[0].stage == "consumer_unqualified"
+    assert "root.mystery" in report.plan_contract.required_plan_slots
+    assert "root.mystery" not in report.plan_contract.resident_plan_slots
+    assert report.plan_contract.is_complete() is False
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        report.certificate()
+
+
+def test_mtp_scope_refusal_incompletes_the_contract():
+    """Operation-level scope refusals (MTP draft on a non-MTP preset) are
+    recorded on the contract and make it incomplete even when every AR slot
+    qualified -- an explicit narrowing to the AR operation must still be
+    refused because the intended contract is not authorization-capable."""
+
+    plain_map = _synthetic_model_map()
+    report = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        operations=(
+            QWEN35_GGUF_OP_AR_DECODE_C1,
+            QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,
+        ),
+    )
+    assert not report.supported
+    contract = report.plan_contract
+    assert contract.operation_scope_refusals == (QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,)
+    assert contract.is_complete() is False
+
+    ar_certificate = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", operations=(QWEN35_GGUF_OP_AR_DECODE_C1,)
+    ).certificate()
+    # c1 IS certified on both sides; only the completeness gate refuses.
+    assert (
+        certificate_covers_artifact(
+            ar_certificate,
+            manifest_fingerprint=report.manifest_fingerprint,
+            plan_contract=contract,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+        )
+        is False
+    )
+
+
+def test_unknown_slot_filter_entries_are_refused_not_silently_ignored():
+    """A slot_filter entry naming no slot in the map is a caller error: the
+    preflight refuses it, accounts it as required-but-unrecorded, and the
+    resulting contract can never authorize that scope."""
+
+    plain_map = _synthetic_model_map()
+    bogus = ("root.output_norm", "layers.0.nonexistent")
+    report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=bogus
+    )
+    assert not report.supported
+    refusal = [u for u in report.unsupported if u.slot_path == "layers.0.nonexistent"]
+    assert refusal and refusal[0].stage == "scope_refused"
+    assert "layers.0.nonexistent" in report.plan_contract.required_plan_slots
+    assert report.plan_contract.is_complete() is False
+
+    # Without the completeness gate this subset intent would compare True
+    # against the full certificate (the one real record verifies per slot).
+    full_certificate = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100"
+    ).certificate()
+    assert (
+        certificate_covers_artifact(
+            full_certificate,
+            manifest_fingerprint=report.manifest_fingerprint,
+            plan_contract=report.plan_contract,
+            slot_filter=bogus,
+        )
+        is False
+    )
+
+
+def test_named_scope_with_no_verified_records_fails_closed():
+    """A subset intent that names a nonempty scope but whose intended
+    contract verified no residents for it authorizes nothing: the certified
+    records cannot vouch for slots the intended preflight never checked."""
+
+    plain_map = _synthetic_model_map()
+    full_certificate = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100"
+    ).certificate()
+    # token_embedding participates in no decode-only operation: the
+    # intended contract records nothing for the named scope.
+    decode_only = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+        slot_filter=("root.token_embedding",),
+    )
+    assert decode_only.supported
+    assert decode_only.plan_contract.resident_plan_records == ()
+    assert (
+        certificate_covers_artifact(
+            full_certificate,
+            manifest_fingerprint=decode_only.manifest_fingerprint,
+            plan_contract=decode_only.plan_contract,
+            slot_filter=("root.token_embedding",),
+        )
+        is False
+    )
+
+
 @pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
 def test_loader_reverifies_a_supplied_admission_certificate(monkeypatch, tmp_path):
     """The loader is a real certificate consumer: a caller-supplied
