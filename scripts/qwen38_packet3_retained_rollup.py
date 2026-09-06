@@ -32,6 +32,8 @@ KEY_BY_CELL = {
     "c5k3": "5",
     "c2k1": "2",
     "c7k3": "7",
+    "c2": "2",
+    "c8": "8",
 }
 
 
@@ -40,6 +42,8 @@ def main() -> int:
     failures: list[str] = []
     rows = []
     for cell, width_key in KEY_BY_CELL.items():
+        if cell in ("c2", "c8"):
+            continue  # K0 controls handled below
         path = out_dir / f"p3-{cell}-{'retained' if cell in ('c1k3', 'c1k2', 'c2k2', 'c8k3') else 'screen'}.json"
         if not path.exists():
             rows.append((cell, None, FLOORS[cell], "MISSING"))
