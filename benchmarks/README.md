@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 row4/output4 activation-reuse retile rejected as a blanket replacement:
+captured layer3/mixed0.992x versus layer0/code1.008x,exact. Candidate removed;
+retained production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-row4-pair4-rejected.json).
+
 Full six-case/twelve-phase owner refresh at `c075a6692` is complete.
 Four-category p4096 FFN13.437s,linear5.363s,GR4.251s;all phase ownership/
 decode-root/state/lifecycle gates pass. Earlier Vulkan is explicitly reused.

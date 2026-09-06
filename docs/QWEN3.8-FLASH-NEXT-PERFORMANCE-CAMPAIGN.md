@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 row4/output4 blanket replacement rejected (September6 UTC):** increase
+concurrent output activation reuse while retaining32 accumulator slots.
+Captured layer3/mixed4096chunk7 loses0.992x in both orders;layer0/code4096chunk0
+wins1.008x in both orders. All40 gate/up/SiLU pairs exact,13 GPU tests pass.
+Trace VGPR88->104/LDS4608->8704B/scratch0:constant accumulators did not keep
+the full resource footprint constant. Candidate removed;no model A/B.
+Do not hand-pick layer/prompt routes from this split result.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-row4-pair4-rejected.json).
+
 **Full post-folded-pair refresh (September6 UTC):** clean `c075a6692` all
 six cases/twelve phases pass100% ownership,matched decode roots,repeated
 decode/state and zero final allocations. Folded-pair engagement25/50/200
