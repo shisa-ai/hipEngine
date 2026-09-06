@@ -182,15 +182,22 @@ def gguf_fp16_recurrent_state_default(
     file_type_name: str | None,
     *,
     capability_reader: CapabilityReader,
+    artifact_preset_key: str | None = None,
 ) -> bool:
-    """Mirror the runner's file-type-stamp default for FP16 recurrent state.
+    """Mirror the runner's artifact-qualified FP16 recurrent-state default.
 
     An absent capability means the backend declares no such default (False).
     Comparison normalizes case/whitespace exactly like the runtime runner.
-    Runner-level environment overrides live in the runner and are not part of
-    this backend default.
+    ``artifact_preset_key`` mirrors the runner's artifact binding: ``None`` is
+    the qualified plain-control identity (the stamp-membership default may
+    apply); a preset or unknown-manifest sentinel key resolves the generic
+    False default without inheriting the certified stamp row. Runner-level
+    environment overrides live in the runner and are not part of this backend
+    default.
     """
 
+    if artifact_preset_key is not None:
+        return False
     if backend is None or file_type_name is None:
         return False
     defaults = capability_reader(backend, "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES", ())

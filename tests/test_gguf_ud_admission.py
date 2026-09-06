@@ -3594,3 +3594,488 @@ def test_invalid_planar_layouts_and_shapes_still_fail_closed():
         planned_qwen35_gguf_weight_allocation_nbytes(
             spec_with(LAYOUT_GGUF_Q5_K_T16, ("tiles", "qmicro_planar"), misaligned)
         )
+
+
+# ---------------------------------------------------------------------------
+# U1 review repair round 5 (F5): actual stamp-only policy callers must bind the
+# artifact qualification (loader-resolved preset key / unqualified-manifest
+# sentinel). The sentinel and the 3-tuple policy identity already exist; these
+# tests cover the production callers that still passed only (geometry, stamp)
+# or the bare stamp into artifact-qualified policy selection.
+# ---------------------------------------------------------------------------
+
+
+def test_runner_default_fp16_state_binds_artifact_qualification(monkeypatch):
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+
+    """The real ``Qwen35GGUFFullStackRunner`` initializer freezes the FP16
+    recurrent-state default from the resident artifact: only a qualified plain
+    control (loader-resolved ``artifact_preset_key=None``) may inherit the
+    stamp-certified default; unknown manifests and UD presets fall back to the
+    generic strict FP32 storage. The env var stays the explicit developer
+    opt-out for every identity."""
+
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", raising=False)
+    monkeypatch.setattr(runner_module, "resolve_backend", lambda backend: backend)
+    monkeypatch.setattr(
+        runner_module, "hip_target_arch_for_backend", lambda backend: "gfx1151"
+    )
+    monkeypatch.setattr(
+        runner_module, "load_backend_kernel_package", lambda backend: None
+    )
+    monkeypatch.setattr(runner_module, "resolve", lambda **kwargs: object())
+    monkeypatch.setattr(
+        runner_module,
+        "backend_package_capability",
+        lambda backend, name, default=None: (
+            frozenset({"mostly_q4_k_s"})
+            if name == "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES"
+            else default
+        ),
+    )
+
+    def initialized_runner(artifact_preset_key):
+        runner = object.__new__(Qwen35GGUFFullStackRunner)
+        runner.backend = "hip_gfx1151"
+        runner.runtime = object()
+        runner.compiler_version = None
+        runner.require_cached_build = False
+        runner.token_embedding_placement = "device"
+        runner.resident_weights = SimpleNamespace(
+            backend="hip_gfx1151",
+            file_type_name="MOSTLY_Q4_K_S",
+            artifact_preset_key=artifact_preset_key,
+            config=None,
+        )
+        Qwen35GGUFFullStackRunner.__post_init__(runner)
+        return runner
+
+    # Qualified plain control keeps the certified stamp default.
+    assert initialized_runner(None).fp16_recurrent_state is True
+    # Unknown manifest / UD preset sharing the exact stamp must not inherit it.
+    assert (
+        initialized_runner(GGUF_UNQUALIFIED_MANIFEST_PRESET).fp16_recurrent_state
+        is False
+    )
+    assert initialized_runner(GGUF_UD_Q4_K_S_PRESET).fp16_recurrent_state is False
+
+    # Explicit env override remains the developer opt-out seam for every
+    # identity (forces FP16 on for unknown, off for the plain control).
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "1")
+    assert (
+        initialized_runner(GGUF_UNQUALIFIED_MANIFEST_PRESET).fp16_recurrent_state
+        is True
+    )
+    monkeypatch.setenv("HIPENGINE_GGUF_FP16_RECURRENT_STATE", "0")
+    assert initialized_runner(None).fp16_recurrent_state is False
+
+
+def test_decode_graph_submission_policy_binds_artifact_qualification(monkeypatch):
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+
+    """The graph submission-transport policy is certified per artifact
+    (geometry, stamp): preset-bound and unknown-manifest identities resolve
+    only exact preset-keyed rows (none ship today) and otherwise the generic
+    hipgraph fallback; plain controls keep the certified rows."""
+
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _resolve_gguf_decode_graph_submission_transport,
+    )
+
+    geometry = GGUFModelGeometry.try_from_config(_config((LINEAR_ATTENTION,)))
+    assert geometry is not None
+
+    monkeypatch.setattr(
+        runner_module,
+        "backend_package_capability",
+        lambda backend, name, default=None: (
+            {
+                (geometry, "MOSTLY_Q4_K_S"): {
+                    "transport": "pm4",
+                    "min_replay_steps_by_physical_rows": {1: 8},
+                },
+            }
+            if name == "GGUF_DECODE_GRAPH_SUBMISSION_POLICIES"
+            else default
+        ),
+    )
+
+    # Plain identity keeps the certified row.
+    assert (
+        _resolve_gguf_decode_graph_submission_transport(
+            "hip_gfx1151",
+            geometry=geometry,
+            file_type_name="MOSTLY_Q4_K_S",
+            physical_rows=1,
+            replay_steps=8,
+            env={},
+        )
+        == "pm4"
+    )
+    # Unknown/preset-bound identities never inherit the plain row.
+    for preset_key in (GGUF_UNQUALIFIED_MANIFEST_PRESET, GGUF_UD_Q4_K_S_PRESET):
+        assert (
+            _resolve_gguf_decode_graph_submission_transport(
+                "hip_gfx1151",
+                geometry=geometry,
+                file_type_name="MOSTLY_Q4_K_S",
+                artifact_preset_key=preset_key,
+                physical_rows=1,
+                replay_steps=8,
+                env={},
+            )
+            == "hipgraph"
+        )
+    # Explicit requests keep overriding for any identity.
+    assert (
+        _resolve_gguf_decode_graph_submission_transport(
+            "hip_gfx1151",
+            geometry=geometry,
+            file_type_name="MOSTLY_Q4_K_S",
+            artifact_preset_key=GGUF_UNQUALIFIED_MANIFEST_PRESET,
+            requested="pm4",
+            env={},
+        )
+        == "pm4"
+    )
+
+
+def test_capture_decode_graph_callers_thread_resident_qualification(monkeypatch):
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+
+    """The real capture entry points (single-slot and packed) must pass the
+    resident artifact preset key into transport selection; a stamp-only
+    identity would let an unknown manifest inherit the plain-certified PM4
+    transport row."""
+
+    from types import SimpleNamespace
+
+    import hipengine.core.pm4.transport as pm4_transport
+    import hipengine.runtime.gguf_decode_graph as decode_graph_module
+    import hipengine.runtime.gguf_packed_decode_graph as packed_graph_module
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    geometry = GGUFModelGeometry.try_from_config(_config((LINEAR_ATTENTION,)))
+    assert geometry is not None
+
+    captured: dict[str, object] = {}
+    real_resolve = runner_module._resolve_gguf_decode_graph_submission_transport
+
+    def spy_resolve(backend, **kwargs):
+        captured.clear()
+        captured.update(kwargs)
+        return real_resolve(backend, **kwargs)
+
+    monkeypatch.setattr(
+        runner_module, "_resolve_gguf_decode_graph_submission_transport", spy_resolve
+    )
+    monkeypatch.setattr(
+        pm4_transport, "create_graph_submission_context", lambda **kwargs: None
+    )
+    monkeypatch.setattr(
+        decode_graph_module, "capture_qwen35_gguf_decode_graph", lambda *a, **k: object()
+    )
+    monkeypatch.setattr(
+        packed_graph_module,
+        "capture_qwen35_gguf_packed_decode_graph",
+        lambda *a, **k: object(),
+    )
+
+    def fake_session(artifact_preset_key):
+        return SimpleNamespace(
+            runner=SimpleNamespace(
+                backend="hip_gfx1151",
+                target_arch="gfx1151",
+                weights=SimpleNamespace(
+                    geometry=geometry,
+                    file_type_name="MOSTLY_Q4_K_S",
+                    artifact_preset_key=artifact_preset_key,
+                ),
+            ),
+            runtime=object(),
+            _decode_graph_submission_contexts={},
+            _pin_device_kv_graph=lambda graph: None,
+        )
+
+    for preset_key in (GGUF_UNQUALIFIED_MANIFEST_PRESET, GGUF_UD_Q4_K_S_PRESET):
+        Qwen35GGUFResidentSession.capture_decode_graph(
+            fake_session(preset_key), position=0
+        )
+        assert captured.get("artifact_preset_key") == preset_key, (
+            "capture_decode_graph dropped the resident artifact qualification"
+        )
+        Qwen35GGUFResidentSession.capture_packed_decode_graph(
+            fake_session(preset_key), [1, 2, 3, 4]
+        )
+        assert captured.get("artifact_preset_key") == preset_key, (
+            "capture_packed_decode_graph dropped the resident artifact qualification"
+        )
+
+    # Plain controls keep their None identity threaded through unchanged.
+    Qwen35GGUFResidentSession.capture_decode_graph(fake_session(None), position=0)
+    assert captured.get("artifact_preset_key") is None
+
+
+def test_private_c1_arena_policies_bind_artifact_qualification(monkeypatch):
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+
+    """The private-c1 arena admissions are (geometry, stamp)-certified rows:
+    preset-bound and unknown-manifest identities must resolve only exact
+    preset-keyed rows (none ship today), never the plain rows."""
+
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_runner import (
+        _resolve_gguf_private_c1_decode_scratch_arena,
+        _resolve_gguf_private_c1_small_weight_arena,
+        _resolve_gguf_private_c1_weight_arena_max_allocation_bytes,
+    )
+
+    geometry = GGUFModelGeometry.try_from_config(_config((LINEAR_ATTENTION,)))
+    assert geometry is not None
+    default_bytes = runner_module.GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
+
+    def fake_capability(backend, name, default=None):
+        if name == "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA":
+            return False
+        if name == "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES":
+            return {
+                (geometry, "MOSTLY_Q4_K_S"): {
+                    "enabled": True,
+                    "max_allocation_bytes": 4096,
+                }
+            }
+        if name == "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES":
+            return {(geometry, "MOSTLY_Q4_K_S"): {"enabled": True}}
+        return default
+
+    monkeypatch.setattr(runner_module, "backend_package_capability", fake_capability)
+
+    common = {
+        "backend": "hip_gfx1151",
+        "max_batch_size": 1,
+        "has_shared_runner": False,
+        "geometry": geometry,
+        "file_type_name": "MOSTLY_Q4_K_S",
+    }
+    # Plain identity keeps the certified rows.
+    assert _resolve_gguf_private_c1_small_weight_arena(**common) == (
+        True,
+        "private_c1_selective",
+    )
+    assert _resolve_gguf_private_c1_decode_scratch_arena(**common) == (
+        True,
+        "private_c1_geometry_policy",
+    )
+    assert (
+        _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+            backend="hip_gfx1151",
+            geometry=geometry,
+            file_type_name="MOSTLY_Q4_K_S",
+        )
+        == 4096
+    )
+    # Unknown/preset-bound identities never inherit the plain rows.
+    for preset_key in (GGUF_UNQUALIFIED_MANIFEST_PRESET, GGUF_UD_Q4_K_S_PRESET):
+        unqualified = {**common, "artifact_preset_key": preset_key}
+        assert _resolve_gguf_private_c1_small_weight_arena(**unqualified) == (
+            False,
+            "backend_capability_fallback",
+        )
+        assert _resolve_gguf_private_c1_decode_scratch_arena(**unqualified) == (
+            False,
+            "backend_capability_fallback",
+        )
+        assert (
+            _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
+                backend="hip_gfx1151",
+                geometry=geometry,
+                file_type_name="MOSTLY_Q4_K_S",
+                artifact_preset_key=preset_key,
+            )
+            == default_bytes
+        )
+    # An explicit ``requested=True`` is only an opt-OUT seam: unlike a forced
+    # override it does not bypass the artifact-qualified admission, so an
+    # unknown identity is still refused the plain-certified rows.
+    assert _resolve_gguf_private_c1_small_weight_arena(
+        **{**common, "artifact_preset_key": GGUF_UNQUALIFIED_MANIFEST_PRESET,
+           "requested": True}
+    ) == (False, "backend_capability_fallback")
+    assert _resolve_gguf_private_c1_small_weight_arena(
+        **{**common, "requested": True}
+    ) == (True, "private_c1_selective")
+
+
+def test_session_private_c1_arena_admission_binds_actual_manifest(
+    monkeypatch, tmp_path
+):
+    """The real ``Qwen35GGUFResidentSession`` initializer resolves the private
+    -c1 arena policy from the GGUF header before materialization: the
+    admission must bind the actual artifact qualification derived from the
+    manifest (unknown fixture manifests get the sentinel and must not inherit
+    the stamp-certified rows), while pinning the manifest as a qualified plain
+    control restores the historical admission."""
+
+    from types import SimpleNamespace
+
+    import hipengine.loading.qwen35_gguf_admission as admission_module
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.quant.gguf import GGMLQuantizationType
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+    from tests._qwen35_gguf_fixture import (
+        fixture_metadata,
+        linear_attention_layer_slots,
+        write_qwen35_gguf,
+    )
+
+    tensors = [
+        ("token_embd.weight", (64, 256), GGMLQuantizationType.Q8_0),
+        ("output_norm.weight", (256,), GGMLQuantizationType.F32),
+    ]
+    tensors.extend(
+        linear_attention_layer_slots(0, projection_type=GGMLQuantizationType.Q8_0)
+    )
+    path = tmp_path / "unknown-ks-manifest.gguf"
+    write_qwen35_gguf(path, tensors, fixture_metadata(1, file_type=14))
+
+    info = GGUFReader(path).info
+    geometry = GGUFModelGeometry.from_config(
+        runner_module.qwen35_gguf_config_from_metadata(info)
+    )
+    stamp = info.file_type_name
+
+    class _Abort(Exception):
+        pass
+
+    def aborting_runner_ctor(*args, **kwargs):
+        raise _Abort()
+
+    monkeypatch.setattr(
+        runner_module, "Qwen35GGUFFullStackRunner", aborting_runner_ctor
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "backend_package_capability",
+        lambda backend, name, default=None: (
+            {
+                (geometry, stamp): {
+                    "enabled": True,
+                    "max_allocation_bytes": 4096,
+                }
+            }
+            if name == "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES"
+            else {(geometry, stamp): {"enabled": True}}
+            if name == "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES"
+            else False
+            if name == "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA"
+            else default
+        ),
+    )
+
+    def initialized_session():
+        session = object.__new__(Qwen35GGUFResidentSession)
+        session.dms_metadata_path = None
+        session.dms_decision_mode = "sidecar"
+        session.max_batch_size = 1
+        session.prefill_queue_drain = "none"
+        session.runtime = object()
+        session.backend = "hip_gfx1151"
+        session.model_path = str(path)
+        session.shared_runner = None
+        session.token_embedding_placement = "auto"
+        session.use_small_weight_arena = None
+        session.use_decode_scratch_arena = None
+        with pytest.raises(_Abort):
+            Qwen35GGUFResidentSession.__post_init__(session)
+        return session
+
+    # Unknown fixture manifest: sentinel identity, no plain-row inheritance.
+    session = initialized_session()
+    assert session.small_weight_arena_enabled is False
+    assert session.small_weight_arena_reason == "backend_capability_fallback"
+    assert session.decode_scratch_arena_enabled is False
+    assert session.decode_scratch_arena_reason == "backend_capability_fallback"
+
+    # Pin the exact fixture manifest fingerprint: the qualified plain control
+    # lane restores the historical stamp-keyed admission.
+    model_map = runner_module.build_qwen35_gguf_tensor_map(info)
+    manifest = build_qwen35_gguf_role_manifest(model_map)
+    monkeypatch.setattr(
+        admission_module,
+        "_PINNED_PLAIN_CONTROL_FINGERPRINTS",
+        frozenset({manifest.fingerprint}),
+    )
+    session = initialized_session()
+    assert session.small_weight_arena_enabled is True
+    assert session.small_weight_arena_reason == "private_c1_selective"
+    assert session.small_weight_arena_max_allocation_bytes == 4096
+    assert session.decode_scratch_arena_enabled is True
+    assert session.decode_scratch_arena_reason == "private_c1_geometry_policy"
+
+
+def test_fp16_default_policy_mirror_binds_artifact_qualification():
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+
+    """The shared pure policy mirror (used by the CPU-only quant-route audit)
+    must mirror the runner's artifact-qualified FP16-recurrent-state default:
+    preset-bound and unknown identities resolve the generic False default."""
+
+    from hipengine.loading.qwen35_gguf_policy import gguf_fp16_recurrent_state_default
+
+    def reader(backend, name, default):
+        if name == "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES":
+            return frozenset({"mostly_q4_k_s"})
+        return default
+
+    assert (
+        gguf_fp16_recurrent_state_default(
+            "b", "MOSTLY_Q4_K_S", capability_reader=reader
+        )
+        is True
+    )
+    for preset_key in (GGUF_UNQUALIFIED_MANIFEST_PRESET, GGUF_UD_Q4_K_S_PRESET):
+        assert (
+            gguf_fp16_recurrent_state_default(
+                "b",
+                "MOSTLY_Q4_K_S",
+                capability_reader=reader,
+                artifact_preset_key=preset_key,
+            )
+            is False
+        )
+    # Without a stamp there is no certified default for any identity.
+    assert (
+        gguf_fp16_recurrent_state_default(
+            "b",
+            None,
+            capability_reader=reader,
+            artifact_preset_key=GGUF_UNQUALIFIED_MANIFEST_PRESET,
+        )
+        is False
+    )

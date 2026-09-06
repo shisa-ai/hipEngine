@@ -322,7 +322,10 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weight_spec,
     materialize_qwen35_gguf_weights,
 )
-from hipengine.loading.qwen35_gguf_admission import qwen35_gguf_native_row_binding_errors
+from hipengine.loading.qwen35_gguf_admission import (
+    qwen35_gguf_artifact_preset_key,
+    qwen35_gguf_native_row_binding_errors,
+)
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     build_gguf_k_mmq_prefill,
@@ -2679,10 +2682,15 @@ class Qwen35GGUFFullStackRunner:
         # Recurrent-state dtype is an allocation ABI, not a per-call toggle.
         # Freeze it after file-type discovery but before any session/scratch
         # allocation so later environment mutation cannot mismatch storage and
-        # writers. An explicit env value remains the rollback override.
+        # writers. An explicit env value remains the rollback override. The
+        # default binds the loader-resolved artifact qualification: only a
+        # qualified plain control (artifact_preset_key=None from admission)
+        # may inherit the stamp-certified backend default; preset-bound and
+        # unknown-manifest artifacts resolve the generic strict FP32 storage.
         self.fp16_recurrent_state = _gguf_fp16_recurrent_state_enabled(
             backend=self.backend,
             file_type_name=getattr(self.weights, "file_type_name", None),
+            artifact_preset_key=getattr(self.weights, "artifact_preset_key", None),
         )
         cfg = getattr(self.weights, "config", None)
         feed_forward_length = getattr(cfg, "feed_forward_length", None)
@@ -11018,8 +11026,17 @@ def _resolve_gguf_decode_graph_submission_transport(
     steps_per_replay: int = 1,
     requested: str | None = None,
     env: Mapping[str, str] | None = None,
+    artifact_preset_key: str | None = None,
 ) -> str:
-    """Resolve explicit/env selection over measured model/quant/shape policy."""
+    """Resolve explicit/env selection over measured model/quant/shape policy.
+
+    The package policy rows are certified per artifact ``(geometry, stamp)``.
+    ``artifact_preset_key=None`` keeps the historical plain-identity row;
+    preset-bound and unknown-manifest artifacts resolve only an exact
+    preset-keyed row (if a backend ships one) and otherwise the generic
+    hipgraph fallback — they never inherit a plain-certified row from the
+    stamp alone.
+    """
 
     from hipengine.core.pm4.transport import select_submission_transport
 
@@ -11030,7 +11047,12 @@ def _resolve_gguf_decode_graph_submission_transport(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policies must be a mapping")
-    policy = package_policies.get((geometry, file_type_name), {})
+    if artifact_preset_key is None:
+        policy = package_policies.get((geometry, file_type_name), {})
+    else:
+        policy = package_policies.get(
+            (geometry, file_type_name, artifact_preset_key), {}
+        )
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend GGUF decode graph transport policy must be a mapping")
     package_default = str(policy.get("transport", "hipgraph"))
@@ -11840,6 +11862,35 @@ def _gguf_mapped_host_token_embedding_storage(
     return source, "hip_registered_gguf_mmap"
 
 
+def _gguf_model_info_artifact_preset_key(model_info: object) -> str | None:
+    """Loader-equivalent artifact admission key from one GGUF model info.
+
+    Header-only (no payload read, no device): builds the production tensor
+    map plus the structural NextN map exactly like the materializer and
+    resolves the same admission qualification — ``None`` for a pinned
+    qualified plain control, a UD preset key, or the unqualified-manifest
+    sentinel. Session-level policy callers use this so their stamp-keyed
+    admissions bind the actual manifest, not the header stamp alone.
+    """
+
+    model_map = build_qwen35_gguf_tensor_map(model_info)
+    nextn_map = None
+    if model_map.config.ignored_block_ids:
+        from hipengine.loading.qwen35_gguf_nextn import (
+            build_qwen35_gguf_nextn_tensor_map,
+        )
+
+        nextn_map = build_qwen35_gguf_nextn_tensor_map(model_info, strict=False)
+    file_type_name = getattr(model_info, "file_type_name", None)
+    return qwen35_gguf_artifact_preset_key(
+        model_map,
+        nextn_map=nextn_map,
+        file_type_stamp=(
+            None if file_type_name is None else str(file_type_name)
+        ),
+    )
+
+
 def _resolve_gguf_private_c1_small_weight_arena(
     *,
     backend: str,
@@ -11848,8 +11899,16 @@ def _resolve_gguf_private_c1_small_weight_arena(
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
+    artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select the retained allocator-owned private-c1 path with explicit opt-out."""
+    """Select the retained allocator-owned private-c1 path with explicit opt-out.
+
+    The policy-table admission route is certified per artifact
+    ``(geometry, stamp)``: ``artifact_preset_key=None`` keeps the plain row,
+    preset-bound/unknown identities resolve only an exact preset-keyed row
+    (none ship today). ``requested`` (and its env) is an opt-OUT seam only —
+    ``True`` never bypasses the artifact-qualified admission.
+    """
 
     enabled = (
         _env_flag(_GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_ENV, True)
@@ -11877,7 +11936,10 @@ def _resolve_gguf_private_c1_small_weight_arena(
         )
         if not isinstance(policies, Mapping):
             return False, "backend_capability_fallback"
-        policy = policies.get((geometry, file_type_name))
+        if artifact_preset_key is None:
+            policy = policies.get((geometry, file_type_name))
+        else:
+            policy = policies.get((geometry, file_type_name, artifact_preset_key))
         admitted = isinstance(policy, Mapping) and bool(
             policy.get("enabled", False)
         )
@@ -11894,8 +11956,14 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
     requested: bool | None = None,
+    artifact_preset_key: str | None = None,
 ) -> tuple[bool, str]:
-    """Select one physical owner for geometry-qualified private-c1 scratch."""
+    """Select one physical owner for geometry-qualified private-c1 scratch.
+
+    The admission row is certified per artifact ``(geometry, stamp)`` and now
+    identity-keyed: preset-bound/unknown artifacts resolve only an exact
+    preset-keyed row (none ship today) and otherwise keep dedicated owners.
+    """
 
     if requested is None:
         raw = _env_value(_GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_ENV)
@@ -11918,7 +11986,10 @@ def _resolve_gguf_private_c1_decode_scratch_arena(
     )
     if not isinstance(policies, Mapping):
         return False, "backend_capability_fallback"
-    policy = policies.get((geometry, file_type_name))
+    if artifact_preset_key is None:
+        policy = policies.get((geometry, file_type_name))
+    else:
+        policy = policies.get((geometry, file_type_name, artifact_preset_key))
     if not isinstance(policy, Mapping) or not bool(policy.get("enabled", False)):
         return False, "backend_capability_fallback"
     return True, "private_c1_geometry_policy"
@@ -11929,8 +12000,14 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     backend: str,
     geometry: GGUFModelGeometry | None = None,
     file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
 ) -> int:
-    """Resolve the geometry-scoped arena cutoff without changing peer defaults."""
+    """Resolve the geometry-scoped arena cutoff without changing peer defaults.
+
+    The cutoff row is certified per artifact ``(geometry, stamp)`` and
+    identity-keyed like the arena admission: preset-bound/unknown artifacts
+    keep the default cutoff instead of a plain-certified row.
+    """
 
     default = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES
     policies = backend_package_capability(
@@ -11940,7 +12017,10 @@ def _resolve_gguf_private_c1_weight_arena_max_allocation_bytes(
     )
     if not isinstance(policies, Mapping):
         return default
-    policy = policies.get((geometry, file_type_name))
+    if artifact_preset_key is None:
+        policy = policies.get((geometry, file_type_name))
+    else:
+        policy = policies.get((geometry, file_type_name, artifact_preset_key))
     if not isinstance(policy, Mapping):
         return default
     parsed = int(policy.get("max_allocation_bytes", default))
@@ -12448,18 +12528,27 @@ def _gguf_fp16_recurrent_state_enabled(
     *,
     backend: str | None = None,
     file_type_name: str | None = None,
+    artifact_preset_key: str | None = None,
 ) -> bool:
     """Resolve the frozen recurrent-state storage dtype.
 
-    An explicit environment value always wins and remains the rollback seam.
-    Otherwise the backend package admits only model file types with complete
-    correctness and same-scope performance evidence. Registered FP32 kernels
-    remain the strict-storage fallback; incompatible chain-journal/MTP paths
-    still fail closed (see docs/REFACTOR.md).
+    An explicit environment value always wins and remains the rollback seam
+    (a supported developer opt-out for every artifact identity). Otherwise the
+    backend package admits only model file types with complete correctness and
+    same-scope performance evidence, and only for artifacts the admission
+    pipeline bound as qualified plain controls: ``artifact_preset_key=None``
+    means the caller holds a loader-resolved plain identity, so the
+    stamp-membership default applies. A preset-bound (UD) or unknown-manifest
+    (sentinel) key never inherits the artifact-qualified default from the
+    stamp alone and resolves the generic strict FP32 fallback. Registered FP32
+    kernels remain the strict-storage fallback; incompatible chain-journal/MTP
+    paths still fail closed (see docs/REFACTOR.md).
     """
 
     if _env_value(_GGUF_FP16_RECURRENT_STATE_ENV) is not None:
         return _env_flag(_GGUF_FP16_RECURRENT_STATE_ENV, False)
+    if artifact_preset_key is not None:
+        return False
     if backend is None or file_type_name is None:
         return False
     defaults = backend_package_capability(
@@ -14755,6 +14844,7 @@ class Qwen35GGUFResidentSession:
         )
         model_geometry = None
         model_file_type_name = None
+        model_artifact_preset_key = None
         token_embedding_type_name = None
         small_weight_policies = backend_package_capability(
             resolved_backend,
@@ -14766,14 +14856,13 @@ class Qwen35GGUFResidentSession:
             "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
             {},
         )
+        arena_policies_present = (
+            isinstance(small_weight_policies, Mapping) and small_weight_policies
+        ) or (isinstance(decode_scratch_policies, Mapping) and decode_scratch_policies)
         if (
             host_embedding
             or mapped_host_embedding
-            or (isinstance(small_weight_policies, Mapping) and small_weight_policies)
-            or (
-                isinstance(decode_scratch_policies, Mapping)
-                and decode_scratch_policies
-            )
+            or arena_policies_present
         ):
             model_info = GGUFReader(self.model_path).info
             model_geometry = GGUFModelGeometry.from_config(
@@ -14784,6 +14873,13 @@ class Qwen35GGUFResidentSession:
                 if model_info.file_type_name is None
                 else str(model_info.file_type_name)
             )
+            if arena_policies_present:
+                # Stamp-keyed arena admissions bind the actual artifact
+                # qualification (pinned plain control / UD preset / unknown
+                # manifest sentinel), never the header stamp alone.
+                model_artifact_preset_key = _gguf_model_info_artifact_preset_key(
+                    model_info
+                )
             if host_embedding or mapped_host_embedding:
                 token_embedding_type_name = next(
                     (
@@ -14808,6 +14904,7 @@ class Qwen35GGUFResidentSession:
                 geometry=model_geometry,
                 file_type_name=model_file_type_name,
                 requested=self.use_small_weight_arena,
+                artifact_preset_key=model_artifact_preset_key,
             )
         )
         if self.small_weight_arena_enabled:
@@ -14816,6 +14913,7 @@ class Qwen35GGUFResidentSession:
                     backend=resolved_backend,
                     geometry=model_geometry,
                     file_type_name=model_file_type_name,
+                    artifact_preset_key=model_artifact_preset_key,
                 )
             )
         self.decode_scratch_arena_enabled, self.decode_scratch_arena_reason = (
@@ -14826,6 +14924,7 @@ class Qwen35GGUFResidentSession:
                 geometry=model_geometry,
                 file_type_name=model_file_type_name,
                 requested=self.use_decode_scratch_arena,
+                artifact_preset_key=model_artifact_preset_key,
             )
         )
         if self.shared_runner is None:
@@ -27620,6 +27719,9 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    resident_weights, "artifact_preset_key", None
+                ),
                 physical_rows=1,
                 replay_steps=(
                     int(steps_per_replay)
@@ -27690,6 +27792,9 @@ class Qwen35GGUFResidentSession:
                 self.runner.backend,
                 geometry=getattr(resident_weights, "geometry", None),
                 file_type_name=getattr(resident_weights, "file_type_name", None),
+                artifact_preset_key=getattr(
+                    resident_weights, "artifact_preset_key", None
+                ),
                 physical_rows=(
                     len(token_ids) if physical_rows is None else int(physical_rows)
                 ),
