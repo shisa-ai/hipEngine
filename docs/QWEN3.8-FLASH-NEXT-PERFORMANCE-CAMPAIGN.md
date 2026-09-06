@@ -53,6 +53,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GR-specific MMQ64x128 rejected (September6 UTC):** unlike earlier64x64/
+32x128 sweeps, this targeted320-output GR projections to avoid384-output
+padding while retaining128 tokens per tile. Four tests and every real-weight
+comparison are exact, but layer0/4 rows512 speedups are0.722x/0.720x;
+rows64 also lose, including means and both orders. Removed candidate.
+Trace audit puts Q8 packing at203ms versus5351ms matmul at code4096;
+packing elimination alone has a sub1% wall ceiling. Move beyond smaller-tile
+retuning; no full-model A/B warranted.
+[Complete-chain evidence and recipe](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq64n128-rejected.json).
+
 **Q5_1 direct metadata rejected (September6 UTC):** direct wave-uniform
 scale/offset/high-bit loads in pair2, preserving reduction, pass8 tests and
 all actual-weight comparisons but lose at64/512 tokens (0.910x/0.921x,
