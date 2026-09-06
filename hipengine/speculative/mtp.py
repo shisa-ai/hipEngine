@@ -16,7 +16,7 @@ from hipengine.core.tensor import Tensor
 from hipengine.speculative.chain import ChainDraftCompiler, ChainDraftRequest, compile_chain_draft
 from hipengine.speculative.interfaces import DraftBatch
 
-MTP_CHAIN_CANDIDATE_BUDGETS: tuple[int, ...] = (1, 2, 3, 4, 5)
+MTP_CHAIN_CANDIDATE_BUDGETS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
 MtpDraftRequest = ChainDraftRequest
 
 

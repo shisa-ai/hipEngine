@@ -262,7 +262,7 @@ def test_physical_width_depth_policy_is_package_owned_and_capacity_clamped() -> 
         {"production": 0},
         {"production": None},
         {"production": ((0, 3),)},
-        {"production": ((8, 5),)},
+        {"production": ((8, 8),)},
         {"production": ((8,),)},
     ],
 )
@@ -4306,27 +4306,92 @@ def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
 
     import hipengine.generation.qwen35_gguf_mtp2 as module
 
-    assert module._MTP2_MAX_CANDIDATE_DEPTH == 4
+    assert module._MTP2_MAX_CANDIDATE_DEPTH == 7
 
-    # At the declared depth, budget 5 remains rejected.
+    # At the declared depth, budget 8 remains rejected.
     with pytest.raises(ValueError, match="candidate budget"):
         Qwen35GGUFMTP2Adapter(
             _width_bound_owner(profile="production", capacity=8),
             enabled=True,
             target_verify_mode="packed",
-            candidate_budget=5,
+            candidate_budget=8,
         )
 
     # Lifting the declared depth lifts admission coherently.
     original = module._MTP2_MAX_CANDIDATE_DEPTH
-    module._MTP2_MAX_CANDIDATE_DEPTH = 5
+    module._MTP2_MAX_CANDIDATE_DEPTH = 8
     try:
         lifted = Qwen35GGUFMTP2Adapter(
             _width_bound_owner(profile="production", capacity=8),
             enabled=True,
             target_verify_mode="packed",
-            candidate_budget=5,
+            candidate_budget=8,
         )
-        assert lifted.candidate_budget == 5
+        assert lifted.candidate_budget == 8
     finally:
         module._MTP2_MAX_CANDIDATE_DEPTH = original
+
+
+def test_c8_frontier_padded_boundaries_follow_the_campaign_table() -> None:
+    """C8 K3-K7 logical/padded frontier rows must match the campaign table.
+
+    K3 32→36, K4 40→42, K5 48→48 (already a rows6 multiple), K6 56→60,
+    K7 64→66. The 66-row padded frontier is representable: row validity is
+    a per-row uint8 array (batch.active_mask), not a u64 bitmask.
+    """
+
+    from hipengine.speculative.frontier import physical_group_pad_rows
+
+    for depth, logical, padded in (
+        (3, 32, 36),
+        (4, 40, 42),
+        (5, 48, 48),
+        (6, 56, 60),
+        (7, 64, 66),
+    ):
+        candidate_rows = 8 * depth
+        pad = physical_group_pad_rows(
+            (6,),
+            8,
+            candidate_rows,
+            max_rows=1024,
+        )
+        assert 8 + candidate_rows == logical, depth
+        assert logical + pad == padded, (depth, pad)
+
+    # A group whose padded shape exceeds the accept-row capacity stays
+    # unpadded (strict fallback route) rather than overrunning the buffer.
+    assert physical_group_pad_rows((6,), 8, 8 * 7, max_rows=65) == 0
+
+
+def test_adapter_frontier_geometry_derives_from_declared_budget() -> None:
+    """Adapter frontier/accept geometry must scale with the declared budget."""
+
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    real = module.backend_package_capability
+    policy = tuple(
+        (width, depth) for width in range(1, 9) for depth in range(1, 8)
+    )
+
+    def fake(backend: str, name: str, default: object = None) -> object:
+        if name == "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS":
+            return {"production": policy}
+        if name == "GGUF_SPECDEC2_TARGET_VERIFY_PAD_ROW_COUNTS":
+            return (6,)
+        return real(backend, name, default)
+
+    module.backend_package_capability = fake
+    try:
+        adapter = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=7,
+        )
+        assert adapter.physical_max_requests == 8
+        assert adapter.candidate_budget == 7
+        # Logical C8/K7 frontier: 8 requests × (7 candidates + 1 root).
+        assert adapter.physical_accept_max_rows == 66
+    finally:
+        module.backend_package_capability = real

@@ -154,8 +154,8 @@ def test_nextn_provider_emits_only_candidate_rows_under_locked_abi() -> None:
     assert draft_b4.candidate_tokens == (10, 11, 12, 13, 20, 21, 22, 23)
     assert draft_b4.draft_depths == (1, 2, 3, 4, 1, 2, 3, 4)
     assert len(executor.calls) == 12
-    with pytest.raises(ValueError, match="one of 1, 2, 3, 4, 5"):
-        provider.propose(context, candidate_budget=6)
+    with pytest.raises(ValueError, match="one of 1, 2, 3, 4, 5, 6, 7"):
+        provider.propose(context, candidate_budget=8)
 
 
 def test_nextn_physical_batch_publishes_consumed_positions_not_next_cursors(
@@ -1757,38 +1757,39 @@ def test_device_top1_maps_compact_batch_ids_in_place(
     )
 
 
-def test_nextn_exact_chain_ladder_covers_budget_4_and_derives_capacity() -> None:
-    """The K4 draft chain must fit every capacity-derived buffer.
+def test_nextn_exact_chain_ladder_covers_budget_7_and_derives_capacity() -> None:
+    """The K4-K7 draft chain must fit every capacity-derived buffer.
 
     Regression guard for the K4 device wedge: the exact-chain ladder froze at
     ``(1, 2, 3)``, so ``_NEXTN_TOP1_RESULT_CAPACITY`` sized the proposal token
     and result buffers for three slots per request while a K4 proposal wrote
     offsets through depth 3 — an out-of-bounds device write that wedged the
     stream in a blocking 4-byte D2D memcpy (bg-33 watchdog dump,
-    qwen35_gguf_nextn.py run_batch_proposal_device).
+    qwen35_gguf_nextn.py run_batch_proposal_device). The ladder now matches
+    the declared implementation-depth limit through 7.
     """
 
     import hipengine.runtime.qwen35_gguf_nextn as module
 
     ladder = module._NEXTN_EXACT_CHAIN_GRAPH_BUDGETS
-    assert ladder == (1, 2, 3, 4)
-    assert module._NEXTN_TOP1_RESULT_CAPACITY == max(ladder) == 4
+    assert ladder == (1, 2, 3, 4, 5, 6, 7)
+    assert module._NEXTN_TOP1_RESULT_CAPACITY == max(ladder) == 7
 
-    # A budget-4 device proposal descriptor now validates, including its
+    # A budget-7 device proposal descriptor now validates, including its
     # per-slot result span and [budget, hidden] hidden rows.
     proposal = module.Qwen35GGUFNextNDeviceProposal(
         request_id=41,
         root_token=9,
         root_position=12,
-        budget=4,
+        budget=7,
         result_ptr=0x5000,
-        result_nbytes=4 * module._NEXTN_TOP1_RESULT_NBYTES,
+        result_nbytes=7 * module._NEXTN_TOP1_RESULT_NBYTES,
         completion_event=0x6000,
         stream=0x7000,
         final_hidden=Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
-        hidden_rows=Tensor.from_handle(0x9000, (4, 8), DType.BF16, Device("hip", 0)),
+        hidden_rows=Tensor.from_handle(0x9000, (7, 8), DType.BF16, Device("hip", 0)),
     )
-    assert proposal.budget == 4
+    assert proposal.budget == 7
 
     # Outside the ladder is still rejected.
     with pytest.raises(ValueError, match="exact graph ladder"):
@@ -1796,9 +1797,9 @@ def test_nextn_exact_chain_ladder_covers_budget_4_and_derives_capacity() -> None
             request_id=41,
             root_token=9,
             root_position=12,
-            budget=5,
+            budget=8,
             result_ptr=0x5000,
-            result_nbytes=5 * module._NEXTN_TOP1_RESULT_NBYTES,
+            result_nbytes=8 * module._NEXTN_TOP1_RESULT_NBYTES,
             completion_event=0x6000,
             stream=0x7000,
             final_hidden=Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),

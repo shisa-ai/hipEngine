@@ -212,7 +212,7 @@ class _Qwen35GGUFNextNProposalGraph:
 # limit. Extending a budget here grows every capacity-derived buffer
 # (``_NEXTN_TOP1_RESULT_CAPACITY`` consumers) coherently; qualified serving
 # maxima remain gated separately by the adapter's width-depth policy.
-_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4)
+_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4, 5, 6, 7)
 _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
 _NEXTN_TOP1_RESULT_DTYPE = np.dtype([("token", np.int32), ("value", np.float32)])
 _NEXTN_TOP1_RESULT_NBYTES = int(_NEXTN_TOP1_RESULT_DTYPE.itemsize)
