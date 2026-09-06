@@ -1,10 +1,13 @@
 # gfx1100 Physical C>N MTP Promotion Campaign
 
-- Status: **complete. Qwen3.6 Dense/MoE physical C2 and Qwen3.8 physical C2
-  remain automatic; the dedicated Qwen3.8 C8 campaign closed exact-peer parity
-  and its post-closure product review promoted the exact production C8/K3 key.
-  Capacity-8 C1-C7 remain K0; the published Laurent threshold remains the
-  quantified blocker.**
+- Status: **historical promotion campaign complete. The 2026-09-06 Qwen3.8
+  sweep withdrew automatic C2/K2 and C8/K3 because every measured cell loses
+  to its matched AR arm. Qwen3.8 automatic now selects K0; safety-qualified
+  explicit routes remain available. Qwen3.6 policies are unchanged.**
+- Follow-up: [`QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md`](QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md)
+  owns native concurrency-engine C1, complete-cycle optimization and independent
+  requalification. The dated results below are history, not current automatic
+  policy. See the [sweep decision](../worklog/entries/20260906T070547.769218Z-lhl-gfx1100-mtp-ck-sweep-k0-291573.md).
 - Started: **2026-08-27**
 - Branch: **`campaign/gfx1100-mtp-cn-promotion`**
 - Base commit: **`5c2be8d157c587caf42591b07d7c02b3181adabc`**
@@ -1377,10 +1380,14 @@ Completed recovery work has no hidden “remaining #22/#23/#11/#12” tail:
   near-parity cells and require the same counterbalanced same-host repeat before
   becoming optimization targets.
 
-At P13 closure, product truth was unchanged: only the bounded
-capacity-2/C2/K2 key was automatic and the K3 table above was an explicit
-engine diagnostic. The dedicated continuation supersedes only that capacity-8
-sentence: the exact production/BF16 Qwen3.8 `Q4_K_M` capacity-8 C8/K3/D24
-greedy key is now automatic at **98.643 vs 88.250 AR tok/s (1.1178x)**.
-Capacity-8 C1-C7 and every scope miss remain K0. Evidence:
+At P13 closure, only the bounded capacity-2/C2/K2 key was automatic and the
+K3 table above was an explicit engine diagnostic. On 2026-09-05 the dedicated
+continuation promoted the production/BF16 Qwen3.8 `Q4_K_M` capacity-8
+C8/K3/D24 greedy key at **98.643 vs 88.250 AR tok/s (1.1178x)**.
+Historical evidence:
 [`C8 automatic promotion`](../benchmarks/results/2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json).
+
+The 2026-09-06 matched sweep withdrew that promotion and the Qwen3.8 C2/K2
+promotion: automatic now selects K0 at every width. The
+[better-MTP follow-up](QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md) owns new
+C1 mechanics, cycle-cost reductions and any future automatic qualification.

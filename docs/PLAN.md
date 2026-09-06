@@ -460,13 +460,17 @@ the prior measured queue remains historical context in
 [`MTP-CONCURRENCY2-RECOVERY.md`](MTP-CONCURRENCY2-RECOVERY.md). The W7900
 Qwen3.8 explicit C8/K3 cross-engine campaign in
 [`QWEN38-GFX1100-C8-K3-CAMPAIGN.md`](QWEN38-GFX1100-C8-K3-CAMPAIGN.md) is
-complete: exact-peer closure passed, while the published Laurent threshold is
-the quantified structural blocker. Its authorized post-closure product review
-retains the grouped-Q6 DP4A composition at **95.708→97.674 tok/s (+2.05%)**
-and promotes only the exact production/BF16 `Q4_K_M` capacity-8 C8/K3/D24 key;
-a clean automatic run measures **98.643 vs 88.250 AR tok/s (1.1178x)**.
-Capacity-8 C1-C7 and every model/quant/backend/profile/budget/context/horizon/
-sampling miss remain K0. Source audit and rejected alternatives remain in
+complete as historical cross-engine evidence. The
+[2026-09-06 matched AR/MTP sweep](../worklog/entries/20260906T070547.769218Z-lhl-gfx1100-mtp-ck-sweep-k0-291573.md)
+withdraws Qwen3.8 automatic C2/K2 and C8/K3: all 20 measured cells lose to
+current AR. Qwen3.8 gfx1100 automatic selects K0; safety-qualified explicit
+routes remain available, and Qwen3.6 policies are unchanged. The follow-up
+[`QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md`](QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md)
+requires native physical C1 on the Generation-2 provider/frontier/transaction
+path, not a legacy singleton verifier substitution, plus measured complete-cycle
+reductions and width-specific numerical/lifecycle/performance qualification.
+K4 stays bounded off pending hang diagnosis. Existing kernel improvements
+remain enabled in their qualified scopes. Source audit and rejected alternatives remain in
 [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,
