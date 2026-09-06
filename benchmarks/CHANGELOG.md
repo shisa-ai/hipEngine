@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework GR wave-scale screen] Actual layer0 rows512 attention/FFN up+sigmoid+mean3.338->3.234ms (1.032x) /3.331->3.207ms (1.039x); independent layer4 confirms1.036/1.032x. Exact gate/mixed bits,20 tests,72 VGPR/zero scratch, both orders positive at512; small-row reversals disclosed, model admission pending. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-scale.json`.
+
 - [2026-09-06 UTC post-Q8 family refresh, run started September5] Current-HE six-case/twelve-phase profiles pass full coverage and lifecycle; p4096 mean linear5.551s (prior snapshot5.716s), GR4.362s, FFN14.445s. Diagnostic reranking, not an A/B speedup; unchanged prior Vulkan profile explicitly reused. Generated tables refreshed from source39eb07a0a. `benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json`.
 
 - [2026-09-05 UTC Framework Q8 wave-scale production] Normal-model full A/B prefill154.29->155.45 (+0.75%),151.67->153.43 (+1.17%),141.58->143.41 tok/s (+1.29%) at512/1K/4K; all72 trajectories exact, all12 prefill/request walls improve, clean teardown. Decode drift prevents an intrinsic decode gain claim;33m53s. `benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json`.

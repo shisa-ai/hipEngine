@@ -53,6 +53,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GR up wave-scale candidate (2026-09-06 UTC):** reuse the exact Q8
+wave-uniform scale-address helper inside the operation-complete GR
+up+sigmoid+branch-mean composite. Actual layer0 rows512 attention/FFN up
+improves1.032/1.039x, layer4 confirms1.036/1.032x, without synthetic memory
+preconditioning. Means and both orders are positive;20 tests pass and gate/
+mixed F32 bits are exact. Both trace variants use72 VGPR/512 LDS/scratch0.
+Rows64 unconditioned order reversals remain explicit. No model default change;
+next is existing rows>256 composite admission via live invocation counts,
+full logits/state/KV and complete normal-model A/B.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-scale.json).
+
 **Post-Q8 current-HE family refresh:** six cases/twelve phase captures at
 `39eb07a0a` pass100% ownership coverage, same-root decode checks and clean
 lifecycle. Reuse the pinned Vulkan profile explicitly, not as newly measured
