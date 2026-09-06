@@ -325,9 +325,11 @@ measurements and capacity-specific policy decisions.
   already-qualified better owner if missing; otherwise develop one in-tree
   row-reuse/tile candidate with a registered strict fallback.
   Partially done: the Q6 FFN-down projection is re-owned (below). The Q6
-  recurrent_qkv/attention_v shapes measured 1.07-2.02x standalone for the
-  same sibling but ride fused pair/dual owners in cycles — deferred as a
-  Packet 4-adjacent lever, recorded in the packet3 decision entry.
+  attention_v shape measured bit-exact and 1.22-2.64x standalone for the same
+  sibling at every row 1-128 and is now band-admitted (rows 4-128 ->
+  `shared4_row64`, packet4 L2); recurrent_qkv measured flat (0.92-1.09x at
+  cycle rows) and stays on the parent. Attention_v rows >=129 await a shared4
+  screen at that shape before any further admission.
 - [x] Avoid one weight stream per verifier row. Compare current grouped/vector,
   row-amortized and matrix-tile implementations at actual layouts. Price the
   benefit against register pressure, scratch spills and extra reduction work.
