@@ -1739,7 +1739,7 @@ def test_unmaterializable_q6_head_shape_is_refused_before_allocation(monkeypatch
     refusals = [u for u in report.unsupported if u.slot_path == "root.lm_head"]
     assert refusals, "misaligned T16 head plan was not refused"
     assert all(u.stage == "planner_refused" for u in refusals)
-    assert "tile-aligned" in refusals[0].reason
+    assert "out_features must be positive and divisible by 16" in refusals[0].reason
     with pytest.raises(Qwen35GGUFAdmissionError):
         report.raise_for_errors()
 
@@ -1757,7 +1757,7 @@ def test_unmaterializable_q6_head_shape_is_refused_before_allocation(monkeypatch
 def test_misaligned_pack8_projection_is_refused_before_allocation():
     """Same aggregate-before-allocation contract for the Q4 pack8 tile check:
     a hand-built map whose ffn_up output width breaks pack8 alignment is
-    refused by the allocation-accounting planner inside the preflight."""
+    refused by the resident prerequisite validator before byte accounting."""
 
     from types import MappingProxyType
 
@@ -1793,7 +1793,7 @@ def test_misaligned_pack8_projection_is_refused_before_allocation():
     assert report.supported is False
     refusals = [u for u in report.unsupported if u.slot_path == "layers.0.ffn_up"]
     assert refusals and all(u.stage == "planner_refused" for u in refusals)
-    assert "tile-aligned" in refusals[0].reason
+    assert "out_features must be positive and divisible by 8" in refusals[0].reason
     with pytest.raises(Qwen35GGUFAdmissionError):
         report.raise_for_errors()
 
