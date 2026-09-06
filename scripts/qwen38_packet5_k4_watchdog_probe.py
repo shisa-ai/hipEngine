@@ -359,6 +359,50 @@ def _trace_adapter_registration() -> None:
 
     m2.Qwen35GGUFMTP2Adapter.register_request = traced_register  # type: ignore[method-assign]
     m2.Qwen35GGUFMTP2Adapter.release_request = traced_release  # type: ignore[method-assign]
+
+    from hipengine.generation.qwen35_gguf import (
+        Qwen35GGUFResidentModelRunner as _runner_cls,
+    )
+
+    original_begin = _runner_cls._begin_mtp2_prompt_streaming
+    original_finish = _runner_cls._finish_mtp2_prompt_streaming
+
+    def traced_begin(
+        runner_self: Any, rows: Any
+    ) -> Any:
+        rids = tuple(int(row.request_id) for row in rows)
+        budgets = {
+            int(row.request_id): getattr(row, "mtp2_candidate_budget", None)
+            for row in rows
+        }
+        result = original_begin(runner_self, rows)
+        none_map = {
+            int(row.request_id): (sink is None)
+            for row, sink in zip(rows, result, strict=False)
+        }
+        print(
+            f"[probe-stream] begin rids={rids} budgets={budgets} sinks_none={none_map}",
+            flush=True,
+        )
+        return result
+
+    def traced_finish(
+        runner_self: Any, rows: Any, sinks: Any, **kwargs: Any
+    ) -> Any:
+        rids = tuple(int(row.request_id) for row in rows)
+        result = original_finish(runner_self, rows, sinks, **kwargs)
+        fallbacks = {
+            int(row.request_id): getattr(row, "mtp2_prompt_fallback_reason", None)
+            for row in rows
+        }
+        print(
+            f"[probe-stream] finish rids={rids} fallbacks={fallbacks}",
+            flush=True,
+        )
+        return result
+
+    _runner_cls._begin_mtp2_prompt_streaming = traced_begin  # type: ignore[method-assign]
+    _runner_cls._finish_mtp2_prompt_streaming = traced_finish  # type: ignore[method-assign]
     print("[probe] adapter registration tracing enabled", flush=True)
 
 
