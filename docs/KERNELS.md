@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q4 pair2 paired-BF16 input layout was rejected and removed. Bitwise
+2x128->128x2 packing allowed32-bit pair loads but consumer17.333->
+22.657ms regressed,with only0.184ms packing cost. VGPR88->72 did not
+translate to throughput. Original pair2 layout/producer remain unchanged.
+Recipe: `2026-09-06-framework-qwen4exp-q4-input-pair-rejected.json`.
+
 Q4 pair2 wave-metadata scalarization was rejected and removed: readfirstlane
 on wave-uniform scale/min operands reduced VGPR88->80 but actual gate/up+
 SiLU remained flat/order-sensitive (17.478->17.490ms). No tile/arithmetic

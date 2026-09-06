@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 paired-activation layout rejected (September6 UTC):** transpose each
+K256 BF16 block from2x128 to128x2 so the consumer uses one32-bit load
+for its two logical input values. Packing included:17.470->22.938ms,
+both orders lose,all20 pairs exact.17 candidate tests pass. Cached trace
+packer0.184ms,parent consumer17.333ms,candidate22.657ms;VGPR88->72,
+LDS4608B/scratch0 unchanged. Consumer loss dominates,so routing-fused
+packing would not rescue this layout. Candidate removed,original9 tests
+pass;no model A/B or default change. Stop scalar-layout/cache tweaks on
+this evidence;investigate a materially different compute path with its
+declared arithmetic gate,not relaxed correctness thresholds.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-input-pair-rejected.json).
+
 **Q4 wave-uniform metadata rejected (September6 UTC):** scalarize the four
 wave-uniform scale/min operands after LDS load via readfirstlane, without
 changing pair2 tile/arithmetic. Actual code4096chunk0 gate/up+SiLU:
