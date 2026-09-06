@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "source": "917fcecec plus uncommitted candidate; removed all runtime edits",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "protocol": "Same model/weight/fixture/host/compiler/clock identities and synthetic activations as 2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json. Actual layer3/mixed4096 chunk7 counts; gate/up+BF16 SiLU, not whole FFN.",
+  "recipe": "Template bool LDS_CACHE on pair2. uint32_t quant_cache[16][128] stores eight nibbles per thread/block, bank q0/q1 at shifts bank*8/+4. Populate once per expert/output pair before existing metadata barrier. Original dynamic K loop reads packed LDS word, reconstructs exact scale*q-min; RB8 arithmetic/publication unchanged. All K<=4096 supported.",
+  "command": ".venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 512 --pairs 10 --lds-cache --layer 3 --routing-capture /tmp/qwen4exp-routing-categories.json --routing-case mixed_ja_en-p4096 --routing-chunk 7 --output /tmp/qwen4exp-q4-lds-cache-real.json",
+  "prior": "C=3.599s Q4 device owner, W~26.72s code4096, zero-cost1.156x. Hypothetical1.2x saves0.600s; no wall claim.",
+  "parent_ms_approx": 17.012,
+  "candidate_ms_approx": 26.336,
+  "speedup": 0.6459743754226254,
+  "pairs": 10,
+  "correctness": "Registry RED,13 GPU tests pass including K256/512/2560/4096 and output tails. Ten actual-weight/count pairs exact gate/up/SiLU. No full-model A/B warranted.",
+  "trace": {
+    "prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-lds-cache-trace --",
+    "arguments": "same command with --pairs 2 --output /tmp/qwen4exp-q4-lds-cache-trace.json",
+    "symbols": "gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<false>/<true>",
+    "parent_ns": [16905828,17104690],
+    "candidate_ns": [26223505,26255779],
+    "vgpr": [88,128],
+    "lds_bytes": [4608,12800],
+    "scratch_bytes": [0,0]
+  },
+  "raw": {
+    "/tmp/qwen4exp-q4-lds-cache-real.json": "c66d6550bd92a017bcfdf57ed978bebcf577b3be125c6452726d36580ede0b5c",
+    "/tmp/qwen4exp-q4-lds-cache-trace/gfx1151/3103693_kernel_trace.csv": "b68976ac955c62fa7f12bc82117e4f37a7feb806dca1f8e6b80f4db704b9072a"
+  },
+  "disposition": "Removed candidate. Staging cost/resource growth outweigh avoided global quant reads on this case; precise cause not isolated. No default or speedup claim."
+}
