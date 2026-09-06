@@ -251,38 +251,30 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # 24-cell inventory: engaged / rejected-before-mutation / unmeasured.
     measured: dict[tuple[int, int], dict[str, Any]] = {}
+    for route in cell_routes:
+        for k in route["admitted_k"] or [0]:
+            key = (int(route["width"]), int(k))
+            measured.setdefault(
+                key,
+                {"C": key[0], "K": key[1], "status": "engaged", "prompts": 0},
+            )["prompts"] += 1
+    # Median per-cell MTP/AR ratios from the rate rows, keyed by width.
+    import statistics as _statistics
+
+    ratios_by_width: dict[int, list[float]] = defaultdict(list)
     for row in rate_rows:
-        if not row["engaged"]:
-            continue
-        # admitted K comes from the route rows; fall back to the width key.
-        for route in cell_routes:
-            if route["source"] == row.get("source") and route.get(
-                "prompt_id"
-            ) == row.get("prompt_id"):
-                for k in route["admitted_k"] or [0]:
-                    key = (int(row["width"]), int(k))
-                    entry = measured.setdefault(
-                        key,
-                        {
-                            "C": key[0],
-                            "K": key[1],
-                            "status": "engaged",
-                            "prompts": 0,
-                            "ratios": [],
-                        },
-                    )
-                    entry["prompts"] += 1
-                    if row["mtp_vs_ar"] is not None:
-                        entry["ratios"].append(row["mtp_vs_ar"])
-                break
+        if row["engaged"] and row["mtp_vs_ar"] is not None:
+            ratios_by_width[int(row["width"])].append(float(row["mtp_vs_ar"]))
     inventory = []
     for width in range(1, 9):
         for k in range(1, 4):
             key = (width, k)
             if key in measured:
                 entry = measured[key]
-                ratios = entry.pop("ratios")
-                entry["median_mtp_vs_ar"] = sorted(ratios)[len(ratios) // 2] if ratios else None
+                ratios = ratios_by_width.get(width, [])
+                entry["median_mtp_vs_ar_all_depths"] = (
+                    round(_statistics.median(ratios), 4) if ratios else None
+                )
                 inventory.append(entry)
             elif width == 1:
                 inventory.append(
