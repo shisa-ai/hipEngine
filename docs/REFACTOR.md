@@ -1,14 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp Q8 down bundled reduction candidate
+## Qwen4Exp Q8 down bundled reduction rollback
 
-- Default-off `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
-  row4 arithmetic and bundles publication. Runtime admission adds default-off
+- Production `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
+  row4 arithmetic and bundles publication.
   `HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL` only after existing row4
-  selection, rows>=512; both profile binders pin0 until model A/B passes.
-- Promote only after full-model invocation/logits/state/KV and12-case A/B;
-  remove if those reject it. Keep row4 rollback, row1 small-chunk owner and
-  strict selected-GEMV fallback.
+  selection, rows>=512; production binds1,strict0 after full model/A-B gates.
+- Remove the bundle opt-out after the next qualified Q8-down change or a
+  release window; keep row4 rollback, row1 small-chunk owner and strict
+  selected-GEMV fallback until then.
 
 ## Qwen4Exp Q5_1 fold128 rollback
 

@@ -835,19 +835,24 @@ allocations.31 CPU route/profile/harness tests pass. Clean12-case throughput
 A/B was the promotion blocker; both binders pinned0 at that stage.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4-state.json`.
 
-The kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` sibling
+The `selected_grouped_row4_bundle_gemv_bf16_bf16_out` sibling
 bundles the four original row reductions through one shared publication phase.
 Actual layer4 weights/counts and layer30 weights/explicit borrowed layer4 counts
 improve1.152x/1.153x versus row4; means/both orders positive.
 Twenty-four GPU tests pass; trace24 VGPR/512B LDS/no spills unchanged.
-Full-model engagement/state/KV and12-case A/B remain the promotion blocker.
+Full-model engagement/state/KV and12-case A/B subsequently pass.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-bundle.json`.
 
-Default-off bundle admission passes five full-model logits/state/KV cases,
+Earlier default-off bundle admission passes five full-model logits/state/KV cases,
 four decode steps each; candidate calls4/32 only in prefill and final owners0.
-Only existing row4 rows>=512 is eligible,both binders0.28 CPU tests pass;
-clean12-case A/B remains required.
+Only existing row4 rows>=512 is eligible,both binders0 at admission.
+Twenty-eight CPU tests pass.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-bundle-state.json`.
+
+Clean c0fc635b5 full12-case A/B passes72 exact trajectories and every
+prefill/request wall. PP512/1024/4096 improves0.829%/0.671%/0.768%.
+Production now binds bundle1,strict0; no new memory. Tiny aggregate decode
+losses remain explicit in `2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.
 
 Clean c7dd804cb full12-case A/B now passes72 exact trajectories and all
 prefill/request-wall cases. PP512/1024/4096 improves0.822%/0.635%/0.705%.

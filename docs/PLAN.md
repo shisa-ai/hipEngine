@@ -825,6 +825,13 @@ request-wall improvements. PP512/1024/4096 gains0.716%/0.978%/0.915%.
 Only existing pair2 rows>=64 changes; strict and decode remain untouched.
 See `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-production.json`.
 
+The Q8 down row4 owner now bundles exact row reductions, reducing barrier
+traffic with unchanged register/LDS allocation. Full12-case A/B preserves72
+trajectories and improves every prefill/request wall; PP512/1024/4096 gains
+0.829%/0.671%/0.768%,with tiny decode decreases explicitly retained under
+prefill-first policy. Existing rows>=512 scope and strict fallback unchanged.
+See `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.
+
 #### Fusion Planner
 
 Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.
