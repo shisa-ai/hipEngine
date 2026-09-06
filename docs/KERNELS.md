@@ -797,6 +797,12 @@ No packed-weight sidecar. Existing raw and strict fallbacks remain;
 model state/KV and canonical A/B required before promotion.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-raw-vector.json`.
 
+Default-off raw-vector admission passes five full-logit/state/KV cases,
+four decode steps:0/242/0 at512 and0/1936/0 at4096,zero decode/final
+owners.32 CPU tests pass. Both binders0;existing raw MMQ rows>=64 only,
+prepacked path independent. Canonical12-case throughput gate remains.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json`.
+
 Four-wave K64 Q4 residual staging is rejected/removed:61.357ms versus
 exact17.403ms,224 VGPR/18432B LDS/no scratch. No-unroll59.887ms and
 padded-stride57.152ms still lose. Numerical equality with residual reference

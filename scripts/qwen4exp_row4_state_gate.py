@@ -27,7 +27,7 @@ from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture, _
 from scripts.qwen4exp_layer2_profile_gate import _state_summary
 from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_down_row4_expected_calls, q51_fold128_expected_calls, q51_fold_pair_expected_calls,
-    q8_mmq_vec4_expected_calls)
+    q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls)
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -75,6 +75,8 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
     if args.route_package == "q8-mmq-vec4":
         flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"
+    if args.route_package == "q8-mmq-raw-vector":
+        flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"
     if args.route_package == "q8-down-row4":
         flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
     if args.route_package == "q51-fold128":
@@ -116,6 +118,9 @@ def main():
     if args.route_package == "q8-mmq-vec4":
         key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
                         "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out")
+    if args.route_package == "q8-mmq-raw-vector":
+        key = KernelKey("hip_gfx1151","linear","gguf_q8_0",
+                        "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out")
     if args.route_package == "q8-down-row4":
         key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
                         "selected_grouped_row4_gemv_bf16_bf16_out")
@@ -224,6 +229,11 @@ def main():
                             kv_digest.update(raw)
                     state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
+                if args.route_package == "q8-mmq-raw-vector":
+                    expected_raw_calls = q8_mmq_raw_vector_expected_calls(
+                        case["prompt_tokens"],512) if enabled=="1" else 0
+                    assert prefill_invoked == expected_raw_calls,(case["id"],prefill_invoked)
+                    assert invoked == prefill_invoked,"raw MMQ vector ran during decode"
                 if args.route_package == "q8-mmq-vec4":
                     expected_vec4_calls = q8_mmq_vec4_expected_calls(
                         case["prompt_tokens"], 512) if enabled == "1" else 0
@@ -249,6 +259,8 @@ def main():
                     expected = expected_fold_calls > 0
                 if args.route_package == "q8-mmq-vec4":
                     expected = expected_vec4_calls > 0
+                if args.route_package == "q8-mmq-raw-vector":
+                    expected = expected_raw_calls > 0
                 assert (invoked > 0) == expected, f"route not engaged correctly: {case['id']}"
                 invoked_qsa = qsa_calls[0] - start_qsa_calls
                 if args.route_package == "prefill-bundle":

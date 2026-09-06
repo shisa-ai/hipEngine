@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Raw MMQ vector model admission passes five full-logit/state/KV cases:
+242/1936 enabled prefill calls,zero decode/final owners. Both binders0;
+canonical12-case throughput gate remains.
+[State evidence](results/2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json).
+
 Raw MMQ vector kernel screen:GR/query/output512 complete chains
 1.891->1.371 /6.452->5.293 /2.891->2.229ms,all120 pairs exact.
 25 tests pass,resources unchanged,no sidecar. Model gates pending.

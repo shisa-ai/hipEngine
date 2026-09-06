@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework raw MMQ vector admission] Five full-logit/state/KV cases exact,calls0/242/0 or0/1936/0,zero decode/final owners;32 CPU tests,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json`.
+
 - [2026-09-06 UTC Framework raw MMQ vector] GR/query/output512 chains1.891->1.371ms (-27.46%)/6.452->5.293ms (-17.96%)/2.891->2.229ms (-22.89%). All120 pairs exact/both orders positive,25 tests,184 VGPR/scratch0 unchanged,no sidecar. Kernel-only,model gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector.json`.
 
 - [2026-09-06 UTC Framework cooperative Q4 rejected] Exact17.403ms vs cooperative61.357ms (+252.6% time);no-unroll59.887ms/padded57.152ms still lose.224 VGPR/18KiB LDS initial,reference-exact T2;cooperative code removed,no model gate. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json`.
