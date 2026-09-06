@@ -1129,22 +1129,79 @@ The real tiny-GGUF loader negative covers both full and filtered loads with
 zero payload reads or allocator calls. Exact test outcomes and the full review
 handoff are in the `ud-u1-resident-prerequisites` worklog entry.
 
-**Current status (pending independent review of this shape repair):**
+**Current status (resident/NextN prerequisites accepted; invocation repair pending independent review):**
 
 | Finding | Status and remaining work |
 | --- | --- |
 | F1 | OPEN: loader/session operation dependency closure; native entry guards check alpha/beta, not embedding/head/MoE dependencies. |
 | F2 | Bounded repair accepted: preserve the seven raw expert formats and rank-2 IQ3_XXS refusal. |
-| F3 | Resident/repack prerequisite subtask repaired here; actual per-slot activation/output/auxiliary ABIs remain OPEN. Conv and the named GDN consumer produce F32 where coverage says BF16. |
-| F4 | OPEN: resident byte identity does not bind invocation operands; declared-F32 plans reuse BF16 records/certificates. Backend omission also permits cross-backend helper authorization (the loader supplies backend). Preserve existing completeness and subset accounting. |
+| F3 | Shared production invocation owners and explicit selected-call intents implemented; pending review. C1/indexed/prefill auxiliary ABIs, GDN handoffs, native alpha/beta and ordered selected partners are represented without changing kernels or numerical defaults. |
+| F4 | Backend plus resolved invocation/partner identity now binds alongside actual residents; pending review. Independent required slots/calls and scope refusals prevent partial/filter/operation narrowing from promoting incomplete plans. |
 | F5 | Bounded identity-aware policy callers repaired; profile authorization OPEN. Actual LLM auto quant resolution can select the plain production profile for an unknown manifest; its binder sets FP16 state through the environment, bypassing the qualified default without a user FP16 override. |
 | F6 | Bounded repair accepted: retain preset-qualified identity in packed replay policy calls. |
 
-Subsequent units require separate authorization: shared invocation-contract
-ownership, certificate binding, complete execution dependency closure, then
-artifact-bound profile authorization. U2+ codecs/kernels and published dense UD
-execution are not implemented by this unit; the pinned 18 K_M / 41 K_S
-planner-refusal inventories remain the expected default result.
+### Integrated F3/F4 invocation-contract repair
+
+The CPU-safe production owners are
+`loading/qwen35_gguf_consumer_surface.py` and
+`loading/gguf_selected_contract.py`. Runtime linear/embedding/router dispatch,
+selected FFN topology and argument marshalling, native alpha/beta, and named
+conv/GDN/RMSNorm wrappers consume their metadata. The former independent
+20-row linear dispatch table is now a generated compatibility view. Consumer
+availability remains distinct from numerical/profile qualification.
+
+`SelectedCallIntent` explicitly names `single`, `dual`, `dual_silu`, or
+`weighted_down`, ordered weight slots, actual input/output types, routing and
+buffer owners, and selected lanes per token. Full-model defaults use the same
+caller-plan owner as production. Load scope is independent: filtering to the
+gate slot cannot silently replace a paired gate/up intent with a singleton.
+A missing required partner refuses before payload access/allocation. An
+explicit singleton diagnostic can qualify a supported single-weight load,
+but its certificate cannot cover a full-model paired intent. An explicit empty
+intent tuple supports non-expert diagnostics, not selected calls with missing
+dependencies. The dual caller now owns the existing ordered two-single fallback
+as well as the direct dual launch; this is host factoring, not new arithmetic.
+
+Certificates bind the canonical resolved invocation records and independently
+required calls as well as the resident records: backend, ordered partners and
+their complete source/resident/allocation/sidecar identity, operand types and
+owners, adapters, operation/row limits, geometry and relevant scalar parameters.
+The intended contract is required; omitted backend/operation arguments derive
+from it. Completeness is checked before any narrowing. Equivalent effective
+contracts can compare equal despite different declarations; a declared F32
+input cannot be backed by a BF16 record. This is ordinary immutable internal
+metadata, not a cryptographic proof against fabricated contracts.
+
+Auxiliary boundaries are explicit: c1 conv/GDN differ from indexed native
+rows; conv writes F32, segmented GDN has F32 conv/state/output and BF16
+gate/alpha/beta operands, and prefill GDN publishes BF16 through its composite
+caller. `ssm_norm` belongs to that composite. The row-local `ssm_out` handoff
+resolves actual F32 input where supported or records the executed BF16 cast.
+Native alpha/beta name the direct BF16 owner, not a rewritten prefill kernel.
+Native head input stays BF16; no F32 declaration was added to force admission.
+The historical Q8T16 `(bf16 selector, fp16 output)` row keeps its runtime key,
+but metadata identifies its actual FP16 pointer ABI and does not qualify a
+supplied BF16 pointer against it.
+
+Limits are fail-closed: optional raw/T16 selected DP4A adapter experiments
+require their own qualified intent; mandatory X8 adapters are represented.
+The baseline prefill GDN contract requires F32 state rather than guessing an
+FP16 prefill plan. Existing runtime implementations and profile/variant
+selectors remain available and unchanged; these metadata contracts do not
+authorize a numerical profile or an unrepresented caller override. Internal
+optimized alternatives share a caller contract only when its supplied operands,
+output/state ownership, geometry and row semantics are identical; arithmetic
+selection still belongs to the existing profile/variant policy. A baseline key
+alone does not certify a different caller adapter or external workspace.
+Borrowed selected partners have no implicit authorization path: every partner
+must be present in the bound resident plan.
+
+F1 complete execution dependencies and runtime-entry certificate consumption,
+and F5 artifact-bound profile authorization, remain OPEN and require the next
+units after review. No new entry guards, profile authorization, codec, kernel,
+math or performance result is claimed here. U2+ and published dense UD execution
+are not implemented; the pinned 18 K_M / 41 K_S planner-refusal inventories
+remain the expected default result.
 
 ### U2. Independent Codec Oracles
 

@@ -998,6 +998,7 @@ def test_coverage_records_use_existing_registry_layer_names():
         "rmsnorm",
         "router_logits",
         "gdn_recurrent_rmsnorm_gate",
+        "gdn_prefill_recurrent",
         "linear_attn_conv_decode",
         "linear_attn_conv_prefill",
         "moe_linear",
@@ -1568,6 +1569,10 @@ def _synthetic_moe_model_map(
 
     config = _config((LINEAR_ATTENTION,))
     object.__setattr__(config, "architecture", "qwen35moe")
+    object.__setattr__(config, "expert_count", 4)
+    object.__setattr__(config, "expert_used_count", 2)
+    object.__setattr__(config, "expert_feed_forward_length", 256)
+    object.__setattr__(config, "expert_shared_feed_forward_length", 256)
     root = {
         "token_embedding": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
         "output_norm": _tensor("output_norm.weight", (256,)),
@@ -3259,7 +3264,7 @@ def test_mixed_expert_type_map_keeps_every_formats_consumer():
             f"blk.0.{slot}.weight", (4, 256, 256), expert_type
         )
     mixed_map = Qwen35GGUFModelMap(
-        config=_config((LINEAR_ATTENTION,)),
+        config=_synthetic_moe_model_map().config,
         root_tensors=MappingProxyType(
             {
                 "token_embedding": _tensor(
@@ -4349,10 +4354,10 @@ def test_f32_input_declaration_is_validated_fail_closed():
 
 
 def test_declared_f32_input_does_not_widen_unsupported_layouts():
-    """An F32-input declaration only admits layouts that actually have a
-    registered F32-activation consumer: a Q4_K pack8 head stays on its BF16
-    record (the runtime per-slot fallback), and no layout invents a phantom
-    F32 row."""
+    """A supplied F32 pointer cannot use the pack8 BF16-input row.
+
+    The head has no caller-side conversion adapter, so refuse before load.
+    """
 
     pack8_map = _synthetic_model_map(lm_head_type=GGMLQuantizationType.Q4_K)
     report = preflight_qwen35_gguf_artifact(
@@ -4361,11 +4366,7 @@ def test_declared_f32_input_does_not_widen_unsupported_layouts():
         operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
         f32_input_operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
     )
-    assert report.unsupported == (), report.render_refusals()
-    head_records = [
-        record for record in report.qualified_records if record.role_class == "lm_head"
-    ]
-    assert head_records
-    # The pack8 head has no F32-activation consumer; the certified record is
-    # still the actual BF16-activation row the runtime launches.
-    assert all(record.input_dtype == "bf16" for record in head_records)
+    assert not report.supported
+    assert any(item.slot_path == "root.lm_head" for item in report.unsupported)
+    assert not report.plan_contract.is_complete()
+    assert not any(record.role_class == "lm_head" for record in report.qualified_records)

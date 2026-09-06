@@ -957,6 +957,21 @@ and graph capture consume that manifest without backend-, quant-, or profile-
 specific branches in engine/model code. See
 [`EXECUTION-PROFILES.md`](EXECUTION-PROFILES.md).
 
+GGUF invocation contracts are CPU-safe metadata at the production caller
+boundary, not another registry axis. `loading/qwen35_gguf_consumer_surface.py`
+owns linear/embedding/router resolution and the named auxiliary ABIs;
+`loading/gguf_selected_contract.py` owns selected-expert call interfaces and
+caller topology. Admission consumes these owners rather than maintaining a
+second dispatch table. Explicit selected-call intents distinguish singleton,
+dual, dual-SiLU and weighted-down calls and bind every ordered resident partner.
+A load filter cannot turn a model's paired intent into a singleton; standalone
+diagnostics must name their own intent. Certificates bind resolved operands,
+adapters, state storage, geometry/row domains and backend alongside actual
+planned residents, with independent completeness accounting before narrowing.
+This is invocation/residency qualification, not numerical-profile permission.
+U1 runtime-entry dependency/certificate consumption (F1) and integrated profile
+binder authorization (F5) remain separate open work; see [`UD-QUANTS.md`](UD-QUANTS.md).
+
 Public APIs and server entry points default to `backend="auto"`. Auto is a selector
 resolved before registry lookup, not a registry key: exact `gfx1100`/`gfx1151`
 detections map to the matching HIP backend, `HIPENGINE_BACKEND` can force a

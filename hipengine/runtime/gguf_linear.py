@@ -1370,121 +1370,20 @@ def resolve_q8_mmq_prefill_policy(
     )
 
 
-_DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
-    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_bf16_out"),
-        "pack8",
-    ),
-    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_fp16_out"),
-        "pack8",
-    ),
-    (LAYOUT_Q4_K_PACK8, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q4_k", "pack8_bf16_f32_out"),
-        "pack8",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_bf16_out"),
-        "raw",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_fp16_out"),
-        "raw",
-    ),
-    (LAYOUT_RAW_GGUF, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "<from-weight>", "gemv_bf16_f32_out"),
-        "raw",
-    ),
-    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_BF16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "bf16", "f32_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_F32, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "f32", "bf16_hidden_bf16_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_DENSE_F32, GGUF_ACTIVATION_F32, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "dense_gemv", "f32", "f32_hidden_f32_out"),
-        "dense_bf16",
-    ),
-    (LAYOUT_GGUF_Q4_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q4_k_t16_v1",
-            "dense_single_local32_bf16_bf16_out",
-        ),
-        "t16",
-    ),
-    (
-        LAYOUT_GGUF_Q4_K_QMICRO_T16,
-        GGUF_ACTIVATION_BF16,
-        GGUF_OUTPUT_BF16,
-    ): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q4_k_qmicro_t16_v1",
-            "dense_single_local32_bf16_bf16_out",
-        ),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q5_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q5_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q6_K_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_F32): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q6_k_t16_v1", "t16_gemv_decode_bf16_f32_out"),
-        "t16",
-    ),
-    (
-        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-        GGUF_ACTIVATION_BF16,
-        GGUF_OUTPUT_BF16,
-    ): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_gemv_decode_bf16_bf16_out",
-        ),
-        "t16",
-    ),
-    (
-        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-        GGUF_ACTIVATION_BF16,
-        GGUF_OUTPUT_F32,
-    ): GGUFLinearDispatch(
-        KernelKey(
-            "hip_gfx1100",
-            "linear",
-            "gguf_q6_k_t16_qmicro_planar_v1",
-            "t16_gemv_decode_bf16_f32_out",
-        ),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_bf16_bf16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_BF16, GGUF_OUTPUT_FP16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_fp16_fp16_out"),
-        "t16",
-    ),
-    (LAYOUT_GGUF_Q8_0_T16, GGUF_ACTIVATION_F32, GGUF_OUTPUT_BF16): GGUFLinearDispatch(
-        KernelKey("hip_gfx1100", "linear", "gguf_q8_0_t16_v1", "t16_gemv_decode_f32_bf16_out"),
-        "t16",
-    ),
-}
+# Compatibility view; resolution below uses the shared CPU-safe owner.
+from hipengine.loading.qwen35_gguf_consumer_surface import (
+    GGUF_LINEAR_DISPATCH_SURFACE,
+    resolve_linear_consumer_contract,
+    linear_variant_for_rows,
+    linear_weight_pointers,
+)
 
+_DISPATCH_TABLE: Mapping[tuple[str, str, str], GGUFLinearDispatch] = {
+    (row.layout, row.activation, row.output): GGUFLinearDispatch(
+        KernelKey("hip_gfx1100", row.layer, row.quant, row.variant), row.abi,
+    )
+    for row in GGUF_LINEAR_DISPATCH_SURFACE
+}
 
 def _weight_backend(
     *weights: GGUFDeviceWeight,
@@ -2687,26 +2586,11 @@ def resolve_gguf_linear_dispatch(
     """Resolve a GGUF linear launch without model/engine quant branches."""
 
     resolved_backend = _weight_backend(weight, backend=backend)
-    table_key = (weight.spec.layout, activation_dtype, output_dtype)
-    try:
-        dispatch = _DISPATCH_TABLE[table_key]
-    except KeyError as exc:
-        raise ValueError(
-            "unsupported GGUF linear dispatch: "
-            f"layout={weight.spec.layout!r}, activation={activation_dtype!r}, output={output_dtype!r}"
-        ) from exc
-    quant = weight.spec.quant_key if dispatch.key.quant == "<from-weight>" else dispatch.key.quant
-    if weight.spec.layout in {
-        LAYOUT_GGUF_Q4_K_T16,
-        LAYOUT_GGUF_Q4_K_QMICRO_T16,
-    } and rows > 1:
-        variant = "t16_wmma_prefill_bf16_bf16_out"
-    else:
-        variant = _variant_for_rows(dispatch.key.variant, rows=rows)
-    return GGUFLinearDispatch(
-        KernelKey(resolved_backend, dispatch.key.layer, quant, variant),
-        dispatch.abi,
+    contract = resolve_linear_consumer_contract(
+        weight.spec.layout, activation_dtype, output_dtype,
+        quant_key=weight.spec.quant_key, rows=rows,
     )
+    return GGUFLinearDispatch(contract.key(resolved_backend), contract.abi)
 
 
 # Memoized launch_gguf_linear dispatch resolution. The resolved (abi, fn) is a
@@ -6464,9 +6348,7 @@ def launch_gguf_linear_pair_concat(
 def _launch_pack8(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("qweight").tensor.ptr,
-        weight.allocation("scales").tensor.ptr,
-        weight.allocation("mins").tensor.ptr,
+        *linear_weight_pointers("pack8", weight),
         out_ptr,
         rows,
         in_features,
@@ -6549,7 +6431,7 @@ def _launch_dense_bf16_residual(
 def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("raw").tensor.ptr,
+        *linear_weight_pointers("raw", weight),
         out_ptr,
         rows,
         in_features,
@@ -6561,7 +6443,7 @@ def _launch_raw(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwa
 def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("raw").tensor.ptr,
+        *linear_weight_pointers("dense_bf16", weight),
         out_ptr,
         rows,
         in_features,
@@ -6573,7 +6455,7 @@ def _launch_dense_bf16(fn, weight, x_ptr, out_ptr, rows, in_features, out_featur
 def _launch_t16(fn, weight, x_ptr, out_ptr, rows, in_features, out_features, kwargs) -> None:
     fn(
         x_ptr,
-        weight.allocation("tiles").tensor.ptr,
+        *linear_weight_pointers("t16", weight),
         out_ptr,
         rows,
         in_features,
@@ -7605,17 +7487,7 @@ def _dispatch_can_use_wmma_prefill(
 
 
 def _variant_for_rows(variant: str, *, rows: int) -> str:
-    if rows <= 0:
-        raise ValueError("rows must be positive")
-    if rows == 1:
-        return variant
-    if variant.startswith("pack8_"):
-        return f"pack8_prefill_{variant[len('pack8_') :]}"
-    if variant.startswith("gemv_"):
-        return f"prefill_{variant[len('gemv_') :]}"
-    if variant == "out":
-        return "prefill_out"
-    return variant
+    return linear_variant_for_rows(variant, rows=rows)
 
 
 def _q4_pack8_wmma_dispatch(

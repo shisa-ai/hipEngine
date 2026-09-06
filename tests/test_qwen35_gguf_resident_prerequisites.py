@@ -10,6 +10,7 @@ import pytest
 
 from hipengine.loading import qwen35_gguf_materialize as materialize
 from hipengine.loading.qwen35_gguf_admission import preflight_qwen35_gguf_artifact
+from hipengine.loading.gguf_selected_contract import SelectedCallIntent
 from hipengine.quant.gguf import GGMLQuantizationType as Q
 from hipengine.quant.gguf_q4_k import (
     repack_gguf_q4_k_pack8, repack_gguf_q4_k_tile16, repack_gguf_q4_k_tile16_qmicro,
@@ -54,10 +55,20 @@ def test_byte_neutral_repack_refuses_before_byte_accounting(
     # converter's allocation, including every byte-neutral layout.
     legal_shape = (*shape[:-2], shape[-2] - 1, shape[-1])
     legal = _tensor(tensor.name, legal_shape, qtype)
-    legal_model = replace(model, layers=(replace(model.layers[0], tensors={slot: legal}),))
+    legal_tensors = {slot: legal}
+    selected = (f"layers.0.{slot}",)
+    intents = None
+    if len(shape) == 3:
+        kind = "single"
+        if qtype == Q.Q4_K:  # X8 gate/up has a dual, not a singleton, consumer.
+            kind = "dual"
+            legal_tensors["ffn_up_exps"] = _tensor("blk.0.ffn_up_exps.weight", legal_shape, qtype)
+            selected += ("layers.0.ffn_up_exps",)
+        intents = tuple(SelectedCallIntent(op, kind, selected) for op in ("ar_decode_c1", "ar_prefill"))
+    legal_model = replace(model, layers=(replace(model.layers[0], tensors=legal_tensors),))
     legal_report = preflight_qwen35_gguf_artifact(
         legal_model, backend="hip_gfx1100", operations=("ar_decode_c1", "ar_prefill"),
-        decode_repack=True, slot_filter=(f"layers.0.{slot}",), **flags,
+        decode_repack=True, slot_filter=selected, selected_call_intents=intents, **flags,
     )
     assert legal_report.supported, legal_report.render_refusals()
     legal_raw = np.zeros(legal.byte_shape, dtype=np.uint8)
@@ -76,13 +87,15 @@ def test_byte_neutral_repack_refuses_before_byte_accounting(
     )
     report = preflight_qwen35_gguf_artifact(
         model, backend="hip_gfx1100", operations=("ar_decode_c1", "ar_prefill"),
-        decode_repack=True, slot_filter=(f"layers.0.{slot}",), **flags,
+        decode_repack=True, slot_filter=(f"layers.0.{slot}",), selected_call_intents=intents, **flags,
     )
     assert not report.supported
     assert not report.plan_contract.is_complete()
-    assert len(report.unsupported) == 2
-    assert all(item.stage == "planner_refused" for item in report.unsupported)
-    assert all("out_features" in item.reason for item in report.unsupported)
+    # Call-dependency refusals may accompany the root resident failure now;
+    # the original two operation-specific prerequisite failures must survive.
+    planner_errors = [item for item in report.unsupported if item.stage == "planner_refused"]
+    assert len(planner_errors) == 2
+    assert all("out_features" in item.reason for item in planner_errors)
 
 
 def test_real_loader_refuses_selected_resident_before_payload_or_allocation(monkeypatch, tmp_path):
@@ -162,9 +175,11 @@ def test_multiple_invalid_residents_aggregate_in_full_and_filtered_preflight(mon
             decode_repack=True, dense_q6_qmicro_planar=True, slot_filter=selected,
         )
         expected = set(selected) if selected is not None else {"layers.0." + slot for slot in tensors}
-        assert {item.slot_path for item in report.unsupported} == expected
-        assert len(report.unsupported) == 2 * len(expected)
-        assert all(item.stage == "planner_refused" for item in report.unsupported)
+        planner_errors = [item for item in report.unsupported if item.stage == "planner_refused"]
+        assert len(planner_errors) == 2 * len(expected)
+        assert {(item.slot_path, item.operation) for item in planner_errors} == {
+            (slot, op) for slot in expected for op in ("ar_decode_c1", "ar_prefill")
+        }
         assert not report.plan_contract.is_complete()
 
 
