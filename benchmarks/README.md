@@ -2,10 +2,14 @@
 
 Last updated: **2026-09-06 UTC**
 
-Exact Q8 MMQ prepacked-weight candidate: actual layer0/4 QKV rows512
-complete-chain1.094x/1.095x, SSM output1.022x;58 tests pass. Model admission
-and persistent-sidecar memory/cold-start costs remain pending; no default change.
-[Evidence](results/2026-09-06-framework-qwen4exp-mmq-prepack.json).
+| Framework UD-Q4_K_XL / BF16 KV incremental promotion | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Q8 MMQ prepack, same-residency parent -> production | 156.707 -> 157.748 (+0.664%) | 154.396 -> 155.375 (+0.634%) | 143.903 -> 144.736 (+0.579%) |
+
+All72 trajectories exact; all12 prefill cases improve. Mixed512 request wall
+loses0.14%;11 others improve. Extra memory1.67GiB, preparation0.107s.
+No decode-kernel or new external parity claim.
+[Production evidence](results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
 
 GR-specific MMQ64x128 rejected: real layer0/4 rows512 complete-chain speedups
 0.722x/0.720x, exact. Production unchanged.

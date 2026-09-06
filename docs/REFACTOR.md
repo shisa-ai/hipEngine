@@ -3,17 +3,18 @@
 ## Qwen4Exp prepacked Q8 MMQ admission
 
 - Separate prepacked registry candidate retains an exact raw-Q8 fallback.
-  Default-off `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` now prepares runner-owned
+  Production-bound `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` prepares runner-owned
   sidecars for measured GDN QKV/SSM shapes and exposes them only through the
   bounded prefill MMQ session. Five full logits/state/KV cases and lifecycle
-  pass; complete12-case timing remains the concrete promotion blocker.
+  pass; full12-case72-trajectory timing improves every prefill case. Strict
+  binds0. Retain rollback through the next owner refresh and one release
+  window; then remove redundant positive experiment selection.
 - CPU reference packer lives only in the test/screen. The registered GPU
   `weight_pack/gguf_q8_0/mmq_kmajor76` API is now byte-exact and available
   for admission and used by runtime; do not import tests from runtime. Raw weights remain necessary
   for decode and risk repair, so account for the full additional sidecar.
-- After full model admission and one rollback window, remove temporary
-  experiment selection; if model economics loses, remove the candidate and
-  preserve its source recipe with rejected evidence. GR remains excluded
+- Keep the measured mixed512 request-wall regression0.14% and1.67GiB additional
+  memory explicit under the prefill-first retention decision. GR remains excluded
   until an independent positive complete-chain/model gate.
 
 This file tracks cleanup work that should happen after the fast/correct path is
