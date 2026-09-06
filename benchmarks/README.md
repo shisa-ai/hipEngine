@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Full six-case/twelve-phase owner refresh at `c075a6692` is complete.
+Four-category p4096 FFN13.437s,linear5.363s,GR4.251s;all phase ownership/
+decode-root/state/lifecycle gates pass. Earlier Vulkan is explicitly reused.
+[Generated full-family evidence](results/2026-09-06-framework-qwen4exp-post-fold-pair-family.json).
+
 | Framework UD-Q4_K_XL / BF16 KV folded Q5_1 pair | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Same-residency parent -> production | 161.799 -> 164.954 (+1.950%) | 160.478 -> 162.953 (+1.543%) | 147.876 -> 150.680 (+1.896%) |

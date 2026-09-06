@@ -619,6 +619,16 @@ def join_captures(hip, vk):
         "taxonomy": TAXONOMY,
         "performance_claim": False,
         "comparisons": comparisons,
+        "hipengine_source": hip.get("source"),
+        "comparator_source": vk.get("comparator_source"),
+        "hip_raw_sources": [
+            {key: case[key] for key in ("id", "phase", "raw_path", "raw_sha256", "command")}
+            for case in hip["cases"] if "raw_path" in case
+        ],
+        "comparator_capture": {
+            key: vk[key] for key in ("command", "server_sha256", "log_sha256", "environment")
+            if key in vk
+        },
         "host": hip["host"],
         "fixture_sha256": hip["fixture_sha256"],
         "model_identity": hip["model_identity"],
