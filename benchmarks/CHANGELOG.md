@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q5_1 fold128 candidate] Captured code/mixed routing two-bank512 down41.501->40.236ms (-3.05%)/40.624->39.219ms (-3.46%);exact,both orders positive. Nine GPU tests;72 VGPR unchanged,dynamic LDS8672->4576B. Kernel retained,model gate pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128.json`.
+
 - [2026-09-06 UTC Framework Q5_1 dual reduction rejected] Two-bank512 down43.721->66.169ms (+51.34%),64-token0.657x;40 pairs exact,7 GPU tests. Dynamic LDS8672->16864B,72 VGPR unchanged. Removed candidate. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-dual-reduce-rejected.json`.
 
 - [2026-09-06 UTC post-Q8-row4 code4096 owners] Clean e959a095c:32 row4 grouped-down calls/1.401s, FFN14.679s/linear5.370s/GR4.254s.100% coverage, matched decode roots and zero final owners; earlier Vulkan reused. Snapshot only, no causal delta. `benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-down-family.json`.

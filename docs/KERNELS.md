@@ -875,6 +875,15 @@ It preserves separate logical256 accumulations and reuses one LDS reduction
 arena sequentially. Qwen4Exp production selects pair2 at rows>=64; M1 remains
 the small-row and opt-out parent, and strict retains its original exact owner.
 
+Its kernel-only `selected_grouped_prefill_pair2_fold128_bf16_bf16_out`
+candidate folds the original first stride128 addition in registers and halves
+dynamic reduction scratch, leaving the LDS64..1 tree unchanged.
+Nine GPU tests pass (including K4096/CPU KL/top1), and captured layer0/1
+code/mixed routing screens improve1.031x/1.036x with both orders positive.
+Trace72 VGPR/no spills, dynamic LDS8672->4576B at K640. Existing pair2/M1
+remain runtime defaults/fallbacks pending full-model gates and12-case A/B.
+Evidence: `2026-09-06-framework-qwen4exp-q51-fold128.json`.
+
 The Q4_K selected-prefill family has a separately registered exact bundled
 publication sibling of its row8/output4/expertgrid64 owner. It preserves
 per-row FMA and wave/serial-wave reduction order while publishing all

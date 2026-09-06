@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 fold128 kernel candidate (September6 UTC):** isolate first stride128
+register addition plus halved reduction scratch, retaining original LDS64..1
+tree and sequential output-pair reduction. This differs from both rejected
+wave-tail and simultaneous-pair forms. Nine GPU tests pass;80 two-bank pairs
+exact. Captured code/mixed512-row screens improve1.031x/1.036x, means/both
+orders positive. Trace72 VGPR/scratch0 unchanged; dynamic LDS8672->4576B.
+Retain candidate, not runtime default; full-model gates and12-case A/B next.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128.json).
+
 **Q5_1 simultaneous pair reduction rejected (September6 UTC):** doubling
 the reduction arena allows both outputs to share barrier stages while keeping
 the exact256-element addition tree. Seven GPU tests and40 two-bank pairs

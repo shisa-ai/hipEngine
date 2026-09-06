@@ -10,6 +10,7 @@ from tests.test_qwen4_exp_pf3_moe_schedules import (
 
 PARENT="qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out"
 CANDIDATE="qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out"
+FOLD="qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
 
 
 def hip_available():
@@ -28,16 +29,21 @@ def test_pair_registry_and_bounds():
     fn=resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
                variant="selected_grouped_prefill_pair2_bf16_bf16_out")
     assert fn is getattr(q5,CANDIDATE)
+    assert resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
+        variant="selected_grouped_prefill_pair2_fold128_bf16_bf16_out") is getattr(q5,FOLD)
     assert callable(resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
         variant="selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out"))
     with pytest.raises(ValueError,match="4096"):
         fn(1,1,1,1,1,1,8192,1)
+    with pytest.raises(ValueError,match="4096"):
+        getattr(q5,FOLD)(1,1,1,1,1,1,8192,1)
 
 
 @pytest.mark.skipif(not hip_available(),reason="HIP unavailable")
-@pytest.mark.parametrize("rows,experts,k,n",[(17,8,96,7),(65,64,640,33),(5120,512,640,2560)])
-def test_pair_exact(rows,experts,k,n):
-    candidate=getattr(q5,CANDIDATE)
+@pytest.mark.parametrize("variant", [CANDIDATE,FOLD])
+@pytest.mark.parametrize("rows,experts,k,n",[(17,8,96,7),(17,8,4096,7),(65,64,640,33),(5120,512,640,2560)])
+def test_pair_exact(rows,experts,k,n,variant):
+    candidate=getattr(q5,variant)
     runtime=get_hip_runtime()
     library=q5.build_qwen4_exp_q5_1(load=True)
     rng=np.random.default_rng(5151)
@@ -61,7 +67,15 @@ def test_pair_exact(rows,experts,k,n):
                 weight=dequantize_gguf_data(w[e],GGMLQuantizationType.Q5_1)
                 lo,hi=starts[e:e+2]
                 cpu=xref[lo:hi] @ weight.T
-                np.testing.assert_allclose(bf16_to_float32(expected[lo:hi]),cpu,rtol=.02,atol=.002)
+                got=bf16_to_float32(expected[lo:hi])
+                np.testing.assert_allclose(got,cpu,rtol=.02,atol=.002)
+                def logsoftmax(v):
+                    v=v.astype(np.float64)
+                    v-=v.max(axis=-1,keepdims=True)
+                    return v-np.log(np.exp(v).sum(axis=-1,keepdims=True))
+                lp,lq=logsoftmax(cpu),logsoftmax(got)
+                assert np.max(np.sum(np.exp(lp)*(lp-lq),axis=-1)) <= .05
+                assert np.mean(cpu.argmax(-1)==got.argmax(-1)) >= .9
     finally:
         for p in reversed(allocations):
             free(p,runtime=runtime)

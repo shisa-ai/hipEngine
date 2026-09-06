@@ -329,6 +329,7 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     _pair: bool = False,
+    _fold128: bool = False,
 ) -> None:
     """Run the PF-3 M1 candidate: fused single-loop logical256 Q5_1 row8/
     output8 over a fixed 64-CTA expert grid (strict fallback:
@@ -338,13 +339,14 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_
         raise ValueError("compact_rows and num_experts must be positive")
     if in_features <= 0 or in_features % 32 or out_features <= 0:
         raise ValueError("Q5_1 grouped projection has invalid feature geometry")
-    if _pair and in_features > 4096:
+    if (_pair or _fold128) and in_features > 4096:
         raise ValueError("paired Q5_1 supports at most 4096 input features")
     library = library or build_qwen4_exp_q5_1(load=True)
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
-        ("hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out" if _pair else
+        ("hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out" if _fold128 else
+         "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out" if _pair else
          "hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out"),
         _ARGS_GROUPED,
         ctypes.c_int,
@@ -367,6 +369,11 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_
 def qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out(*args, **kwargs):
     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out(
         *args, **kwargs, _pair=True)
+
+
+def qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out(*args, **kwargs):
+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out(
+        *args, **kwargs, _fold128=True)
 
 
 def qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(
@@ -576,6 +583,12 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(
 def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
+                  "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"),
+        qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "moe_linear", "gguf_q5_1",
                   "selected_grouped_prefill_pair2_bf16_bf16_out"),
         qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out,
         replace=replace,
@@ -689,6 +702,7 @@ register_qwen4_exp_q5_1_kernels()
 
 __all__ = [
     "qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out",
+    "qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
     "build_qwen4_exp_q5_1",
     "plan_qwen4_exp_q5_1_build",
     "qwen4_exp_gather_bf16_lanes",

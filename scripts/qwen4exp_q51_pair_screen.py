@@ -29,7 +29,24 @@ def main():
     p.add_argument("--compiler-version-file",type=Path,required=True)
     p.add_argument("--require-cached-build",action="store_true")
     p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--fold128",action="store_true")
+    p.add_argument("--routing-capture",type=Path)
+    p.add_argument("--case-id",default="code-p4096")
+    p.add_argument("--chunk",type=int,default=0)
     a=p.parse_args()
+    parent_name, candidate_name = PARENT, CANDIDATE
+    if a.fold128:
+        from tests.test_qwen4exp_q51_pair import FOLD
+        parent_name, candidate_name = CANDIDATE, FOLD
+    capture = None
+    if a.routing_capture:
+        from scripts.qwen4exp_routing_capture import select_routing, validate_replay_identity
+        from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture
+        from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
+        check_host()
+        model_identity(a.model_root)
+        capture=json.loads(a.routing_capture.read_text())
+        validate_replay_identity(capture,fixture_sha256=load_fixture(DEFAULT_FIXTURE)[1])
     if a.pairs<1 or any(r<1 for r in a.rows):
         p.error("positive rows/pairs required")
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"]=str(a.compiler_version_file)
@@ -45,8 +62,11 @@ def main():
             "host":_host_metadata(),"command":sys.argv,"weights":identities,
             "model":"Qwen3.8-Flash-Next UD-Q4_K_XL","arithmetic_class":"T0",
             "boundary":"two rotating grouped Q5_1 down banks; maps supplied, no routing or combine",
-            "runtime_default_changed":False,"parent_variant":PARENT,
-            "candidate_variant":CANDIDATE,"cases":[]}
+            "runtime_default_changed":False,"parent_variant":parent_name,
+            "candidate_variant":candidate_name,"cases":[]}
+    if capture is not None:
+        report["routing"] = dict(kind="same-layer captured counts; synthetic activations",
+            case_id=a.case_id,chunk=a.chunk,sha256=hashlib.sha256(a.routing_capture.read_bytes()).hexdigest())
     try:
         for layer in (0,1):
             name=f"blk.{layer}.ffn_down_exps.weight"
@@ -66,11 +86,19 @@ def main():
             starts=np.concatenate(([0],np.cumsum(counts))).astype(np.int64)
             x,_=_make_activation(compact,640,1256+rows)
             dx,ds=[_upload(v,runtime,allocations) for v in (x,starts)]
+            bank_starts=[ds,ds]
+            if capture is not None:
+                bank_starts=[]
+                for layer in (0,1):
+                    bank_counts=select_routing(capture,case_id=a.case_id,layer=layer,
+                                               chunk=a.chunk,tokens=rows)
+                    bank_starts.append(_upload(
+                        np.concatenate(([0],bank_counts.cumsum())).astype(np.int64),runtime,allocations))
             out=[_alloc((compact,2560),np.uint16,runtime,allocations) for _ in range(4)]
             def run(candidate):
-                fn=getattr(q5,CANDIDATE if candidate else PARENT)
+                fn=getattr(q5,candidate_name if candidate else parent_name)
                 for i,w in enumerate(weights):
-                    fn(dx.ptr,ds.ptr,w.ptr,out[(2 if candidate else 0)+i].ptr,
+                    fn(dx.ptr,bank_starts[i].ptr,w.ptr,out[(2 if candidate else 0)+i].ptr,
                        compact,512,640,2560,library=library,runtime=runtime)
                 runtime.device_synchronize()
             run(False)
@@ -87,7 +115,10 @@ def main():
                         _download(out[i+2],(compact,2560),np.uint16,runtime))
             report["cases"].append({"tokens":rows,"compact_rows":compact,
                 "seconds":times,"all_pairs_exact":True,
-                "speedup":statistics.median(times["parent"])/statistics.median(times["candidate"])})
+                "speedup":statistics.median(times["parent"])/statistics.median(times["candidate"]),
+                "mean_speedup":statistics.mean(times["parent"])/statistics.mean(times["candidate"]),
+                "order_speedups":[statistics.median(times["parent"][i::2])/statistics.median(times["candidate"][i::2])
+                                  for i in (0,1) if len(times["parent"])>i]})
             for ptr in reversed(allocations[mark:]):
                 free(ptr,runtime=runtime)
             del allocations[mark:]

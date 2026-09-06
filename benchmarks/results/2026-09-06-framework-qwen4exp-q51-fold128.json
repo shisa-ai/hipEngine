@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "status": "kernel_candidate_retained_model_gate_pending",
+  "source": "cda613168 plus in-tree candidate",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary": "Two actual Q5_1 down banks layer0/1, grouped maps supplied; no grouping/combine. Synthetic activations. Captured-routing screens use the matching layer's counts.",
+  "mechanism": "Fold exact first stride128 addition acc0+acc1 before LDS publication. S=128 instead of256; dynamic reduction arena halves. Strides64..1 remain original LDS tree, output columns still reduced sequentially. Unlike rejected wave-tail, no shuffle-tail change; unlike dual-reduce, no doubled arena.",
+  "command": ".venv/bin/python scripts/qwen4exp_q51_pair_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --fold128 --rows 64 512 --pairs 20 --output /tmp/qwen4exp-q51-fold128.json",
+  "captured_commands": [
+    "same command with --rows 512 --routing-capture /tmp/qwen4exp-routing-categories.json --case-id code-p4096 --chunk 0 --output /tmp/qwen4exp-q51-fold128-real.json",
+    "same command with --rows 512 --routing-capture /tmp/qwen4exp-routing-categories.json --case-id mixed_ja_en-p4096 --chunk 7 --output /tmp/qwen4exp-q51-fold128-mixed.json"
+  ],
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "compiler": "HIP7.15.26333-0000000 clang23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+    "clock_policy": "unchanged high/2900-requested"
+  },
+  "cases": [
+    {"routing":"synthetic","tokens":64,"parent_ms":15.0010935031,"candidate_ms":13.8626869302,"speedup":1.0821201964,"pairs":20,"exact":true},
+    {"routing":"synthetic","tokens":512,"parent_ms":43.6623085989,"candidate_ms":42.5828925800,"speedup":1.0253485838,"pairs":20,"exact":true},
+    {"routing":"captured code4096 chunk0","tokens":512,"parent_ms":41.5008354466,"candidate_ms":40.2364935726,"speedup":1.0314227648,"mean_speedup":1.0330481006,"order_speedups":[1.0337380088,1.0311296297],"pairs":20,"exact":true},
+    {"routing":"captured mixed4096 chunk7","tokens":512,"parent_ms":40.6244109618,"candidate_ms":39.2188584665,"speedup":1.0358386896,"mean_speedup":1.0364729061,"order_speedups":[1.0376346129,1.0321840818],"pairs":20,"exact":true}
+  ],
+  "correctness": "Missing-registry RED; nine GPU tests pass including K96/640/4096, tails/empty experts, repeated exact BF16 outputs versus M1, and reduced CPU dequantized KL<=0.05/top1>=90%. All80 two-bank screen pairs exact.",
+  "trace": {
+    "prefix":"HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q51-fold128-trace --",
+    "arguments":"captured code command with --pairs 2 --output /tmp/qwen4exp-q51-fold128-trace.json",
+    "symbols":"q5_1_selected_grouped_prefill_pair2_bf16_kernel<false>/<true>",
+    "last_parent_bank_ns":[20586091,20837883],
+    "last_candidate_bank_ns":[19863014,19895675],
+    "both_vgpr":72,"both_scratch_bytes":0,
+    "dynamic_lds_launch_bytes":{"parent":8672,"candidate":4576},
+    "note":"CSV static LDS is0; dynamic launch allocation recorded separately."
+  },
+  "raw": {
+    "/tmp/qwen4exp-q51-fold128.json":"c17b8243dcc84c9057ae1b8c6c534e700339d99e17935e720d53c4ddf72c21db",
+    "/tmp/qwen4exp-q51-fold128-real.json":"ecfe3bf247f1fa09ada44a7277537a4165d361a616626bc2fab9061910d3ffb1",
+    "/tmp/qwen4exp-q51-fold128-mixed.json":"06667cc222d521f1f475233d403bbd05efc8a7d2bbe73878a162cc60ca069f44",
+    "/tmp/qwen4exp-q51-fold128-trace/gfx1151/3217918_kernel_trace.csv":"93bee3b1e8abe199ad33da19bcbf77b5f22c1be07c075c2fc6d70e23ffd9cdbd"
+  },
+  "runtime_default_changed":false,
+  "promotion_blocker":"Full-model invocation/logits/state/KV and canonical12-case same-residency A/B required."
+}
