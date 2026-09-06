@@ -172,12 +172,6 @@ row, not across them.
 
 ### At a glance — one request
 
-#### Radeon RX 7900 XTX — 24 GB (`gfx1100`)
-
-| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
-| --- | --- | ---: | ---: | ---: | ---: |
-| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **959.4** | **34.06** | **62.44** | **32K** BF16 / **126K** INT8 |
-
 #### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
 | Model | Quant | Prompt processing | Text generation | With MTP | Max context |
@@ -206,6 +200,11 @@ row, not across them.
 
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
+
+- **On a 24 GB card such as the RX 7900 XTX**, Qwen3.8-27B `Q4_K_M` with
+  512-token prompts fits about **five concurrent requests**. Measured peak runs
+  19.4 GiB at one request and rises roughly 0.85 GiB per added request, so six
+  is marginal at 23.7 GiB and seven or more will not fit.
 
 ### Serving several requests at once
 
