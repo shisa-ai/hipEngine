@@ -1,8 +1,8 @@
 # Qwen3.8-Flash-Next Strix Halo engine survey
 
-Status: **Framework Desktop comparator screen completed 2026-09-05 on Ryzen
-AI Max+ 395 / Radeon 8060S (`gfx1151`)**. The active topline compares current
-hipEngine with upstream llama.cpp and halo-box master on HIP and Vulkan.
+Status: **Framework Desktop combined-default halo-box screen refreshed
+2026-09-06 UTC on Ryzen AI Max+ 395 / Radeon 8060S (`gfx1151`)**.
+Upstream llama.cpp rows retain their September5 source and measurement identity.
 
 ## 1. Active comparator set
 
@@ -26,6 +26,31 @@ unmerged PR #11 head `a7ad7b7f`; active rows must name `b212548e` unless a
 separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
+
+**Current combined-default refresh, September6 UTC:** clean hipEngine
+`5104604e1` versus pinned halo-box `b212548e0`, UD-Q4_K_XL/BF16 KV,
+all12 canonical cases, one warmup/three measured repetitions, tg128.
+
+| Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG | Max PP / TG CV |
+| --- | ---: | ---: | ---: | ---: |
+| hipEngine production | 168.58 / 19.64 | 166.86 / 19.01 | 155.89 / 14.89 | 2.78% / 4.62% |
+| halo-box Vulkan | 346.78 / 26.12 | 397.38 / 25.69 | 421.63 / 24.83 | 0.17% / 0.09% |
+| halo-box HIP | 307.38 / 21.45 | 393.31 / 20.95 | 355.00 / 19.18 | 10.93% / 2.70% |
+
+All108 trajectories repeat within their engine; hipEngine closes to zero
+allocations, both servers exit0. Vulkan leads prefill2.057x/2.382x/2.705x
+and decode1.330x/1.352x/1.668x. Sequential same-host screening, not an
+inter-engine counterbalanced significance test. Per-case sample SD/CV/range
+and repetition drift are retained; do not pool differing workloads or infer
+stable tails from n=3.
+[Current rates and variance](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
+Current family costs at `1e89361d5` are FFN13.442s,non-GR linear4.770s,
+GR4.268s,QSA1.920s,GDN0.781s at p4096; that separate diagnostic reuses
+the earlier pinned Vulkan profile.
+[Generated family tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots).
+
+The following promotion notes and older tables are revision-specific history,
+not the current cross-engine rates above.
 
 The later MMQ prepack production A/B measures157.75/155.37/144.74 pp/s
 at512/1K/4K (+0.664%/+0.634%/+0.579% against its same-residency parent),
@@ -55,7 +80,7 @@ retain their original source identity. Current-HE family costs are refreshed
 separately, with the unchanged prior Vulkan profile explicitly reused:
 [post-MMQ source packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json).
 
-**Latest frozen refresh, 2026-09-05 UTC:** hipEngine `bd451a417` versus
+**Preceding frozen refresh, 2026-09-05 UTC:** hipEngine `bd451a417` versus
 halo-box `b212548e0`, full12-case canonical AR, UD-Q4_K_XL/BF16 KV on
 Framework `gfx1151`, logger/profiler off:
 

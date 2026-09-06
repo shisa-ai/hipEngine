@@ -2,6 +2,17 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Framework UD-Q4_K_XL / BF16 KV fresh combined-default screen | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
+| --- | ---: | ---: | ---: |
+| hipEngine production | 168.58 / 19.64 | 166.86 / 19.01 | 155.89 / 14.89 |
+| halo-box Vulkan target | 346.78 / 26.12 | 397.38 / 25.69 | 421.63 / 24.83 |
+| halo-box HIP diagnostic | 307.38 / 21.45 | 393.31 / 20.95 | 355.00 / 19.18 |
+
+Clean `5104604e1`,same pinned halo-box;all108 trajectories repeat and
+teardown clean. Sequential screening,not statistical closure. Per-case
+SD/CV/range/drift retained;max HE PP/TG CV2.78%/4.62%.
+[Current baseline/variance evidence](results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
+
 Full post-MMQ-vector owner refresh at clean `1e89361d5`: p4096 four-category
 non-GR linear5.363->4.770s (-11.07% snapshot delta),FFN13.442s,GR4.268s.
 All12 phases have100% coverage,matched decode roots and zero final owners.
