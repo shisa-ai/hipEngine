@@ -320,9 +320,21 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   widths, packed group layouts, prefill widths) are all bounded by
   `max_active_requests`, and the only >1-slot C1 path (B3 C2-shadow ABI) has no
   callers. Right-sized both sites to the honest capacity (see Packet 2).
-- [ ] Test atomic admission against complete claims, including temporary/MTP
+- [x] Test atomic admission against complete claims, including temporary/MTP
   peaks. Shared free capacity, not a per-request private cache maximum, decides
   aggregate fit. Retain bounded rejection and exact reclaim under pressure.
+  Passed 2026-09-06 on the XTX (BF16 KV, contexts 512/1024/2048, max-active 3):
+  all six rescaled workloads pass route/correctness/SLO gates; the pressure
+  contract holds — a live 2048-token row completes while a 1024-token candidate
+  receives retryable 429 `engine_busy` with exact admission metadata
+  (requested=5 vs capacity=39 units, the complete-claim accounting), then the
+  pool shrinks/regrows with fresh block ids, graphs rebind, memory recovers and
+  ownership drains exactly. The gate gained `--required-contexts` rescaling and
+  KV-policy plumbing; the dual-session exactness harness does not fit at 3.1K
+  max-sequence on 24 GB (prepared owner + reference session > card), and the
+  continuous packed owner remains fail-closed to BF16 KV (INT8 requests serve
+  exact but serially). Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-packet1-admission-pressure.json`.
 
 ### Packet 2 — Reduce exact allocation costs
 
