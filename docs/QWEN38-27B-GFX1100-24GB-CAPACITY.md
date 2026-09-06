@@ -426,6 +426,17 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [ ] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
   the disputed c5/c6 boundary. Increase per-request budgets through 1K/2K/4K/
   8K/16K where possible. Add N=8/C=1, mixed lengths, gradual fill and survivors.
+  Measured 2026-09-06 on the XTX (BF16 KV, page-aligned 768-token context,
+  one cold server per point, repaired probe, capacity-honest lease): N=1/2/4/
+  5/6 pass at 18.748/20.859/22.822/23.357/23.676 GiB request peaks with exact
+  accounting and clean ownership; N=7/8 fail eager warmup (STARTUP_SCRATCH_
+  PROBE OOM, sampled failure peaks 23.972/23.955 GiB). The c5/c6 boundary is
+  resolved: last pass **N=6**, per-request slope ~0.99 GiB — superseding the
+  withdrawn "four to five" estimate, which predated the repaired probe and
+  the workspace right-size. N=3 not separately measured (monotone between
+  N=2 and N=4). Wider per-request budgets are bounded by the C1 3,840/4,864
+  boundaries. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-concurrency-512-128.json`.
 - [ ] Measure K1-K3 where engaged; include K4-K7 as their owning campaign
   qualifies them. A functional blocker is not a memory ceiling. Record R/P and
   peak journals/scratch, including possible C8/K7 R64/P66.
