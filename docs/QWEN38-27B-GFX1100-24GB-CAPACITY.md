@@ -385,13 +385,25 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   full production-profile KL/top-1 gates remain a Packet 6 item). Bucket
   bounding and retirement remain open; the 512/128 arm (declared 768) is
   unchanged and still scratch-dominated below the 1,024-row threshold.
-- [ ] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
+- [x] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
   and C1-to-wide histories. Report reusable pool capacity separately from memory
   returned to the device allocator. In-session interleave stability is
   enforced under the capacity-honest union (2026-09-06: repaired the stale
   interleave fake that predated the serving-cap right-size — the fake now
   declares `max_batch_size`, and a contract test pins the first packed
   allocation to the declared cap; failure window bisected to b753495b4).
+  Done 2026-09-07: the device pool stats now carry cumulative
+  `retired_pages`/`retired_bytes` (pages returned to the device allocator,
+  distinct from `free_pages` reusable capacity), exposed as
+  `hipengine_kv_pool_retired_pages_total`/`_bytes_total`; and a one-session
+  history probe drove wide(1,535 tok) <-> C1(63 tok) alternation on the XTX
+  (BF16, N=2, ctx 2048): all five phases validate exactly, whole-card usage is
+  flat at 22,224 MiB across every shape change (zero creep), the default pool
+  is born at full serving capacity (32 pages = 512 MiB, grow 0 / shrink 0 /
+  retired 0), parking 16 pages (256 MiB) as reusable capacity with 16 pages
+  pinned by resident sessions — retirement is grow-scenario machinery
+  (CPU-verified) and the default path never grows. Evidence:
+  `results/2026-09-07-rx7900xtx-capacity-pool-history-wide-c1.json`.
 - [ ] Provide a true AR-only configuration. Optional lazy MTP activation must
   reserve its full peak before mutation; unloading must not free borrowed or
   in-flight graph assets. Do not load/unload weights per decode cycle.

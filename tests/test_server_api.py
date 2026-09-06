@@ -820,6 +820,8 @@ def _fake_kv_pool_stats() -> SimpleNamespace:
         free_pages=4,
         refcounted_pages=5,
         pinned_pages=1,
+        retired_pages=2,
+        retired_bytes=8192,
     )
 
 
@@ -835,6 +837,8 @@ def _fake_kv_pool_metadata() -> dict[str, float]:
         "free_pages": 4.0,
         "refcounted_pages": 5.0,
         "pinned_pages": 1.0,
+        "retired_pages": 2.0,
+        "retired_bytes": 8192.0,
     }
 
 
@@ -21046,6 +21050,8 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
         shrink_events=3,
         free_pages=4,
         refcounted_pages=5,
+        retired_pages=2,
+        retired_bytes=8192,
     )
     fake.graph_bucket_stats = SimpleNamespace(
         entries=6,
@@ -21125,6 +21131,8 @@ def test_metrics_endpoint_is_opt_in_and_additive() -> None:
     assert _metric_value(metrics.text, "hipengine_kv_pool_shrink_events_total") == 3
     assert _metric_value(metrics.text, "hipengine_kv_pool_free_pages") == 4
     assert _metric_value(metrics.text, "hipengine_kv_pool_refcounted_pages") == 5
+    assert _metric_value(metrics.text, "hipengine_kv_pool_retired_pages_total") == 2
+    assert _metric_value(metrics.text, "hipengine_kv_pool_retired_bytes_total") == 8192
     assert _metric_value(metrics.text, "hipengine_graph_bucket_entries") == 6
     assert _metric_value(metrics.text, "hipengine_graph_bucket_hits_total") == 7
     assert _metric_value(metrics.text, "hipengine_graph_bucket_misses_total") == 8
