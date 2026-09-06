@@ -1,5 +1,20 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp prepacked Q8 MMQ admission
+
+- Separate prepacked registry candidate retains an exact raw-Q8 fallback.
+  No runtime env selector or model route exists yet. Positive wide-QKV/SSM
+  actual-weight screen is insufficient to promote without resident sidecar
+  ownership and invocation-verified full model gates.
+- CPU reference packer currently lives in the targeted test and is used by
+  the screen. Replace it with a tested in-tree loading/prepack API during
+  admission; do not import tests from runtime. Raw weights remain necessary
+  for decode and risk repair, so account for the full additional sidecar.
+- After full model admission and one rollback window, remove temporary
+  experiment selection; if model economics loses, remove the candidate and
+  preserve its source recipe with rejected evidence. GR remains excluded
+  until an independent positive complete-chain/model gate.
+
 This file tracks cleanup work that should happen after the fast/correct path is
 proven. During optimization, temporary flags and fallback paths are useful for
 bisection; after the optimal path stabilizes, they become dispatch confusion and

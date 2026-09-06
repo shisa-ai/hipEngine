@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q8 MMQ prepack candidate] Exact K-major padded layout yields layer0/4 rows512 QKV1.094x/1.095x (+9.4%/+9.5%) and SSM1.022x (+2.2%) complete-chain speedup;58 tests, VGPR184->144/scratch0. GR remains inconclusive; memory/pack costs explicit, model admission pending. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack.json`.
+
 - [2026-09-06 UTC Framework GR MMQ64x128 rejection] Removing320-output padding with64x128 loses versus128x128: layer0/4 rows512 complete-chain0.722x/0.720x, rows64 also slower;4 tests and all20-pair outputs exact. Candidate removed; Q8 packing203ms versus5351ms matmul directs next work toward compute. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq64n128-rejected.json`.
 
 - [2026-09-06 UTC Framework Q5_1 direct metadata rejection] Direct wave-uniform metadata versus LDS-staged pair2 measures0.910x/0.921x at64/512 tokens,20 counterbalanced actual-weight pairs,8 tests and all outputs exact. Candidate removed; no production change. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-direct-meta-rejected.json`.

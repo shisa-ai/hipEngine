@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Exact Q8 MMQ prepacked-weight candidate: actual layer0/4 QKV rows512
+complete-chain1.094x/1.095x, SSM output1.022x;58 tests pass. Model admission
+and persistent-sidecar memory/cold-start costs remain pending; no default change.
+[Evidence](results/2026-09-06-framework-qwen4exp-mmq-prepack.json).
+
 GR-specific MMQ64x128 rejected: real layer0/4 rows512 complete-chain speedups
 0.722x/0.720x, exact. Production unchanged.
 [Evidence](results/2026-09-06-framework-qwen4exp-mmq64n128-rejected.json).

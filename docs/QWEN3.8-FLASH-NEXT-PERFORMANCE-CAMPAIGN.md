@@ -53,6 +53,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Exact Q8 MMQ K-major prepack candidate (September6 UTC):** matching the
+padded76-word LDS weight layout permits direct vector tile copies while
+preserving all three activation planes and per-output arithmetic.
+Real layer0/4 QKV rows512 confirms1.094/1.095x complete-chain speedup;
+SSM output1.022x, means and both orders positive.58 tests pass; cached
+trace VGPR184->144, scratch0, unchanged dynamic LDS57856 bytes.
+Initial72-word-layout losses and near-flat/order-sensitive GR remain explicit.
+Kernel only: next integrate persistent sidecar ownership for wide QKV/SSM,
+then invocation-counted full logits/state/KV and12-case normal-model A/B.
+CPU packing/upload and raw+packed memory costs are separate, not amortized
+away from model economics. No production/default change yet.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack.json).
+
 **GR-specific MMQ64x128 rejected (September6 UTC):** unlike earlier64x64/
 32x128 sweeps, this targeted320-output GR projections to avoid384-output
 padding while retaining128 tokens per tile. Four tests and every real-weight

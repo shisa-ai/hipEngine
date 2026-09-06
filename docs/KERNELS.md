@@ -779,6 +779,21 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 MMQ registers a separate T0
+`mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out` candidate. It consumes
+K-major `[K/256, ceil(N/128)*128, 76]` int32 words:64 quant words,8 exact
+FP32 scales and4 padding words. Padded output rows repeat the last real row.
+The aligned weight tile copies directly to the unchanged57856-byte dynamic
+LDS arena; activation planes, integer dots, F32 accumulation and risk detection
+are unchanged. Exact repair still consumes **raw Q8**, not packed weights.
+Framework real QKV rows512 confirms1.094/1.095x on layers0/4, SSM output1.022x;
+58 tests pass, trace VGPR184->144 and scratch0. GR is not a promotion target:
+its near-flat/order-sensitive evidence remains recorded. No model/default
+change yet: persistent sidecar ownership, invocation-counted state/KV gates
+and full12-case A/B are pending. Raw MMQ and the exact projection chain stay
+registered fallbacks.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack.json`.
+
 The GR up+sigmoid+branch-mean composite also registers the separate T0
 `coltile2_branch4_rowbatch4_wave_scale_f32_exact` sibling. At rows512,
 actual layer0 attention/FFN up banks improve1.032/1.039x without memory
