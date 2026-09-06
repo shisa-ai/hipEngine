@@ -76,6 +76,12 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 packed LDS cache rejected (September6 UTC):** staging packed nibbles
+in8192 additional LDS bytes avoids full K unrolling but still loses0.646x
+on actual layer3/mixed4096 chunk7. Thirteen GPU tests and ten real pairs exact.
+Trace VGPR88->128/LDS4608->12800B/scratch0; removed candidate.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-lds-cache-rejected.json).
+
 **Q4 packed-nibble register cache rejected (September6 UTC):** ten uint32
 words/thread replace the preceding80-float cache, but fully unrolled code
 allocates256 VGPR and gives0.404x on the same real routing. A trace-directed

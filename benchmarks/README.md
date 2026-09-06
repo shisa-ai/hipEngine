@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 packed LDS cache rejected: actual layer3/captured routing0.646x, exact;
+VGPR88->128 and LDS4608->12800 bytes. Production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-lds-cache-rejected.json).
+
 Q4 packed-nibble cache also rejected:0.404x parent throughput; volatile
 metadata variant0.136x. Both exact, both256 VGPR; latter spills1208 bytes.
 [Evidence](results/2026-09-06-framework-qwen4exp-q4-packed-cache-rejected.json).
