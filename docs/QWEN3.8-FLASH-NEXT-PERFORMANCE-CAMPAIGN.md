@@ -53,6 +53,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-MMQ family refresh (September6 UTC):** clean `ef63870f9` six-case/
+twelve-phase capture passes100% ownership coverage, matched decode roots,
+repeated decode/state and zero final ownership. Four-category p4096 prefill:
+FFN14.433s, non-GR linear5.367s, complete GR4.282s, QSA1.922s, GDN0.787s.
+Against explicitly reused pinned Vulkan, the first three gaps remain
+3.301x/5.266x/2.508x. Linear's prior snapshot was5.545s; this is diagnostic
+attribution, not a new causal A/B claim. Decode QSA16.949ms versus3.161ms
+remains the largest decode gap.44 collector/parser/ownership tests pass.
+Before more expert-scheduling screens, capture actual routing counts to
+complement prior real-weight/synthetic-uniform-or-skewed experiments.
+[Generated tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [source packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json).
+
 **Q8 MMQ prepack production (September6 UTC):** clean `3d20550df` full12-case
 A/B preserves all72 trajectories and improves every case's prefill:
 156.707->157.748 /154.396->155.375 /143.903->144.736 tok/s at512/1K/4K
@@ -65,8 +78,8 @@ reported separately and both A/B arms retain the allocation. Full run33m15.6s.
 Production binds measured GDN QKV/SSM only; GR and strict arithmetic stay
 unchanged. Raw MMQ remains the production-parent rollback, strict coltile
 the declared numerical fallback. Larger-context/c2 capacity is not requalified
-by this timing result. The post-GR owner table is now **pre-MMQ promotion**
-and must be refreshed before selecting the next kernel.
+by this timing result. The post-GR owner table is historical; the post-MMQ
+refresh above now supplies the current attribution.
 [Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
 
 **Earlier Q8 MMQ prepack runtime admission (September6 UTC):** default-off
