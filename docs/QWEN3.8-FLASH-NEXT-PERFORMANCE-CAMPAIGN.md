@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**MMQ vector activation staging (September6 UTC):** the fresh four-category
+linear split is3.329s MMQ compute,1.590s exact Q8 attention-gate coltile,
+43ms quantization and13ms repair, with the remaining small dense roles/head.
+Prioritize compute rather than more activation-quantizer cleanup.
+The new kernel-only candidate copies identical activation-plane bytes to LDS
+in aligned four-word groups. Actual QKV/SSM512 complete chains improve
+5.196->4.022ms (1.292x) /2.857->2.156ms (1.325x);64-row results also
+positive, both arm orders positive throughout, all80 pairs exact.
+25 tests pass; cached QKV trace5.007->3.777ms, unchanged144 VGPR/
+57856B LDS/scratch0. All three planes and ordered arithmetic remain.
+No runtime/default change until invocation-checked model state/KV and
+canonical12-case A/B. This is not a measured model-throughput improvement.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-activation-vec4.json).
+
 **Q5_K bundle rejected and removed (September6 UTC):** clean `4b39fbfa5`
 canonical 12-case A/B is complete: all72 trajectories exact, zero final
 allocations, but five prefill cases and six request-wall cases regress.

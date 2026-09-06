@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp MMQ vector activation staging candidate
+
+- Kernel-only `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
+  preserves the prepacked three-plane chain while vectorizing LDS staging.
+  No runtime flag/default change yet. Existing scalar-stage prepacked parent,
+  raw MMQ rollback and strict coltile fallback remain.
+- Require model invocation/logits/state/KV and canonical A/B before default
+  promotion; remove if complete-model validation fails. Collapse the
+  candidate selector after a qualified release window if promoted.
+
 ## Qwen4Exp Q5_K bundled row4 candidate: removed
 
 - Closed September6 UTC: all72 canonical trajectories exact, but five

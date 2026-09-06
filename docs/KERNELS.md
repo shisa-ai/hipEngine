@@ -788,6 +788,16 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 MMQ also exposes kernel-only
+`mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`. It copies aligned
+four-word activation groups instead of scalar words, preserving all three
+planes, tail clamping, WMMA accumulation and risk repair. Actual QKV/SSM
+512-row complete chains improve1.292x/1.325x, both orders positive.
+All80 pairs exact;25 tests pass including CPU-reference floors and exact
+risk sets. Cached trace VGPR144/LDS57856B/scratch0 unchanged. Model
+invocation/state/KV and canonical A/B remain required; default unchanged.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-activation-vec4.json`.
+
 Q8 MMQ registers a separate T0
 `mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out` candidate. It consumes
 K-major `[K/256, ceil(N/128)*128, 76]` int32 words:64 quant words,8 exact
