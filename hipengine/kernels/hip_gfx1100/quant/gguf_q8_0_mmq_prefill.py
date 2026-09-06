@@ -619,6 +619,7 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _prepacked: bool = False,
 ) -> None:
     """Launch D4x3 MMQ (F32 output) and enqueue near-boundary outputs."""
 
@@ -634,7 +635,9 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         raise ValueError("risk_threshold must be non-negative")
     library = library or build_gguf_q8_0_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _PREFILL_X3_GUARDED_F32_SYMBOL)
+    fn = getattr(library,
+        "hipengine_gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
+        if _prepacked else _PREFILL_X3_GUARDED_F32_SYMBOL)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -664,6 +667,12 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     )
     if int(err) != HIP_SUCCESS:
         runtime.check(int(err))
+
+def gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
+    """Consume K-major [K/256, ceil(N/128)*128, 76] words; repair uses raw Q8."""
+    gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+        *args, **kwargs, _prepacked=True)
+
 
 def gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out(
     x_d4_ptr: int,
@@ -829,6 +838,12 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
 
 def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0",
+                  "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"),
+        gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "activation_quant", "q8_1_d4x3", "bf16"),
         gguf_q8_0_mmq128_quantize_bf16_d4x3,
         replace=replace,
@@ -892,6 +907,7 @@ __all__ = [
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
+    "gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out",
     "gguf_q8_0_mmq128_sparse_exact_correct_bf16",
     "gguf_q8_0_mmq128_sparse_exact_correct_f32",
