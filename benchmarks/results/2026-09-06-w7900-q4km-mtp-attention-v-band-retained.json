@@ -1,0 +1,134 @@
+{
+ "kind": "mtp-retained-economics",
+ "date": "2026-09-06",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+ "model": "Qwen3.8-27B Q4_K_M",
+ "protocol": "gguf_mtp_c1c8_server_bench.py, 10-prompt canonical suite (mtpbench-code-general-ja), per-prompt AR/MTP arm alternation, D24 greedy, 20 ms batch window, ar_exact token contract, GPU_MAX_HW_QUEUES=1",
+ "change": "Planar-Q6 shared4_row64 prefill band extended to the attention_v shape (5120,1024), staged verify-frontier rows 4-128 (commit a1987e5c1). Standalone screen: bit-exact to the one-wave parent at EVERY row 1-128, faster at every row (1.22-2.64x; frontier rows 4-36 run 1.22-2.0x). recurrent_qkv (5120,10240) screened the same way is bit-exact but flat (0.92-1.09x at cycle rows) and stays on the parent.",
+ "decision": "Retained: all seven MTP cells above their floors with 10/10 token-exact, engaged, budget-conformed arms and both automatic K0 controls engaged 0; six of seven cells improved over the pre-band sweep and one moved within same-run AR variance. This is the second retained verify-frontier owner extension (after the FFN-down row64 band).",
+ "measurements": {
+  "c1k3": {
+   "floor": 1.4734,
+   "mtp": 40.46,
+   "ar": 24.44,
+   "ratio": 1.6552,
+   "route": "explicit product (registered evidence row)",
+   "width": 1,
+   "budget": 3,
+   "delta_vs_floor": 0.1818,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 1.6502
+  },
+  "c1k2": {
+   "floor": 1.559,
+   "mtp": 39.04,
+   "ar": 24.3,
+   "ratio": 1.6068,
+   "route": "explicit product (registered evidence row)",
+   "width": 1,
+   "budget": 2,
+   "delta_vs_floor": 0.0478,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 1.6083
+  },
+  "c2k2": {
+   "floor": 0.917,
+   "mtp": 41.89,
+   "ar": 40.28,
+   "ratio": 1.04,
+   "route": "explicit product (registered evidence row)",
+   "width": 2,
+   "budget": 2,
+   "delta_vs_floor": 0.123,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 0.9993
+  },
+  "c8k3": {
+   "floor": 0.987,
+   "mtp": 97.21,
+   "ar": 92.38,
+   "ratio": 1.0522,
+   "route": "explicit product (registered evidence row)",
+   "width": 8,
+   "budget": 3,
+   "delta_vs_floor": 0.0652,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 1.0486
+  },
+  "c5k3": {
+   "floor": 0.8,
+   "mtp": 66.02,
+   "ar": 77.09,
+   "ratio": 0.8565,
+   "route": "generation2-diagnostic screen",
+   "width": 5,
+   "budget": 3,
+   "delta_vs_floor": 0.0565,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 0.8518
+  },
+  "c2k1": {
+   "floor": 0.721,
+   "mtp": 33.29,
+   "ar": 41.65,
+   "ratio": 0.7991,
+   "route": "generation2-diagnostic screen",
+   "width": 2,
+   "budget": 1,
+   "delta_vs_floor": 0.0781,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 0.7939
+  },
+  "c7k3": {
+   "floor": 0.882,
+   "mtp": 82.43,
+   "ar": 87.62,
+   "ratio": 0.9407,
+   "route": "generation2-diagnostic screen",
+   "width": 7,
+   "budget": 3,
+   "delta_vs_floor": 0.0587,
+   "tokens_exact": "10/10",
+   "engaged": "10/10",
+   "budget_conformed": "10/10",
+   "prior_sweep_before_attention_v_band": 0.9361
+  }
+ },
+ "controls": {
+  "automatic_k0_c2": "engaged 0",
+  "automatic_k0_c8": "engaged 0"
+ },
+ "commands": [
+  "bash campaign-artifacts/packet3/run_p3_retained.sh  # nine cells, HIPENGINE_MTP_SCREEN_UNQUALIFIED_CELLS=1 for the three screening cells",
+  ".venv/bin/python scripts/qwen38_packet3_retained_rollup.py  # gate: floors + token-exactness + route expectations + K0 (exit 0, 'All packet 3 retention gates pass')"
+ ],
+ "links": {
+  "worklog": [
+   "worklog/entries/20260906T112529.271841Z-lhl-gfx1100-better-mtp-packet3-519dc6.md",
+   "worklog/entries/20260906T123224.552482Z-lhl-gfx1100-better-mtp-packet3-6fbecc.md"
+  ],
+  "attention_v_screen": "benchmarks/results/2026-09-06-w7900-q4km-q6-planar-attention-v-row64-band-screen.json",
+  "prior_retained_artifacts": [
+   "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet3-row64-band-retained.json",
+   "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet3-retained-revalidation.json"
+  ],
+  "raw_results": "/tmp/he-bettermtp-raw/packet3/p3-*.json (outside repo)"
+ },
+ "limitations": [
+  "Diagnostic-screen cells (C5/K3, C2/K1, C7/K3) run the generation2-diagnostic resolver; they are screening evidence, not registered serving rows.",
+  "Ratios are against the same-run AR arm; absolute rates move run to run (e.g., C2/K2 AR 41.98 -> 40.28 tok/s between sweeps).",
+  "Attention_v rows >=129 are unscreened for the shared4 256-row owner at this shape and stay on the one-wave parent."
+ ]
+}
