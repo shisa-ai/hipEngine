@@ -1038,6 +1038,13 @@ Phase-0 targets (driven by the current research focus):
 Qwen3.8-Flash-Next gap-closure priority (source review 2026-09-05): routed
 prefill MoE, dense/GR, D=256 sparse QSA, then GDN; see the
 [halo campaign's ordered work](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#6-punchlist).
+September6 owner detour enables admission-aware native context through the public
+Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
+is not runner capacity. Auto resolves artifact/plugin native262144 within memory
+and configured c1/c2 residency; explicit limits fail rather than silently clamp.
+Framework c2 native-capacity startup, served8K retrieval and HTTP over-limit
+rejection pass. Full256K-length inference is not newly qualified by this capacity
+change; see [context contract](QWEN4EXP-CONTEXT-CAPACITY.md).
 The 2026-09-05 owner decision retains exact page256 QSA and bundled-Q4
 publication in production despite their measured small hot-decode losses;
 strict keeps the previous owners. Separate component prefill gains are

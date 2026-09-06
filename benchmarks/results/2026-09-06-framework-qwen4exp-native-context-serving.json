@@ -1,0 +1,606 @@
+{
+  "schema": 1,
+  "status": "passed",
+  "performance_claim": false,
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "3d92606994c853235c61c56e93543af5e32fb275",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_context_serving_gate.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-context-serving.json"
+  ],
+  "configured_context": null,
+  "ready": {
+    "object": "hipengine.readiness",
+    "status": "ready",
+    "ready": true,
+    "diagnostics": [],
+    "model": {
+      "id": "UD-Q4_K_XL",
+      "backend": "hip_gfx1151",
+      "quant": "gguf_ud_q4_k_xl",
+      "loaded": true,
+      "loaded_model_count": 1,
+      "kv_capability": {
+        "schema_version": 1,
+        "status": "unavailable",
+        "runtime_action": "not_applicable",
+        "promotion_eligible": false,
+        "diagnostic_override": false,
+        "requested": null,
+        "effective_kv_storage": null,
+        "artifact": null,
+        "evidence": null,
+        "reason": "loaded engine does not expose artifact-scoped KV capability provenance"
+      }
+    },
+    "startup": {
+      "eager_load": true,
+      "warmup_complete": true,
+      "last_timings_s": {
+        "engine_create_s": 0.000024,
+        "resident_prepare_s": 49.895896,
+        "warmup_s": 0.457365,
+        "scratch_probe_s": 0.000306,
+        "chat_smoke_s": 0.608239,
+        "startup_total_s": 51.008607
+      },
+      "checks": {
+        "raw_warmup": {
+          "status": "passed",
+          "max_tokens": 1
+        },
+        "scratch_probe": {
+          "enabled": true,
+          "status": "passed",
+          "max_prompt_tokens": 262143,
+          "probe_prompt_tokens": 262143,
+          "context_unknown": false,
+          "result": {
+            "schema": 1,
+            "backend": "hip_gfx1151",
+            "execution_path": "qwen4exp_request_owned_runner_pool",
+            "max_batch_size": 2,
+            "max_sequence_length": 262143,
+            "released_after_probe": false
+          }
+        },
+        "chat_smoke": {
+          "enabled": true,
+          "status": "passed",
+          "prompt_tokens": 9,
+          "max_tokens": 1
+        }
+      },
+      "memory": {
+        "startup_begin": {
+          "free_bytes": 128844787712,
+          "total_bytes": 128849018880,
+          "used_bytes": 4231168,
+          "free_gib": 119.996059,
+          "used_gib": 0.003941
+        },
+        "after_resident_prepare": {
+          "free_bytes": 23175000064,
+          "total_bytes": 128849018880,
+          "used_bytes": 105674018816,
+          "free_gib": 21.583401,
+          "used_gib": 98.416599
+        },
+        "after_raw_warmup": {
+          "free_bytes": 23170400256,
+          "total_bytes": 128849018880,
+          "used_bytes": 105678618624,
+          "free_gib": 21.579117,
+          "used_gib": 98.420883
+        },
+        "after_scratch_probe": {
+          "free_bytes": 23170400256,
+          "total_bytes": 128849018880,
+          "used_bytes": 105678618624,
+          "free_gib": 21.579117,
+          "used_gib": 98.420883
+        },
+        "after_chat_smoke": {
+          "free_bytes": 23170400256,
+          "total_bytes": 128849018880,
+          "used_bytes": 105678618624,
+          "free_gib": 21.579117,
+          "used_gib": 98.420883
+        },
+        "guard": {
+          "free_bytes": 23170400256,
+          "total_bytes": 128849018880,
+          "used_bytes": 105678618624,
+          "free_gib": 21.579117,
+          "used_gib": 98.420883
+        }
+      },
+      "error": null
+    },
+    "context": {
+      "configured_max_context_tokens": null,
+      "effective_max_context_tokens": 262144,
+      "chat_default_max_tokens": 4096
+    },
+    "kv_capacity": {
+      "storage": "bf16",
+      "scale_dtype": "fp16",
+      "scale_granularity": "per_token_head",
+      "estimate": null,
+      "pool": {
+        "current_bytes": 0.0,
+        "high_water_observed_bytes": 0.0,
+        "current_pages": 0.0,
+        "high_water_observed_pages": 0.0,
+        "grow_events": 0.0,
+        "grow_failures": 0.0,
+        "shrink_events": 0.0,
+        "free_pages": 0.0,
+        "refcounted_pages": 0.0,
+        "pinned_pages": 0.0
+      }
+    },
+    "prefix_cache": {
+      "mode": "off",
+      "block_size_tokens": 256,
+      "snapshot_entries": 0,
+      "snapshot_limit": 0,
+      "retained_snapshot_entries": 0,
+      "snapshot_bytes": 0,
+      "retained_kv_pages": 0,
+      "retained_kv_bytes": 0,
+      "resident_bytes": 0,
+      "resident_limit_bytes": 0
+    },
+    "graph_cache": {
+      "entries": 0.0,
+      "hits": 0.0,
+      "misses": 0.0,
+      "replay_hit_rate": 0.0
+    },
+    "device": {
+      "backend": "hip_gfx1151",
+      "hip_visible_devices": null,
+      "rocr_visible_devices": null,
+      "visible_devices": [],
+      "selected_visible_device": null,
+      "selection_source": null
+    },
+    "queue": {
+      "depth": 0,
+      "max_depth": null,
+      "worker_active": false,
+      "active_requests": 0,
+      "max_active_requests": 2,
+      "scheduler_fairness": {
+        "policy": "fifo_compatible_sampling_key",
+        "compatible_sampling_coalescing": true,
+        "continuous_decode": true,
+        "preemptive_fairness": false
+      },
+      "batch_window_ms": 0.0
+    },
+    "sessions": {
+      "resident_context": true,
+      "active": 0,
+      "pending_creations": 0,
+      "max_active": null,
+      "storage": "app_local_transcript",
+      "resident_state_reuse": false,
+      "total_messages": 0,
+      "continuations": {
+        "active": 0,
+        "ttl_seconds": 900
+      }
+    }
+  },
+  "resolved_context": 262144,
+  "admission": {
+    "mode": "auto",
+    "device_free_bytes": 128844787712,
+    "device_total_bytes": 128849018880,
+    "vision_weight_reserve_bytes": 0,
+    "plan": {
+      "available_device_bytes": 128844787712,
+      "required_bytes": 112613912928,
+      "device_weight_bytes": 82523491840,
+      "staging_bytes": 10485760,
+      "kv_bytes": 12884901888,
+      "index_bytes": 4071064416,
+      "runtime_state_bytes": 239067136,
+      "scratch_bytes": 8589934592,
+      "reserve_bytes": 4294967296,
+      "context_tokens": 262144,
+      "resident_capacity": 2
+    },
+    "scratch_policy": "4GiB per runner includes current MMQ sidecars and prefill scratch"
+  },
+  "resident_runners": 2,
+  "retrieval_prompt_tokens": 8192,
+  "needle_position": 720,
+  "retrieval_status": 200,
+  "retrieval_response": {
+    "id": "cmpl-68a2a569a34a4c35bfd9454f2c149ae9",
+    "object": "text_completion",
+    "created": 1788670276,
+    "model": "UD-Q4_K_XL",
+    "choices": [
+      {
+        "text": "<think>\nThe user is asking me to find the unique access code from the archive records. I need to scan through all the records to find the one that contains the access code.\n\nLooking through the records, I can see that Archive record 0024 contains: \"The unique access code is VIOLET-7391. Preserve this exact code for the audit.\"\n\nThe answer is VIOLET-7391.\n</think>\n\nVIOLET-7391",
+        "index": 0,
+        "logprobs": null,
+        "finish_reason": "stop",
+        "finish_details": {
+          "reason": "eos",
+          "eos_token_id": 248046,
+          "sampler_mode": "greedy",
+          "cache_action": "append_none"
+        },
+        "hipengine": {
+          "generated_token_ids": [
+            248068,
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            728,
+            310,
+            1423,
+            279,
+            4752,
+            2528,
+            1970,
+            494,
+            279,
+            17593,
+            7189,
+            13,
+            353,
+            1144,
+            310,
+            8307,
+            1472,
+            660,
+            279,
+            7189,
+            310,
+            1423,
+            279,
+            799,
+            421,
+            5435,
+            279,
+            2528,
+            1970,
+            13,
+            271,
+            21765,
+            1472,
+            279,
+            7189,
+            11,
+            353,
+            628,
+            1436,
+            421,
+            28732,
+            3150,
+            220,
+            15,
+            15,
+            17,
+            19,
+            5435,
+            25,
+            328,
+            760,
+            4752,
+            2528,
+            1970,
+            369,
+            629,
+            3682,
+            20124,
+            12,
+            22,
+            18,
+            24,
+            16,
+            13,
+            78503,
+            411,
+            4581,
+            1970,
+            364,
+            279,
+            23513,
+            1149,
+            271,
+            760,
+            4087,
+            369,
+            629,
+            3682,
+            20124,
+            12,
+            22,
+            18,
+            24,
+            16,
+            13,
+            198,
+            248069,
+            271,
+            53,
+            3682,
+            20124,
+            12,
+            22,
+            18,
+            24,
+            16,
+            248046
+          ],
+          "generated_tokens": 103,
+          "finish_details": {
+            "reason": "eos",
+            "eos_token_id": 248046,
+            "sampler_mode": "greedy",
+            "cache_action": "append_none"
+          }
+        }
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 8192,
+      "completion_tokens": 103,
+      "total_tokens": 8295
+    },
+    "hipengine": {
+      "routing": {
+        "requested_model": "UD-Q4_K_XL",
+        "served_model": "UD-Q4_K_XL",
+        "fallback_used": false,
+        "policy": "single_model_exact",
+        "loaded_model_count": 1,
+        "multiple_models": false
+      },
+      "token_accounting": {
+        "choice_generated_token_ids": [
+          [
+            248068,
+            198,
+            760,
+            1156,
+            369,
+            9859,
+            728,
+            310,
+            1423,
+            279,
+            4752,
+            2528,
+            1970,
+            494,
+            279,
+            17593,
+            7189,
+            13,
+            353,
+            1144,
+            310,
+            8307,
+            1472,
+            660,
+            279,
+            7189,
+            310,
+            1423,
+            279,
+            799,
+            421,
+            5435,
+            279,
+            2528,
+            1970,
+            13,
+            271,
+            21765,
+            1472,
+            279,
+            7189,
+            11,
+            353,
+            628,
+            1436,
+            421,
+            28732,
+            3150,
+            220,
+            15,
+            15,
+            17,
+            19,
+            5435,
+            25,
+            328,
+            760,
+            4752,
+            2528,
+            1970,
+            369,
+            629,
+            3682,
+            20124,
+            12,
+            22,
+            18,
+            24,
+            16,
+            13,
+            78503,
+            411,
+            4581,
+            1970,
+            364,
+            279,
+            23513,
+            1149,
+            271,
+            760,
+            4087,
+            369,
+            629,
+            3682,
+            20124,
+            12,
+            22,
+            18,
+            24,
+            16,
+            13,
+            198,
+            248069,
+            271,
+            53,
+            3682,
+            20124,
+            12,
+            22,
+            18,
+            24,
+            16,
+            248046
+          ]
+        ],
+        "choice_generated_tokens": [
+          103
+        ],
+        "total_generated_tokens": 103,
+        "retokenized_visible_tokens": 102
+      },
+      "generation_shape": {
+        "schema_version": 1,
+        "route": "default",
+        "route_cap": {
+          "scope": "queue_requests",
+          "value": 2,
+          "applied": true
+        },
+        "queue_group": {
+          "id": "queue-85d1795fb2c84d18acd1fc7ceb54effe",
+          "request_count": 1,
+          "prompt_rows": 1,
+          "item_index": 0,
+          "item_prompt_offset": 0,
+          "item_prompt_rows": 1
+        },
+        "backend_groups": [
+          {
+            "id": "backend-9411f5a953bc400cb49f62b69d667bae",
+            "call_index": 0,
+            "prompt_offset": 0,
+            "input_rows": 1,
+            "actual_group_rows": [
+              1
+            ],
+            "max_actual_group_rows": 1,
+            "verifier_rows": 0
+          }
+        ],
+        "verifier_rows": 0
+      },
+      "speculative_mtp": {
+        "effective_route": "default",
+        "used": false,
+        "draft_tokens": 0,
+        "accepted_draft_tokens": 0,
+        "rejected_draft_tokens": 0,
+        "acceptance_rate": null,
+        "draft_cycles": 0
+      }
+    }
+  },
+  "over_limit_status": 400,
+  "over_limit_response": {
+    "error": {
+      "message": "request requires 262147 context tokens (prompt 262145 + max_tokens 1 + 1), exceeding this server's preallocated max_context_tokens=262144",
+      "type": "invalid_request_error",
+      "param": "max_tokens",
+      "code": "context_length_exceeded",
+      "hipengine": {
+        "code": "context_overflow",
+        "status_code": 400,
+        "legacy_code": "context_length_exceeded",
+        "retryable": false,
+        "routing": {
+          "requested_model": "UD-Q4_K_XL",
+          "served_model": "UD-Q4_K_XL",
+          "fallback_used": false,
+          "policy": "single_model_exact",
+          "loaded_model_count": 1,
+          "multiple_models": false,
+          "matched": true,
+          "reason": "context_overflow"
+        }
+      },
+      "fit_context": {
+        "prompt_tokens": 262145,
+        "max_context_tokens": 262144,
+        "effective_max_tokens": 1,
+        "max_allowed_max_tokens": 0,
+        "recommended_max_tokens": 0,
+        "required_context_tokens": 262147,
+        "overflow_tokens": 3,
+        "fits": false,
+        "clear_policy": "reject",
+        "would_truncate": false,
+        "would_drop": []
+      }
+    }
+  },
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 105093140904,
+    "total_allocated_bytes": 105103653288,
+    "total_freed_bytes": 105103653288,
+    "active_allocations": 0,
+    "peak_allocations": 2209
+  },
+  "date": "2026-09-06",
+  "kind": "qwen4exp_native_context_serving_gate",
+  "raw_sha256": "635637eb51984137946db83d98358840a4dc195e65e020f6affa15d85375e8b7",
+  "validation": {
+    "server_llm_bundle_passed": 610,
+    "qsa_gpu_tests_passed": 17,
+    "focused_final_bundle_passed": 35
+  },
+  "limits": [
+    "Native allocation/serving admission262144 and c2 startup validated; actual served retrieval8192 tokens.",
+    "Not a fresh256K-length inference result. Existing P10 sparse-control/retrieval evidence through64K remains separate.",
+    "MTP and multimodal short-context qualification unchanged."
+  ]
+}

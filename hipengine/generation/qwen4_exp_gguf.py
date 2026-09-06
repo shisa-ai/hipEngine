@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import threading
 import time
@@ -56,7 +56,8 @@ class Qwen4ExpGGUFTextGenerator:
         backend: str = "hip_gfx1151",
         tokenizer: Any | None = None,
         runner: Any | None = None,
-        max_sequence_length: int = 2_051,
+        max_sequence_length: int | None = None,
+        resident_capacity: int | None = None,
         prefill_chunk_size: int = 512,
         vision_model_path: str | Path | None = None,
     ) -> None:
@@ -64,6 +65,13 @@ class Qwen4ExpGGUFTextGenerator:
         self.weight_index = weight_index
         self.model_plugin = model_plugin
         self.backend = str(backend)
+        self._configured_resident_capacity = (
+            self.server_plain_ar_max_active_requests if resident_capacity is None else int(resident_capacity))
+        if not 1 <= self._configured_resident_capacity <= self.server_plain_ar_max_active_requests:
+            raise ValueError("Qwen4Exp resident capacity must be within 1..2")
+        self.server_plain_ar_max_active_requests = self._configured_resident_capacity
+        self.server_plain_ar_max_active_requests_by_max_sequence_length = {1024:self._configured_resident_capacity}
+        self.context_admission = None
         self._resident = None
         self._vision_resident = None
         self._vision_runner = None
@@ -88,15 +96,39 @@ class Qwen4ExpGGUFTextGenerator:
             plan = plan_qwen4_exp_residency(
                 model_map, staging_token_capacity=prefill_chunk_size
             )
+            from hipengine.core.hip import get_hip_runtime
+            from hipengine.loading.qwen4_exp_context import resolve_qwen4_exp_context
+            runtime = get_hip_runtime()
+            free_bytes,total_bytes = runtime.mem_get_info()
+            vision_reserve = 0
+            if vision_model_path is not None:
+                vision_reserve = sum(
+                    int(tensor.nbytes) for path in discover_gguf_files(Path(vision_model_path))
+                    for tensor in GGUFReader(path).info.tensors)
+            if free_bytes < vision_reserve:
+                raise MemoryError("Qwen4Exp vision weights exceed available device memory")
+            admission = resolve_qwen4_exp_context(
+                plan,available_device_bytes=free_bytes-vision_reserve,
+                requested_context=max_sequence_length,
+                native_context_length=getattr(model_plugin,"native_context_length",model_map.config.context_length),
+                resident_capacity=self._configured_resident_capacity)
+            self.context_admission = {
+                "mode": "auto" if max_sequence_length is None else "explicit",
+                "device_free_bytes": free_bytes,"device_total_bytes": total_bytes,
+                "vision_weight_reserve_bytes": vision_reserve,
+                "plan": asdict(admission),
+                "scratch_policy": "4GiB per runner includes current MMQ sidecars and prefill scratch",
+            }
             self._resident = materialize_qwen4_exp_weights(
                 readers,
                 plan=plan,
                 backend=self.backend,
+                runtime=runtime,
             )
             try:
                 runner = Qwen4ExpGGUFResidentModelRunner(
                     self._resident,
-                    max_sequence_length=max_sequence_length,
+                    max_sequence_length=admission.context_tokens,
                     prefill_chunk_size=prefill_chunk_size,
                     backend=self.backend,
                 )
@@ -145,13 +177,13 @@ class Qwen4ExpGGUFTextGenerator:
     ) -> "Qwen4ExpResidentServingRunner":
         del config
         resolved = (
-            self.server_plain_ar_max_active_requests
+            self._configured_resident_capacity
             if capacity is None
             else int(capacity)
         )
-        if resolved <= 0 or resolved > self.server_plain_ar_max_active_requests:
+        if resolved <= 0 or resolved > self._configured_resident_capacity:
             raise ValueError(
-                "Qwen4Exp resident serving capacity must be within 1..2"
+                f"Qwen4Exp resident serving capacity must be within 1..{self._configured_resident_capacity}"
             )
         with self._lock:
             current = self._resident_model_runner
@@ -164,6 +196,20 @@ class Qwen4ExpGGUFTextGenerator:
             current = Qwen4ExpResidentServingRunner(self, capacity=resolved)
             self._resident_model_runner = current
             return current
+
+    def prepare(
+        self, *, max_sequence_length: int | None = None,
+        sampling_params: Any | None = None,
+    ) -> int:
+        """Report the admitted context; never change the model's QSA budget."""
+        with self._lock:
+            self._require_open()
+            if getattr(sampling_params,"kv_storage",None) not in (None,"auto","bf16"):
+                raise NotImplementedError("Qwen4Exp context admission currently supports BF16 KV only")
+            requested = self.runner.max_sequence_length if max_sequence_length is None else int(max_sequence_length)
+            if not 0 < requested <= self.runner.max_sequence_length:
+                raise ValueError("Qwen4Exp prepare exceeds admitted sequence capacity")
+            return requested
 
     def prepare_request_scratch(
         self,
@@ -227,7 +273,7 @@ class Qwen4ExpGGUFTextGenerator:
                 else [int(token) for token in self.tokenizer.encode(prompt)]
             )
             if len(token_ids) + request.max_tokens > self.runner.max_sequence_length:
-                raise ValueError("Qwen4Exp request exceeds dense runner capacity")
+                raise ValueError("Qwen4Exp request exceeds admitted sequence capacity")
             result = self.runner.prefill(
                 token_ids,
                 **_qwen4_exp_compact_prefill_kwargs(),
@@ -767,6 +813,8 @@ def make_qwen4_exp_gguf_generator_gfx1151(
     weight_index: object,
     model_plugin: object,
     vision_model_path: str | Path | None = None,
+    max_sequence_length: int | None = None,
+    resident_capacity: int | None = None,
 ) -> Qwen4ExpGGUFTextGenerator:
     return Qwen4ExpGGUFTextGenerator(
         model_path=model_path,
@@ -774,6 +822,8 @@ def make_qwen4_exp_gguf_generator_gfx1151(
         model_plugin=model_plugin,
         backend="hip_gfx1151",
         vision_model_path=vision_model_path,
+        max_sequence_length=max_sequence_length,
+        resident_capacity=resident_capacity,
     )
 
 

@@ -125,6 +125,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--repetitions", type=int, default=3)
     parser.add_argument("--prefill-chunk-size", type=int, default=512)
+    parser.add_argument("--capacity", type=int, help="Allocated context; defaults to largest live count plus one")
     parser.add_argument("--profile", action="store_true")
     parser.add_argument("--role-markers", action="store_true")
     parser.add_argument("--hip-arch", default="gfx1151")
@@ -178,6 +179,10 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
     register_qwen4_exp_gfx1151_profiles()
     reset_memory_stats()
     max_sequence_length = max(live_counts) + 1
+    if getattr(args, "capacity", None) is not None:
+        if int(args.capacity) < max_sequence_length:
+            raise ValueError("capacity must cover every live count plus one")
+        max_sequence_length = int(args.capacity)
     factory_args = argparse.Namespace(
         model_root=args.model_root,
         max_sequence_length=max_sequence_length,
@@ -369,6 +374,7 @@ def run(args: argparse.Namespace, *, command: Sequence[str]) -> dict[str, Any]:
             "fell_back_to_strict": resolved.fell_back_to_strict,
         },
         "protocol": {
+            "allocated_capacity": max_sequence_length,
             "live_counts": list(live_counts),
             "repetitions": int(args.repetitions),
             "prefill_chunk_size": int(args.prefill_chunk_size),

@@ -1,5 +1,22 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp context capacity policy
+
+- `native_context_length` is now consumed by public memory admission, bounded
+  by artifact context metadata. Keep `qsa_dense_equivalent_max_tokens` and
+  selected-position capacity independent and unchanged.
+- Public admission uses4GiB per resident runner for scratch including current
+  MMQ sidecars, plus4GiB reserve and separately reserved vision payload. Replace
+  this conservative allowance with exact composed scratch planning before new
+  scratch/sidecar growth exceeds its envelope; never silently over-admit.
+- The unused `bf16_compressed_index_bytes_per_token` remains an estimate, not
+  the actual raw-FP32 index allocation. Remove or explicitly implement it when
+  index quantization is independently qualified; never use it to admit memory.
+- Device-position-owned QSA remains dense-regime probe-only; promotion requires
+  native sparse selection support, not raising or bypassing the2051 guard.
+- Full KV zeroing occurs on reset too. Any live-span-only clearing optimization
+  needs isolation/rollback tests; context enablement does not change clearing.
+
 ## Qwen4Exp prepacked Q8 MMQ admission
 
 - Separate prepacked registry candidate retains an exact raw-Q8 fallback.

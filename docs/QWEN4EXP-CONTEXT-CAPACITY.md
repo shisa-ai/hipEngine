@@ -1,8 +1,10 @@
 # Qwen4Exp context capacity: the 2051 cap, why it exists, and what raising it costs
 
-Status: diagnosis and native-capacity short-context A/B complete. Public
-factory/default plumbing is still pending. Section4c records the new Framework
-measurement; earlier performance examples remain tied to their original protocols.
+Status: public native-context plumbing and real c2 server startup/8K retrieval
+gate complete on Framework gfx1151 (2026-09-06). Section4c records the short
+capacity A/B. Native262144 allocation is supported when admitted; this is not
+a fresh262144-token inference result. Historical diagnosis below describes the
+prior cap; section6 records its replacement.
 
 Audience: whoever owns the Qwen4Exp serving/prefill path next. This exists
 because the served default silently caps a 262,144-token model at 2,051 tokens,
@@ -25,11 +27,10 @@ easy to conflate.
    **default runner capacity** (`max_sequence_length`, a bring-up default that
    should not have been frozen at the same value). Anyone grepping `2051` will
    hit both. This is the single biggest trap in this area.
-4. The capacity is **not raisable through any served path**. The registered
-   generator factory does not accept or forward `max_sequence_length`, so
-   `--max-context-tokens` can only clamp downward. Every internal harness
-   bypasses the factory and passes its own capacity, which is why long-context
-   work looks fine while the server does not.
+4. The old public factory did not forward capacity. It now accepts
+   `max_sequence_length` and `resident_capacity`; LLM forwards these only to
+   factories explicitly declaring them. Auto defaults to the largest admitted
+   native context; explicit requests fail clearly if they do not fit.
 5. Raising capacity leaves short requests on the dense branch because dispatch
    keys off *live* count. It is not literally free: measured short decode is
    within0.1% of the small-capacity arm, while prefill loses0.24-0.74%. Full KV
@@ -170,6 +171,10 @@ Only the third row is a policy choice. The first two are geometry. A blanket
 find-and-replace on `2051` will silently break exactness.
 
 ## 3. Why the cap cannot currently be raised
+
+**Historical diagnosis, fixed September6:** the factory now forwards context
+and residency and the generator implements `prepare()`. The excerpt below
+documents the old behavior; see section6 for the new admission policy.
 
 The registered factory (`generation/qwen4_exp_gguf.py:764-777`) does not accept
 or forward `max_sequence_length`:
@@ -386,6 +391,32 @@ changing the clearing contract.
 
 ## 6. What already works, and what has to change
 
+**Implemented September6:** the generator resolves native context from artifact/
+plugin metadata through `resolve_qwen4_exp_context`, using the existing memory
+admission planner plus256-token physical KV rounding. Auto selects the largest
+fitting capacity (minimum one compression block); explicit limits never silently
+shrink. Default residency is c2 unless a caller configures c1. Admission reserves
+4GiB per runner for current scratch and MMQ sidecars, plus4GiB free reserve;
+optional vision payload is separately reserved. This conservative policy is not
+a byte-exact estimate of every allocation, and current sidecar/scratch growth must
+be kept within it or reflected in the policy.
+
+`LLM` forwards optional context/residency only to factories explicitly declaring
+those parameters. The generator's `prepare()` reports the admitted capacity or
+validates a lower requested limit. Startup creates resident slots within the
+admitted count. No QSA model constant, selection budget, kernel arithmetic, or
+device-position probe behavior changes. Raw KV clearing remains unchanged.
+
+Real OpenAI-compatible server startup with **no context override**, BF16 and c2,
+resolved262144 and returned `VIOLET-7391` from an8192-token archive request.
+A262145-token prompt returned HTTP400 `context_length_exceeded`; close freed
+all tracked allocations. Peak tracked bytes105,093,140,904 included weights,
+both native-capacity runners and sidecars.
+[Serving evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-native-context-serving.json).
+This enables the full native allocation/serving limit subject to memory; it does
+not claim a new full256K-length quality/performance qualification. P10's prior
+4K/16K/64K evidence remains named separately.
+
 Working and evidenced, do not redo: P10 in the performance campaign
 (`:2104-2127`) records natural 4K / 16K / 64K retrieval on the current stacked
 production path — `VIOLET-7391` retrieved at every depth, needle selected in all
@@ -395,7 +426,7 @@ repeat/rollback isolation passing, zero-allocation teardown. Artifacts:
 `...-p10-structural-depth-census.json`,
 `...-p10-16k-owner-profile.json`, `...-p10-64k-owner-profile.json`.
 
-Proposed change, smallest first:
+Original implementation checklist (items1-3 implemented; MTP remains separate):
 
 1. **Thread the parameter.** Give
    `make_qwen4_exp_gguf_generator_gfx1151` a `max_sequence_length` argument and
