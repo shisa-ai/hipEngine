@@ -37,7 +37,17 @@ binds to the actual role manifest instead:
   switch (for example the selected gate/up X8 repack) changes the contract
   even when every caller kwarg matches, and operation-coverage approval
   requires verifying the intended plan contract, never source identity
-  alone.
+  alone;
+- authorization additionally requires COMPLETE qualification: the contract
+  accounts every slot the preflight tried to qualify
+  (``required_plan_slots``) plus operation-scope refusals, and is
+  authorization-capable (:meth:`Qwen35GGUFPlanContract.is_complete`) only
+  when the qualified records cover exactly that accounting — so a refused
+  preflight report (which records only its successful slots) can never mint
+  or verify as authorization. The intended operation set — explicit, or the
+  intended contract's own checked operations when omitted — must be
+  certified on both sides; identical planned residents never confer
+  row-operation or dtype qualification.
 
 UD dense consumers for Q3_K / IQ4_NL / IQ3_S / IQ3_XXS / IQ2_S and raw dense
 IQ4_XS do not exist until UD-U2..U5, so both published UD artifacts are
@@ -913,34 +923,6 @@ def _planned_weight_record_slot(record: str) -> str:
     return record[len(_RECORD_SLOT_PREFIX) :].split("\t", 1)[0]
 
 
-def _plan_contract_is_self_consistent(contract: Qwen35GGUFPlanContract) -> bool:
-    """Whether a contract actually records the scope it claims.
-
-    A verifiable contract has well-formed records with unique slot paths, a
-    digest derived from its own records, and records covering EXACTLY its
-    slot scope: the full-artifact scope (``slot_filter=None``) must have
-    verified residents, and a filtered scope must have one record per claimed
-    slot. Partial or hollow contracts verify nothing and fail closed.
-    """
-
-    slots = tuple(
-        _planned_weight_record_slot(record)
-        for record in contract.resident_plan_records
-    )
-    if any(not slot for slot in slots):
-        return False
-    if len(set(slots)) != len(slots):
-        return False
-    if (
-        contract.resident_plan_digest
-        != qwen35_gguf_planned_weight_digest(contract.resident_plan_records)
-    ):
-        return False
-    if contract.slot_filter is None:
-        return bool(slots)
-    return set(slots) == {str(slot) for slot in contract.slot_filter}
-
-
 # ---------------------------------------------------------------------------
 # Preflight report
 # ---------------------------------------------------------------------------
@@ -988,6 +970,18 @@ class Qwen35GGUFPlanContract:
     when their recorded plans are equal — a contraction-enabled certificate
     is not reusable on an uncontracted plan, a repack-vetoed plan is not the
     certified plan, and an X8-env certificate is not reusable on a T16 plan.
+
+    The contract also binds qualification COMPLETENESS:
+    ``required_plan_slots`` enumerates every slot the preflight tried to
+    qualify for its (operations, slot scope) and ``operation_scope_refusals``
+    records operation-level scope refusals.  A contract is
+    authorization-capable (:meth:`is_complete`) only when its records cover
+    exactly the required slots and nothing was refused — a preflight report
+    that refused anything (planner, consumer, unknown role, unknown filter
+    entry, operation scope) carries a structurally incomplete contract and
+    can never mint or verify as authorization, no matter how many slots
+    qualified.  Partial records stay on refused reports for debugging; they
+    just cannot authorize.
     """
 
     operations: tuple[str, ...]
@@ -1007,18 +1001,83 @@ class Qwen35GGUFPlanContract:
     dense_q6_qmicro_planar: bool
     dense_q6_qmicro_planar_excluded_slots: tuple[str, ...]
     resident_plan_records: tuple[str, ...] = ()
+    required_plan_slots: tuple[str, ...] = ()
+    operation_scope_refusals: tuple[str, ...] = ()
     resident_plan_digest: str = ""
 
     def __post_init__(self) -> None:
-        # Canonicalize: deduplicate + sort records; the digest is always
-        # derived from the stored records (never caller-asserted).
-        records = tuple(sorted(dict.fromkeys(self.resident_plan_records)))
+        # Canonicalize: deduplicate + sort records and the accounting sets;
+        # the digest is always derived from the stored records (never
+        # caller-asserted).
+        records = tuple(sorted(dict.fromkeys(str(record) for record in self.resident_plan_records)))
         object.__setattr__(self, "resident_plan_records", records)
         object.__setattr__(
             self,
             "resident_plan_digest",
             qwen35_gguf_planned_weight_digest(records),
         )
+        object.__setattr__(
+            self,
+            "required_plan_slots",
+            tuple(sorted(dict.fromkeys(str(slot) for slot in self.required_plan_slots))),
+        )
+        object.__setattr__(
+            self,
+            "operation_scope_refusals",
+            tuple(
+                sorted(dict.fromkeys(str(operation) for operation in self.operation_scope_refusals))
+            ),
+        )
+
+    def is_complete(self) -> bool:
+        """Whether this contract proves COMPLETE successful qualification.
+
+        This is the authorization-capability statement.  True only when the
+        contract binds a qualification attempt that fully succeeded over its
+        claimed scope:
+
+        - records are well-formed, slot-unique, and digested from
+          themselves;
+        - the recorded residents cover EXACTLY ``required_plan_slots`` —
+          every slot the preflight tried to qualify for its (operations,
+          slot scope) is accounted: planner-refused, consumer-unqualified,
+          unknown-role, and unknown-filter-entry slots are required but
+          never recorded, so any refused preflight yields an incomplete
+          contract and can never authorize; slots no requested operation
+          touches are in neither set;
+        - no operation was refused at the operation scope gate (for example
+          MTP draft on an AR-only preset);
+        - a filtered scope accounts only for slots inside the filter.
+
+        Hand-built, legacy, or hollow contracts default to incomplete
+        (``required_plan_slots=()`` with records, or records without their
+        required slots) and fail closed.  The accounting sets are preflight
+        enumeration inputs, not values derived from the successful records,
+        so the completeness proof is not circular.
+        """
+
+        slots = self.resident_plan_slots
+        if any(not slot for slot in slots):
+            return False
+        if len(set(slots)) != len(slots):
+            return False
+        if (
+            self.resident_plan_digest
+            != qwen35_gguf_planned_weight_digest(self.resident_plan_records)
+        ):
+            return False
+        required = tuple(self.required_plan_slots)
+        if any(not slot for slot in required):
+            return False
+        if set(slots) != set(required):
+            return False
+        if self.operation_scope_refusals:
+            return False
+        if self.slot_filter is not None and not set(required) <= {
+            str(slot) for slot in self.slot_filter
+        }:
+            return False
+        return True
 
     @property
     def resident_plan_slots(self) -> tuple[str, ...]:
@@ -1051,6 +1110,8 @@ class Qwen35GGUFPlanContract:
             ),
             "resident_plan_digest": self.resident_plan_digest,
             "resident_plan_record_count": len(self.resident_plan_records),
+            "required_plan_slots": list(self.required_plan_slots),
+            "operation_scope_refusals": list(self.operation_scope_refusals),
         }
 
 
@@ -1123,12 +1184,14 @@ def certificate_covers_artifact(
 
     ``plan_contract`` is REQUIRED: the caller's intended effective plan
     contract, taken from a fresh :func:`preflight_qwen35_gguf_artifact` call
-    over the artifact/plan about to run. Coverage approval always verifies
-    that intended contract against the certificate's recorded plan — an
-    override-specific certificate is never accepted on the strength of source
-    identity alone. A certificate whose own plan metadata is missing (legacy
-    or hand-built) fails closed, as does an intended contract that does not
-    actually record the scope it claims (absent, unknown, or partial).
+    over the artifact/plan about to run. Both the certificate's recorded
+    contract and the intended contract must be COMPLETE
+    (:meth:`Qwen35GGUFPlanContract.is_complete`): a preflight that refused
+    anything records only the successfully qualified slots, and that partial
+    record set must never verify as authorization — so a refused report's
+    contract fails closed here no matter how many of its records match the
+    certified plan. A certificate whose own plan metadata is missing (legacy
+    or hand-built) fails closed, as does any hollow or hand-built contract.
 
     A plain-artifact certificate never covers a UD manifest (different
     fingerprint) and vice versa, even when the file-type stamps match.
@@ -1142,11 +1205,22 @@ def certificate_covers_artifact(
     covers uses within that exact checked subset — a one-slot debug
     certificate never reads as full-artifact coverage, including under an
     unspecified check. Narrowing is preserved; enlargement beyond the
-    certified subset is refused.
+    certified subset is refused. A named nonempty scope whose intended
+    contract verified no residents for it authorizes nothing.
 
-    When ``operations`` is given, every requested operation must be in the
-    certificate's certified operation set AND in the intended contract's own
-    checked set — an operation neither side verified is refused.
+    ``operations`` names the operations the caller intends to run. When
+    omitted, the intended operation set defaults to the intended contract's
+    own checked operations — the WHOLE intended contract must be certified,
+    so a c1-only certificate never covers a prefill or native-rows intent
+    even when the planned residents are identical. When given explicitly,
+    the set must be non-empty (an unnamed operation set authorizes nothing)
+    and every requested operation must be in the certificate's certified
+    operation set, in the certificate's recorded contract's checked set, AND
+    in the intended contract's own checked set — explicit narrowing must
+    belong to both qualifications. Planned resident bytes establish
+    allocations, never activation/output dtype or row-operation
+    qualification: identical residents cannot upgrade a c1/prefill
+    certificate to the native multirow operation.
     """
 
     if not certificate_matches_artifact_identity(
@@ -1160,19 +1234,31 @@ def certificate_covers_artifact(
         # A certificate without resident-plan identity cannot verify any
         # intended plan: fail closed instead of authorizing operations.
         return False
-    if not _plan_contract_is_self_consistent(plan_contract):
+    if not plan_contract.is_complete():
+        # A refused (or hollow, or hand-built) intended preflight can never
+        # supply an authorization-capable contract, even when its partial
+        # records are a subset of the certified ones.
         return False
-    if not _plan_contract_is_self_consistent(recorded):
+    if not recorded.is_complete():
         return False
-    requested = (
-        None if operations is None else tuple(dict.fromkeys(str(op) for op in operations))
-    )
-    if requested is not None:
-        if any(operation not in certificate.operations for operation in requested):
-            return False
-        if any(operation not in plan_contract.operations for operation in requested):
-            return False
     intended = plan_contract
+    requested_operations = (
+        tuple(intended.operations)
+        if operations is None
+        else tuple(dict.fromkeys(str(operation) for operation in operations))
+    )
+    if not requested_operations:
+        # An explicitly empty operation set names nothing and therefore
+        # authorizes nothing (fail closed, never a blanket yes).
+        return False
+    if any(
+        operation not in certificate.operations for operation in requested_operations
+    ):
+        return False
+    if any(operation not in recorded.operations for operation in requested_operations):
+        return False
+    if any(operation not in intended.operations for operation in requested_operations):
+        return False
     requested_slots = (
         None if slot_filter is None else tuple(sorted({str(slot) for slot in slot_filter}))
     )
@@ -1197,6 +1283,10 @@ def certificate_covers_artifact(
     intended_slot_set = set(intended_slots)
     if certified_slots is not None and not intended_slot_set <= set(certified_slots):
         # Enlargement beyond the certified subset is never covered.
+        return False
+    if intended_slot_set and not intended.resident_plan_records:
+        # A named nonempty scope the intended contract verified no residents
+        # for authorizes nothing (vacuous coverage is not coverage).
         return False
     certified_by_slot = {
         _planned_weight_record_slot(record): record
@@ -1234,6 +1324,16 @@ class Qwen35GGUFAdmissionReport:
             raise Qwen35GGUFAdmissionError(
                 "cannot certify an artifact with unsupported operations; see "
                 "Qwen35GGUFAdmissionReport.unsupported"
+            )
+        if self.plan_contract is None or not self.plan_contract.is_complete():
+            # Mint-boundary invariant: only a COMPLETE qualification contract
+            # can be certified. For real preflight reports this is equivalent
+            # to ``supported`` (every refusal path also marks the contract
+            # incomplete); the guard exists so the two can never drift apart.
+            raise Qwen35GGUFAdmissionError(
+                "cannot certify an artifact whose admission plan contract is "
+                "not complete (required-slot accounting or operation-scope "
+                "refusals failed); see Qwen35GGUFAdmissionReport.unsupported"
             )
         return Qwen35GGUFAdmissionCertificate(
             preset_key=None if self.preset is None else self.preset.preset_key,
@@ -1322,7 +1422,13 @@ def preflight_qwen35_gguf_artifact(
     gate (:func:`gguf_decode_repack_enabled`) so the preflight sees the same
     plan the loader would materialize.  ``slot_filter`` restricts the
     preflight to a subset of canonical slot paths (the loader's test/debug
-    ``selected_slots`` hook); unlisted slots are neither covered nor refused.
+    ``selected_slots`` hook); unlisted slots are neither covered nor
+    refused, and a filter entry naming no slot in the map is itself refused
+    (a caller error is not a silent no-op).  The returned report always
+    carries a plan contract; it is authorization-capable
+    (:meth:`Qwen35GGUFPlanContract.is_complete`) exactly when nothing was
+    refused, and :meth:`Qwen35GGUFAdmissionReport.certificate` refuses to
+    mint otherwise.
     """
 
     if decode_repack is None:
@@ -1365,6 +1471,14 @@ def preflight_qwen35_gguf_artifact(
     # qualified slot. This — not the caller's kwargs or env names — is what
     # the plan contract (and therefore the certificate) binds to.
     resident_plan_records: list[str] = []
+    # Authorization accounting: every slot the preflight TRIES to qualify
+    # (participating or refused) lands in required_plan_slots; only fully
+    # qualified slots earn a record. is_complete() requires the two sets to
+    # agree, so a refused preflight can never produce an authorization-
+    # capable contract. Operation-level scope refusals (MTP draft gating) are
+    # recorded separately because they attach to no slot.
+    required_plan_slots: set[str] = set()
+    operation_scope_refusals: list[str] = []
 
     # Scope gate: MTP draft operations require an explicitly certified MTP
     # scope.  No preset (plain lane) or an AR-only UD preset refuses the whole
@@ -1372,6 +1486,7 @@ def preflight_qwen35_gguf_artifact(
     # impossible because the scope binds to the manifest fingerprint.
     if QWEN35_GGUF_OP_MTP_NEXTN_DRAFT in requested:
         if preset is None or not preset.scope_certified(GGUF_PRESET_SCOPE_MTP):
+            operation_scope_refusals.append(QWEN35_GGUF_OP_MTP_NEXTN_DRAFT)
             unsupported.append(
                 Qwen35GGUFUnsupportedOperation(
                     slot_path=(
@@ -1459,11 +1574,34 @@ def preflight_qwen35_gguf_artifact(
     effective_slot_filter = (
         None if allowed_slots is None else tuple(sorted(allowed_slots))
     )
+    if allowed_slots is not None:
+        # A filter entry naming no slot in the (operation-relevant) map is a
+        # caller error, not a silent no-op: refuse it and account it as a
+        # required-but-unrecorded scope entry so the contract stays
+        # incomplete and can never authorize that scope.
+        known_slot_paths = {str(slot_path) for slot_path, _ in slot_tensors}
+        for entry in sorted(allowed_slots - known_slot_paths):
+            required_plan_slots.add(entry)
+            unsupported.append(
+                Qwen35GGUFUnsupportedOperation(
+                    slot_path=entry,
+                    role_class="",
+                    operation="-",
+                    source_ggml_type="-",
+                    resident_layout=None,
+                    stage="scope_refused",
+                    reason=(
+                        "slot_filter entry names no slot in the artifact map "
+                        "for the requested operations"
+                    ),
+                )
+            )
     for slot_path, tensor in slot_tensors:
         if allowed_slots is not None and str(slot_path) not in allowed_slots:
             continue
         role_class = _role_class_for_slot(str(slot_path).rsplit(".", 1)[-1])
         if not role_class:
+            required_plan_slots.add(str(slot_path))
             unsupported.append(
                 Qwen35GGUFUnsupportedOperation(
                     slot_path=str(slot_path),
@@ -1481,6 +1619,10 @@ def preflight_qwen35_gguf_artifact(
         )
         if not applicable_ops:
             continue
+        # From here on the slot is inside the operation contract: it MUST be
+        # accounted (qualified record or refusal) for the contract to be
+        # complete.
+        required_plan_slots.add(str(slot_path))
         try:
             spec = plan_qwen35_gguf_weight_spec(
                 str(slot_path),
@@ -1591,6 +1733,8 @@ def preflight_qwen35_gguf_artifact(
                 str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
             ),
             resident_plan_records=tuple(resident_plan_records),
+            required_plan_slots=tuple(required_plan_slots),
+            operation_scope_refusals=tuple(operation_scope_refusals),
         ),
     )
 
