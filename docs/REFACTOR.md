@@ -4881,3 +4881,7 @@ under the manifest; retain rollback and registered strict fallbacks.
 - Require invocation-counted full state/KV/logit and12-case normal-model A/B.
   Keep parent composite and unfused chain as strict fallbacks. Remove temporary
   admission routing after qualification or rejection.
+- Default-off `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` selects the registered
+  candidate only inside existing rows>256/four-branch fused GR use. Parent
+  and unfused fallback selection remain intact; remove this admission flag
+  once qualification and rollback needs are settled.
