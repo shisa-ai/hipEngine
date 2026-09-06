@@ -269,7 +269,7 @@ def _wrap_batcher_run_group(app: Any, out_dir: Path) -> None:
         path = out_dir / "batcher-run-group-exceptions.log"
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(f"=== {time.strftime('%H:%M:%S')} {where} ===\n")
-            handle.write(_tb.format_exception(type(exc), exc, exc.__traceback__))
+            handle.write("".join(_tb.format_exception(type(exc), exc, exc.__traceback__)))
             handle.write("\n")
 
     def logged_generate(*gen_args: Any, **gen_kwargs: Any):
@@ -354,7 +354,7 @@ def _trace_adapter_registration() -> None:
                     out_path / "adapter-cycle-exceptions.log", "a", encoding="utf-8"
                 ) as handle:
                     handle.write(f"=== {time.strftime('%H:%M:%S')} {name} ===\n")
-                    handle.write(_tb.format_exception(type(exc), exc, exc.__traceback__))
+                    handle.write("".join(_tb.format_exception(type(exc), exc, exc.__traceback__)))
                     handle.write("\n")
                 raise
 
