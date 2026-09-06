@@ -962,9 +962,10 @@ class Qwen35GGUFMTP2Adapter:
     def _physical_c1_request(self, request_id: int) -> bool:
         """True when this request runs the packed one-row physical route.
 
-        Requires rows==1 static evidence, a listed (1, K) policy cell, and the
-        package-owned physical-C1 flag. Capacity-1 engines keep the legacy
-        AR-row singleton route; gfx1151/Qwen3.6 never enable the flag.
+        Requires rows==1 static evidence, a listed (1, K) policy cell or an
+        explicit-only screening cell, and the package-owned physical-C1 flag.
+        Capacity-1 engines keep the legacy AR-row singleton route;
+        gfx1151/Qwen3.6 never enable the flag.
         """
 
         if not self._physical_c1_enabled():
@@ -976,7 +977,11 @@ class Qwen35GGUFMTP2Adapter:
             return False
         if int(getattr(self.owner, "capacity", 1)) <= 1:
             return False
-        return self._physical_width_depth_admitted(1, self.candidate_budget)
+        return self._physical_width_depth_admitted_for_group(
+            1,
+            self.candidate_budget,
+            (request_id,),
+        )
 
     def register_request(
         self,
