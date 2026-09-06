@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Native-capacity short-context check (2051->262144 allocated tokens):
+p512/p1024 decode-0.066%/-0.095%, prefill-0.737%/-0.238%;48/48 trajectories
+exact. Public default is not changed by this measurement.
+[Capacity A/B](results/2026-09-06-framework-qwen4exp-context-capacity-ab.json).
+
 | Framework UD-Q4_K_XL / BF16 KV incremental promotion | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Q8 MMQ prepack, same-residency parent -> production | 156.707 -> 157.748 (+0.664%) | 154.396 -> 155.375 (+0.634%) | 143.903 -> 144.736 (+0.579%) |
