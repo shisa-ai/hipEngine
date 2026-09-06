@@ -26,6 +26,7 @@ from hipengine.loading.qwen35_gguf import (
     build_qwen35_gguf_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_admission import (
+    CERTIFIED_F32_INPUT_OPERATION_COVERAGE,
     CERTIFIED_OPERATION_COVERAGE,
     DEFAULT_AR_OPERATIONS,
     GGUF_UD_Q4_K_M_PRESET,
@@ -984,10 +985,24 @@ def test_ud_scope_refusal_is_distinct_from_plain_nextn_path():
 
 
 def test_coverage_records_use_existing_registry_layer_names():
-    from hipengine.kernels.registry import KernelKey
-
-    known_layers = {"linear", "dense_gemv", "embedding", "rmsnorm", "gdn_chain", "moe_selected"}
-    for record in CERTIFIED_OPERATION_COVERAGE:
+    # Every certified record names a concrete registry layer that actually
+    # exists in the production registration surface (F3: the previous
+    # placeholder layers "moe_selected"/"gdn_chain" never existed; the real
+    # selected-expert consumers are registered under moe_linear and the GDN
+    # chain under gdn_recurrent_rmsnorm_gate).  The full registration parity
+    # is proven in tests/test_qwen35_gguf_consumer_surface_parity.py.
+    known_layers = {
+        "linear",
+        "dense_gemv",
+        "embedding",
+        "rmsnorm",
+        "router_logits",
+        "gdn_recurrent_rmsnorm_gate",
+        "linear_attn_conv_decode",
+        "linear_attn_conv_prefill",
+        "moe_linear",
+    }
+    for record in (*CERTIFIED_OPERATION_COVERAGE, *CERTIFIED_F32_INPUT_OPERATION_COVERAGE):
         assert record.operation in {
             QWEN35_GGUF_OP_AR_DECODE_C1,
             QWEN35_GGUF_OP_AR_DECODE_ROWS,
@@ -996,29 +1011,28 @@ def test_coverage_records_use_existing_registry_layer_names():
             QWEN35_GGUF_OP_EMBEDDING_LOOKUP,
             QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,
         }
-        # Every record names a real registry layer axis and resolves to a
-        # well-formed four-axis key once the backend is known.
+        # F3: every record names a REAL registry layer and a concrete
+        # (quant, variant) consumer identity — placeholders are not
+        # certification.
         assert record.kernel_layer in known_layers
-        key = KernelKey(
-            "hip_gfx1100",
-            record.kernel_layer,
-            record.kernel_quant or "<from-weight>",
-            record.kernel_variant or "resolved_by_rows",
-        )
-        assert key.backend == "hip_gfx1100" and key.layer == record.kernel_layer
+        assert record.kernel_variant
+        if record.consumer_module is None:
+            assert record.kernel_quant
 
 
 def test_lm_head_logits_require_an_f32_output_consumer():
-    # Every lm_head layout the planner can emit has a registered F32-output
-    # dispatch row (pack8/raw per quant, dense-BF16, dense-F32 with F32
-    # activations, Q6_K T16); assert the positive contract on representative
-    # types.
+    # Every lm_head layout the planner can emit EXCEPT dense_f32 has a
+    # registered BF16-activation/F32-output dispatch row (pack8/raw per
+    # quant, dense-BF16, Q6_K T16); assert the positive contract on
+    # representative types.  dense_f32 is the F3 counterexample: the actual
+    # caller supplies BF16 activations and no (dense_f32, bf16, f32) row
+    # exists — it is refused by default and certifiable only with a declared
+    # F32 input override.
     for lm_head_type in (
         GGMLQuantizationType.Q4_K,
         GGMLQuantizationType.Q8_0,
         GGMLQuantizationType.Q6_K,
         GGMLQuantizationType.Q4_1,
-        GGMLQuantizationType.F32,
     ):
         report = preflight_qwen35_gguf_artifact(
             _synthetic_model_map(lm_head_type=lm_head_type),
@@ -1029,6 +1043,12 @@ def test_lm_head_logits_require_an_f32_output_consumer():
             lm_head_type,
             report.render_refusals(),
         )
+    f32_report = preflight_qwen35_gguf_artifact(
+        _synthetic_model_map(lm_head_type=GGMLQuantizationType.F32),
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    assert f32_report.supported is False
     # And the coverage table records the F32 output dtype for every lm_head
     # consumer.
     for record in CERTIFIED_OPERATION_COVERAGE:
@@ -1590,7 +1610,7 @@ def test_rank3_iq3_xxs_selected_experts_keep_their_registered_moe_consumers():
     # rank-2 T16/X8 repack: only the raw layout carries IQ3_XXS.
     iq3_layouts = {record.resident_layout for record in expert_records}
     assert iq3_layouts == {LAYOUT_RAW_GGUF}
-    assert {record.kernel_layer for record in expert_records} == {"moe_selected"}
+    assert {record.kernel_layer for record in expert_records} == {"moe_linear"}
     assert all(record.input_dtype == "bf16" and record.output_dtype == "bf16" for record in expert_records)
     assert {record.rows_scope for record in expert_records} == {
         "rows_1_8_row_local",
@@ -1663,7 +1683,11 @@ def test_unknown_backend_gets_no_certificate():
 def test_registered_backend_keys_are_the_concrete_admission_surface():
     from hipengine.kernels.backends import CUDA_BACKEND_TARGET_ARCH, HIP_BACKEND_TARGET_ARCH
 
-    for backend in ("hip_gfx1100", "hip_gfx1151", "cuda_sm120a"):
+    # Only backends whose packages declare concrete GGUF consumer layers can
+    # earn a positive certificate; both HIP peers declare the full surface.
+    # cuda_sm120a is the scaffold counterexample (see
+    # test_scaffold_cuda_backend_gets_no_gguf_consumer_certificate).
+    for backend in tuple(HIP_BACKEND_TARGET_ARCH):
         report = preflight_qwen35_gguf_artifact(
             _synthetic_model_map(),
             backend=backend,
@@ -1671,6 +1695,13 @@ def test_registered_backend_keys_are_the_concrete_admission_surface():
         )
         assert report.backend == backend
         assert report.supported, report.render_refusals()
+    for backend in tuple(CUDA_BACKEND_TARGET_ARCH):
+        report = preflight_qwen35_gguf_artifact(
+            _synthetic_model_map(),
+            backend=backend,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+        )
+        assert report.supported is False
 
 
 def test_unmaterializable_q6_head_shape_is_refused_before_allocation(monkeypatch, tmp_path):
@@ -1769,10 +1800,19 @@ def test_misaligned_pack8_projection_is_refused_before_allocation():
 
 def test_coverage_families_are_registered_consumers_not_just_valid_keys():
     """Syntactically valid four-axis keys are not registration evidence: the
-    consumer families named by the certified coverage records must be
+    concrete consumer keys named by the certified coverage records must be
     registrable through the production registrars (the same functions the
     backend package and the runtime dispatcher call), and land in the
-    registry under the exact four-axis keys the records name."""
+    registry under the exact four-axis keys the records name.  F3: no skip
+    for placeholder records — every record is concrete and is checked on
+    BOTH GGUF backends (the declaration-declared consumer surface), plus
+    the direct-wrapper consumer (raw rank-3 Q4_K selected experts) exists
+    as a module symbol.  The complete no-skip parity (all records, both
+    row-mode variants, both backends) lives in
+    tests/test_qwen35_gguf_consumer_surface_parity.py; this test keeps the
+    in-file invariant independently of that module."""
+
+    import importlib
 
     iq_gemv = pytest.importorskip(
         "hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv",
@@ -1785,34 +1825,93 @@ def test_coverage_families_are_registered_consumers_not_just_valid_keys():
     # Test isolation restores the collection-time registry baseline after each
     # test, so re-run the production registrars (idempotently: skip keys that
     # are already registered) exactly as the backend package / runtime
-    # dispatcher would.
+    # dispatcher would — the same registrar set the parity test uses.
+    from hipengine.kernels.hip_gfx1100.fused.gguf_ops import register_gguf_ops
+    from hipengine.kernels.hip_gfx1100.linear_attn.conv import (
+        register_qwen35_linear_attn_conv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.linear_attn.gdn import (
+        register_qwen35_linear_attn_gdn_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.moe.router import register_qwen35_router_kernels
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+        register_gguf_k_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_k_t16_selected_prefill import (
+        register_gguf_k_t16_selected_prefill_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q3_k_gemv import (
+        register_gguf_q3_k_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv import (
+        register_gguf_q4_k_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_embedding import (
+        register_gguf_q6_k_embedding_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q6_k_t16_gemv import (
+        register_gguf_q6_k_t16_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_t16_gemv import (
+        register_gguf_q8_0_t16_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_t16_selected_gemv import (
+        register_gguf_t16_selected_gemv_kernels,
+    )
+    from hipengine.kernels.hip_gfx1100.quant.gguf_x8_selected_gemv import (
+        register_gguf_x8_selected_gemv_kernels,
+    )
     from hipengine.kernels.registry import DuplicateKernelError
 
     for registrar in (
         iq_gemv.register_gguf_iq_gemv_kernels,
         dense_gemv.register_dense_gemv_kernels,
+        register_gguf_k_gemv_kernels,
+        register_gguf_q4_k_gemv_kernels,
+        register_gguf_q3_k_gemv_kernels,
+        register_gguf_x8_selected_gemv_kernels,
+        register_gguf_q8_0_t16_gemv_kernels,
+        register_gguf_t16_selected_gemv_kernels,
+        register_gguf_q6_k_t16_gemv_kernels,
+        register_gguf_k_t16_selected_prefill_kernels,
+        register_gguf_q6_k_embedding_kernels,
+        register_gguf_ops,
+        register_qwen35_linear_attn_conv_kernels,
+        register_qwen35_linear_attn_gdn_kernels,
+        register_qwen35_router_kernels,
     ):
         try:
             registrar(replace=False)
         except DuplicateKernelError:
             pass
-    from hipengine.kernels.registry import KernelKey, registered_keys
+    from hipengine.kernels.registry import KernelKey, is_registered, registered_keys
 
     registered = set(registered_keys())
+    checked = 0
     for record in CERTIFIED_OPERATION_COVERAGE:
-        if record.kernel_quant is None or record.kernel_variant is None:
-            # Resolved from the resident/row count by the runtime dispatcher.
+        if record.consumer_module is not None:
+            module = importlib.import_module(record.consumer_module)
+            assert hasattr(module, str(record.consumer_symbol)), record
+            checked += 1
             continue
-        key = KernelKey(
-            "hip_gfx1100",
-            record.kernel_layer,
-            record.kernel_quant,
+        for variant in (
             record.kernel_variant,
-        )
-        assert key in registered, (
-            f"coverage record names an unregistered consumer: {key} "
-            f"(operation={record.operation} role={record.role_class})"
-        )
+            *( [record.kernel_variant_rows_many] if record.kernel_variant_rows_many else [] ),
+        ):
+            key = KernelKey(
+                "hip_gfx1100",
+                record.kernel_layer,
+                record.kernel_quant,
+                variant,
+            )
+            assert key in registered or is_registered(key), (
+                f"coverage record names an unregistered consumer: {key} "
+                f"(operation={record.operation} role={record.role_class})"
+            )
+            checked += 1
+    assert checked > len(CERTIFIED_OPERATION_COVERAGE) // 2, (
+        "the no-placeholder invariant regressed: most records were skipped"
+    )
     # And the IQ3_XXS selected-expert family named by repair 2 is genuinely
     # registered under moe_linear.
     assert any(
@@ -3127,15 +3226,17 @@ def test_rank3_raw_expert_coverage_is_type_aware_per_format(expert_type_name):
     ]
     assert raw_records, f"no raw coverage record claims {expert_type_name}"
     # Per-format concrete consumer metadata: IQ3_XXS is owned by the
-    # registered gguf_iq3_xxs selected consumers; every other raw expert type
-    # keeps the gguf_q*_k raw selected-expert family. Different formats keep
+    # registered gguf_iq3_xxs selected consumers (moe_linear); every other
+    # raw expert type keeps its concrete selected-expert consumer (the
+    # gguf_q*_k raw family under linear/moe_linear, with raw rank-3 Q4_K
+    # consumed by the direct gguf_q4_k_gemv wrapper).  Different formats keep
     # different records — never one merged blob with a wrong kernel key.
     if expert_type_name == "IQ3_XXS":
-        assert all("gguf_iq3_xxs" in (record.strict_fallback or "") for record in raw_records)
+        assert all(record.kernel_quant == "gguf_iq3_xxs" for record in raw_records)
     else:
-        assert all("gguf_q*_k raw" in (record.strict_fallback or "") for record in raw_records)
+        assert all(record.kernel_quant and record.kernel_variant for record in raw_records)
     for record in raw_records:
-        assert record.kernel_layer == "moe_selected"
+        assert record.kernel_layer in {"linear", "moe_linear"}
         assert record.input_dtype == "bf16" and record.output_dtype == "bf16"
         assert record.rows_scope in ("rows_1_8_row_local", "prefill_rows")
 
@@ -3257,7 +3358,7 @@ def test_coverage_index_is_unambiguous_per_source_type():
         rows_scope=raw_experts.rows_scope,
         input_dtype="bf16",
         output_dtype="bf16",
-        kernel_layer="moe_selected",
+        kernel_layer="moe_linear",
         note="impostor record re-claiming an indexed source type",
     )
     with pytest.raises(ValueError, match="Q4_K"):
@@ -4079,3 +4180,192 @@ def test_fp16_default_policy_mirror_binds_artifact_qualification():
         )
         is False
     )
+
+
+# ---------------------------------------------------------------------------
+# U1 review repair F3: concrete backend consumer + actual caller dtype
+# ---------------------------------------------------------------------------
+
+
+def test_scaffold_cuda_backend_gets_no_gguf_consumer_certificate():
+    """F3 counterexample: ``cuda_sm120a`` is a registered hardware backend
+    key, but its package registers no GGUF consumer families (no ``gguf_*``
+    linear/embedding/dense consumers; moonshine/maple/PARO keys only).  A
+    known target-arch name alone must never yield a positive GGUF admission
+    certificate; every slot is refused with the missing concrete consumer
+    named, before any allocation."""
+
+    report = preflight_qwen35_gguf_artifact(
+        _synthetic_model_map(),
+        backend="cuda_sm120a",
+        operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+    )
+    assert report.supported is False, report.render_refusals()
+    assert report.unsupported, "scaffold backend earned GGUF coverage"
+    assert all(u.stage == "consumer_unqualified" for u in report.unsupported)
+    assert all("cuda_sm120a" in u.reason for u in report.unsupported)
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        report.raise_for_errors()
+
+
+def test_dense_f32_lm_head_refuses_default_f32_logits_caller_dtype(monkeypatch, tmp_path):
+    """F3 concrete dtype repro: the production lm-head callers
+    (``logits_from_hidden_bits`` / native rows / packed verify) supply BF16
+    hidden state without an input override, and the runtime linear dispatch
+    has no ``(dense_f32, bf16 activation, f32 output)`` row.  Certifying the
+    F32-input row as if it were the default caller contract would let the
+    artifact load and then fail at the first decode; admission must refuse
+    the (slot, operation) before any allocation instead."""
+
+    f32_head_map = _synthetic_model_map(lm_head_type=GGMLQuantizationType.F32)
+    report = preflight_qwen35_gguf_artifact(
+        f32_head_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    assert report.supported is False, report.render_refusals()
+    refusals = [u for u in report.unsupported if u.slot_path == "root.lm_head"]
+    assert refusals and refusals[0].stage == "consumer_unqualified"
+    reason = refusals[0].reason
+    assert "dense_f32" in reason and "bf16" in reason and "f32" in reason
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        report.raise_for_errors()
+
+    # Loader-level: the refusal happens before ANY device allocation.
+    from tests._qwen35_gguf_fixture import (
+        fixture_metadata,
+        linear_attention_layer_slots,
+        write_qwen35_gguf,
+    )
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+    from hipengine.loading.gguf import GGUFReader
+
+    tensors = [
+        ("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
+        ("output_norm.weight", (256,), GGMLQuantizationType.F32),
+        ("output.weight", (32, 256), GGMLQuantizationType.F32),
+    ]
+    tensors.extend(linear_attention_layer_slots(0, projection_type=GGMLQuantizationType.Q4_K))
+    path = tmp_path / "f32-head.gguf"
+    write_qwen35_gguf(path, tensors, fixture_metadata(1))
+    reader = GGUFReader(path)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+    dense_head_report = preflight_qwen35_gguf_artifact(
+        model_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    assert dense_head_report.supported is False
+    assert any(u.slot_path == "root.lm_head" for u in dense_head_report.unsupported)
+    sentinel = _AllocationSentinel("allocator invoked before dense-F32 head refusal")
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+        materialize_qwen35_gguf_weights(
+            str(path),
+            backend="hip_gfx1100",
+            requested_operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+        )
+    assert sentinel.calls == []
+    assert "root.lm_head" in str(excinfo.value)
+
+
+def test_dense_f32_lm_head_qualifies_with_declared_f32_input_override():
+    """The registered ``(dense_f32, f32 activation, f32 output)`` consumer
+    (``dense_gemv/f32/f32_hidden_f32_out``) stays a valid certified route
+    when the caller declares it will actually supply F32 activations (the
+    c1/verifier F32-input route with an input override)."""
+
+    f32_head_map = _synthetic_model_map(lm_head_type=GGMLQuantizationType.F32)
+    report = preflight_qwen35_gguf_artifact(
+        f32_head_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+        f32_input_operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    assert report.unsupported == (), report.render_refusals()
+    head_records = [
+        record
+        for record in report.qualified_records
+        if record.role_class == "lm_head"
+    ]
+    assert head_records
+    assert all(record.input_dtype == "f32" for record in head_records)
+    # The plan contract records the declared activation override so
+    # certificates do not silently transfer across caller contracts.
+    assert report.plan_contract is not None
+    assert report.plan_contract.f32_input_operations == (
+        QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,
+    )
+    # Same-manifest verification: the f32-declared certificate covers the
+    # f32-declared intent (the c1 F32 valid route is certifiable), while a
+    # certificate minted from a different artifact's plan never covers it.
+    certificate = report.certificate()
+    assert certificate_covers_artifact(
+        certificate,
+        manifest_fingerprint=f32_head_map_fingerprint(f32_head_map),
+        plan_contract=report.plan_contract,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    bf16_report = preflight_qwen35_gguf_artifact(
+        _synthetic_model_map(lm_head_type=GGMLQuantizationType.Q8_0),
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    assert bf16_report.supported
+    assert not certificate_covers_artifact(
+        bf16_report.certificate(),
+        manifest_fingerprint=f32_head_map_fingerprint(f32_head_map),
+        plan_contract=report.plan_contract,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+
+
+def f32_head_map_fingerprint(model_map):
+    return build_qwen35_gguf_role_manifest(model_map).fingerprint
+
+
+def test_f32_input_declaration_is_validated_fail_closed():
+    """Declaring an F32-input override for an operation that was not
+    requested, or an unknown operation name, is a caller error."""
+
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        preflight_qwen35_gguf_artifact(
+            _synthetic_model_map(),
+            backend="hip_gfx1100",
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+            f32_input_operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+        )
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        preflight_qwen35_gguf_artifact(
+            _synthetic_model_map(),
+            backend="hip_gfx1100",
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+            f32_input_operations=("not_an_operation",),
+        )
+
+
+def test_declared_f32_input_does_not_widen_unsupported_layouts():
+    """An F32-input declaration only admits layouts that actually have a
+    registered F32-activation consumer: a Q4_K pack8 head stays on its BF16
+    record (the runtime per-slot fallback), and no layout invents a phantom
+    F32 row."""
+
+    pack8_map = _synthetic_model_map(lm_head_type=GGMLQuantizationType.Q4_K)
+    report = preflight_qwen35_gguf_artifact(
+        pack8_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+        f32_input_operations=(QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,),
+    )
+    assert report.unsupported == (), report.render_refusals()
+    head_records = [
+        record for record in report.qualified_records if record.role_class == "lm_head"
+    ]
+    assert head_records
+    # The pack8 head has no F32-activation consumer; the certified record is
+    # still the actual BF16-activation row the runtime launches.
+    assert all(record.input_dtype == "bf16" for record in head_records)
