@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-06 UTC**
 
+Full post-Q5_1-register owner refresh at clean `932af5889`:four-category
+p4096 FFN13.442->12.813s (-4.68% snapshot delta),linear4.762s,GR4.254s.
+All12 phases pass100% attribution,matched roots and clean teardown.
+Vulkan profile reused explicitly;not a new throughput comparison.
+[Family evidence](results/2026-09-06-framework-qwen4exp-post-q51-register-family.json).
+
 | Framework UD-Q4_K_XL / BF16 KV Q5_1 register reuse | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Same-residency parent -> production | 168.518 -> 173.392 (+2.892%) | 165.910 -> 170.780 (+2.936%) | 153.381 -> 157.547 (+2.716%) |

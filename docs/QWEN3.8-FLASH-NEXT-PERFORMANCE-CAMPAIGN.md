@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-Q5_1-register owner refresh (September6 UTC):** clean `932af5889`
+six cases/twelve phases pass100% attribution,matched decode roots,
+restored state/output repeatability and zero final ownership. Register-cache
+calls25/50/200 in prefill,zero in all decode windows.
+Four-category p4096 FFN12.813s (was13.442s,-4.68% snapshot delta),
+non-GR linear4.762s,GR4.254s,QSA1.920s,GDN0.778s.
+FFN reused-Vulkan ratio2.931x;linear4.672x,GR2.491x,QSA2.975x.
+Code4096 Q5_1 projection3.438->2.816s,complete FFN12.989s.
+Device sum24.794s,FFN share52.39%,zero-cost ceiling2.100x.
+Decode QSA16.946vs3.161ms remains open. Generated campaign tables
+updated;no new external throughput claim. Next Q4 mechanism must avoid
+the already-rejected full/packed-register caches,LDS caches and blanket retiles.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q51-register-family.json).
+
 **Q5_1 register-cache production (September6 UTC):** clean `67fdfccb4`
 full12-case A/B preserves all72 trajectories and improves every prefill/
 request-wall case. PP512/1024/4096:168.518->173.392 /165.910->170.780 /
