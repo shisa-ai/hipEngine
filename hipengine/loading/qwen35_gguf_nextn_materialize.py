@@ -272,6 +272,24 @@ def materialize_qwen35_gguf_nextn_weights(
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_nextn_tensor_map(reader.info)
+    # UD-U1 identity binding: resolve the AR artifact admission preset from the
+    # same file so packaged MTP selections (hot vocabulary) never silently
+    # reuse a plain-artifact certification that shares the file-type stamp.
+    # (The draft operation scope gate itself is applied by the caller.)
+    from hipengine.loading.gguf import GGUFModelInfo
+    from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
+    from hipengine.loading.qwen35_gguf_admission import (
+        resolve_qwen35_gguf_artifact_preset,
+    )
+
+    artifact_preset = None
+    if isinstance(getattr(reader, "info", None), GGUFModelInfo):
+        artifact_preset = resolve_qwen35_gguf_artifact_preset(
+            build_qwen35_gguf_tensor_map(reader.info),
+            nextn_map=model_map,
+            file_type_stamp=getattr(reader.info, "file_type_name", None),
+        )
+    artifact_preset_key = None if artifact_preset is None else artifact_preset.preset_key
     plan = plan_qwen35_gguf_nextn_materialization(
         model_map,
         decode_repack=decode_repack,
@@ -344,7 +362,10 @@ def materialize_qwen35_gguf_nextn_weights(
             for slot, spec in plan.fallback_specs.items()
         }
         resolved_hot_vocab_path = (
-            default_gguf_hot_vocab_path(reader.info)
+            default_gguf_hot_vocab_path(
+                reader.info,
+                artifact_preset_key=artifact_preset_key,
+            )
             if hot_vocab_path == "auto"
             else hot_vocab_path
         )
