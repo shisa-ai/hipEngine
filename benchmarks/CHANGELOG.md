@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC post-fold128 code4096 owners] Clean1dacd1edb:200 fold128 calls/3.919s; FFN14.266s,linear5.350s,GR4.237s.100% coverage,matched decode roots/exact repeats/zero owners. Earlier Vulkan reused; no causal delta. `benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json`.
+
 - [2026-09-06 UTC Framework Q5_1 fold128 production] Full12-case PP512/1024/4096:159.222->160.363 (+0.716%)/156.767->158.300 (+0.978%)/145.546->146.878 (+0.915%).72 exact trajectories,all prefill/request walls improve,total1.00627x. Five tiny TG losses retained;no added memory. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-production.json`.
 
 - [2026-09-06 UTC Framework Q5_1 fold128 admission] Five off/on/off full logits/state/KV cases exact; prefill calls0/25/0 or0/200/0, decode0, final owners0. Both binders0,38 CPU tests; throughput delta N/A pending12-case A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-state.json`.
