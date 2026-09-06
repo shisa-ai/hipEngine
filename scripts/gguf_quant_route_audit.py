@@ -421,29 +421,31 @@ def diagnose_header(path: Path, production_scan_error: str | None = None) -> Par
                                     )
                                 # A dropped descriptor makes completeness unverifiable:
                                 # an empty range loop must not report data_complete.
+                                # The range loop still runs over the resolved tensors
+                                # even when other descriptors are unresolved: an
+                                # out-of-range known tensor is its own defect.
                                 data_complete = unresolved == 0
-                                if unresolved == 0:
-                                    incomplete: list[str] = []
-                                    for tensor in tensors:
-                                        if (
-                                            tensor.data_offset < data_start
-                                            or tensor.data_offset + tensor.nbytes > file_size
-                                        ):
-                                            missing = max(0, tensor.data_offset + tensor.nbytes - file_size)
-                                            incomplete.append(
-                                                f"{tensor.name!r} needs [{tensor.data_offset}, "
-                                                f"{tensor.data_offset + tensor.nbytes}) of {file_size} bytes "
-                                                f"on disk ({missing} missing)"
-                                            )
-                                    if incomplete:
-                                        data_complete = False
-                                        preview = "; ".join(incomplete[:4])
-                                        more = "" if len(incomplete) <= 4 else f" (+{len(incomplete) - 4} more)"
-                                        fail(
-                                            "incomplete_data",
-                                            f"tensor payload extends past end of file for {len(incomplete)} "
-                                            f"tensor(s): {preview}{more}",
+                                incomplete: list[str] = []
+                                for tensor in tensors:
+                                    if (
+                                        tensor.data_offset < data_start
+                                        or tensor.data_offset + tensor.nbytes > file_size
+                                    ):
+                                        missing = max(0, tensor.data_offset + tensor.nbytes - file_size)
+                                        incomplete.append(
+                                            f"{tensor.name!r} needs [{tensor.data_offset}, "
+                                            f"{tensor.data_offset + tensor.nbytes}) of {file_size} bytes "
+                                            f"on disk ({missing} missing)"
                                         )
+                                if incomplete:
+                                    data_complete = False
+                                    preview = "; ".join(incomplete[:4])
+                                    more = "" if len(incomplete) <= 4 else f" (+{len(incomplete) - 4} more)"
+                                    fail(
+                                        "incomplete_data",
+                                        f"tensor payload extends past end of file for {len(incomplete)} "
+                                        f"tensor(s): {preview}{more}",
+                                    )
 
     return ParserValidation(
         path=path,

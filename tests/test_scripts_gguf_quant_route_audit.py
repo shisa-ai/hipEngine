@@ -472,6 +472,21 @@ def test_incomplete_descriptor_table_is_distinct_from_incomplete_payload(tmp_pat
     assert payload.format_valid is False
 
 
+def test_unknown_descriptor_does_not_skip_range_check_for_known_tensors(tmp_path):
+    # One unresolvable descriptor must not suppress the independent payload-range
+    # loop over the successfully resolved tensors: the known tensor still has no
+    # payload on disk, so the file is both unparseable and incomplete.
+    path = tmp_path / "unknown_and_truncated.gguf"
+    path.write_bytes(_header(3, 2, 0) + _descriptor("unknown", qtype=999) + _descriptor("known"))
+
+    parsed = audit.validate_parser(path)
+
+    assert parsed.table_complete is True
+    assert parsed.data_complete is False
+    assert parsed.format_valid is False
+    assert _checks(parsed) == ["unparseable", "incomplete_data"]
+
+
 def test_truncated_metadata_stops_before_the_descriptor_table(tmp_path):
     path = tmp_path / "truncated_meta.gguf"
     path.write_bytes(
