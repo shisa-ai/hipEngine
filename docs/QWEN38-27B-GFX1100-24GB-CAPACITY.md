@@ -653,9 +653,25 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [ ] Freeze dedicated-card and display-reserve contracts before measurement.
   Suggested initial reserves are 512 MiB and an additional 2 GiB respectively;
   these are policy choices, not hardware constants. Avoid double-counting usage.
-- [ ] Run the full `benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite
+- [x] Run the full `benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite
   (`code`, `general_en`, `general_ja`, `mixed_ja_en`) and fixed category-heldouts.
   Document long-context construction; repeated-token probes are not task gates.
+  Run 2026-09-07 on the current tree (natural25 protocol: all ten prompts, four
+  categories, six train + four heldout, 25 visible outputs/24 timed
+  transitions, native target verify). The operational setting's task gate is
+  complete: true no-MTP AR passes 10/10 at 35.40-35.85 tok/s (range 1.3%).
+  MTP B3 passes 9/10 exact (code 73.99-82.19 tok/s with accepted 17; other
+  categories 51.36-58.84 with accepted 13-15) and the tenth trajectory
+  (`mixed_ja_en_review`, heldout) crashes in the MTP runtime journal —
+  `initial-state-only journal cannot capture serial rows`
+  (`hipengine/runtime/qwen35_gguf_mtp.py:733`) — a current-tree regression
+  versus the retained 2026-08-15 run where all ten B3 trajectories were
+  exact. That is an MTP-campaign blocker (same file family as the warmup
+  bug), recorded for handoff with the raw log
+  (`results/2026-09-07-rx7900xtx-natural25-suite-current-tree.log`); it does
+  not affect the AR task gate. Long-context construction remains documented
+  in the retained suite protocols; repeated-token probes are used only for
+  fixed-shape throughput and never as task gates.
 - [ ] Test admission, cancellation, refill, overload, teardown and relevant
   prefix/MTP transitions. Require exact ownership, usage and clean drain.
 - [ ] Compare complete memory and latency/throughput on the same XTX, with

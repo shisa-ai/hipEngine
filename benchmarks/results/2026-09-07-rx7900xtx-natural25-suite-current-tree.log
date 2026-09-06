@@ -1,0 +1,42 @@
+AR run=0 prompt=code_merge_intervals tok_s=35.849134
+MTP B3 run=0 prompt=code_merge_intervals tok_s=73.997875 accepted=17 exact=True
+AR run=0 prompt=code_topological_sort tok_s=35.653727
+MTP B3 run=0 prompt=code_topological_sort tok_s=80.306304 accepted=17 exact=True
+AR run=0 prompt=code_lru_cache tok_s=35.658289
+MTP B3 run=0 prompt=code_lru_cache tok_s=74.248153 accepted=17 exact=True
+AR run=0 prompt=code_markdown_table tok_s=35.611827
+MTP B3 run=0 prompt=code_markdown_table tok_s=82.193314 accepted=17 exact=True
+AR run=0 prompt=general_en_plan tok_s=35.718906
+MTP B3 run=0 prompt=general_en_plan tok_s=51.552466 accepted=13 exact=True
+AR run=0 prompt=general_en_explain tok_s=35.708138
+MTP B3 run=0 prompt=general_en_explain tok_s=57.564253 accepted=14 exact=True
+AR run=0 prompt=general_ja_plan tok_s=35.657558
+MTP B3 run=0 prompt=general_ja_plan tok_s=51.357462 accepted=13 exact=True
+AR run=0 prompt=general_ja_explain tok_s=35.702205
+MTP B3 run=0 prompt=general_ja_explain tok_s=57.428005 accepted=14 exact=True
+AR run=0 prompt=mixed_ja_en_translate tok_s=35.416811
+MTP B3 run=0 prompt=mixed_ja_en_translate tok_s=58.837612 accepted=15 exact=True
+AR run=0 prompt=mixed_ja_en_review tok_s=35.404731
+Traceback (most recent call last):
+  File "/home/lhl/gfx1100-24gb-capacity/scripts/qwen36_dense_gguf_suite.py", line 970, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/home/lhl/gfx1100-24gb-capacity/scripts/qwen36_dense_gguf_suite.py", line 949, in main
+    payload = run(args)
+              ^^^^^^^^^
+  File "/home/lhl/gfx1100-24gb-capacity/scripts/qwen36_dense_gguf_suite.py", line 746, in run
+    _run_mtp(
+  File "/home/lhl/gfx1100-24gb-capacity/scripts/qwen36_dense_gguf_suite.py", line 414, in _run_mtp
+    result = decoder.generate(
+             ^^^^^^^^^^^^^^^^^
+  File "/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_mtp.py", line 1898, in generate
+    prepared = self.verifier.prepare(
+               ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhl/gfx1100-24gb-capacity/scripts/qwen36_dense_gguf_suite.py", line 343, in prepare
+    return self._verifier.prepare(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_mtp.py", line 1328, in prepare
+    self.journal.capture_row(row, stream=stream)
+  File "/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_mtp.py", line 733, in capture_row
+    raise RuntimeError("initial-state-only journal cannot capture serial rows")
+RuntimeError: initial-state-only journal cannot capture serial rows
