@@ -60,6 +60,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
     )
@@ -270,6 +271,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
         "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out")
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     selected = _selection_map(production)
     assert selected[("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
@@ -350,6 +352,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"

@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 fold128 default-off admission (September6 UTC):** only existing pair2
+prefill rows>=64 can select fold128; both binders pin0. Five code512/code4096/
+English512/Japanese512/mixed512 off/on/off cases pass full prefill/four-step
+decode logits, state and full KV hashes. Calls0/25/0 or0/200/0 in prefill,
+zero decode; final owners0.38 CPU tests pass. Existing Q8 row4 stays production.
+Next clean12-case A/B: `--route-package q51-fold128`. No whole-model speed
+claim or native262144 requalification yet.
+[State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-state.json).
+
 **Q5_1 fold128 kernel candidate (September6 UTC):** isolate first stride128
 register addition plus halved reduction scratch, retaining original LDS64..1
 tree and sequential output-pair reduction. This differs from both rejected
