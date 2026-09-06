@@ -1,17 +1,16 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp MMQ vector activation staging candidate
+## Qwen4Exp MMQ vector activation staging rollback
 
-- Kernel-only `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
+- Production `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
   preserves the prepacked three-plane chain while vectorizing LDS staging.
-  Default-off `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` applies only in the existing
-  prepacked MMQ path at rows>=64; both profile binders pin0. Five full-model
-  logits/state/KV cases pass; canonical12-case A/B remains.
+  `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` applies only in the existing prepacked
+  MMQ path at rows>=64;production binds1,strict0. Five full-model
+  logits/state/KV cases and canonical12-case A/B pass.
   Existing scalar-stage prepacked parent,
   raw MMQ rollback and strict coltile fallback remain.
-- Require model invocation/logits/state/KV and canonical A/B before default
-  promotion; remove if complete-model validation fails. Collapse the
-  candidate selector after a qualified release window if promoted.
+- Remove the rollback selector after the next qualified MMQ change or
+  release window. Keep strict coltile and the raw-weight fallback.
 
 ## Qwen4Exp Q5_K bundled row4 candidate: removed
 

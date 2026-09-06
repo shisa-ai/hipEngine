@@ -788,21 +788,26 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q8 MMQ also exposes kernel-only
+Q8 MMQ also exposes
 `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`. It copies aligned
 four-word activation groups instead of scalar words, preserving all three
 planes, tail clamping, WMMA accumulation and risk repair. Actual QKV/SSM
 512-row complete chains improve1.292x/1.325x, both orders positive.
 All80 pairs exact;25 tests pass including CPU-reference floors and exact
-risk sets. Cached trace VGPR144/LDS57856B/scratch0 unchanged. Model
-invocation/state/KV and canonical A/B remain required; default unchanged.
+risk sets. Cached trace VGPR144/LDS57856B/scratch0 unchanged. Subsequent
+model admission and promotion are recorded below.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-activation-vec4.json`.
 
-Default-off model admission now passes five full-logit/state/KV cases,
+Earlier default-off model admission passed five full-logit/state/KV cases,
 four decode steps each, calls0/72/0 at512 and0/576/0 at4096, zero decode
-calls/final owners. Both profile binders pin0; only existing prepacked
-rows>=64 are eligible.23 CPU tests pass. Canonical12-case A/B remains.
+calls/final owners. Both profile binders pinned0; only existing prepacked
+rows>=64 were eligible.23 CPU tests passed.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-vec4-state.json`.
+Subsequent clean `9b0d14cec` canonical A/B passes all72 exact trajectories
+and all12 prefill/request-wall cases. Production now binds vec4=1,strict=0;
+PP512/1024/4096 improves2.021%/2.173%/2.056%. Scope remains existing
+prepacked rows>=64. No new memory;small decode losses are explicitly
+retained. Evidence: `2026-09-06-framework-qwen4exp-mmq-vec4-production.json`.
 
 Q8 MMQ registers a separate T0
 `mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out` candidate. It consumes
