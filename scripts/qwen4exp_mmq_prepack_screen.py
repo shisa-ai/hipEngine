@@ -18,7 +18,7 @@ from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
 from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
-from tests.test_qwen4exp_mmq_prepack import PARENT, CANDIDATE, pack_reference
+from tests.test_qwen4exp_mmq_prepack import PARENT, CANDIDATE, VECTOR, pack_reference
 
 
 def main():
@@ -30,6 +30,7 @@ def main():
     p.add_argument("--pairs",type=int,default=20)
     p.add_argument("--tensor",action="append")
     p.add_argument("--gpu-pack",action="store_true")
+    p.add_argument("--vector-activation",action="store_true")
     a = p.parse_args()
     if a.pairs < 2 or a.pairs % 2 or any(r < 1 for r in a.rows):
         p.error("positive rows and even pairs>=2 required")
@@ -45,6 +46,10 @@ def main():
         layout="K256-major [K/256,ceil(N/128)*128,76 int32]:64 quant words +8 exact float scales +4 padding",
         resident_storage="raw and packed banks coexist; preprocessing outside request timing")
     report["pack_mode"] = "gpu" if a.gpu_pack else "cpu_upload"
+    parent_name = CANDIDATE if a.vector_activation else PARENT
+    candidate_name = VECTOR if a.vector_activation else CANDIDATE
+    report["parent_variant"] = parent_name
+    report["candidate_variant"] = candidate_name
     report["hipengine_artifact_provenance"] = collect_artifact_provenance(
         repo_root=ROOT, configured_backend="hip_gfx1151", resolved_backend="hip_gfx1151",
         target_arch="gfx1151", device_name="AMD Radeon 8060S",
@@ -84,8 +89,8 @@ def main():
                     mmq.gguf_q8_0_mmq128_quantize_f32_d4x3(
                         dx.ptr,d4.ptr,rows,k,library=library,runtime=runtime)
                     runtime.memset(count.ptr,0,4)
-                    getattr(mmq,CANDIDATE if candidate else PARENT)(
-                        d4.ptr,(dp if candidate else dw).ptr,outputs[candidate].ptr,
+                    getattr(mmq,candidate_name if candidate else parent_name)(
+                        d4.ptr,(dp if candidate or a.vector_activation else dw).ptr,outputs[candidate].ptr,
                         count.ptr,indices.ptr,rows*n,0.,rows,k,n,library=library,runtime=runtime)
                     mmq.gguf_q8_0_mmq128_sparse_exact_correct_f32(
                         dx.ptr,dw.ptr,outputs[candidate].ptr,count.ptr,indices.ptr,

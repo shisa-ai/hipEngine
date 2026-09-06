@@ -251,7 +251,7 @@ __global__ void q8_0_mmq_pack_weights_kernel(
   }
 }
 
-template <int MMQ_M_T, int MMQ_N_T, bool need_output_check, int activation_passes, typename output_t, bool collect_risks, bool PREPACKED = false>
+template <int MMQ_M_T, int MMQ_N_T, bool need_output_check, int activation_passes, typename output_t, bool collect_risks, bool PREPACKED = false, bool VECTOR_ACTIVATION = false>
 __launch_bounds__(256, 2)
 __global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
     const block_q8_1_mmq_d4* __restrict__ x_d4,
@@ -361,13 +361,21 @@ __global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
       for (int activation_pass = 0; activation_pass < activation_passes; ++activation_pass) {
         const int64_t plane_offset =
             static_cast<int64_t>(activation_pass) * (hidden / 128) * rows;
-        for (int linear = tid; linear < ACTIVATION_I32; linear += THREADS) {
+        constexpr int COPY_WORDS = VECTOR_ACTIVATION ? 4 : 1;
+        for (int linear = tid * COPY_WORDS; linear < ACTIVATION_I32;
+             linear += THREADS * COPY_WORDS) {
           const int token_local = linear / MMQ_D4_STRIDE_I32;
           const int elem = linear - token_local * MMQ_D4_STRIDE_I32;
           const int token = min(token_start + token_local, rows - 1);
           const int* src = reinterpret_cast<const int*>(
               x_d4 + plane_offset + static_cast<int64_t>(k_iter * 2 + k_half) * rows + token);
-          activation_tile[linear] = src[elem];
+          if constexpr (VECTOR_ACTIVATION) {
+            // D4 rows are 36 words: each aligned four-word copy stays in one row.
+            *reinterpret_cast<i32x4_t*>(activation_tile + linear) =
+                *reinterpret_cast<const i32x4_t*>(src + elem);
+          } else {
+            activation_tile[linear] = src[elem];
+          }
         }
         __syncthreads();
 
@@ -544,7 +552,7 @@ int launch_quantize(
   return static_cast<int>(hipGetLastError());
 }
 
-template <int MMQ_M_T, int MMQ_N_T, int activation_passes, typename output_t, bool collect_risks = false, bool PREPACKED = false>
+template <int MMQ_M_T, int MMQ_N_T, int activation_passes, typename output_t, bool collect_risks = false, bool PREPACKED = false, bool VECTOR_ACTIVATION = false>
 int launch_mmq_tile(
     const block_q8_1_mmq_d4* x_d4,
     const uint8_t* qweight,
@@ -577,7 +585,7 @@ int launch_mmq_tile(
   if ((out_features % MMQ_M_T) == 0) {
     hipLaunchKernelGGL(
         (q8_0_raw_mmq_tile_q8_1_d4_kernel<
-            MMQ_M_T, MMQ_N_T, false, activation_passes, output_t, collect_risks, PREPACKED>),
+            MMQ_M_T, MMQ_N_T, false, activation_passes, output_t, collect_risks, PREPACKED, VECTOR_ACTIVATION>),
         grid, block, SHARED_BYTES, stream,
         x_d4, qweight, out, risk_count, risk_indices,
         static_cast<int>(max_risks), risk_threshold,
@@ -586,7 +594,7 @@ int launch_mmq_tile(
   } else {
     hipLaunchKernelGGL(
         (q8_0_raw_mmq_tile_q8_1_d4_kernel<
-            MMQ_M_T, MMQ_N_T, true, activation_passes, output_t, collect_risks, PREPACKED>),
+            MMQ_M_T, MMQ_N_T, true, activation_passes, output_t, collect_risks, PREPACKED, VECTOR_ACTIVATION>),
         grid, block, SHARED_BYTES, stream,
         x_d4, qweight, out, risk_count, risk_indices,
         static_cast<int>(max_risks), risk_threshold,
@@ -904,6 +912,17 @@ extern "C" int hipengine_gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_ou
     float risk_threshold, int64_t rows, int64_t hidden,
     int64_t out_features, hipStream_t stream) {
   return launch_mmq_tile<128, 128, 3, float, true, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
+      qweight, out, rows, hidden, out_features, stream,
+      risk_count, risk_indices, max_risks, risk_threshold);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x_d4, const uint8_t* qweight, float* out,
+    int* risk_count, int* risk_indices, int64_t max_risks,
+    float risk_threshold, int64_t rows, int64_t hidden,
+    int64_t out_features, hipStream_t stream) {
+  return launch_mmq_tile<128, 128, 3, float, true, true, true>(
       reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
       qweight, out, rows, hidden, out_features, stream,
       risk_count, risk_indices, max_risks, risk_threshold);

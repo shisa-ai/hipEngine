@@ -620,6 +620,7 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     _prepacked: bool = False,
+    _vector_activation: bool = False,
 ) -> None:
     """Launch D4x3 MMQ (F32 output) and enqueue near-boundary outputs."""
 
@@ -635,9 +636,14 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         raise ValueError("risk_threshold must be non-negative")
     library = library or build_gguf_q8_0_mmq_prefill(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library,
+    symbol = (
         "hipengine_gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
         if _prepacked else _PREFILL_X3_GUARDED_F32_SYMBOL)
+    if _vector_activation:
+        if not _prepacked:
+            raise ValueError("vector activation candidate requires prepacked weights")
+        symbol = "hipengine_gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"
+    fn = getattr(library, symbol)
     fn.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -672,6 +678,12 @@ def gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
     """Consume K-major [K/256, ceil(N/128)*128, 76] words; repair uses raw Q8."""
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         *args, **kwargs, _prepacked=True)
+
+def gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
+    """Preserve the prepacked chain with aligned activation-plane copies."""
+    gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
+        *args, **kwargs, _prepacked=True, _vector_activation=True)
+
 
 def q8_mmq_prepacked_weight_nbytes(hidden: int, out_features: int) -> int:
     if hidden <= 0 or hidden % 256 or out_features <= 0:
@@ -864,6 +876,12 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
 
 def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "linear", "gguf_q8_0",
+                  "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"),
+        gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out,
+        replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "weight_pack", "gguf_q8_0", "mmq_kmajor76"),
         gguf_q8_0_mmq_pack_weights, replace=replace,
     )
@@ -938,6 +956,7 @@ __all__ = [
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out",
+    "gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq_pack_weights",
     "q8_mmq_prepacked_weight_nbytes",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out",

@@ -5,11 +5,13 @@ import pytest
 from hipengine.core.hip import get_hip_runtime
 from hipengine.core.memory import free
 from hipengine.kernels.hip_gfx1100.quant import gguf_q8_0_mmq_prefill as mmq
+from hipengine.kernels.cpu_reference import gguf_q8_0_gemv
 from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
 from tests.test_qwen4exp_pf1_dense_parity import make_q8_0_weight_large
 
 PARENT = "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
 CANDIDATE = "gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
+VECTOR = "gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"
 
 
 def pack_reference(raw, n, k):
@@ -39,6 +41,10 @@ def test_registry():
         backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
         variant=CANDIDATE.removeprefix("gguf_q8_0_"),
     ) is getattr(mmq,CANDIDATE)
+    assert resolve(
+        backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
+        variant=VECTOR.removeprefix("gguf_q8_0_"),
+    ) is getattr(mmq,VECTOR)
     assert resolve(
         backend="hip_gfx1151", layer="weight_pack", quant="gguf_q8_0",
         variant="mmq_kmajor76",
@@ -78,8 +84,12 @@ def test_gpu_weight_pack(n,k):
 
 
 @pytest.mark.skipif(not hip_available(), reason="HIP unavailable")
-@pytest.mark.parametrize("rows,k,n", [(65,256,80), (257,10240,320), (512,2560,10240)])
-def test_exact_prepacked(rows,k,n):
+@pytest.mark.parametrize("risk_threshold", [0., 1e-4])
+@pytest.mark.parametrize("rows,k,n", [
+    (1,256,16), (65,256,80), (127,512,144), (257,10240,320),
+    (512,2560,10240), (512,6144,2560),
+])
+def test_exact_prepacked(rows,k,n,risk_threshold):
     runtime = get_hip_runtime()
     library = mmq.build_gguf_q8_0_mmq_prefill(load=True)
     allocations = []
@@ -93,11 +103,15 @@ def test_exact_prepacked(rows,k,n):
         out = _alloc((rows,n),np.float32,runtime,allocations)
         mmq.gguf_q8_0_mmq128_quantize_f32_d4x3(dx.ptr,d4.ptr,rows,k,library=library,runtime=runtime)
         results = []
-        for name,weight in ((PARENT,dw),(CANDIDATE,dp),(CANDIDATE,dp)):
+        risks = []
+        for name,weight in ((PARENT,dw),(CANDIDATE,dp),(VECTOR,dp),(VECTOR,dp)):
             runtime.memset(count.ptr,0,4)
             getattr(mmq,name)(d4.ptr,weight.ptr,out.ptr,count.ptr,indices.ptr,
-                rows*n,0.,rows,k,n,library=library,runtime=runtime)
+                rows*n,risk_threshold,rows,k,n,library=library,runtime=runtime)
             raw_result = _download(out,(rows,n),np.float32,runtime)
+            risk_count = int(_download(count,(1,),np.int32,runtime)[0])
+            risk_indices = _download(indices,(rows*n,),np.int32,runtime)[:risk_count]
+            risks.append(np.sort(risk_indices))
             mmq.gguf_q8_0_mmq128_sparse_exact_correct_f32(
                 dx.ptr,dw.ptr,out.ptr,count.ptr,indices.ptr,rows*n,rows,k,n,
                 library=library,runtime=runtime)
@@ -105,6 +119,20 @@ def test_exact_prepacked(rows,k,n):
         for result in results[1:]:
             for expected,actual in zip(results[0],result):
                 np.testing.assert_array_equal(expected.view(np.uint32),actual.view(np.uint32))
+        for actual in risks[1:]:
+            np.testing.assert_array_equal(risks[0],actual)
+        if k <= 512:
+            reference = gguf_q8_0_gemv(x,w)
+            actual = results[-1][1]
+            def probabilities(values):
+                values = values.astype(np.float64)
+                exps = np.exp(values - values.max(axis=1,keepdims=True))
+                return exps / exps.sum(axis=1,keepdims=True)
+            expected_p, actual_p = probabilities(reference), probabilities(actual)
+            kl = np.sum(expected_p * (np.log(np.maximum(expected_p,1e-30))
+                        - np.log(np.maximum(actual_p,1e-30))),axis=1)
+            assert float(np.mean(kl)) <= .05
+            assert float(np.mean(reference.argmax(1) == actual.argmax(1))) >= .9
     finally:
         for ptr in reversed(allocations):
             free(ptr,runtime=runtime)

@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-06 UTC**
 
+MMQ vector activation staging, kernel-only: actual QKV/SSM complete chains
+at512 rows improve5.196->4.022ms (1.292x)/2.857->2.156ms (1.325x).
+All80 pairs exact, both orders positive;25 tests pass. Same VGPR/LDS/scratch.
+Model gates pending; production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-mmq-activation-vec4.json).
+
 Q5_K bundle rejected after the complete12-case A/B: all72 trajectories exact,
 but five prefill and six request-wall cases regress. Candidate removed;
 retained production defaults unchanged.
