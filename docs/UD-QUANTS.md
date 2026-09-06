@@ -658,8 +658,11 @@ loader scanner/model-map modules are references, not automatic edits.
   use `planned_qwen35_gguf_weight_allocation_nbytes` over unique
   `(source, layout)` residents, aggregate sidecar counts/bytes with reasons,
   and report both refusal treatments; real-file totals reproduce the section-4
-  table exactly. The optional planar-Q5 sidecar has no production formula yet
-  and is reported as formula-unavailable rather than guessed.
+  table exactly. The optional planar-Q5 sidecar initially had no production
+  formula and was reported as formula-unavailable rather than guessed; since
+  the 2026-09-07 admission repair it is sized exactly (the INT8 planar-tiles
+  payload of the real converter chain, block formula below in the U1 repair
+  note) and joins the sidecar accounting with the exact bytes.
 - [x] RED: gfx1100 Q5 sidecar, gfx1151 Q6 exclusion, missing/nonliteral
   capabilities, env overrides and F32 contraction. Capability constants are
   read from backend source by a bounded AST literal reader (never an import,
@@ -810,6 +813,46 @@ slot/plan scope, and the native-row BF16-pointer owner contract is enforced at
 the real execution entries. UD artifacts remain refused for execution until
 U2-U5 deliver the missing dense consumers; the refusal lists are the honest
 per-slot inventory for those units.
+
+#### U1 review repair regressions (2026-09-07, second review round)
+
+A follow-up review accepted F6 and found two functionality regressions that
+the repair commits themselves introduced; the remaining findings (F1, the
+concrete-consumer substance of F3, F4, F5) stay pending re-review. Both
+regressions are fixed with RED-then-GREEN CPU tests; U1 remains not accepted
+until the pending findings pass review.
+
+- **Raw moe_experts coverage collision (from the F2 repair).** The repair-2
+  IQ3_XXS records reused the earlier raw records' `(operation, role_class,
+  resident_layout)` coverage-index key, and the index was last-write-wins, so
+  the IQ3_XXS record silently displaced Q3_K/Q4_K/Q5_K/Q6_K/IQ2_XS/IQ4_XS raw
+  rank-3 experts: a rank-3 Q4_K MoE map with `decode_repack=False` was refused
+  `consumer_unqualified`, and mixed-IQ expert maps broke. The index is now
+  keyed per concrete source type (`_build_coverage_index` over
+  `(operation, role_class, resident_layout, source_ggml_type)`) and rejects
+  two different records claiming one source type at construction; each raw
+  expert format keeps its own consumer record (gguf_q\*\_k raw family vs
+  gguf_iq3_xxs selected consumers) instead of one merged blob.
+- **Mandatory allocation-formula validation refused the Q5 planar sidecar
+  (from the F3 repair).** The per-slot materializability check added with the
+  F3 repair calls `planned_qwen35_gguf_weight_allocation_nbytes`, which had no
+  formula for the `qmicro_planar` allocation name — so the env-gated
+  (`HIPENGINE_C8_Q5_PLANAR_DP4A=1`) planar Q5 T16 `ssm_out` resident that the
+  C8-P2 route materializes today became a hard `planner_refused`. The exact
+  formula is derived from the actual converter/allocation ABI — the INT8
+  `planar.tiles` payload of
+  `convert_gguf_q5_k_qmicro_tile16_to_planar(repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))`
+  with shape `[experts, out/16, bytes_per_row/176,
+  GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES=3328]` (for the measured 5120x6144
+  `ssm_out`: tiles 22,118,400 + raw 21,626,880 + planar 25,559,040 bytes) —
+  gated to Q5_K T16 residents exactly like the materializer's own sidecar
+  check. Tile-alignment and unsupported-layout refusals are unchanged, and the
+  never-produced standalone `gguf_q5_k_qmicro_planar_v1` resident layout stays
+  refused. The route audit now reports the sidecar formula-sized instead of
+  formula-unavailable.
+
+Re-review status: F6 accepted; F1, F3 (concrete consumer), F4, F5 pending;
+this regression round is subject to the same review.
 
 ### U2. Independent Codec Oracles
 

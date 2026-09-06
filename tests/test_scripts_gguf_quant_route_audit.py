@@ -1435,16 +1435,21 @@ def test_env_overrides_change_the_audit_plan(monkeypatch):
     monkeypatch.setenv("HIPENGINE_C8_Q5_PLANAR_DP4A", "1")
     planar = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
     assert planar["package_flags"]["dense_q5_qmicro_planar_ssm_out"] is True
-    # The optional planar sidecar has no production allocation formula yet: the
-    # resident is reported as formula-unavailable instead of inventing bytes.
-    unavailable = planar["allocation"]["formula_unavailable_residents"]
-    assert any(
+    # The qmicro_planar sidecar has an exact production formula now (the
+    # INT8 planar.tiles payload of the real converter chain): the resident is
+    # formula-sized instead of formula-unavailable.
+    assert not any(
         entry["source"] == "blk.0.ssm_out.weight"
-        and entry["layout"] == "gguf_q5_k_t16_v1"
-        and "qmicro_planar" in entry["reason"]
-        for entry in unavailable
+        for entry in planar["allocation"]["formula_unavailable_residents"]
     )
-    assert planar["allocation"]["accepted_planned_bytes_complete"] is False
+    # The pre-existing tied-head pack8 fixture gap is unrelated and remains.
+    assert [entry["source"] for entry in planar["allocation"]["formula_unavailable_residents"]] == [
+        "token_embd.weight"
+    ]
+    planar_sidecar = planar["allocation"]["sidecars"]["qmicro_planar"]
+    assert planar_sidecar["count"] == 1
+    # (5120/16) * (4224/176) blocks * 3328 planar block bytes.
+    assert planar_sidecar["planned_bytes"] == 320 * 24 * 3_328 == 25_559_040
 
     monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
     no_repack = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)

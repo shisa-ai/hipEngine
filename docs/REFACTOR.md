@@ -5335,6 +5335,20 @@ other means and were not touched.
   The route STAYS default-off: +1.23 GB persistent sidecar for a target-stage
   delta inside control spread does not justify promotion; the env pair
   remains the operator opt-in for k2-shaped runs.
+- **Allocation-formula gap closed (2026-09-07, UD-U1 repair regression
+  round):** `planned_qwen35_gguf_weight_allocation_nbytes` initially had no
+  `qmicro_planar` formula (the route audit reported the resident
+  formula-unavailable rather than guessing), and the new mandatory admission
+  materializability check turned that gap into a hard refusal of this
+  previously loadable resident. The formula is now exact and derived from the
+  actual converter/allocation ABI: the INT8 `planar.tiles` payload of
+  `convert_gguf_q5_k_qmicro_tile16_to_planar(repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))`
+  = `experts * (out/16) * (bytes_per_row/176) * GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES`
+  (3328 B/block; measured 5120x6144 ssm_out sidecar = 25,559,040 bytes),
+  gated to Q5_K T16 residents exactly like the materializer's own sidecar
+  gate. Byte-exactness is pinned against the real CPU converter in
+  `tests/test_gguf_ud_admission.py`; the audit reports the sidecar
+  formula-sized. No kernel, dispatch, or default-change is involved.
 - Remove the kernel, wrapper, registry entry, session/runner/env wiring,
   loader sidecar, leaf script, and tests if the P2 residual closes by
   another axis AND the flag pair has had no operator use for a full

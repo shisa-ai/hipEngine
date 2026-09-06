@@ -43,6 +43,7 @@ from hipengine.quant.gguf_q4_k import (
 )
 from hipengine.quant.gguf_t16 import (
     GGUF_Q5_K_BLOCK_BYTES,
+    GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES,
     GGUF_Q5_K_T16_BLOCK_BYTES,
     GGUF_Q6_K_BLOCK_BYTES,
     GGUF_Q6_K_T16_BLOCK_BYTES,
@@ -541,6 +542,27 @@ def planned_qwen35_gguf_weight_allocation_nbytes(
             )
         elif allocation_name == "x8":
             nbytes = int(source.nbytes)
+        elif allocation_name == "qmicro_planar":
+            # The env-gated Q5 planar-dp4a sidecar (HIPENGINE_C8_Q5_PLANAR_DP4A=1):
+            # the materializer uploads the INT8 ``planar.tiles`` array of
+            # convert_gguf_q5_k_qmicro_tile16_to_planar(
+            #   repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))
+            # whose shape is [experts, out/16, bytes_per_row/Q5_K_block,
+            # GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES] — the same tile
+            # expansion as the T16 tiles payload with the planar block size.
+            # Only Q5_K T16 residents may carry it (the same gate the
+            # materializer enforces); the tile-alignment checks stay mandatory.
+            if spec.layout != LAYOUT_GGUF_Q5_K_T16:
+                raise ValueError(
+                    "qmicro_planar sidecar is only supported for Q5_K T16 "
+                    f"residents, got layout {spec.layout!r} for {spec.slot_path}"
+                )
+            nbytes = _planned_t16_nbytes(
+                source,
+                block_bytes=GGUF_Q5_K_BLOCK_BYTES,
+                tile_block_bytes=GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES,
+                slot_path=spec.slot_path,
+            )
         else:
             raise ValueError(
                 f"unsupported resident allocation {allocation_name!r} for {spec.slot_path}"
