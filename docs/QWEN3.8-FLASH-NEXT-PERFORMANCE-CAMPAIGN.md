@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_K bundle default-off admission (September6 UTC):** existing row4
+gate/up rows>=64 only,both binders0. Five code512/code4096/en512/ja512/
+mixed512 off/on/off cases pass full logits,four decode steps,state/full KV.
+Prefill calls0/2/0 or0/16/0,zero decode/final owners.27 CPU tests pass.
+Clean12-case `--route-package q5k-bundle` A/B is next;small projected wall
+benefit remains a caveat,not a reason to claim unmeasured throughput.
+[State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-state.json).
+
 **Q5_K bundled row4 kernel candidate (September6 UTC):** exact bundled
 publication improves actual layer2 gate/up plus identical group-map work
 1.015x/1.021x at64/512 tokens,means/both orders positive. Forty pairs exact;

@@ -2,8 +2,10 @@
 
 ## Qwen4Exp Q5_K bundled row4 candidate
 
-- Kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` bundles
-  publication with exact arithmetic. No runtime flag/default change yet.
+- `selected_grouped_row4_bundle_gemv_bf16_bf16_out` bundles publication
+  with exact arithmetic. Default-off `HIPENGINE_QWEN4_EXP_Q5K_BUNDLE_PREFILL`
+  substitutes only the already-admitted Q5_K row4 gate/up path,rows>=64.
+  Both profile binders pin0 until model performance validation.
 - Require invocation-checked model state/KV and canonical A/B before
   promotion;retain original row4 rollback and strict selected GEMV.
 - Small expected whole-model contribution:record micro/window evidence
