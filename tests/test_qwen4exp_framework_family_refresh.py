@@ -206,3 +206,11 @@ def test_decode_join_rejects_different_root_token():
         join_captures(he, vk)
     vk["cases"][0]["prefill"]["response"]["output_token_ids"] = [7]
     assert len(join_captures(he, vk)["comparisons"]) == 1
+    he["source"] = {"head": "hip-revision", "tracked_clean": True}
+    vk["comparator_source"] = {"head": "vulkan-revision", "tracked_clean": True}
+    he["cases"][0].update(raw_path="/capture/child.json", raw_sha256="child-hash",
+                          command=["capture", "decode"])
+    joined = join_captures(he, vk)
+    assert joined["hipengine_source"] == he["source"]
+    assert joined["comparator_source"] == vk["comparator_source"]
+    assert joined["hip_raw_sources"][0]["raw_sha256"] == "child-hash"

@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Full post-folded-pair refresh (September6 UTC):** clean `c075a6692` all
+six cases/twelve phases pass100% ownership,matched decode roots,repeated
+decode/state and zero final allocations. Folded-pair engagement25/50/200
+at512/1024/4096,zero decode. Four-category p4096 prefill:FFN13.437s,
+non-GR linear5.363s,GR4.251s,QSA1.922s,GDN0.779s; reused-Vulkan gaps
+3.073x/5.262x/2.490x/2.978x,with GDN ahead. FFN remains first absolute
+opportunity,linear next. Code4096 FFN share52.33%,zero-cost ceiling2.098x.
+Decode QSA16.972ms versus3.161ms remains open. This full overview supersedes
+post-MMQ and interim code-only snapshots,not the paired throughput evidence.
+[Generated starting/current and family-gap tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [full packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold-pair-family.json).
+
 **Folded Q5_1 pair production (September6 UTC):** clean `f24130796` full12-case
 A/B preserves all72 trajectories and improves every prefill/request-wall case.
 PP512/1024/4096:161.799->164.954 /160.478->162.953 /147.876->150.680 tok/s

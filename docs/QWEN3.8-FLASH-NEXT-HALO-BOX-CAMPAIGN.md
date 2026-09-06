@@ -519,40 +519,23 @@ Reading rules and caveats, binding on any use of these rows:
 
 ### 5.2.1 Framework starting and current owner snapshots
 
-**Latest code-only checkpoint, September6:** after Q8 bundled reduction promotion,
-clean `2c132e253` code4096 prefill/decode capture has100% coverage, matched
-decode root, exact decode repeats and zero final owners. The table below is
-**code4096 only**, not the four-category aggregate in the generated block.
-Pinned earlier Vulkan is reused; different instruments remain diagnostic.
+**Current full refresh, September6 UTC:** clean folded-pair production
+`c075a6692` supplies all six cases/twelve phases: code512/1024/4096 plus all
+four p4096 categories. Every phase has100% owner coverage,matched decode roots,
+repeated decode/state parity and zero final allocations. Folded-pair calls
+are25/50/200 in prefill and0 in every decode window.
 
-| Prefill owner | hipEngine ms | halo-box Vulkan ms | HE / Vulkan |
-| --- | ---: | ---: | ---: |
-| MoE/FFN including shared | 14104.380 | 4541.955 | 3.105x |
-| Non-GR linear | 5359.522 | 1018.844 | 5.260x |
-| GR projections/read/mix | 4249.462 | 1708.654 | 2.487x |
-| QSA | 1920.757 | 645.530 | 2.975x |
-| GDN | 777.912 | 1390.027 | 0.560x |
-
-All32 grouped-Q8 calls use bundled reduction, totaling1207.650ms.
-Earlier post-fold128 code-only snapshot remains
-[historical evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json).
-Total FFN/device sums need not fall across
-separate profiling sessions: the retained speed claim comes from the paired
-12-case A/B, not this snapshot. Decode QSA remains16.998ms versus3.081ms.
-[Joined packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json).
-The full multi-category snapshot below remains explicitly post-MMQ until its
-next complete six-case refresh.
-
-The full multi-category snapshot is post-MMQ production `ef63870f9`, captured on
-September6 UTC. The post-GR snapshot remains linked historical evidence.
-
-The generated tables below supersede the subsequent post-GDN checkpoint
-for the current family comparison. Captures use the post-MMQ production
-runtime, halo-box Vulkan `b212548e0`, identical fixtures and this Framework
-machine. Fine per-node/per-kernel provenance and the regeneration command
-are in the [post-MMQ family packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json).
-The fresh hipEngine capture is from `ef63870f9` on September6 UTC; Vulkan is the unchanged
-earlier capture named in that packet, not a newly measured target. The
+The generated tables below replace the post-MMQ full overview and subsequent
+code-only checkpoints. They use identical fixtures and this Framework machine,
+with the **earlier pinned Vulkan `b212548e0` capture explicitly reused**,
+not a newly measured competitor. Source revisions,child hashes and commands
+are now emitted by the join script itself in the
+[current full-family packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold-pair-family.json).
+The [post-MMQ full packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json),
+[post-fold128 code-only packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json)
+and [post-Q8-bundle code-only packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json)
+remain historical evidence. Snapshot deltas do not replace each promotion's
+paired throughput A/B. The
 [pre-Q8 packet](../benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json)
 remains immutable historical evidence, as does the
 [post-Q8 packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
@@ -572,15 +555,15 @@ Use the logger-off baseline table for throughput and parity factors.
 
 | Owner | Framework arrival (ms) | Current (ms) | Device share | Device zero-cost ceiling | Wall zero-cost ceiling |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 19,773.694 | 14,634.927 | 54.02% | 2.175x | 2.149x |
-| Non-FFN, non-GR linear | 5,828.219 | 5,374.271 | 19.84% | 1.247x | 1.244x |
-| GR projections + read/mix | 4,351.404 | 4,279.129 | 15.80% | 1.188x | 1.185x |
-| QSA | 8,982.811 | 1,924.080 | 7.10% | 1.076x | 1.076x |
-| GDN | 3,906.453 | 783.717 | 2.89% | 1.030x | 1.029x |
-| Boundary / residual combine | 76.563 | 80.051 | 0.30% | 1.003x | 1.003x |
-| PLE | 14.224 | 14.102 | 0.05% | 1.001x | 1.001x |
+| MoE/FFN (routed + shared) | 19,773.694 | 13,603.324 | 52.33% | 2.098x | 2.077x |
+| Non-FFN, non-GR linear | 5,828.219 | 5,358.844 | 20.62% | 1.260x | 1.257x |
+| GR projections + read/mix | 4,351.404 | 4,247.402 | 16.34% | 1.195x | 1.193x |
+| QSA | 8,982.811 | 1,921.233 | 7.39% | 1.080x | 1.079x |
+| GDN | 3,906.453 | 777.582 | 2.99% | 1.031x | 1.031x |
+| Boundary / residual combine | 76.563 | 71.100 | 0.27% | 1.003x | 1.003x |
+| PLE | 14.224 | 13.856 | 0.05% | 1.001x | 1.001x |
 
-Current kernel sum 27,090.277 ms; profiled wall 27,370.913 ms.
+Current kernel sum 25,993.341 ms; profiled wall 26,233.015 ms.
 Ceilings are sensitivity bounds, not expected realizable speedups. Snapshot deltas
 are historical attribution, not replacements for each retained A/B.
 
@@ -588,27 +571,27 @@ are historical attribution, not replacements for each retained A/B.
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 14,432.901 | 4,372.034 | 3.301x | +10,060.867 |
-| Non-FFN, non-GR linear | 5,366.975 | 1,019.237 | 5.266x | +4,347.738 |
-| GR projections + read/mix | 4,281.765 | 1,707.311 | 2.508x | +2,574.454 |
-| QSA | 1,921.995 | 645.424 | 2.978x | +1,276.571 |
-| PLE | 14.062 | 75.456 | 0.186x | -61.394 |
-| Boundary / residual combine | 76.954 | 506.861 | 0.152x | -429.907 |
-| GDN | 786.544 | 1,390.400 | 0.566x | -603.856 |
-| **Total device time** | **26,881.195** | **9,716.723** | | |
+| MoE/FFN (routed + shared) | 13,437.319 | 4,372.034 | 3.073x | +9,065.286 |
+| Non-FFN, non-GR linear | 5,363.297 | 1,019.237 | 5.262x | +4,344.060 |
+| GR projections + read/mix | 4,250.599 | 1,707.311 | 2.490x | +2,543.288 |
+| QSA | 1,922.210 | 645.424 | 2.978x | +1,276.786 |
+| PLE | 13.962 | 75.456 | 0.185x | -61.494 |
+| Boundary / residual combine | 73.475 | 506.861 | 0.145x | -433.386 |
+| GDN | 779.459 | 1,390.400 | 0.561x | -610.941 |
+| **Total device time** | **25,840.321** | **9,716.723** | | |
 
 **Decode, four-category p4096 mean (ms):**
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| QSA | 16.949 | 3.161 | 5.363x | +13.788 |
-| MoE/FFN (routed + shared) | 17.330 | 12.469 | 1.390x | +4.861 |
-| Non-FFN, non-GR linear | 17.078 | 16.394 | 1.042x | +0.683 |
-| GR projections + read/mix | 6.610 | 6.115 | 1.081x | +0.496 |
+| QSA | 16.972 | 3.161 | 5.370x | +13.812 |
+| MoE/FFN (routed + shared) | 17.360 | 12.469 | 1.392x | +4.891 |
+| Non-FFN, non-GR linear | 17.056 | 16.394 | 1.040x | +0.661 |
+| GR projections + read/mix | 6.613 | 6.115 | 1.081x | +0.498 |
 | PLE | 0.032 | 0.115 | 0.274x | -0.084 |
-| GDN | 2.351 | 2.777 | 0.847x | -0.426 |
+| GDN | 2.350 | 2.777 | 0.846x | -0.427 |
 | Boundary / residual combine | 0.458 | 1.386 | 0.330x | -0.928 |
-| **Total device time** | **60.806** | **42.416** | | |
+| **Total device time** | **60.840** | **42.416** | | |
 
 Decode is a fixed-live4097 diagnostic, averaged over three restored HIP repetitions
 and one Vulkan appended-root query per category, not a tg128 trajectory average.
@@ -664,7 +647,7 @@ engine's prefill/next-token reference, and all HIP decode repetitions pass
 state and lifecycle checks. Fine role sources, node IDs, binary/library hashes,
 commands and regeneration inputs are retained. This is diagnostic alignment,
 not identical instrumentation or statistical throughput parity. The generated
-table is now updated by the separately linked post-MMQ current-HE refresh.
+table is now updated by the separately linked post-folded-pair full current-HE refresh.
 
 **Collector implementation update:** `scripts/qwen4exp_framework_family_refresh.py`
 now captures request-bounded Vulkan logs, runs serial baseline commands,
