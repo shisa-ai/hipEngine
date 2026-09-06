@@ -179,10 +179,29 @@ total 25,753,026,560 B (23.984 GiB), free 23.949 GiB idle, ROCm
 captured: GPU UUID/PCI ID in-artifact, display load, other GPU processes,
 model-file hash and tensor census.
 
-Route: `python -m hipengine.server` with `--max-active-requests 1`, explicit
-`--kv-storage`, one completion per point, whole-card peak sampled from
-`rocm-smi` on GPU 1. AR only; MTP not loaded. Prefix cache and graph mode not
-recorded, so these are not yet stage-complete evidence.
+Methodology: [`scripts/gguf_context_ceiling_probe.py`](../scripts/gguf_context_ceiling_probe.py),
+one invocation per point. It launches a dedicated single-request server pinned
+to one device, samples whole-card VRAM from `rocm-smi` on that device while the
+server runs, issues one completion, classifies the outcome, and writes a JSON
+point with the resolved device recorded. A point passes only if the server
+starts from cold **and** completes a request; allocating is not passing.
+
+Whole-card sampling is deliberate: tracked allocator high-water understates the
+requirement by roughly 0.2-0.9 GiB, enough to turn a "does not fit" into a
+"fits". Device selection is an explicit flag and is echoed into the artifact,
+because several benchmark harnesses override `HIP_VISIBLE_DEVICES` and a run
+that silently lands on the W7900 would otherwise look valid.
+
+```bash
+.venv/bin/python3 scripts/gguf_context_ceiling_probe.py \
+  --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
+  --backend hip_gfx1100 --quant gguf_q4_k_m \
+  --gpu 1 --kv-storage <bf16|int8_per_token_head> \
+  --context <N> --json <artifact>
+```
+
+AR only; MTP not loaded. Prefix cache and graph mode are not yet recorded by the
+probe, so these points are not stage-complete capacity evidence.
 
 | KV storage | `--max-context-tokens` | Result | Whole-card peak |
 | --- | ---: | --- | ---: |
