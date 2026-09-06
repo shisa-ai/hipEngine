@@ -788,20 +788,26 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q8 MMQ exposes kernel-only `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out`.
+Q8 MMQ exposes `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out`.
 It retains raw-weight staging and uses the previously proven aligned
 activation copies. Actual GR/query/output512 complete chains improve
 1.891->1.371 /6.452->5.293 /2.891->2.229ms,all120 pairs exact and
 both orders positive.25 tests pass;trace184 VGPR/scratch0 unchanged.
 No packed-weight sidecar. Existing raw and strict fallbacks remain;
-model state/KV and canonical A/B required before promotion.
+subsequent model state/KV and canonical A/B qualify promotion below.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-raw-vector.json`.
 
-Default-off raw-vector admission passes five full-logit/state/KV cases,
+Earlier default-off raw-vector admission passed five full-logit/state/KV cases,
 four decode steps:0/242/0 at512 and0/1936/0 at4096,zero decode/final
 owners.32 CPU tests pass. Both binders0;existing raw MMQ rows>=64 only,
-prepacked path independent. Canonical12-case throughput gate remains.
+prepacked path independent.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json`.
+Cleancea077722 full12-case A/B now passes72 exact trajectories and all
+prefill/request cases. Production binds raw-vector1,strict0;PP gains
+3.367%/2.849%/2.969%,total request1.01730x,no memory increase.
+Small decode losses retained explicitly. Manifest raw/prepacked roles
+now name their respective vector kernels and strict fallbacks.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-raw-vector-production.json`.
 
 Four-wave K64 Q4 residual staging is rejected/removed:61.357ms versus
 exact17.403ms,224 VGPR/18432B LDS/no scratch. No-unroll59.887ms and

@@ -1,13 +1,13 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp raw MMQ vector staging candidate
+## Qwen4Exp raw MMQ vector staging rollback
 
-- Default-off `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects
+- Production `HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR` selects
   `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out` in existing raw-weight
-  three-plane MMQ rows>=64 only. Both binders0;no sidecar.
-- Five full-model invocation/state/KV cases pass;require canonical A/B
-  before raw route promotion. Remove if rejected; prepacked vector path and strict/
-  scalar raw fallbacks remain independently retained.
+  three-plane MMQ rows>=64 only. Production1/strict0;no sidecar.
+- Five full-model invocation/state/KV cases and canonical A/B pass.
+  Remove the rollback selector after next qualified MMQ change or release
+  window;prepacked vector path and strict/scalar raw fallbacks remain.
 
 ## Qwen4Exp Q4 residual WMMA diagnostic reference
 

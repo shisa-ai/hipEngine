@@ -2,14 +2,23 @@
 
 Last updated: **2026-09-06 UTC**
 
-Raw MMQ vector model admission passes five full-logit/state/KV cases:
-242/1936 enabled prefill calls,zero decode/final owners. Both binders0;
-canonical12-case throughput gate remains.
+| Framework UD-Q4_K_XL / BF16 KV raw MMQ vector staging | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 173.204 -> 179.037 (+3.367%) | 170.840 -> 175.707 (+2.849%) | 157.211 -> 161.879 (+2.969%) |
+
+All72 trajectories exact,every prefill/request case improves,total1.01730x.
+TG-0.354%/-0.064%/-0.214% retained,no new allocation;max PP CV2.929%.
+Not a new external comparator row.
+[Production evidence](results/2026-09-06-framework-qwen4exp-mmq-raw-vector-production.json).
+
+Earlier raw MMQ vector model admission passes five full-logit/state/KV cases:
+242/1936 enabled prefill calls,zero decode/final owners. Both binders0 at
+admission;subsequent canonical gate above passes.
 [State evidence](results/2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json).
 
 Raw MMQ vector kernel screen:GR/query/output512 complete chains
 1.891->1.371 /6.452->5.293 /2.891->2.229ms,all120 pairs exact.
-25 tests pass,resources unchanged,no sidecar. Model gates pending.
+25 tests pass,resources unchanged,no sidecar. Model gates subsequently passed.
 [Evidence](results/2026-09-06-framework-qwen4exp-mmq-raw-vector.json).
 
 Q4 cooperative residual staging rejected:61.357ms versus exact17.403ms;

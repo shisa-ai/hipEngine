@@ -76,12 +76,26 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Raw MMQ vector default-off admission (September6 UTC):** five off/on/off
+**Raw MMQ vector production (September6 UTC):** clean `cea077722` canonical
+12-case A/B passes all72 exact trajectories and every prefill/request-wall
+case. PP512/1024/4096:173.204->179.037 /170.840->175.707 /
+157.211->161.879 tok/s (+3.367%/+2.849%/+2.969%).
+Total request1.01730x. Aggregate TG-0.354%/-0.064%/-0.214%;
+worst mixed512-0.748%,explicitly retained under prefill-first policy.
+Max PP/TG CV2.929%/1.309%;measured span29m53.1s excludes initial load/
+warmup. Zero final allocations,tracked peak85,338,330,020B unchanged.
+Production raw-vector1,strict0;existing raw MMQ rows>=64 only. Prepacked
+vector path stays independent. Manifest now names raw scope and corrects
+the stale prepacked declaration to its already-promoted vector variant.
+No new external comparison;family refresh remains next.
+[Production evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-production.json).
+
+**Earlier raw MMQ vector default-off admission (September6 UTC):** five off/on/off
 cases pass full logits,four decode steps,state and full KV. Invocation
 0/242/0 at512 or0/1936/0 at4096,zero decode/final allocations.
 32 CPU tests pass. Only existing raw-weight three-plane MMQ rows>=64;
 prepacked vector path independent and both raw-vector binders0.
-Next is clean canonical12-case `--route-package q8-mmq-raw-vector` A/B.
+The subsequent canonical A/B above passes and promotes the raw route.
 [State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json).
 
 **Raw MMQ vector activation staging (September6 UTC):** extend the retained
@@ -91,8 +105,8 @@ arithmetic change. Actual GR/query/output512 complete chains:
 2.891->2.229ms (1.297x).64-row cases also positive,both orders positive,
 all120 pairs exact.25 tests pass;trace184 VGPR/scratch0 unchanged.
 Raw-only harness no longer allocates an unused packed bank;retained
-screen uses that corrected memory surface. Kernel-only pending full-model
-state/KV and canonical A/B;prepacked production route unchanged.
+screen uses that corrected memory surface. Subsequent full-model gates
+pass as recorded above;prepacked production route unchanged.
 [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector.json).
 
 **Q4 cooperative residual staging rejected (September6 UTC):** four-wave
