@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 down row4 runtime admission (September6 UTC):** default-off selector
+is wired only into existing grouped-Q8 prefill, with measured rows>=512;
+smaller chunks and c1 keep row1. Both profile binders pin0. Five code512/
+code4096/English512/Japanese512/mixed512 cases pass full prefill logits,
+four-step decode logits, state and full KV hashes across off/on/off.
+Candidate prefill calls0/4/0 or0/32/0; decode0 throughout, zero final owners.
+Thirty-one CPU selector/profile/harness tests pass. Next run the clean
+12-case `qwen4exp_halo_box_campaign_ab.py --route-package q8-down-row4`
+protocol before promotion. No new whole-model speed or native256K gate claimed.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-state.json).
+
 **Q8 grouped down row4 candidate (September6 UTC):** fresh FFN audit finds
 1.487s in the row1 grouped Q8 down owner across layers4/30/46/47. Sharing
 decoded weights across four independent rows gives exact1.107x on real layer4

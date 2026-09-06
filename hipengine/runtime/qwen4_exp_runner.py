@@ -2977,6 +2977,15 @@ def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
 
 
+def _qwen4_exp_q8_down_row4_key(key: KernelKey, *, rows: int) -> KernelKey:
+    if (rows < 512 or key.variant != "selected_grouped_gemv_bf16_bf16_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL", "0") != "1"):
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant,
+                          "selected_grouped_row4_gemv_bf16_bf16_out")
+    return candidate if is_registered(candidate) else key
+
+
 def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) -> KernelKey:
     if rows <= 256 or branches != 4 or os.environ.get(
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0"
@@ -3721,12 +3730,12 @@ def run_qwen4_exp_moe(
                 # x (expert_intermediate) and out (expert_down) are already in
                 # sorted-lane order here, so the kernel serves row = sorted
                 # position directly (lane_to_row=nullptr).
+                grouped_key = _qwen4_exp_q8_down_row4_key(
+                    KernelKey(backend, "linear", weights["expert_down"].spec.quant_key,
+                              "selected_grouped_gemv_bf16_bf16_out"), rows=rows)
                 grouped_q8_down = resolve(
-                    backend=backend,
-                    layer="linear",
-                    quant=weights["expert_down"].spec.quant_key,
-                    variant="selected_grouped_gemv_bf16_bf16_out",
-                )
+                    backend=grouped_key.backend, layer=grouped_key.layer,
+                    quant=grouped_key.quant, variant=grouped_key.variant)
                 grouped_q8_down(
                     scratch.expert_intermediate.ptr,
                     scratch.group_expert_start.ptr,
