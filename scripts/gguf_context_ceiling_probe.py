@@ -108,20 +108,25 @@ def port_in_use(host: str, port: int) -> bool:
 
 
 # Packed-execution workspace lease constants mirrored from
-# hipengine/runtime/qwen35_gguf_runner.py: the shared global KV pool
-# permanently leases max(8, N) slots x max(ceil(ctx/256), 1024/256) pages for
-# packed verification. These pages are pinned for the process lifetime and
-# are a persistent baseline, not a request leak.
-_WORKSPACE_LEASE_SLOT_CAPACITY = 8
+# hipengine/generation/qwen35_gguf.py: the shared global KV pool permanently
+# leases max(1, N) slots x max(ceil(ctx/256), 1024/256) pages for packed
+# verification. These pages are pinned for the process lifetime and are a
+# persistent baseline, not a request leak.
 _WORKSPACE_LEASE_MIN_SEQUENCE = 1024
 
 
 def expected_workspace_lease_pages(max_active_requests: int, context_tokens: int) -> int:
-    """Packed-verification workspace pages the server permanently leases."""
+    """Packed-verification workspace pages the server permanently leases.
+
+    Mirrors the capacity-honest server lease: the serving cap bounds resident
+    slots, so the lease follows ``max(1, max_active_requests)`` slots rather
+    than the historical 8-slot floor (see
+    ``configure_engine_loop`` in ``hipengine/generation/qwen35_gguf.py``).
+    """
 
     pages_per_request = max(1, (int(context_tokens) + 255) // 256)
     per_slot = max(pages_per_request, _WORKSPACE_LEASE_MIN_SEQUENCE // 256)
-    slots = max(_WORKSPACE_LEASE_SLOT_CAPACITY, int(max_active_requests))
+    slots = max(1, int(max_active_requests))
     return slots * per_slot
 
 

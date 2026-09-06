@@ -413,6 +413,14 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   64K/96K/112K/128K total budgets as supported. Refine last pass/first failure
   at page-aligned steps; extend only with a justified byte estimate and within
   the model context limit. Do not infer a physical ceiling from a policy cap.
+  Refined 2026-09-06 at 256-token page-aligned steps after the workspace
+  right-size, with clean ownership on every point: BF16 last pass 3,840
+  (3,328/3,584/3,840 pass at 21.324/21.525/21.820 GiB; 4,096 still fails eager
+  warmup); qualified INT8 fp32 last pass 4,864 (4,352/4,608/4,864 pass at
+  21.841/21.843/21.849 GiB; 5,120 still first fails). 4K+ totals are
+  card-infeasible at this model size; 8K-128K rows are policy-capped
+  unreachable, not measured ceilings. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-c1-boundary-refinement.json`.
 - [ ] Budget D=24/128/512 and reduce L to leave output/lookahead space. Include
   natural long-output cases; an early EOS proves only the work actually done.
 - [ ] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
