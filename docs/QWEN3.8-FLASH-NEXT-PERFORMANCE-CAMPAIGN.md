@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Folded Q5_1 pair production (September6 UTC):** clean `f24130796` full12-case
+A/B preserves all72 trajectories and improves every prefill/request-wall case.
+PP512/1024/4096:161.799->164.954 /160.478->162.953 /147.876->150.680 tok/s
+(+1.950%/+1.543%/+1.896%). Total request1.01054x. Aggregate
+TG-0.359%/-0.318%/-0.140%;worst individual mixed512-0.814%,retained explicitly
+under prefill-first policy. Max PP/TG CV1.705%/0.707%;first-to-last measured
+span31m06.9s excludes initial loading/warmups. Zero final allocations.
+Production selects folded-pair only after fold128 for rows>=512;64-511
+rows retain sequential fold128 and strict arithmetic/decode stay unchanged.
+Dynamic LDS is8672B vs4576B at K640;no added persistent allocations.
+Full six-case owner refresh follows separately;no new Vulkan parity claim.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json).
+
 **Folded Q5_1 pair default-off admission (September6 UTC):** selector applies
 only after fold128 and rows>=512;both binders0,smaller chunks stay sequential.
 Five code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,

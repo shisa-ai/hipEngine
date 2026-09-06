@@ -903,20 +903,26 @@ Trace72 VGPR/no spills, dynamic LDS8672->4576B at K640. Existing pair2/M1
 remain rollback/strict fallback routes.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold128.json`.
 
-Kernel-only `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out`
+Production rows>=512 `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out`
 combines folded partials for both output columns in one exact LDS reduction.
 Actual captured code/mixed512-row screens improve1.163x/1.160x versus fold128,
 both orders positive.13 GPU tests pass,trace72 VGPR/no spills;dynamic LDS
 4576->8672B at K640 (not the rejected unfolded dual's16864B).
 Small64-row candidate-first loses0.936x,so only rows>=512 is eligible for
-future admission. No runtime/default change before complete-model gates.
+admission;smaller rows retain sequential fold128.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold-pair.json`.
 
-Default-off folded-pair admission passes five full-model logits/state/KV
+Earlier default-off folded-pair admission passes five full-model logits/state/KV
 cases,four decode steps each;25/200 candidate calls only in enabled prefill,
 zero final allocations. Only fold128-selected rows>=512 eligible,both binders0.
-Twenty-eight CPU route/profile/harness tests pass;clean12-case A/B pending.
+Twenty-eight CPU route/profile/harness tests pass at that stage.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold-pair-state.json`.
+
+Clean f24130796 full12-case A/B now passes72 exact trajectories and all
+prefill/request walls. PP512/1024/4096 improves1.950%/1.543%/1.896%.
+Production binds folded-pair1 only at rows>=512,strict0;smaller folded rows
+remain sequential. Adverse TG and increased dynamic LDS remain explicit.
+Evidence: `2026-09-06-framework-qwen4exp-q51-fold-pair-production.json`.
 
 Earlier default-off model admission passes five full logits/state/full-KV cases,
 four decode steps each, with25/200 candidate calls only in enabled prefill
