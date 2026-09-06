@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-fold128 code4096 refresh (September6 UTC):** clean `1dacd1edb`
+confirms200 fold128 Q5_1 calls/3919.051ms. FFN14.266s, non-GR linear5.350s,
+GR4.237s, QSA1.919s and GDN0.778s; code-only reused-Vulkan gaps
+3.141x/5.251x/2.480x/2.973x respectively, with GDN ahead.100% owner
+coverage, matched decode roots, exact repeats and zero final owners.
+Decode QSA16.939ms versus3.081ms remains open. This is attribution, not
+causal speedup, and does not replace the historical full-category overview.
+[Updated code-only table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json).
+
 **Q5_1 fold128 production (September6 UTC):** clean `318e0ad26` full12-case
 A/B preserves all72 trajectories, every case's prefill and request wall improves.
 Weighted PP512/1024/4096:159.222->160.363 /156.767->158.300 /

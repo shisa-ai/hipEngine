@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Post-fold128 code4096 attribution verifies200 candidate calls; FFN14.266s,
+linear5.350s and GR4.237s remain dominant. Code-only, reused Vulkan,
+diagnostic instruments; the full-category snapshot is separately labeled.
+[Owners](results/2026-09-06-framework-qwen4exp-post-fold128-family.json).
+
 | Framework UD-Q4_K_XL / BF16 KV Q5_1 fold128 promotion | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Same-residency parent -> production | 159.222 -> 160.363 (+0.716%) | 156.767 -> 158.300 (+0.978%) | 145.546 -> 146.878 (+0.915%) |
@@ -10,8 +15,8 @@ All72 trajectories exact; all12 prefill/request walls improve. Tiny per-case
 decode decreases preserved; no intrinsic decode gain or added allocation.
 [Production evidence](results/2026-09-06-framework-qwen4exp-q51-fold128-production.json).
 
-Q5_1 fold128 default-off model gate passes five full logits/state/KV cases:
-25/200 calls in enabled prefill, zero decode calls/leaks. Throughput A/B pending.
+Earlier Q5_1 fold128 admission passed five full logits/state/KV cases:
+25/200 calls in enabled prefill, zero decode calls/leaks; promotion is above.
 [State evidence](results/2026-09-06-framework-qwen4exp-q51-fold128-state.json).
 
 Q5_1 fold128 kernel candidate: actual two-bank down with captured code/mixed
