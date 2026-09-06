@@ -832,6 +832,13 @@ trajectories and improves every prefill/request wall; PP512/1024/4096 gains
 prefill-first policy. Existing rows>=512 scope and strict fallback unchanged.
 See `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.
 
+Q5_1 folded pair reductions now run together for production chunks>=512,
+within the original unfolded pair2 LDS budget. Full12-case A/B preserves72
+trajectories and improves every prefill/request wall;PP512/1024/4096 gains
+1.950%/1.543%/1.896%. Sequential fold128 remains for64-511 rows;strict
+arithmetic and decode unchanged. Dynamic LDS increase and tiny TG losses are
+recorded in `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json`.
+
 #### Fusion Planner
 
 Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.

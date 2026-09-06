@@ -2,8 +2,16 @@
 
 Last updated: **2026-09-06 UTC**
 
-Folded Q5_1 pair default-off admission passes five exact full-logit/state/KV
-cases:25/200 prefill calls,zero decode calls/leaks. Clean12-case A/B pending.
+| Framework UD-Q4_K_XL / BF16 KV folded Q5_1 pair | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 161.799 -> 164.954 (+1.950%) | 160.478 -> 162.953 (+1.543%) | 147.876 -> 150.680 (+1.896%) |
+
+All72 trajectories exact;every prefill/request case improves. Aggregate
+TG-0.359%/-0.318%/-0.140% retained;no new persistent allocations.
+[Production evidence](results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json).
+
+Earlier folded Q5_1 pair admission passed five exact full-logit/state/KV
+cases:25/200 prefill calls,zero decode calls/leaks. Promotion evidence is above.
 [State evidence](results/2026-09-06-framework-qwen4exp-q51-fold-pair-state.json).
 
 Folded Q5_1 pair-reduction candidate: captured code/mixed512 two-bank screens

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework folded Q5_1 pair production] Full12-case PP512/1024/4096:161.799->164.954 (+1.950%)/160.478->162.953 (+1.543%)/147.876->150.680 (+1.896%).72 exact trajectories,all prefill/request cases improve,total1.01054x. TG-0.359%/-0.318%/-0.140% retained;no new persistent allocation. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-production.json`.
+
 - [2026-09-06 UTC Framework folded Q5_1 pair admission] Five full logits/state/KV off/on/off cases exact;calls0/25/0 or0/200/0 in prefill,zero decode/final owners. Both binders0,rows>=512,28 CPU tests. Throughput delta N/A pending12-case A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-state.json`.
 
 - [2026-09-06 UTC Framework folded Q5_1 pair candidate] Captured code/mixed512 down40.002->34.404ms (-14.00%)/39.123->33.729ms (-13.79%),exact/both orders positive;13 GPU tests.64-row adverse order0.936x excludes small scope. Kernel retained for model gate. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair.json`.
