@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-Q8-bundle code4096 refresh (September6 UTC):** clean `2c132e253`
+confirms32 bundled-Q8 calls/1207.650ms. FFN14.104s,non-GR linear5.360s,
+GR4.249s,QSA1.921s,GDN0.778s. Reused pinned Vulkan code-only gaps:
+3.105x/5.260x/2.487x/2.975x,with GDN ahead.100% coverage,matched decode
+roots,exact repeats,zero final owners. Decode QSA16.998ms versus3.081ms.
+Snapshot only,not causal A/B; full multi-category overview remains historical.
+[Current code-only table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json).
+
 **Q8 bundled reduction production (September6 UTC):** clean `c0fc635b5`
 full12-case A/B preserves all72 trajectories and improves every case's prefill
 and request wall. PP512/1024/4096:160.762->162.095 /158.892->159.958 /

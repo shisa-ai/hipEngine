@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Post-Q8-bundle code4096 attribution confirms32 bundled calls/1.208s.
+FFN14.104s,linear5.360s,GR4.249s remain dominant; code-only diagnostic
+against reused Vulkan,not a new full-category or causal timing comparison.
+[Owners](results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json).
+
 | Framework UD-Q4_K_XL / BF16 KV Q8 bundled reduction | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Same-residency parent -> production | 160.762 -> 162.095 (+0.829%) | 158.892 -> 159.958 (+0.671%) | 147.110 -> 148.240 (+0.768%) |
