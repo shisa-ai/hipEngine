@@ -41,13 +41,29 @@ Hostile metadata values (a string or array ``general.alignment``, an unknown
 metadata value-type id, a tensor shape violating its block layout) refuse
 production through plain ValueError/TypeError and are diagnosed the same way.
 Refused files are never marked format-valid or loadable.
+
+Backend capabilities are read from kernel package source with a bounded AST
+literal reader (never an import, never expression evaluation); missing or
+nonliteral constants are reported per capability and resolve to the same
+defaults the runtime reader returns. Flag resolution itself goes through the
+shared pure policy API ``hipengine.loading.qwen35_gguf_policy`` -- the same
+function the runtime loader calls with ``backend_package_capability`` -- so the
+audit cannot drift from runtime policy. Per-scope allocation sections report
+requested weight bytes from the production allocation formula
+(``planned_qwen35_gguf_weight_allocation_nbytes``), sidecar allocations with
+reasons, and both hypothetical refusal treatments (compressed-source lower
+bound and BF16 expansion scenario); refusals are never silently omitted from
+the totals. Report ``schema_version`` 2 adds header identity (SHA256 over the
+[0, data_start) header region), the allocation sections, per-capability
+resolution status, and ``f32_contracted_slots``.
 """
 
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import json
-import re
 import struct
 import sys
 from collections import Counter, defaultdict
@@ -80,9 +96,30 @@ from hipengine.loading.qwen35_gguf_nextn import (  # noqa: E402
     build_qwen35_gguf_nextn_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_materialize import (  # noqa: E402
+    LAYOUT_DENSE_BF16,
+    LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_QMICRO_T16,
+    LAYOUT_GGUF_Q4_K_T16,
+    LAYOUT_GGUF_Q4_K_X8,
+    LAYOUT_GGUF_Q5_K_QMICRO_T16,
+    LAYOUT_GGUF_Q5_K_T16,
+    LAYOUT_GGUF_Q5_K_X8,
+    LAYOUT_GGUF_Q6_K_T16,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+    LAYOUT_GGUF_Q6_K_X8,
+    LAYOUT_GGUF_Q8_0_T16,
+    LAYOUT_Q4_K_PACK8,
+    LAYOUT_RAW_GGUF,
     gguf_decode_repack_enabled,
     plan_qwen35_gguf_materialization,
     plan_qwen35_gguf_weight_spec,
+    planned_qwen35_gguf_weight_allocation_nbytes,
+)
+from hipengine.loading.qwen35_gguf_policy import (  # noqa: E402
+    GGUF_DENSE_CAPABILITY_NAMES,
+    gguf_ar_raw_iq_contract,
+    gguf_fp16_recurrent_state_default,
+    resolve_gguf_dense_flags,
 )
 from hipengine.quant.gguf import (  # noqa: E402
     GGMLQuantizationType,
@@ -96,22 +133,109 @@ from hipengine.quant.gguf import (  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# hipengine.kernels.<backend> holds these as plain module constants. Importing the
-# package runs kernel registration, which needs the HIP runtime, so the values are
-# read from source instead. A renamed constant therefore shows up as False here,
-# not as a silent pass: --check-constants fails if a name disappears.
-CAPABILITY_NAMES = (
-    "GGUF_DENSE_Q4_T16",
-    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
-    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES",
-    "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
-    "GGUF_DENSE_Q5_T16_SSM_OUT",
-    "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
-    "GGUF_DENSE_Q5_T16_QKV",
-    "GGUF_DENSE_Q5_T16_H5120",
-    "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
-    "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES",
-)
+# hipengine.kernels.<backend> holds these as plain module constants. Importing
+# the package runs kernel registration, which needs the HIP runtime, so the
+# values are read from source with a bounded AST literal reader. A constant
+# that is absent or defined by a nonliteral expression is never guessed: it is
+# reported with its resolution status and resolves to the same default the
+# runtime reader returns for a missing attribute. Flag resolution itself goes
+# through the shared pure policy API, so the audit carries no policy mirror.
+_CAPABILITY_BACKENDS = ("hip_gfx1100", "hip_gfx1151")
+_LITERAL_CALL_WRAPPERS = {
+    "frozenset": frozenset,
+    "set": set,
+    "tuple": tuple,
+    "list": list,
+}
+
+
+def _literal_value(node: ast.expr) -> tuple[object, str]:
+    """Resolve a module-level assignment expression, bounded to literals.
+
+    Accepts ``ast.literal_eval`` forms plus the container-wrapper calls the
+    backend packages actually use (``frozenset({...})``, ``set(...)``,
+    ``tuple(...)``, ``list(...)``) around a single literal argument. Anything
+    else is "nonliteral": the value is never guessed and never evaluated.
+    """
+
+    try:
+        return ast.literal_eval(node), "literal"
+    except (ValueError, TypeError):
+        pass
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in _LITERAL_CALL_WRAPPERS
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        try:
+            inner = ast.literal_eval(node.args[0])
+        except (ValueError, TypeError):
+            return None, "nonliteral"
+        return _LITERAL_CALL_WRAPPERS[node.func.id](inner), "literal"
+    return None, "nonliteral"
+
+
+def backend_source_assignments(root: Path, backend: str) -> dict[str, tuple[object, str]]:
+    """Map module-level assignments of one backend ``__init__.py`` to values.
+
+    Returns ``{constant name: (value, status)}`` where status is ``"literal"``
+    when the assigned expression resolved through :func:`_literal_value`, and
+    ``"nonliteral"`` when it did not (the value is then unusable, never
+    guessed). Absent names are simply not in the mapping. The reader never
+    imports the package and never evaluates expressions.
+    """
+
+    source = (root / "hipengine" / "kernels" / backend / "__init__.py").read_text()
+    assignments: dict[str, tuple[object, str]] = {}
+    for node in ast.parse(source).body:
+        if not isinstance(node, ast.Assign):
+            continue
+        value, status = _literal_value(node.value)
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                assignments[target.id] = (value, status)
+    return assignments
+
+
+def source_capability_reader(root: Path | None = None):
+    """Capability reader for the shared policy API without backend imports.
+
+    Missing or nonliteral constants return the caller's default -- exactly what
+    the runtime reader returns for a missing attribute -- so an unreadable or
+    refactored source degrades like an absent capability instead of inventing
+    policy. ``capability_status`` reports what actually happened.
+    """
+
+    root = REPO_ROOT if root is None else root
+    assignments = {
+        backend: backend_source_assignments(root, backend) for backend in _CAPABILITY_BACKENDS
+    }
+
+    def reader(backend: str, name: str, default):
+        entry = assignments.get(backend, {}).get(name)
+        if entry is None or entry[1] != "literal":
+            return default
+        return entry[0]
+
+    return reader
+
+
+def capability_status(root: Path | None = None) -> dict[str, dict[str, str]]:
+    """Per-capability resolution status for the shared policy capability names."""
+
+    root = REPO_ROOT if root is None else root
+    statuses: dict[str, dict[str, str]] = {}
+    for backend in _CAPABILITY_BACKENDS:
+        assignments = backend_source_assignments(root, backend)
+        statuses[backend] = {
+            name: assignments.get(name, (None, "missing"))[1]
+            for name in GGUF_DENSE_CAPABILITY_NAMES
+        }
+    return statuses
+
+
 LAYOUT_MEANING = {
     "dense_bf16": "bf16-expand",
     "dense_f32": "f32-resident",
@@ -169,38 +293,6 @@ _SCAN_REFUSAL_ERRORS = (
     OSError,
     ZeroDivisionError,
 )
-
-
-def quoted_members(source_value: str) -> set[str]:
-    """Members of a container constant written as a source expression.
-
-    ``frozenset({"a", "b"})``, ``("a",)``, and ``set()`` all reduce to the quoted
-    strings inside them. Used to read backend capability constants without
-    importing the kernel package.
-    """
-
-    return {value.strip().lower() for value in re.findall(r"['\"]([^'\"]+)['\"]", source_value)}
-
-
-def fp16_recurrent_state_default(backend: str, file_type_name: str) -> bool:
-    """Mirror the runner's check: compare normalized file-type names.
-
-    Absent capability means the backend has no such default, which is False.
-    """
-
-    raw = backend_capabilities(backend)["GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES"]
-    if raw == "<missing>":
-        return False
-    return str(file_type_name).strip().lower() in quoted_members(raw)
-
-
-def backend_capabilities(backend: str) -> dict[str, str]:
-    source = (REPO_ROOT / "hipengine" / "kernels" / backend / "__init__.py").read_text()
-    caps: dict[str, str] = {}
-    for name in CAPABILITY_NAMES:
-        match = re.search(rf"^{name} = (.+)$", source, re.M)
-        caps[name] = match.group(1).strip() if match else "<missing>"
-    return caps
 
 
 @dataclass(frozen=True)
@@ -748,29 +840,10 @@ def build_tensor_maps(
     )
 
 
-# The production AR planner vetoes decode repack when AR layers carry raw-IQ
-# weights (plan_qwen35_gguf_materialization's contract_q3_f32_linear predicate,
-# which also reassociates those files' F32 alpha/beta/router slots to BF16).
-# This mirror exists only to REPORT the effective repack veto; the actual
-# planning always goes through the production planner itself. Replace it with a
-# pure shared policy API per docs/UD-QUANTS.md U0 (see docs/REFACTOR.md).
-_AR_CONTRACT_IQ_TYPES = frozenset(
-    {
-        GGMLQuantizationType.IQ2_XS,
-        GGMLQuantizationType.IQ3_XXS,
-        GGMLQuantizationType.IQ4_XS,
-    }
-)
-
-
-def _ar_iq_contract(model_map: Qwen35GGUFModelMap) -> bool:
-    """Mirror the AR planner's raw-IQ predicate over AR layer tensors only."""
-
-    return any(
-        GGMLQuantizationType(tensor.ggml_type) in _AR_CONTRACT_IQ_TYPES
-        for layer in model_map.layers
-        for tensor in layer.tensors.values()
-    )
+# The production AR planner's raw-IQ predicate (decode-repack veto plus
+# model-wide F32 linear contraction) is the shared pure policy function
+# ``gguf_ar_raw_iq_contract``; the audit calls it instead of keeping a local
+# mirror of the production set.
 
 
 def _ar_slot_tensor_pairs(model_map: Qwen35GGUFModelMap) -> list[tuple[str, GGUFTensorInfo]]:
@@ -800,72 +873,209 @@ def _route_account(planned: list[tuple[str, GGUFTensorInfo, object]]) -> tuple[d
     return {k: dict(v) for k, v in sorted(routes.items())}, expand_stored, expand_resident
 
 
+# Integral allocations of each resident layout; anything else in a spec's
+# allocation_names is a sidecar record on top of the primary resident.
+_TILE_BASE_ALLOCATIONS = frozenset({"tiles"})
+_RAW_BASE_ALLOCATIONS = frozenset({"raw"})
+_LAYOUT_BASE_ALLOCATIONS = {
+    LAYOUT_Q4_K_PACK8: frozenset({"qweight", "scales", "mins"}),
+    LAYOUT_DENSE_F32: _RAW_BASE_ALLOCATIONS,
+    LAYOUT_DENSE_BF16: _RAW_BASE_ALLOCATIONS,
+    LAYOUT_RAW_GGUF: _RAW_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q4_K_T16: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q4_K_QMICRO_T16: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q4_K_X8: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q5_K_T16: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q5_K_QMICRO_T16: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q5_K_X8: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q6_K_T16: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q6_K_X8: _TILE_BASE_ALLOCATIONS,
+    LAYOUT_GGUF_Q8_0_T16: _TILE_BASE_ALLOCATIONS,
+}
+_ALLOCATION_REASONS = {
+    "raw": "raw GGUF sidecar (raw-MMQ/verification consumers)",
+    "qmicro_planar": "planar qmicro sidecar (HIPENGINE_C8_Q5_PLANAR_DP4A=1)",
+    "x8": "X8 top-1 sidecar (HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR)",
+    "decode_tiles": "Q4_K T16 decode sidecar retained on the pack8 resident",
+    "decode_tiles_r3plus": "Q4_K T16 r3+ decode sidecar retained on the pack8 resident",
+}
+_ALLOCATION_ACCOUNTING_NOTE = (
+    "requested planned weight-allocation bytes from"
+    " planned_qwen35_gguf_weight_allocation_nbytes over unique (source, layout)"
+    " residents, including sidecars; excludes allocator alignment beyond the"
+    " formula, runtime scratch, KV, recurrent state, graph pools and measured"
+    " residency. native_refusal_lower_bound keeps refused tensors at their"
+    " compressed source size; bf16_refusal_scenario expands them to BF16;"
+    " refusals are never omitted from these totals and neither treatment is a"
+    " working load."
+)
+
+
+def _allocation_account(
+    planned: list[tuple[str, GGUFTensorInfo, object]],
+    refused_pairs: list[tuple[str, GGUFTensorInfo]],
+) -> dict:
+    """Requested allocation-formula bytes for one planner scope.
+
+    Counts unique ``(source name, layout)`` residents exactly like the
+    production materializer's ownership dedup, sums
+    ``planned_qwen35_gguf_weight_allocation_nbytes`` records (primary resident
+    plus sidecars), and aggregates sidecar counts/bytes with reasons. Refused
+    slots enter the two hypothetical totals -- compressed-source lower bound
+    and BF16 expansion scenario -- deduplicated by physical source so a
+    refused source with two consumers is never double counted.
+    """
+
+    seen: set[tuple[str, str]] = set()
+    residents: Counter = Counter()
+    layout_bytes: dict[str, int] = defaultdict(int)
+    sidecars: dict[str, dict] = {}
+    accepted = 0
+    expert_sidecar_residents = 0
+    formula_unavailable: list[dict] = []
+    for _slot, tensor, spec in planned:
+        key = (tensor.name, spec.layout)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            records = planned_qwen35_gguf_weight_allocation_nbytes(spec)
+        except ValueError as error:
+            # The allocation formula requires tile-aligned shapes; synthetic or
+            # pathological metadata can plan a layout it cannot size. Report
+            # the gap explicitly instead of crashing or inventing bytes.
+            formula_unavailable.append(
+                {"source": tensor.name, "layout": spec.layout, "reason": str(error)}
+            )
+            continue
+        base = _LAYOUT_BASE_ALLOCATIONS.get(spec.layout, frozenset())
+        resident_bytes = sum(int(n) for _, n in records)
+        accepted += resident_bytes
+        layout_bytes[spec.layout] += resident_bytes
+        residents[spec.layout] += 1
+        if spec.sidecar_layouts:
+            expert_sidecar_residents += 1
+        for allocation_name, nbytes in records:
+            if allocation_name in base:
+                continue
+            record = sidecars.setdefault(
+                allocation_name,
+                {
+                    "count": 0,
+                    "planned_bytes": 0,
+                    "reason": _ALLOCATION_REASONS.get(
+                        allocation_name, "allocation beyond the primary resident"
+                    ),
+                },
+            )
+            record["count"] += 1
+            record["planned_bytes"] += int(nbytes)
+    refused_sources: dict[str, GGUFTensorInfo] = {}
+    for _slot, tensor in refused_pairs:
+        refused_sources.setdefault(tensor.name, tensor)
+    refused_source_bytes = sum(int(t.nbytes) for t in refused_sources.values())
+    refused_bf16_bytes = sum(2 * int(t.n_elements) for t in refused_sources.values())
+    return {
+        "unique_residents": len(seen),
+        "accepted_planned_bytes": accepted,
+        "accepted_planned_gib": round(accepted / GIB, 6),
+        "accepted_planned_bytes_complete": not formula_unavailable,
+        "formula_unavailable_residents": formula_unavailable,
+        "residents_by_layout": {
+            layout: {"count": residents[layout], "planned_bytes": layout_bytes[layout]}
+            for layout in sorted(residents)
+        },
+        "sidecars": {name: sidecars[name] for name in sorted(sidecars)},
+        "expert_pack8_sidecar_residents": expert_sidecar_residents,
+        "refused_slot_count": len(refused_pairs),
+        "refused_unique_sources": len(refused_sources),
+        "refused_source_bytes": refused_source_bytes,
+        "refused_source_gib": round(refused_source_bytes / GIB, 6),
+        "refused_bf16_bytes": refused_bf16_bytes,
+        "refused_bf16_gib": round(refused_bf16_bytes / GIB, 6),
+        "native_refusal_lower_bound_bytes": accepted + refused_source_bytes,
+        "native_refusal_lower_bound_gib": round((accepted + refused_source_bytes) / GIB, 6),
+        "bf16_refusal_scenario_bytes": accepted + refused_bf16_bytes,
+        "bf16_refusal_scenario_gib": round((accepted + refused_bf16_bytes) / GIB, 6),
+        "accounting": _ALLOCATION_ACCOUNTING_NOTE,
+    }
+
+
 def _plan_slots_per_slot(
     pairs: list[tuple[str, GGUFTensorInfo]],
     *,
     repack: bool,
     flags: dict,
-) -> tuple[list[tuple[str, GGUFTensorInfo, object]], dict[str, list[str]]]:
+    contract_f32_linear: bool = False,
+) -> tuple[list[tuple[str, GGUFTensorInfo, object]], dict[str, list[str]], list[tuple[str, GGUFTensorInfo]]]:
     """Plan each consumer slot independently, collecting every refusal.
 
     Mirrors the production per-slot planner calls (plan_qwen35_gguf_nextn_materialization
     is exactly this loop without try/except) so one refused slot never discards the
-    report for the other slots. Known limitation versus the production AR planner:
-    the model-wide F32 contraction is NOT applied here (plan_qwen35_gguf_weight_spec
-    does not expose it), so F32 alpha/beta/router slots report f32-resident in this
-    mode; the entry's ``f32_contraction_applied`` flag marks that.
+    report for the other slots. ``contract_f32_linear`` carries the model-wide
+    F32 contraction the production AR planner derives from its raw-IQ predicate,
+    so per-slot fallback planning matches production planner semantics; the
+    NextN planner has no such contraction and is called with the default.
+    Returns planned triples, rejection strings per GGML type, and the refused
+    (slot, tensor) pairs for byte accounting.
     """
 
     planned: list[tuple[str, GGUFTensorInfo, object]] = []
     rejections: dict[str, list[str]] = defaultdict(list)
+    refused_pairs: list[tuple[str, GGUFTensorInfo]] = []
     for slot_path, tensor in pairs:
         try:
             spec = plan_qwen35_gguf_weight_spec(
-                slot_path, tensor, decode_repack=repack, **flags
+                slot_path,
+                tensor,
+                decode_repack=repack,
+                contract_f32_linear=contract_f32_linear,
+                **flags,
             )
         except ValueError:
             rejections[tensor.ggml_type_name].append(
                 f"{slot_path} ({'x'.join(map(str, tensor.shape))})"
             )
+            refused_pairs.append((slot_path, tensor))
             continue
         planned.append((slot_path, tensor, spec))
-    return planned, {k: v for k, v in sorted(rejections.items())}
+    return planned, {k: v for k, v in sorted(rejections.items())}, refused_pairs
 
 
-def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
+def plan(backend: str, metadata: dict, maps: MappedTensorMaps, *, environ=None) -> dict:
     """Route actual AR and NextN map slots through the production weight planner.
 
     AR routes come from the production AR planner over the actual map (per-slot
     fallback with rejection collection only when the whole-AR plan refuses a
-    slot). NextN routes are reported separately as ``nextn_routes`` with the
-    draft's own slots (``own``) and its root-shaped fallback slots
-    (``fallback``); NextN failures never discard the AR report. Route tables
-    are per consumer slot through ``plan_qwen35_gguf_weight_spec`` semantics:
-    one physical source may plan different layouts for different consumers, so
-    source reuse never collapses routes (the tied lm_head of a Q4_K embedding
-    plans pack8 while the embedding itself plans raw).
+    slot; the fallback passes the same model-wide F32 contraction the
+    production planner derives from the shared raw-IQ predicate). NextN routes
+    are reported separately as ``nextn_routes`` with the draft's own slots
+    (``own``) and its root-shaped fallback slots (``fallback``); NextN failures
+    never discard the AR report, and the NextN planner receives only the four
+    dense flags the production NextN planner passes -- AR policies are not
+    applied to the draft indiscriminately. Route tables are per consumer slot
+    through ``plan_qwen35_gguf_weight_spec`` semantics: one physical source may
+    plan different layouts for different consumers, so source reuse never
+    collapses routes (the tied lm_head of a Q4_K embedding plans pack8 while
+    the embedding itself plans raw). Dense flags resolve through the shared
+    pure policy API with a source-reading capability reader, so no backend
+    package is imported and the audit cannot drift from runtime policy.
     """
 
-    caps = backend_capabilities(backend)
     file_type = llama_file_type_name(metadata.get("general.file_type"))
-    qmicro_types = quoted_members(caps["GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES"])
-    flags = dict(
-        dense_q4_t16=caps["GGUF_DENSE_Q4_T16"] == "True",
-        dense_q4_qmicro_t16_gate_up=(
-            caps["GGUF_DENSE_Q4_QMICRO_T16_GATE_UP"] == "True"
-            and str(file_type).lower() in qmicro_types
-        ),
-        dense_q4_t16_attn_q_08b=caps["GGUF_DENSE_Q4_T16_ATTN_Q_08B"] == "True",
-        dense_q5_t16_ssm_out=caps["GGUF_DENSE_Q5_T16_SSM_OUT"] == "True",
-        dense_q5_t16_ssm_out_08b=caps["GGUF_DENSE_Q5_T16_SSM_OUT_08B"] == "True",
-        dense_q5_t16_qkv=caps["GGUF_DENSE_Q5_T16_QKV"] == "True",
-        dense_q5_t16_h5120=caps["GGUF_DENSE_Q5_T16_H5120"] == "True",
-        dense_q6_qmicro_planar=caps["GGUF_DENSE_Q6_T16_QMICRO_PLANAR"] == "True",
+    flags = resolve_gguf_dense_flags(
+        backend, file_type, capability_reader=source_capability_reader(), environ=environ
     )
     requested_repack = gguf_decode_repack_enabled(None)
     # The production AR planner vetoes decode repack itself for raw-IQ AR layers;
     # pre-applying the same veto keeps the per-slot fallback path identical.
-    repack = requested_repack and not _ar_iq_contract(maps.model_map)
+    raw_iq = gguf_ar_raw_iq_contract(
+        tensor.ggml_type
+        for layer in maps.model_map.layers
+        for tensor in layer.tensors.values()
+    )
+    repack = requested_repack and not raw_iq
 
     ar_pairs = _ar_slot_tensor_pairs(maps.model_map)
     try:
@@ -881,16 +1091,18 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
             ],
         ]
         rejections: dict[str, list[str]] = {}
+        refused_pairs: list[tuple[str, GGUFTensorInfo]] = []
         planner_mode = "production_planner"
-        contraction_applied = True
     except ValueError:
         # Whole-AR planning refused at least one slot: re-plan per slot so every
         # refusal is collected instead of discarding the other slots' routes.
         pairs = ar_pairs
-        planned, rejections = _plan_slots_per_slot(pairs, repack=repack, flags=flags)
+        planned, rejections, refused_pairs = _plan_slots_per_slot(
+            pairs, repack=repack, flags=flags, contract_f32_linear=raw_iq
+        )
         planner_mode = "per_slot_fallback"
-        contraction_applied = False
     routes, expand_stored, expand_resident = _route_account(planned)
+    allocation = _allocation_account(planned, refused_pairs)
 
     nextn_routes: dict | None = None
     if maps.nextn_map is not None:
@@ -917,7 +1129,7 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
         ]
 
         def scope_report(pairs: list[tuple[str, GGUFTensorInfo]]) -> dict:
-            planned_scope, scope_rejections = _plan_slots_per_slot(
+            planned_scope, scope_rejections, scope_refused = _plan_slots_per_slot(
                 pairs, repack=nextn_repack, flags=nextn_flags
             )
             scope_routes, scope_stored, scope_resident = _route_account(planned_scope)
@@ -929,6 +1141,7 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
                 "rejected_tensors": sum(len(v) for v in scope_rejections.values()),
                 "bf16_expand_stored_gib": round(scope_stored, 3),
                 "bf16_expand_resident_gib": round(scope_resident, 3),
+                "allocation": _allocation_account(planned_scope, scope_refused),
             }
 
         nextn_routes = {
@@ -936,17 +1149,27 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
             "fallback": scope_report(fallback_pairs),
         }
 
+    f32_contracted = sum(
+        1
+        for _slot, tensor, spec in planned
+        if spec.layout == LAYOUT_DENSE_BF16
+        and GGMLQuantizationType(tensor.ggml_type) == GGMLQuantizationType.F32
+    )
+    statuses = capability_status().get(backend, {})
     return {
         "backend": backend,
         "file_type_name": file_type,
         "scope": "ar_map_plus_nextn_map",
         "map_validation_passed": maps.model_map.validation.passed,
         "planner_mode": planner_mode,
-        "f32_contraction_applied": contraction_applied,
+        "f32_contracted_slots": f32_contracted,
         "decode_repack_requested": requested_repack,
         "decode_repack_enabled": repack,
         "package_flags": flags,
-        "fp16_recurrent_state_default_on": fp16_recurrent_state_default(backend, file_type),
+        "capability_status": statuses,
+        "fp16_recurrent_state_default_on": gguf_fp16_recurrent_state_default(
+            backend, file_type, capability_reader=source_capability_reader()
+        ),
         "ar_consumer_slots": len(ar_pairs),
         "ar_unique_sources": len({tensor.name for _, tensor in ar_pairs}),
         "routes": routes,
@@ -954,6 +1177,7 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
         "rejected_tensors": sum(len(v) for v in rejections.values()),
         "bf16_expand_stored_gib": round(expand_stored, 3),
         "bf16_expand_resident_gib": round(expand_resident, 3),
+        "allocation": allocation,
         "nextn_routes": nextn_routes,
     }
 
@@ -1019,6 +1243,51 @@ def _print_tensor_map_summary(tensor_map: dict) -> None:
             print(f"      nextn {label}: {preview}{more}")
 
 
+def _header_identity(path: Path, data_start: int | None) -> dict:
+    """Header identity for one parsed file, with its exact boundary.
+
+    The identity is SHA256 over the raw file bytes ``[0, data_start)`` where
+    ``data_start`` is production ``scan_gguf``'s ``tensor_data_offset`` (the
+    tensor-info table end aligned up to ``general.alignment``). The region
+    covers magic, version, metadata, the descriptor table and the alignment
+    padding after it, and excludes every tensor payload byte; raw bytes, no
+    canonicalization beyond that boundary. It identifies the inspected
+    metadata, never the complete model bytes. When the payload boundary could
+    not be established (format-invalid file) no identity is claimed.
+    """
+
+    boundary = (
+        "sha256 over raw file bytes [0, data_start_bytes): GGUF magic, version,"
+        " metadata, tensor-info table and the alignment padding after it;"
+        " excludes every tensor payload byte (metadata identity, not model bytes)"
+    )
+    if data_start is None:
+        return {
+            "sha256": None,
+            "bytes": None,
+            "note": "payload boundary unknown (format-invalid); no header identity claimed",
+            "boundary": boundary,
+        }
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as handle:
+            remaining = data_start
+            while remaining:
+                chunk = handle.read(min(1 << 22, remaining))
+                if not chunk:
+                    raise OSError("file shorter than its header boundary")
+                digest.update(chunk)
+                remaining -= len(chunk)
+    except OSError as error:
+        return {
+            "sha256": None,
+            "bytes": data_start,
+            "note": f"header bytes unreadable: {type(error).__name__}: {error}",
+            "boundary": boundary,
+        }
+    return {"sha256": digest.hexdigest(), "bytes": data_start, "boundary": boundary}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="+", type=Path, help="GGUF files to inspect")
@@ -1027,16 +1296,31 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     # A capability that only one backend qualifies is legitimately absent on the
-    # other: backend_package_capability() returns the caller's default. A rename
+    # other: the source reader returns the caller's default there. A rename
     # removes the name from every backend, so that is what this gate catches.
     if args.check_constants:
-        caps = {b: backend_capabilities(b) for b in ("hip_gfx1100", "hip_gfx1151")}
-        gone = [n for n in CAPABILITY_NAMES if all(caps[b][n] == "<missing>" for b in caps)]
+        statuses = capability_status()
+        gone = [
+            name
+            for name in GGUF_DENSE_CAPABILITY_NAMES
+            if all(statuses[backend][name] == "missing" for backend in statuses)
+        ]
         if gone:
             print(f"capability constants not defined by any backend: {gone}", file=sys.stderr)
             return 2
 
-    report: dict = {"files": []}
+    report: dict = {
+        "schema_version": 2,
+        "schema_notes": (
+            "v2: header identity over [0, data_start); per-scope allocation"
+            " accounting with sidecar reasons and both hypothetical refusal"
+            " treatments; shared-policy capability resolution with"
+            " per-capability status; f32_contracted_slots replaces"
+            " f32_contraction_applied. v1 was the implicit schema of"
+            " docs/UD-QUANTS-REVIEW.json."
+        ),
+        "files": [],
+    }
     for path in args.paths:
         parsed = validate_parser(path)
         metadata, tensors = parsed.metadata, parsed.tensors
@@ -1048,6 +1332,7 @@ def main(argv: list[str] | None = None) -> int:
         entry = {
             "file": str(path),
             "file_size_on_disk_bytes": file_size_on_disk,
+            "header_identity": _header_identity(path, parsed.data_start),
             "tensors_parsed": len(tensors),
             "tensors_declared_in_header": parsed.declared_tensor_count,
             "tensor_table_complete": parsed.table_complete,
