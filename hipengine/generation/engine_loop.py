@@ -1974,6 +1974,7 @@ class ResidentEngineLoop:
             {
                 "request_ids": list(recent.request_ids),
                 "candidate_counts": list(recent.candidate_counts),
+                "requested_candidate_counts": list(recent.requested_candidate_counts),
                 "reasons": [reason.value for reason in recent.reasons],
                 "k0_classes": [value.value for value in recent.k0_classes],
                 "execution_route": recent.execution_route,
@@ -1986,6 +1987,7 @@ class ResidentEngineLoop:
             else {
                 "request_ids": list(plan.request_ids),
                 "candidate_counts": list(plan.candidate_counts),
+                "requested_candidate_counts": list(plan.requested_candidate_counts),
                 "reasons": [reason.value for reason in plan.reasons],
                 "k0_classes": [value.value for value in plan.k0_classes],
                 "execution_route": plan.execution_route,
