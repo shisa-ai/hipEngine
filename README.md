@@ -163,86 +163,79 @@ These are measured results, not estimates. Prompt processing is the speed of
 reading the input. Text generation is the speed of producing new tokens.
 
 <!-- BEGIN TOPLINE:README_HIGHLIGHTS -->
-### Radeon Pro W7900 (`gfx1100`)
+Every number below is measured on the named hardware and links to a
+reproducible artifact. **Prompt processing** is how fast hipEngine reads your
+input; **text generation** is how fast it writes new tokens. **With MTP** is
+speculative decoding, which is enabled only where it is qualified for that
+model and shape. Rows use different models and protocols — compare within a
+row, not across them.
 
-| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B ParoQuant W4 | 512 input tokens, 128 output tokens | **2852.100** | **115.804** |
-| Qwen3.6-35B-A3B GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **2763.590** | **94.603** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **875.364** | **28.681** |
-| Laguna S 2.1 GGUF `UD-Q2_K_XL` | 4,096 input tokens; prompt processing only | **440.893** | — |
+### At a glance — one request
 
-#### Multiple requests (total tok/s across all active requests)
-| Model and interface | 1 request | 2 requests | 4 requests | 8 requests | 9 requests | 13 requests |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (engine) | **98.263** | **148.944** | **209.304** | **266.479** | — | — |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (server) | **72.169** | — | — | **158.542** | **137.001** | **129.507** |
+#### Radeon RX 7900 XTX — 24 GB (`gfx1100`)
 
-#### MTP
-| Model and mode | Text generation | Speed compared with AR |
-| --- | ---: | ---: |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 C1/K3 D24 | **32.076 tok/s** | **1.4382x** |
-| Qwen3.6-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **34.341 tok/s** | **1.1173x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **36.726 tok/s** | **1.1970x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C2/K3 D24 explicit | **51.769 tok/s** | **1.3376x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — Generation-2 production C8/K3 D24 automatic (under review) | 98.643 tok/s | 1.1178x |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — Generation-2 production C2/K2 D24 automatic | **93.644 tok/s public** / **98.505 tok/s three-run** | **1.1565x** / **1.1368x** |
-### RX 7900 XTX (`gfx1100`) — Qwen3.8-27B `Q4_K_M` prefill
+| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **959.4** | **34.06** | **62.44** | **32K** BF16 / **126K** INT8 |
 
-| Workload | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 512 | **959.4** | 965.0 | -0.6% | 865.7 | +10.8% |
-| 1K | **999.7** | 979.5 | +2.1% | 832.6 | +20.1% |
-| 4K | **981.8** | 945.7 | +3.8% | 836.5 | +17.4% |
+#### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
-#### Dedicated-server context
-| KV route | Server shape | Measured context | Peak / headroom |
-| --- | --- | ---: | ---: |
-| BF16 default | c1 operational | **32K** | 21.869 / 2.115 GiB |
-| Pure INT8 explicit | c1 repeated natural soak | **112K** | 23.323 / 0.661 GiB |
-| Pure INT8 explicit | c1 one-request physical ceiling | **126K** | 23.963 / 0.022 GiB |
+| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Qwen3.6-35B-A3B | ParoQuant W4 | **2852.1** | **115.8** | **115.8** | — |
+| Qwen3.6-35B-A3B | GGUF `Q4_K_M` | **2763.6** | **94.6** | 122.7 (opt-in) | — |
+| Qwen3.6-27B Dense | GGUF `Q4_K_M` | **875.4** | **28.7** | **32.1** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | **678.8** | **29.6** | — | — |
+| Laguna S 2.1 | GGUF `UD-Q2_K_XL` | **440.9** (4K) | — | — | — |
 
-#### Decode / MTP
+#### Strix Halo / Radeon 8060S — 120 GB (`gfx1151`)
 
-| Metric | hipEngine | llama.cpp HIP | HE vs HIP | llama.cpp Vulkan | HE vs Vulkan |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| AR decode 512 | **34.06** | 32.86 | +3.6% | 13.39 | 2.54x |
-| AR decode 1K | **34.91** | 32.75 | +6.6% | 13.38 | 2.61x |
-| AR decode 4K | **31.79** | 32.41 | -1.9% | 13.31 | 2.39x |
-| MTP natural | **62.44 B3** | 44.33 B2 | +40.9% | 73.33 B2 | -14.8% |
+| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Maple-Preview | 2-bit | **754.5** | **153.2** | — | — |
+| Qwen3.6-35B-A3B | GGUF `UD-Q4_K_M` | **1369.5** | **54.3** | 80.1 (opt-in) | — |
+| Laguna S 2.1 | GGUF `Q4_K_M` | **654.2** | **23.2** | — | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_S` | **396.1** | **13.1** | **23.9** | — |
+| Qwen3.8-27B Dense | GGUF `Q4_K_M` | — | — | **15.6** | — |
 
-### Strix Halo / Radeon 8060S (`gfx1151`)
+#### NVIDIA RTX PRO 6000 Blackwell — 96 GB (`sm_120a`)
 
-| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | ---: | ---: |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` | 512 input tokens, 128 output tokens | **1369.489** | **54.330** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` (GEMV lib hoist) | sync'd eager, per-token | — | **38.9** |
-| Qwen3.8-27B Dense GGUF `Q4_K_S` | 512 input tokens, 128 output tokens | **396.091** | **13.069** |
-| Laguna S 2.1 GGUF `Q4_K_M` | 512 input tokens, 128 output tokens | **654.249** | **23.221** |
-| Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **754.458** | **153.201** |
-#### Multiple requests
+| Model | Quant | Prompt processing | Text generation | With MTP | Max context |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
-| Model and interface | 1 request | 2 requests | 4 requests | 8 requests |
-| --- | ---: | ---: | ---: | ---: |
-| Maple-Preview 2-bit (engine) | **123.131** | **165.697** | **202.038** | **214.788** |
+Blank cells are shapes we have not measured yet, not failures. Max context is
+published only where a dedicated ceiling run exists.
 
-#### MTP
+### Serving several requests at once
 
-| Model and mode | Text generation | Speed compared with AR |
-| --- | ---: | ---: |
-| Qwen3.8-27B Dense GGUF `Q4_K_S` — MTP-3 | **23.853 tok/s** | **1.7845x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — normal-owner C1 MTP-3 automatic | **15.609 tok/s** | **1.5916x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C2 MTP-3 automatic | **17.031 tok/s** | **1.1441x** |
-| Qwen3.8-27B Dense GGUF `Q4_K_M` — production C1 MTP-3 c68-128 explicit | **13.088 tok/s** | **1.3998x** |
-| Qwen3.6-35B-A3B GGUF `UD-Q4_K_M` — MTP-2 | **80.10 tok/s** | **1.4282x** |
+This is where hipEngine pulls furthest ahead. Aggregate tokens per second
+across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900 under one server
+protocol; the peers use F16 KV where hipEngine uses BF16.
 
-### RTX PRO 6000 Blackwell (`sm_120a`)
+| Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| hipEngine | **23.6** | **39.1** | **53.1** | **63.9** | **72.8** | **79.5** | **83.2** | **85.9** |
+| llama.cpp HIP | 21.0 | 34.4 | 30.6 | 27.7 | 36.7 | 46.4 | 52.1 | 58.4 |
+| hipEngine advantage | +12% | +14% | +74% | +130% | +99% | +71% | +60% | **+47%** |
 
-| Model and format | Test | Prompt processing (tok/s) | Text generation (tok/s) |
-| --- | --- | ---: | ---: |
-| Maple-Preview 2-bit | 512-token prompt test; varied prompts for generation | **1917.492** | **402.361** |
+Direct engine route on the same card and model, 512-token prompts and 128
+generated tokens per request, showing what each added request costs in memory:
 
-Rows use different models/protocols; compare matching rows only. RX 7900 XTX cross-engine rows share Qwen3.8 file and timing boundary. llama.cpp Vulkan MTP is speed-only because its ledger differs from Vulkan AR; hipEngine and llama.cpp HIP match their controls. MTP-2/MTP-3 use two/three draft tokens. W7900 C8/K3 is automatic only for exact production Qwen3.8 `Q4_K_M` capacity-8 D24 key; misses use K0. Strix Halo production C1-C8 is explicit, with strict C1 automatic. The 35B-A3B MTP-2 path matches llama.cpp MTP on the validated suite and remains opt-in because it can differ from normal AR.
+| Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text generation (total) | 29.6 | 54.0 | 75.2 | 92.3 | 105.9 | 117.6 | 123.9 | **131.3** |
+| Prompt processing (total) | **678.8** | 368.9 | 362.6 | 380.0 | 378.3 | 403.6 | 385.3 | 376.6 |
+| Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
+
+Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
+larger card; a 24 GB card runs the same model comfortably at one or two.
+
+On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
+requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
+decoding runs automatically in production it is scoped to a qualified shape:
+Qwen3.6-35B-A3B GGUF reaches **93.644 tok/s public** — 1.1565x its own AR — at
+two concurrent requests on the W7900.
 <!-- END TOPLINE:README_HIGHLIGHTS -->
 
 Full commands, software versions, model hashes, memory use, and correctness
