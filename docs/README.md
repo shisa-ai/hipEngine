@@ -1,6 +1,6 @@
 # hipEngine Documentation Index
 
-Last updated: 2026-09-05
+Last updated: 2026-09-06
 
 This directory contains the project architecture, validation, benchmarking, and
 optimization notes for hipEngine. If you are new to the repo, start with
@@ -25,6 +25,7 @@ working on.
 | [`GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md`](GFX1100-SHAPE-AWARE-GEMV-CAMPAIGN.md) | Shape-aware gfx1100 GEMV campaign plan seeded by Qingming: exact alpha/beta local128/SPLIT4 screening, cache-regime protocol, RX 7900 XTX relative comparison, and independent W7900 promotion gates. |
 | [`QWEN38-Q4KM-MTP-ACCEPTANCE.md`](QWEN38-Q4KM-MTP-ACCEPTANCE.md) | gfx1151 physical-C3 decode-economics campaign for Qwen3.8-27B `Q4_K_M` MTP; gate state and next steps are in the document header. Appendix analyzes a DFlash2 revival. |
 | [`QWEN38-INT8-KV-CONTINUOUS.md`](QWEN38-INT8-KV-CONTINUOUS.md) | INT8 KV continuous-batching campaign: artifact-scoped admission, compact no-mirror c>N prefill/decode, complete memory accounting, and resident lifecycle promotion. |
+| [`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md) | 24 GB capacity campaign for Qwen3.8-27B `Q4_K_M` on gfx1100: measured RX 7900 XTX context ceiling, the inert INT8 KV defect, per-token footprint attribution, and the evidence rules for capacity claims. |
 | [`LESSONS-LEARNED.md`](LESSONS-LEARNED.md) | Local do-not-chase findings and recurring kernel/runtime pitfalls. |
 | [`PLAN-WORKLOG2-revamp.md`](PLAN-WORKLOG2-revamp.md) | Approved immutable worklog design, migration contract, and acceptance punchlist. |
 
