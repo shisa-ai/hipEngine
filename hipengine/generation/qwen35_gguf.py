@@ -5570,19 +5570,19 @@ class Qwen35GGUFResidentModelRunner:
                 global_capacity = min(global_capacity, high_water_pages)
             if global_capacity <= 0:
                 raise ValueError("GGUF global KV capacity must be positive")
-            # Eager packed-execution workspace lease: sized to the union-geometry
-            # ceiling (max(8, capacity) slots x max(1024, request context)
-            # tokens), equal to today's peak private mirror footprint, so
-            # admission accounting always sees the pinned pages and the
-            # workspace never grows.
+            # Eager packed-execution workspace lease: sized to the capacity-
+            # honest union-geometry ceiling (serving-capacity slots x
+            # max(1024, request context) tokens). The serving loop cannot
+            # open more resident slots than ``self.capacity``, so the lease
+            # follows it instead of the historical 8-slot floor; admission
+            # accounting still sees every pinned page and the workspace
+            # never grows.
             workspace_pages_per_slot = max(
                 max_pages_per_request,
                 _PACKED_VERIFY_MIN_MAX_SEQUENCE // 256,
             )
-            workspace_pages = (
-                max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, self.capacity)
-                * workspace_pages_per_slot
-            )
+            workspace_slots = max(1, int(self.capacity))
+            workspace_pages = workspace_slots * workspace_pages_per_slot
             self._kv_pool_generation += 1
             self._kv_pool = create_global_pool(
                 page_capacity=global_capacity + workspace_pages,
