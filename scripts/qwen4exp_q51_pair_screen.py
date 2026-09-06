@@ -45,7 +45,8 @@ def main():
             "host":_host_metadata(),"command":sys.argv,"weights":identities,
             "model":"Qwen3.8-Flash-Next UD-Q4_K_XL","arithmetic_class":"T0",
             "boundary":"two rotating grouped Q5_1 down banks; maps supplied, no routing or combine",
-            "runtime_default_changed":False,"cases":[]}
+            "runtime_default_changed":False,"parent_variant":PARENT,
+            "candidate_variant":CANDIDATE,"cases":[]}
     try:
         for layer in (0,1):
             name=f"blk.{layer}.ffn_down_exps.weight"
