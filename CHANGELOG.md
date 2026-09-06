@@ -8,6 +8,163 @@ evidence under [`benchmarks/results/`](benchmarks/results/).
 
 ## Unreleased
 
+## v0.5.0 - 2026-09-06
+
+hipEngine now runs dense Qwen models, not only the Qwen 3.6 35B
+mixture-of-experts models. Several performance choices that used to need manual
+settings now happen on their own, but only where they have been measured as safe
+for the model and shape in use. Everything below was tested on Radeon RDNA 3
+(`gfx1100`: RX 7900 XTX, Pro W7900) and on Strix Halo (`gfx1151`: Ryzen AI MAX+
+395 with Radeon 8060S). Numbers live in
+[`benchmarks/README.md`](benchmarks/README.md) and the dated performance history
+in [`benchmarks/CHANGELOG.md`](benchmarks/CHANGELOG.md).
+
+### Added
+
+- **Dense Qwen 27B models.** Qwen3.6-27B and Qwen3.8-27B now load, generate, and
+  serve from GGUF `Q4_K_M` on both AMD backends. Qwen3.8-27B also runs in
+  `Q4_K_S` on Strix Halo. Both sizes can use speculative decoding driven by the
+  model's own multi-token prediction (MTP) head. Qwen3.8-27B is measured from one
+  request up to eight running at once, alongside two llama.cpp HIP builds
+  measured the same way.
+- **The server decides when to speculate.** The default for
+  `--speculative-mtp-serving` (env `HIPENGINE_SPECULATIVE_MTP_SERVING`) moved
+  from `off` to `auto`. In `auto`, a request uses speculative decoding only when
+  the loaded model, quantization, GPU, kernel plan, cache type, batch size, and
+  prompt length all match a combination hipEngine has measured; otherwise the
+  request decodes normally and the `hipengine.speculative_mtp` block in the
+  response reports why (for example `backend_k0_fallback`). Use
+  `enabled` to take the speculative route for every compatible request, `opt_in`
+  to require `"speculative_mtp": true` per request, or `off` to switch it off.
+- **A kill switch and acceptance counts for speculation.**
+  `POST /v1/hipengine/speculative_mtp/rollback` sends every new request to normal
+  decoding until the server restarts, while requests already running finish the
+  work they have in flight. Repeated backend failures trip a circuit breaker for the affected
+  model, GPU, kernel plan, and context range, and stop speculation there until
+  restart; a client disconnecting or exceeding a deadline does not trip it.
+  Responses that speculated report `accepted_prediction_tokens` and
+  `rejected_prediction_tokens` under `usage.completion_tokens_details`, and
+  `/metrics` carries matching counters, so existing speculative-decode tooling
+  works unchanged.
+- **Reasoning requests can speculate too.** The speculative path is token-exact
+  only for plain greedy decoding, and hipEngine's host-side reasoning-budget
+  enforcement breaks that. So `--speculative-mtp-thinking` (env
+  `HIPENGINE_SPECULATIVE_MTP_THINKING`, per-request
+  `"speculative_mtp": {"thinking": ...}`) picks the trade: `hint`, the default,
+  keeps the thinking markers in the prompt but stops forcing the budget from the
+  host, so a `reasoning_effort` request can stay on the exact speculative route;
+  `hard` keeps full enforcement and decodes such requests normally instead. The
+  policy actually used is reported in the response.
+- **Pick a kernel plan explicitly.** `LLM(execution_profile=...)`,
+  `--execution-profile`, and `HIPENGINE_EXECUTION_PROFILE` accept `strict`,
+  `production`, or `batch_invariant`. hipEngine checks that the plan's kernels
+  and their plain-decoding fallbacks are installed, refuses an unregistered
+  combination instead of guessing one, and reports the plan's hash in server
+  metadata. Leave it unset to keep the behaviour you had in v0.4.0.
+- **Controls for the GGUF speculative path.**
+  `HIPENGINE_GGUF_MTP_VERIFY_MODE` chooses the fast candidate checker (`native`,
+  the default) or the one that replays normal decoding for each candidate and
+  matches it token for token (`serial_exact`, which cannot be faster than normal
+  decoding). `HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET` sets how many draft tokens to
+  try per step, 1-4, default 3; 4 can be slower.
+- **Tune how much a scheduler tick does.** Round prefill-token and decode-row
+  budgets are now flags with matching environment variables, next to the
+  existing `--prefill-decode-policy` and `--max-active-requests` options.
+
+### Changed
+
+- **Qwen3.8-27B no longer speculates by default on RDNA 3.** Measured on
+  2026-09-06 at every batch size from two to eight and every draft depth from one
+  to three, each against normal decoding of the same model in the same run: all
+  twenty combinations were slower than normal decoding, the closest within 1%. The
+  batch-size-2/depth-2 and batch-size-8/depth-3 speedups published for this model
+  on this GPU are withdrawn, and the engine now decodes normally at every batch
+  size. Asking for speculation
+  explicitly still works. On Strix Halo, `Q4_K_M` keeps exactly one automatic
+  setting: strict kernel plan, BF16 cache, one request at a time, three draft
+  tokens, and prompts of 67 tokens or fewer.
+- **Two device reserves are smaller.** On RDNA 3, hipEngine now sets the per-process
+  scratch single-limit to 8 MiB rather than ROCm's 140 MiB, freeing 132 MiB per
+  process per GPU that nothing was using; set
+  `HSA_SCRATCH_SINGLE_LIMIT=146800640` to restore the old reservation. On Strix
+  Halo, the default is now `GPU_MAX_HW_QUEUES=2` instead of `1`. The Laguna
+  mixture-of-experts kernels were checked against two queues at short prompts.
+  Neither value fixes the known long-context stall described under limits.
+- **Qwen3.8-27B `Q4_K_S` on Strix Halo keeps its recurrent state in FP16** with
+  FP32 accumulation. `HIPENGINE_GGUF_FP16_RECURRENT_STATE` is on for that model
+  and GPU after engine and serving comparisons came out at least as fast with no
+  extra memory. Set it to `0` for FP32 state. Speculative decoding and the chain
+  journal still require FP32.
+- **Fairer scheduling by default.** For `Q4_K_M` on both AMD backends, the
+  scheduler now picks `fair` rather than `protect_decode` when
+  `HIPENGINE_PREFILL_DECODE_POLICY` is unset, so a long prompt shares each loop
+  tick with decoding instead of monopolising it.
+- **Batched GGUF prefill and decode are on by default**
+  (`HIPENGINE_GGUF_AR_PACKED_PREFILL`, `HIPENGINE_GGUF_AR_PACKED_DECODE`):
+  requests that arrive together are prefilled and decoded in one pass instead of
+  one slot at a time. Set either to `0` to force the one-at-a-time path when
+  comparing the two. The rejected `HIPENGINE_GGUF_AR_STREAM_PREFILL` setting was
+  removed.
+- **Python 3.11 is the minimum supported version.** Python 3.10 is no longer
+  packaged or tested, and the install requirements say so.
+- **Published numbers were re-measured for this release,** not copied forward:
+  the current rows come from runs dated 2026-08-03 through 2026-09-06, and each
+  table names its model, protocol, and hardware. Rows from v0.4.0 and v0.5.0 use
+  different models and protocols, so they are not an old-to-new speed comparison.
+- **INT8 cache still saves no memory on dense 27B.** The attention code INT8
+  cache needs is now written and checked against the CPU reference, but INT8 with
+  FP32 scales fails the short-prompt quality suite, and a mixed BF16/INT8 layer
+  map that passes quality costs more memory, cannot use graph capture safely, and
+  decodes about 10% slower than the BF16 path. Dense 27B cache stays BF16.
+
+### Fixed
+
+- Streamed text from the speculative and GGUF paths is rebuilt one token at a
+  time, GGUF special tokens no longer appear in streamed output, and a
+  speculative stream stops cleanly at a special token.
+- XML tool calls written by Qwen3.5-family chat templates are parsed correctly
+  again.
+- Fixed multi-request bugs where model state, cache ownership, graph reuse, or a
+  change in request width could corrupt tokens later in a response or follow a
+  request into the slot it reused.
+- A request that does not qualify for speculative decoding now falls back to
+  normal decoding before any GPU state changes, instead of failing or continuing
+  on a route it does not qualify for. This covers long prompts,
+  mixture-of-experts drafts, and speculative graphs beyond their supported length.
+- Fixed teardown and cancellation in the speculative path so in-flight work
+  finishes and its cache memory is released on client disconnect and server
+  shutdown.
+
+### Known limitations
+
+- hipEngine uses one GPU. Multi-GPU inference and CPU model inference are not
+  implemented.
+- GGUF support covers the listed model families only; hipEngine does not run
+  arbitrary GGUF architectures. See the model guides for per-model limits.
+- NVIDIA Blackwell support is single-request Maple generation through the Python
+  API. CUDA serving and multi-request execution are not ready.
+- Maple uses greedy generation only.
+- Repeated 128K-context runs on Strix Halo can still stall with low power draw
+  and no progress, so no 128K number is published. A model's advertised context
+  length is not a hipEngine support claim, so set a conservative server limit.
+- What Qwen3.8-27B tolerates on a 24 GB card is unmeasured, and INT8 cache shows
+  no saving there. The probe that would answer this needs its measurement gaps
+  closed before any limit can be published
+  ([capacity notes](docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md)).
+- Many simultaneous requests work but are not inside latency targets. On Strix
+  Halo, Qwen3.8-27B passes its one-to-eight physical and one-to-thirty-two
+  logical request checks, yet at 32 requests it reaches 10.590 tok/s with an
+  18.617 s 95th-percentile first-token time, and 0 of 3 target runs pass.
+- Automatic speculation covers only narrow measured shapes: Qwen3.8-27B
+  `Q4_K_M` on Strix Halo with one request at a time and prompts of 67 tokens or
+  fewer, and two qualified Qwen3.6 batch sizes on the W7900. Everything else
+  decodes normally unless you ask for speculation explicitly.
+- Learned cache eviction (DMS) and reusable prompt-prefix state stay off by
+  default wherever they are not qualified.
+- Published wheels are Linux x86-64 and require glibc 2.39 or newer, such as
+  Ubuntu 24.04. ROCm 7.x is the recommended AMD runtime for this release.
+- APIs and supported combinations can still change before 1.0.
+
 ## v0.4.0 - 2026-08-10
 
 This is a large alpha release focused on making hipEngine useful for more local
