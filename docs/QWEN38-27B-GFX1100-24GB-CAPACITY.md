@@ -515,9 +515,23 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 4 — Qualify FastDMS capacity on the shared pool
 
-- [ ] Inventory the trained sidecar, hash/model/quant binding, protected window,
+- [x] Inventory the trained sidecar, hash/model/quant binding, protected window,
   calibration and actual eviction policy. Missing or mismatched qualification
   fails closed; training alone does not authorize serving.
+  Fails closed on this host 2026-09-07: the trained-sidecar artifact set the
+  2026-08-23 CR2 candidate evidence binds to
+  (`/home/lhl/dms-artifacts/qwen38-external-v1/sidecar-cr2-qualified-candidate/`
+  — sidecar safetensors, `dms_metadata.json`, data manifest, calibrated
+  labels) is not present on this machine, and the integrated DMS harnesses
+  (`scripts/qwen38_dms_integrated_long.py` et al.) require `--metadata` and
+  `--data-manifest` from that set. Per this item's own rule the missing
+  qualification fails closed: no XTX DMS serving point is measured and none
+  is simulated. The following items stay blocked on artifact re-provisioning
+  (a fresh capture/label/calibrate/train cycle is the DMS campaign's
+  sub-project, and training alone would not authorize serving); the
+  DMS+INT8 composition item additionally requires the independent codec and
+  topology gates first. XTX DMS capacity work resumes when the DMS campaign
+  publishes a host-local qualified artifact set.
 - [ ] Measure dense BF16, compact no-evict and trained DMS BF16 through the same
   owner. Record logical tokens, per-layer/head survivors, allocated extents,
   free capacity, fragmentation and all transient/metadata/predictor bytes.
