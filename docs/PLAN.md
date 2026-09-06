@@ -532,6 +532,20 @@ zero final ownership pass on RX 7900 XTX. This is not native c>N and carries no
 throughput claim. `IKV-C2` row-batched direct INT8 attention is next; BF16 stays
 supported/default.
 
+#### Qwen3.8-27B capacity on the 24 GB RX 7900 XTX
+
+[`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md)
+plans actual-XTX capacity measurements for `Q4_K_M`/`Q4_K_S`, BF16/compact
+INT8 KV, AR-only versus optional/active MTP, and separate C1-long-context and
+C=N serving limits. It requires unique-allocation/stage-peak accounting,
+output/lookahead reservation, explicit mirror/serial-route labels, and measured
+operational headroom rather than W7900 allocation extrapolation. The campaign
+prioritizes optional MTP loading, shared/lifetime-bounded workspaces, smaller
+weights and genuinely compact KV with their applicable quality/latency gates.
+Native INT8 and native C1/K4-K7 MTP integration remain coordinated with their
+existing campaigns; this capacity plan does not create another scheduler or
+claim unsupported combinations fit.
+
 #### Current status
 
 | Question | Answer |
