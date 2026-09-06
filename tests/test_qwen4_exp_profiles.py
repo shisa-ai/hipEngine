@@ -259,7 +259,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"] == "1"
     wave = _selection_map(production)[("linear", "prefill_exact_q8_f32_coltile")]
     assert wave["selected_variant"] == "coltile8_rowbatch4_wave_scale_f32_f32_out"
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"

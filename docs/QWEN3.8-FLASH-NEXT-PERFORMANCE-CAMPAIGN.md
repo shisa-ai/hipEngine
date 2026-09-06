@@ -76,11 +76,25 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**MMQ vector staging default-off admission (September6 UTC):** five
+**MMQ vector staging production (September6 UTC):** clean `9b0d14cec`
+canonical12-case A/B preserves all72 trajectories and improves every
+prefill/request-wall case. PP512/1024/4096:
+164.712->168.040 /162.186->165.711 /150.246->153.335 tok/s
+(+2.021%/+2.173%/+2.056%);total request1.01205x.
+Aggregate TG-0.180%/-0.038%/-0.349%;worst case Japanese4096-0.527%,
+retained under the prefill-first direction. Max PP/TG CV0.793%/1.668%;
+measured span30m56.4s excludes initial loading/warmup. No new persistent
+memory;zero final allocations. Production binds vec4=1,strict=0;
+existing prepacked scope and rows>=64 only. Scalar-stage prepacked parent,
+raw MMQ and strict coltile fallbacks remain. Fresh family/comparator
+refreshes are next; this is not a new Vulkan parity result.
+[Production evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-production.json).
+
+**Earlier MMQ vector staging default-off admission (September6 UTC):** five
 off/on/off cases pass full logits, four decode steps, state and full KV.
 Calls0/72/0 at512 or0/576/0 at4096;zero decode/final owners.23 CPU tests
 pass. Existing prepacked MMQ rows>=64 only;both profile binders0.
-Next is the clean canonical12-case `--route-package q8-mmq-vec4` A/B.
+The subsequent canonical12-case A/B above passes and promotes the candidate.
 [State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json).
 
 **MMQ vector activation staging (September6 UTC):** the fresh four-category
@@ -93,8 +107,8 @@ in aligned four-word groups. Actual QKV/SSM512 complete chains improve
 positive, both arm orders positive throughout, all80 pairs exact.
 25 tests pass; cached QKV trace5.007->3.777ms, unchanged144 VGPR/
 57856B LDS/scratch0. All three planes and ordered arithmetic remain.
-No runtime/default change until invocation-checked model state/KV and
-canonical12-case A/B. This is not a measured model-throughput improvement.
+This kernel screen alone was not a model-throughput improvement; the
+subsequent state gate and production A/B above qualified promotion.
 [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-activation-vec4.json).
 
 **Q5_K bundle rejected and removed (September6 UTC):** clean `4b39fbfa5`

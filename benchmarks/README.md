@@ -2,15 +2,24 @@
 
 Last updated: **2026-09-06 UTC**
 
-MMQ vector staging model admission passes five exact full-logit/state/KV
-cases:72/576 prefill calls,zero decode/final owners. Both binders remain0;
-canonical12-case throughput gate is next.
+| Framework UD-Q4_K_XL / BF16 KV MMQ vector staging | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 164.712 -> 168.040 (+2.021%) | 162.186 -> 165.711 (+2.173%) | 150.246 -> 153.335 (+2.056%) |
+
+All72 trajectories exact;every prefill/request case improves,total1.01205x.
+TG-0.180%/-0.038%/-0.349% retained;no new memory. Existing prepacked
+MMQ scope only;not a fresh Vulkan comparison.
+[Production evidence](results/2026-09-06-framework-qwen4exp-mmq-vec4-production.json).
+
+Earlier MMQ vector staging model admission passed five exact full-logit/state/KV
+cases:72/576 prefill calls,zero decode/final owners. Both binders were0;
+the subsequent canonical12-case gate above passes and promotes it.
 [State evidence](results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json).
 
-MMQ vector activation staging, kernel-only: actual QKV/SSM complete chains
+Earlier MMQ vector activation staging kernel screen: actual QKV/SSM complete chains
 at512 rows improve5.196->4.022ms (1.292x)/2.857->2.156ms (1.325x).
 All80 pairs exact, both orders positive;25 tests pass. Same VGPR/LDS/scratch.
-Model gates pending; production unchanged.
+Subsequent model gates passed; promotion evidence is above.
 [Evidence](results/2026-09-06-framework-qwen4exp-mmq-activation-vec4.json).
 
 Q5_K bundle rejected after the complete12-case A/B: all72 trajectories exact,
