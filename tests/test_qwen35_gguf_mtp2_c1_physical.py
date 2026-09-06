@@ -525,3 +525,30 @@ def test_physical_c1_refill_keeps_pair_closed_until_wide_evidence() -> None:
             candidate_counts=(3,),
         )
     ) is True
+
+
+def test_physical_c1_frontier_pads_into_the_shared_accept_bucket() -> None:
+    """The C1 R4 frontier pads to the rows-6 shape inside the r36 bucket."""
+
+    from hipengine.speculative.frontier import physical_group_pad_rows
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=8,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    # gfx1100 production verifies at the rows-6 tile: the one-row K3 frontier
+    # (4 active rows) pads by 2 inactive rows, still inside the shared
+    # max-shaped accept bucket (8 requests x 4 rows padded to 36).
+    assert adapter.production_target_pad_row_counts == (6,)
+    assert (
+        physical_group_pad_rows(
+            adapter.production_target_pad_row_counts,
+            request_count=1,
+            candidate_rows=3,
+            max_rows=adapter.physical_accept_max_rows,
+        )
+        == 2
+    )
+    assert adapter.physical_accept_max_rows == 36
