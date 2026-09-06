@@ -7,6 +7,7 @@ through a registry at call time so backend/quant choices do not become engine br
 from __future__ import annotations
 
 import os
+import inspect
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field, replace
 from numbers import Integral
@@ -14,6 +15,20 @@ from pathlib import Path
 from typing import Any
 
 AUTO_QUANT = "auto"
+
+
+def _factory_capacity_kwargs(factory, *, max_sequence_length, resident_capacity):
+    """Forward configured limits only to factories that explicitly declare them."""
+    try:
+        parameters = inspect.signature(factory).parameters
+    except (TypeError, ValueError):
+        return {}
+    return {
+        name: value for name,value in (
+            ("max_sequence_length",max_sequence_length),("resident_capacity",resident_capacity))
+        if value is not None and name in parameters and parameters[name].kind in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,inspect.Parameter.KEYWORD_ONLY)
+    }
 
 _ENGINE_LOOP_GENERATOR_DEFAULT_ENVS = {
     "prefill_decode_policy": "HIPENGINE_PREFILL_DECODE_POLICY",
@@ -837,6 +852,7 @@ class LLM:
             backend=backend,
             quant=quant,
         )
+        base_loop_config = engine_loop_config_from_env()
         factory_kwargs = {
             "model_path": self.model,
             "weight_index": weight_index,
@@ -844,6 +860,11 @@ class LLM:
         }
         if self.vision_model is not None:
             factory_kwargs["vision_model_path"] = self.vision_model
+        effective_factory = factory if profile_resolution is None else (profile_resolution.factory or factory)
+        factory_kwargs.update(_factory_capacity_kwargs(
+            effective_factory,max_sequence_length=self.max_sequence_length,
+            resident_capacity=(self.max_active_requests if self.max_active_requests is not None
+                               else base_loop_config.max_active_requests)))
         generator = (
             factory(**factory_kwargs)
             if profile_resolution is None
