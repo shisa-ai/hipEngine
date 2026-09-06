@@ -10972,6 +10972,7 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     file_type_name: str | None,
     physical_rows: int,
     default_minimum: int,
+    artifact_preset_key: str | None = None,
 ) -> int:
     """Resolve a packed-graph floor from backend model/quant/width policy."""
 
@@ -10987,7 +10988,14 @@ def _resolve_gguf_packed_decode_graph_min_replay_steps(
     )
     if not isinstance(package_policies, Mapping):
         raise RuntimeError("backend packed decode graph floor policies must be a mapping")
-    policy = package_policies.get((geometry, file_type_name), {})
+    if artifact_preset_key is None:
+        policy = package_policies.get((geometry, file_type_name), {})
+    else:
+        # A preset-bound artifact never reads plain-stamp-keyed rows; only an
+        # exact preset-keyed row (if a backend ships one) applies.
+        policy = package_policies.get(
+            (geometry, file_type_name, artifact_preset_key), {}
+        )
     if not isinstance(policy, Mapping):
         raise RuntimeError("backend packed decode graph floor policy must be a mapping")
     raw = policy.get(rows)
@@ -16636,13 +16644,26 @@ class Qwen35GGUFResidentSession:
         if default is None or self.runner is None or self.runner.weights is None:
             return None
         identity = _gguf_policy_identity(self.runner.weights)
-        geometry, file_type_name = (None, None) if identity is None else identity
+        # Identity is a 2-tuple for plain artifacts and a 3-tuple when a UD
+        # admission preset is bound.  Never unpack destructively: threading
+        # the preset key through preserves the qualification boundary — a
+        # preset-bound resident must not resolve plain-stamp-keyed rows.
+        if identity is None:
+            geometry = None
+            file_type_name = None
+            artifact_preset_key = None
+        elif len(identity) == 2:
+            geometry, file_type_name = identity
+            artifact_preset_key = None
+        else:
+            geometry, file_type_name, artifact_preset_key = identity
         return _resolve_gguf_packed_decode_graph_min_replay_steps(
             str(self.runner.backend),
             geometry=geometry,
             file_type_name=file_type_name,
             physical_rows=int(physical_rows),
             default_minimum=int(default),
+            artifact_preset_key=artifact_preset_key,
         )
 
     def _resolve_decode_graph_min_replay_steps(self) -> int | None:

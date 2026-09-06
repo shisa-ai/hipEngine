@@ -1971,3 +1971,66 @@ def test_plan_contract_records_effective_operations_and_slot_scope():
     exported = certificate.as_dict()
     assert exported["slot_filter"] == ["layers.0.attn_qkv", "root.lm_head"]
     assert exported["plan_contract"]["contract_f32_linear"] in (True, False)
+
+
+def test_packed_decode_graph_min_replay_steps_survives_preset_bound_identity(
+    monkeypatch,
+):
+    """U1 repair 6 regression: ``packed_decode_graph_min_replay_steps`` used a
+    2-element unpack of a policy identity that now carries an optional preset
+    key.  With a preset-bound resident it must (a) not raise and (b) not read
+    plain-stamp-keyed policy rows (the qualification boundary)."""
+
+    import hipengine.runtime.qwen35_gguf_runner as runner_module
+    from types import SimpleNamespace
+
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    geometry = GGUFModelGeometry.try_from_config(_config((LINEAR_ATTENTION,)))
+    assert geometry is not None
+
+    def fake_capability(backend, name, default):
+        assert name == "GGUF_PACKED_DECODE_GRAPH_MIN_REPLAY_STEPS_BY_POLICY"
+        return {
+            # Plain-stamp-keyed row: must apply to plain residents only.
+            (geometry, "MOSTLY_Q4_K_M"): {24: 9},
+        }
+
+    monkeypatch.setattr(
+        runner_module, "backend_package_capability", fake_capability
+    )
+
+    def session_with(weights):
+        fake_session = SimpleNamespace(
+            runner=SimpleNamespace(backend="hip_gfx1151", weights=weights),
+            _decode_graph_min_replay_steps_cache=5,
+        )
+        # The real method, called with a mocked resident session.
+        return lambda rows: Qwen35GGUFResidentSession.packed_decode_graph_min_replay_steps(
+            fake_session, rows
+        )
+
+    plain_weights = SimpleNamespace(
+        geometry=geometry,
+        file_type_name="MOSTLY_Q4_K_M",
+        artifact_preset_key=None,
+    )
+    # Plain identity reads the plain policy row: rows=24 -> minimum 9.
+    assert session_with(plain_weights)(24) == 9
+
+    ud_weights = SimpleNamespace(
+        geometry=geometry,
+        file_type_name="MOSTLY_Q4_K_M",
+        artifact_preset_key=GGUF_UD_Q4_K_M_PRESET,
+    )
+    # Preset-bound identity must not raise (the old unpack ValueError) and
+    # must not inherit the plain row: generic fallback ceil(5/24) = 1.
+    assert session_with(ud_weights)(24) == 1
+
+    unknown_weights = SimpleNamespace(
+        geometry=geometry,
+        file_type_name=None,
+        artifact_preset_key=None,
+    )
+    assert session_with(unknown_weights)(24) == 1
