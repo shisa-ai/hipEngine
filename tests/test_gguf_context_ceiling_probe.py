@@ -26,6 +26,21 @@ def _load():
     return module
 
 
+def test_default_prompt_target_leaves_room_for_the_server_continuation_token() -> None:
+    """The default prompt target must satisfy prompt + max_tokens + 1 <= context.
+
+    The server rejects a request whose prompt + max_tokens + 1 exceeds the
+    preallocated context (observed 2026-09-06: declared 8192/32768 points fit
+    prompts at context - max_tokens and failed with 400 context_length_exceeded
+    at prompt 8177/32752 + 16 + 1). The default target reserves the +1.
+    """
+
+    module = _load()
+    for context, max_tokens in ((4_096, 16), (8_192, 16), (32_768, 16)):
+        target = module.default_prompt_token_target(context, max_tokens)
+        assert target + max_tokens + 1 <= context
+
+
 def test_fit_prompt_tokens_hits_the_target_exactly() -> None:
     module = _load()
     unit = [1, 2, 3, 4, 5]

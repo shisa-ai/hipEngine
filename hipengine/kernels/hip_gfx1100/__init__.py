@@ -1039,6 +1039,26 @@ GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
 # LCP-1 remains a separately registered diagnostic on gfx1100 because its
 # architecture-local full-state and wall gate rejected automatic promotion.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
+# XTX capacity campaign 2026-09-06: the retained >1K auto policy resolves a
+# 4096-row full-attn query chunk, so every declared context at or below 4096
+# sized the dense bulk-prefill scratch by the full declared context (~1 MiB of
+# scratch per declared token measured on the W7900 at BF16 3,328->3,840 while
+# the KV payload is 64 KiB/token). Bound session scratch rows to the retained
+# 1024-row outer chunk the low-memory (52K+ on 24GB) and gfx1151 8K+ policies
+# already use; prompts below 1,024 rows keep today's unchunked scratch. The
+# 1,024 threshold also covers the d512 concurrency class (declared 1,280:
+# N=4/5 warmup OOMs were unchanged with a 2,048-only threshold). Exactness:
+# per-row full attention is independent of query batching and the GDN chunk
+# sequence is unchanged (linear chunk already 1024); a 2,650-token greedy
+# server request matched the uncapped route token-for-token on the W7900.
+GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES = {
+    (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
+        "min_capacity": 1_024,
+        "max_rows_by_capacity": {
+            1_024: 1_024,
+        },
+    },
+}
 
 __all__ = [
     "LAGUNA_ACTIVATION_PACK_REUSE",
@@ -1093,6 +1113,7 @@ __all__ = [
     "GGUF_PREFILL_ROUTER_SELECT_THREADS",
     "GGUF_PREFILL_SCRATCH_LIVENESS_ALIAS",
     "GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES",
+    "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS",
     "GGUF_Q4_K_M_SERVER_PLAIN_AR_MAX_ACTIVE_REQUESTS_BY_MAX_SEQUENCE_LENGTH",
     "GGUF_Q4_K_M_PREFILL_DECODE_POLICY",

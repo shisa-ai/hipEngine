@@ -201,14 +201,15 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` is tight.** Measured on a physical
-  RX 7900 XTX with one active request: BF16 KV starts and completes at
-  **3,072 context tokens** and fails server warmup at 4,096 (21.869 and
-  23.328 GiB peak). Qualified compact INT8 KV (FP32 per-token/head scales,
-  no BF16 mirror) completes **4,096** and first fails warmup at 5,120, at
-  21.349 / 22.601 / 23.751 GiB for 2K / 3K / 4K — 0.5–0.7 GiB under BF16.
-  Most of the single-request footprint is fixed runtime residency, not KV.
-  [`startup boundary`](results/2026-09-06-rx7900xtx-startup-boundary-repaired-probe.json)
+- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` fits long contexts.** Measured on a
+  physical RX 7900 XTX with one active request: BF16 KV serves declared
+  contexts through **40,960 tokens** (32,768 peaks at 23.162 GiB; 45,056
+  first fails warmup). Compact INT8 KV (FP32 scales) serves
+  through **15,872 tokens**; larger contexts fail on a route defect, not
+  memory. Prefill scratch is bounded to fixed 1,024-row chunks, so session
+  memory follows the KV payload (64 KiB/token BF16, 32.5 KiB/token INT8)
+  rather than the declared context.
+  [`scratch row cap`](results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json)
 
 ### Serving several requests at once
 
