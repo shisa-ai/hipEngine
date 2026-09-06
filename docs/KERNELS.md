@@ -796,8 +796,13 @@ Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack.json`.
 The registered `weight_pack/gguf_q8_0/mmq_kmajor76` packer now builds this
 layout directly from resident raw device weights. Nine focused tests cover
 byte-exact CPU layout, signed-zero/subnormal scales, output tails and repeats;
-cached trace shows24 VGPR, no scratch/LDS. Runtime sidecar admission remains
-pending. Evidence: `2026-09-06-framework-qwen4exp-mmq-gpu-pack.json`.
+cached trace shows24 VGPR, no scratch/LDS.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-gpu-pack.json`.
+Default-off Qwen4Exp runtime admission now passes five full logits/state/KV
+cases with live calls0/72/0 at512 and0/576/0 at4096. Runner-owned72 sidecars
+add1,793,064,960 bytes and close cleanly; session maps only substitute the
+matmul weight pointer, never decode/repair. Complete12-case performance gate
+remains pending. Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack-state.json`.
 
 The GR up+sigmoid+branch-mean composite also registers the separate T0
 `coltile2_branch4_rowbatch4_wave_scale_f32_exact` sibling. At rows512,
