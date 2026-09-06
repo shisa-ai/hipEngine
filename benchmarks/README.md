@@ -50,9 +50,12 @@ Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
 - **On a 24 GB card such as the RX 7900 XTX**, Qwen3.8-27B `Q4_K_M` with
-  512-token prompts fits about **five concurrent requests**. Measured peak runs
-  19.4 GiB at one request and rises roughly 0.85 GiB per added request, so six
-  is marginal at 23.7 GiB and seven or more will not fit.
+  512-token prompts fits **four to five concurrent requests**. Peak HIP usage is
+  19.6 GiB at one request and rises about 0.9 GiB per added request: c4 needs
+  22.4 GiB, c5 needs 23.3 GiB, and c6 needs 24.2 GiB, which does not fit. The
+  weights alone are 15.9 GiB, so concurrency and context compete for the same
+  ~8 GiB. At one request the same card has measured 32K context on BF16 KV and
+  112K on INT8 KV.
 
 ### Serving several requests at once
 
