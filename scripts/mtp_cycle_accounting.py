@@ -194,8 +194,14 @@ def _analyze_cell(cell: dict[str, Any]) -> dict[str, Any]:
         rec_cycles = int(rec["specdec2_mtp2_cycles"])
         assert len(rec["specdec2_mtp2_candidate_counts"]) == rec_cycles
         # per-request committed = 1 bootstrap token + accepted + one visible
-        # token per cycle; final-cycle overshoot is truncated at max_tokens
-        expected_committed += 1 + acc + rec_cycles
+        # token per cycle + one token per K0 catch-up decode step between
+        # cycles; final-cycle overshoot is truncated at max_tokens
+        expected_committed += (
+            1
+            + acc
+            + rec_cycles
+            + int(rec.get("specdec2_mtp2_k0_catchups") or 0)
+        )
     residual = generated - expected_committed
     if abs(residual) > width:
         raise AssertionError(
