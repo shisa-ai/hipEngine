@@ -4306,27 +4306,27 @@ def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
 
     import hipengine.generation.qwen35_gguf_mtp2 as module
 
-    assert module._MTP2_MAX_CANDIDATE_DEPTH == 3
+    assert module._MTP2_MAX_CANDIDATE_DEPTH == 4
 
-    # At the declared depth, budget 4 remains rejected.
+    # At the declared depth, budget 5 remains rejected.
     with pytest.raises(ValueError, match="candidate budget"):
         Qwen35GGUFMTP2Adapter(
             _width_bound_owner(profile="production", capacity=8),
             enabled=True,
             target_verify_mode="packed",
-            candidate_budget=4,
+            candidate_budget=5,
         )
 
     # Lifting the declared depth lifts admission coherently.
     original = module._MTP2_MAX_CANDIDATE_DEPTH
-    module._MTP2_MAX_CANDIDATE_DEPTH = 4
+    module._MTP2_MAX_CANDIDATE_DEPTH = 5
     try:
         lifted = Qwen35GGUFMTP2Adapter(
             _width_bound_owner(profile="production", capacity=8),
             enabled=True,
             target_verify_mode="packed",
-            candidate_budget=4,
+            candidate_budget=5,
         )
-        assert lifted.candidate_budget == 4
+        assert lifted.candidate_budget == 5
     finally:
         module._MTP2_MAX_CANDIDATE_DEPTH = original

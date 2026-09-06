@@ -1755,3 +1755,51 @@ def test_device_top1_maps_compact_batch_ids_in_place(
         256,
         1024,
     )
+
+
+def test_nextn_exact_chain_ladder_covers_budget_4_and_derives_capacity() -> None:
+    """The K4 draft chain must fit every capacity-derived buffer.
+
+    Regression guard for the K4 device wedge: the exact-chain ladder froze at
+    ``(1, 2, 3)``, so ``_NEXTN_TOP1_RESULT_CAPACITY`` sized the proposal token
+    and result buffers for three slots per request while a K4 proposal wrote
+    offsets through depth 3 — an out-of-bounds device write that wedged the
+    stream in a blocking 4-byte D2D memcpy (bg-33 watchdog dump,
+    qwen35_gguf_nextn.py run_batch_proposal_device).
+    """
+
+    import hipengine.runtime.qwen35_gguf_nextn as module
+
+    ladder = module._NEXTN_EXACT_CHAIN_GRAPH_BUDGETS
+    assert ladder == (1, 2, 3, 4)
+    assert module._NEXTN_TOP1_RESULT_CAPACITY == max(ladder) == 4
+
+    # A budget-4 device proposal descriptor now validates, including its
+    # per-slot result span and [budget, hidden] hidden rows.
+    proposal = module.Qwen35GGUFNextNDeviceProposal(
+        request_id=41,
+        root_token=9,
+        root_position=12,
+        budget=4,
+        result_ptr=0x5000,
+        result_nbytes=4 * module._NEXTN_TOP1_RESULT_NBYTES,
+        completion_event=0x6000,
+        stream=0x7000,
+        final_hidden=Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+        hidden_rows=Tensor.from_handle(0x9000, (4, 8), DType.BF16, Device("hip", 0)),
+    )
+    assert proposal.budget == 4
+
+    # Outside the ladder is still rejected.
+    with pytest.raises(ValueError, match="exact graph ladder"):
+        module.Qwen35GGUFNextNDeviceProposal(
+            request_id=41,
+            root_token=9,
+            root_position=12,
+            budget=5,
+            result_ptr=0x5000,
+            result_nbytes=5 * module._NEXTN_TOP1_RESULT_NBYTES,
+            completion_event=0x6000,
+            stream=0x7000,
+            final_hidden=Tensor.from_handle(0x8000, (1, 8), DType.BF16, Device("hip", 0)),
+        )
