@@ -1243,6 +1243,30 @@ This source comparison narrows the campaign to mechanisms visible in both code
 and profiles. It does not prove the size of any unimplemented hipEngine win;
 section 2.2's local Amdahl row remains the admission gate.
 
+### 4.3 Wilkin runtime and scheduler follow-ups (September 6, 2026)
+
+Reviewed `pwilkin/rocm-systems` at `78d1160060bb6ada29b3b21e20c998a48161b257`,
+the Strix Halo site/installer at `4d0bf821cab29734dacce5321fcd73add72908c0`,
+and linked llama.cpp at `d3b5cc43d1fcfce891f2de94d5274ee40eceb21c`.
+See [source-pinned review and execution protocol](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md).
+Our existing [PM4 work](PM4.md) is the baseline for this review, not missing
+infrastructure. User explicitly requests a revisit against Wilkin's differences.
+No external code or library installed; no new local speed claim.
+
+| Follow-up | Concrete difference / applicability | Next gate and disposition |
+| --- | --- | --- |
+| WIL-1: gfx1151 PM4 through HIP queue | External prepared lists use HIP's tracked queue and queue-aware scratch leases; ours is gfx1100-only with synchronous dedicated-queue boundaries. | **Open, first runtime follow-up:** census current Flash-Next graph eligibility and exposed dispatch cost. If paying, isolated current HIP graph / custom AQL graph / custom PM4 A/B, exact logits/state/KV/lifecycle/c2. Preserve prefill-first ranking by measured ceiling. |
+| WIL-2: graph update and collapsed batches | Batched packet rebuilding, topology caching and optional collapsed-stream merge may reduce construction/rebuild cost without changing kernels. | **Open, cost-gated:** count actual updates and amortize preparation; test independently of PM4. Stable per-layer MoE graphs may have little update work. |
+| WIL-3: UMA input ownership | Ring slot retirement, pointer-generation invalidation and async allocation-root pinning are useful design checks. PLE currently documents synchronous consumption. | **Open before async PLE changes:** delayed consumer/wrap/cancel/c2 tests plus complete copy/wait timing and capacity charge; not a demonstrated current race or automatic ring-depth increase. |
+| WIL-4: semantic-safe TOP_K | Multi-CTA radix thresholding may help long-context selection; our QSA already has radix selection and strict ordered expansion. | **Open, lower priority until owner cost pays:** exact lower-index ties and sorted compaction after threshold. External atomic gather is not admissible unchanged. Separate QSA, top10 router and vocabulary k1 owners. |
+
+Do not use `ENABLE_RETAINED_PM4=0` as the AQL-graph control: the installer
+also disables graphs. HIP dispatch activity tracing disables external PM4;
+prove engagement unprofiled and keep profiling as a separate AQL diagnostic.
+The site's Qwen3.8-27B IQ4_XS/DFlash2 rates and another physical8060S host
+are not our Flash-Next UD-Q4_K_XL rates. The pinned halo-box Vulkan target
+and all production numerical/control gates remain unchanged.
+
 ## 5. Plan
 
 Phase numbers preserve evidence lineage; they are not the execution queue. The

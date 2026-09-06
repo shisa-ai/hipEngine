@@ -22,6 +22,15 @@ and fail closed.
 
 ## Decision
 
+**September 6, 2026 revisit:** the owner requests comparison with Wilkin's
+gfx1151 experiments, explicitly preserving our prior PM4 evidence.
+[Source-pinned review](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) records the meaningful
+differences: HIP-owned queue submission, queue-specific scratch leases,
+graph-update/batch changes, and profiler fallback. Its first step is a
+current-host graph eligibility/overhead census, not removing our gfx1100 guard
+or rerunning reset-risk queue-recreation diagnostics. No admission/default
+change follows from external gains; Flash-Next gates remain independent.
+
 Build the transport in-tree.
 
 - Keep `hipgraph` as the global default, portable fallback, and correctness baseline.
