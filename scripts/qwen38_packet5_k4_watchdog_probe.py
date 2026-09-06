@@ -249,6 +249,43 @@ def _run_direct_probe(args: argparse.Namespace) -> int:
     return 0 if result.get("status") == "complete" else 1
 
 
+def _wrap_batcher_run_group(app: Any, out_dir: Path) -> None:
+    """Log exceptions escaping ``_GenerationBatcher._run_group``.
+
+    An exception in the batch-route pre-flight or post-processing kills the
+    batcher worker; queued items then wait forever and the exception dies
+    with the garbage-collected task. Wrapping it converts the deadlock into
+    a recorded error while keeping the original behavior.
+    """
+
+    import types as _types
+    import traceback as _tb
+
+    batcher = app.state.hipengine_generation_batcher
+    original = batcher._run_group
+
+    def logged(self: Any, group: Any, **kwargs: Any):
+        try:
+            return original(group, **kwargs)
+        except BaseException as exc:  # noqa: BLE001 - probe records and re-raises
+            path = out_dir / "batcher-run-group-exceptions.log"
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(
+                    f"=== {time.strftime('%H:%M:%S')} group_size={len(group)} ===\n"
+                )
+                handle.write(_tb.format_exception(type(exc), exc, exc.__traceback__))
+                handle.write("\n")
+            for item in group:
+                try:
+                    batcher._finish_queued_generation(item, exception=exc)
+                except Exception:
+                    pass
+            raise
+
+    batcher._run_group = _types.MethodType(logged, batcher)  # type: ignore[method-assign]
+    print("[probe] batcher._run_group wrapped for exception capture", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
@@ -320,6 +357,19 @@ def main() -> int:
     beat.start()
 
     from scripts.gguf_mtp_c1c8_server_bench import build_parser, run as bench_run
+
+    import hipengine.server.api as _server_api
+    import scripts.gguf_mtp_c1c8_server_bench as _bench_module
+
+    _original_create_app = _server_api.create_app
+
+    def _create_app_with_wrapper(*create_args: Any, **create_kwargs: Any):
+        app = _original_create_app(*create_args, **create_kwargs)
+        _wrap_batcher_run_group(app, out_dir)
+        return app
+
+    _server_api.create_app = _create_app_with_wrapper
+    _bench_module.create_app = _create_app_with_wrapper
 
     argv = [
         "--model", str(args.model),
