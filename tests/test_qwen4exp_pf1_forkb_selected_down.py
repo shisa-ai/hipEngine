@@ -91,6 +91,56 @@ def _build_group_map(
     return starts, order
 
 
+def test_q8_grouped_row4_registry():
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import resolve
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv
+    register_gfx1151_kernels(replace=True)
+    assert resolve(backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
+                   variant="selected_grouped_row4_gemv_bf16_bf16_out") is (
+        gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("threads", [64, 128, 256])
+def test_q8_row4_compact_tails_and_cpu_reference(threads):
+    from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv
+    from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+    from tests.test_qwen4_exp_pf3_moe_schedules import _alloc, _upload, _download
+    counts = np.array([0, 1, 3, 9, 4], dtype=np.int64)
+    starts = np.concatenate(([0], counts.cumsum()))
+    rows, experts, k, n = 17, 5, 640, 7
+    x = _f32_to_bf16_bits(np.random.default_rng(9921).normal(0, .2, (rows, k)))
+    weights = make_q8_0_weight_large(experts * n, k)
+    runtime = get_hip_runtime()
+    allocations = []
+    try:
+        dx, ds, dw = [_upload(v, runtime, allocations) for v in (x, starts, weights)]
+        outputs = [_alloc((rows, n), np.uint16, runtime, allocations) for _ in range(2)]
+        for i, fn in enumerate((gemv.gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+                                gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)):
+            fn(dx.ptr, ds.ptr, None, dw.ptr, outputs[i].ptr, rows, rows, experts, k, n,
+               runtime=runtime, threads=threads)
+        actual = [_download(o, (rows, n), np.uint16, runtime) for o in outputs]
+        np.testing.assert_array_equal(*actual)
+        dense = dequantize_gguf_data(weights, GGMLQuantizationType.Q8_0).reshape(experts, n, k)
+        expected = np.concatenate([
+            _bf16_bits_to_f32(x[starts[e]:starts[e+1]]) @ dense[e].T
+            for e in range(experts)])
+        got = _bf16_bits_to_f32(actual[1])
+        np.testing.assert_allclose(got, expected, rtol=.01, atol=.01)
+        def logsoftmax(a):
+            a = a.astype(np.float64)
+            a -= a.max(axis=-1, keepdims=True)
+            return a - np.log(np.exp(a).sum(axis=-1, keepdims=True))
+        lp, lq = logsoftmax(expected), logsoftmax(got)
+        assert np.max(np.sum(np.exp(lp) * (lp - lq), axis=-1)) <= .05
+        assert np.mean(expected.argmax(-1) == got.argmax(-1)) >= .9
+    finally:
+        for buf in reversed(allocations):
+            free(buf, runtime=runtime)
+
+
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 def test_pf1_forkb_grouped_selected_down_imports() -> None:
     """RED on the unmodified path: the candidate wrapper does not exist yet."""
@@ -102,6 +152,7 @@ def test_pf1_forkb_grouped_selected_down_imports() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
+@pytest.mark.parametrize("row_batch", [1, 4])
 @pytest.mark.parametrize(
     "x_rows,top_k,num_experts,in_features,out_features",
     [
@@ -110,13 +161,19 @@ def test_pf1_forkb_grouped_selected_down_imports() -> None:
     ],
 )
 def test_pf1_forkb_grouped_selected_down_bit_parity(
-    x_rows: int, top_k: int, num_experts: int, in_features: int, out_features: int
+    x_rows: int, top_k: int, num_experts: int, in_features: int, out_features: int,
+    row_batch: int,
 ) -> None:
     """The grouped candidate is bit-identical to the block-per-output owner."""
 
     from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
         gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
     )
+    if row_batch == 4:
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+            gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out as
+            gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+        )
 
     rows = x_rows * top_k
     rng = np.random.default_rng(2026_09_04)
@@ -237,7 +294,9 @@ def test_pf1_forkb_runner_default_matches_strict_flag_off(monkeypatch) -> None:
         Qwen4ExpMoEScratch,
         run_qwen4_exp_moe,
     )
+    from hipengine.kernels.hip_gfx1100.moe.router import register_qwen35_router_kernels
 
+    register_qwen35_router_kernels(replace=True)
     register_gfx1151_kernels(replace=True)
     runtime = get_hip_runtime()
     monkeypatch.setenv("HIPENGINE_QWEN4_EXP_GROUPED_MOE_PREFILL", "1")

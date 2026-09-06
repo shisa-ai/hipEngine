@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q8 down row4 candidate] Layer4 actual weights/counts47.805->43.175ms (-9.68%); independent layer30 weights/borrowed layer4 counts47.254->41.546ms (-12.08%). Forty pairs exact,19 GPU tests; resource footprint unchanged. Kernel retained, model admission pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4.json`.
+
 - [2026-09-06 UTC Framework Q4 fixed geometry rejected] Real layer3/0 gate/up+SiLU16.984->16.938ms (-0.27%)/17.464->17.394ms (-0.40%),40 exact pairs but candidate-first0.9997x/0.9994x. Same88 VGPR, near-flat result not promoted; candidate removed. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-shape-rejected.json`.
 
 - [2026-09-06 UTC Framework PM4 opportunity census] Clean e6f78c35d code4096: zero prefill graph launches,26.992s kernel union/27.330s window; decode48 graphs/625 nodes,1.35-1.43ms intra-graph gaps. Three token/state repeats exact, zero final owners. Throughput delta N/A; custom-runtime prefill A/B deferred. `benchmarks/results/2026-09-06-framework-qwen4exp-wilkin-graph-census.json`.

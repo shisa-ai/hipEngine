@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 grouped down row4 candidate (September6 UTC):** fresh FFN audit finds
+1.487s in the row1 grouped Q8 down owner across layers4/30/46/47. Sharing
+decoded weights across four independent rows gives exact1.107x on real layer4
+weights/counts and1.137x on layer30 weights with explicitly borrowed layer4
+counts. Both orders/means positive;19 GPU tests pass, trace24 VGPR/512B LDS/
+scratch0 unchanged. Retain kernel candidate; full-model invocation/logits/
+state/KV and12-case A/B remain mandatory before runtime/default promotion.
+Layer2's separate selected-Q8 owner is outside this measured scope.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4.json).
+
 **Q4 fixed-geometry screen near-flat (September6 UTC):** specialize K2560/
 N640 without K unrolling or new caches. Thirteen GPU tests and40 actual
 layer3/0 captured-routing pairs are exact. Medians1.003x/1.004x, but

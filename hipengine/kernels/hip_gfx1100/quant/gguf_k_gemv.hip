@@ -1149,9 +1149,10 @@ __global__ void gguf_k_selected_prefill_out_kernel(
 }
 
 // PF-1 fork (b) T0 candidate: grouped selected down prefill. One block serves
-// every selected lane of one (expert, out_col) pair and reads the expert's
-// weight row once, instead of one block per output element re-reading it per
-// lane. Per-output arithmetic is identical to
+// every selected lane of one (expert, out_col) pair. ROW_BATCH=1 retains the
+// original serial-lane owner; ROW_BATCH=4 reuses each decoded weight across
+// four rows without changing their independent accumulation sequences.
+// Per-output arithmetic is identical to
 // gguf_k_selected_prefill_out_kernel: the same per-thread k sequence
 // (k = threadIdx.x; k += blockDim.x), the same ordered ``acc += xv * wv``
 // accumulation, and the same reduce_block_sum wave-shuffle + serial wave
@@ -1163,7 +1164,7 @@ __global__ void gguf_k_selected_prefill_out_kernel(
 // lane_to_row maps each sorted group position to the x/out row it serves.
 // When the caller's x and out buffers are already in sorted-lane order (the
 // qwen4-exp grouped-prefill scratch layout), pass nullptr and row = lane.
-template <typename scalar_t, typename out_t>
+template <typename scalar_t, typename out_t, int ROW_BATCH = 1>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_grouped_prefill_out_kernel(
     const scalar_t* __restrict__ x,
@@ -1189,29 +1190,38 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
       qweight + static_cast<int64_t>(expert_id) * expert_bytes +
       static_cast<int64_t>(out_col) * row_bytes;
 
-  for (int lane = lane_begin; lane < lane_end; ++lane) {
-    const int row =
-        lane_to_row != nullptr ? static_cast<int>(lane_to_row[lane]) : lane;
-    const int x_row = (x_rows == 1) ? 0 : (row / lanes_per_x_row);
-    const scalar_t* __restrict__ x_row_ptr =
-        x + static_cast<int64_t>(x_row) * in_features;
-
-    float acc = 0.0f;
+  for (int base = lane_begin; base < lane_end; base += ROW_BATCH) {
+    int row[ROW_BATCH];
+    int x_row[ROW_BATCH];
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      const int lane = base + r;
+      row[r] = lane < lane_end
+          ? (lane_to_row ? static_cast<int>(lane_to_row[lane]) : lane) : 0;
+      x_row[r] = (x_rows == 1) ? 0 : (row[r] / lanes_per_x_row);
+    }
+    float acc[ROW_BATCH] = {};
     for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
-      const float xv = scalar_to_float<scalar_t>(x_row_ptr[k]);
       const float wv = q8_0_weight(weight_row, k);
-      acc += xv * wv;
+#pragma unroll
+      for (int r = 0; r < ROW_BATCH; ++r) {
+        if (base + r < lane_end) {
+          const float xv = scalar_to_float<scalar_t>(
+              x[static_cast<int64_t>(x_row[r]) * in_features + k]);
+          acc[r] += xv * wv;
+        }
+      }
     }
-    const float total = reduce_block_sum(acc);
-    if (threadIdx.x == 0) {
-      store_output<out_t>(
-          out, static_cast<int64_t>(row) * out_features + out_col, total);
+#pragma unroll
+    for (int r = 0; r < ROW_BATCH; ++r) {
+      const float total = reduce_block_sum(acc[r]);
+      if (threadIdx.x == 0 && base + r < lane_end) {
+        store_output<out_t>(
+            out, static_cast<int64_t>(row[r]) * out_features + out_col, total);
+      }
+      // Retire the shared reduction scratch before publishing the next row.
+      __syncthreads();
     }
-    // reduce_block_sum reuses its shared wave_sums scratch across loop
-    // iterations; barrier before the next lane's lane-0 write so it cannot
-    // race with this lane's thread-0 read. Scheduling only — no arithmetic
-    // effect.
-    __syncthreads();
   }
 }
 
@@ -4460,7 +4470,7 @@ int launch_gguf_k_selected_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scalar_t, typename out_t>
+template <typename scalar_t, typename out_t, int ROW_BATCH = 1>
 int launch_gguf_k_selected_grouped_gemv_out(
     const scalar_t* x,
     const int64_t* expert_start,
@@ -4486,7 +4496,7 @@ int launch_gguf_k_selected_grouped_gemv_out(
   const dim3 grid(
       static_cast<unsigned int>(out_features),
       static_cast<unsigned int>(num_experts));
-  gguf_k_selected_grouped_prefill_out_kernel<scalar_t, out_t><<<grid, block, 0, stream>>>(
+  gguf_k_selected_grouped_prefill_out_kernel<scalar_t, out_t, ROW_BATCH><<<grid, block, 0, stream>>>(
       x,
       expert_start,
       lane_to_row,
@@ -4689,6 +4699,16 @@ extern "C" int hipengine_gguf_q8_0_selected_grouped_gemv_bf16_bf16_out(
     int64_t num_experts, int64_t in_features, int64_t out_features,
     int64_t threads, hipStream_t stream) {
   return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t>(
+      x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
+      in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out(
+    const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
+    const uint8_t* qweight, uint16_t* out, int64_t x_rows, int64_t rows,
+    int64_t num_experts, int64_t in_features, int64_t out_features,
+    int64_t threads, hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t, 4>(
       x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
       in_features, out_features, threads, stream);
 }
