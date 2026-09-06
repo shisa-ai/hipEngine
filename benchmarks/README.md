@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Qwen4Exp tool/grammar development checks: short15 scenarios93/100;
+structured-output6 scenarios83/100. Model-choice failures remain; not a
+full69-case qualification or throughput comparison.
+[Evidence](results/2026-09-06-framework-qwen4exp-tools-grammar.json).
+
 Native-capacity short-context check (2051->262144 allocated tokens):
 p512/p1024 decode-0.066%/-0.095%, prefill-0.737%/-0.238%;48/48 trajectories
 exact. Public serving now resolves native262144 on Framework through memory

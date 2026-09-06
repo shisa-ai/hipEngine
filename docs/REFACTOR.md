@@ -1,5 +1,19 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp tool grammar host path
+
+- Model-owned embedded-template/XML parsing replaces the generic JSON tool
+  instruction format only for Qwen4Exp. Keep other model parsers independent.
+- llguidance masks currently use full F32 D2H plus NumPy argmax. A later device
+  bitmask/argmax kernel may remove this cost, but must retain request isolation,
+  selected-token handoff, EOS/content boundaries and the same grammar language.
+- Do not revive generic JSON forced prefixes or close-repair tokens on the XML
+  route. Required/named tool choice is enforced by its grammar.
+- XML schema coverage is explicit; unsupported string/schema combinations fail
+  rather than being silently ignored. Broader XML parameter schema forms require
+  additional lexer/parser tests. Speculative/multimodal grammar support remains
+  rejected until it applies the same masks at every relevant token decision.
+
 ## Qwen4Exp context capacity policy
 
 - `native_context_length` is now consumed by public memory admission, bounded
