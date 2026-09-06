@@ -263,18 +263,27 @@ def _wrap_batcher_run_group(app: Any, out_dir: Path) -> None:
 
     batcher = app.state.hipengine_generation_batcher
     original = batcher._run_group
+    original_generate = batcher._generate_prompts
+
+    def _log_exception(where: str, exc: BaseException) -> None:
+        path = out_dir / "batcher-run-group-exceptions.log"
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"=== {time.strftime('%H:%M:%S')} {where} ===\n")
+            handle.write(_tb.format_exception(type(exc), exc, exc.__traceback__))
+            handle.write("\n")
+
+    def logged_generate(*gen_args: Any, **gen_kwargs: Any):
+        try:
+            return original_generate(*gen_args, **gen_kwargs)
+        except BaseException as exc:  # noqa: BLE001 - probe records and re-raises
+            _log_exception("generate_prompts", exc)
+            raise
 
     def logged(self: Any, group: Any, **kwargs: Any):
         try:
             return original(group, **kwargs)
         except BaseException as exc:  # noqa: BLE001 - probe records and re-raises
-            path = out_dir / "batcher-run-group-exceptions.log"
-            with open(path, "a", encoding="utf-8") as handle:
-                handle.write(
-                    f"=== {time.strftime('%H:%M:%S')} group_size={len(group)} ===\n"
-                )
-                handle.write(_tb.format_exception(type(exc), exc, exc.__traceback__))
-                handle.write("\n")
+            _log_exception(f"run_group size={len(group)}", exc)
             for item in group:
                 try:
                     batcher._finish_queued_generation(item, exception=exc)
@@ -282,8 +291,9 @@ def _wrap_batcher_run_group(app: Any, out_dir: Path) -> None:
                     pass
             raise
 
+    batcher._generate_prompts = logged_generate  # type: ignore[method-assign]
     batcher._run_group = _types.MethodType(logged, batcher)  # type: ignore[method-assign]
-    print("[probe] batcher._run_group wrapped for exception capture", flush=True)
+    print("[probe] batcher._run_group/_generate_prompts wrapped for exception capture", flush=True)
 
 
 def main() -> int:
