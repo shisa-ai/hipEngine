@@ -958,6 +958,67 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
     }
 
 
+def _print_tensor_map_summary(tensor_map: dict) -> None:
+    """Print the scoped AR vs NextN map availability/validation summary.
+
+    The AR map and the NextN map validate independently: an AR pass never
+    stands in for a NextN pass, so the verdicts are scoped explicitly and a
+    failed or unbuilt NextN map is visible in the default text (missing,
+    unexpected, dtype, and shape details or the construction exception), not
+    only in the JSON. A NextN map absent by design (no AR-excluded trailing MTP
+    block) is reported as not applicable, never as a failure. NextN route
+    tables printed later are diagnostics whenever the NextN map failed here;
+    zero per-slot planner refusals are not map admission and not consumer
+    qualification.
+    """
+
+    ar = tensor_map["ar"]
+    combined = tensor_map["combined"]
+    nextn = tensor_map["nextn"]
+    ar_word = "passed" if tensor_map["validation_passed"] else "FAILED (diagnostic)"
+    print(
+        f"    tensor map: architecture={tensor_map['architecture']} ar_validation={ar_word}"
+        f" ar_layers={ar['layers']} ar_slots={ar['consumer_slots']} ar_sources={ar['unique_sources']}"
+        f" ignored={tensor_map['ignored']['tensor_count']}"
+        f" nextn_blocks={nextn['blocks']}"
+        f" combined_slots={combined['consumer_slots']} combined_sources={combined['unique_sources']}"
+    )
+    for alias in combined["aliases"]:
+        print(
+            f"      alias source {alias['source']}: {alias['consumer_count']} consumer slots"
+            f" ({', '.join(alias['consumer_slots'])})"
+        )
+    if "error" in nextn:
+        # The NextN map could not be constructed; it has no routes to report.
+        # The AR verdict above is unaffected and stays printed.
+        print(
+            f"    nextn map: NOT BUILT (diagnostic only; nextn routes withheld): {nextn['error']}"
+        )
+        return
+    if not nextn["blocks"]:
+        print(
+            f"    nextn map: not applicable ({nextn.get('note', 'no AR-excluded trailing MTP block')})"
+        )
+        return
+    nextn_word = "passed" if nextn.get("validation_passed") else "FAILED (diagnostic)"
+    print(
+        f"    nextn map: validation={nextn_word} block_id={nextn['block_id']}"
+        f" own_slots={nextn['own_consumer_slots']}/{nextn['own_unique_sources']}"
+        f" fallback_slots={nextn['fallback_consumer_slots']}"
+    )
+    for label, key in (
+        ("missing", "missing"),
+        ("unexpected", "unexpected"),
+        ("dtype", "dtype_errors"),
+        ("shape", "shape_errors"),
+    ):
+        items = nextn.get(key) or []
+        if items:
+            preview = "; ".join(str(item) for item in items[:4])
+            more = "" if len(items) <= 4 else f" (+{len(items) - 4} more)"
+            print(f"      nextn {label}: {preview}{more}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("paths", nargs="+", type=Path, help="GGUF files to inspect")
@@ -1054,21 +1115,11 @@ def main(argv: list[str] | None = None) -> int:
                     f"    {backend['backend']}: planner unavailable (diagnostic only): {backend.get('error')}"
                 )
         else:
-            ar = tensor_map["ar"]
-            combined = tensor_map["combined"]
-            validation_word = "passed" if tensor_map["validation_passed"] else "FAILED (diagnostic)"
-            print(
-                f"    tensor map: architecture={tensor_map['architecture']} validation={validation_word}"
-                f" ar_layers={ar['layers']} ar_slots={ar['consumer_slots']} ar_sources={ar['unique_sources']}"
-                f" ignored={tensor_map['ignored']['tensor_count']}"
-                f" nextn_blocks={tensor_map['nextn']['blocks']}"
-                f" combined_slots={combined['consumer_slots']} combined_sources={combined['unique_sources']}"
-            )
-            for alias in combined["aliases"]:
-                print(
-                    f"      alias source {alias['source']}: {alias['consumer_count']} consumer slots"
-                    f" ({', '.join(alias['consumer_slots'])})"
-                )
+            _print_tensor_map_summary(tensor_map)
+        # When the NextN map's own validation failed, its route lines below are
+        # diagnostics: rejected=0 there means no per-slot planner refusals, not
+        # that the NextN map was admitted.
+        nextn_diagnostic = bool(tensor_map.get("nextn", {}).get("diagnostic"))
         for backend in entry["backends"]:
             if "error" in backend and "routes" not in backend:
                 if tensor_map.get("available"):
@@ -1088,12 +1139,15 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"               rejected: {example}")
             nextn_routes = backend.get("nextn_routes")
             if nextn_routes:
+                nextn_scope_note = (
+                    " [map validation FAILED; diagnostic only]" if nextn_diagnostic else ""
+                )
                 for scope_name in ("own", "fallback"):
                     scope = nextn_routes.get(scope_name)
                     if not scope:
                         continue
                     print(
-                        f"      nextn {scope_name}: slots={scope['consumer_slots']}"
+                        f"      nextn {scope_name}{nextn_scope_note}: slots={scope['consumer_slots']}"
                         f"/{scope['unique_sources']} sources rejected={scope['rejected_tensors']}"
                         f" bf16_expand={scope['bf16_expand_stored_gib']}"
                         f" -> {scope['bf16_expand_resident_gib']} GiB"

@@ -1005,3 +1005,178 @@ def test_map_unavailable_produces_no_guessed_route_table(tmp_path, capsys):
     assert "raw-gguf" not in printed
     assert "f32-resident" not in printed
     assert "consumer-qualified" not in printed
+
+
+# --- UD-U0b review P2: scoped AR vs NextN map verdicts in the default text ----
+#
+# The AR map and the NextN map validate independently. The summary line used to
+# print a single unscoped `validation=` (the AR verdict) plus per-slot
+# `rejected=0` counts, so a failed or unbuilt NextN map was invisible in the
+# default text even though the JSON captured it. Zero planner refusals are not
+# map admission and never consumer qualification.
+
+
+def _metadata_entry(key: str, value) -> bytes:
+    """Encode one fixture metadata entry with its natural GGUF value type."""
+
+    if isinstance(value, str):
+        return _kv(key, GGUFValueType.STRING, _string(value))
+    if isinstance(value, (tuple, list)):
+        raw = (
+            int(GGUFValueType.UINT32).to_bytes(4, "little")
+            + len(value).to_bytes(8, "little")
+            + pack(f"<{len(value)}I", *value)
+        )
+        return _kv(key, GGUFValueType.ARRAY, raw)
+    return _kv(key, GGUFValueType.UINT32, pack("<I", int(value)))
+
+
+def _f32_descriptor(name: str, shape: tuple[int, ...], offset: int) -> bytes:
+    encoded = name.encode()
+    return (
+        len(encoded).to_bytes(8, "little")
+        + encoded
+        + len(shape).to_bytes(4, "little")
+        + b"".join(pack("<Q", dim) for dim in reversed(shape))
+        + int(GGMLQuantizationType.F32).to_bytes(4, "little")
+        + pack("<Q", offset)
+    )
+
+
+def _qwen35_byte_file(
+    tmp_path: pathlib.Path,
+    *,
+    with_nextn: bool = True,
+    drop: set[str] = frozenset(),
+    name: str = "qwen35-fixture.gguf",
+) -> pathlib.Path:
+    """Byte-level all-F32 GGUF mirroring the in-memory qwen35 fixture shapes.
+
+    F32 everywhere: real quant block layouts cannot exist at hidden=8. The AR
+    map validates structurally (no dtype expectations), so AR validation still
+    passes, while the NextN map's dtype expectations surface diagnostically —
+    which is exactly the mixed state the scoped text must show.
+    """
+
+    metadata = dict(_QWEN35_METADATA)
+    if not with_nextn:
+        metadata["qwen35.block_count"] = 64
+    tensors = [_t("token_embd.weight", (11, 8)), _t("output_norm.weight", (8,))]
+    for layer_id in range(_AR_LAYERS):
+        tensors += _ar_layer_tensors(layer_id)
+    if with_nextn:
+        tensors += [_t(t.name, t.shape) for t in _nextn_block_tensors(with_optionals=False)]
+    tensors = [t for t in tensors if t.name not in drop]
+    prefix = _header(3, len(tensors), len(metadata)) + b"".join(
+        _metadata_entry(key, value) for key, value in metadata.items()
+    )
+    offset = 0
+    payload = b""
+    for tensor in tensors:
+        prefix += _f32_descriptor(tensor.name, tensor.shape, offset)
+        offset += tensor.nbytes
+        payload += bytes(tensor.nbytes)
+    path = tmp_path / name
+    path.write_bytes(_aligned(prefix) + payload)
+    return path
+
+
+def test_cli_missing_nextn_tensor_is_printed_and_nextn_routes_labeled_diagnostic(tmp_path, capsys):
+    # Dropping the required blk.64.nextn.eh_proj.weight fails NextN map
+    # validation while the AR map stays valid and every present slot plans with
+    # zero refusals. The default text must show the scoped AR pass AND the
+    # independent NextN failure with the missing tensor, and must label the
+    # nextn route lines diagnostic instead of letting rejected=0 read as
+    # admission.
+    path = _qwen35_byte_file(
+        tmp_path, drop={"blk.64.nextn.eh_proj.weight"}, name="missing-eh-proj.gguf"
+    )
+    out = tmp_path / "report.json"
+
+    assert audit.main([str(path), "--json", str(out)]) == 0
+    printed = capsys.readouterr().out
+    entry = json.loads(out.read_text())["files"][0]
+
+    # Explicitly scoped AR verdict; the AR report survives untouched.
+    assert "ar_validation=passed" in printed
+    assert entry["tensor_map"]["validation_passed"] is True
+    assert "ar_slots=875/874" in printed
+    assert "{'f32-resident': 875}" in printed
+    # The NextN map's own validation failure is visible with its details.
+    assert "nextn map: validation=FAILED (diagnostic) block_id=64 own_slots=14/14 fallback_slots=3" in printed
+    assert "nextn missing: blk.64.nextn.eh_proj.weight" in printed
+    assert "nextn dtype: blk.64.attn_q.weight: expected Q4_K, got F32" in printed
+    assert entry["tensor_map"]["nextn"]["validation_passed"] is False
+    assert "blk.64.nextn.eh_proj.weight" in entry["tensor_map"]["nextn"]["missing"]
+    # Zero per-slot planner refusals, explicitly labeled diagnostic.
+    assert "nextn own [map validation FAILED; diagnostic only]: slots=14/14 sources rejected=0" in printed
+    assert "nextn fallback [map validation FAILED; diagnostic only]: slots=3/2 sources rejected=0" in printed
+    assert entry["backends"][0]["nextn_routes"]["own"]["rejected_tensors"] == 0
+
+
+def test_cli_nextn_construction_failure_is_printed_and_ar_report_preserved(tmp_path, capsys, monkeypatch):
+    # A NextN map that cannot even be constructed must not hide behind the AR
+    # pass: the construction exception is printed, nextn routes are withheld,
+    # and the AR report (passing validation and full route table) survives.
+    path = _qwen35_byte_file(tmp_path, name="nextn-unbuildable.gguf")
+    out = tmp_path / "report.json"
+
+    def broken_nextn_map(info, *, strict=True):
+        raise ValueError("synthetic nextn map construction failure")
+
+    monkeypatch.setattr(audit, "build_qwen35_gguf_nextn_tensor_map", broken_nextn_map)
+
+    assert audit.main([str(path), "--json", str(out)]) == 0
+    printed = capsys.readouterr().out
+    entry = json.loads(out.read_text())["files"][0]
+
+    assert "ar_validation=passed" in printed
+    assert "nextn map: NOT BUILT (diagnostic only; nextn routes withheld): " in printed
+    assert "ValueError: synthetic nextn map construction failure" in printed
+    assert "nextn own" not in printed
+    assert "nextn fallback" not in printed
+    assert entry["tensor_map"]["nextn"]["diagnostic_only"] is True
+    assert "synthetic nextn map construction failure" in entry["tensor_map"]["nextn"]["error"]
+    assert entry["backends"][0]["nextn_routes"] is None
+    # AR output preserved end to end: scoped pass verdict and full route table.
+    assert "ar_slots=875/874" in printed
+    assert "{'f32-resident': 875}" in printed
+
+
+def test_cli_absent_nextn_is_reported_as_not_applicable_not_failed(tmp_path, capsys):
+    # A file with no AR-excluded trailing MTP block has no NextN map by design:
+    # the text must say so plainly and invent no failure.
+    path = _qwen35_byte_file(tmp_path, with_nextn=False, name="no-nextn.gguf")
+    out = tmp_path / "report.json"
+
+    assert audit.main([str(path), "--json", str(out)]) == 0
+    printed = capsys.readouterr().out
+    entry = json.loads(out.read_text())["files"][0]
+
+    assert "ar_validation=passed" in printed
+    assert "nextn_blocks=0" in printed
+    assert "nextn map: not applicable (no AR-excluded trailing MTP block in this file)" in printed
+    assert "FAILED" not in printed
+    assert "diagnostic only" not in printed
+    assert entry["tensor_map"]["nextn"] == {
+        "blocks": 0,
+        "note": "no AR-excluded trailing MTP block in this file",
+    }
+
+
+def test_text_summary_marks_valid_nextn_as_passed_without_invented_failures(capsys):
+    # The clean state: AR and NextN both validate; no detail lines, no failure
+    # language anywhere.
+    maps = _mapped(_fixture_tensors())
+
+    audit._print_tensor_map_summary(maps.section)
+    printed = capsys.readouterr().out
+
+    assert "ar_validation=passed" in printed
+    assert "nextn map: validation=passed block_id=64 own_slots=15/15 fallback_slots=3" in printed
+    assert "nextn missing" not in printed
+    assert "nextn unexpected" not in printed
+    assert "nextn dtype" not in printed
+    assert "nextn shape" not in printed
+    assert "NOT BUILT" not in printed
+    assert "FAILED" not in printed
