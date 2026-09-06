@@ -567,7 +567,7 @@ _MTP2_MAX_PHYSICAL_REQUESTS = 8
 # 50 minutes, against roughly 4-5 minutes for the same shape at K3. The server
 # env has always accepted budgets 1-4, so this bound is what keeps a K4 request
 # from reaching that path.
-MTP2_MAX_CANDIDATE_DEPTH = 3
+MTP2_MAX_CANDIDATE_DEPTH = 4
 _MTP2_MAX_CANDIDATE_DEPTH = MTP2_MAX_CANDIDATE_DEPTH
 
 

@@ -208,7 +208,11 @@ class _Qwen35GGUFNextNProposalGraph:
 # scalar full-attention context 1,023. Larger cache allocations may still use it
 # while the live chain fits; requests crossing into split-K retain the exact
 # eager chain until that separate topology is gated.
-_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3)
+# The exact-chain graph ladder is the draft runtime's implementation-depth
+# limit. Extending a budget here grows every capacity-derived buffer
+# (``_NEXTN_TOP1_RESULT_CAPACITY`` consumers) coherently; qualified serving
+# maxima remain gated separately by the adapter's width-depth policy.
+_NEXTN_EXACT_CHAIN_GRAPH_BUDGETS = (1, 2, 3, 4)
 _NEXTN_EXACT_CHAIN_GRAPH_MAX_CONTEXT = 1023
 _NEXTN_TOP1_RESULT_DTYPE = np.dtype([("token", np.int32), ("value", np.float32)])
 _NEXTN_TOP1_RESULT_NBYTES = int(_NEXTN_TOP1_RESULT_DTYPE.itemsize)
