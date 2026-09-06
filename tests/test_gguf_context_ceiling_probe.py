@@ -295,13 +295,13 @@ def test_stage_peaks_windows_cover_startup_and_request() -> None:
 
 def test_expected_workspace_lease_matches_server_formula() -> None:
     module = _load()
-    # 8 default slots x max(ceil(2048/256)=8, 4) pages = 64.
-    assert module.expected_workspace_lease_pages(1, 2048) == 64
+    # Capacity-honest lease: N=1 serves one slot x max(ceil(2048/256)=8, 4) = 8.
+    assert module.expected_workspace_lease_pages(1, 2048) == 8
     # N=8 resident slots at 4K context: 8 x 16 = 128.
     assert module.expected_workspace_lease_pages(8, 4096) == 128
-    # Wide context dominates the 1024-token minimum; the slot count never
-    # drops below 8 even when N=2: 8 x ceil(16384/256)=64 -> 512.
-    assert module.expected_workspace_lease_pages(2, 16384) == 512
+    # Wide context dominates the 1024-token minimum; N=2 leases two slots:
+    # 2 x ceil(16384/256)=64 -> 128.
+    assert module.expected_workspace_lease_pages(2, 16384) == 128
 
 
 def test_kv_fallback_is_detected_from_capability() -> None:
