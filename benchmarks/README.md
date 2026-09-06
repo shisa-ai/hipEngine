@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+GR constant-accumulator row reuse rejected: real attention/FFN up at512
+rows is0.847x/0.841x parent throughput, exact. Candidate removed.
+[Evidence](results/2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json).
+
 | Framework UD-Q4_K_XL / BF16 KV routing diagnostic | Coverage | Gate |
 | --- | --- | --- |
 | Real Q4/Q5_1 pair boundaries | code512 + four4096 categories;1683 boundaries | Three-arm logits/state exact; zero final allocations |
