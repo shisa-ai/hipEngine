@@ -2,6 +2,11 @@
 
 ## Qwen4Exp Q4 residual WMMA diagnostic reference
 
+- Cooperative K64 follow-up rejected:61.36ms,59.89ms no-unroll,
+  57.15ms padded versus~17.4ms exact. Cooperative code removed.
+  The raw reference has no qualified consumer yet; remove it when the
+  residual-matrix investigation closes, or retain only the minimum
+  differential oracle for a concretely declared different dataflow.
 - `selected_dual_wmma_f16x2_bf16_bf16_out` is T2,explicit-only and
   performance-unqualified.16/32/64 output tiles all lost to exact pair2,
   although two-plane weight reconstruction substantially improves local

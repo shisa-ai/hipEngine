@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Four-wave K64 Q4 residual staging is rejected/removed:61.357ms versus
+exact17.403ms,224 VGPR/18432B LDS/no scratch. No-unroll59.887ms and
+padded-stride57.152ms still lose. Numerical equality with residual reference
+does not imply model qualification. Evidence:
+`2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json`.
+
 `selected_dual_wmma_f16x2_bf16_bf16_out` is a **T2 diagnostic reference**,
 not a production/performance-qualified variant. It reconstructs raw Q4_K
 weights with FP16 high/residual planes, accumulates each separately and
