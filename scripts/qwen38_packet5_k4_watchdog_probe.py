@@ -318,10 +318,14 @@ def _trace_adapter_registration() -> None:
                     gates.append(
                         f"rid={rid} greedy={row.native_greedy}"
                         f" first={row.first_token_emitted}"
-                        f" lease={row.lease is not None} slot={row.slot is not None}"
+                        f" lease={row.lease is not None}"
+                        f" slot={row.slot is not None}"
                         f" state={rid in self._states}"
                         f" prompt_hidden={rid in self._prompt_hidden_rows}"
                         f" intent={self._intents.get(rid)}"
+                        f" rowbudget={getattr(row, 'mtp2_candidate_budget', None)}"
+                        f" fb={getattr(row, 'mtp2_prompt_fallback_reason', None)}"
+                        f" prefix={getattr(row, 'prefix_reused_tokens', None)}"
                     )
                 except Exception as exc:
                     gates.append(f"rid={rid} row_error={type(exc).__name__}")
