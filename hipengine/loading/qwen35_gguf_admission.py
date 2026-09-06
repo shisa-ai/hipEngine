@@ -48,24 +48,25 @@ binds to the actual role manifest instead:
   intended contract's own checked operations when omitted — must be
   certified on both sides; identical planned residents never confer
   row-operation or dtype qualification;
-- F3 concrete-consumer binding: every positive record names a CONCRETE
-  four-axis consumer (layer/quant/variant, plus the multirow variant when
-  the dispatcher rewrites it) taken from the parity-tested mirrored
-  dispatch surface
-  (:mod:`hipengine.loading.qwen35_gguf_consumer_surface`) or the concrete
-  aux-consumer tables — placeholder or glob keys are not certification;
+- F3/F4 invocation binding: production and admission share CPU-safe
+  descriptors, row resolution and caller/adapter metadata in
+  :mod:`hipengine.loading.qwen35_gguf_consumer_surface` and
+  :mod:`hipengine.loading.gguf_selected_contract`. Certificates bind actual
+  operands, states, row domains, ordered selected partners and source/resident
+  records. A filter cannot implicitly change a paired intent to a singleton;
+  incomplete call dependencies cannot authorize even after narrowing;
 - the requested backend must concretely register GGUF consumers: each
   backend package declares its ``GGUF_CONSUMER_LAYERS`` in source (read by
   a bounded AST literal reader, never an import), and a known target-arch
   name alone never qualifies (the cuda_sm120a scaffold declares none and
   is refused);
-- coverage matches the ACTUAL operation-caller dtype, not a convenient
-  kernel input: the default records mirror the production callers (BF16
-  activations, no input override), so a dense-F32 lm-head has no default
-  F32-logits record — the runtime dispatch has no ``(dense_f32, bf16,
-  f32)`` row — and the registered F32-activation route is certifiable only
-  when the caller declares it (``f32_input_operations``), which the plan
-  contract records.
+- coverage resolves ACTUAL caller operands, not convenient nearby rows.
+  Most projections and the native head supply BF16. The GDN ssm_out handoff
+  resolves F32 or its executed BF16 adapter explicitly. A dense-F32 lm-head
+  has no default F32-logits row for a supplied BF16 activation; an explicit
+  F32 declaration must describe a real F32 input, not permission to fall back
+  to BF16. Availability/ABI certificates do not grant profile authorization;
+  complete runtime-entry consumption and profile binding remain F1/F5.
 
 UD dense consumers for Q3_K / IQ4_NL / IQ3_S / IQ3_XXS / IQ2_S and raw dense
 IQ4_XS do not exist until UD-U2..U5, so both published UD artifacts are
@@ -76,7 +77,7 @@ U6 resolves the draft operation set.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 import hashlib
 from typing import Iterable, Mapping
 
@@ -113,6 +114,12 @@ from hipengine.kernels.backends import (
     HIP_BACKEND_TARGET_ARCH,
 )
 from hipengine.loading.qwen35_gguf_consumer_surface import (
+    CONV_DECODE, CONV_PREFILL, GDN_SEGMENTS, RMSNORM,
+    InvocationContract, linear_consumer_contract, auxiliary_consumer_contract,
+    OPERATION_ROW_LIMITS, resolve_embedding_consumer_contract,
+    resolve_router_consumer_contract, resolve_gdn_segments_contract,
+    native_alpha_beta_consumer_contract, resolve_gdn_operation_contract, conv_operation_contract,
+    resolve_gdn_output_handoff,
     GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_BF16,
@@ -120,6 +127,12 @@ from hipengine.loading.qwen35_gguf_consumer_surface import (
     RAW_LINEAR_SOURCE_QUANT_KEYS,
     backend_gguf_consumer_layers,
     source_linear_dispatch_row,
+)
+from hipengine.loading.gguf_selected_contract import (
+    RAW_SELECTED_CONSUMERS as _RAW_SELECTED_CONSUMERS,
+    REPACKED_SELECTED_CONSUMERS as _REPACKED_SELECTED_CONSUMERS,
+    SelectedCallIntent, BoundSelectedCall, bind_selected_call,
+    default_selected_call_intents,
 )
 from hipengine.loading.qwen35_gguf_nextn import Qwen35GGUFNextNMap
 from hipengine.loading.qwen35_gguf_policy import (
@@ -482,8 +495,8 @@ class Qwen35GGUFOperationCoverage:
     ``kernel_layer``/``kernel_quant``/``kernel_variant`` name the exact
     registry key (rows=1 form; ``kernel_variant_rows_many`` additionally
     names the multirow variant when the dispatcher rewrites it), taken from
-    the parity-tested mirrored dispatch surface or the concrete aux-consumer
-    tables.  Placeholder quant/variant components (``<from-weight>``,
+    the shared production dispatch owner or concrete auxiliary wrapper
+    descriptors.  Placeholder quant/variant components (``<from-weight>``,
     ``None``) are not certification and no longer appear in the certified
     sets.  The single exception to registry mediation is documented
     explicitly: when the production runtime consumes a weight through a
@@ -492,9 +505,11 @@ class Qwen35GGUFOperationCoverage:
     name that wrapper and the parity test proves the symbol exists on every
     declaring backend.
 
-    ``input_dtype``/``output_dtype`` are the ACTUAL operation-caller dtypes
-    (the default records mirror the production callers, which supply BF16
-    activations without an input override), not a convenient kernel input.
+    These records describe the qualified primitive/resident surface. Actual
+    authorization uses resolved ``InvocationContract`` and ``BoundSelectedCall``
+    objects, not this index: selected calls have explicit partner/input/output
+    intents, and the GDN handoff can resolve F32 input without an override.
+    The index's selected-expert dtype fields describe its BF16 baseline only.
     """
 
     operation: str
@@ -512,6 +527,46 @@ class Qwen35GGUFOperationCoverage:
     consumer_symbol: str | None = None
     strict_fallback: str | None = None
     note: str = ""
+
+    def invocation(self, spec, *, backend: str, config, recurrent_state_dtype: str = "f32", gdn_force_bf16: bool = False) -> InvocationContract:
+        """Bind a qualified role to its concrete consumer and geometry."""
+        if self.role_class in {"gdn_scalar", "gdn_norm"}:
+            consumer = resolve_gdn_operation_contract(self.operation, recurrent_state_dtype)
+        elif self.role_class == "recurrent_alpha_beta" and self.operation == QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS:
+            consumer = native_alpha_beta_consumer_contract()
+        elif self.role_class == "conv1d":
+            consumer = conv_operation_contract(self.operation)
+        elif self.role_class == "token_embedding":
+            consumer = resolve_embedding_consumer_contract(spec.layout, spec.quant_key)
+        elif self.role_class == "moe_router":
+            consumer = resolve_router_consumer_contract(spec.layout, spec.quant_key, self.input_dtype)
+        else:
+            row = source_linear_dispatch_row(
+                spec.source.ggml_type_name, spec.layout, self.input_dtype, self.output_dtype,
+            ) if self.role_class in {"projection", "recurrent_alpha_beta", "lm_head"} else None
+            consumer = linear_consumer_contract(row) if row is not None else auxiliary_consumer_contract(
+                self.role_class, layout=spec.layout, layer=self.kernel_layer,
+                quant=self.kernel_quant, variant=self.kernel_variant,
+                module=self.consumer_module, symbol=self.consumer_symbol,
+            )
+        adapters = ()
+        if self.input_dtype == "f32" and self.output_dtype == "f32" and self.role_class in {"projection", "recurrent_alpha_beta"}:
+            # Runner's F32 verifier projections explicitly cast their output
+            # to the BF16 activation buffers (not an input fallback).
+            adapters = ("output:f32_to_bf16",)
+        if self.role_class in {"gdn_scalar", "gdn_norm"} and self.operation == QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS:
+            adapters = ("output:f32_to_bf16",)
+        if spec.slot_path.endswith(".ssm_out") and self.operation in {QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS}:
+            adapters = resolve_gdn_output_handoff(spec.layout, force_bf16=gdn_force_bf16).adapters
+        shape = tuple(int(d) for d in spec.source.shape)
+        if self.role_class in {"gdn_scalar", "gdn_norm", "conv1d"}:
+            shape += tuple(int(getattr(config, name)) for name in (
+                "ssm_group_count", "ssm_time_step_rank", "ssm_state_size", "ssm_inner_size", "ssm_conv_kernel",
+            ))
+        parameters = (("rms_norm_eps", float(config.rms_norm_eps)),) if self.role_class in {"norm", "gdn_scalar", "gdn_norm"} else ()
+        return InvocationContract(spec.slot_path, self.operation, backend, shape,
+                                  self.rows_scope, consumer, adapters, parameters,
+                                  OPERATION_ROW_LIMITS[self.operation])
 
 
 # Source types that can plan to each certified linear layout (planner truth:
@@ -542,7 +597,7 @@ def _surface_records(
     strict_fallback: str | None = None,
     note: str = "",
 ) -> list[Qwen35GGUFOperationCoverage]:
-    """Emit concrete records bound to one mirrored dispatch-surface row.
+    """Emit qualification records bound to one shared production dispatch row.
 
     Raw-layout rows resolve the concrete per-source quant key; a source type
     without one has no certified consumer and emits nothing (fail closed).
@@ -551,7 +606,7 @@ def _surface_records(
     records: list[Qwen35GGUFOperationCoverage] = []
     for source_type in sorted(source_types):
         row = source_linear_dispatch_row(source_type, layout, activation, output)
-        if row is None:
+        if row is None or (row.pointer_activation is not None and row.pointer_activation != activation):
             continue
         variant_many = row.variant_for_rows(2)
         for operation in operations:
@@ -633,32 +688,6 @@ def _bf16_linear_records(
 # Selected-expert consumers per concrete source format and resident layout
 # (rank-3 experts).  Every entry names the concrete registered key (or, for
 # raw rank-3 Q4_K, the production module wrapper the runtime calls).
-_RAW_SELECTED_CONSUMERS: tuple[tuple[str, str, str, str, str | None, str | None], ...] = (
-    # (source type, layer, quant, variant, module, symbol)  — module/symbol
-    # set means the production consumer is a direct wrapper.
-    ("Q3_K", "moe_linear", "gguf_q3_k", "selected_gemv_decode_bf16_bf16_out", None, None),
-    ("Q4_K", "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out",
-     "hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv",
-     "gguf_q4_k_selected_gemv_bf16_bf16_out"),
-    ("Q5_K", "linear", "gguf_q5_k", "selected_gemv_bf16_bf16_out", None, None),
-    ("Q6_K", "linear", "gguf_q6_k", "selected_gemv_bf16_bf16_out", None, None),
-    ("IQ2_XS", "moe_linear", "gguf_iq2_xs", "selected_gemv_decode_bf16_bf16_out", None, None),
-    ("IQ3_XXS", "moe_linear", "gguf_iq3_xxs", "selected_gemv_decode_bf16_bf16_out", None, None),
-    ("IQ4_XS", "moe_linear", "gguf_iq4_xs", "selected_gemv_decode_bf16_bf16_out", None, None),
-)
-
-# Repacked selected-expert consumers per resident layout (decode_repack on).
-_REPACKED_SELECTED_CONSUMERS: tuple[tuple[str, str, str, str, str], ...] = (
-    # (layout, source type, layer, quant, variant)
-    (LAYOUT_GGUF_Q4_K_T16, "Q4_K", "moe_linear", "gguf_q4_k_t16_v1", "selected_t16_gemv_decode_bf16_bf16_out"),
-    (LAYOUT_GGUF_Q4_K_QMICRO_T16, "Q4_K", "moe_linear", "gguf_q4_k_qmicro_t16_v1", "selected_dual_t16_gemv_decode_bf16_bf16_out"),
-    (LAYOUT_GGUF_Q4_K_X8, "Q4_K", "moe_linear", "gguf_q4_k_x8_v1", "selected_dual_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"),
-    (LAYOUT_GGUF_Q5_K_QMICRO_T16, "Q5_K", "moe_linear", "gguf_q5_k_qmicro_t16_v1", "selected_t16_gemv_decode_bf16_bf16_out"),
-    (LAYOUT_GGUF_Q5_K_X8, "Q5_K", "moe_linear", "gguf_q5_k_x8_v1", "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"),
-    (LAYOUT_GGUF_Q6_K_T16, "Q6_K", "moe_linear", "gguf_q6_k_t16_v1", "selected_t16_gemv_decode_bf16_bf16_out"),
-    (LAYOUT_GGUF_Q6_K_X8, "Q6_K", "moe_linear", "gguf_q6_k_x8_v1", "selected_x8_q8_1_dp4a_gemv_decode_bf16_bf16_out"),
-)
-
 _SELECTED_EXPERT_STRICT_FALLBACK = (
     "rank-3 raw selected-expert consumers (gguf_q*_k raw / gguf_iq* selected "
     "moe_linear registrations)"
@@ -804,79 +833,29 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
             note="Contracted F32 alpha/beta resident (dense BF16 native owner).",
         )
     )
-    # Norms / GDN scalars / conv1d are consumed as F32 residents through their
-    # concrete registered consumers (the native multirow route uses the same
-    # consumers, so those role classes qualify for it too).
-    for operations, role_class, layer, quant, variant, fallback in (
-        (
-            (*row_ops, QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS, QWEN35_GGUF_OP_AR_PREFILL),
-            "norm",
-            "rmsnorm",
-            "gguf_f32_weight",
-            "bf16_out",
-            "f32 resident consumers (rmsnorm / GDN scalar ABI)",
-        ),
-        (
-            (*row_ops, QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS, QWEN35_GGUF_OP_AR_PREFILL),
-            "gdn_scalar",
-            "gdn_recurrent_rmsnorm_gate",
-            "gguf_qwen35",
-            "bf16_segments",
-            "f32 resident consumers (GDN scalar ABI)",
-        ),
-    ):
-        for operation in operations:
-            records.append(
-                Qwen35GGUFOperationCoverage(
-                    operation=operation,
-                    role_class=role_class,
-                    resident_layout=LAYOUT_DENSE_F32,
-                    source_ggml_types=frozenset({"F32"}),
-                    rows_scope=(
-                        "rows_1_8_row_local"
-                        if operation != QWEN35_GGUF_OP_AR_PREFILL
-                        else "prefill_rows"
-                    ),
-                    input_dtype="bf16",
-                    output_dtype="bf16",
-                    kernel_layer=layer,
-                    kernel_quant=quant,
-                    kernel_variant=variant,
-                    strict_fallback=fallback,
-                )
-            )
-    # conv1d: the decode and prefill consumers are distinct registered keys.
-    for operation, layer, variant in (
-        (QWEN35_GGUF_OP_AR_DECODE_C1, "linear_attn_conv_decode", "bf16_indexed"),
-        (QWEN35_GGUF_OP_AR_DECODE_ROWS, "linear_attn_conv_decode", "bf16_indexed"),
-        (QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS, "linear_attn_conv_decode", "bf16_indexed"),
-        (QWEN35_GGUF_OP_AR_PREFILL, "linear_attn_conv_prefill", "f32_baseline"),
-    ):
-        records.append(
-            Qwen35GGUFOperationCoverage(
-                operation=operation,
-                role_class="conv1d",
-                resident_layout=LAYOUT_DENSE_F32,
-                source_ggml_types=frozenset({"F32"}),
-                rows_scope=(
-                    "rows_1_8_row_local"
-                    if operation != QWEN35_GGUF_OP_AR_PREFILL
-                    else "prefill_rows"
-                ),
-                input_dtype="bf16",
-                output_dtype="bf16",
-                kernel_layer=layer,
-                kernel_quant="gguf_qwen35",
-                kernel_variant=variant,
-                strict_fallback="f32 resident consumers (indexed conv ABI)",
-            )
-        )
+    # Role participation is model metadata; pointer/scalar ABIs belong to
+    # the shared concrete wrapper contracts, including the SSM norm composite.
+    for operation in (*row_ops, QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS, QWEN35_GGUF_OP_AR_PREFILL):
+        conv = conv_operation_contract(operation)
+        gdn = resolve_gdn_operation_contract(operation)
+        for role_class, consumer in (("norm", RMSNORM), ("gdn_scalar", gdn),
+                                     ("gdn_norm", gdn), ("conv1d", conv)):
+            records.append(Qwen35GGUFOperationCoverage(
+                operation=operation, role_class=role_class,
+                resident_layout=LAYOUT_DENSE_F32, source_ggml_types=frozenset({"F32"}),
+                rows_scope="prefill_rows" if operation == QWEN35_GGUF_OP_AR_PREFILL else "rows_1_8_row_local",
+                input_dtype=consumer.operands[0][1],
+                output_dtype=next(dtype for _, dtype, access in consumer.operands if access == "write"),
+                kernel_layer=consumer.layer, kernel_quant=consumer.quant, kernel_variant=consumer.variant,
+                strict_fallback="registered F32-resident auxiliary wrapper",
+            ))
     # MoE router: F32/BF16 residents consumed by the registered router
     # logits family (variant per resident quant).
     for operations, layout, source_types, quant in (
         ((*row_ops, QWEN35_GGUF_OP_AR_PREFILL), LAYOUT_DENSE_F32, frozenset({"F32"}), "f32"),
         ((*row_ops, QWEN35_GGUF_OP_AR_PREFILL), LAYOUT_DENSE_BF16, frozenset({"F32", "BF16"}), "bf16"),
     ):
+        router = resolve_router_consumer_contract(layout, quant)
         for operation in operations:
             records.append(
                 Qwen35GGUFOperationCoverage(
@@ -889,11 +868,11 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
                         if operation != QWEN35_GGUF_OP_AR_PREFILL
                         else "prefill_rows"
                     ),
-                    input_dtype="bf16",
-                    output_dtype="f32",
-                    kernel_layer="router_logits",
-                    kernel_quant=quant,
-                    kernel_variant="bf16_hidden",
+                    input_dtype=router.operands[0][1],
+                    output_dtype=router.operands[-1][1],
+                    kernel_layer=router.layer,
+                    kernel_quant=router.quant,
+                    kernel_variant=router.variant,
                     strict_fallback="dense router gemv consumers",
                 )
             )
@@ -943,11 +922,10 @@ def _f32_input_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
     """Records for operations the caller DECLARES will receive F32
     activations (input override present — the c1/verifier F32 routes).
 
-    These are additional per-slot consumer rows the runtime engages exactly
-    where an F32-activation dispatch row exists (it falls back to the BF16
-    row elsewhere), so a declared operation admits a slot when EITHER its
-    default BF16 record or one of these F32-input records covers the slot's
-    (layout, source) — never a phantom row for a layout with no F32 consumer.
+    These records replace the BF16 input contract for the declared linear
+    operands. A missing F32 row refuses; no caller conversion is invented.
+    Projection outputs that the verifier explicitly casts back to BF16 name
+    that adapter in the invocation, unlike the standalone F32-logits head.
     """
 
     records: list[Qwen35GGUFOperationCoverage] = []
@@ -958,53 +936,29 @@ def _f32_input_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
         ((QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL), "projection"),
         ((QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS), "recurrent_alpha_beta"),
     ):
-        for operation in operations:
-            records.append(
-                Qwen35GGUFOperationCoverage(
-                    operation=operation,
-                    role_class=role_class,
-                    resident_layout=LAYOUT_DENSE_F32,
-                    source_ggml_types=frozenset({"F32"}),
-                    rows_scope=(
-                        "rows_1_8_row_local"
-                        if operation != QWEN35_GGUF_OP_AR_PREFILL
-                        else "prefill_rows"
-                    ),
-                    input_dtype=GGUF_ACTIVATION_F32,
-                    output_dtype=GGUF_OUTPUT_F32,
-                    kernel_layer="dense_gemv",
-                    kernel_quant="f32",
-                    kernel_variant="f32_hidden_f32_out",
-                    strict_fallback="dense_gemv/f32/f32_hidden_f32_out (F32-input route)",
-                    note=(
-                        "Valid only with a declared F32 activation input "
-                        "override; the default callers supply BF16."
-                    ),
-                )
-            )
+        records.extend(_surface_records(
+            operations, role_class, LAYOUT_DENSE_F32, frozenset({"F32"}),
+            activation=GGUF_ACTIVATION_F32, output=GGUF_OUTPUT_F32,
+            strict_fallback="dense_gemv/f32/f32_hidden_f32_out (F32-input route)",
+            note="Supplied F32 input; verifier projections explicitly cast the output to BF16.",
+        ))
+    router = resolve_router_consumer_contract(LAYOUT_DENSE_F32, "f32", "f32")
+    for operation in (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL):
+        records.append(Qwen35GGUFOperationCoverage(
+            operation, "moe_router", LAYOUT_DENSE_F32, frozenset({"F32"}),
+            "prefill_rows" if operation == QWEN35_GGUF_OP_AR_PREFILL else "rows_1_8_row_local",
+            router.operands[0][1], router.operands[-1][1],
+            router.layer, router.quant, router.variant,
+        ))
     # (q8_0_t16, f32, bf16): the GDN decode-output handoff route for a T16
     # ssm_out resident (policy-selected F32 activations).
-    for operation in (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL):
-        records.append(
-            Qwen35GGUFOperationCoverage(
-                operation=operation,
-                role_class="projection",
-                resident_layout=LAYOUT_GGUF_Q8_0_T16,
-                source_ggml_types=frozenset({"Q8_0"}),
-                rows_scope=(
-                    "rows_1_8_row_local"
-                    if operation != QWEN35_GGUF_OP_AR_PREFILL
-                    else "prefill_rows"
-                ),
-                input_dtype=GGUF_ACTIVATION_F32,
-                output_dtype=GGUF_OUTPUT_BF16,
-                kernel_layer="linear",
-                kernel_quant="gguf_q8_0_t16_v1",
-                kernel_variant="t16_gemv_decode_f32_bf16_out",
-                strict_fallback="t16_gemv_decode_bf16_bf16_out (BF16-activation row)",
-                note="GDN decode-output handoff with F32 activations (policy route).",
-            )
-        )
+    records.extend(_surface_records(
+        (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL),
+        "projection", LAYOUT_GGUF_Q8_0_T16, frozenset({"Q8_0"}),
+        activation=GGUF_ACTIVATION_F32, output=GGUF_OUTPUT_BF16,
+        strict_fallback="t16_gemv_decode_bf16_bf16_out (BF16-activation row)",
+        note="GDN decode-output handoff with supplied F32 activations.",
+    ))
     return tuple(records)
 
 
@@ -1072,7 +1026,7 @@ _ROLE_CLASS_BY_SLOT: Mapping[str, str] = {
     "post_attention_norm": "norm",
     "attn_q_norm": "norm",
     "attn_k_norm": "norm",
-    "ssm_norm": "norm",
+    "ssm_norm": "gdn_norm",
     "enorm": "norm",
     "hnorm": "norm",
     "ssm_a": "gdn_scalar",
@@ -1111,16 +1065,16 @@ def _role_class_for_slot(slot: str) -> str:
 # operation's scope is neither covered nor refused by that operation.
 _OPERATION_ROLE_CLASSES: Mapping[str, frozenset[str]] = {
     QWEN35_GGUF_OP_AR_DECODE_C1: frozenset(
-        {"projection", "recurrent_alpha_beta", "norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
+        {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
     ),
     QWEN35_GGUF_OP_AR_DECODE_ROWS: frozenset(
-        {"projection", "recurrent_alpha_beta", "norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
+        {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
     ),
     QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS: frozenset(
-        {"projection", "recurrent_alpha_beta", "norm", "gdn_scalar", "conv1d"}
+        {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d"}
     ),
     QWEN35_GGUF_OP_AR_PREFILL: frozenset(
-        {"projection", "recurrent_alpha_beta", "norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
+        {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
     ),
     QWEN35_GGUF_OP_EMBEDDING_LOOKUP: frozenset({"token_embedding"}),
     QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS: frozenset({"lm_head"}),
@@ -1140,21 +1094,17 @@ def _coverage_for(
 ) -> Qwen35GGUFOperationCoverage | None:
     """The certified record for one concrete slot contract, or ``None``.
 
-    ``f32_input`` additionally consults the F32-input override records: the
-    runtime engages an F32-activation consumer exactly where such a row
-    exists and falls back to the BF16 row elsewhere, so a declared F32-input
-    operation admits a slot when EITHER record covers it — never a phantom
-    row for a layout with no F32 consumer.
+    ``f32_input`` selects the supplied F32 linear operand contract, never
+    the default BF16 record. Auxiliary/composite operands retain their named
+    mixed ABI; this declaration does not turn weights or state into F32.
     """
 
-    record = _COVERAGE_INDEX.get((operation, role_class, layout, source_type))
-    if record is not None:
-        return record
-    if f32_input:
-        return _COVERAGE_F32_INPUT_INDEX.get(
-            (operation, role_class, layout, source_type)
-        )
-    return None
+    key = (operation, role_class, layout, source_type)
+    # A supplied F32 activation is not a preference. No cast is performed
+    # by launch_gguf_linear; never certify the nearby BF16 row.
+    if f32_input and role_class in {"projection", "recurrent_alpha_beta", "lm_head", "moe_router", "moe_experts"}:
+        return _COVERAGE_F32_INPUT_INDEX.get(key)
+    return _COVERAGE_INDEX.get(key)
 
 
 # Concrete hardware backend keys that own GGUF consumer metadata. This is the
@@ -1312,6 +1262,11 @@ class Qwen35GGUFPlanContract:
     dense_q5_t16_h5120: bool
     dense_q6_qmicro_planar: bool
     dense_q6_qmicro_planar_excluded_slots: tuple[str, ...]
+    backend: str = ""
+    invocations: tuple[InvocationContract, ...] = ()
+    required_invocations: tuple[tuple[str, str], ...] = ()
+    selected_invocations: tuple[BoundSelectedCall, ...] = ()
+    required_selected_intents: tuple[SelectedCallIntent, ...] = ()
     f32_input_operations: tuple[str, ...] = ()
     resident_plan_records: tuple[str, ...] = ()
     required_plan_slots: tuple[str, ...] = ()
@@ -1322,6 +1277,8 @@ class Qwen35GGUFPlanContract:
         # Canonicalize: deduplicate + sort records and the accounting sets;
         # the digest is always derived from the stored records (never
         # caller-asserted).
+        object.__setattr__(self, "invocations", tuple(sorted(self.invocations, key=lambda item: item.canonical_record())))
+        object.__setattr__(self, "required_invocations", tuple(sorted(set(self.required_invocations))))
         records = tuple(sorted(dict.fromkeys(str(record) for record in self.resident_plan_records)))
         object.__setattr__(self, "resident_plan_records", records)
         object.__setattr__(
@@ -1377,6 +1334,33 @@ class Qwen35GGUFPlanContract:
         """
 
         slots = self.resident_plan_slots
+        identities = [(item.slot, item.operation) for item in self.invocations]
+        if not self.backend or any(item.backend != self.backend for item in self.invocations):
+            return False
+        if any(item.operation in self.f32_input_operations
+               and item.consumer.layer in {"linear", "dense_gemv", "router_logits"}
+               and item.consumer.operands[0][1] != "f32" for item in self.invocations):
+            return False
+        if len(set(identities)) != len(identities) or set(identities) != set(self.required_invocations):
+            return False
+        if any(slot not in slots or op not in self.operations for slot, op in identities):
+            return False
+        selected_slots = set()
+        if len(self.selected_invocations) != len(self.required_selected_intents):
+            return False
+        if {item.intent for item in self.selected_invocations} != set(self.required_selected_intents):
+            return False
+        by_slot = dict(zip(slots, self.resident_plan_records))
+        for call in self.selected_invocations:
+            if call.backend != self.backend or call.intent.operation not in self.operations:
+                return False
+            if tuple(slot for slot, _ in call.weight_bindings) != call.intent.weight_slots:
+                return False
+            if any(by_slot.get(slot) != record for slot, record in call.weight_bindings):
+                return False
+            selected_slots.update(call.intent.weight_slots)
+        if set(slots) != {slot for slot, _ in identities} | selected_slots:
+            return False
         if any(not slot for slot in slots):
             return False
         if len(set(slots)) != len(slots):
@@ -1398,6 +1382,12 @@ class Qwen35GGUFPlanContract:
         }:
             return False
         return True
+
+    @property
+    def invocation_digest(self) -> str:
+        records = [item.canonical_record() for item in (*self.invocations, *self.selected_invocations)]
+        payload = "qwen35-gguf-invocations-v1\n" + "\n".join(sorted(records))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     @property
     def resident_plan_slots(self) -> tuple[str, ...]:
@@ -1428,6 +1418,12 @@ class Qwen35GGUFPlanContract:
             "dense_q6_qmicro_planar_excluded_slots": list(
                 self.dense_q6_qmicro_planar_excluded_slots
             ),
+            "backend": self.backend,
+            "invocation_digest": self.invocation_digest,
+            "invocations": [item.canonical_record() for item in self.invocations],
+            "required_invocations": [list(item) for item in self.required_invocations],
+            "selected_invocations": [item.canonical_record() for item in self.selected_invocations],
+            "required_selected_intents": [asdict(item) for item in self.required_selected_intents],
             "f32_input_operations": list(self.f32_input_operations),
             "resident_plan_digest": self.resident_plan_digest,
             "resident_plan_record_count": len(self.resident_plan_records),
@@ -1563,6 +1559,10 @@ def certificate_covers_artifact(
     if not recorded.is_complete():
         return False
     intended = plan_contract
+    if certificate.backend != recorded.backend or recorded.backend != intended.backend:
+        return False
+    if backend is not None and backend != intended.backend:
+        return False
     requested_operations = (
         tuple(intended.operations)
         if operations is None
@@ -1579,6 +1579,16 @@ def certificate_covers_artifact(
     if any(operation not in recorded.operations for operation in requested_operations):
         return False
     if any(operation not in intended.operations for operation in requested_operations):
+        return False
+    # Match entire effective invocation records for the narrowed operation
+    # scope. Completeness was checked BEFORE narrowing, including failures.
+    certified_invocations = {item.canonical_record() for item in recorded.invocations}
+    if any(item.canonical_record() not in certified_invocations
+           for item in intended.invocations if item.operation in requested_operations):
+        return False
+    selected_records = {item.canonical_record() for item in recorded.selected_invocations}
+    if any(item.canonical_record() not in selected_records
+           for item in intended.selected_invocations if item.intent.operation in requested_operations):
         return False
     requested_slots = (
         None if slot_filter is None else tuple(sorted({str(slot) for slot in slot_filter}))
@@ -1646,7 +1656,9 @@ class Qwen35GGUFAdmissionReport:
                 "cannot certify an artifact with unsupported operations; see "
                 "Qwen35GGUFAdmissionReport.unsupported"
             )
-        if self.plan_contract is None or not self.plan_contract.is_complete():
+        if (self.plan_contract is None or not self.plan_contract.is_complete()
+                or self.backend != self.plan_contract.backend
+                or set(self.requested_operations) != set(self.plan_contract.operations)):
             # Mint-boundary invariant: only a COMPLETE qualification contract
             # can be certified. For real preflight reports this is equivalent
             # to ``supported`` (every refusal path also marks the contract
@@ -1720,6 +1732,9 @@ def preflight_qwen35_gguf_artifact(
     contract_f32_linear: bool | None = None,
     slot_filter: Iterable[str] | None = None,
     f32_input_operations: Iterable[str] = (),
+    selected_call_intents: Iterable[SelectedCallIntent] | None = None,
+    recurrent_state_dtype: str = "f32",
+    gdn_force_bf16: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -1743,21 +1758,25 @@ def preflight_qwen35_gguf_artifact(
     ``decode_repack=None`` resolves through the loader's shared environment
     gate (:func:`gguf_decode_repack_enabled`) so the preflight sees the same
     plan the loader would materialize.  ``slot_filter`` restricts the
-    preflight to a subset of canonical slot paths (the loader's test/debug
-    ``selected_slots`` hook); unlisted slots are neither covered nor
-    refused, and a filter entry naming no slot in the map is itself refused
-    (a caller error is not a silent no-op).  ``f32_input_operations``
-    declares operations whose callers will actually supply F32 activation
-    inputs (input override present); for those operations the certified
-    F32-input records also qualify a slot (the runtime engages the
-    F32-activation consumer exactly where one is registered and falls back
-    to the BF16 row elsewhere).  The returned report always
+    preflight's selected-load scope (the loader's test/debug ``selected_slots``
+    hook). Unknown filter entries refuse. Selected calls are independent:
+    ``selected_call_intents=None`` uses the shared full-model caller plan and
+    a missing filtered partner refuses, never turns a pair into a singleton.
+    Explicit single-call intents support standalone diagnostics; an explicit
+    empty tuple is appropriate for a non-expert diagnostic, not permission to
+    omit dependencies of an expert call. ``f32_input_operations`` declares
+    actually supplied linear/router activations; no BF16 fallback is invented.
+    ``recurrent_state_dtype`` and ``gdn_force_bf16`` describe existing caller
+    state/registered-cast choices, not permission to select numerical profiles.
+    The row-local ssm_out handoff resolves its real F32 input or executed cast
+    through the same resolver as production. The returned report always
     carries a plan contract; it is authorization-capable
     (:meth:`Qwen35GGUFPlanContract.is_complete`) exactly when nothing was
     refused, and :meth:`Qwen35GGUFAdmissionReport.certificate` refuses to
     mint otherwise.
     """
 
+    resolve_gdn_segments_contract(recurrent_state_dtype)  # storage declaration, not profile permission
     if decode_repack is None:
         decode_repack = gguf_decode_repack_enabled(None)
     else:
@@ -1818,6 +1837,10 @@ def preflight_qwen35_gguf_artifact(
     # qualified slot. This — not the caller's kwargs or env names — is what
     # the plan contract (and therefore the certificate) binds to.
     resident_plan_records: list[str] = []
+    invocations: list[InvocationContract] = []
+    required_invocations: set[tuple[str, str]] = set()
+    selected_specs: dict[str, Qwen35GGUFWeightSpec] = {}
+    selected_required: set[tuple[str, str]] = set()
     # Authorization accounting: every slot the preflight TRIES to qualify
     # (participating or refused) lands in required_plan_slots; only fully
     # qualified slots earn a record. is_complete() requires the two sets to
@@ -1970,6 +1993,8 @@ def preflight_qwen35_gguf_artifact(
         # independently of operation qualification (including debug subsets).
         if applicable_ops:
             required_plan_slots.add(str(slot_path))
+            target = selected_required if role_class == "moe_experts" else required_invocations
+            target.update((str(slot_path), op) for op in applicable_ops)
         try:
             spec = plan_qwen35_gguf_weight_spec(
                 str(slot_path),
@@ -2004,12 +2029,16 @@ def preflight_qwen35_gguf_artifact(
             # the same resident layout certify different registered consumers,
             # so the certified record must match this slot's concrete GGML
             # storage type, not whichever record was written last.
-            record = _coverage_for(
-                operation,
-                role_class,
-                spec.layout,
-                tensor.ggml_type_name,
-                f32_input=operation in f32_input_set,
+            supplied_f32 = operation in f32_input_set
+            incompatible_handoff = False
+            if str(slot_path).endswith(".ssm_out"):
+                activation = (resolve_gdn_output_handoff(spec.layout, force_bf16=gdn_force_bf16).activation
+                              if operation in {QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS} else "bf16")
+                incompatible_handoff = supplied_f32 and activation != "f32"
+                supplied_f32 = supplied_f32 or activation == "f32"
+            record = None if incompatible_handoff else _coverage_for(
+                operation, role_class, spec.layout, tensor.ggml_type_name,
+                f32_input=supplied_f32,
             )
             if (
                 record is not None
@@ -2042,7 +2071,10 @@ def preflight_qwen35_gguf_artifact(
                 continue
             if record is None:
                 slot_supported = False
-                if role_class == "token_embedding" and spec.layout == LAYOUT_DENSE_BF16:
+                if incompatible_handoff:
+                    reason = ("ssm_out caller supplies BF16 after its GDN handoff, not the declared F32 input; "
+                              "no alternative operand or conversion is inferred")
+                elif role_class == "token_embedding" and spec.layout == LAYOUT_DENSE_BF16:
                     reason = (
                         "dense-BF16 embedding consumer (_launch_dense_bf16) does "
                         "not forward rows: a multirow gather would silently "
@@ -2090,12 +2122,71 @@ def preflight_qwen35_gguf_artifact(
                     )
                 )
                 continue
+            if role_class == "moe_experts":
+                selected_specs[str(slot_path)] = spec
+            else:
+                try:
+                    invocations.append(record.invocation(spec, backend=backend_key, config=model_map.config,
+                                                         recurrent_state_dtype=recurrent_state_dtype,
+                                                         gdn_force_bf16=gdn_force_bf16))
+                except ValueError as error:
+                    slot_supported = False
+                    unsupported.append(Qwen35GGUFUnsupportedOperation(
+                        str(slot_path), role_class, operation, tensor.ggml_type_name,
+                        spec.layout, "consumer_unqualified", str(error)))
+                    continue
             qualified[
                 (operation, role_class, spec.layout, tensor.ggml_type_name)
             ] = record
         if slot_supported:
             covered_slots += 1
             resident_plan_records.append(qwen35_gguf_planned_weight_record(spec))
+
+    # Resolve the full-model selected topology independently of selected-load
+    # filtering. Missing partner owners are refusals, never singleton fallbacks.
+    if selected_call_intents is None:
+        all_expert_quants = {}
+        for path, tensor in slot_tensors:
+            if _role_class_for_slot(path) != "moe_experts":
+                continue
+            try:
+                planned = plan_qwen35_gguf_weight_spec(path, tensor, contract_f32_linear=contraction, **plan_flags)
+                all_expert_quants[path] = planned.quant_key
+            except ValueError:
+                all_expert_quants[path] = "unqualified"
+        lanes = int(model_map.config.expert_used_count)
+        if all_expert_quants and any(op in {QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL} for op in checked_ops) and lanes <= 0:
+            operation_scope_refusals.extend(checked_ops)
+            unsupported.append(Qwen35GGUFUnsupportedOperation(
+                "model", "moe_experts", checked_ops[0], "-", None, "scope_refused",
+                "full-model selected caller requires positive expert_used_count"))
+        selected_intents = default_selected_call_intents(all_expert_quants, checked_ops, lanes_per_token=max(1, lanes))
+    else:
+        selected_intents = tuple(selected_call_intents)
+    selected_bound = []
+    selected_covered = set()
+    resident_by_slot = {_planned_weight_record_slot(record): record for record in resident_plan_records}
+    for call in selected_intents:
+        try:
+            if call.operation not in checked_ops:
+                raise ValueError("selected call intent must name a requested operation")
+            uses = {(slot, call.operation) for slot in call.weight_slots}
+            if selected_covered & uses:
+                raise ValueError("overlapping selected call intents are not a single qualification")
+            bound = bind_selected_call(call, selected_specs, resident_by_slot, backend=backend_key,
+                                       row_limits=OPERATION_ROW_LIMITS[call.operation])
+            selected_bound.append(bound)
+            selected_covered.update(uses)
+        except ValueError as error:
+            operation_scope_refusals.append(call.operation)
+            unsupported.append(Qwen35GGUFUnsupportedOperation(
+                call.weight_slots[0], "moe_experts", call.operation, "-", None,
+                "scope_refused", str(error)))
+    for slot, op in sorted(selected_required - selected_covered):
+        operation_scope_refusals.append(op)
+        unsupported.append(Qwen35GGUFUnsupportedOperation(
+            slot, "moe_experts", op, "-", None, "scope_refused",
+            "selected resident has no complete explicit call intent (including every partner)"))
 
     return Qwen35GGUFAdmissionReport(
         backend=str(backend),
@@ -2126,6 +2217,11 @@ def preflight_qwen35_gguf_artifact(
             dense_q6_qmicro_planar_excluded_slots=tuple(
                 str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
             ),
+            backend=backend_key,
+            invocations=tuple(sorted(invocations, key=lambda item: (item.slot, item.operation))),
+            required_invocations=tuple(sorted(required_invocations)),
+            selected_invocations=tuple(selected_bound),
+            required_selected_intents=tuple(selected_intents),
             f32_input_operations=f32_input,
             resident_plan_records=tuple(resident_plan_records),
             required_plan_slots=tuple(required_plan_slots),

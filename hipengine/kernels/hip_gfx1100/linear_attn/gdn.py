@@ -314,42 +314,8 @@ def qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16(
     _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_LOWP)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_float,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(recurrent_state_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_float(eps),
-        ctypes.c_int64(num_k_heads),
-        ctypes.c_int64(num_v_heads),
-        ctypes.c_int64(head_k_dim),
-        ctypes.c_int64(head_v_dim),
-        ctypes.c_void_p(stream),
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import GDN_SINGLE
+    err = GDN_SINGLE.launch(library, locals())
     _check_launch(runtime, err)
 
 
@@ -383,42 +349,8 @@ def qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state(
     _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_LOWP_BF16_FP16STATE)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_float,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(recurrent_state_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_float(eps),
-        ctypes.c_int64(num_k_heads),
-        ctypes.c_int64(num_v_heads),
-        ctypes.c_int64(head_k_dim),
-        ctypes.c_int64(head_v_dim),
-        ctypes.c_void_p(stream),
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_operation_contract
+    err = resolve_gdn_operation_contract("ar_decode_c1", "fp16").launch(library, locals())
     _check_launch(runtime, err)
 
 
@@ -4322,50 +4254,8 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
         raise ValueError("segments must be positive")
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_BF16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(recurrent_state_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(cu_seqlens_ptr),
-        ctypes.c_void_p(state_indices_ptr),
-        ctypes.c_int64(total_tokens),
-        ctypes.c_int64(segments),
-        ctypes.c_float(eps),
-        ctypes.c_int64(num_k_heads),
-        ctypes.c_int64(num_v_heads),
-        ctypes.c_int64(head_k_dim),
-        ctypes.c_int64(head_v_dim),
-        ctypes.c_void_p(stream),
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import GDN_SEGMENTS
+    err = GDN_SEGMENTS.launch(library, locals())
     _check_launch(runtime, err)
 
 
@@ -4444,50 +4334,8 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state(
         raise ValueError("segments must be positive")
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_BF16_FP16STATE)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(conv_out_ptr),
-        ctypes.c_void_p(gate_ptr),
-        ctypes.c_void_p(a_ptr),
-        ctypes.c_void_p(b_ptr),
-        ctypes.c_void_p(dt_bias_ptr),
-        ctypes.c_void_p(a_log_ptr),
-        ctypes.c_void_p(norm_weight_ptr),
-        ctypes.c_void_p(recurrent_state_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(cu_seqlens_ptr),
-        ctypes.c_void_p(state_indices_ptr),
-        ctypes.c_int64(total_tokens),
-        ctypes.c_int64(segments),
-        ctypes.c_float(eps),
-        ctypes.c_int64(num_k_heads),
-        ctypes.c_int64(num_v_heads),
-        ctypes.c_int64(head_k_dim),
-        ctypes.c_int64(head_v_dim),
-        ctypes.c_void_p(stream),
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_segments_contract
+    err = resolve_gdn_segments_contract("fp16").launch(library, locals())
     _check_launch(runtime, err)
 
 

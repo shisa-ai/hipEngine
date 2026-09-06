@@ -3236,7 +3236,7 @@ def test_gguf_router_resolve_uses_weight_backend(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(qwen35_gguf_runner, "resolve", fake_resolve)
     weight = SimpleNamespace(
         backend="hip_gfx1151",
-        spec=SimpleNamespace(quant_key="f32"),
+        spec=SimpleNamespace(layout="dense_f32", quant_key="f32"),
         allocation=lambda: SimpleNamespace(tensor=SimpleNamespace(ptr=22)),
     )
 

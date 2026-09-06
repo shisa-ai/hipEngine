@@ -113,9 +113,11 @@ def payload_bytes(
         for dim in shape:
             elements *= int(dim)
         return np.zeros(elements, dtype=np.uint16).tobytes()
-    if len(shape) != 2:
-        raise ValueError(f"block-quant fixtures require rank-2 tensors, got {shape}")
-    out_features, in_features = int(shape[0]), int(shape[1])
+    if len(shape) not in (2, 3):
+        raise ValueError(f"block-quant fixtures require rank-2/3 tensors, got {shape}")
+    # Expert matrices are contiguous GGUF rows; flatten only the payload
+    # builder's leading dimensions, retaining rank-3 in the descriptor table.
+    out_features, in_features = int(np.prod(shape[:-1])), int(shape[-1])
     if qtype == GGMLQuantizationType.Q8_0:
         return make_q8_0_weight(out_features, in_features).tobytes()
     if qtype == GGMLQuantizationType.Q4_K:

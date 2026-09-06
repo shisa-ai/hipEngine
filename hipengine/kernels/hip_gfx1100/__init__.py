@@ -1056,6 +1056,7 @@ GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
         "rmsnorm",  # GGUF F32-weight RMSNorm
         "router_logits",  # MoE router F32/BF16-weight logits
         "gdn_recurrent_rmsnorm_gate",  # GDN chain (A_log/dt_bias F32 scalars)
+        "gdn_prefill_recurrent",  # BF16-output prefill composite boundary
         "linear_attn_conv_decode",  # ssm_conv1d decode consumer
         "linear_attn_conv_prefill",  # ssm_conv1d prefill consumer
         "moe_linear",  # selected-expert GEMV (raw gguf_q*_k / IQ / T16 / X8)

@@ -117,6 +117,7 @@ GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
         "rmsnorm",
         "router_logits",
         "gdn_recurrent_rmsnorm_gate",
+        "gdn_prefill_recurrent",
         "linear_attn_conv_decode",
         "linear_attn_conv_prefill",
         "moe_linear",

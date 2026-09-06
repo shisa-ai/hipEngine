@@ -35,6 +35,7 @@ from hipengine.loading.qwen35_gguf_policy import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, annotations only
+    from hipengine.loading.gguf_selected_contract import SelectedCallIntent
     from hipengine.loading.qwen35_gguf_admission import (
         Qwen35GGUFAdmissionCertificate,
     )
@@ -772,6 +773,9 @@ def materialize_qwen35_gguf_weights(
     requested_operations: Iterable[str] | None = None,
     admission_certificate: Qwen35GGUFAdmissionCertificate | None = None,
     f32_input_operations: Iterable[str] = (),
+    selected_call_intents: Iterable[SelectedCallIntent] | None = None,
+    recurrent_state_dtype: str = "f32",
+    gdn_force_bf16: bool = False,
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -800,7 +804,10 @@ def materialize_qwen35_gguf_weights(
     c1/verifier F32-input override route, for example the dense-F32
     lm-head's registered ``dense_gemv/f32/f32_hidden_f32_out`` consumer); it
     is recorded on the admission plan contract so certificates never
-    transfer across activation contracts.
+    transfer across activation contracts. ``selected_call_intents`` names
+    explicit selected-expert calls for diagnostic loads; omitted means the
+    full-model caller plan, independent of ``selected_slots``. A paired call
+    whose filter omits a partner is refused, never converted to a singleton.
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
@@ -854,6 +861,9 @@ def materialize_qwen35_gguf_weights(
         slot_filter=None if selected is None else tuple(sorted(selected)),
         nextn_map=nextn_map,
         f32_input_operations=f32_input_operations,
+        selected_call_intents=selected_call_intents,
+        recurrent_state_dtype=recurrent_state_dtype,
+        gdn_force_bf16=gdn_force_bf16,
         **dense_flags,
     )
     if not admission_report.supported:

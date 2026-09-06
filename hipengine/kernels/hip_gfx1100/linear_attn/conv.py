@@ -154,18 +154,11 @@ def qwen35_linear_attn_conv_decode_bf16(
 ) -> None:
     """Launch BF16-input lowp linear-attention decode convolution."""
 
-    _launch_conv(
-        _SYMBOL_BF16,
-        hidden_states_ptr,
-        conv_state_ptr,
-        conv_weight_ptr,
-        out_ptr,
-        channels,
-        kernel_size,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import CONV_SINGLE
+    _check_conv_shape(channels, kernel_size)
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    _check_launch(runtime, CONV_SINGLE.launch(library, locals()))
 
 
 def qwen35_linear_attn_conv_decode_indexed_bf16(
@@ -188,30 +181,8 @@ def qwen35_linear_attn_conv_decode_indexed_bf16(
     _check_conv_shape(channels, kernel_size)
     library = library or build_qwen35_linear_attn_conv(load=True)
     runtime = runtime or get_hip_runtime()
-    fn = getattr(library, _SYMBOL_INDEXED_BF16)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_void_p,
-    ]
-    fn.restype = ctypes.c_int
-    err = fn(
-        ctypes.c_void_p(hidden_states_ptr),
-        ctypes.c_void_p(conv_state_ptr),
-        ctypes.c_void_p(conv_weight_ptr),
-        ctypes.c_void_p(out_ptr),
-        ctypes.c_void_p(state_indices_ptr),
-        ctypes.c_int64(rows),
-        ctypes.c_int64(channels),
-        ctypes.c_int64(kernel_size),
-        ctypes.c_void_p(stream),
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import CONV_DECODE
+    err = CONV_DECODE.launch(library, locals())
     _check_launch(runtime, err)
 
 
@@ -584,19 +555,12 @@ def qwen35_linear_attn_conv_prefill_f32(
 ) -> None:
     """Launch FP32 native prefill convolution and update conv_state."""
 
-    _launch_conv_prefill(
-        _SYMBOL_PREFILL_F32,
-        hidden_states_ptr,
-        conv_state_ptr,
-        conv_weight_ptr,
-        out_ptr,
-        tokens,
-        channels,
-        kernel_size,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import CONV_PREFILL
+    _check_positive(tokens, "tokens")
+    _check_conv_shape(channels, kernel_size)
+    library = library or build_qwen35_linear_attn_conv(load=True)
+    runtime = runtime or get_hip_runtime()
+    _check_launch(runtime, CONV_PREFILL.launch(library, locals()))
 
 
 def qwen35_linear_attn_conv_prefill_f32_tile32x128(

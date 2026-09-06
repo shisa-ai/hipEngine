@@ -2232,22 +2232,12 @@ def _launch_qwen35_router_logits_bf16_hidden(
     preserving the BF16-weight path for fixtures and legacy materializations.
     """
 
-    fn = resolve(
-        backend=weight.backend,
-        layer="router_logits",
-        quant=weight.spec.quant_key,
-        variant="bf16_hidden",
-    )
-    fn(
-        hidden_ptr,
-        weight.allocation().tensor.ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_router_consumer_contract
+    contract = resolve_router_consumer_contract(weight.spec.layout, weight.spec.quant_key, "bf16")
+    key = contract.key(weight.backend)
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    weight_ptr = weight.allocation().tensor.ptr
+    contract.call(fn, locals(), stream=stream, runtime=runtime)
 
 
 def _launch_qwen35_router_logits_f32_hidden(
@@ -2263,22 +2253,12 @@ def _launch_qwen35_router_logits_f32_hidden(
 ) -> None:
     """Launch F32-hidden router logits through the kernel registry."""
 
-    fn = resolve(
-        backend=weight.backend,
-        layer="router_logits",
-        quant=weight.spec.quant_key,
-        variant="f32_hidden",
-    )
-    fn(
-        hidden_ptr,
-        weight.allocation().tensor.ptr,
-        logits_ptr,
-        tokens,
-        hidden_size,
-        num_rows,
-        stream=stream,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_router_consumer_contract
+    contract = resolve_router_consumer_contract(weight.spec.layout, weight.spec.quant_key, "f32")
+    key = contract.key(weight.backend)
+    fn = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    weight_ptr = weight.allocation().tensor.ptr
+    contract.call(fn, locals(), stream=stream, runtime=runtime)
 
 
 def _try_launch_qwen35_router_topk_split_shared_bf16_f32w(
@@ -2905,19 +2885,12 @@ class Qwen35GGUFFullStackRunner:
     def _gdn_decode_output_cast_for_weight(self, weight, *, rows: int = 1):
         """Return the plugin cast or the unfused cast required by weight layout."""
 
+        from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_output_handoff
         output_cast = self._gdn_decode_output_cast_fn()
+        handoff = resolve_gdn_output_handoff(weight.spec.layout, force_bf16=output_cast is not None)
         if output_cast is not None:
             return output_cast
-        try:
-            resolve_gguf_linear_dispatch(
-                weight,
-                activation_dtype=GGUF_ACTIVATION_F32,
-                backend=self.backend,
-                rows=rows,
-            )
-        except ValueError:
-            return f32_to_bf16
-        return None
+        return f32_to_bf16 if handoff.adapters else None
 
     def _gdn_decode_output_fusion_for_weight(self, weight):
         """Resolve a weight-plugin scalar GDN FP32+BF16 boundary owner.
@@ -3546,25 +3519,18 @@ class Qwen35GGUFFullStackRunner:
             "chain_wave32_tree",
         } or (plan.has_chain and not use_fused)
         if use_fused:
-            plan.fused_decode_order(
-                scratch.conv_out.ptr,
-                scratch.linear_z.ptr,
-                scratch.linear_alpha.ptr,
-                scratch.linear_beta.ptr,
-                layer.weight("ssm_dt_bias").allocation().tensor.ptr,
-                layer.weight("ssm_a").allocation().tensor.ptr,
-                layer.weight("ssm_norm").allocation().tensor.ptr,
-                recurrent_state.ptr,
-                scratch.recurrent_bf16.ptr,
-                cfg.rms_norm_eps,
-                rows,
-                cfg.ssm_group_count,
-                cfg.ssm_time_step_rank,
-                cfg.ssm_state_size,
-                self.ssm_value_dim,
-                stream=stream,
-                runtime=runtime,
-            )
+            from hipengine.loading.qwen35_gguf_consumer_surface import GDN_PREFILL
+            GDN_PREFILL.call(plan.fused_decode_order, {
+                "conv_out_ptr": scratch.conv_out.ptr, "gate_ptr": scratch.linear_z.ptr,
+                "a_ptr": scratch.linear_alpha.ptr, "b_ptr": scratch.linear_beta.ptr,
+                "dt_bias_ptr": layer.weight("ssm_dt_bias").allocation().tensor.ptr,
+                "a_log_ptr": layer.weight("ssm_a").allocation().tensor.ptr,
+                "norm_weight_ptr": layer.weight("ssm_norm").allocation().tensor.ptr,
+                "recurrent_state_ptr": recurrent_state.ptr, "out_ptr": scratch.recurrent_bf16.ptr,
+                "eps": cfg.rms_norm_eps, "tokens": rows,
+                "num_k_heads": cfg.ssm_group_count, "num_v_heads": cfg.ssm_time_step_rank,
+                "head_k_dim": cfg.ssm_state_size, "head_v_dim": self.ssm_value_dim,
+            }, stream=stream, runtime=runtime)
             return
         if use_chain:
             if use_direct_lds32 and direct_route_available:
@@ -6845,26 +6811,15 @@ class Qwen35GGUFFullStackRunner:
 
         # Keep the scalar dense reduction association on the two rank-16
         # projections; the indexed GDN ABI consumes separate row-major arrays.
-        dense_gemv_out_bf16(
-            scratch.norm.ptr,
-            layer.weight("ssm_alpha").allocation("raw").tensor.ptr,
-            scratch.linear_alpha.ptr,
-            rows,
-            self.hidden_size,
-            cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
-        dense_gemv_out_bf16(
-            scratch.norm.ptr,
-            layer.weight("ssm_beta").allocation("raw").tensor.ptr,
-            scratch.linear_beta.ptr,
-            rows,
-            self.hidden_size,
-            cfg.ssm_time_step_rank,
-            stream=stream,
-            runtime=runtime,
-        )
+        from hipengine.loading.qwen35_gguf_consumer_surface import native_alpha_beta_consumer_contract
+        alpha_beta = native_alpha_beta_consumer_contract()
+        for weight_name, output in (("ssm_alpha", scratch.linear_alpha), ("ssm_beta", scratch.linear_beta)):
+            alpha_beta.call(dense_gemv_out_bf16, {
+                "x_ptr": scratch.norm.ptr,
+                "raw": layer.weight(weight_name).allocation("raw").tensor.ptr,
+                "out_ptr": output.ptr, "rows": rows,
+                "in_features": self.hidden_size, "out_features": cfg.ssm_time_step_rank,
+            }, stream=stream, runtime=runtime)
         qwen35_linear_attn_conv_decode_indexed_bf16(
             scratch.linear_qkv.ptr,
             conv_state.ptr,
@@ -9747,8 +9702,13 @@ class Qwen35GGUFFullStackRunner:
             scratch,
             bool(prefer_f32_selected_down),
         )
+        gate_call, down_call = selected_ffn_modes(
+            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+            allow_legacy_silu=True, f32_gate=post_norm_f32_ptr is not None,
+            f32_intermediate=f32_selected_intermediate, f32_down=prefer_f32_selected_down,
+        )
         expert_silu_ready = False
-        if post_norm_f32_ptr is None and not f32_selected_intermediate:
+        if gate_call == "dual_silu":
             expert_silu_ready = _launch_selected_raw_gguf_moe_pair_silu(
                 gate_weight,
                 up_weight,
@@ -9775,51 +9735,15 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
                 ),
             )
-            if not _launch_selected_raw_gguf_moe_pair(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
+            _launch_selected_raw_gguf_moe_dual(
+                gate_weight, up_weight, scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=1,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr,
-                x_f32_ptr=post_norm_f32_ptr,
-                stream=stream,
-                runtime=runtime,
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=post_norm_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=1,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=post_norm_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                x_rows=1, rows=selected_rows, num_experts=cfg.expert_count,
+                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=post_norm_f32_ptr,
+                stream=stream, runtime=runtime,
+            )
             if f32_selected_intermediate:
                 silu_mul_separate_out_f32(
                     scratch.ffn_gate_up.ptr,
@@ -9850,7 +9774,7 @@ class Qwen35GGUFFullStackRunner:
                 )
         f32_selected_down = bool(prefer_f32_selected_down)
         expert_down_weighted = False
-        if not f32_selected_down:
+        if down_call == "weighted_down":
             expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
                 down_weight,
                 scratch.ffn_intermediate.ptr,
@@ -10109,7 +10033,10 @@ class Qwen35GGUFFullStackRunner:
                 runtime=runtime,
                 library=getattr(self, "_expert_pack8_library", None),
             )
-        elif _launch_selected_raw_gguf_moe_pair_silu(
+        elif selected_ffn_modes(
+            gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+            allow_legacy_silu=False,
+        )[0] == "dual_silu" and _launch_selected_raw_gguf_moe_pair_silu(
             gate_weight,
             up_weight,
             scratch.post_norm.ptr,
@@ -10140,54 +10067,16 @@ class Qwen35GGUFFullStackRunner:
                     or _selected_pair_requires_q8_1_input(gate_weight, up_weight)
                 ),
             )
-            if not _launch_selected_raw_gguf_moe_pair(
-                gate_weight,
-                up_weight,
-                scratch.post_norm.ptr,
-                scratch.moe_selected_experts.ptr,
-                scratch.ffn_gate_up.ptr,
+            _launch_selected_raw_gguf_moe_dual(
+                gate_weight, up_weight, scratch.post_norm.ptr,
+                scratch.moe_selected_experts.ptr, scratch.ffn_gate_up.ptr,
                 scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                x_rows=rows,
-                rows=selected_rows,
-                num_experts=cfg.expert_count,
-                in_features=self.hidden_size,
-                out_features=cfg.expert_feed_forward_length,
-                q8_1_workspace_ptr=q8_1_workspace_ptr,
-                x_f32_ptr=selected_f32_ptr,
-                stream=stream,
-                runtime=runtime,
-                stage_timings=stage_timings,
-                sync_stage_timings=sync_stages,
-                stage_prefix=f"{stage_prefix}_expert_gate_up",
-            ):
-                _launch_selected_raw_gguf_moe_linear(
-                    gate_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=selected_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
-                _launch_selected_raw_gguf_moe_linear(
-                    up_weight,
-                    scratch.post_norm.ptr,
-                    scratch.moe_selected_experts.ptr,
-                    scratch.ffn_gate_up.ptr + gate_rows_nbytes,
-                    x_rows=rows,
-                    rows=selected_rows,
-                    num_experts=cfg.expert_count,
-                    in_features=self.hidden_size,
-                    out_features=cfg.expert_feed_forward_length,
-                    x_f32_ptr=selected_f32_ptr,
-                    stream=stream,
-                    runtime=runtime,
-                )
+                x_rows=rows, rows=selected_rows, num_experts=cfg.expert_count,
+                in_features=self.hidden_size, out_features=cfg.expert_feed_forward_length,
+                q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=selected_f32_ptr,
+                stream=stream, runtime=runtime, stage_timings=stage_timings,
+                sync_stage_timings=sync_stages, stage_prefix=f"{stage_prefix}_expert_gate_up",
+            )
         t_stage = _mark_sync_stage(
             runtime,
             stage_timings,
@@ -10255,7 +10144,11 @@ class Qwen35GGUFFullStackRunner:
             )
         else:
             selected_down_is_f32 = prefer_f32_selected_down
-            if not selected_down_is_f32 and not f32_residual:
+            if selected_ffn_modes(
+                gate_weight.spec.quant_key, up_weight.spec.quant_key, down_weight.spec.quant_key,
+                allow_legacy_silu=False, f32_down=selected_down_is_f32,
+                weighted_down=not f32_residual,
+            )[1] == "weighted_down":
                 expert_down_weighted = _launch_weighted_selected_raw_gguf_moe_linear(
                     down_weight,
                     scratch.ffn_intermediate.ptr,
@@ -12278,11 +12171,11 @@ def _q8_0_embedding_rows_to_bf16(
 
 
 def _gguf_q4k_selected_dual_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_Q4K_SELECTED_DUAL_DP4A_ENV)
 
 
 def _gguf_t16_selected_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_T16_SELECTED_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_T16_SELECTED_DP4A_ENV)
 
 
 def _gguf_q8_t16_decode_rowtile_all_for_rows(backend: str, *, rows: int) -> bool:
@@ -12394,7 +12287,7 @@ def _gguf_t16_ds4_prefill_enabled() -> bool:
 
 
 def _gguf_raw_selected_dp4a_enabled() -> bool:
-    return _env_flag(_GGUF_RAW_SELECTED_DP4A_ENV, False)
+    return selected_adapter_enabled(_GGUF_RAW_SELECTED_DP4A_ENV)
 
 
 def _gguf_dense_q8_dp4a_enabled() -> bool:
@@ -12573,20 +12466,17 @@ def _resolve_fp16_recurrent_state_flag(use_fp16_state: bool | None) -> bool:
 
 
 def _gdn_decode_gate_kernel(use_fp16_state: bool | None = None):
-    fn = (
-        qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_recurrent_rmsnorm_gate_lowp_bf16
-    )
-    return fn
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_operation_contract
+    contract = resolve_gdn_operation_contract(
+        "ar_decode_c1", "fp16" if _resolve_fp16_recurrent_state_flag(use_fp16_state) else "f32")
+    return globals()[contract.symbol.removeprefix("hipengine_")]
 
 
 def _gdn_decode_segments_kernel(use_fp16_state: bool | None = None):
-    return (
-        qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state
-        if _resolve_fp16_recurrent_state_flag(use_fp16_state)
-        else qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_segments_contract
+    contract = resolve_gdn_segments_contract(
+        "fp16" if _resolve_fp16_recurrent_state_flag(use_fp16_state) else "f32")
+    return globals()[contract.symbol.removeprefix("hipengine_")]
 
 
 def _gdn_decode_order_state_rows_kernel(use_fp16_state: bool | None = None):
@@ -13058,24 +12948,10 @@ def _quantize_activation_q8_1(
     stream: int,
     runtime: HipRuntime,
 ) -> None:
-    if x_f32_ptr is None:
-        gguf_q4_k_quantize_bf16_q8_1(
-            x_ptr,
-            q8_1_workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-        )
-    else:
-        gguf_q4_k_quantize_f32_q8_1(
-            int(x_f32_ptr),
-            q8_1_workspace_ptr,
-            rows,
-            in_features,
-            stream=stream,
-            runtime=runtime,
-        )
+    input_dtype = "bf16" if x_f32_ptr is None else "f32"
+    fn = globals()[selected_input_adapter(input_dtype)]
+    fn(x_ptr if x_f32_ptr is None else int(x_f32_ptr), q8_1_workspace_ptr,
+       rows, in_features, stream=stream, runtime=runtime)
 
 
 def _try_launch_dense_q8_single_dp4a(
@@ -33185,8 +33061,7 @@ def _resolve_compact_moe_gemv_kernels(
 
 
 def _selected_gemv_allocation_name(weight: Qwen35GGUFDeviceWeight) -> str:
-    quant_key = weight.spec.quant_key
-    return "tiles" if quant_key.endswith("_t16_v1") or quant_key.endswith("_x8_v1") else "raw"
+    return selected_allocation(weight.spec.quant_key)
 
 
 def _selected_gemv_requires_q8_1_input(weight: Qwen35GGUFDeviceWeight) -> bool:
@@ -33301,9 +33176,14 @@ def _read_i64_device_scalar(buffer, host: np.ndarray, *, stream: int = 0, runtim
     return int(host[0])
 
 
-_SELECTED_MOE_SINGLE_VARIANT = "selected_gemv_decode_bf16_bf16_out"
-_SELECTED_MOE_DUAL_SILU_VARIANT = "selected_dual_silu_gemv_decode_bf16_bf16_out"
-_SELECTED_MOE_WEIGHTED_DOWN_VARIANT = "selected_weighted_down_gemv_decode_bf16_bf16_out"
+from hipengine.loading.gguf_selected_contract import (
+    SELECTED_VARIANTS, selected_abi, selected_allocation, selected_ffn_modes,
+    selected_input_adapter, selected_adapter_enabled, selected_f32_output_supported,
+)
+
+_SELECTED_MOE_SINGLE_VARIANT = SELECTED_VARIANTS["single"]
+_SELECTED_MOE_DUAL_SILU_VARIANT = SELECTED_VARIANTS["dual_silu"]
+_SELECTED_MOE_WEIGHTED_DOWN_VARIANT = SELECTED_VARIANTS["weighted_down"]
 
 
 def _resolve_exact_selected_moe_kernel(quant_key: str, variant: str):
@@ -33363,19 +33243,10 @@ def _launch_selected_raw_gguf_moe_pair_silu(
                 in_features=in_features,
                 out_features=out_features,
             )
-            fn(
-                x_ptr,
-                selected_ptr,
-                _selected_moe_weight_ptr(weight_a),
-                _selected_moe_weight_ptr(weight_b),
-                out_ptr,
-                x_rows=x_rows,
-                rows=rows,
-                num_experts=num_experts,
-                in_features=in_features,
-                out_features=out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual_silu").call(
+                fn, (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight_a),
+                     _selected_moe_weight_ptr(weight_b), out_ptr), locals(),
+                stream=stream, runtime=runtime,
             )
             return True
     if not allow_legacy:
@@ -33385,22 +33256,40 @@ def _launch_selected_raw_gguf_moe_pair_silu(
         # production c1 trace regressed it on gfx1151. Keep c1 on the exact
         # float-dequant fused kernel and reserve dp4a routing for rows>1 split
         # gate/up where it measured faster.
-        gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out(
-            x_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("dual_silu").call(
+            gguf_q4_k_t16_selected_dual_silu_gemv_bf16_bf16_out,
+            (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+             weight_b.allocation("tiles").tensor.ptr, out_ptr), locals(),
+            positional_dimensions=True, stream=stream, runtime=runtime,
         )
         return True
     return False
+
+
+def _launch_selected_raw_gguf_moe_dual(
+    weight_a, weight_b, x_ptr, selected_ptr, out_a_ptr, out_b_ptr, *,
+    x_rows, rows, num_experts, in_features, out_features,
+    q8_1_workspace_ptr=None, x_f32_ptr=None, stream, runtime, **timing,
+) -> None:
+    """Complete ordered dual boundary, including the strict two-single chain.
+
+    This is the old caller sequence factored once; no input conversions are
+    invented in the fallback. In particular it does not pass a Q8_1 workspace
+    to a singleton when the dual probe refuses that format pair.
+    """
+    geometry = dict(x_rows=x_rows, rows=rows, num_experts=num_experts,
+                    in_features=in_features, out_features=out_features)
+    if _launch_selected_raw_gguf_moe_pair(
+        weight_a, weight_b, x_ptr, selected_ptr, out_a_ptr, out_b_ptr,
+        **geometry, q8_1_workspace_ptr=q8_1_workspace_ptr, x_f32_ptr=x_f32_ptr,
+        stream=stream, runtime=runtime, **timing,
+    ):
+        return
+    for weight, output in ((weight_a, out_a_ptr), (weight_b, out_b_ptr)):
+        _launch_selected_raw_gguf_moe_linear(
+            weight, x_ptr, selected_ptr, output, **geometry,
+            x_f32_ptr=x_f32_ptr, stream=stream, runtime=runtime,
+        )
 
 
 def _launch_selected_raw_gguf_moe_pair(
@@ -33469,20 +33358,11 @@ def _launch_selected_raw_gguf_moe_pair(
                 t_stage,
             )
         else:
-            gguf_q4_k_selected_dual_gemv_bf16_bf16_out(
-                x_ptr,
-                selected_ptr,
-                weight_a.allocation("raw").tensor.ptr,
-                weight_b.allocation("raw").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                x_rows,
-                rows,
-                num_experts,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual").call(
+                gguf_q4_k_selected_dual_gemv_bf16_bf16_out,
+                (x_ptr, selected_ptr, weight_a.allocation("raw").tensor.ptr,
+                 weight_b.allocation("raw").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+                positional_dimensions=True, stream=stream, runtime=runtime,
             )
             _mark_sync_stage(
                 runtime,
@@ -33552,20 +33432,11 @@ def _launch_selected_raw_gguf_moe_pair(
                 )
                 else gguf_q4_k_t16_selected_dual_gemv_bf16_bf16_out
             )
-            selected_dual_fn(
-                x_ptr,
-                selected_ptr,
-                weight_a.allocation("tiles").tensor.ptr,
-                weight_b.allocation("tiles").tensor.ptr,
-                out_a_ptr,
-                out_b_ptr,
-                x_rows,
-                rows,
-                num_experts,
-                in_features,
-                out_features,
-                stream=stream,
-                runtime=runtime,
+            selected_abi("dual").call(
+                selected_dual_fn,
+                (x_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+                 weight_b.allocation("tiles").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+                positional_dimensions=True, stream=stream, runtime=runtime,
             )
             _mark_sync_stage(
                 runtime,
@@ -33594,20 +33465,11 @@ def _launch_selected_raw_gguf_moe_pair(
             f"{stage_prefix}_q8_quantize",
             t_stage,
         )
-        gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out(
-            q8_1_workspace_ptr,
-            selected_ptr,
-            weight_a.allocation("tiles").tensor.ptr,
-            weight_b.allocation("tiles").tensor.ptr,
-            out_a_ptr,
-            out_b_ptr,
-            x_rows,
-            rows,
-            num_experts,
-            in_features,
-            out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("dual", input_dtype="q8_1").call(
+            gguf_q4_k_x8_selected_dual_q8_1_dp4a_gemv_bf16_bf16_out,
+            (q8_1_workspace_ptr, selected_ptr, weight_a.allocation("tiles").tensor.ptr,
+             weight_b.allocation("tiles").tensor.ptr, out_a_ptr, out_b_ptr), locals(),
+            positional_dimensions=True, stream=stream, runtime=runtime,
         )
         _mark_sync_stage(
             runtime,
@@ -33654,18 +33516,9 @@ def _launch_selected_raw_gguf_moe_linear(
             in_features=in_features,
             out_features=out_features,
         )
-        fn(
-            x_ptr,
-            selected_ptr,
-            _selected_moe_weight_ptr(weight),
-            out_ptr,
-            x_rows=x_rows,
-            rows=rows,
-            num_experts=num_experts,
-            in_features=in_features,
-            out_features=out_features,
-            stream=stream,
-            runtime=runtime,
+        selected_abi("single").call(
+            fn, (x_ptr, selected_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+            locals(), stream=stream, runtime=runtime,
         )
         _mark_sync_stage(
             runtime,
@@ -33836,18 +33689,11 @@ def _launch_selected_raw_gguf_moe_linear(
         )
     else:
         raise ValueError(f"unsupported selected GGUF MoE quant {quant_key!r} for {weight.spec.source.name}")
-    fn(
-        q8_1_workspace_ptr if use_q8_1_input else x_ptr,
-        selected_ptr,
-        weight.allocation(allocation).tensor.ptr,
-        out_ptr,
-        x_rows,
-        rows,
-        num_experts,
-        in_features,
-        out_features,
-        stream=stream,
-        runtime=runtime,
+    selected_abi("single", input_dtype="q8_1" if use_q8_1_input else "bf16",
+                 output_dtype="f32" if prefer_f32_out and selected_f32_output_supported(quant_key) else "bf16").call(
+        fn, (q8_1_workspace_ptr if use_q8_1_input else x_ptr,
+             selected_ptr, weight.allocation(allocation).tensor.ptr, out_ptr),
+        locals(), positional_dimensions=True, stream=stream, runtime=runtime,
     )
     _mark_sync_stage(
         runtime,
@@ -33885,19 +33731,9 @@ def _launch_weighted_selected_raw_gguf_moe_linear(
         in_features=in_features,
         out_features=out_features,
     )
-    fn(
-        x_ptr,
-        selected_ptr,
-        routing_weights_ptr,
-        _selected_moe_weight_ptr(weight),
-        out_ptr,
-        tokens=tokens,
-        top_k=top_k,
-        num_experts=num_experts,
-        in_features=in_features,
-        out_features=out_features,
-        stream=stream,
-        runtime=runtime,
+    selected_abi("weighted_down").call(
+        fn, (x_ptr, selected_ptr, routing_weights_ptr, _selected_moe_weight_ptr(weight), out_ptr),
+        locals(), stream=stream, runtime=runtime,
     )
     return True
 

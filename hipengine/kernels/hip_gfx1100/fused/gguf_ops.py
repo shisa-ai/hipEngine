@@ -68,17 +68,12 @@ def gguf_rmsnorm_bf16_f32_weight(
     _check_positive(rows, "rows")
     _check_positive(hidden_size, "hidden_size")
     _check_threads(threads)
-    _launch_rmsnorm(
-        "hipengine_gguf_rmsnorm_bf16_f32_weight",
-        (x_ptr, weight_ptr, out_ptr),
-        rows,
-        hidden_size,
-        eps,
-        threads=threads,
-        stream=stream,
-        library=library,
-        runtime=runtime,
-    )
+    from hipengine.loading.qwen35_gguf_consumer_surface import RMSNORM
+    library = library or build_gguf_ops(load=True)
+    runtime = runtime or get_hip_runtime()
+    err = RMSNORM.launch(library, locals())
+    if int(err) != HIP_SUCCESS:
+        runtime.check(int(err))
 
 
 def gguf_rmsnorm_bf16_f32_weight_fixed1024_wave256(
