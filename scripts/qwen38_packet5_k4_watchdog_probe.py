@@ -81,9 +81,24 @@ def _inject_k4_evidence_row(width: int, budget: int) -> str:
             base = row
             break
     if base is None:
-        raise RuntimeError("no registered gfx1100 C8 K3 evidence row to clone")
+        # Canonical serving evidence exists only for widths 1/2/8. Off-width
+        # screening cells (Packet 6 grid) clone the C8 production row and
+        # override the realized width; the clone keeps automatic_eligible=False
+        # so the screening contract (HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS)
+        # stays the only admission route.
+        for row in models_mod._QWEN38_Q4KM_MTP_SERVING_EVIDENCE:
+            if (
+                row.backend == "hip_gfx1100"
+                and row.realized_group_rows == 8
+                and row.execution_profile == "production"
+            ):
+                base = row
+                break
+    if base is None:
+        raise RuntimeError("no registered gfx1100 production evidence row to clone")
     row = dataclasses.replace(
         base,
+        realized_group_rows=int(width),
         evidence_key=f"qwen38-q4km-gfx1100-production-bf16-c{width}-k{budget}-d24-k4probe",
         candidate_budget=int(budget),
         reason=_PROBE_LABEL,
@@ -488,7 +503,11 @@ def main() -> int:
         out_dir / f"k4-prompts-slice-{args.prompt_count}.jsonl",
     )
 
-    patched = _patch_depth_bound(args.budget)
+    # Floor at 3: the in-process server validates the certified production
+    # policy table (which contains depth-3 cells) against this bound, so it
+    # must never sit below the table's max depth. The requested budget flows
+    # to the server independently via HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET.
+    patched = _patch_depth_bound(max(int(args.budget), 3))
     evidence_key = _inject_k4_evidence_row(args.width, args.budget)
     os.environ["HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"] = "1"
 
