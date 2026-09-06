@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Raw MMQ vector activation staging (September6 UTC):** extend the retained
+activation-copy mechanism to raw-weight MMQ without packed storage or
+arithmetic change. Actual GR/query/output512 complete chains:
+1.891->1.371ms (1.379x),6.452->5.293ms (1.219x),
+2.891->2.229ms (1.297x).64-row cases also positive,both orders positive,
+all120 pairs exact.25 tests pass;trace184 VGPR/scratch0 unchanged.
+Raw-only harness no longer allocates an unused packed bank;retained
+screen uses that corrected memory surface. Kernel-only pending full-model
+state/KV and canonical A/B;prepacked production route unchanged.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector.json).
+
 **Q4 cooperative residual staging rejected (September6 UTC):** four-wave
 64-output/16-row K64 producer/consumer matches the two-plane reference
 but takes61.357ms versus exact17.403ms. Trace224 VGPR/18KiB LDS/scratch0.

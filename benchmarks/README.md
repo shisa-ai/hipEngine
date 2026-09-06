@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Raw MMQ vector kernel screen:GR/query/output512 complete chains
+1.891->1.371 /6.452->5.293 /2.891->2.229ms,all120 pairs exact.
+25 tests pass,resources unchanged,no sidecar. Model gates pending.
+[Evidence](results/2026-09-06-framework-qwen4exp-mmq-raw-vector.json).
+
 Q4 cooperative residual staging rejected:61.357ms versus exact17.403ms;
 no-unroll59.887ms and LDS-padding57.152ms still lose. Reference-exact,
 not strict-exact;cooperative code removed,production unchanged.

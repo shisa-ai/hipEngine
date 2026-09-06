@@ -18,7 +18,7 @@ from hipengine.loading.gguf import GGUFReader, discover_gguf_files
 from hipengine.benchmark.provenance import collect_artifact_provenance
 from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata
 from tests.test_qwen4_exp_pf3_moe_schedules import _upload, _alloc, _download
-from tests.test_qwen4exp_mmq_prepack import PARENT, CANDIDATE, VECTOR, pack_reference
+from tests.test_qwen4exp_mmq_prepack import PARENT, CANDIDATE, VECTOR, RAW_VECTOR, pack_reference
 
 
 def main():
@@ -31,6 +31,7 @@ def main():
     p.add_argument("--tensor",action="append")
     p.add_argument("--gpu-pack",action="store_true")
     p.add_argument("--vector-activation",action="store_true")
+    p.add_argument("--raw-vector",action="store_true")
     a = p.parse_args()
     if a.pairs < 2 or a.pairs % 2 or any(r < 1 for r in a.rows):
         p.error("positive rows and even pairs>=2 required")
@@ -48,6 +49,13 @@ def main():
     report["pack_mode"] = "gpu" if a.gpu_pack else "cpu_upload"
     parent_name = CANDIDATE if a.vector_activation else PARENT
     candidate_name = VECTOR if a.vector_activation else CANDIDATE
+    if a.raw_vector:
+        if a.vector_activation or a.gpu_pack:
+            p.error("raw-vector does not use packed-weight options")
+        parent_name,candidate_name = PARENT,RAW_VECTOR
+        report.update(layout="Raw output-major GGUF Q8_0 in both arms",
+                      resident_storage="Raw weights only; no packed bank allocated",
+                      pack_mode="none")
     report["parent_variant"] = parent_name
     report["candidate_variant"] = candidate_name
     report["hipengine_artifact_provenance"] = collect_artifact_provenance(
@@ -63,7 +71,7 @@ def main():
         assert info.ggml_type_name == "Q8_0" and k%256 == 0
         raw = reader.tensor_data(name)
         start = time.perf_counter_ns()
-        packed = pack_reference(raw,n,k)
+        packed = None if a.raw_vector else pack_reference(raw,n,k)
         pack_cpu_ms = (time.perf_counter_ns()-start)/1e6
         for rows in a.rows:
             allocations = []
@@ -71,7 +79,9 @@ def main():
                 x = np.random.default_rng(3982+rows).normal(0,.2,(rows,k)).astype(np.float32)
                 dx,dw = [_upload(v,runtime,allocations) for v in (x,raw)]
                 start = time.perf_counter_ns()
-                if a.gpu_pack:
+                if a.raw_vector:
+                    dp = None
+                elif a.gpu_pack:
                     dp = _alloc(packed.shape,np.uint8,runtime,allocations)
                     mmq.gguf_q8_0_mmq_pack_weights(
                         dw.ptr,dp.ptr,k,n,library=library,runtime=runtime)
@@ -79,7 +89,8 @@ def main():
                     dp = _upload(packed,runtime,allocations)
                 runtime.device_synchronize()
                 packed_upload_ms = (time.perf_counter_ns()-start)/1e6
-                np.testing.assert_array_equal(_download(dp,packed.shape,np.uint8,runtime),packed)
+                if packed is not None:
+                    np.testing.assert_array_equal(_download(dp,packed.shape,np.uint8,runtime),packed)
                 d4 = _alloc((mmq.q8_mmq_d4x3_nbytes(rows,k),),np.uint8,runtime,allocations)
                 count = _alloc((1,),np.int32,runtime,allocations)
                 indices = _alloc((rows*n,),np.int32,runtime,allocations)
@@ -90,7 +101,7 @@ def main():
                         dx.ptr,d4.ptr,rows,k,library=library,runtime=runtime)
                     runtime.memset(count.ptr,0,4)
                     getattr(mmq,candidate_name if candidate else parent_name)(
-                        d4.ptr,(dp if candidate or a.vector_activation else dw).ptr,outputs[candidate].ptr,
+                        d4.ptr,(dp if not a.raw_vector and (candidate or a.vector_activation) else dw).ptr,outputs[candidate].ptr,
                         count.ptr,indices.ptr,rows*n,0.,rows,k,n,library=library,runtime=runtime)
                     mmq.gguf_q8_0_mmq128_sparse_exact_correct_f32(
                         dx.ptr,dw.ptr,outputs[candidate].ptr,count.ptr,indices.ptr,
@@ -110,7 +121,7 @@ def main():
                         _download(outputs[1],(rows,n),np.float32,runtime).view(np.uint32))
                 report["cases"].append(dict(
                     tensor=name,shape=[rows,k,n],weight_sha256=hashlib.sha256(raw).hexdigest(),
-                    raw_bytes=raw.nbytes,packed_bytes=packed.nbytes,pack_cpu_ms=pack_cpu_ms,
+                    raw_bytes=raw.nbytes,packed_bytes=0 if packed is None else packed.nbytes,pack_cpu_ms=pack_cpu_ms,
                     packed_prepare_ms=packed_upload_ms,all_pairs_exact=True,
                     parent_ms=timings[0],candidate_ms=timings[1],
                     speedup=statistics.median(timings[0])/statistics.median(timings[1]),

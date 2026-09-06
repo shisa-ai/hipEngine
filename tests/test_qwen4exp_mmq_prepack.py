@@ -12,6 +12,7 @@ from tests.test_qwen4exp_pf1_dense_parity import make_q8_0_weight_large
 PARENT = "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
 CANDIDATE = "gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
 VECTOR = "gguf_q8_0_mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"
+RAW_VECTOR = "gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
 
 
 def pack_reference(raw, n, k):
@@ -45,6 +46,10 @@ def test_registry():
         backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
         variant=VECTOR.removeprefix("gguf_q8_0_"),
     ) is getattr(mmq,VECTOR)
+    assert resolve(
+        backend="hip_gfx1151",layer="linear",quant="gguf_q8_0",
+        variant=RAW_VECTOR.removeprefix("gguf_q8_0_"),
+    ) is getattr(mmq,RAW_VECTOR)
     assert resolve(
         backend="hip_gfx1151", layer="weight_pack", quant="gguf_q8_0",
         variant="mmq_kmajor76",
@@ -104,7 +109,8 @@ def test_exact_prepacked(rows,k,n,risk_threshold):
         mmq.gguf_q8_0_mmq128_quantize_f32_d4x3(dx.ptr,d4.ptr,rows,k,library=library,runtime=runtime)
         results = []
         risks = []
-        for name,weight in ((PARENT,dw),(CANDIDATE,dp),(VECTOR,dp),(VECTOR,dp)):
+        for name,weight in ((PARENT,dw),(CANDIDATE,dp),(VECTOR,dp),(VECTOR,dp),
+                            (RAW_VECTOR,dw),(RAW_VECTOR,dw)):
             runtime.memset(count.ptr,0,4)
             getattr(mmq,name)(d4.ptr,weight.ptr,out.ptr,count.ptr,indices.ptr,
                 rows*n,risk_threshold,rows,k,n,library=library,runtime=runtime)
