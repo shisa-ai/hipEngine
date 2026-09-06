@@ -1,0 +1,258 @@
+{
+ "kind": "mtp-packet2-c1-suite-economics",
+ "created": "2026-09-06",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+ "model": "Qwen3.8-27B Q4_K_M GGUF",
+ "protocol": "gguf_mtp_c1c8_server_bench full suite (mtpbench-code-general-ja.jsonl, 10 prompts across code/general_en/general_ja/mixed_ja_en, 3 heldout IDs), explicit width-1 requests at resident capacity 8, D24 greedy outputs, correctness contract ar_exact (AR and MTP token IDs must match per prompt), in-run native AR arm as the no-MTP baseline; eligibility resolved through the generation2 diagnostic plan (physical-C1 route), packed one-row provider group + R2/R3/R4 frontier",
+ "commands": [
+  "bash campaign-artifacts/packet2/run_p2_suite_econ.sh"
+ ],
+ "raw_runs": "/tmp/he-bettermtp-raw/packet2/c1k{2,3}-suite-econ.json (outside repo)",
+ "runs": [
+  {
+   "candidate_budget": 3,
+   "ar_tok_s": 24.085,
+   "mtp_tok_s": 38.518,
+   "mtp_over_ar_speedup": 1.5992,
+   "cells": 10,
+   "exact_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "per_prompt": [
+    {
+     "prompt_id": "code_merge_intervals",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.304,
+     "mtp_tok_s": 34.408,
+     "ratio": 1.4157,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "code_topological_sort",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.146,
+     "mtp_tok_s": 38.436,
+     "ratio": 1.5918,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "code_lru_cache",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.254,
+     "mtp_tok_s": 39.464,
+     "ratio": 1.6271,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "code_markdown_table",
+     "category": "code",
+     "heldout": true,
+     "ar_tok_s": 24.117,
+     "mtp_tok_s": 43.728,
+     "ratio": 1.8131,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_en_plan",
+     "category": "general_en",
+     "heldout": false,
+     "ar_tok_s": 24.298,
+     "mtp_tok_s": 41.9,
+     "ratio": 1.7244,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_en_explain",
+     "category": "general_en",
+     "heldout": true,
+     "ar_tok_s": 24.242,
+     "mtp_tok_s": 40.239,
+     "ratio": 1.6599,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_ja_plan",
+     "category": "general_ja",
+     "heldout": false,
+     "ar_tok_s": 24.202,
+     "mtp_tok_s": 36.506,
+     "ratio": 1.5084,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_ja_explain",
+     "category": "general_ja",
+     "heldout": true,
+     "ar_tok_s": 24.224,
+     "mtp_tok_s": 37.236,
+     "ratio": 1.5372,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_translate",
+     "category": "mixed_ja_en",
+     "heldout": false,
+     "ar_tok_s": 23.882,
+     "mtp_tok_s": 38.269,
+     "ratio": 1.6024,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_review",
+     "category": "mixed_ja_en",
+     "heldout": true,
+     "ar_tok_s": 23.225,
+     "mtp_tok_s": 36.715,
+     "ratio": 1.5808,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    }
+   ]
+  },
+  {
+   "candidate_budget": 2,
+   "ar_tok_s": 24.07,
+   "mtp_tok_s": 37.663,
+   "mtp_over_ar_speedup": 1.5647,
+   "cells": 10,
+   "exact_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "per_prompt": [
+    {
+     "prompt_id": "code_merge_intervals",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.371,
+     "mtp_tok_s": 38.539,
+     "ratio": 1.5814,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "code_topological_sort",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.225,
+     "mtp_tok_s": 36.089,
+     "ratio": 1.4898,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "code_lru_cache",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.234,
+     "mtp_tok_s": 38.81,
+     "ratio": 1.6015,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "code_markdown_table",
+     "category": "code",
+     "heldout": true,
+     "ar_tok_s": 24.116,
+     "mtp_tok_s": 38.504,
+     "ratio": 1.5966,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_en_plan",
+     "category": "general_en",
+     "heldout": false,
+     "ar_tok_s": 24.265,
+     "mtp_tok_s": 38.274,
+     "ratio": 1.5773,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_en_explain",
+     "category": "general_en",
+     "heldout": true,
+     "ar_tok_s": 24.194,
+     "mtp_tok_s": 36.282,
+     "ratio": 1.4996,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_ja_plan",
+     "category": "general_ja",
+     "heldout": false,
+     "ar_tok_s": 24.142,
+     "mtp_tok_s": 35.888,
+     "ratio": 1.4865,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "general_ja_explain",
+     "category": "general_ja",
+     "heldout": true,
+     "ar_tok_s": 24.163,
+     "mtp_tok_s": 40.225,
+     "ratio": 1.6647,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_translate",
+     "category": "mixed_ja_en",
+     "heldout": false,
+     "ar_tok_s": 23.818,
+     "mtp_tok_s": 36.989,
+     "ratio": 1.553,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_review",
+     "category": "mixed_ja_en",
+     "heldout": true,
+     "ar_tok_s": 23.211,
+     "mtp_tok_s": 37.493,
+     "ratio": 1.6153,
+     "exact": true,
+     "engaged": true,
+     "budget_conformed": true
+    }
+   ]
+  }
+ ],
+ "scope_note": "Diagnostic-path economics gathering the C1 evidence row. The retained measurement reruns explicit requests through the registered evidence row without the diagnostic resolver."
+}
