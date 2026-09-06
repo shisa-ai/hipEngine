@@ -458,6 +458,8 @@ class SubmitPollTextGenerator:
         normalized = tuple(requests)
         if not normalized:
             return ()
+        if any(request.grammar is not None for request in normalized):
+            raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if not self.supports_speculative_mtp:
             raise NotImplementedError(
                 "speculative MTP generation is not supported by the wrapped generator"
@@ -557,6 +559,8 @@ class SubmitPollTextGenerator:
         lifecycle. Cross-request proposal/verify packing remains SPEC-C2.
         """
 
+        if request.grammar is not None:
+            raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if not self.supports_speculative_mtp:
             raise NotImplementedError(
                 "speculative MTP generation is not supported by the wrapped generator"
@@ -756,6 +760,8 @@ class SubmitPollTextGenerator:
             return self._submit_detailed_locked(request)
 
     def _submit_detailed_locked(self, request: GenerationRequest) -> GenerationSubmission:
+        if request.grammar is not None and not getattr(self._inner,"supports_grammar",False):
+            raise NotImplementedError("this model does not implement token grammar masking")
         prompts = tuple(request.prompts)
         if not prompts:
             raise ValueError("submit_detailed requires at least one prompt")

@@ -1,5 +1,12 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
+**Tool-calling correctness followup:** the embedded XML-parameter protocol and
+greedy grammar masks are implemented. JSON compatibility remains for other
+models. Local development sanity scored93/100 on15 short scenarios and83/100
+on six structured-output scenarios; remaining misses involve model tool choices,
+not the former empty-message transport defect. These are not a frozen full69-case
+qualification or a comparator-speed result. See [contract/evidence](QWEN4EXP-TOOLS-GRAMMAR.md).
+
 **Owner priority, 2026-09-06:** pause further performance experiments for the
 [served context-capacity correctness detour](QWEN4EXP-CONTEXT-CAPACITY.md).
 Expose admission-aware native context through the public factory/prepare path,
