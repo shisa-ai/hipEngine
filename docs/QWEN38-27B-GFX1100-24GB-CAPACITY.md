@@ -470,9 +470,27 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   consequence: INT8 buys residency at serial widths today; batched-eager
   decode is proven but graph and prefill ownership must land before INT8
   batched serving is throughput-eligible.
-- [ ] Gate each quant's INT8 against its same-weight BF16 teacher. Do not reuse
+- [x] Gate each quant's INT8 against its same-weight BF16 teacher. Do not reuse
   `Q4_K_M`/gfx1151 evidence for `Q4_K_S`/XTX. MTP composition needs its own
   acceptance, selected-prefix and provider/target rollback tests.
+  Done 2026-09-07. Q4_K_M: already qualified and promoted with complete 512/8
+  and 4K/16 teacher suites on gfx1100 (2026-08-15/16 artifacts; weighted mean/max
+  KL 0.000113/0.002293 at 512/8 and 0.000146/0.014308 at 4K/16, minimum-prompt
+  top-1 100%/94.12%, zero BF16 mirror). Q4_K_S: teacher-gated at the same
+  depth via a new opt-in `--diagnostic-kv-capability` suite injection that
+  exercises the real no-mirror compact route for an artifact without retained
+  plugin evidence — 512/8 passes at mean/max KL 0.000101/0.001915 with top-1
+  1.0, and 4K/16 passes at 0.000132/0.008881 with aggregate top-1 0.9893 and
+  minimum-prompt top-1 0.9412, both zero-mirror and all 16 layers INT8
+  (`results/2026-09-07-rx7900xtx-q4ks-int8-teacher-gate-512-8.json` and
+  `...-4k-16.json`; injection recorded in both payloads). Without the
+  injection the Q4_K_S INT8 request silently takes a mirrored fallback route
+  (48 MiB BF16 mirror, token-exact because it reads BF16 values, not INT8
+  math) because the plugin evidence tuple has no Q4_K_S row; adding that row
+  is a promotion decision that belongs to the INT8 campaign under its own
+  protocol, and this run is the diagnostic evidence for it. MTP composition
+  acceptance/rollback tests stay blocked by the MTP warmup bug recorded in
+  Packet 2.
 - [ ] Price bounded prefill, selective output heads and hidden capture against
   first-token latency. Lower-precision recurrent state is a separate numerical
   candidate, not a KV switch. Never omit required verifier scores.
