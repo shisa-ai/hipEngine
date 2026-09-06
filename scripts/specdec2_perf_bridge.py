@@ -1002,6 +1002,89 @@ def _summarize(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 @contextmanager
+def _install_diagnostic_plan(llm: Any, *, max_realized_group_rows: int = 8) -> None:
+    """Screening-only plan resolver mirroring the c1c8 server bench diagnostic.
+
+    Admits only greedy/D24/context<=95 groups at width <= the diagnostic max,
+    marks reason ``diagnostic_physical_gguf_mtp``, and never sets
+    ``automatic_eligible``. This is the explicitly unqualified test-candidate
+    path the better-MTP campaign uses to profile sub-capacity cells; it is not
+    production admission.
+    """
+
+    import hashlib
+    import json as _json
+    from types import MethodType
+
+    width = max(1, int(max_realized_group_rows))
+
+    def resolve(self: Any, **kwargs: Any) -> dict[str, Any]:
+        kwargs.setdefault(
+            "candidate_budget",
+            int(getattr(self, "speculative_candidate_budget", 2)),
+        )
+        kwargs.setdefault("max_realized_group_rows", width)
+        rows = int(kwargs["realized_group_rows"])
+        budget = int(kwargs.get("candidate_budget", 2))
+        admitted = bool(
+            1 <= rows <= width
+            and budget in {1, 2, 3}
+            and kwargs["sampling_mode"] == "greedy_fast"
+            and int(kwargs["context_tokens"]) <= 95
+            and int(kwargs["output_horizon_tokens"]) == 24
+            and kwargs["memory_fit"]
+        )
+        key = {
+            "realized_group_rows": rows,
+            "context_tokens": int(kwargs["context_tokens"]),
+            "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
+            "candidate_budget": budget,
+        }
+        digest = hashlib.sha256(
+            _json.dumps(key, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        reason = "diagnostic_physical_gguf_mtp" if admitted else "diagnostic_scope_miss"
+        static_key = {
+            "candidate_budget": budget,
+            "sampling_mode": str(kwargs["sampling_mode"]),
+            "context_tokens": int(kwargs["context_tokens"]),
+            "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
+            "memory_fit": bool(kwargs["memory_fit"]),
+            "max_realized_group_rows": width,
+        }
+        static_digest = hashlib.sha256(
+            _json.dumps(static_key, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+        return {
+            "schema_version": 1,
+            "plan_fingerprint": f"sha256:{digest}",
+            "key": key,
+            "admitted": admitted,
+            "selected_route": "speculative_mtp" if admitted else "default",
+            "selected_candidate_count": budget if admitted else 0,
+            "reason": reason,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": f"gguf-c1-c{width}-generation2-diagnostic",
+            "evidence_fingerprint": f"sha256:{static_digest}",
+            "evidence_artifacts": [],
+            "automatic_eligible": False,
+            "static_eligibility": {
+                "state": "speculative_capable" if admitted else "permanent_ar",
+                "eligible": admitted,
+                "reason": reason,
+                "max_candidate_count": budget if admitted else 0,
+                "max_realized_group_rows": width if admitted else 0,
+                "automatic_eligible": False,
+                "strict_fallback_key": "gguf_target_ar",
+                "evidence_key": f"gguf-c1-c{width}-generation2-diagnostic",
+                "evidence_fingerprint": f"sha256:{static_digest}",
+                "evidence_artifacts": [],
+            },
+        }
+
+    llm.resolve_speculative_mtp_serving_plan = MethodType(resolve, llm)
+
+
 def _temporary_environment(updates: Mapping[str, str | None]) -> Iterator[None]:
     previous = {key: os.environ.get(key) for key in updates}
     try:
@@ -1064,6 +1147,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--require-cached-build", action="store_true")
     parser.add_argument("--roctx-markers", action="store_true")
     parser.add_argument("--profile-child", action="store_true")
+    parser.add_argument(
+        "--diagnostic-plan",
+        action="store_true",
+        help=(
+            "Install the fail-closed diagnostic serving-plan resolver (same "
+            "semantics as gguf_mtp_c1c8_server_bench --generation2-diagnostic) "
+            "so explicitly unqualified sub-capacity screening cells can be "
+            "profiled. Screening-only; never production admission."
+        ),
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--fail-on-fail", action="store_true")
     return parser
@@ -1270,6 +1363,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     max_sequence_length=int(args.max_sequence_length),
                     speculative_candidate_budget=int(budget),
                 )
+                if args.diagnostic_plan:
+                    _install_diagnostic_plan(llm)
                 ledger: _StageLedger | None = None
                 load_row: dict[str, Any] | None = None
                 try:
