@@ -3,11 +3,12 @@
 ## Qwen4Exp Q5_1 register weight-cache candidate
 
 - `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` is
-  kernel-only,K640;no model flag/default yet. It removes repeated weight
+  default-off through `HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE`,both
+  profile binders0. Existing folded-pair rows>=512,K640 only. It removes repeated weight
   decoding without extra LDS, but uses96 VGPR and36B private scratch.
-- Require full-model invocation/logits/state/KV and canonical12-case A/B
-  at existing folded-pair rows>=512 before promotion. Remove if either
-  gate fails;keep original folded-pair/M1 and all smaller-row fallbacks.
+- Five invocation/full-logit/state/KV cases pass. Require canonical12-case
+  A/B at full residency before promotion. Remove if it fails;keep original
+  folded-pair/M1 and all smaller-row fallbacks.
 
 ## Qwen4Exp MMQ vector activation staging rollback
 

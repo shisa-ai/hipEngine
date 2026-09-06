@@ -2977,6 +2977,16 @@ def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
 
 
+def _qwen4_exp_q51_register_cache_key(key: KernelKey, *, rows: int, in_features: int) -> KernelKey:
+    if (rows < 512 or in_features != 640
+            or key.variant != "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE", "0") != "1"):
+        return key
+    candidate = KernelKey(key.backend,key.layer,key.quant,
+                          "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
+    return candidate if is_registered(candidate) else key
+
+
 def _qwen4_exp_q51_fold_pair_key(key: KernelKey, *, rows: int) -> KernelKey:
     if (rows < 512 or key.variant != "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
             or os.environ.get("HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL", "0") != "1"):
@@ -3692,6 +3702,8 @@ def run_qwen4_exp_moe(
                     KernelKey(backend, "moe_linear", weights["expert_down"].spec.quant_key,
                               grouped_q5_variant), rows=rows)
                 grouped_q5_key = _qwen4_exp_q51_fold_pair_key(grouped_q5_key, rows=rows)
+                grouped_q5_key = _qwen4_exp_q51_register_cache_key(
+                    grouped_q5_key, rows=rows, in_features=ffn)
                 grouped_q5_down = resolve(
                     backend=grouped_q5_key.backend, layer=grouped_q5_key.layer,
                     quant=grouped_q5_key.quant, variant=grouped_q5_key.variant)

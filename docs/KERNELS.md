@@ -798,6 +798,12 @@ private scratch0->36B, dynamic LDS8672B unchanged: not spill-free.
 Full-residency model gates remain; original folded-pair and M1 fallbacks
 stay registered. Evidence: `2026-09-06-framework-qwen4exp-q51-register-cache.json`.
 
+Default-off model admission passes five full-logit/state/KV cases with
+four decode steps. Invocation0/25/0 at512 or0/200/0 at4096,zero decode/
+final allocations.18 CPU tests pass. Both binders0,only existing folded-pair
+rows>=512,K640. Canonical12-case A/B remains the promotion blocker.
+Evidence: `2026-09-06-framework-qwen4exp-q51-register-cache-state.json`.
+
 The Q5_1 folded-pair decoded-LDS weight-cache experiment is rejected and
 removed: captured actual two-bank projection34.449->58.987ms (0.584x),
 exact. Dynamic LDS8672->13792B,VGPR72/scratch0 unchanged. Original
