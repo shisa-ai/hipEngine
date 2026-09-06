@@ -2,8 +2,10 @@
 
 ## Qwen4Exp Q5_1 fold128 candidate
 
-- Kernel-only `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves
-  reduction scratch with exact arithmetic. No runtime flag/default change yet.
+- `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves reduction
+  scratch with exact arithmetic. Default-off
+  `HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL` selects it only after existing
+  pair2 prefill selection and rows>=64; both profile binders pin0.
 - Promote only after invocation-checked full logits/state/KV and canonical
   12-case A/B; remove if complete-model evidence rejects it. Keep current
   pair2 rollback and strict M1/fallback chains.

@@ -884,6 +884,13 @@ Trace72 VGPR/no spills, dynamic LDS8672->4576B at K640. Existing pair2/M1
 remain runtime defaults/fallbacks pending full-model gates and12-case A/B.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold128.json`.
 
+Default-off model admission now passes five full logits/state/full-KV cases,
+four decode steps each, with25/200 candidate calls only in enabled prefill
+and zero final allocations.38 CPU route/profile/harness tests pass.
+Only existing pair2 rows>=64 is eligible; production/strict fold128 bind0.
+Clean12-case A/B remains the promotion blocker.
+Evidence: `2026-09-06-framework-qwen4exp-q51-fold128-state.json`.
+
 The Q4_K selected-prefill family has a separately registered exact bundled
 publication sibling of its row8/output4/expertgrid64 owner. It preserves
 per-row FMA and wave/serial-wave reduction order while publishing all

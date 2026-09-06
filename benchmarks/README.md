@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q5_1 fold128 default-off model gate passes five full logits/state/KV cases:
+25/200 calls in enabled prefill, zero decode calls/leaks. Throughput A/B pending.
+[State evidence](results/2026-09-06-framework-qwen4exp-q51-fold128-state.json).
+
 Q5_1 fold128 kernel candidate: actual two-bank down with captured code/mixed
 routing41.501->40.236ms (1.031x)/40.624->39.219ms (1.036x), exact.
 Runtime defaults unchanged; model admission pending.
