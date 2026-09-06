@@ -213,13 +213,20 @@ def q8_mmq_vec4_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
     return 72 * (full * (chunk_size >= 64) + (tail >= 64))
 
 
+def q8_mmq_raw_vector_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
+    if prompt_tokens < 1 or chunk_size < 1:
+        raise ValueError("positive prompt and chunk sizes required")
+    full,tail = divmod(prompt_tokens,chunk_size)
+    return 242*(full*(chunk_size>=64)+(tail>=64))
+
+
 def _apply_mode(
     mode: str,
     *,
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -239,6 +246,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
         if route_package == "q8-mmq-vec4":
             flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"
+        if route_package == "q8-mmq-raw-vector":
+            flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"
         if route_package == "q8-down-row4":
             flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
         if route_package == "q51-fold128":
@@ -287,7 +296,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -411,7 +420,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -452,6 +461,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             row4_key = KernelKey(
                 "hip_gfx1151", "linear", "gguf_q8_0",
                 "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out")
+        if args.route_package == "q8-mmq-raw-vector":
+            row4_key = KernelKey("hip_gfx1151","linear","gguf_q8_0",
+                                "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out")
         if args.route_package == "q8-down-row4":
             row4_key = KernelKey(
                 "hip_gfx1151", "linear", "gguf_q8_0",
@@ -530,6 +542,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "before": {"qkv_ssm_mmq": "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"},
                 "after": {"qkv_ssm_mmq": row4_key.variant},
             }
+        elif args.route_package == "q8-mmq-raw-vector":
+            artifact["arms"] = {
+                "before": {"raw_mmq":"mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"},
+                "after": {"raw_mmq":row4_key.variant},
+            }
         elif args.route_package == "q8-down-row4":
             artifact["arms"] = {
                 "before": {"grouped_q8_down": "selected_grouped_gemv_bf16_bf16_out"},
@@ -565,7 +582,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             generator.runner, case=case, repetition=repetition, transitions=transitions)
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            if args.route_package == "q8-mmq-vec4":
+            if args.route_package == "q8-mmq-raw-vector":
+                expected_calls = q8_mmq_raw_vector_expected_calls(
+                    int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
+                if calls != expected_calls:
+                    raise AssertionError(f"Raw MMQ vector calls {calls} != {expected_calls}")
+            elif args.route_package == "q8-mmq-vec4":
                 expected_calls = q8_mmq_vec4_expected_calls(
                     int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
                 if calls != expected_calls:

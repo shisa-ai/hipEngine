@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Raw MMQ vector default-off admission (September6 UTC):** five off/on/off
+cases pass full logits,four decode steps,state and full KV. Invocation
+0/242/0 at512 or0/1936/0 at4096,zero decode/final allocations.
+32 CPU tests pass. Only existing raw-weight three-plane MMQ rows>=64;
+prepacked vector path independent and both raw-vector binders0.
+Next is clean canonical12-case `--route-package q8-mmq-raw-vector` A/B.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-state.json).
+
 **Raw MMQ vector activation staging (September6 UTC):** extend the retained
 activation-copy mechanism to raw-weight MMQ without packed storage or
 arithmetic change. Actual GR/query/output512 complete chains:
