@@ -607,18 +607,21 @@ GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 # samples and takes output-norm and LM-head sampling from 33 rows to 8. Final
 # rows, target-hidden sinks, and every request's ownership are unchanged.
 GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
-# SPECDEC2 exposes only evidence-backed width/depth cells. This adopts the
-# non-monotonic package policy without importing gfx1151 economics: production
-# owns the qualified Qwen3.6/Qwen3.8 C1-K2/C1-K3/C2-K2 and Qwen3.8 C8-K3
-# frontiers, while strict owns only the explicit dense C2-K2 cell. Model
-# evidence, profile hashes, capacity, context, horizon, and sampling mode still
-# gate each request; every unmatched key remains K0.
+# Performance policy: which speculative depths are worth offering per physical
+# width. This is a tuning surface, not a safety one -- model serving evidence
+# (hipengine/models/qwen35.py) independently gates correctness by profile
+# hash, capacity, context, horizon, and sampling mode, and an unmatched key
+# always falls back to K0. Widths/depths absent here are simply never offered.
+# Held open across C1-C8 x K1-K4 while the depth sweep runs; it is narrowed to
+# the measured optimum once the matrix is recorded.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
-    "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+    "production": tuple(
+        (width, depth) for width in range(1, 9) for depth in range(1, 5)
+    ),
     "strict": ((2, 2),),
 }
 # Production prompt streaming follows the same model-local physical evidence.

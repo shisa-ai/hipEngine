@@ -125,7 +125,9 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
     ) == {
-        "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+        "production": tuple(
+            (width, depth) for width in range(1, 9) for depth in range(1, 5)
+        ),
         "strict": ((2, 2),),
     }
     assert backend_package_capability(
