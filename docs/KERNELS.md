@@ -788,6 +788,18 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+`selected_dual_wmma_f16x2_bf16_bf16_out` is a **T2 diagnostic reference**,
+not a production/performance-qualified variant. It reconstructs raw Q4_K
+weights with FP16 high/residual planes, accumulates each separately and
+adds before the BF16 gate/up boundary.16-row tiles with16/32/64 output
+columns preserve reference outputs across tile widths. On one captured
+actual-weight screen, gate/up BF16 agreement improves89.66%->99.65% and
+post-SiLU82.46%->99.37%,but all tested widths lose to exact pair2.
+The raw-weight implementation is kept only for differential validation of
+an alternative cooperative loader. No runtime flag/manifest selection.
+30 tests pass; full production gates unrun. Evidence:
+`2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json`.
+
 Q4 pair2 paired-BF16 input layout was rejected and removed. Bitwise
 2x128->128x2 packing allowed32-bit pair loads but consumer17.333->
 22.657ms regressed,with only0.184ms packing cost. VGPR88->72 did not

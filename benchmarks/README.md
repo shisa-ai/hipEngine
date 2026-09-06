@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 two-plane WMMA diagnostic:gate/up BF16 agreement89.66%->99.65%,
+post-SiLU82.46%->99.37% on one actual-weight fixture,but all tested
+widths lose to exact pair2. T2 reference only;no model/default change.
+[Numerical and negative timing evidence](results/2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json).
+
 Q4 paired-input layout rejected:packing+gate/up+SiLU17.470->22.938ms,
 exact and both orders slower. Consumer itself regresses despite VGPR88->72;
 packer costs only0.184ms. Candidate removed,production unchanged.
