@@ -32,15 +32,20 @@ September6 GR wave-scale production A/B subsequently measures prefill
 against its same-residency parent), all72 trajectories exact. This is an
 incremental paired result, not a refreshed cross-engine baseline.
 [GR promotion](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
+The post-GR six-case family refresh at clean `9efbf6d23` is also complete:
+p4096 FFN14.407s, non-GR linear5.545s, complete GR4.267s. The unchanged
+earlier Vulkan profile is explicitly reused for diagnostic family gaps,
+not relabeled as freshly measured throughput.
+[Updated family tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots).
 
-The later Q8 wave-scale promotion improves same-suite prefill0.75-1.29%
+The preceding Q8 wave-scale promotion improves same-suite prefill0.75-1.29%
 with all72 trajectories exact. Its measured after rates are155.45/153.43/
 143.41 tok/s at512/1K/4K; decode has drift.
 [Incremental production evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
 The frozen cross-engine throughput rows below precede this promotion and
 retain their original source identity. Current-HE family costs are refreshed
 separately, with the unchanged prior Vulkan profile explicitly reused:
-[post-Q8 source packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
+[post-GR source packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json).
 
 **Latest frozen refresh, 2026-09-05 UTC:** hipEngine `bd451a417` versus
 halo-box `b212548e0`, full12-case canonical AR, UD-Q4_K_XL/BF16 KV on

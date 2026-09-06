@@ -8,6 +8,11 @@ Last updated: **2026-09-06 UTC**
 
 [GR production evidence](results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
 Not a new external baseline or intrinsic decode-speed claim.
+The [post-GR family refresh](results/2026-09-06-framework-qwen4exp-post-gr-family.json)
+at clean `9efbf6d23` passes all12 phase captures with100% coverage. P4096
+mean FFN14.407s, non-GR linear5.545s and complete GR4.267s remain the main
+prefill costs. Earlier Vulkan captures are explicitly reused; this is
+diagnostic attribution, not an additional A/B speedup.
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
