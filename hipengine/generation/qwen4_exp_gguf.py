@@ -68,7 +68,9 @@ class Qwen4ExpGGUFTextGenerator:
         self._configured_resident_capacity = (
             self.server_plain_ar_max_active_requests if resident_capacity is None else int(resident_capacity))
         if not 1 <= self._configured_resident_capacity <= self.server_plain_ar_max_active_requests:
-            raise ValueError("Qwen4Exp resident capacity must be within 1..2")
+            raise ValueError(
+                "Qwen4Exp resident capacity must be within "
+                f"1..{self.server_plain_ar_max_active_requests}")
         self.server_plain_ar_max_active_requests = self._configured_resident_capacity
         self.server_plain_ar_max_active_requests_by_max_sequence_length = {1024:self._configured_resident_capacity}
         self.context_admission = None
@@ -87,6 +89,15 @@ class Qwen4ExpGGUFTextGenerator:
                 metadata_info = weight_index
             tokenizer = Qwen4ExpGGUFTokenizer.from_gguf_info(metadata_info)
         self.tokenizer = tokenizer
+        vision_readers: tuple[GGUFReader, ...] = ()
+        vision_plan = None
+        if vision_model_path is not None:
+            from hipengine.loading.qwen4_exp_vision_gguf import build_qwen4_exp_vision_gguf_map
+            from hipengine.loading.qwen4_exp_vision_materialize import plan_qwen4_exp_vision_residency
+            vision_readers = tuple(
+                GGUFReader(path) for path in discover_gguf_files(Path(vision_model_path)))
+            vision_plan = plan_qwen4_exp_vision_residency(
+                build_qwen4_exp_vision_gguf_map(tuple(reader.info for reader in vision_readers)))
         if runner is None:
             paths = discover_gguf_files(self.model_path)
             readers = tuple(GGUFReader(path) for path in paths)
@@ -100,11 +111,13 @@ class Qwen4ExpGGUFTextGenerator:
             from hipengine.loading.qwen4_exp_context import resolve_qwen4_exp_context
             runtime = get_hip_runtime()
             free_bytes,total_bytes = runtime.mem_get_info()
-            vision_reserve = 0
-            if vision_model_path is not None:
-                vision_reserve = sum(
-                    int(tensor.nbytes) for path in discover_gguf_files(Path(vision_model_path))
-                    for tensor in GGUFReader(path).info.tensors)
+            # Reserve what the vision weights actually occupy on device: only
+            # mapped, device-resident specs are materialized, the same way the
+            # text plan excludes the host-mmap PLE table. Summing every tensor
+            # in the file happens to match today because vision map validation
+            # rejects unexpected tensors, but it would over-reserve the moment
+            # a non-resident vision tensor exists.
+            vision_reserve = 0 if vision_plan is None else int(vision_plan.device_weight_bytes)
             if free_bytes < vision_reserve:
                 raise MemoryError("Qwen4Exp vision weights exceed available device memory")
             admission = resolve_qwen4_exp_context(
@@ -137,14 +150,9 @@ class Qwen4ExpGGUFTextGenerator:
                 self._resident = None
                 raise
         self.runner = runner
-        if vision_model_path is not None:
-            from hipengine.loading.qwen4_exp_vision_gguf import build_qwen4_exp_vision_gguf_map
-            from hipengine.loading.qwen4_exp_vision_materialize import materialize_qwen4_exp_vision_weights, plan_qwen4_exp_vision_residency
+        if vision_plan is not None:
+            from hipengine.loading.qwen4_exp_vision_materialize import materialize_qwen4_exp_vision_weights
             from hipengine.runtime.qwen4_exp_vision import Qwen4ExpVisionRunner
-            vision_paths = discover_gguf_files(Path(vision_model_path))
-            vision_readers = tuple(GGUFReader(path) for path in vision_paths)
-            vision_map = build_qwen4_exp_vision_gguf_map(tuple(reader.info for reader in vision_readers))
-            vision_plan = plan_qwen4_exp_vision_residency(vision_map)
             self._vision_resident = materialize_qwen4_exp_vision_weights(
                 vision_readers, plan=vision_plan, backend=self.backend,
                 runtime=self.runner.runtime,
