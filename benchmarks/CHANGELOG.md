@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework folded Q5_1 pair candidate] Captured code/mixed512 down40.002->34.404ms (-14.00%)/39.123->33.729ms (-13.79%),exact/both orders positive;13 GPU tests.64-row adverse order0.936x excludes small scope. Kernel retained for model gate. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair.json`.
+
 - [2026-09-06 UTC post-Q8-bundle code4096 owners] Clean2c132e253:32 bundled calls/1.208s;FFN14.104s,linear5.360s,GR4.249s.100% coverage,matched decode/exact repeats/zero owners. Reused Vulkan,snapshot only,no causal delta. `benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json`.
 
 - [2026-09-06 UTC Framework Q8 bundle production] Full12-case PP512/1024/4096:160.762->162.095 (+0.829%)/158.892->159.958 (+0.671%)/147.110->148.240 (+0.768%).72 exact trajectories,all prefill/request walls improve,total1.00458x. TG-0.041%/-0.011%/-0.085% retained,no new memory. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.

@@ -1,0 +1,42 @@
+{
+  "schema":1,
+  "status":"kernel_candidate_retained_large_rows_model_gate_pending",
+  "source":"17c9c9822 plus in-tree candidate",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary":"Two actual layer0/1 Q5_1 down banks; grouped starts supplied,synthetic activations. Captured routing matches each layer. Routing/combine excluded.",
+  "mechanism":"PAIR_REDUCE=true requires FOLD128=true. Publish acc0+acc1 for both outputs into2*8*128 floats,reduce strides64..1 together,parallel16-row publication. Exact original per-output tree. Dynamic reduction storage equals original unfolded serial pair2,half the rejected unfolded dual-reduction arena.",
+  "command":".venv/bin/python scripts/qwen4exp_q51_pair_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --fold-pair --rows 512 --pairs 20 --routing-capture /tmp/qwen4exp-routing-categories.json --case-id code-p4096 --chunk 0 --output /tmp/qwen4exp-q51-fold-pair-real.json",
+  "other_commands":[
+    "same command with --case-id mixed_ja_en-p4096 --chunk 7 --output /tmp/qwen4exp-q51-fold-pair-mixed.json",
+    "same command without routing-capture/case-id/chunk, --rows 64 512 --output /tmp/qwen4exp-q51-fold-pair-synthetic.json"
+  ],
+  "environment":"Established therock SDK devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151,require_cached,unchanged high/2900-requested clocks. Raw artifacts retain compiler/weight hashes.",
+  "opportunity":"Q5_1 down about3.9s of code4096; hypothetical1.2x saves0.65s before other effects. No model speedup inferred from leaf result.",
+  "cases":[
+    {"routing":"captured code4096 chunk0","tokens":512,"parent_ms":40.0024123956,"candidate_ms":34.4038950279,"speedup":1.1627291725,"mean_speedup":1.1643056312,"order_speedups":[1.1653973594,1.1620959499],"pairs":20,"exact":true},
+    {"routing":"captured mixed4096 chunk7","tokens":512,"parent_ms":39.1230930109,"candidate_ms":33.7286526337,"speedup":1.1599364326,"mean_speedup":1.1606838830,"order_speedups":[1.1614571118,1.1588872791],"pairs":20,"exact":true},
+    {"routing":"synthetic","tokens":64,"parent_ms":13.3037139894,"candidate_ms":12.7476945054,"speedup":1.0436172583,"order_speedups":[1.2427241249,0.9357322146],"pairs":20,"exact":true,"disposition":"Do not admit small-row scope: candidate-first regresses"},
+    {"routing":"synthetic","tokens":512,"parent_ms":42.6097055897,"candidate_ms":36.4451659843,"speedup":1.1691456038,"order_speedups":[1.1726869283,1.1674358795],"pairs":20,"exact":true}
+  ],
+  "correctness":"Registry RED then13 GPU tests pass,including K96/640/4096,output tails/empty experts,exact repeats versus M1 and CPU KL<=0.05/top1>=90%. All80 two-bank pairs exact.",
+  "trace":{
+    "prefix":"HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q51-fold-pair-trace --",
+    "arguments":"first command with --pairs 2 --output /tmp/qwen4exp-q51-fold-pair-trace.json",
+    "symbols":"q5_1_selected_grouped_prefill_pair2_bf16_kernel<true,false>/<true,true>",
+    "last_parent_bank_ns":[19880063,19884031],
+    "last_candidate_bank_ns":[17120205,17281186],
+    "both_vgpr":72,"both_scratch_bytes":0,
+    "dynamic_lds_launch_bytes":{"parent":4576,"candidate":8672}
+  },
+  "raw":{
+    "/tmp/qwen4exp-q51-fold-pair-real.json":"7cba2e67e1291f122f180d1261545baea12b2fd3b8bd3ddc435e469aa737fe72",
+    "/tmp/qwen4exp-q51-fold-pair-mixed.json":"25eb264aea240ca29f8af22a6cf342654e24f49a76822c3f364f92a0bcd64be8",
+    "/tmp/qwen4exp-q51-fold-pair-synthetic.json":"8ed257f89454e0c9c2906a3c6f1819ee2ce5658779d15a4354482cbd01f9f2da",
+    "/tmp/qwen4exp-q51-fold-pair-trace/gfx1151/3305948_kernel_trace.csv":"23bd94063eea93caee6edc222b7d49340eaadc6f65a5332a3cfc6c916fe17a80"
+  },
+  "runtime_default_changed":false,
+  "promotion_blocker":"Only rows>=512 is a candidate for runtime integration. Full-model invocation/logits/state/KV and canonical12-case A/B required."
+}

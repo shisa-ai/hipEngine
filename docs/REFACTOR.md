@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp folded Q5_1 pair-reduction candidate
+
+- Kernel-only `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out`
+  shares barrier stages across folded outputs. No runtime flag yet.
+- Admit only measured rows>=512;64-row timing has an adverse order stratum.
+  Keep sequential fold128 for smaller chunks and rollback.
+- Full-model invocation/logits/state/KV plus12-case A/B must pass before
+  promotion;remove if model evidence rejects it. Strict fallback unchanged.
+
 ## Qwen4Exp Q8 down bundled reduction rollback
 
 - Production `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
