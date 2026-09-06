@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 from types import MappingProxyType
-from typing import Iterable, Mapping
+from typing import TYPE_CHECKING, Iterable, Mapping
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -32,6 +32,11 @@ from hipengine.loading.qwen35_gguf_policy import (
     gguf_ar_f32_linear_contraction,
     gguf_ar_decode_repack_veto,
 )
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle guard, annotations only
+    from hipengine.loading.qwen35_gguf_admission import (
+        Qwen35GGUFAdmissionCertificate,
+    )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
@@ -209,6 +214,7 @@ class Qwen35GGUFResidentWeights:
     allocation_mode: str = "dedicated"
     allocation_arena_reason: str | None = None
     artifact_preset_key: str | None = None
+    admission_certificate: Qwen35GGUFAdmissionCertificate | None = None
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -658,6 +664,7 @@ def materialize_qwen35_gguf_weights(
     use_selective_weight_arena: bool = False,
     selective_weight_max_allocation_bytes: int = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES,
     requested_operations: Iterable[str] | None = None,
+    admission_certificate: Qwen35GGUFAdmissionCertificate | None = None,
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -673,6 +680,15 @@ def materialize_qwen35_gguf_weights(
     default is ``DEFAULT_AR_OPERATIONS`` (the historical c1/rows/prefill/
     embedding/logits set); the native multirow route additionally enforces its
     alpha/beta BF16-pointer owner binding at its own execution entry.
+    ``admission_certificate`` is an optional previously minted
+    :class:`Qwen35GGUFAdmissionCertificate` the caller asks this load to
+    honor. It is re-verified against the FRESH admission report (fingerprint,
+    backend, operations, slot scope, and the actual planned-resident
+    contract, env-resolved layouts included) before any device allocation; a
+    certificate that does not cover the plan this load would materialize is
+    refused fail-closed. Callers that skip the preflight re-run can rely on
+    it; the minted certificate is attached to the returned residents for
+    downstream re-verification.
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
@@ -706,6 +722,8 @@ def materialize_qwen35_gguf_weights(
     # the admission module imports this module's per-slot planner.
     from hipengine.loading.qwen35_gguf_admission import (
         DEFAULT_AR_OPERATIONS,
+        Qwen35GGUFAdmissionError,
+        certificate_covers_artifact,
         preflight_qwen35_gguf_artifact,
         qwen35_gguf_artifact_preset_key_for_report,
     )
@@ -727,6 +745,25 @@ def materialize_qwen35_gguf_weights(
     )
     if not admission_report.supported:
         admission_report.raise_for_errors()
+    if admission_certificate is not None and not certificate_covers_artifact(
+        admission_certificate,
+        manifest_fingerprint=admission_report.manifest_fingerprint,
+        plan_contract=admission_report.plan_contract,
+        backend=str(backend),
+        operations=operations,
+        slot_filter=None if selected is None else tuple(sorted(selected)),
+    ):
+        # Real certificate consumer: the caller's certificate must cover the
+        # plan THIS load would materialize — same fingerprint/backend/ops/
+        # slot scope and the same actual planned residents (the contract
+        # binds env-resolved layouts, so environment drift between the mint
+        # and this load is caught here) — before any device allocation.
+        raise Qwen35GGUFAdmissionError(
+            "the supplied GGUF admission certificate does not cover the "
+            "plan this load would materialize (fail-closed); re-run "
+            "preflight_qwen35_gguf_artifact under the current artifact "
+            "and plan and retry with the fresh certificate"
+        )
     plan = plan_qwen35_gguf_materialization(
         model_map,
         decode_repack=decode_repack,
@@ -861,6 +898,7 @@ def materialize_qwen35_gguf_weights(
         artifact_preset_key=qwen35_gguf_artifact_preset_key_for_report(
             admission_report
         ),
+        admission_certificate=admission_report.certificate(),
     )
 
 
