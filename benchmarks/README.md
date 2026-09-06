@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Framework current HIP graph census, UD-Q4_K_XL/BF16 KV | Captured graph activity | Diagnostic result |
+| --- | --- | --- |
+| code4096 prefill / live4097 decode | 0 prefill launches;48 decode graphs/625 nodes | Prefill337ms non-kernel residual; decode1.35-1.43ms intra-graph gaps |
+
+No PM4 speedup measured; prefilling remains kernel-dominated. Decode token/state
+repeats and teardown pass.
+[Census](results/2026-09-06-framework-qwen4exp-wilkin-graph-census.json).
+
 Q4 packed LDS cache rejected: actual layer3/captured routing0.646x, exact;
 VGPR88->128 and LDS4608->12800 bytes. Production unchanged.
 [Evidence](results/2026-09-06-framework-qwen4exp-q4-lds-cache-rejected.json).
