@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework MMQ vector admission] Five full-logit/state/KV cases exact,calls0/72/0 or0/576/0,zero decode/final owners;23 CPU tests pass,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json`.
+
 - [2026-09-06 UTC Framework MMQ vector staging] QKV/SSM512 complete chains5.196->4.022ms (-22.58%)/2.857->2.156ms (-24.53%), all80 pairs exact/both orders positive;25 tests and cached trace pass, resources unchanged. Kernel-only; model gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-activation-vec4.json`.
 
 - [2026-09-06 UTC Framework Q5_K bundle rejected] Full12-case PP512/1024/4096:165.556->165.781 (+0.136%)/163.883->163.842 (-0.025%)/151.007->151.462 (+0.301%). All72 trajectories exact, but five prefill/six request-wall cases regress; candidate removed, production unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.

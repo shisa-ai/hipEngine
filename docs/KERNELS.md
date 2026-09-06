@@ -798,6 +798,12 @@ risk sets. Cached trace VGPR144/LDS57856B/scratch0 unchanged. Model
 invocation/state/KV and canonical A/B remain required; default unchanged.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-activation-vec4.json`.
 
+Default-off model admission now passes five full-logit/state/KV cases,
+four decode steps each, calls0/72/0 at512 and0/576/0 at4096, zero decode
+calls/final owners. Both profile binders pin0; only existing prepacked
+rows>=64 are eligible.23 CPU tests pass. Canonical12-case A/B remains.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-vec4-state.json`.
+
 Q8 MMQ registers a separate T0
 `mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out` candidate. It consumes
 K-major `[K/256, ceil(N/128)*128, 76]` int32 words:64 quant words,8 exact
