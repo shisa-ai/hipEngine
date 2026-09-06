@@ -491,11 +491,60 @@ def test_screening_unqualified_cells_admits_explicit_only_group(
     )
     capability = adapter.capability(semantics)
     assert capability is not None
+    # Depth-3 listed cells exist at widths 1 and 8, so the listed derivation
+    # still owns the tuple; the screening group does not extend it.
+    assert capability.proposal_widths == (1, 8)
     assert adapter.claims_fit(
         SimpleNamespace(
             request_ids=ids,
             speculative_request_ids=ids,
             candidate_counts=(3,) * len(ids),
+        )
+    ) is True
+
+
+def test_screening_depth_without_listed_cell_keeps_nonempty_proposal_widths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A K1 screening group at C2 must still expose its proposal width.
+
+    The gfx1100 production policy lists no depth-1 cell, so the listed
+    proposal-width derivation is empty; the server rejects empty widths and
+    the C2/K1 screening measurement 400s without this fallback.
+    """
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(capacity=2),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = (41, 42)
+    adapter._intents = {rid: 1 for rid in ids}
+    adapter._static_eligibility_by_request = {
+        rid: _explicit_only_eligibility(rid, rows=8, depth=3) for rid in ids
+    }
+    adapter._prompt_hidden_rows = {rid: object() for rid in ids}
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+
+    semantics = tuple(
+        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
+        for rid in ids
+    )
+    capability = adapter.capability(semantics)
+    assert capability is not None
+    # The capability advertises the eligibility bound; the executed per-request
+    # K comes from the plan. The K1 cell itself must fit and the proposal
+    # width tuple must be non-empty (the server rejects empty widths).
+    assert capability.proposal_widths == (2,)
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=ids,
+            speculative_request_ids=ids,
+            candidate_counts=(1, 1),
         )
     ) is True
 
