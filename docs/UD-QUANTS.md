@@ -1,8 +1,13 @@
 # Dense UD Q4_K_S / Q4_K_M Support Campaign
 
-Last updated: 2026-09-06.
-Status: verified analysis and coder handoff; **no implementation or GPU validation**.
-hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`.
+Last updated: 2026-09-07.
+Status: verified analysis and coder handoff; **U0 audit/identity/pinning
+complete** (CPU-only), **no implementation or GPU validation**.
+hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
+U0 audit/identity repair landed on the `ud-quants` branch (see
+[UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
+snapshot and [UD-QUANTS-U0-IDENTITY.json](UD-QUANTS-U0-IDENTITY.json) for
+artifact identity pins).
 
 **Goal:** support the pinned Qwen3.8-27B Unsloth Dynamic Q4_K_M and Q4_K_S
 files as shipped, with compact, operation-complete dense execution on separately
@@ -30,8 +35,11 @@ Existing K_M execution/performance charter:
 [QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md](QWEN38-UD-Q4KM-GFX11-CAMPAIGN.md).
 Existing multi-engine evidence:
 [QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md).
-Reproduction: [executable analysis appendix](UD-QUANTS-REPRO.md) and
-[metadata/accounting snapshot](UD-QUANTS-REVIEW.json).
+Reproduction: [executable analysis appendix](UD-QUANTS-REPRO.md),
+[metadata/accounting snapshot](UD-QUANTS-REVIEW.json) (historical, schema
+implicit v1), [versioned audit snapshot](UD-QUANTS-REVIEW-v2.json) (schema
+v2, reproducible from the documented CLI command), and
+[artifact identity pins](UD-QUANTS-U0-IDENTITY.json).
 
 ## 1. Decisions And Findings
 
@@ -144,15 +152,27 @@ metadata, **not the complete model bytes**.
 K_S was growing during this review. At final scan its size equaled the required
 final tensor endpoint, and production `scan_gguf` accepted all three files.
 The earlier "9.64 GiB partial download" is historical, not the handoff state.
-No downloader was started or changed here. Payload checksum verification is
-still required before real fixtures or model-quality claims.
+No downloader was started or changed here.
 
-The existing K_M campaign records full SHA256
-`322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482`
-for this 16,464,440,224-byte artifact. That is prior pinned evidence, not a new
-payload rehash here. U0 should verify it against the execution-host copy and
-reuse its provenance rather than invent a fresh identity. K_S still needs its
-equivalent full-artifact pin.
+All three artifacts are now identity-pinned (UD-U0); see
+[UD-QUANTS-U0-IDENTITY.json](UD-QUANTS-U0-IDENTITY.json):
+
+| File | Upstream revision | Payload SHA256 | Bytes |
+| --- | --- | --- | ---: |
+| `Qwen3.8-27B-Q4_K_M.gguf` | `f1bfb127c64f7072bdd2cad55f258b9c8b2910fe` | `7e78da5d7e3ae28d178121f58646953305f3e5bd3cb46f4a75584e8b6c6fe169` | 17,106,775,008 |
+| `Qwen3.8-27B-UD-Q4_K_M.gguf` | `4ca720788d1e01f1bff70c033e0d0028fd02e502` | `322e194ff79741c7baa497c240f677f54b201b0efab44ca8e50f122b39123482` | 16,464,440,224 |
+| `Qwen3.8-27B-UD-Q4_K_S.gguf` | `4ca720788d1e01f1bff70c033e0d0028fd02e502` | `75bc9c8adba2842e72f0ab5201aaa07133c5010b566305c09187fcbdcd364017` | 15,358,213,024 |
+
+Payload checksums are prior pinned evidence (the K_M hash from the existing
+K_M campaign; plain K_M and K_S verified against the official pinned GitLFS
+pointers in the parent session); this U0 pass re-fetched all three tiny
+pointers at the pinned revisions on 2026-09-07, re-checked local sizes
+(exact match for all three), and did not rehash the payloads. Header identity
+(SHA256 over the `[0, data_start)` header region, payload bytes excluded; the
+plain K_M value reproduces the historical snapshot byte-for-byte) is recorded
+per file in the identity pins and in the schema-v2 snapshot's
+`header_identity` sections. These pins establish published payload equality,
+not original download history.
 
 ### 3.1 All-file Format Histograms
 
@@ -211,7 +231,10 @@ plugins have distinct artifact, rank-3 routing and consumer contracts.
 
 These are **CPU-calculated weight plans**, not measured GPU residency.
 They use actual AR slots, production allocation formulas, default sidecars,
-and source capability values without importing backend packages.
+and source capability values without importing backend packages. The
+schema-v2 snapshot [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json)
+reproduces every number in this section and section 4.1 from the pinned local
+files via the documented CLI command.
 
 Count unique `(source, layout)` allocations, including raw/tiles/sidecars, with
 `planned_qwen35_gguf_weight_allocation_nbytes`. Refusals have two explicit
@@ -617,7 +640,7 @@ Files: `scripts/gguf_quant_route_audit.py`,
 `tests/test_scripts_gguf_quant_route_audit.py`;
 loader scanner/model-map modules are references, not automatic edits.
 
-- [ ] Pin upstream model revision, payload checksum, file size and header identity
+- [x] Pin upstream model revision, payload checksum, file size and header identity
   for both UD files and the plain control.
 - [x] Use actual AR and separate NextN maps; report disk/AR/ignored counts and
   aliases without double counting.
@@ -625,16 +648,34 @@ loader scanner/model-map modules are references, not automatic edits.
   embedding, and MTP-only tensor exclusion.
 - [x] RED: unsupported version, duplicates, invalid alignment, incomplete table
   versus incomplete data. Partial diagnostic mode cannot report loadable.
-- [ ] Report allocation-formula bytes, sidecars, reasons, and both hypothetical
-  refusal treatments.
-- [ ] RED: gfx1100 Q5 sidecar, gfx1151 Q6 exclusion, missing/nonliteral
-  capabilities, env overrides and F32 contraction. Prefer a pure shared policy
-  API over an expanding regex mirror; no backend import for metadata audit.
-- [ ] Reproduce this snapshot and version the repaired report schema.
+- [x] Report allocation-formula bytes, sidecars, reasons, and both hypothetical
+  refusal treatments. Per-scope `allocation` sections in the schema-v2 report
+  use `planned_qwen35_gguf_weight_allocation_nbytes` over unique
+  `(source, layout)` residents, aggregate sidecar counts/bytes with reasons,
+  and report both refusal treatments; real-file totals reproduce the section-4
+  table exactly. The optional planar-Q5 sidecar has no production formula yet
+  and is reported as formula-unavailable rather than guessed.
+- [x] RED: gfx1100 Q5 sidecar, gfx1151 Q6 exclusion, missing/nonliteral
+  capabilities, env overrides and F32 contraction. Capability constants are
+  read from backend source by a bounded AST literal reader (never an import,
+  never expression evaluation); missing/nonliteral constants are reported per
+  capability and resolve to the runtime default. Flag resolution goes through
+  the shared pure policy API `hipengine.loading.qwen35_gguf_policy` used by
+  both the runtime loader and this audit; the per-slot fallback now applies
+  the model-wide F32 contraction, and cross-caller parity against the real
+  backend packages is HIP-guarded in
+  `tests/test_qwen35_gguf_policy_capability_parity.py`.
+- [x] Reproduce this snapshot and version the repaired report schema.
+  `docs/UD-QUANTS-REVIEW-v2.json` (`schema_version` 2) is the exact CLI output
+  over the three real files; regeneration commands are in
+  [UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md).
 
-Run: `.venv/bin/python -m pytest tests/test_scripts_gguf_quant_route_audit.py -q`.
+Run: `.venv/bin/python -m pytest tests/test_scripts_gguf_quant_route_audit.py
+tests/test_loading_qwen35_gguf_policy.py -q`.
 Exit: real planner accounting without device use, clearly distinct from consumer
-qualification. Current five tests are insufficient.
+qualification. U0 is complete (parser validation, production AR/NextN maps,
+shared-policy capability resolution, allocation accounting, identity pins,
+versioned schema); U1+ admission work follows.
 
 ### U1. Role-safe Admission And Policy
 

@@ -40,8 +40,24 @@ should be removed or collapsed.
   AR/NextN scope, partial-header validation, omitted sidecars/capabilities and
   allocation accounting in `scripts/gguf_quant_route_audit.py` and its tests.
   Decouple global IQ repack admission from `contract_f32_linear` without changing
-  existing MoE precision. Remove the diagnostic policy mirror after a pure
-  cold-path shared planner/capability interface supplies the report.
+  existing MoE precision. ~~Remove the diagnostic policy mirror after a pure
+  cold-path shared planner/capability interface supplies the report.~~ Done
+  2026-09-07 (UD-U0): capability/flag resolution now goes through the shared
+  pure policy API `hipengine.loading.qwen35_gguf_policy` (source-reading AST
+  reader in the audit, `backend_package_capability` at runtime); the audit's
+  regex/quoted-substring capability mirror and the local raw-IQ predicate copy
+  are removed. The stamp-switch hazard itself stays open until U1 binds policy
+  to the actual role/shape/type/layout manifest.
+- Residual cold-path import chain (not fixed here): importing any
+  `hipengine.loading.*` module initializes the `hipengine` root package, whose
+  `__init__` imports `hipengine.llm` and speculative modules that import
+  `hipengine.kernels.hip_gfx1100` directly, so a metadata-only process still
+  loads that backend package. The audit's own capability/policy path adds no
+  backend-package imports (guarded in
+  `tests/test_scripts_gguf_quant_route_audit.py::test_capability_path_adds_no_backend_package_imports`).
+  If pure-loading isolation is ever needed (e.g. audit CI without ROCm wheels),
+  split the engine root `__init__` imports; until then the audit works because
+  backend package import itself does not require the HIP runtime.
 - Analysis and the wider campaign this sits inside:
   [`UD-QUANTS.md`](UD-QUANTS.md), sections 2, 7.3 and U0/U1.
 
