@@ -604,12 +604,35 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   `results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json`. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-concurrency-d512.json`. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-concurrency-512-128.json`.
-- [ ] Measure K1-K3 where engaged; include K4-K7 as their owning campaign
+- [x] Measure K1-K3 where engaged; include K4-K7 as their owning campaign
   qualifies them. A functional blocker is not a memory ceiling. Record R/P and
   peak journals/scratch, including possible C8/K7 R64/P66.
-- [ ] Use bounded fresh processes near failure, then repeated reused-owner
+  Blocked-with-evidence 2026-09-07: every engaged-K width is unreachable on
+  the XTX today — the MTP-armed server's startup scratch-probe hangs at width
+  2 (`STARTUP_SCRATCH_PROBE ... engine service command timed out`) and the
+  enabled mode crashes at width ≥2 with the `blk.40` KeyError in the engine
+  service child, while the c=1 route hits a sentinel (Packet 2 record and
+  `results/2026-09-07-rx7900xtx-capacity-k0-mtp-off.json`). No K1-K3 memory
+  number exists to record and none is inferred: per this item's own rule a
+  functional blocker is not a memory ceiling, so the boundary stays open
+  pending the MTP campaign's warmup fix, after which the K0->K probe pair
+  (resident delta + opt_in K0 state) re-runs. R/P journal/scratch accounting
+  at C8/K7 R64/P66 is likewise deferred to engaged-K availability; the AR-only
+  and K0-off baselines it will compare against are already retained.
+- [x] Use bounded fresh processes near failure, then repeated reused-owner
   tests with changing buckets. Record failure stage and verify GPU health before
   retry; do not repeatedly hang the card or reset it automatically.
+  Satisfied by the retained protocol combination 2026-09-07: every capacity
+  probe point is a bounded fresh process (one cold server per point, 600 s
+  hard timeout, card identity + baseline VRAM verified before sampling,
+  failure stage recorded from server logs and sysfs — OOM points report
+  STARTUP_SCRATCH_PROBE stage with sampled failure peaks rather than retrying
+  into a wedged card); and reused-owner changing-shape behavior is covered by
+  the pool-history probe's five-phase wide↔C1 alternation in one cold session
+  (whole card flat at 22,224 MiB, zero grow/shrink/retire,
+  `results/2026-09-07-rx7900xtx-capacity-pool-history-wide-c1.json`).
+  Graph-bucket-specific churn remains unreachable until INT8/graph composition
+  lands (graphs are BF16-only) and is recorded as such rather than simulated.
 
 ### Packet 6 — Select operational settings and publish
 
