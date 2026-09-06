@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Chunk1024 full state gate (September6 UTC):** all12 canonical cases pass
+512/1024/512 full-logit comparisons,four decode steps,recurrent state and
+full KV. Chunk coverage verified;kernel flags unchanged;zero final owners.
+Shared1024-capacity peak86,094,241,540B. At measured context4352,the
+peak remainder after explicit weight/staging/KV/index/state plan components
+is3,289,254,740B,below the4GiB scratch allowance. Native-context/c2
+margins still need qualification;this is not allocation-size neutrality.
+20 CPU harness tests pass. Default512 unchanged pending full-category
+throughput and memory admission. Failed state gates now persist explicit
+status/error rather than looking like an unexplained partial artifact.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-state.json).
+
 **Framework chunk512/1024 diagnostic (September6 UTC):** clean `bc00c771f`,
 one shared1024-capacity residency,three code cases/18 exact trajectories.
 Actual chunk coverage verified. PP512180.835->180.837 (neutral);

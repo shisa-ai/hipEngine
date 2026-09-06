@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Chunk1024 state gate:all12 cases exact for full logits/four decode steps/
+recurrent state/full KV;coverage verified,zero final owners. Shared larger
+allocation;native/c2 memory and full-category throughput gates remain.
+[Evidence](results/2026-09-06-framework-qwen4exp-chunk1024-state.json).
+
 Framework code-only chunk512->1024 screen:PP1024179.23->190.61
 (+6.35%),PP4096168.06->177.26 (+5.48%);p512 neutral.
 18 trajectories exact,zero final owners;shared larger-capacity allocation.
