@@ -540,24 +540,26 @@ Reading rules and caveats, binding on any use of these rows:
 
 ### 5.2.1 Framework starting and current owner snapshots
 
-**Current full refresh, September6 UTC:** clean Q5_1-register production
-`932af5889` supplies all six cases/twelve phases: code512/1024/4096 plus all
+**Current full refresh, September6 UTC:** clean raw-MMQ-vector production
+`eee086e25` supplies all six cases/twelve phases: code512/1024/4096 plus all
 four p4096 categories. Every phase has100% owner coverage,matched decode roots,
-repeated decode/state parity and zero final allocations. Q5_1 register calls
-are25/50/200 in prefill and0 in every decode window.
+repeated decode/state parity and zero final allocations. Raw-vector calls
+are242/484/1936 in prefill and0 in every decode window.
 
 The generated tables below replace the post-MMQ full overview and subsequent
 code-only checkpoints. They use identical fixtures and this Framework machine,
 with the **earlier pinned Vulkan `b212548e0` capture explicitly reused**,
 not a newly measured competitor. Source revisions,child hashes and commands
 are now emitted by the join script itself in the
-[current full-family packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q51-register-family.json).
+[current full-family packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-raw-vector-family.json).
+The [post-Q5_1-register packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q51-register-family.json)
+is the preceding snapshot:non-GR linear4.762->4.556s (-4.34%),
+GR4.254->3.755s (-11.73%);diagnostic Vulkan ratios4.672x->4.470x
+and2.491x->2.199x. FFN12.698s remains the largest absolute opportunity.
+Decode QSA16.947vs3.161ms remains the largest decode gap.
+Snapshot deltas do not replace each retained same-residency A/B.
 The [post-MMQ-vector packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-family.json)
-is the preceding full snapshot: FFN13.442->12.813s (-4.68%),diagnostic
-Vulkan ratio3.075x->2.931x. Code4096 Q5_1 projection3.438->2.816s;
-Q4 gate/up remains the largest individual exact MoE projection target.
-Non-GR linear4.762s/GR4.254s remain large; decode QSA16.946vs3.161ms
-is unchanged in ranking. These are snapshot deltas,not causal A/B claims.
+records the earlier FFN13.442s snapshot before Q5_1 register reuse.
 The [post-folded-pair packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold-pair-family.json)
 records the earlier non-GR linear5.363s baseline before vector staging.
 The [post-MMQ full packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json),
@@ -584,15 +586,15 @@ Use the logger-off baseline table for throughput and parity factors.
 
 | Owner | Framework arrival (ms) | Current (ms) | Device share | Device zero-cost ceiling | Wall zero-cost ceiling |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 19,773.694 | 12,989.130 | 52.39% | 2.100x | 2.074x |
-| Non-FFN, non-GR linear | 5,828.219 | 4,764.044 | 19.21% | 1.238x | 1.234x |
-| GR projections + read/mix | 4,351.404 | 4,255.020 | 17.16% | 1.207x | 1.204x |
-| QSA | 8,982.811 | 1,923.450 | 7.76% | 1.084x | 1.083x |
-| GDN | 3,906.453 | 776.247 | 3.13% | 1.032x | 1.032x |
-| Boundary / residual combine | 76.563 | 72.425 | 0.29% | 1.003x | 1.003x |
-| PLE | 14.224 | 13.873 | 0.06% | 1.001x | 1.001x |
+| MoE/FFN (routed + shared) | 19,773.694 | 12,849.586 | 53.68% | 2.159x | 2.125x |
+| Non-FFN, non-GR linear | 5,828.219 | 4,550.483 | 19.01% | 1.235x | 1.231x |
+| GR projections + read/mix | 4,351.404 | 3,748.744 | 15.66% | 1.186x | 1.183x |
+| QSA | 8,982.811 | 1,922.092 | 8.03% | 1.087x | 1.086x |
+| GDN | 3,906.453 | 777.790 | 3.25% | 1.034x | 1.033x |
+| Boundary / residual combine | 76.563 | 76.131 | 0.32% | 1.003x | 1.003x |
+| PLE | 14.224 | 13.817 | 0.06% | 1.001x | 1.001x |
 
-Current kernel sum 24,794.190 ms; profiled wall 25,079.925 ms.
+Current kernel sum 23,938.642 ms; profiled wall 24,269.073 ms.
 Ceilings are sensitivity bounds, not expected realizable speedups. Snapshot deltas
 are historical attribution, not replacements for each retained A/B.
 
@@ -600,27 +602,27 @@ are historical attribution, not replacements for each retained A/B.
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 12,813.078 | 4,372.034 | 2.931x | +8,441.044 |
-| Non-FFN, non-GR linear | 4,762.379 | 1,019.237 | 4.672x | +3,743.142 |
-| GR projections + read/mix | 4,253.625 | 1,707.311 | 2.491x | +2,546.314 |
-| QSA | 1,919.973 | 645.424 | 2.975x | +1,274.549 |
-| PLE | 13.955 | 75.456 | 0.185x | -61.501 |
-| Boundary / residual combine | 74.989 | 506.861 | 0.148x | -431.872 |
-| GDN | 777.805 | 1,390.400 | 0.559x | -612.595 |
-| **Total device time** | **24,615.804** | **9,716.723** | | |
+| MoE/FFN (routed + shared) | 12,698.476 | 4,372.034 | 2.904x | +8,326.443 |
+| Non-FFN, non-GR linear | 4,555.540 | 1,019.237 | 4.470x | +3,536.303 |
+| GR projections + read/mix | 3,754.876 | 1,707.311 | 2.199x | +2,047.565 |
+| QSA | 1,921.834 | 645.424 | 2.978x | +1,276.410 |
+| PLE | 13.902 | 75.456 | 0.184x | -61.554 |
+| Boundary / residual combine | 76.560 | 506.861 | 0.151x | -430.301 |
+| GDN | 783.815 | 1,390.400 | 0.564x | -606.585 |
+| **Total device time** | **23,805.003** | **9,716.723** | | |
 
 **Decode, four-category p4096 mean (ms):**
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| QSA | 16.946 | 3.161 | 5.362x | +13.785 |
-| MoE/FFN (routed + shared) | 17.376 | 12.469 | 1.394x | +4.908 |
-| Non-FFN, non-GR linear | 17.062 | 16.394 | 1.041x | +0.668 |
-| GR projections + read/mix | 6.612 | 6.115 | 1.081x | +0.498 |
-| PLE | 0.032 | 0.115 | 0.275x | -0.084 |
-| GDN | 2.345 | 2.777 | 0.845x | -0.432 |
+| QSA | 16.947 | 3.161 | 5.362x | +13.787 |
+| MoE/FFN (routed + shared) | 17.374 | 12.469 | 1.393x | +4.906 |
+| Non-FFN, non-GR linear | 17.073 | 16.394 | 1.041x | +0.679 |
+| GR projections + read/mix | 6.606 | 6.115 | 1.080x | +0.491 |
+| PLE | 0.032 | 0.115 | 0.274x | -0.084 |
+| GDN | 2.344 | 2.777 | 0.844x | -0.433 |
 | Boundary / residual combine | 0.456 | 1.386 | 0.329x | -0.930 |
-| **Total device time** | **60.829** | **42.416** | | |
+| **Total device time** | **60.832** | **42.416** | | |
 
 Decode is a fixed-live4097 diagnostic, averaged over three restored HIP repetitions
 and one Vulkan appended-root query per category, not a tg128 trajectory average.
