@@ -7,8 +7,10 @@ preserving the2051 model constant and exact sparse control. Short-capacity
 A/B is complete (48 exact trajectories; decode changes below0.1%, prefill
 cost explicit). Public plumbing now admits native262144 context on Framework,
 with c2 startup, served8K retrieval and clean over-limit rejection verified.
-Native-capacity boundary/chat followup is the remaining detour validation;
-do not claim fresh256K-length inference from this allocation evidence.
+Clean native-capacity boundary/chat followup also passes: live2051 remains
+dense-equivalent,2052/4097 indexed-sparse, and served8154-token chat retrieves
+the archive code. The public-capacity detour is validated; do not claim fresh
+256K-length inference from this allocation evidence.
 MTP's independent1024 cap is not lifted by this work.
 
 ## Active execution contract (2026-09-05)
@@ -2126,7 +2128,8 @@ warm GPU-kernel claims.
 September6 context correctness update: [capacity documentation](QWEN4EXP-CONTEXT-CAPACITY.md)
 separates the immutable2051 dense-equivalence limit from admission-aware native
 sequence capacity. Registered serving now exposes262144 on Framework with c2
-startup and8K retrieval passing. Prior depth-quality rows below remain their own
+startup, completions/chat8K retrieval, over-limit rejection and unchanged
+2051/2052 boundary passing. Prior depth-quality rows below remain their own
 evidence; native allocation does not replace full-depth inference validation.
 
 Goal: close depth-dependent competitor gaps only after short BF16 AR parity and

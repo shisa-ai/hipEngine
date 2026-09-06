@@ -1042,8 +1042,9 @@ September6 owner detour enables admission-aware native context through the publi
 Qwen4Exp factory and `prepare()`. The immutable QSA2051 dense-equivalence constant
 is not runner capacity. Auto resolves artifact/plugin native262144 within memory
 and configured c1/c2 residency; explicit limits fail rather than silently clamp.
-Framework c2 native-capacity startup, served8K retrieval and HTTP over-limit
-rejection pass. Full256K-length inference is not newly qualified by this capacity
+Framework c2 native-capacity startup, completions/chat8K retrieval, HTTP over-limit
+rejection and native-capacity2051/2052/4097 boundary repeats pass.
+Full256K-length inference is not newly qualified by this capacity
 change; see [context contract](QWEN4EXP-CONTEXT-CAPACITY.md).
 The 2026-09-05 owner decision retains exact page256 QSA and bundled-Q4
 publication in production despite their measured small hot-decode losses;
