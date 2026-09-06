@@ -1,0 +1,768 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "qwen4exp_context_capacity_ab",
+  "status": "completed",
+  "performance_claim": true,
+  "raw_sha256": "fe85682345024a1faf18d4fc7a1cf04a55855e8da416202bacd47fa6c8287512",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "2257408cf8290a2fd4439d378ea3dc79a95731f9",
+    "tracked_clean": true
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-06T04:15:45.972854+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "2257408cf8290a2fd4439d378ea3dc79a95731f9",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": false,
+    "untracked_dirty": true,
+    "untracked_count": 77,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/qwen4exp_context_capacity_ab.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--output",
+      "/tmp/qwen4exp-context-capacity-ab.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "One shared weight residency, two request-owned runners; alternating six-slot order; one warmup per arm/case; tg128",
+    "warmups": 1,
+    "repetitions": 3,
+    "profiler": null
+  },
+  "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+  "command": [
+    "scripts/qwen4exp_context_capacity_ab.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-context-capacity-ab.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "kv_dtype": "BF16",
+  "manifest_sha256": "ca88fce0444e9e2737dfc724d7936685d7dfc23c047481294a9bc3676f7a82a8",
+  "capacities": {
+    "before": 2051,
+    "after": 262144
+  },
+  "protocol": "One shared weight residency, two request-owned runners; alternating six-slot order; one warmup per arm/case; tg128",
+  "device_free_before": 128844787712,
+  "device_total": 128849018880,
+  "baseline_setup_seconds": 48.05022815102711,
+  "candidate_setup_seconds": 0.9865823849104345,
+  "conservative_two_large_runner_admission": {
+    "available_device_bytes": 128844787712,
+    "required_bytes": 112613912928,
+    "device_weight_bytes": 82523491840,
+    "staging_bytes": 10485760,
+    "kv_bytes": 12884901888,
+    "index_bytes": 4071064416,
+    "runtime_state_bytes": 239067136,
+    "scratch_bytes": 8589934592,
+    "reserve_bytes": 4294967296,
+    "context_tokens": 262144,
+    "resident_capacity": 2
+  },
+  "elapsed_seconds": 794.803,
+  "correctness": {
+    "within_mode_deterministic": true,
+    "cross_mode_output_exact": true,
+    "mismatched_case_ids": []
+  },
+  "by_shape": {
+    "512": {
+      "case_count": 4,
+      "samples_per_mode": 12,
+      "before_prefill_tok_s_weighted": 159.1499453485654,
+      "after_prefill_tok_s_weighted": 157.9770386285636,
+      "after_over_before_prefill": 0.9926301783049127,
+      "before_decode_tok_s_weighted": 20.05235037372972,
+      "after_decode_tok_s_weighted": 20.039206081255568,
+      "after_over_before_decode": 0.9993445011567635
+    },
+    "1024": {
+      "case_count": 4,
+      "samples_per_mode": 12,
+      "before_prefill_tok_s_weighted": 158.14041437061675,
+      "after_prefill_tok_s_weighted": 157.7640103181639,
+      "after_over_before_prefill": 0.9976198111409351,
+      "before_decode_tok_s_weighted": 19.357402094136226,
+      "after_decode_tok_s_weighted": 19.33908821737085,
+      "after_over_before_decode": 0.9990539083356168
+    }
+  },
+  "by_case": {
+    "code-p1024": {
+      "category": "code",
+      "prompt_tokens": 1024,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 157.2646881126462,
+      "after_prefill_tok_s_weighted": 156.83572973516593,
+      "after_over_before_prefill": 0.9972723795619457,
+      "before_decode_tok_s_weighted": 19.359561736273193,
+      "after_decode_tok_s_weighted": 19.338480051569686,
+      "after_over_before_decode": 0.9989110453536763,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+        ],
+        "after": [
+          "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+        ]
+      }
+    },
+    "code-p512": {
+      "category": "code",
+      "prompt_tokens": 512,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 158.80899646368601,
+      "after_prefill_tok_s_weighted": 157.48816516502913,
+      "after_over_before_prefill": 0.9916828937398461,
+      "before_decode_tok_s_weighted": 20.05334794765628,
+      "after_decode_tok_s_weighted": 20.04801228293597,
+      "after_over_before_decode": 0.9997339264877747,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+        ],
+        "after": [
+          "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+        ]
+      }
+    },
+    "general_en-p1024": {
+      "category": "general_en",
+      "prompt_tokens": 1024,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 158.49158881077867,
+      "after_prefill_tok_s_weighted": 158.2328795867693,
+      "after_over_before_prefill": 0.9983676785250841,
+      "before_decode_tok_s_weighted": 19.35783054141906,
+      "after_decode_tok_s_weighted": 19.339498084646255,
+      "after_over_before_decode": 0.9990529694568006,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+        ],
+        "after": [
+          "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+        ]
+      }
+    },
+    "general_en-p512": {
+      "category": "general_en",
+      "prompt_tokens": 512,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 158.94659885057288,
+      "after_prefill_tok_s_weighted": 158.07649240659183,
+      "after_over_before_prefill": 0.9945257938812578,
+      "before_decode_tok_s_weighted": 20.050602901223574,
+      "after_decode_tok_s_weighted": 20.038300819945167,
+      "after_over_before_decode": 0.9993864483108558,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+        ],
+        "after": [
+          "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+        ]
+      }
+    },
+    "general_ja-p1024": {
+      "category": "general_ja",
+      "prompt_tokens": 1024,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 159.10576440632448,
+      "after_prefill_tok_s_weighted": 158.70782001570075,
+      "after_over_before_prefill": 0.9974988688052341,
+      "before_decode_tok_s_weighted": 19.352853332253613,
+      "after_decode_tok_s_weighted": 19.338216617712092,
+      "after_over_before_decode": 0.9992436921682692,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+        ],
+        "after": [
+          "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+        ]
+      }
+    },
+    "general_ja-p512": {
+      "category": "general_ja",
+      "prompt_tokens": 512,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 160.2398395640753,
+      "after_prefill_tok_s_weighted": 158.99838541456168,
+      "after_over_before_prefill": 0.9922525250094424,
+      "before_decode_tok_s_weighted": 20.052397207378068,
+      "after_decode_tok_s_weighted": 20.031651916164417,
+      "after_over_before_decode": 0.9989654458267954,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+        ],
+        "after": [
+          "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+        ]
+      }
+    },
+    "mixed_ja_en-p1024": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 1024,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 157.71229002684012,
+      "after_prefill_tok_s_weighted": 157.29351560630855,
+      "after_over_before_prefill": 0.9973446938062955,
+      "before_decode_tok_s_weighted": 19.35936428503615,
+      "after_decode_tok_s_weighted": 19.340158241852645,
+      "after_over_before_decode": 0.9990079197384415,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+        ],
+        "after": [
+          "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+        ]
+      }
+    },
+    "mixed_ja_en-p512": {
+      "category": "mixed_ja_en",
+      "prompt_tokens": 512,
+      "samples_per_mode": 3,
+      "before_prefill_tok_s_weighted": 158.61455886347932,
+      "after_prefill_tok_s_weighted": 157.35570579741525,
+      "after_over_before_prefill": 0.9920634456566653,
+      "before_decode_tok_s_weighted": 20.053053665358853,
+      "after_decode_tok_s_weighted": 20.038866069577967,
+      "after_over_before_decode": 0.9992924969923461,
+      "within_mode_deterministic": true,
+      "cross_mode_output_exact": true,
+      "output_token_ids_sha256": {
+        "before": [
+          "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+        ],
+        "after": [
+          "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+        ]
+      }
+    }
+  },
+  "samples": [
+    {
+      "case_id": "code-p512",
+      "mode": "before",
+      "sequence_slot": 0,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3211.483567,
+      "decode_ms": 6381.787981,
+      "output_token_ids_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+    },
+    {
+      "case_id": "code-p512",
+      "mode": "after",
+      "sequence_slot": 1,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3253.395509,
+      "decode_ms": 6381.5288,
+      "output_token_ids_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+    },
+    {
+      "case_id": "code-p512",
+      "mode": "after",
+      "sequence_slot": 2,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3255.912344,
+      "decode_ms": 6386.835021,
+      "output_token_ids_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+    },
+    {
+      "case_id": "code-p512",
+      "mode": "before",
+      "sequence_slot": 3,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3231.923937,
+      "decode_ms": 6383.146355,
+      "output_token_ids_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+    },
+    {
+      "case_id": "code-p512",
+      "mode": "before",
+      "sequence_slot": 4,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3228.588631,
+      "decode_ms": 6383.987879,
+      "output_token_ids_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+    },
+    {
+      "case_id": "code-p512",
+      "mode": "after",
+      "sequence_slot": 5,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3243.805966,
+      "decode_ms": 6385.654771,
+      "output_token_ids_sha256": "b2b0d9578d179234619f4c3157e50db89a96920c872ae0af4ab15528c96caf0d"
+    },
+    {
+      "case_id": "code-p1024",
+      "mode": "after",
+      "sequence_slot": 0,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6528.222769,
+      "decode_ms": 6621.001605,
+      "output_token_ids_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+    },
+    {
+      "case_id": "code-p1024",
+      "mode": "before",
+      "sequence_slot": 1,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6517.623438,
+      "decode_ms": 6609.863321,
+      "output_token_ids_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+    },
+    {
+      "case_id": "code-p1024",
+      "mode": "before",
+      "sequence_slot": 2,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6498.29659,
+      "decode_ms": 6613.349899,
+      "output_token_ids_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+    },
+    {
+      "case_id": "code-p1024",
+      "mode": "after",
+      "sequence_slot": 3,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6520.911038,
+      "decode_ms": 6616.29483,
+      "output_token_ids_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+    },
+    {
+      "case_id": "code-p1024",
+      "mode": "after",
+      "sequence_slot": 4,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6538.239588,
+      "decode_ms": 6619.486465,
+      "output_token_ids_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+    },
+    {
+      "case_id": "code-p1024",
+      "mode": "before",
+      "sequence_slot": 5,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6518.026447,
+      "decode_ms": 6611.946544,
+      "output_token_ids_sha256": "338e86d8fb2640d8671bff56bebe3cd3eb5eda22119e3007c49adfb28498d5b9"
+    },
+    {
+      "case_id": "general_en-p512",
+      "mode": "before",
+      "sequence_slot": 0,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3213.852915,
+      "decode_ms": 6384.456723,
+      "output_token_ids_sha256": "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+    },
+    {
+      "case_id": "general_en-p512",
+      "mode": "after",
+      "sequence_slot": 1,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3237.604573,
+      "decode_ms": 6387.016339,
+      "output_token_ids_sha256": "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+    },
+    {
+      "case_id": "general_en-p512",
+      "mode": "after",
+      "sequence_slot": 2,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3239.648649,
+      "decode_ms": 6389.350062,
+      "output_token_ids_sha256": "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+    },
+    {
+      "case_id": "general_en-p512",
+      "mode": "before",
+      "sequence_slot": 3,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3223.309855,
+      "decode_ms": 6384.687126,
+      "output_token_ids_sha256": "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+    },
+    {
+      "case_id": "general_en-p512",
+      "mode": "before",
+      "sequence_slot": 4,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3226.460177,
+      "decode_ms": 6382.399967,
+      "output_token_ids_sha256": "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+    },
+    {
+      "case_id": "general_en-p512",
+      "mode": "after",
+      "sequence_slot": 5,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3239.561572,
+      "decode_ms": 6386.935091,
+      "output_token_ids_sha256": "c9e27d335d6c245d9c9bde2c127b07b081462bdffa645fc0e0135e1d2622335e"
+    },
+    {
+      "case_id": "general_en-p1024",
+      "mode": "after",
+      "sequence_slot": 0,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6467.278251,
+      "decode_ms": 6615.98226,
+      "output_token_ids_sha256": "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+    },
+    {
+      "case_id": "general_en-p1024",
+      "mode": "before",
+      "sequence_slot": 1,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6454.209855,
+      "decode_ms": 6613.372497,
+      "output_token_ids_sha256": "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+    },
+    {
+      "case_id": "general_en-p1024",
+      "mode": "before",
+      "sequence_slot": 2,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6455.755749,
+      "decode_ms": 6610.913327,
+      "output_token_ids_sha256": "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+    },
+    {
+      "case_id": "general_en-p1024",
+      "mode": "after",
+      "sequence_slot": 3,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6470.763292,
+      "decode_ms": 6620.766769,
+      "output_token_ids_sha256": "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+    },
+    {
+      "case_id": "general_en-p1024",
+      "mode": "after",
+      "sequence_slot": 4,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6476.381098,
+      "decode_ms": 6618.988608,
+      "output_token_ids_sha256": "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+    },
+    {
+      "case_id": "general_en-p1024",
+      "mode": "before",
+      "sequence_slot": 5,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6472.766458,
+      "decode_ms": 6612.647823,
+      "output_token_ids_sha256": "4a9dd0149fdcbfd9da827712e268e92c2312ccbf453d68397cecce3110040632"
+    },
+    {
+      "case_id": "general_ja-p512",
+      "mode": "before",
+      "sequence_slot": 0,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3189.848936,
+      "decode_ms": 6382.14308,
+      "output_token_ids_sha256": "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+    },
+    {
+      "case_id": "general_ja-p512",
+      "mode": "after",
+      "sequence_slot": 1,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3223.312946,
+      "decode_ms": 6389.248154,
+      "output_token_ids_sha256": "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+    },
+    {
+      "case_id": "general_ja-p512",
+      "mode": "after",
+      "sequence_slot": 2,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3216.015925,
+      "decode_ms": 6389.886615,
+      "output_token_ids_sha256": "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+    },
+    {
+      "case_id": "general_ja-p512",
+      "mode": "before",
+      "sequence_slot": 3,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3200.693848,
+      "decode_ms": 6384.73968,
+      "output_token_ids_sha256": "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+    },
+    {
+      "case_id": "general_ja-p512",
+      "mode": "before",
+      "sequence_slot": 4,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3195.088381,
+      "decode_ms": 6382.947359,
+      "output_token_ids_sha256": "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+    },
+    {
+      "case_id": "general_ja-p512",
+      "mode": "after",
+      "sequence_slot": 5,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3221.146586,
+      "decode_ms": 6390.527404,
+      "output_token_ids_sha256": "550417bf723912b5e1a15dbad6dfcf488eda194295c1fca5b3540081f76e64bf"
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "mode": "after",
+      "sequence_slot": 0,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6444.711659,
+      "decode_ms": 6620.776376,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "mode": "before",
+      "sequence_slot": 1,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6450.529087,
+      "decode_ms": 6617.117674,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "mode": "before",
+      "sequence_slot": 2,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6427.518765,
+      "decode_ms": 6613.214664,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "mode": "after",
+      "sequence_slot": 3,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6449.237399,
+      "decode_ms": 6619.270248,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "mode": "after",
+      "sequence_slot": 4,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6462.375033,
+      "decode_ms": 6617.006774,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+    },
+    {
+      "case_id": "general_ja-p1024",
+      "mode": "before",
+      "sequence_slot": 5,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6429.863533,
+      "decode_ms": 6611.703015,
+      "output_token_ids_sha256": "d7a78bb1a162449d54e7e761e1fb0510fb0393b4c2a8a8c5d7f44145c02c61b4"
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "mode": "before",
+      "sequence_slot": 0,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3231.725129,
+      "decode_ms": 6383.885962,
+      "output_token_ids_sha256": "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "mode": "after",
+      "sequence_slot": 1,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3249.094371,
+      "decode_ms": 6390.083871,
+      "output_token_ids_sha256": "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "mode": "after",
+      "sequence_slot": 2,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3247.583697,
+      "decode_ms": 6387.337931,
+      "output_token_ids_sha256": "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "mode": "before",
+      "sequence_slot": 3,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3228.712419,
+      "decode_ms": 6382.830655,
+      "output_token_ids_sha256": "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "mode": "before",
+      "sequence_slot": 4,
+      "allocated_capacity": 2051,
+      "prefill_ms": 3223.415,
+      "decode_ms": 6382.486612,
+      "output_token_ids_sha256": "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+    },
+    {
+      "case_id": "mixed_ja_en-p512",
+      "mode": "after",
+      "sequence_slot": 5,
+      "allocated_capacity": 262144,
+      "prefill_ms": 3264.645757,
+      "decode_ms": 6385.339138,
+      "output_token_ids_sha256": "141d619f19761888e7835547a7514fc285f51e8f0402feddd781ecbbf9901221"
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "mode": "after",
+      "sequence_slot": 0,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6517.310886,
+      "decode_ms": 6620.647324,
+      "output_token_ids_sha256": "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "mode": "before",
+      "sequence_slot": 1,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6503.866423,
+      "decode_ms": 6613.122802,
+      "output_token_ids_sha256": "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "mode": "before",
+      "sequence_slot": 2,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6487.24342,
+      "decode_ms": 6612.160835,
+      "output_token_ids_sha256": "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "mode": "after",
+      "sequence_slot": 3,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6505.07776,
+      "decode_ms": 6616.513199,
+      "output_token_ids_sha256": "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "mode": "after",
+      "sequence_slot": 4,
+      "allocated_capacity": 262144,
+      "prefill_ms": 6507.977804,
+      "decode_ms": 6617.899358,
+      "output_token_ids_sha256": "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+    },
+    {
+      "case_id": "mixed_ja_en-p1024",
+      "mode": "before",
+      "sequence_slot": 5,
+      "allocated_capacity": 2051,
+      "prefill_ms": 6487.397504,
+      "decode_ms": 6610.078431,
+      "output_token_ids_sha256": "6185347aef4b09d31d47af4d196f4371f72479c50497210d905efe50a51edb30"
+    }
+  ],
+  "memory_after_close": {
+    "current_allocated_bytes": 0,
+    "peak_allocated_bytes": 96552645464,
+    "total_allocated_bytes": 96554742616,
+    "total_freed_bytes": 96554742616,
+    "active_allocations": 0,
+    "peak_allocations": 2211
+  },
+  "conclusion": "All48 trajectories exact. Native capacity changes short decode-0.066%/-0.095%, prefill-0.737%/-0.238%. No large short-context cliff; not a claim of literally zero cost.",
+  "limitations": [
+    "Both runners share one weight residency; native runner setup excludes weight loading and is not comparable to baseline total setup.",
+    "Full KV zeroing remains in reset, not just construction. Prefill includes that capacity-sensitive work.",
+    "This is a short-context capacity comparison, not native-length inference or sparse retrieval validation.",
+    "Public factory/default is unchanged in this measurement."
+  ]
+}

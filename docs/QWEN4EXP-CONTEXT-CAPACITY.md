@@ -1,7 +1,8 @@
 # Qwen4Exp context capacity: the 2051 cap, why it exists, and what raising it costs
 
-Status: diagnosis complete, no code changed. Read-only static analysis plus
-already-committed campaign evidence; nothing was measured in this session.
+Status: diagnosis and native-capacity short-context A/B complete. Public
+factory/default plumbing is still pending. Section4c records the new Framework
+measurement; earlier performance examples remain tied to their original protocols.
 
 Audience: whoever owns the Qwen4Exp serving/prefill path next. This exists
 because the served default silently caps a 262,144-token model at 2,051 tokens,
@@ -29,9 +30,10 @@ easy to conflate.
    `--max-context-tokens` can only clamp downward. Every internal harness
    bypasses the factory and passes its own capacity, which is why long-context
    work looks fine while the server does not.
-5. Raising capacity costs memory (24 KiB/token KV plus index state), **not**
-   short-context speed: the dense/sparse branch keys off *live* token count, not
-   allocated capacity.
+5. Raising capacity leaves short requests on the dense branch because dispatch
+   keys off *live* count. It is not literally free: measured short decode is
+   within0.1% of the small-capacity arm, while prefill loses0.24-0.74%. Full KV
+   clearing happens in request reset as well as construction.
 6. There is a real and large performance cliff at the boundary, but it is a
    property of the model architecture, not of the default. It is paid by prompt
    length, whatever the capacity is set to.
@@ -142,10 +144,11 @@ Two things that table must not be over-read:
   selected spans of 4,096/16,384/65,536 tokens and mean gaps 2.00/8.00/32.02.
   Low coverage is not the same as low recall.
 
-So the practical reading of the cutoff is: **below 2051 the engine owes exact
-dense results and can be gated against a dense oracle; above 2051 correctness
-becomes a question about the indexer's retrieval quality, which is a model
-property and needs retrieval-style evidence rather than an exactness gate.**
+So the practical reading of the cutoff is: **below2051 the dense-equivalent
+oracle applies; above2051 full-dense output equality is not the right oracle.**
+Native QSA selection, tail inclusion, buffer ownership and declared arithmetic
+gates remain binding. Retrieval/task evidence additionally evaluates the model's
+content-dependent selection; it does not replace those correctness checks.
 That distinction is why the two numerical regimes want different tests, and it
 is section 7's organising principle.
 
@@ -291,6 +294,27 @@ plus tail, so attention cost is constant in context length. Only scoring grows,
 at O(context/4), and it stays a few percent out to 64K. **2052 costs
 approximately what 65,536 costs.**
 
+### 4c. Measured capacity A/B (2026-09-06 UTC, Framework gfx1151)
+
+Clean `2257408cf`, UD-Q4_K_XL/BF16 KV: one shared weight residency, separate
+2051- and262144-capacity runners, all eight p512/p1024 category cases, one
+warmup per arm and three alternating measurements, tg128. All48 trajectories
+are exact and teardown leaves zero allocations. Elapsed13m14.8s.
+
+| Shape | 2051-cap PP / TG | Native-cap PP / TG | PP change | TG change |
+| --- | ---: | ---: | ---: | ---: |
+| p512 | 159.150 /20.052 | 157.977 /20.039 | -0.737% | -0.066% |
+| p1024 | 158.140 /19.357 | 157.764 /19.339 | -0.238% | -0.095% |
+
+No large short-context decode cliff appears, but do not call capacity cost zero.
+Native runner setup after weights were resident took0.987s; baseline setup48.05s
+includes loading weights and is not a comparable setup interval. Peak tracked
+bytes96,552,645,464 include **both** runners, shared weights and MMQ sidecars.
+`runner.reset()` clears full KV on every request, so the prefill timing includes
+capacity-sensitive clearing. This run does not validate native-length inference
+or sparse retrieval; it is the requested short-context capacity gate.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-context-capacity-ab.json).
+
 ## 5. Implications for the in-flight prefill work
 
 Read this section before landing prefill changes; three of these interact
@@ -355,8 +379,10 @@ or graph work is heading toward device-owned positions, that constraint has to
 be designed for now rather than discovered at promotion time.
 
 **5.4 Startup cost.** The eager `memset` of 6 GiB of KV per sequence (12 GiB at
-c2) happens during construction. If startup latency is measured anywhere,
-raising the default moves it.
+c2) happens during construction **and runner.reset() at each request**.
+Raising the default therefore affects startup and short-prefill reset cost,
+not just construction. The capacity A/B above measures that effect without
+changing the clearing contract.
 
 ## 6. What already works, and what has to change
 
@@ -399,8 +425,9 @@ semantics.
 Organise this by regime, per section 1. Raising the cap does not weaken any
 regime-A guarantee — the exactly-dense path is untouched and its gates stay
 binding as-is. What it does is expose regime B to served traffic for the first
-time, and regime B cannot be gated by an exactness oracle because it is
-*designed* to discard tokens. Evidence there is retrieval- and task-shaped
+time. Regime B is not gated by equality to full dense attention because it is
+*designed* to discard tokens. Exact native-QSA selection/tail/ownership checks
+and declared arithmetic gates still apply. Add retrieval/task evidence
 (P10's needle/selected-position parity is the existing template), not KL-vs-dense
 on the full context.
 
@@ -451,9 +478,9 @@ not a behavior score. On the 11 scenarios that fit, safety behavior matched both
 llama.cpp lanes exactly. Any published hipEngine number on a suite whose prompts
 exceed 2051 tokens is measuring this cap, not the engine.
 
-Note the honest trade being made by raising it: requests above 2051 tokens are
-roughly 4x slower per token (section 4b), and that is inherent to the
-architecture. Raising the cap converts "refuses the request" into "serves it
+Note the honest trade being made by raising it: crossing2051 introduces the
+model's sparse-route cost. The cited69.3->96.0ms/token example is about1.39x,
+not4x, and other protocols must not be divided into it. Raising the cap converts "refuses the request" into "serves it
 slowly". That is the right trade for a 256K-context model, but it will move
 aggregate throughput numbers on any mixed-length suite, and those rows should be
 re-baselined rather than compared across the change.
