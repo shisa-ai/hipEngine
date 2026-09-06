@@ -150,7 +150,7 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
     packed = selections[("linear", "prefill_gdn_qkv_ssm_prepacked_mmq")]
-    assert packed["selected_variant"] == "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
+    assert packed["selected_variant"] == "mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out"
     assert packed["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     argmax = selections[("argmax", "qwen4exp_normal_greedy_output")]
     assert argmax["selected_variant"] == "top1_i64"
@@ -211,9 +211,9 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert q8_grouped["evidence_artifact"].endswith(
         "halo-pf13-production-refresh.json"
     )
-    q8 = selections[("linear", "prefill_policy_qwen4exp_dense_q8_shapes")]
+    q8 = selections[("linear", "prefill_policy_qwen4exp_raw_q8_shapes")]
     assert q8["selected_variant"] == (
-        "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
+        "mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
     )
     assert q8["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     gdn = selections[
@@ -262,7 +262,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "1"
     wave = _selection_map(production)[("linear", "prefill_exact_q8_f32_coltile")]
     assert wave["selected_variant"] == "coltile8_rowbatch4_wave_scale_f32_f32_out"
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
