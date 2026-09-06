@@ -635,6 +635,7 @@ def materialize_qwen35_gguf_weights(
     backend: str = "hip_gfx1100",
     use_selective_weight_arena: bool = False,
     selective_weight_max_allocation_bytes: int = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES,
+    requested_operations: Iterable[str] | None = None,
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -643,6 +644,13 @@ def materialize_qwen35_gguf_weights(
     unset to materialize the full model. ``deferred_device_slots`` retains the
     validated weight specs but performs no device allocation for those slots;
     callers must materialize them before passing the records to a kernel.
+    ``requested_operations`` binds the operations the resident will run (for
+    example ``ar_decode_native_rows``) to the pre-allocation admission
+    preflight: an artifact that cannot support a requested mode is refused
+    with the aggregated refusal list before the first device allocation. The
+    default is ``DEFAULT_AR_OPERATIONS`` (the historical c1/rows/prefill/
+    embedding/logits set); the native multirow route additionally enforces its
+    alpha/beta BF16-pointer owner binding at its own execution entry.
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
@@ -679,11 +687,16 @@ def materialize_qwen35_gguf_weights(
         preflight_qwen35_gguf_artifact,
     )
 
+    operations = (
+        DEFAULT_AR_OPERATIONS
+        if requested_operations is None
+        else tuple(str(operation) for operation in requested_operations)
+    )
     admission_report = preflight_qwen35_gguf_artifact(
         model_map,
         backend=backend,
         file_type_stamp=(None if file_type_name is None else str(file_type_name)),
-        operations=DEFAULT_AR_OPERATIONS,
+        operations=operations,
         decode_repack=decode_repack,
         slot_filter=None if selected is None else tuple(sorted(selected)),
         nextn_map=nextn_map,

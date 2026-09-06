@@ -322,6 +322,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weight_spec,
     materialize_qwen35_gguf_weights,
 )
+from hipengine.loading.qwen35_gguf_admission import qwen35_gguf_native_row_binding_errors
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     build_gguf_k_mmq_prefill,
@@ -20668,6 +20669,20 @@ class Qwen35GGUFResidentSession:
             or self._native_token_ids_host is None
         ):
             raise RuntimeError("GGUF resident native-row buffers are closed")
+        # The native multirow route owns the alpha/beta BF16-pointer contract
+        # (dense_gemv_out_bf16 reads allocation('raw') as uint16_t weights).
+        # Enforce the actual resident binding here, before any state mutation
+        # or device call; the load-time admission equivalent is requesting
+        # ar_decode_native_rows via materialize_qwen35_gguf_weights.
+        native_binding_errors = qwen35_gguf_native_row_binding_errors(self.runner.weights)
+        if native_binding_errors:
+            raise ValueError(
+                "GGUF native-row execution refused before state mutation: the resident "
+                "does not satisfy the ar_decode_native_rows alpha/beta BF16-pointer "
+                f"owner contract ({'; '.join(native_binding_errors)}). Load with "
+                "materialize_qwen35_gguf_weights(requested_operations=...) including "
+                "ar_decode_native_rows to refuse this artifact before allocation."
+            )
         tokens = tuple(int(token) for token in token_ids)
         rows = len(tokens)
         if rows <= 1:
@@ -20767,6 +20782,19 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
+        # Same alpha/beta BF16-pointer owner contract as step_rows_native:
+        # enforce the actual resident binding before any device call or state
+        # mutation (the captured graph replays the same native model route).
+        native_binding_errors = qwen35_gguf_native_row_binding_errors(self.runner.weights)
+        if native_binding_errors:
+            raise ValueError(
+                "GGUF native-row graph capture refused before state mutation: the "
+                "resident does not satisfy the ar_decode_native_rows alpha/beta "
+                f"BF16-pointer owner contract ({'; '.join(native_binding_errors)}). "
+                "Load with materialize_qwen35_gguf_weights(requested_operations=...) "
+                "including ar_decode_native_rows to refuse this artifact before "
+                "allocation."
+            )
         if self.host_token_embedding_enabled:
             self._device_token_embedding_weight(reason="native_rows_graph")
         rows = int(rows)
