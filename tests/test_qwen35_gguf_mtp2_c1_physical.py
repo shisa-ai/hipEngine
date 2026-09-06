@@ -166,6 +166,14 @@ def test_physical_c1_claims_fit_admits_listed_one_row_cell() -> None:
             candidate_counts=(3,),
         )
     ) is True
+    # K2 is the other listed C1 depth cell.
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=(7,),
+            speculative_request_ids=(7,),
+            candidate_counts=(2,),
+        )
+    ) is True
     # A K1 claim at a depth the policy does not list for C1 stays closed.
     assert adapter.claims_fit(
         SimpleNamespace(
