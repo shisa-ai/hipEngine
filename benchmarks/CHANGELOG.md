@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework mapped Q8 down admission] Five full-logit/state/KV cases exact,calls0/1/0 or0/8/0,zero decode/final owners;22 CPU tests,both binders0. Current-call map guard and shared-kernel counter isolation;throughput delta N/A pending A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json`.
+
 - [2026-09-06 UTC Framework mapped Q8 down] Layer2 weights/borrowed layer0 code,mixed counts:selected80.728->mapped37.969ms /80.566->37.420ms (-52.97%/-53.55%),40 exact pairs,both orders positive.15 existing kernel tests,zero trace scratch;runtime gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down.json`.
 
 - [2026-09-06 UTC post-raw-MMQ-vector families] Cleaneee086e25 six-case/twelve-phase capture:linear4.762->4.556s (-4.34%),GR4.254->3.755s (-11.73%),snapshot not causal A/B. Vulkan ratios4.470x/2.199x,FFN12.698s;100% attribution,exact restored state/decode,zero owners. `benchmarks/results/2026-09-06-framework-qwen4exp-post-raw-vector-family.json`.

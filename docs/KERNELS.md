@@ -796,6 +796,13 @@ gate/up and preserves token-major outputs;requires explicit map ownership
 and model gates. No new kernel/default. Evidence:
 `2026-09-06-framework-qwen4exp-q8-mapped-down.json`.
 
+Mapped-down model admission now passes five full-logit/state/KV cases,
+four decode steps,0/1/0 calls at512 or0/8/0 at4096,zero decode/final
+owners. Current-call map-ready guard prevents stale scratch use.22 CPU
+tests pass;both binders0,canonical A/B pending. Counter hooks distinguish
+mapped versus compact calls to the shared bundled kernel.
+Evidence: `2026-09-06-framework-qwen4exp-q8-mapped-down-state.json`.
+
 Q8 MMQ exposes `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out`.
 It retains raw-weight staging and uses the previously proven aligned
 activation copies. Actual GR/query/output512 complete chains improve

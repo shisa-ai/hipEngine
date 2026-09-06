@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Mapped Q8 down default-off admission (September6 UTC):** current-call
+map-ready flag starts false and becomes true only after ungrouped Q5_K
+row4 map construction. Existing bundled Q8 down consumes original-order
+activations through that map, preserving output/SiLU/combine ordering.
+Five off/on/off cases pass full logits,four decode steps,state/full KV:
+calls0/1/0 at512 or0/8/0 at4096,zero decode/final allocations.
+22 CPU tests pass;both binders0. Shared-kernel counters filter mapped
+and compact calls separately,so prior bundle A/B remains usable.
+Next:clean canonical12-case `--route-package q8-mapped-down` A/B.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json).
+
 **Mapped Q8 down dispatch gap (September6 UTC):** the ungrouped Q5_K
 row4 gate/up branch already builds expert starts and sorted-to-original
 lane map,then still launches selected Q8 down. Existing bundled Q8 row4

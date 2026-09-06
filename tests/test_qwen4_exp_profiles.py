@@ -62,6 +62,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL",
+        "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL",
@@ -282,6 +283,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "1"
@@ -368,6 +370,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "0"
