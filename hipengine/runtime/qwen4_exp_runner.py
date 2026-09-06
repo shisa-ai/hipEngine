@@ -2977,6 +2977,15 @@ def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
 
 
+def _qwen4_exp_q5k_bundle_key(key: KernelKey, *, rows: int) -> KernelKey:
+    if (rows < 64 or key.variant != "selected_grouped_row4_gemv_bf16_bf16_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q5K_BUNDLE_PREFILL", "0") != "1"):
+        return key
+    candidate = KernelKey(key.backend,key.layer,key.quant,
+                          "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+    return candidate if is_registered(candidate) else key
+
+
 def _qwen4_exp_q51_fold_pair_key(key: KernelKey, *, rows: int) -> KernelKey:
     if (rows < 512 or key.variant != "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
             or os.environ.get("HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL", "0") != "1"):
@@ -4017,9 +4026,12 @@ def run_qwen4_exp_moe(
                     ("expert_up", scratch.expert_up),
                 ):
                     weight = weights[name]
+                    grouped_key = _qwen4_exp_q5k_bundle_key(
+                        KernelKey(backend,"linear",weight.spec.quant_key,
+                                  "selected_grouped_row4_gemv_bf16_bf16_out"),rows=rows)
                     resolve(
-                        backend=backend, layer="linear", quant=weight.spec.quant_key,
-                        variant="selected_grouped_row4_gemv_bf16_bf16_out",
+                        backend=grouped_key.backend, layer=grouped_key.layer, quant=grouped_key.quant,
+                        variant=grouped_key.variant,
                     )(
                         scratch.hidden_bf16.ptr, scratch.group_expert_start.ptr,
                         scratch.group_sorted_lanes.ptr, weight.allocation("raw").tensor.ptr,

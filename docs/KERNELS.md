@@ -93,6 +93,12 @@ pass;trace24 VGPR/512B LDS/no spills unchanged. Full-model state/KV and
 canonical A/B remain required;the owner's small wall ceiling is explicit.
 Evidence: `2026-09-06-framework-qwen4exp-q5k-row4-bundle.json`.
 
+Default-off Q5_K bundle model admission passes five full logits/state/KV
+cases,four decode steps each.2/16 calls only in enabled prefill,zero final
+owners.27 CPU tests pass;existing row4 rows>=64 only,both binders0.
+Clean12-case A/B remains the promotion blocker.
+Evidence: `2026-09-06-framework-qwen4exp-q5k-bundle-state.json`.
+
 `hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code objects and registers a peer backend key. `hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions, thresholds, and architecture-specific defaults. A gfx1100 variant is not a gfx1151 default merely because the source compiles there; each promotion needs its own correctness and performance gate.
 
 ### CUDA is a peer backend

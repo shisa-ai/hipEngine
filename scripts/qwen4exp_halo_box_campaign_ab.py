@@ -206,13 +206,20 @@ def q51_fold_pair_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
     return 25 * (full * (chunk_size >= 512) + (tail >= 512))
 
 
+def q5k_bundle_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
+    if prompt_tokens < 1 or chunk_size < 1:
+        raise ValueError("positive prompt and chunk sizes required")
+    full, tail = divmod(prompt_tokens, chunk_size)
+    return 2 * (full * (chunk_size >= 64) + (tail >= 64))
+
+
 def _apply_mode(
     mode: str,
     *,
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q5k-bundle"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -238,6 +245,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
         if route_package == "q51-fold-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
+        if route_package == "q5k-bundle":
+            flag = "HIPENGINE_QWEN4_EXP_Q5K_BUNDLE_PREFILL"
         environment[flag] = "1" if mode == "after" else "0"
         if route_package == "qsa-h256-page256" and mode == "after":
             environment[flag] = "page256"
@@ -276,7 +285,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q5k-bundle"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -400,7 +409,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q5k-bundle"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -453,6 +462,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             row4_key = KernelKey(
                 "hip_gfx1151", "moe_linear", "gguf_q5_1",
                 "selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out")
+        if args.route_package == "q5k-bundle":
+            row4_key = KernelKey(
+                "hip_gfx1151", "linear", "gguf_q5_k",
+                "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -526,6 +539,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "before": {"q51_down": "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"},
                 "after": {"q51_down": row4_key.variant},
             }
+        elif args.route_package == "q5k-bundle":
+            artifact["arms"] = {
+                "before": {"q5k_gate_up": "selected_grouped_row4_gemv_bf16_bf16_out"},
+                "after": {"q5k_gate_up": row4_key.variant},
+            }
     artifact["route_package"] = args.route_package
     artifact["diagnostic_subset"] = bool(args.case_id)
 
@@ -551,6 +569,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
                 if calls != expected_calls:
                     raise AssertionError(f"Q51 folded pair calls {calls} != {expected_calls}")
+            elif args.route_package == "q5k-bundle":
+                expected_calls = q5k_bundle_expected_calls(
+                    int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
+                if calls != expected_calls:
+                    raise AssertionError(f"Q5K bundled calls {calls} != {expected_calls}")
             elif args.route_package.startswith("qsa-h256-"):
                 validate_qsa_h256_engagement(mode, calls, int(case["prompt_tokens"]))
             else:

@@ -452,6 +452,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         PROFILE_Q5_1_DOWN_M1_ENV: "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_FORKB_GROUPED_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_Q5K_BUNDLE_PREFILL": "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
