@@ -1,14 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp Q5_1 fold128 candidate
+## Qwen4Exp Q5_1 fold128 rollback
 
 - `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves reduction
-  scratch with exact arithmetic. Default-off
+  scratch with exact arithmetic. Production
   `HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL` selects it only after existing
-  pair2 prefill selection and rows>=64; both profile binders pin0.
-- Promote only after invocation-checked full logits/state/KV and canonical
-  12-case A/B; remove if complete-model evidence rejects it. Keep current
-  pair2 rollback and strict M1/fallback chains.
+  pair2 prefill selection and rows>=64; production binds1, strict0.
+- Full model state/KV and12-case A/B now pass. Remove the opt-out after the
+  next qualified Q5 down change or a release window; retain pair2 rollback
+  and strict M1/fallback chains for bisection until then.
 - The existing Q5 screen now supports same-layer captured counts, still with
   synthetic activations. Those micros do not replace model admission.
 

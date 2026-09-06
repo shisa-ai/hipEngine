@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 fold128 production (September6 UTC):** clean `318e0ad26` full12-case
+A/B preserves all72 trajectories, every case's prefill and request wall improves.
+Weighted PP512/1024/4096:159.222->160.363 /156.767->158.300 /
+145.546->146.878 tok/s (+0.716%/+0.978%/+0.915%).
+Total request-wall ratio1.00627x. Aggregate TG+0.250%/+0.134%/+0.070% is
+incidental; five per-case TG decreases range0.031-0.067% and remain explicit.
+Max PP/TG CV0.983%/0.683%. Measured first-to-last span31m35.1s excludes
+initial loading/warmups. Zero final owners; no new allocation.
+Production selects fold128 only after existing pair2 prefill admission,
+rows>=64; strict/M1/WMMA/decode unchanged. Earlier pair2 remains rollback.
+Owner refresh follows separately; no new Vulkan parity or native256K claim.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-production.json).
+
 **Q5_1 fold128 default-off admission (September6 UTC):** only existing pair2
 prefill rows>=64 can select fold128; both binders pin0. Five code512/code4096/
 English512/Japanese512/mixed512 off/on/off cases pass full prefill/four-step

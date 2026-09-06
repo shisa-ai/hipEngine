@@ -266,12 +266,12 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert gdn["selected_variant"] == "qwen4exp_sigmoid_register_prefill"
     assert gdn["strict_fallback_variant"] == "qwen4exp_sigmoid_strict_prefill"
     pair = _selection_map(production)[("moe_linear", "prefill_rows_ge64_exact_grouped_q5_1_down")]
-    assert pair["selected_variant"] == "selected_grouped_prefill_pair2_bf16_bf16_out"
+    assert pair["selected_variant"] == "selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
     assert pair["strict_fallback_variant"] == (
         "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out")
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     selected = _selection_map(production)
     assert selected[("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")

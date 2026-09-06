@@ -875,21 +875,26 @@ It preserves separate logical256 accumulations and reuses one LDS reduction
 arena sequentially. Qwen4Exp production selects pair2 at rows>=64; M1 remains
 the small-row and opt-out parent, and strict retains its original exact owner.
 
-Its kernel-only `selected_grouped_prefill_pair2_fold128_bf16_bf16_out`
-candidate folds the original first stride128 addition in registers and halves
+Its `selected_grouped_prefill_pair2_fold128_bf16_bf16_out`
+owner folds the original first stride128 addition in registers and halves
 dynamic reduction scratch, leaving the LDS64..1 tree unchanged.
 Nine GPU tests pass (including K4096/CPU KL/top1), and captured layer0/1
 code/mixed routing screens improve1.031x/1.036x with both orders positive.
 Trace72 VGPR/no spills, dynamic LDS8672->4576B at K640. Existing pair2/M1
-remain runtime defaults/fallbacks pending full-model gates and12-case A/B.
+remain rollback/strict fallback routes.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold128.json`.
 
-Default-off model admission now passes five full logits/state/full-KV cases,
+Earlier default-off model admission passes five full logits/state/full-KV cases,
 four decode steps each, with25/200 candidate calls only in enabled prefill
 and zero final allocations.38 CPU route/profile/harness tests pass.
-Only existing pair2 rows>=64 is eligible; production/strict fold128 bind0.
-Clean12-case A/B remains the promotion blocker.
+Only existing pair2 rows>=64 is eligible; both binders pinned0 at admission.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold128-state.json`.
+
+Clean318e0ad26 full12-case A/B passes72 exact trajectories and all prefill/
+request walls. PP512/1024/4096 improves0.716%/0.978%/0.915%; production
+now binds fold128=1, strict0, existing pair2 scope only. No new allocation;
+tiny adverse decode rows preserved. Evidence:
+`2026-09-06-framework-qwen4exp-q51-fold128-production.json`.
 
 The Q4_K selected-prefill family has a separately registered exact bundled
 publication sibling of its row8/output4/expertgrid64 owner. It preserves
