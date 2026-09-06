@@ -76,6 +76,29 @@ def gguf_ar_raw_iq_contract(ggml_type_ids: Iterable[int]) -> bool:
     return any(int(ggml_type) in _AR_RAW_IQ_GGML_TYPE_IDS for ggml_type in ggml_type_ids)
 
 
+def gguf_ar_decode_repack_veto(ggml_type_ids: Iterable[int]) -> bool:
+    """Return the per-tensor decode-repack veto for one AR type scope.
+
+    UD-U1 policy knob, separated from the F32 linear contraction so a future
+    per-tensor repack-eligibility change (UD-U3 layout selection) cannot
+    silently move the model-wide F32 contraction, and vice versa. Today both
+    knobs derive from the same raw-IQ predicate, so every unchanged manifest
+    plans identically.
+    """
+
+    return gguf_ar_raw_iq_contract(ggml_type_ids)
+
+
+def gguf_ar_f32_linear_contraction(ggml_type_ids: Iterable[int]) -> bool:
+    """Return the model-wide F32 alpha/beta/router linear contraction gate.
+
+    UD-U1 policy knob, separated from :func:`gguf_ar_decode_repack_veto` for
+    the same reason; the defaults remain identical for every current manifest.
+    """
+
+    return gguf_ar_raw_iq_contract(ggml_type_ids)
+
+
 def _env_enabled(environ: Any, name: str, default: str) -> bool:
     raw = environ.get(name)
     if raw is None:
