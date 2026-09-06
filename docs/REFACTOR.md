@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q5_1 register weight-cache candidate
+
+- `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` is
+  kernel-only,K640;no model flag/default yet. It removes repeated weight
+  decoding without extra LDS, but uses96 VGPR and36B private scratch.
+- Require full-model invocation/logits/state/KV and canonical12-case A/B
+  at existing folded-pair rows>=512 before promotion. Remove if either
+  gate fails;keep original folded-pair/M1 and all smaller-row fallbacks.
+
 ## Qwen4Exp MMQ vector activation staging rollback
 
 - Production `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`

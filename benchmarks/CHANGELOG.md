@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q5_1 register cache] Captured code/mixed512 two-bank projection34.450->28.195ms (-18.16%)/33.756->27.819ms (-17.59%),all40 pairs exact,both orders positive;17 GPU tests. VGPR72->96/private scratch0->36B,LDS unchanged. Kernel-only,model gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache.json`.
+
 - [2026-09-06 UTC Framework Q5_1 LDS cache rejected] Captured code4096chunk0 actual two-bank projection34.449->58.987ms (+71.23% time,0.584x),all20 pairs exact,both orders lose.17 candidate tests;dynamic LDS8672->13792B,VGPR72/scratch0 unchanged. Candidate removed,no model A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-weight-cache-rejected.json`.
 
 - [2026-09-06 UTC Framework combined-default refresh] Same-protocol historical HE PP153.96/152.30/142.03->168.58/166.86/155.89 (+9.50%/+9.56%/+9.76%,snapshot not last-promotion causality);fresh Vulkan346.78/397.38/421.63,HIP307.38/393.31/355.00. All108 trajectories repeat,clean teardown;per-case SD/CV/drift retained. `benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json`.
