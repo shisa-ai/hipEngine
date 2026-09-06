@@ -119,6 +119,7 @@ class GenerationRequest:
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
     tool_call_constraint: Any | None = None
+    grammar: Mapping[str, Any] | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0

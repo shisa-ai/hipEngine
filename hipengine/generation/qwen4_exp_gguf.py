@@ -89,6 +89,10 @@ class Qwen4ExpGGUFTextGenerator:
                 metadata_info = weight_index
             tokenizer = Qwen4ExpGGUFTokenizer.from_gguf_info(metadata_info)
         self.tokenizer = tokenizer
+        from hipengine.chat.qwen4_exp import Qwen4ExpToolParser,Qwen4ExpReasoningParser
+        self.chat_tool_parser = Qwen4ExpToolParser()
+        self.chat_reasoning_parser = Qwen4ExpReasoningParser(tokenizer)
+        self._grammar_tokenizer = None
         vision_readers: tuple[GGUFReader, ...] = ()
         vision_plan = None
         if vision_model_path is not None:
@@ -175,6 +179,49 @@ class Qwen4ExpGGUFTextGenerator:
     server_plain_ar_max_active_requests_by_max_sequence_length = {1024: 2}
     supports_stream_many = True
     supports_controlled_streaming = True
+    chat_template_family = "qwen4exp_embedded"
+    supports_grammar = True
+    model_owned_tool_grammar = True
+    chat_template_reasoning_effort = True
+
+    def _grammar_session(self, request):
+        if request.grammar is None:
+            return None
+        from hipengine.generation.grammar import GrammarSession
+        return GrammarSession(self.grammar_tokenizer,request.grammar)
+
+    @property
+    def grammar_tokenizer(self):
+        from hipengine.generation.grammar import make_tokenizer
+        with self._lock:
+            if self._grammar_tokenizer is None:
+                self._grammar_tokenizer = make_tokenizer(self.tokenizer)
+            return self._grammar_tokenizer
+
+    @staticmethod
+    def _controlled_token(result,request,grammar):
+        if grammar is not None:
+            return grammar.select(result.logits,suppress=request.suppress_token_ids,
+                                  logit_bias=request.logit_bias)
+        if request.suppress_token_ids or request.logit_bias:
+            import numpy as np
+            scores = result.logits.copy()
+            for token,bias in request.logit_bias:
+                scores[int(token)] += float(bias)
+            for token in request.suppress_token_ids:
+                scores[int(token)] = -np.inf
+            if not np.isfinite(scores).any():
+                raise ValueError("token controls allow no finite token")
+            return int(np.argmax(scores))
+        return int(result.token_id)
+
+    def render_chat_prompt(self, messages, *, tools=None, enable_thinking=False,
+                           add_generation_prompt=True, reasoning_effort=None):
+        from hipengine.chat.qwen4_exp import render_qwen4_exp_chat
+        return render_qwen4_exp_chat(
+            self.tokenizer.chat_template,messages,tools=tools,
+            enable_thinking=enable_thinking,add_generation_prompt=add_generation_prompt,
+            reasoning_effort=reasoning_effort)
 
     @property
     def supports_vision(self) -> bool:
@@ -282,24 +329,34 @@ class Qwen4ExpGGUFTextGenerator:
             )
             if len(token_ids) + request.max_tokens > self.runner.max_sequence_length:
                 raise ValueError("Qwen4Exp request exceeds admitted sequence capacity")
+            grammar = self._grammar_session(request)
+            controlled = grammar is not None or bool(request.suppress_token_ids or request.logit_bias)
+            prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
+            step_kwargs = _qwen4_exp_compact_step_kwargs()
+            if controlled:
+                prefill_kwargs["capture_logits"] = True
+                step_kwargs.update(capture_logits=True,token_id_resident=False)
             result = self.runner.prefill(
                 token_ids,
-                **_qwen4_exp_compact_prefill_kwargs(),
+                **prefill_kwargs,
             )
             raise_if_generation_deadline_expired(request)
             generated: list[int] = []
             reason = "length"
             for index in range(request.max_tokens):
                 raise_if_generation_deadline_expired(request)
-                token = int(result.token_id)
+                token = self._controlled_token(result,request,grammar)
                 generated.append(token)
+                if grammar is not None and grammar.done:
+                    reason = "eos" if token == self.tokenizer.eos_token_id else "stop"
+                    break
                 if not request.ignore_eos and token == self.tokenizer.eos_token_id:
                     reason = "eos"
                     break
                 if index + 1 < request.max_tokens:
                     result = self.runner.step(
                         token,
-                        **_qwen4_exp_compact_step_kwargs(),
+                        **step_kwargs,
                     )
             outputs.append(
                 GenerationOutput(
@@ -335,6 +392,8 @@ class Qwen4ExpGGUFTextGenerator:
         self, request: GenerationRequest
     ) -> list[GenerationOutput]:
         self._require_open()
+        if request.grammar is not None:
+            raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if self._speculative_provider is None:
             raise NotImplementedError("Qwen4Exp speculative provider is not attached")
         return list(self._speculative_provider.generate_detailed(request))
@@ -346,6 +405,8 @@ class Qwen4ExpGGUFTextGenerator:
 
     def stream_speculative_detailed(self, request: GenerationRequest):
         self._require_open()
+        if request.grammar is not None:
+            raise NotImplementedError("grammar-constrained speculative decoding is not supported")
         if self._speculative_provider is None:
             raise NotImplementedError("Qwen4Exp speculative provider is not attached")
         yield from self._speculative_provider.stream_detailed(request)
@@ -410,6 +471,8 @@ class Qwen4ExpGGUFTextGenerator:
         request: GenerationRequest,
     ) -> GenerationOutput:
         self._require_open()
+        if request.grammar is not None:
+            raise NotImplementedError("multimodal grammar decoding is not supported")
         raise_if_generation_deadline_expired(request)
         if self._vision_runner is None:
             raise NotImplementedError("Qwen4Exp vision model is not attached")
@@ -503,6 +566,11 @@ class _Qwen4ExpServingRow:
     next_result: Any | None = None
     generated_ids: list[int] = field(default_factory=list)
     emitted_text: str = ""
+    grammar: Any | None = None
+
+    @property
+    def controlled(self):
+        return self.grammar is not None or bool(self.request.suppress_token_ids or self.request.logit_bias)
 
 
 class Qwen4ExpResidentServingRunner:
@@ -607,7 +675,8 @@ class Qwen4ExpResidentServingRunner:
             if required > self.generator.runner.max_sequence_length:
                 raise ValueError("Qwen4Exp native request exceeds sequence capacity")
             self._rows[request_id] = _Qwen4ExpServingRow(
-                request_id, row_index, request, prompt_ids, now
+                request_id, row_index, request, prompt_ids, now,
+                grammar=self.generator._grammar_session(request),
             )
 
     def reserve_admission(self, request: RequestState) -> None:
@@ -641,9 +710,12 @@ class Qwen4ExpResidentServingRunner:
             if row.runner is None:
                 raise RuntimeError("Qwen4Exp admitted row has no runner")
             if row.prefill_tokens_seen == len(row.prompt_ids):
+                prefill_kwargs = _qwen4_exp_compact_prefill_kwargs()
+                if row.controlled:
+                    prefill_kwargs["capture_logits"] = True
                 row.next_result = row.runner.prefill(
                     row.prompt_ids,
-                    **_qwen4_exp_compact_prefill_kwargs(),
+                    **prefill_kwargs,
                 )
                 raise_if_generation_deadline_expired(row.request)
 
@@ -672,7 +744,7 @@ class Qwen4ExpResidentServingRunner:
                 continue
             if row.next_result is None or row.runner is None:
                 raise RuntimeError("Qwen4Exp native row is not prefilled")
-            token = int(row.next_result.token_id)
+            token = self.generator._controlled_token(row.next_result,row.request,row.grammar)
             row.generated_ids.append(token)
             finish = self._finish(row)
             visible = self._visible_ids(row, finish)
@@ -698,9 +770,12 @@ class Qwen4ExpResidentServingRunner:
                 )
             )
             if finish is None:
+                step_kwargs = _qwen4_exp_compact_step_kwargs()
+                if row.controlled:
+                    step_kwargs.update(capture_logits=True,token_id_resident=False)
                 row.next_result = row.runner.step(
                     token,
-                    **_qwen4_exp_compact_step_kwargs(),
+                    **step_kwargs,
                 )
                 raise_if_generation_deadline_expired(row.request)
         return tuple(generated)
@@ -780,6 +855,11 @@ class Qwen4ExpResidentServingRunner:
     def _finish(self, row: _Qwen4ExpServingRow) -> FinishDetails | None:
         ids = tuple(row.generated_ids)
         request = row.request
+        if row.grammar is not None and row.grammar.done:
+            eos = bool(ids and ids[-1] == self.generator.tokenizer.eos_token_id)
+            return FinishDetails(reason="eos" if eos else "stop",
+                                 eos_token_id=self.generator.tokenizer.eos_token_id if eos else None,
+                                 sampler_mode="grammar_greedy")
         enough = len(ids) >= int(request.min_tokens)
         if enough and ids and not request.ignore_eos and ids[-1] == self.generator.tokenizer.eos_token_id:
             return FinishDetails(
@@ -807,6 +887,8 @@ class Qwen4ExpResidentServingRunner:
     ) -> tuple[int, ...]:
         ids = tuple(row.generated_ids)
         if finish is None or finish.reason == "length":
+            return ids
+        if finish.sampler_mode == "grammar_greedy" and finish.reason == "stop":
             return ids
         if finish.stop_sequence:
             return ids[: -len(finish.stop_sequence)]

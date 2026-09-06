@@ -1046,6 +1046,12 @@ Framework c2 native-capacity startup, completions/chat8K retrieval, HTTP over-li
 rejection and native-capacity2051/2052/4097 boundary repeats pass.
 Full256K-length inference is not newly qualified by this capacity
 change; see [context contract](QWEN4EXP-CONTEXT-CAPACITY.md).
+Qwen4Exp chat now renders its embedded GGUF template and uses a model-owned
+XML-parameter parser while preserving generic JSON tool support for other models.
+Greedy text grammar requests use request-owned llguidance masks before host
+argmax; selected tokens feed the subsequent decode explicitly. Unconstrained
+device-token execution is unchanged. See [tools/grammar contract](QWEN4EXP-TOOLS-GRAMMAR.md)
+for supported schema forms, text-only scope and development benchmark evidence.
 The 2026-09-05 owner decision retains exact page256 QSA and bundled-Q4
 publication in production despite their measured small hot-decode losses;
 strict keeps the previous owners. Separate component prefill gains are

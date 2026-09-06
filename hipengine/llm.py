@@ -126,6 +126,7 @@ class SamplingParams:
     force_sequence_completion_reason: str | None = None
     json_object_close_forcing: bool = False
     tool_call_constraint: Any | None = None
+    grammar: Mapping[str, Any] | None = None
     thinking_close_token_ids: tuple[int, ...] = ()
     thinking_hard_token_cap: int | None = None
     thinking_soft_close_window: int = 0
@@ -1101,6 +1102,7 @@ def _generation_request(prompt_tuple: tuple[Any, ...], params: SamplingParams):
         force_sequence_completion_reason=params.force_sequence_completion_reason,
         json_object_close_forcing=params.json_object_close_forcing,
         tool_call_constraint=params.tool_call_constraint,
+        grammar=params.grammar,
         thinking_close_token_ids=params.thinking_close_token_ids,
         thinking_hard_token_cap=params.thinking_hard_token_cap,
         thinking_soft_close_window=params.thinking_soft_close_window,
