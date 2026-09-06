@@ -300,6 +300,7 @@ class _Q8MMQPrefillSession:
     risk_indices_nbytes: int
     library: ctypes.CDLL | None
     policy: Q8MMQPrefillPolicy
+    prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None
 
 
 _q8_mmq_prefill_session: ContextVar[_Q8MMQPrefillSession | None] = ContextVar(
@@ -995,6 +996,7 @@ def q8_mmq_prefill_session(
     risk_indices_nbytes: int = 0,
     policy: Q8MMQPrefillPolicy | None,
     library: ctypes.CDLL | None = None,
+    prepacked_weights: Mapping[tuple[int, int, int], tuple[int, int]] | None = None,
 ) -> Iterator[None]:
     """Expose a bounded D4 workspace only while a plugin-selected prefill runs."""
 
@@ -1016,6 +1018,7 @@ def q8_mmq_prefill_session(
             risk_indices_nbytes=int(risk_indices_nbytes),
             library=library,
             policy=policy,
+            prepacked_weights=dict(prepacked_weights) if prepacked_weights else None,
         )
     token = _q8_mmq_prefill_session.set(selected)
     try:
@@ -5711,6 +5714,20 @@ def _launch_raw_mmq_d4x3_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_
         "library": session.library,
     }
     qweight_ptr = weight.allocation("raw").tensor.ptr
+    matmul_weight_ptr = qweight_ptr
+    packed = (session.prepacked_weights or {}).get((int(qweight_ptr),int(in_features),int(out_features)))
+    if packed is not None:
+        from hipengine.kernels.hip_gfx1100.quant.gguf_q8_0_mmq_prefill import q8_mmq_prepacked_weight_nbytes
+        required = q8_mmq_prepacked_weight_nbytes(in_features,out_features)
+        if packed[0] <= 0 or packed[1] < required:
+            raise ValueError("Q8 MMQ prepacked weight buffer is invalid or undersized")
+        for name,(ptr,size) in regions.items():
+            if max(packed[0],ptr) < min(packed[0]+packed[1],ptr+size):
+                raise ValueError(f"Q8 MMQ prepacked weight overlaps {name}")
+        fn = resolve(
+            backend=weight.backend,layer="linear",quant=weight.spec.quant_key,
+            variant="mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out")
+        matmul_weight_ptr = packed[0]
     gguf_q8_0_mmq128_quantize_f32_d4x3(
         x_ptr,
         session.workspace_ptr,
@@ -5720,7 +5737,7 @@ def _launch_raw_mmq_d4x3_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_
     )
     fn(
         session.workspace_ptr,
-        qweight_ptr,
+        matmul_weight_ptr,
         out_ptr,
         session.risk_count_ptr,
         session.risk_indices_ptr,

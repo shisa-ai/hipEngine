@@ -5055,6 +5055,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         self.index_states: tuple[Qwen4ExpQSAIndexDeviceState, ...] = ()
         self._buffers: list[DeviceBuffer] = []
         self._prefill_buffers: list[DeviceBuffer] = []
+        self._q8_mmq_weight_sidecars = None
         self._ple_hash_states: dict[int, PLEHashState] = {}
         self.moe_graph_cache: MoeGraphCache | None = None
         self.position = 0
@@ -5193,6 +5194,27 @@ class Qwen4ExpGGUFResidentModelRunner:
         self._q8_mmq_library = None
         self._q8_mmq_buffers: tuple[DeviceBuffer, ...] = ()
         self._configure_q8_mmq_prefill_resources()
+        self._configure_q8_mmq_weight_sidecars()
+
+    def _configure_q8_mmq_weight_sidecars(self) -> None:
+        if self._q8_mmq_weight_sidecars is not None or os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "0"
+        ) != "1" or self._q8_mmq_library is None:
+            return
+        from hipengine.runtime.gguf_q8_mmq_sidecars import Q8MMQWeightSidecars
+        owner = Q8MMQWeightSidecars(runtime=self.runtime,library=self._q8_mmq_library)
+        try:
+            for binding in self.gdn_bindings.values():
+                for slot in ("attn_qkv", "ssm_out"):
+                    weight = binding.mixer.projections[slot]
+                    n,k = map(int,weight.spec.source.shape)
+                    if (k,n) not in {(2560,10240), (6144,2560)}:
+                        continue
+                    owner.prepare(weight)
+        except BaseException:
+            owner.close()
+            raise
+        self._q8_mmq_weight_sidecars = owner
 
     def _configure_q8_mmq_prefill_resources(self) -> None:
         if self._q8_mmq_buffers or os.environ.get(
@@ -5227,6 +5249,7 @@ class Qwen4ExpGGUFResidentModelRunner:
         if self.closed:
             raise RuntimeError("Qwen4Exp runner is closed")
         self._configure_q8_mmq_prefill_resources()
+        self._configure_q8_mmq_weight_sidecars()
         cfg = self.config
         prefill_rows = min(self.prefill_chunk_size, self.max_sequence_length)
         for owner in (self.gdn_prefill_scratch, self.qsa_prefill_scratch):
@@ -5252,6 +5275,11 @@ class Qwen4ExpGGUFResidentModelRunner:
             if enabled and self._q8_mmq_buffers
             else (None, None, None)
         )
+        prepacked = None
+        if enabled and os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK", "0") == "1":
+            if self._q8_mmq_weight_sidecars is None:
+                raise RuntimeError("Q8 MMQ prepacked route requires prepared sidecar ownership")
+            prepacked = self._q8_mmq_weight_sidecars.mapping
         return q8_mmq_prefill_session(
             workspace_ptr=0 if workspace is None else workspace.ptr,
             workspace_nbytes=0 if workspace is None else workspace.nbytes,
@@ -5265,6 +5293,7 @@ class Qwen4ExpGGUFResidentModelRunner:
                 else None
             ),
             library=self._q8_mmq_library if enabled else None,
+            prepacked_weights=prepacked,
         )
 
     def target_verify_output(self, rows: int) -> Qwen4ExpTargetVerifyOutput:
@@ -6320,6 +6349,9 @@ class Qwen4ExpGGUFResidentModelRunner:
             self._device_transaction_snapshot.close()
             self._device_transaction_snapshot = None
             self._device_transaction_lease = False
+        if self._q8_mmq_weight_sidecars is not None:
+            self._q8_mmq_weight_sidecars.close()
+            self._q8_mmq_weight_sidecars = None
         self._q8_mmq_policy = None
         self._q8_mmq_library = None
         self._q8_mmq_buffers = ()
