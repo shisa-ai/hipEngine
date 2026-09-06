@@ -2888,6 +2888,7 @@ def run_qwen4_exp_gr_read(
         and is_registered(fused_up_key)
     )
     if fused_up:
+        fused_up_key = _qwen4_exp_gr_wave_scale_key(fused_up_key, rows=rows, branches=branches)
         resolve(
             backend=fused_up_key.backend,
             layer=fused_up_key.layer,
@@ -2974,6 +2975,16 @@ def run_qwen4_exp_gr_read(
 
 def _qwen4_exp_qsa_dense_fixed256_enabled(rows: int) -> bool:
     return rows >= 2
+
+
+def _qwen4_exp_gr_wave_scale_key(key: KernelKey, *, rows: int, branches: int) -> KernelKey:
+    if rows <= 256 or branches != 4 or os.environ.get(
+        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE", "0"
+    ) in {"", "0", "false", "False"}:
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant,
+                          "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
+    return candidate if is_registered(candidate) else key
 
 
 def _qwen4_exp_gr_up_sigmoid_mean_enabled(rows: int) -> bool:

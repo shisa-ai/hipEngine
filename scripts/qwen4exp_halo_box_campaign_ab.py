@@ -190,7 +190,7 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -204,6 +204,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
         if route_package == "q8-wave-scale":
             flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
+        if route_package == "gr-wave-scale":
+            flag = "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"
         environment[flag] = "1" if mode == "after" else "0"
         if route_package == "qsa-h256-page256" and mode == "after":
             environment[flag] = "page256"
@@ -242,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -366,7 +368,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -395,6 +397,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             row4_key = KernelKey(
                 "hip_gfx1151", "linear", "gguf_q8_0",
                 "coltile8_rowbatch4_wave_scale_f32_f32_out")
+        if args.route_package == "gr-wave-scale":
+            row4_key = KernelKey(
+                "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
+                "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -437,6 +443,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact["arms"] = {
                 "before": {"exact_q8_prefill": "coltile8_rowbatch4_f32_f32_out"},
                 "after": {"exact_q8_prefill": row4_key.variant},
+            }
+        elif args.route_package == "gr-wave-scale":
+            artifact["arms"] = {
+                "before": {"gr_up": "coltile2_branch4_rowbatch4_f32_exact"},
+                "after": {"gr_up": row4_key.variant},
             }
     artifact["route_package"] = args.route_package
     artifact["diagnostic_subset"] = bool(args.case_id)

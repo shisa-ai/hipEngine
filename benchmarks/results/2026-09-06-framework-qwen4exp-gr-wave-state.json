@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "date_basis": "UTC",
+  "kind": "qwen4exp_gr_wave_scale_state_gate",
+  "status": "passed_opt_in_admission",
+  "performance_claim": false,
+  "base_commit": "c2886ffa8",
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop Ryzen AI Max+395 / Radeon 8060S"
+  },
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL, BF16 KV",
+  "scope": "Existing rows>256/four-branch fused GR, registry-checked candidate; parent and unfused fallbacks preserved",
+  "raw_path": "/tmp/qwen4exp-gr-wave-state.json",
+  "raw_sha256": "f321eb281f201b672cce6fea5931ca830b6ad4653a6b9a8747caa4d8b97084da",
+  "command": ".venv/bin/python scripts/qwen4exp_row4_state_gate.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --route-package gr-wave-scale --full-kv --output /tmp/qwen4exp-gr-wave-state.json",
+  "environment_reference": "benchmarks/results/2026-09-05-framework-qwen4exp-gdn-register.json",
+  "protocol": "parent/candidate/parent; full prefill and one decode-transition logits, recurrent/Conv/PLE state, positions/index counts and full BF16 KV",
+  "cases": [
+    {"id": "code-p512", "exact": true, "calls": [0, 96, 0]},
+    {"id": "code-p4096", "exact": true, "calls": [0, 768, 0]},
+    {"id": "general_en-p512", "exact": true, "calls": [0, 96, 0]},
+    {"id": "general_ja-p512", "exact": true, "calls": [0, 96, 0]},
+    {"id": "mixed_ja_en-p512", "exact": true, "calls": [0, 96, 0]}
+  ],
+  "focused_tests_passed": 34,
+  "final_allocations": 0,
+  "default_changed": false,
+  "next": "Clean full12-case72-trajectory A/B with normal model execution."
+}

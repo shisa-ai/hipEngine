@@ -36,7 +36,17 @@ def test_registry():
 
 
 @pytest.mark.skipif(not hip_available(), reason="HIP unavailable")
-@pytest.mark.parametrize("rows,k,h", [(1, 32, 6), (7, 96, 18), (37, 320, 2560), (512, 320, 2560)])
+@pytest.mark.parametrize(
+    "rows,k,h",
+    [
+        (1, 32, 6),
+        (7, 96, 18),
+        (37, 320, 2560),
+        (257, 320, 2560),
+        (511, 320, 2560),
+        (512, 320, 2560),
+    ],
+)
 def test_exact_gate_and_mixed(rows, k, h):
     rng = np.random.default_rng(6342)
     x = rng.normal(0, 0.2, (rows, k)).astype(np.float32)
