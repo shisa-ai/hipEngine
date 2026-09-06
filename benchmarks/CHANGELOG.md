@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC post-Q5_1-register families] Clean932af5889 six-case/twelve-phase capture:FFN13.442->12.813s (-4.68% snapshot,not causal A/B),Vulkan ratio3.075x->2.931x;linear4.762s,GR4.254s.100% attribution,exact restored state/decode,zero owners. `benchmarks/results/2026-09-06-framework-qwen4exp-post-q51-register-family.json`.
+
 - [2026-09-06 UTC Framework Q5_1 register production] Full12-case PP512/1024/4096:168.518->173.392 (+2.892%)/165.910->170.780 (+2.936%)/153.381->157.547 (+2.716%). All72 trajectories exact,all prefill/request cases improve,total1.01790x;aggregate TG+0.212%/+0.012%/+0.434%,tracked peak unchanged,private scratch36B explicit. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-production.json`.
 
 - [2026-09-06 UTC Framework Q5_1 register admission] Five full-logit/state/KV cases exact,calls0/25/0 or0/200/0,zero decode/final owners;18 CPU tests,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-state.json`.
