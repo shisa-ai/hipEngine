@@ -1,0 +1,153 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "qwen4exp_mmq_gpu_weight_pack",
+  "status": "gpu_pack_exact_runtime_admission_pending",
+  "performance_claim": false,
+  "hipengine_artifact_provenance": {
+    "kind": "hipengine_artifact_provenance",
+    "schema_version": 2,
+    "collected_at": "2026-09-06T02:29:06.147159+00:00",
+    "host_name": "gfx1151",
+    "repo_root": "/home/lhl/hipEngine",
+    "hipengine_commit": "d0140faa95ad0bb3f3f80fd19a0aad00fc7281cf",
+    "git_branch": "qwen3.8-flash-next",
+    "staged_dirty": false,
+    "unstaged_dirty": true,
+    "untracked_dirty": true,
+    "untracked_count": 75,
+    "dirty": true,
+    "configured_backend": "hip_gfx1151",
+    "resolved_backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "device_name": "AMD Radeon 8060S",
+    "model_path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "model_revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "model_fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    },
+    "quant": "UD-Q4_K_XL",
+    "kv_dtype": "BF16",
+    "command": [
+      "/home/lhl/hipEngine/.venv/bin/python",
+      "scripts/qwen4exp_mmq_prepack_screen.py",
+      "--model-root",
+      "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+      "--compiler-version-file",
+      "/tmp/hipengine-hipcc-version.txt",
+      "--rows",
+      "512",
+      "--pairs",
+      "2",
+      "--gpu-pack",
+      "--tensor",
+      "blk.0.attn_qkv.weight",
+      "--output",
+      "/tmp/qwen4exp-mmq-gpu-pack-trace.json"
+    ],
+    "environment": {
+      "HIPENGINE_BACKEND": null,
+      "HIPENGINE_HIP_ARCH": "gfx1151",
+      "GPU_MAX_HW_QUEUES": "2",
+      "HIPENGINE_BUILD_CACHE_ROOT": null,
+      "HIPENGINE_REQUIRE_CACHED_BUILD": "1",
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "CUDA_VISIBLE_DEVICES": null,
+      "GPU_DEVICE_ORDINAL": null
+    },
+    "rocm_version": "HIP version: 7.15.26333-0000000",
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin",
+    "build_profile": null,
+    "timing_protocol": "quantize + clear + matmul + raw-weight exact repair + synchronize; D2H excluded",
+    "warmups": 1,
+    "repetitions": 2,
+    "profiler": null
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "d0140faa95ad0bb3f3f80fd19a0aad00fc7281cf",
+    "tracked_clean": false
+  },
+  "command": [
+    "scripts/qwen4exp_mmq_prepack_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--rows",
+    "512",
+    "--pairs",
+    "2",
+    "--gpu-pack",
+    "--tensor",
+    "blk.0.attn_qkv.weight",
+    "--output",
+    "/tmp/qwen4exp-mmq-gpu-pack-trace.json"
+  ],
+  "layout": "K256-major [K/256,ceil(N/128)*128,76 int32]:64 quant words +8 exact float scales +4 padding",
+  "cases": [
+    {
+      "tensor": "blk.0.attn_qkv.weight",
+      "shape": [
+        512,
+        2560,
+        10240
+      ],
+      "weight_sha256": "9104b7bd3862f26f9b9082bc4ef04703a7f2f37e8ff2cc70f8e8ab401154c20b",
+      "raw_bytes": 27852800,
+      "packed_bytes": 31129600,
+      "pack_cpu_ms": 12.433181,
+      "packed_prepare_ms": 3.432711,
+      "all_pairs_exact": true,
+      "parent_ms": [
+        5.767122,
+        5.81936
+      ],
+      "candidate_ms": [
+        5.154943,
+        6.479128
+      ],
+      "speedup": 0.9959095143909642,
+      "mean_speedup": 0.9959095143909642,
+      "order_speedups": [
+        1.1187557262999803,
+        0.8981702476012203
+      ]
+    }
+  ],
+  "tests_passed": 9,
+  "trace": {
+    "kernel": "q8_0_mmq_pack_weights_kernel",
+    "duration_ms": 0.319113,
+    "vgpr": 24,
+    "scratch": 0,
+    "lds": 0,
+    "raw_directory": "/tmp/qwen4exp-mmq-gpu-pack-trace"
+  },
+  "correctness": "GPU layout byte-exact to CPU reference including signed-zero/subnormal/large finite scales, output padding and repeats; consumer parent exact.",
+  "limitations": [
+    "Trace timings are diagnostic, not a speedup claim.",
+    "Production still uses raw MMQ; sidecar ownership and model gates pending."
+  ]
+}

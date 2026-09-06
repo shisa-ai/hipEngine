@@ -793,6 +793,11 @@ change yet: persistent sidecar ownership, invocation-counted state/KV gates
 and full12-case A/B are pending. Raw MMQ and the exact projection chain stay
 registered fallbacks.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack.json`.
+The registered `weight_pack/gguf_q8_0/mmq_kmajor76` packer now builds this
+layout directly from resident raw device weights. Nine focused tests cover
+byte-exact CPU layout, signed-zero/subnormal scales, output tails and repeats;
+cached trace shows24 VGPR, no scratch/LDS. Runtime sidecar admission remains
+pending. Evidence: `2026-09-06-framework-qwen4exp-mmq-gpu-pack.json`.
 
 The GR up+sigmoid+branch-mean composite also registers the separate T0
 `coltile2_branch4_rowbatch4_wave_scale_f32_exact` sibling. At rows512,

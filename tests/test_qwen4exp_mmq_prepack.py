@@ -39,6 +39,42 @@ def test_registry():
         backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
         variant=CANDIDATE.removeprefix("gguf_q8_0_"),
     ) is getattr(mmq,CANDIDATE)
+    assert resolve(
+        backend="hip_gfx1151", layer="weight_pack", quant="gguf_q8_0",
+        variant="mmq_kmajor76",
+    ) is mmq.gguf_q8_0_mmq_pack_weights
+
+
+def test_pack_rejects_invalid_geometry_and_overlap():
+    for k,n in ((0,128),(255,128),(256,0)):
+        with pytest.raises(ValueError):
+            mmq.q8_mmq_prepacked_weight_nbytes(k,n)
+    for raw,packed in ((0,4096),(4096,0),(4096,4096),(4096,4097)):
+        with pytest.raises(ValueError):
+            mmq.gguf_q8_0_mmq_pack_weights(raw,packed,256,128)
+
+
+@pytest.mark.skipif(not hip_available(), reason="HIP unavailable")
+@pytest.mark.parametrize("n,k", [(1,256), (97,512), (320,10240), (10240,2560)])
+def test_gpu_weight_pack(n,k):
+    runtime = get_hip_runtime()
+    library = mmq.build_gguf_q8_0_mmq_prefill(load=True)
+    allocations = []
+    try:
+        raw = make_q8_0_weight_large(n,k)
+        scales = np.array([0., -0., 2**-24, -2**-24, 65504., -65504.],np.float16)
+        blocks = raw.reshape(-1,34)
+        blocks[:len(scales),:2] = scales[:len(blocks)].view(np.uint8).reshape(-1,2)
+        expected = pack_reference(raw,n,k)
+        assert mmq.q8_mmq_prepacked_weight_nbytes(k,n) == expected.nbytes
+        source = _upload(raw,runtime,allocations)
+        out = _alloc(expected.shape,np.uint8,runtime,allocations)
+        for _ in range(2):
+            mmq.gguf_q8_0_mmq_pack_weights(source.ptr,out.ptr,k,n,library=library,runtime=runtime)
+            np.testing.assert_array_equal(_download(out,expected.shape,np.uint8,runtime),expected)
+    finally:
+        for ptr in reversed(allocations):
+            free(ptr,runtime=runtime)
 
 
 @pytest.mark.skipif(not hip_available(), reason="HIP unavailable")

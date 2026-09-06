@@ -673,6 +673,32 @@ def gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out(*args, **kwargs):
     gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
         *args, **kwargs, _prepacked=True)
 
+def q8_mmq_prepacked_weight_nbytes(hidden: int, out_features: int) -> int:
+    if hidden <= 0 or hidden % 256 or out_features <= 0:
+        raise ValueError("prepacked Q8 requires positive hidden multiple of 256 and outputs")
+    return (hidden // 256) * ((out_features + 127) // 128 * 128) * 304
+
+
+def gguf_q8_0_mmq_pack_weights(
+    raw_ptr: int, packed_ptr: int, hidden: int, out_features: int, *,
+    stream: int = 0, library: ctypes.CDLL | None = None,
+    runtime: HipRuntime | None = None,
+) -> None:
+    size = q8_mmq_prepacked_weight_nbytes(hidden, out_features)
+    raw_size = out_features * (hidden // 32) * 34
+    if raw_ptr <= 0 or packed_ptr <= 0:
+        raise ValueError("Q8 pack pointers must be positive")
+    if max(raw_ptr, packed_ptr) < min(raw_ptr + raw_size, packed_ptr + size):
+        raise ValueError("raw and packed Q8 weight buffers overlap")
+    library = library or build_gguf_q8_0_mmq_prefill(load=True)
+    runtime = runtime or get_hip_runtime()
+    fn = library.hipengine_gguf_q8_0_mmq_pack_weights
+    fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64, ctypes.c_int64, ctypes.c_void_p]
+    fn.restype = ctypes.c_int
+    error = fn(raw_ptr, packed_ptr, hidden, out_features, stream)
+    if int(error) != HIP_SUCCESS:
+        runtime.check(int(error))
+
 
 def gguf_q8_0_mmq128_prefill_q8_1_d4x2_guarded_f32_f32_out(
     x_d4_ptr: int,
@@ -838,6 +864,10 @@ def gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out(
 
 def register_gguf_q8_0_mmq_prefill_kernels(*, replace: bool = True) -> None:
     register(
+        KernelKey("hip_gfx1100", "weight_pack", "gguf_q8_0", "mmq_kmajor76"),
+        gguf_q8_0_mmq_pack_weights, replace=replace,
+    )
+    register(
         KernelKey("hip_gfx1100", "linear", "gguf_q8_0",
                   "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"),
         gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out,
@@ -908,6 +938,8 @@ __all__ = [
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_bf16_bf16_out",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out",
     "gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out",
+    "gguf_q8_0_mmq_pack_weights",
+    "q8_mmq_prepacked_weight_nbytes",
     "gguf_q8_0_mmq128_prefill_q8_1_d4x3_bf16_f32_out",
     "gguf_q8_0_mmq128_sparse_exact_correct_bf16",
     "gguf_q8_0_mmq128_sparse_exact_correct_f32",

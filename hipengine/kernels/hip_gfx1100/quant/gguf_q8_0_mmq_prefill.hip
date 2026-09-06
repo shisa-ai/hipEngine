@@ -228,6 +228,29 @@ __global__ void q8_0_mmq128_quantize_f32_residual_d4_kernel(
   }
 }
 
+__global__ void q8_0_mmq_pack_weights_kernel(
+    const uint8_t* __restrict__ raw, int* __restrict__ packed,
+    int64_t hidden, int64_t outputs) {
+  const int64_t padded = (outputs + 127) / 128 * 128;
+  const int64_t words = hidden / 256 * padded * 76;
+  for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       index < words; index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    const int word = index % 76;
+    const int64_t row = index / 76;
+    const int64_t output = min(row % padded, outputs - 1);
+    const int64_t kblock = row / padded;
+    if (word < 64) {
+      const int64_t raw_block = (output * (hidden / 32) + kblock * 8 + word / 8) * 34;
+      packed[index] = *reinterpret_cast<const int*>(raw + raw_block + 2 + (word % 8) * 4);
+    } else if (word < 72) {
+      const int64_t raw_block = (output * (hidden / 32) + kblock * 8 + word - 64) * 34;
+      reinterpret_cast<float*>(packed)[index] = fp16_bytes_to_float(raw + raw_block);
+    } else {
+      packed[index] = 0;
+    }
+  }
+}
+
 template <int MMQ_M_T, int MMQ_N_T, bool need_output_check, int activation_passes, typename output_t, bool collect_risks, bool PREPACKED = false>
 __launch_bounds__(256, 2)
 __global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
@@ -861,6 +884,18 @@ extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
       reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
       qweight, out, rows, hidden, out_features, stream,
       risk_count, risk_indices, max_risks, risk_threshold);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq_pack_weights(
+    const void* raw, void* packed, int64_t hidden, int64_t outputs,
+    hipStream_t stream) {
+  if (!raw || !packed || hidden <= 0 || hidden % 256 || outputs <= 0)
+    return static_cast<int>(hipErrorInvalidValue);
+  const int64_t words = hidden / 256 * ((outputs + 127) / 128 * 128) * 76;
+  const uint32_t grid = static_cast<uint32_t>(min((words + 255) / 256, int64_t{4096}));
+  hipLaunchKernelGGL(q8_0_mmq_pack_weights_kernel, dim3(grid), dim3(256), 0, stream,
+      static_cast<const uint8_t*>(raw), static_cast<int*>(packed), hidden, outputs);
+  return static_cast<int>(hipGetLastError());
 }
 
 extern "C" int hipengine_gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out(
