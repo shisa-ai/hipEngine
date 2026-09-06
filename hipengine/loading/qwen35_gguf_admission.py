@@ -45,9 +45,12 @@ import hashlib
 from typing import Iterable, Mapping
 
 from hipengine.loading.qwen35_gguf import (
+    FULL_ATTENTION,
+    LINEAR_ATTENTION,
     Qwen35GGUFModelMap,
     build_qwen35_gguf_tensor_map,
 )
+from hipengine.core.dtype import DType
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
@@ -98,6 +101,7 @@ __all__ = [
     "build_qwen35_gguf_role_manifest",
     "certificate_covers_artifact",
     "preflight_qwen35_gguf_artifact",
+    "qwen35_gguf_native_row_binding_errors",
     "resolve_qwen35_gguf_artifact_preset",
 ]
 
@@ -1051,6 +1055,64 @@ def preflight_qwen35_gguf_artifact(
         covered_slots=covered_slots,
         qualified_records=tuple(qualified.values()),
     )
+
+
+def qwen35_gguf_native_row_binding_errors(resident_weights: object) -> tuple[str, ...]:
+    """Return every linear-attention alpha/beta resident that is not a valid
+    BF16-pointer owner for ``ar_decode_native_rows``.
+
+    The native multirow route (``Qwen35GGUFResidentSession.step_rows_native``
+    and ``capture_native_rows_graph``) passes ``allocation('raw')`` for
+    ``ssm_alpha``/``ssm_beta`` straight into ``dense_gemv_out_bf16``, whose
+    weight ABI is a ``uint16_t*`` BF16 pointer.  Only a dense-BF16 resident
+    with a real BF16 ``raw`` allocation satisfies that contract.  Raw-GGUF
+    bytes (raw Q8_0), sole-T16 residents without any raw allocation, and
+    dense-F32 residents (uncontracted plain alpha/beta) would be read as the
+    wrong byte stream.  This check is pure host metadata over the actual
+    resident records - no device work - so the runner can enforce the actual
+    binding at native execution entry, before any state mutation or device
+    call.  Admission-side, callers that know they will run the native route
+    bind it before allocation via
+    ``materialize_qwen35_gguf_weights(requested_operations=...)``.
+    """
+
+    config = getattr(resident_weights, "config", None)
+    layers = tuple(getattr(resident_weights, "layers", ()) or ())
+    layer_types = tuple(getattr(config, "layer_types", ()) or ())
+    errors: list[str] = []
+    for layer_id, layer_type in enumerate(layer_types):
+        if layer_type != LINEAR_ATTENTION or layer_id >= len(layers):
+            continue
+        layer = layers[layer_id]
+        for slot in ("ssm_alpha", "ssm_beta"):
+            weight = getattr(layer, "weights", {}).get(slot)
+            if weight is None:
+                errors.append(
+                    f"layers.{layer_id}.{slot}: resident layer has no {slot!r} weight record"
+                )
+                continue
+            layout = getattr(getattr(weight, "spec", None), "layout", None)
+            try:
+                allocation = weight.allocation("raw")
+            except KeyError:
+                allocation = None
+            tensor_dtype = getattr(getattr(allocation, "tensor", None), "dtype", None)
+            if layout == LAYOUT_DENSE_BF16 and allocation is not None and tensor_dtype == DType.BF16:
+                continue
+            if allocation is None:
+                detail = "no 'raw' allocation exists (a sole-T16 resident cannot resolve the BF16-pointer owner at all)"
+            elif layout != LAYOUT_DENSE_BF16:
+                detail = (
+                    f"resident layout {layout!r} is not a dense-BF16 owner; its 'raw' "
+                    "bytes would be read as BF16 bits by dense_gemv_out_bf16"
+                )
+            else:
+                detail = f"'raw' allocation dtype {tensor_dtype!r} is not BF16"
+            errors.append(
+                f"layers.{layer_id}.{slot}: ar_decode_native_rows requires a dense-BF16 "
+                f"alpha/beta resident (BF16-pointer owner); {detail}"
+            )
+    return tuple(errors)
 
 
 def _model_map_from_info(info) -> Qwen35GGUFModelMap:
