@@ -144,6 +144,30 @@ def _dump_asyncio_tasks(path: Path) -> None:
                     f"    {frame.f_code.co_filename}:{frame.f_lineno}"
                     f" in {frame.f_code.co_name}"
                 )
+    # Finished tasks carry the exceptions that killed queue workers; the
+    # batcher worker dying without finishing its items is the K4 deadlock
+    # suspect.
+    import traceback as _tb
+
+    done_dumped = 0
+    for obj in gc.get_objects():
+        if not isinstance(obj, asyncio.Task) or not obj.done():
+            continue
+        if obj.cancelled():
+            continue
+        exc = obj.exception()
+        if exc is None:
+            continue
+        done_dumped += 1
+        lines.append(f"finished task {obj.get_name()!r} raised:")
+        lines.extend(
+            ("    " + line) for line in _tb.format_exception(type(exc), exc, exc.__traceback__)
+        )
+        if done_dumped >= 12:
+            lines.append("    ... (more finished tasks truncated)")
+            break
+    if not done_dumped:
+        lines.append("no finished task holds an unretrieved exception")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
