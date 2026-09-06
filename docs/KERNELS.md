@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q4 pair2 wave-metadata scalarization was rejected and removed: readfirstlane
+on wave-uniform scale/min operands reduced VGPR88->80 but actual gate/up+
+SiLU remained flat/order-sensitive (17.478->17.490ms). No tile/arithmetic
+change;original pair2 production retained. Recipe:
+`2026-09-06-framework-qwen4exp-q4-wave-meta-rejected.json`.
+
 Q5_1 exposes
 `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` for K640.
 It predecodes ten weights per thread across an output pair, reusing them

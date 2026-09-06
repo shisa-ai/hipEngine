@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 wave-uniform metadata rejected (September6 UTC):** scalarize the four
+wave-uniform scale/min operands after LDS load via readfirstlane, without
+changing pair2 tile/arithmetic. Actual code4096chunk0 gate/up+SiLU:
+17.478->17.490ms,median0.998x;order strata1.002x/0.996x,all20 pairs
+exact.13 candidate tests pass. Cached trace VGPR88->80,SGPR128/LDS4608B/
+scratch0 unchanged;three traced calls' tiny kernel reduction is not a
+repeatable complete-boundary win. Candidate removed,no model A/B;
+original9 GPU tests pass after restoration. Avoid unchanged scalarization
+rescreens;lower register count alone did not remove the binding work.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-wave-meta-rejected.json).
+
 **Post-Q5_1-register owner refresh (September6 UTC):** clean `932af5889`
 six cases/twelve phases pass100% attribution,matched decode roots,
 restored state/output repeatability and zero final ownership. Register-cache

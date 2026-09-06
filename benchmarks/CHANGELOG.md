@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q4 wave metadata rejected] Captured code4096chunk0 gate/up+SiLU17.478->17.490ms (+0.069% time),order ratios1.002x/0.996x,all20 pairs exact. VGPR88->80 but no repeatable win;candidate removed,13 candidate/9 parent GPU tests. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-wave-meta-rejected.json`.
+
 - [2026-09-06 UTC post-Q5_1-register families] Clean932af5889 six-case/twelve-phase capture:FFN13.442->12.813s (-4.68% snapshot,not causal A/B),Vulkan ratio3.075x->2.931x;linear4.762s,GR4.254s.100% attribution,exact restored state/decode,zero owners. `benchmarks/results/2026-09-06-framework-qwen4exp-post-q51-register-family.json`.
 
 - [2026-09-06 UTC Framework Q5_1 register production] Full12-case PP512/1024/4096:168.518->173.392 (+2.892%)/165.910->170.780 (+2.936%)/153.381->157.547 (+2.716%). All72 trajectories exact,all prefill/request cases improve,total1.01790x;aggregate TG+0.212%/+0.012%/+0.434%,tracked peak unchanged,private scratch36B explicit. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-production.json`.

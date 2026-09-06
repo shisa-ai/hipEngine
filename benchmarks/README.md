@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 wave-metadata scalarization rejected:VGPR88->80 but actual gate/up+
+SiLU17.478->17.490ms,order-sensitive and exact. Candidate removed;
+production unchanged,no full-model A/B spent.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-wave-meta-rejected.json).
+
 Full post-Q5_1-register owner refresh at clean `932af5889`:four-category
 p4096 FFN13.442->12.813s (-4.68% snapshot delta),linear4.762s,GR4.254s.
 All12 phases pass100% attribution,matched roots and clean teardown.
