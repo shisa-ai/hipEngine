@@ -26,3 +26,24 @@ def test_real_qwen4_exp_vision_gguf_matches_frozen_contract() -> None:
     assert model_map.weight('merge.fc2.weight').tensor.shape == (2560, 4608)
     assert plan.device_weight_bytes == 907_523_008
     assert len(plan.specs) == 334
+
+
+@pytest.mark.skipif(not _MMPROJ.exists(), reason='local Qwen3.8 mmproj is unavailable')
+def test_vision_device_reserve_tracks_residency_not_file_contents() -> None:
+    """Pin the reserve the Qwen4Exp generator subtracts before context admission.
+
+    The generator reserves ``plan.device_weight_bytes`` rather than every tensor
+    byte in the mmproj. Those are equal today only because vision map validation
+    rejects unexpected tensors, so this asserts the equality it relies on and
+    fails loudly if a non-device-resident vision tensor is ever added -- the
+    situation the text plan already has with its host-mmap PLE table.
+    """
+
+    reader = GGUFReader(_MMPROJ)
+    model_map = build_qwen4_exp_vision_gguf_map((reader.info,))
+    plan = plan_qwen4_exp_vision_residency(model_map)
+
+    assert model_map.validation.passed
+    assert not model_map.validation.unexpected
+    assert all(spec.device_resident for spec in plan.specs)
+    assert plan.device_weight_bytes == sum(int(t.nbytes) for t in reader.info.tensors)
