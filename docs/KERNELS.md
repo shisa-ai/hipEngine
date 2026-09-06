@@ -819,22 +819,26 @@ Weighted prefill improves0.34-0.44%. The registered
 parent and unfused projection/sigmoid/mean chain remain strict fallbacks.
 Evidence: `2026-09-06-framework-qwen4exp-gr-wave-production.json`.
 
-Grouped Q8 expert down has a kernel-only T0
-`selected_grouped_row4_gemv_bf16_bf16_out` candidate. Four independent rows
+Grouped Q8 expert down has a T0 production rows>=512
+`selected_grouped_row4_gemv_bf16_bf16_out` owner. Four independent rows
 reuse decoded weights with the original reduction order. Actual layer4
 weights/counts improve1.107x; layer30 weights with explicitly borrowed
 layer4 counts improve1.137x, not actual layer30 routing.19 GPU tests pass;
-trace remains24 VGPR/512B LDS/scratch0. Row1 and strict selected GEMV remain
-registered unchanged defaults. Full-model engagement/logits/state/KV and
-12-case A/B block promotion.
+trace remains24 VGPR/512B LDS/scratch0. Row1 remains the small-chunk owner/
+rollback and strict selected GEMV remains the numerical fallback.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4.json`.
 
-Default-off runtime admission now selects row4 only within existing grouped
+Earlier default-off runtime admission selected row4 only within existing grouped
 Q8 down for rows>=512. Five category/shape cases pass full logits/four decode
 steps/state/full KV exactly, candidate calls4 or32 only in prefill, zero final
 allocations.31 CPU route/profile/harness tests pass. Clean12-case throughput
-A/B remains the promotion blocker; strict and production bind the selector0.
+A/B was the promotion blocker; both binders pinned0 at that stage.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4-state.json`.
+
+Clean c7dd804cb full12-case A/B now passes72 exact trajectories and all
+prefill/request-wall cases. PP512/1024/4096 improves0.822%/0.635%/0.705%.
+Production binds1 for rows>=512; strict0. No new allocation or intrinsic
+decode change. Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4-production.json`.
 
 The raw Q8 coltile family has a separate T0
 `coltile8_rowbatch4_wave_scale_f32_f32_out` sibling. It makes the Q8 scale
