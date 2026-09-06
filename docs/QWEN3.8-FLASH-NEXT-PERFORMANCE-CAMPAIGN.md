@@ -53,6 +53,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 pair2 wave-tail rejected (September6 UTC):** replacing the original
+LDS reduction with the same logical256 addition tree and a wave-register
+tail passes8 tests and every actual-weight pair exactly, but measures
+0.949x/0.974x at64/512 tokens (20 counterbalanced pairs, rotating layer0/1
+banks). Removed candidate; production unchanged. No model A/B warranted.
+Fresh trace re-audit still puts Q5_1 pair2 at4.145s and Q4 pair2 at3.599s
+on code4096; Q8 MMQ variants total5.351s across semantic owners.
+[Rejected recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-wave-reduce-rejected.json).
+
 **Post-GR refresh (2026-09-06 UTC):** twelve phase captures at clean
 `9efbf6d23` pass100% coverage, repeated decode/state/lifecycle and matched
 Vulkan decode-root checks. Four-category p4096 prefill costs are FFN14.407s,
