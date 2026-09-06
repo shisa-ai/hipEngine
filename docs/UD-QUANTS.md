@@ -619,9 +619,9 @@ loader scanner/model-map modules are references, not automatic edits.
 
 - [ ] Pin upstream model revision, payload checksum, file size and header identity
   for both UD files and the plain control.
-- [ ] Use actual AR and separate NextN maps; report disk/AR/ignored counts and
+- [x] Use actual AR and separate NextN maps; report disk/AR/ignored counts and
   aliases without double counting.
-- [ ] RED: `root.token_embedding`, 64 AR layers, ignored block64, raw Q4
+- [x] RED: `root.token_embedding`, 64 AR layers, ignored block64, raw Q4
   embedding, and MTP-only tensor exclusion.
 - [x] RED: unsupported version, duplicates, invalid alignment, incomplete table
   versus incomplete data. Partial diagnostic mode cannot report loadable.

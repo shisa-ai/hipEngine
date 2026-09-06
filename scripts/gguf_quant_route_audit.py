@@ -8,6 +8,22 @@ loader refuse the file. Reads metadata and the tensor-info table only; no weight
 are read, so a partially downloaded file can still be inspected. Nothing here runs
 a model, allocates device memory, or touches a GPU.
 
+Route tables come from the actual production tensor maps: the AR map built by
+``hipengine.loading.qwen35_gguf.build_qwen35_gguf_tensor_map`` (root slots such
+as ``root.token_embedding`` plus per-layer ``layers.<id>.<slot>`` consumers) and
+the separate runtime NextN map built by
+``hipengine.loading.qwen35_gguf_nextn.build_qwen35_gguf_nextn_tensor_map``
+(``draft.layer.<slot>`` / ``draft.nextn.<slot>`` consumers, with fallback slots
+resolved to AR roots). AR-excluded trailing MTP block tensors are never counted
+in AR routes. Reports distinguish logical consumer slots from unique physical
+source tensors, dedup shared sources by source identity, and list explicit
+aliases; source deduplication is not resident-allocation deduplication (one
+source can plan different layouts for different consumers). When the model map
+cannot be built the audit stays parser-only: no route table is produced from
+guessed slot names, and no output ever claims the file is loadable or
+consumer-qualified -- map availability and route verdicts are diagnostics, not
+consumer qualification.
+
 Parser validation is two-tier. Complete files are admitted by production
 ``hipengine.loading.gguf.scan_gguf`` (supported version from
 GGUF_SUPPORTED_VERSIONS, unique metadata keys and tensor names, non-zero
@@ -56,13 +72,20 @@ from hipengine.loading.gguf import (  # noqa: E402
     scan_gguf,
 )
 from hipengine.loading.qwen35_gguf import (  # noqa: E402
+    Qwen35GGUFModelMap,
     build_qwen35_gguf_tensor_map,
+)
+from hipengine.loading.qwen35_gguf_nextn import (  # noqa: E402
+    Qwen35GGUFNextNMap,
+    build_qwen35_gguf_nextn_tensor_map,
 )
 from hipengine.loading.qwen35_gguf_materialize import (  # noqa: E402
     gguf_decode_repack_enabled,
+    plan_qwen35_gguf_materialization,
     plan_qwen35_gguf_weight_spec,
 )
 from hipengine.quant.gguf import (  # noqa: E402
+    GGMLQuantizationType,
     GGUFValueType,
     ggml_type,
     ggml_type_name,
@@ -517,26 +540,314 @@ def read_header(path: Path) -> tuple[dict, list[GGUFTensorInfo], int | None, int
     return parsed.metadata, parsed.tensors, parsed.data_start, parsed.declared_tensor_count
 
 
-def slot_path(name: str) -> str:
-    if name == "token_embd.weight":
-        return "root.token_embd"
-    if name == "output.weight":
-        return "root.lm_head"
-    if name == "output_norm.weight":
-        return "root.output_norm"
-    match = re.match(r"^blk\.(\d+)\.(.+?)\.weight$", name) or re.match(r"^blk\.(\d+)\.(.+)$", name)
-    return f"layers.{match.group(1)}.{match.group(2)}" if match else name
+@dataclass(frozen=True)
+class MappedTensorMaps:
+    """Actual production AR and NextN maps for one parsed GGUF file.
+
+    ``model_map`` is always built (non-strict); ``nextn_map`` is built only when
+    the file has AR-excluded trailing MTP blocks and its construction succeeds.
+    ``section`` is the JSON-serializable map/source summary. Map availability
+    and validation state are diagnostics: they never qualify the file as
+    loadable or consumer-qualified.
+    """
+
+    info: GGUFModelInfo
+    model_map: Qwen35GGUFModelMap
+    nextn_map: Qwen35GGUFNextNMap | None
+    section: dict
 
 
-def plan(backend: str, metadata: dict, tensors: list[GGUFTensorInfo]) -> dict:
+def _alias_records(slot_sources: dict[str, str]) -> list[dict]:
+    """Group consumer slots that share one physical source tensor.
+
+    Keys are scope-prefixed slot paths (``ar:``, ``nextn:``,
+    ``nextn_fallback:``) so identical slot names in different maps stay
+    distinct consumers. Sources with a single consumer are not aliases.
+    """
+
+    by_source: dict[str, list[str]] = defaultdict(list)
+    for slot in sorted(slot_sources):
+        by_source[slot_sources[slot]].append(slot)
+    return [
+        {
+            "source": source,
+            "consumer_slots": slots,
+            "consumer_count": len(slots),
+        }
+        for source, slots in sorted(by_source.items())
+        if len(slots) > 1
+    ]
+
+
+def _unique_source_names(slot_sources: dict[str, str]) -> list[str]:
+    return sorted(set(slot_sources.values()))
+
+
+def _nextn_tensor_count(ignored_names: tuple[str, ...], block_ids: tuple[int, ...]) -> int:
+    prefixes = tuple(f"blk.{block_id}.nextn." for block_id in block_ids)
+    return sum(1 for name in ignored_names if name.startswith(prefixes))
+
+
+def build_tensor_maps(
+    path: Path,
+    metadata: dict,
+    tensors: list[GGUFTensorInfo],
+    version: int | None,
+) -> MappedTensorMaps:
+    """Build the actual production AR map and separate NextN map.
+
+    The AR map is built non-strict so a partial file still reports which slots
+    map; its validation state stays visible in the section and marks every
+    route table diagnostic. The NextN map is attempted only for files with
+    AR-excluded trailing MTP blocks; its failures are captured inside the
+    section and can never discard the AR report. Qualification-class failures
+    of the AR map itself (missing qwen35 metadata, unreadable config) raise and
+    are reported as ``tensor_map`` diagnostic errors by the caller -- there is
+    deliberately no guessed slot fallback.
+    """
+
+    info = GGUFModelInfo(
+        path=path.resolve(),
+        # 0 marks an unknown/unparseable version in diagnostic mode; the map is
+        # derived from metadata, never from this field.
+        version=version if version is not None else 0,
+        alignment=int(metadata.get("general.alignment", GGUF_DEFAULT_ALIGNMENT)),
+        metadata=metadata,
+        tensors=tuple(tensors),
+        tensor_data_offset=0,
+    )
+    model_map = build_qwen35_gguf_tensor_map(info, strict=False)
+    validation = model_map.validation
+    config = validation.config
+
+    ar_slot_sources: dict[str, str] = {}
+    root_slot_sources: dict[str, str] = {}
+    for slot, tensor in model_map.root_tensors.items():
+        ar_slot_sources[f"ar:root.{slot}"] = tensor.name
+        root_slot_sources[f"root.{slot}"] = tensor.name
+    for layer in model_map.layers:
+        for slot, tensor in layer.tensors.items():
+            ar_slot_sources[f"ar:layers.{layer.layer_id}.{slot}"] = tensor.name
+    ar_unique = _unique_source_names(ar_slot_sources)
+
+    ignored_names = tuple(validation.ignored)
+    nextn_section: dict = {
+        "blocks": 0,
+        "note": "no AR-excluded trailing MTP block in this file",
+    }
+    nextn_map: Qwen35GGUFNextNMap | None = None
+    if config.ignored_block_ids:
+        try:
+            nextn_map = build_qwen35_gguf_nextn_tensor_map(info, strict=False)
+        except _PLUGIN_QUALIFICATION_ERRORS as error:
+            nextn_section = {
+                "blocks": len(config.ignored_block_ids),
+                "diagnostic_only": True,
+                "error": f"{type(error).__name__}: {error}",
+            }
+        else:
+            nv = nextn_map.validation
+            ar_source_set = set(ar_unique)
+            own_slot_sources: dict[str, str] = {}
+            for slot, tensor in nextn_map.layer_tensors.items():
+                own_slot_sources[f"nextn:draft.layer.{slot}"] = tensor.name
+            for slot, tensor in nextn_map.nextn_tensors.items():
+                own_slot_sources[f"nextn:draft.nextn.{slot}"] = tensor.name
+            fallback_slot_sources: dict[str, str] = {}
+            for slot, tensor in nextn_map.fallback_tensors.items():
+                fallback_slot_sources[f"nextn_fallback:root.{slot}"] = tensor.name
+            # AR borrowing is decided by actual source identity, not by the
+            # fallback slot's root-shaped name: a present block-local tensor
+            # (e.g. shared_head_norm) is a within-NextN alias, not a borrow.
+            fallback_records = [
+                {
+                    "slot_path": slot.removeprefix("nextn_fallback:"),
+                    "source": fallback_slot_sources[slot],
+                    "borrows_ar_root": fallback_slot_sources[slot] in ar_source_set,
+                }
+                for slot in sorted(fallback_slot_sources)
+            ]
+            own_unique = _unique_source_names(own_slot_sources)
+            nextn_section = {
+                "blocks": len(config.ignored_block_ids),
+                "block_id": nv.block_id,
+                "validation_passed": nv.passed,
+                "diagnostic": not nv.passed,
+                "missing": list(nv.missing),
+                "unexpected": list(nv.unexpected),
+                "dtype_errors": list(nv.dtype_errors),
+                "shape_errors": list(nv.shape_errors),
+                "own_consumer_slots": len(own_slot_sources),
+                "own_unique_sources": len(own_unique),
+                "fallback_consumer_slots": len(fallback_slot_sources),
+                "fallback_slots": fallback_records,
+                "ar_borrowed_fallback_slots": [
+                    record["slot_path"] for record in fallback_records if record["borrows_ar_root"]
+                ],
+                "aliases": _alias_records({**own_slot_sources, **fallback_slot_sources}),
+            }
+
+    nextn_unique: list[str] = []
+    nextn_all_slot_sources: dict[str, str] = {}
+    if nextn_map is not None:
+        for slot, tensor in nextn_map.layer_tensors.items():
+            nextn_all_slot_sources[f"nextn:draft.layer.{slot}"] = tensor.name
+        for slot, tensor in nextn_map.nextn_tensors.items():
+            nextn_all_slot_sources[f"nextn:draft.nextn.{slot}"] = tensor.name
+        for slot, tensor in nextn_map.fallback_tensors.items():
+            nextn_all_slot_sources[f"nextn_fallback:root.{slot}"] = tensor.name
+        nextn_unique = _unique_source_names(nextn_all_slot_sources)
+    combined_slot_sources = {**ar_slot_sources, **nextn_all_slot_sources}
+    combined_unique = sorted(set(ar_unique) | set(nextn_unique))
+
+    layer_types = Counter(config.layer_types)
+    section = {
+        "available": True,
+        "architecture": config.architecture,
+        "validation_passed": validation.passed,
+        "diagnostic": not validation.passed,
+        "tensors_on_disk": len(tensors),
+        "ar": {
+            "layers": len(model_map.layers),
+            "layer_types": {
+                str(name): count for name, count in sorted(layer_types.items())
+            },
+            "ignored_block_ids": list(config.ignored_block_ids),
+            "consumer_slots": len(ar_slot_sources),
+            "unique_sources": len(ar_unique),
+            "root_slots": dict(sorted(root_slot_sources.items())),
+            "aliases": _alias_records(ar_slot_sources),
+        },
+        "ignored": {
+            "tensor_count": len(ignored_names),
+            "block_ids": list(config.ignored_block_ids),
+            "nextn_tensor_count": _nextn_tensor_count(ignored_names, config.ignored_block_ids),
+        },
+        "nextn": nextn_section,
+        "combined": {
+            "consumer_slots": len(combined_slot_sources),
+            "unique_sources": len(combined_unique),
+            "aliases": _alias_records(combined_slot_sources),
+            "accounting": (
+                "logical consumer slots vs unique physical source tensors; "
+                "shared sources counted once and reported as aliases; "
+                "source-identity dedup is not resident-allocation dedup "
+                "(one source may plan different layouts per consumer)"
+            ),
+        },
+        "validation": {
+            "passed": validation.passed,
+            "missing": list(validation.missing),
+            "unexpected": list(validation.unexpected),
+            "shape_errors": list(validation.shape_errors),
+            "ignored": list(ignored_names),
+        },
+    }
+    return MappedTensorMaps(
+        info=info, model_map=model_map, nextn_map=nextn_map, section=section
+    )
+
+
+# The production AR planner vetoes decode repack when AR layers carry raw-IQ
+# weights (plan_qwen35_gguf_materialization's contract_q3_f32_linear predicate,
+# which also reassociates those files' F32 alpha/beta/router slots to BF16).
+# This mirror exists only to REPORT the effective repack veto; the actual
+# planning always goes through the production planner itself. Replace it with a
+# pure shared policy API per docs/UD-QUANTS.md U0 (see docs/REFACTOR.md).
+_AR_CONTRACT_IQ_TYPES = frozenset(
+    {
+        GGMLQuantizationType.IQ2_XS,
+        GGMLQuantizationType.IQ3_XXS,
+        GGMLQuantizationType.IQ4_XS,
+    }
+)
+
+
+def _ar_iq_contract(model_map: Qwen35GGUFModelMap) -> bool:
+    """Mirror the AR planner's raw-IQ predicate over AR layer tensors only."""
+
+    return any(
+        GGMLQuantizationType(tensor.ggml_type) in _AR_CONTRACT_IQ_TYPES
+        for layer in model_map.layers
+        for tensor in layer.tensors.values()
+    )
+
+
+def _ar_slot_tensor_pairs(model_map: Qwen35GGUFModelMap) -> list[tuple[str, GGUFTensorInfo]]:
+    """Production AR consumer slots in plan order: roots, then layers."""
+
+    return [
+        *((f"root.{slot}", tensor) for slot, tensor in model_map.root_tensors.items()),
+        *(
+            (f"layers.{layer.layer_id}.{slot}", tensor)
+            for layer in model_map.layers
+            for slot, tensor in layer.tensors.items()
+        ),
+    ]
+
+
+def _route_account(planned: list[tuple[str, GGUFTensorInfo, object]]) -> tuple[dict, float, float]:
+    """Count routes per GGML type for already-planned (slot, tensor, spec) triples."""
+
+    routes: dict[str, Counter] = defaultdict(Counter)
+    expand_stored = expand_resident = 0.0
+    for _slot_path, tensor, spec in planned:
+        kind = LAYOUT_MEANING.get(spec.layout, f"kernel:{spec.quant_key}")
+        routes[tensor.ggml_type_name][kind] += 1
+        if spec.layout == "dense_bf16":
+            expand_stored += tensor.nbytes / GIB
+            expand_resident += tensor.n_elements * 2 / GIB
+    return {k: dict(v) for k, v in sorted(routes.items())}, expand_stored, expand_resident
+
+
+def _plan_slots_per_slot(
+    pairs: list[tuple[str, GGUFTensorInfo]],
+    *,
+    repack: bool,
+    flags: dict,
+) -> tuple[list[tuple[str, GGUFTensorInfo, object]], dict[str, list[str]]]:
+    """Plan each consumer slot independently, collecting every refusal.
+
+    Mirrors the production per-slot planner calls (plan_qwen35_gguf_nextn_materialization
+    is exactly this loop without try/except) so one refused slot never discards the
+    report for the other slots. Known limitation versus the production AR planner:
+    the model-wide F32 contraction is NOT applied here (plan_qwen35_gguf_weight_spec
+    does not expose it), so F32 alpha/beta/router slots report f32-resident in this
+    mode; the entry's ``f32_contraction_applied`` flag marks that.
+    """
+
+    planned: list[tuple[str, GGUFTensorInfo, object]] = []
+    rejections: dict[str, list[str]] = defaultdict(list)
+    for slot_path, tensor in pairs:
+        try:
+            spec = plan_qwen35_gguf_weight_spec(
+                slot_path, tensor, decode_repack=repack, **flags
+            )
+        except ValueError:
+            rejections[tensor.ggml_type_name].append(
+                f"{slot_path} ({'x'.join(map(str, tensor.shape))})"
+            )
+            continue
+        planned.append((slot_path, tensor, spec))
+    return planned, {k: v for k, v in sorted(rejections.items())}
+
+
+def plan(backend: str, metadata: dict, maps: MappedTensorMaps) -> dict:
+    """Route actual AR and NextN map slots through the production weight planner.
+
+    AR routes come from the production AR planner over the actual map (per-slot
+    fallback with rejection collection only when the whole-AR plan refuses a
+    slot). NextN routes are reported separately as ``nextn_routes`` with the
+    draft's own slots (``own``) and its root-shaped fallback slots
+    (``fallback``); NextN failures never discard the AR report. Route tables
+    are per consumer slot through ``plan_qwen35_gguf_weight_spec`` semantics:
+    one physical source may plan different layouts for different consumers, so
+    source reuse never collapses routes (the tied lm_head of a Q4_K embedding
+    plans pack8 while the embedding itself plans raw).
+    """
+
     caps = backend_capabilities(backend)
     file_type = llama_file_type_name(metadata.get("general.file_type"))
-    # plan_qwen35_gguf_materialization disables decode repack when the file carries
-    # raw-IQ weights, because those residents are consumed as compressed rank-3
-    # blocks. Copy that rule; otherwise this table would claim repack for a file
-    # that never gets it.
-    raw_iq = any(t.ggml_type_name in ("IQ2_XS", "IQ3_XXS", "IQ4_XS") for t in tensors)
-    repack = gguf_decode_repack_enabled(None) and not raw_iq
     qmicro_types = quoted_members(caps["GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES"])
     flags = dict(
         dense_q4_t16=caps["GGUF_DENSE_Q4_T16"] == "True",
@@ -551,54 +862,99 @@ def plan(backend: str, metadata: dict, tensors: list[GGUFTensorInfo]) -> dict:
         dense_q5_t16_h5120=caps["GGUF_DENSE_Q5_T16_H5120"] == "True",
         dense_q6_qmicro_planar=caps["GGUF_DENSE_Q6_T16_QMICRO_PLANAR"] == "True",
     )
-    routes: dict[str, Counter] = defaultdict(Counter)
-    rejections: dict[str, list[str]] = defaultdict(list)
-    expand_stored = expand_resident = 0.0
-    for tensor in tensors:
-        try:
-            spec = plan_qwen35_gguf_weight_spec(slot_path(tensor.name), tensor, decode_repack=repack, **flags)
-        except ValueError as error:
-            routes[tensor.ggml_type_name]["rejected"] += 1
-            rejections[tensor.ggml_type_name].append(f"{tensor.name} ({'x'.join(map(str, tensor.shape))})")
-            continue
-        kind = LAYOUT_MEANING.get(spec.layout, f"kernel:{spec.quant_key}")
-        routes[tensor.ggml_type_name][kind] += 1
-        if spec.layout == "dense_bf16":
-            expand_stored += tensor.nbytes / GIB
-            expand_resident += tensor.n_elements * 2 / GIB
+    requested_repack = gguf_decode_repack_enabled(None)
+    # The production AR planner vetoes decode repack itself for raw-IQ AR layers;
+    # pre-applying the same veto keeps the per-slot fallback path identical.
+    repack = requested_repack and not _ar_iq_contract(maps.model_map)
+
+    ar_pairs = _ar_slot_tensor_pairs(maps.model_map)
+    try:
+        production = plan_qwen35_gguf_materialization(
+            maps.model_map, decode_repack=repack, **flags
+        )
+        planned = [
+            *[(spec.slot_path, spec.source, spec) for spec in production.root_specs.values()],
+            *[
+                (spec.slot_path, spec.source, spec)
+                for layer in production.layer_specs
+                for spec in layer.values()
+            ],
+        ]
+        rejections: dict[str, list[str]] = {}
+        planner_mode = "production_planner"
+        contraction_applied = True
+    except ValueError:
+        # Whole-AR planning refused at least one slot: re-plan per slot so every
+        # refusal is collected instead of discarding the other slots' routes.
+        pairs = ar_pairs
+        planned, rejections = _plan_slots_per_slot(pairs, repack=repack, flags=flags)
+        planner_mode = "per_slot_fallback"
+        contraction_applied = False
+    routes, expand_stored, expand_resident = _route_account(planned)
+
+    nextn_routes: dict | None = None
+    if maps.nextn_map is not None:
+        nextn_map = maps.nextn_map
+        # plan_qwen35_gguf_nextn_materialization passes only these four dense
+        # flags and materialize_qwen35_gguf_nextn_weights defaults decode_repack
+        # to True (the runtime draft path does not read the repack env var).
+        nextn_flags = {
+            name: flags[name]
+            for name in (
+                "dense_q4_t16",
+                "dense_q5_t16_ssm_out",
+                "dense_q5_t16_h5120",
+                "dense_q6_qmicro_planar",
+            )
+        }
+        nextn_repack = True
+        own_pairs = [
+            *((f"draft.layer.{slot}", tensor) for slot, tensor in nextn_map.layer_tensors.items()),
+            *((f"draft.nextn.{slot}", tensor) for slot, tensor in nextn_map.nextn_tensors.items()),
+        ]
+        fallback_pairs = [
+            (f"root.{slot}", tensor) for slot, tensor in nextn_map.fallback_tensors.items()
+        ]
+
+        def scope_report(pairs: list[tuple[str, GGUFTensorInfo]]) -> dict:
+            planned_scope, scope_rejections = _plan_slots_per_slot(
+                pairs, repack=nextn_repack, flags=nextn_flags
+            )
+            scope_routes, scope_stored, scope_resident = _route_account(planned_scope)
+            return {
+                "consumer_slots": len(pairs),
+                "unique_sources": len({tensor.name for _, tensor in pairs}),
+                "routes": scope_routes,
+                "rejections": scope_rejections,
+                "rejected_tensors": sum(len(v) for v in scope_rejections.values()),
+                "bf16_expand_stored_gib": round(scope_stored, 3),
+                "bf16_expand_resident_gib": round(scope_resident, 3),
+            }
+
+        nextn_routes = {
+            "own": scope_report(own_pairs),
+            "fallback": scope_report(fallback_pairs),
+        }
+
     return {
         "backend": backend,
         "file_type_name": file_type,
+        "scope": "ar_map_plus_nextn_map",
+        "map_validation_passed": maps.model_map.validation.passed,
+        "planner_mode": planner_mode,
+        "f32_contraction_applied": contraction_applied,
+        "decode_repack_requested": requested_repack,
         "decode_repack_enabled": repack,
         "package_flags": flags,
         "fp16_recurrent_state_default_on": fp16_recurrent_state_default(backend, file_type),
-        "routes": {k: dict(v) for k, v in routes.items()},
-        "rejections": {k: v for k, v in rejections.items()},
-        "rejected_tensors": sum(c.get("rejected", 0) for c in routes.values()),
+        "ar_consumer_slots": len(ar_pairs),
+        "ar_unique_sources": len({tensor.name for _, tensor in ar_pairs}),
+        "routes": routes,
+        "rejections": rejections,
+        "rejected_tensors": sum(len(v) for v in rejections.values()),
         "bf16_expand_stored_gib": round(expand_stored, 3),
         "bf16_expand_resident_gib": round(expand_resident, 3),
-    }
-
-
-def mapping_result(path: Path, metadata: dict, tensors: list[GGUFTensorInfo], version: int | None) -> dict:
-    """Validate the file against the dense-Qwen plugin's expected tensor map."""
-
-    info = GGUFModelInfo(
-        path=path.resolve(),
-        # 0 marks an unknown/unparseable version in diagnostic mode; the map is
-        # derived from metadata, never from this field.
-        version=version if version is not None else 0,
-        alignment=int(metadata.get("general.alignment", GGUF_DEFAULT_ALIGNMENT)),
-        metadata=metadata,
-        tensors=tuple(tensors),
-        tensor_data_offset=0,
-    )
-    validation = build_qwen35_gguf_tensor_map(info, strict=False).validation
-    return {
-        "present": len(validation.present),
-        "missing": list(validation.missing),
-        "unexpected": list(validation.unexpected),
-        "shape_errors": list(validation.shape_errors),
+        "nextn_routes": nextn_routes,
     }
 
 
@@ -642,12 +998,32 @@ def main(argv: list[str] | None = None) -> int:
             "plugin_tensor_map": {},
             "parser_validation": parsed.to_json(),
         }
-        # Route planning and the plugin map are consumer qualification: keep them
-        # best-effort so a refused file still yields its parser verdict. A section
-        # that cannot run reports an error instead of aborting the audit.
+        # The actual production tensor maps (AR + separate NextN) are built
+        # first: route planning is only meaningful when the real map exists, so
+        # a map failure keeps the audit parser-only with no guessed route table.
+        try:
+            maps = build_tensor_maps(path, metadata, tensors, parsed.version)
+        except _PLUGIN_QUALIFICATION_ERRORS as error:
+            maps = None
+            entry["tensor_map"] = {
+                "available": False,
+                "diagnostic_only": True,
+                "error": f"{type(error).__name__}: {error}",
+            }
+        else:
+            entry["tensor_map"] = maps.section
         for backend in ("hip_gfx1100", "hip_gfx1151"):
+            if maps is None:
+                entry["backends"].append(
+                    {
+                        "backend": backend,
+                        "diagnostic_only": True,
+                        "error": "tensor map unavailable: " + entry["tensor_map"]["error"],
+                    }
+                )
+                continue
             try:
-                entry["backends"].append(plan(backend, metadata, tensors))
+                entry["backends"].append(plan(backend, metadata, maps))
             except _PLUGIN_QUALIFICATION_ERRORS as error:
                 entry["backends"].append(
                     {
@@ -656,13 +1032,6 @@ def main(argv: list[str] | None = None) -> int:
                         "error": f"{type(error).__name__}: {error}",
                     }
                 )
-        try:
-            entry["plugin_tensor_map"] = mapping_result(path, metadata, tensors, parsed.version)
-        except _PLUGIN_QUALIFICATION_ERRORS as error:
-            entry["plugin_tensor_map"] = {
-                "diagnostic_only": True,
-                "error": f"{type(error).__name__}: {error}",
-            }
         report["files"].append(entry)
         print(f"\n=== {path.name}: file_type {entry['file_type']} = {entry['file_type_name']}")
         print(f"    dtype histogram: {entry['dtype_histogram']}")
@@ -677,13 +1046,39 @@ def main(argv: list[str] | None = None) -> int:
         )
         for diagnostic in pv["diagnostics"]:
             print(f"      {diagnostic['check']}: {diagnostic['detail']}")
+        tensor_map = entry["tensor_map"]
+        if not tensor_map.get("available"):
+            print(f"    tensor map: unavailable (diagnostic only): {tensor_map.get('error')}")
+            for backend in entry["backends"]:
+                print(
+                    f"    {backend['backend']}: planner unavailable (diagnostic only): {backend.get('error')}"
+                )
+        else:
+            ar = tensor_map["ar"]
+            combined = tensor_map["combined"]
+            validation_word = "passed" if tensor_map["validation_passed"] else "FAILED (diagnostic)"
+            print(
+                f"    tensor map: architecture={tensor_map['architecture']} validation={validation_word}"
+                f" ar_layers={ar['layers']} ar_slots={ar['consumer_slots']} ar_sources={ar['unique_sources']}"
+                f" ignored={tensor_map['ignored']['tensor_count']}"
+                f" nextn_blocks={tensor_map['nextn']['blocks']}"
+                f" combined_slots={combined['consumer_slots']} combined_sources={combined['unique_sources']}"
+            )
+            for alias in combined["aliases"]:
+                print(
+                    f"      alias source {alias['source']}: {alias['consumer_count']} consumer slots"
+                    f" ({', '.join(alias['consumer_slots'])})"
+                )
         for backend in entry["backends"]:
-            if "error" in backend:
-                print(f"    {backend['backend']}: planner unavailable (diagnostic only): {backend['error']}")
+            if "error" in backend and "routes" not in backend:
+                if tensor_map.get("available"):
+                    print(f"    {backend['backend']}: planner unavailable (diagnostic only): {backend['error']}")
                 continue
             print(
-                f"    {backend['backend']}: repack={'on' if backend['decode_repack_enabled'] else 'OFF'}"
+                f"    {backend['backend']}: scope={backend['scope']}"
+                f" repack={'on' if backend['decode_repack_enabled'] else 'OFF'}"
                 f" fp16_recurrent_state={'on' if backend['fp16_recurrent_state_default_on'] else 'off'}"
+                f" ar_slots={backend['ar_consumer_slots']}/{backend['ar_unique_sources']} sources"
                 f" rejected={backend['rejected_tensors']}"
                 f" bf16_expand={backend['bf16_expand_stored_gib']} -> {backend['bf16_expand_resident_gib']} GiB"
             )
@@ -691,14 +1086,22 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"      {qtype:<8} x{sum(kinds.values()):<4} {kinds}")
                 for example in backend["rejections"].get(qtype, [])[:2]:
                     print(f"               rejected: {example}")
-        map_result = entry["plugin_tensor_map"]
-        if "error" in map_result:
-            print(f"    plugin tensor map: unavailable (diagnostic only): {map_result['error']}")
-        else:
-            print(
-                f"    plugin tensor map: present={map_result['present']} missing={len(map_result['missing'])}"
-                f" unexpected={len(map_result['unexpected'])} shape_errors={len(map_result['shape_errors'])}"
-            )
+            nextn_routes = backend.get("nextn_routes")
+            if nextn_routes:
+                for scope_name in ("own", "fallback"):
+                    scope = nextn_routes.get(scope_name)
+                    if not scope:
+                        continue
+                    print(
+                        f"      nextn {scope_name}: slots={scope['consumer_slots']}"
+                        f"/{scope['unique_sources']} sources rejected={scope['rejected_tensors']}"
+                        f" bf16_expand={scope['bf16_expand_stored_gib']}"
+                        f" -> {scope['bf16_expand_resident_gib']} GiB"
+                    )
+                    for qtype, kinds in sorted(scope["routes"].items(), key=lambda kv: -sum(kv[1].values())):
+                        print(f"        {qtype:<8} x{sum(kinds.values()):<4} {kinds}")
+                        for example in scope["rejections"].get(qtype, [])[:2]:
+                            print(f"                 rejected: {example}")
 
     if args.json:
         args.json.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
