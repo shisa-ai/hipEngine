@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Mapped Q8 down screen:layer2 weights with borrowed code/mixed layer0
+counts80.728->37.969ms /80.566->37.420ms (2.126x/2.153x),40 pairs
+exact. Reuses existing kernel and map ABI;model integration/gates pending.
+[Evidence](results/2026-09-06-framework-qwen4exp-q8-mapped-down.json).
+
 Post-raw-MMQ-vector full owner refresh at `eee086e25`:p4096 four-category
 linear4.762->4.556s,GR4.254->3.755s (-4.34%/-11.73% snapshot changes).
 FFN12.698s remains largest;all12 phases have100% attribution and clean

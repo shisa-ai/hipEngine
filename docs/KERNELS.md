@@ -788,6 +788,14 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Existing Q8 `selected_grouped_row4_bundle_gemv_bf16_bf16_out` supports
+non-null sorted-lane-to-original-row maps,not just compact buffers. Actual
+layer2 weights with borrowed layer0 counts screen2.126x/2.153x over
+selected GEMV,exact. Potential integration reuses the map from Q5_K row4
+gate/up and preserves token-major outputs;requires explicit map ownership
+and model gates. No new kernel/default. Evidence:
+`2026-09-06-framework-qwen4exp-q8-mapped-down.json`.
+
 Q8 MMQ exposes `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out`.
 It retains raw-weight staging and uses the previously proven aligned
 activation copies. Actual GR/query/output512 complete chains improve
