@@ -29,6 +29,7 @@ def main():
     p.add_argument("--rows",type=int,nargs="+",default=[64,512])
     p.add_argument("--pairs",type=int,default=20)
     p.add_argument("--tensor",action="append")
+    p.add_argument("--gpu-pack",action="store_true")
     a = p.parse_args()
     if a.pairs < 2 or a.pairs % 2 or any(r < 1 for r in a.rows):
         p.error("positive rows and even pairs>=2 required")
@@ -43,6 +44,7 @@ def main():
         boundary="quantize + clear + matmul + raw-weight exact repair + synchronize; D2H excluded",
         layout="K256-major [K/256,ceil(N/128)*128,76 int32]:64 quant words +8 exact float scales +4 padding",
         resident_storage="raw and packed banks coexist; preprocessing outside request timing")
+    report["pack_mode"] = "gpu" if a.gpu_pack else "cpu_upload"
     report["hipengine_artifact_provenance"] = collect_artifact_provenance(
         repo_root=ROOT, configured_backend="hip_gfx1151", resolved_backend="hip_gfx1151",
         target_arch="gfx1151", device_name="AMD Radeon 8060S",
@@ -64,9 +66,15 @@ def main():
                 x = np.random.default_rng(3982+rows).normal(0,.2,(rows,k)).astype(np.float32)
                 dx,dw = [_upload(v,runtime,allocations) for v in (x,raw)]
                 start = time.perf_counter_ns()
-                dp = _upload(packed,runtime,allocations)
+                if a.gpu_pack:
+                    dp = _alloc(packed.shape,np.uint8,runtime,allocations)
+                    mmq.gguf_q8_0_mmq_pack_weights(
+                        dw.ptr,dp.ptr,k,n,library=library,runtime=runtime)
+                else:
+                    dp = _upload(packed,runtime,allocations)
                 runtime.device_synchronize()
                 packed_upload_ms = (time.perf_counter_ns()-start)/1e6
+                np.testing.assert_array_equal(_download(dp,packed.shape,np.uint8,runtime),packed)
                 d4 = _alloc((mmq.q8_mmq_d4x3_nbytes(rows,k),),np.uint8,runtime,allocations)
                 count = _alloc((1,),np.int32,runtime,allocations)
                 indices = _alloc((rows*n,),np.int32,runtime,allocations)
@@ -98,7 +106,7 @@ def main():
                 report["cases"].append(dict(
                     tensor=name,shape=[rows,k,n],weight_sha256=hashlib.sha256(raw).hexdigest(),
                     raw_bytes=raw.nbytes,packed_bytes=packed.nbytes,pack_cpu_ms=pack_cpu_ms,
-                    packed_upload_ms=packed_upload_ms,all_pairs_exact=True,
+                    packed_prepare_ms=packed_upload_ms,all_pairs_exact=True,
                     parent_ms=timings[0],candidate_ms=timings[1],
                     speedup=statistics.median(timings[0])/statistics.median(timings[1]),
                     mean_speedup=statistics.mean(timings[0])/statistics.mean(timings[1]),
