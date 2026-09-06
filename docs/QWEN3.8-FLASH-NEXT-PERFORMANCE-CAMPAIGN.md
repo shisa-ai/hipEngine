@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Current-host chunk diagnostic prepared (September6 UTC):** the prior
+P0 chunk sweep was zbook/070803e,not Framework/current kernels. New
+`--route-package chunk1024 --prefill-chunk-size1024` in the canonical
+A/B harness shares one1024-capacity allocation and changes only active
+chunk512/1024. It verifies actual executed chunk lengths,keeps kernel
+flags fixed and requires exact trajectories for this screen.
+21 CPU tests pass;no GPU result or default change yet. Larger allocation
+admission and production numerical/state qualification remain separate.
+Begin with code512/code1024/code4096 diagnostic,not a full ladder.
+
 **Mapped Q8 down production (September6 UTC):** clean `8740dc13f`
 canonical12-case A/B passes all72 exact trajectories and every prefill/
 request case. PP512/1024/4096:178.770->181.065 /175.601->178.108 /
