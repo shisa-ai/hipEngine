@@ -2836,6 +2836,7 @@ class Qwen35GGUFFullStackRunner:
                 allocation_arena=resident.allocation_arena,
                 allocation_mode=resident.allocation_mode,
                 allocation_arena_reason=resident.allocation_arena_reason,
+                artifact_preset_key=resident.artifact_preset_key,
             )
             self.token_embedding_placement = "device"
             return materialized
@@ -10934,7 +10935,17 @@ def _env_flag(name: str, default: bool, *aliases: str) -> bool:
 
 def _gguf_policy_identity(
     weights: object,
-) -> tuple[GGUFModelGeometry, str | None] | None:
+) -> tuple[GGUFModelGeometry, str | None] | tuple[GGUFModelGeometry, str | None, str] | None:
+    """Policy-table identity for one resident artifact.
+
+    Plain artifacts keep the historical ``(geometry, file_type)`` key so every
+    qualified plain control resolves unchanged. An artifact with a bound UD
+    admission preset extends the key with the preset key, so certified-plain
+    policy rows (tuned per stamp) can never silently apply to a UD artifact
+    that merely shares the stamp: the extended key misses the table and the
+    caller falls back to the generic path.
+    """
+
     geometry = getattr(weights, "geometry", None)
     if geometry is None:
         geometry = GGUFModelGeometry.try_from_config(getattr(weights, "config", None))
@@ -10943,7 +10954,14 @@ def _gguf_policy_identity(
     if not isinstance(geometry, GGUFModelGeometry):
         return None
     file_type_name = getattr(weights, "file_type_name", None)
-    return geometry, None if file_type_name is None else str(file_type_name)
+    artifact_preset_key = getattr(weights, "artifact_preset_key", None)
+    if artifact_preset_key is None:
+        return geometry, None if file_type_name is None else str(file_type_name)
+    return (
+        geometry,
+        None if file_type_name is None else str(file_type_name),
+        str(artifact_preset_key),
+    )
 
 
 def _resolve_gguf_packed_decode_graph_min_replay_steps(

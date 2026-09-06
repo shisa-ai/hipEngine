@@ -47,6 +47,8 @@ from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
+    Qwen35GGUFResidentWeights,
+    materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_weight_spec,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
@@ -783,3 +785,192 @@ def test_lm_head_logits_require_an_f32_output_consumer():
     for record in CERTIFIED_OPERATION_COVERAGE:
         if record.operation == QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS:
             assert record.output_dtype == "f32"
+
+
+# ---------------------------------------------------------------------------
+# Loader integration: preflight before any device allocation
+# ---------------------------------------------------------------------------
+
+
+class _AllocationSentinel:
+    """Recorder that fails loudly if any device allocation is attempted."""
+
+    def __init__(self, message: str = "device allocation attempted"):
+        self.message = message
+        self.calls: list[tuple] = []
+
+    def __call__(self, *args, **kwargs):
+        self.calls.append(args)
+        raise AssertionError(self.message)
+
+
+@pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
+def test_ud_materialization_refused_before_any_device_allocation(monkeypatch):
+    """UD-U1: the loader aggregates refusals before the first malloc call."""
+
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+
+    sentinel = _AllocationSentinel(
+        "allocator invoked before GGUF admission preflight completed"
+    )
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+        materialize_qwen35_gguf_weights(str(UD_Q4_K_M), backend="hip_gfx1100")
+    assert sentinel.calls == []
+    message = str(excinfo.value)
+    assert "gguf_ud_q4_k_m" in message
+    for slot in sorted(UD_K_M_REFUSED_SLOTS):
+        assert slot in message
+
+
+@pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
+def test_plain_control_passes_preflight_and_reaches_allocation(monkeypatch):
+    """Qualified plain controls keep their rollback: preflight is not a gate
+    that blocks them; the first allocation is reached (and fails here only
+    because this host has no HIP device)."""
+
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+
+    sentinel = _AllocationSentinel("allocation-sentinel")
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(AssertionError, match="allocation-sentinel"):
+        materialize_qwen35_gguf_weights(str(SMALL_Q8_0), backend="hip_gfx1100")
+    assert len(sentinel.calls) >= 1
+
+
+def test_resident_weights_carry_the_artifact_preset_key():
+    resident = Qwen35GGUFResidentWeights(
+        config=_config((LINEAR_ATTENTION,)),
+        root_weights={},
+        layers=(),
+        backend="hip_gfx1100",
+        artifact_preset_key=GGUF_UD_Q4_K_M_PRESET,
+    )
+    assert resident.artifact_preset_key == GGUF_UD_Q4_K_M_PRESET
+    assert Qwen35GGUFResidentWeights(
+        config=_config((LINEAR_ATTENTION,)), root_weights={}, layers=[], backend="cpu"
+    ).artifact_preset_key is None
+
+
+def test_runner_policy_identity_binds_artifact_preset(monkeypatch):
+    """Same geometry + same stamp + different manifest preset => different
+    policy-table identity, so plain-certified policy rows never apply to UD."""
+
+    from types import SimpleNamespace
+
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_policy_identity
+
+    geometry = GGUFModelGeometry.try_from_config(_config((LINEAR_ATTENTION,)))
+    assert geometry is not None
+    plain = SimpleNamespace(
+        geometry=geometry,
+        file_type_name="MOSTLY_Q4_K_M",
+        artifact_preset_key=None,
+    )
+    ud_same_stamp = SimpleNamespace(
+        geometry=geometry,
+        file_type_name="MOSTLY_Q4_K_M",
+        artifact_preset_key=GGUF_UD_Q4_K_M_PRESET,
+    )
+    ud_ks_same_stamp = SimpleNamespace(
+        geometry=geometry,
+        file_type_name="MOSTLY_Q4_K_S",
+        artifact_preset_key=GGUF_UD_Q4_K_S_PRESET,
+    )
+    identity_plain = _gguf_policy_identity(plain)
+    identity_ud = _gguf_policy_identity(ud_same_stamp)
+    assert identity_plain == (geometry, "MOSTLY_Q4_K_M")
+    assert identity_ud == (geometry, "MOSTLY_Q4_K_M", GGUF_UD_Q4_K_M_PRESET)
+    assert identity_plain != identity_ud
+    assert _gguf_policy_identity(ud_ks_same_stamp) == (
+        geometry,
+        "MOSTLY_Q4_K_S",
+        GGUF_UD_Q4_K_S_PRESET,
+    )
+    # A plain-certified policy table keyed by the historical identity admits
+    # the plain control and does NOT admit the same-stamp UD preset.
+    table = {(geometry, "MOSTLY_Q4_K_M"): "plain-row"}
+    assert table.get(identity_plain) == "plain-row"
+    assert table.get(identity_ud) is None
+
+
+def test_hot_vocab_identity_binds_artifact_preset(monkeypatch, tmp_path):
+    """A UD preset never reuses the plain artifact's packaged hot-vocab map."""
+
+    from types import SimpleNamespace
+
+    from hipengine.loading import gguf_mtp_hot_vocab as hot_vocab
+
+    tokenizer_hash = "f" * 64
+    monkeypatch.setattr(hot_vocab, "gguf_tokenizer_tokens_sha256", lambda info: tokenizer_hash)
+    packaged_name = "qwen38-27b-hot131072-cjk-v1.json"  # real packaged artifact
+    packaged = {
+        ("qwen35", "Qwen3.8-27B", 65, "MOSTLY_Q4_K_M", tokenizer_hash): packaged_name,
+        (
+            "qwen35",
+            "Qwen3.8-27B",
+            65,
+            "MOSTLY_Q4_K_M",
+            tokenizer_hash,
+            GGUF_UD_Q4_K_M_PRESET,
+        ): packaged_name,
+    }
+    monkeypatch.setattr(hot_vocab, "_DEFAULT_HOT_VOCAB_IDENTITIES", packaged)
+    info = SimpleNamespace(
+        metadata={
+            "general.architecture": "qwen35",
+            "general.basename": "Qwen3.8-27B",
+            "qwen35.block_count": 65,
+        },
+        file_type_name="MOSTLY_Q4_K_M",
+    )
+    # Plain artifact: unchanged 5-part identity resolves its packaged map.
+    resolved = hot_vocab.default_gguf_hot_vocab_path(info)
+    assert resolved is not None and resolved.name == packaged_name
+    # Same stamp + tokenizer, UD preset: the plain row's key no longer matches;
+    # the preset has its own distinct key, and unknown presets resolve to None.
+    ud_resolved = hot_vocab.default_gguf_hot_vocab_path(
+        info, artifact_preset_key=GGUF_UD_Q4_K_M_PRESET
+    )
+    assert ud_resolved is not None and ud_resolved.name == packaged_name
+    assert hot_vocab.default_gguf_hot_vocab_path(
+        info, artifact_preset_key="gguf_ud_q4_k_s"
+    ) is None
+    # And the plain artifact does not resolve through the preset-qualified key
+    # either (the plain identity has no preset component).
+    assert hot_vocab.default_gguf_hot_vocab_path(info) == resolved
+
+
+def test_preflight_slot_filter_scopes_to_selected_slots():
+    map_small = _synthetic_model_map()
+    report = preflight_qwen35_gguf_artifact(
+        map_small,
+        backend="hip_gfx1100",
+        slot_filter=("root.output_norm", "layers.0.attn_qkv"),
+    )
+    assert report.supported
+    assert report.covered_slots == 2
+
+
+@pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
+def test_loader_selected_subset_preflight_passes_on_qualified_subset(monkeypatch):
+    """The loader's test/debug selected_slots hook scopes the preflight, so a
+    subset that only needs certified slots still materializes on a UD file."""
+
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+
+    sentinel = _AllocationSentinel("allocation-sentinel")
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(AssertionError, match="allocation-sentinel"):
+        materialize_qwen35_gguf_weights(
+            str(UD_Q4_K_M),
+            backend="hip_gfx1100",
+            selected_slots=("root.output_norm",),
+        )

@@ -207,6 +207,7 @@ class Qwen35GGUFResidentWeights:
     allocation_arena: DeviceMemoryArena | None = None
     allocation_mode: str = "dedicated"
     allocation_arena_reason: str | None = None
+    artifact_preset_key: str | None = None
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -271,6 +272,7 @@ def plan_qwen35_gguf_materialization(
     decode_repack: bool | None = None,
     repack_veto: bool | None = None,
     contract_f32_linear: bool | None = None,
+    slot_filter: Iterable[str] | None = None,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -318,6 +320,9 @@ def plan_qwen35_gguf_materialization(
     # Keep one compatible resident plan instead of silently mixing it with the
     # Q4-oriented T16 decode residents.
     use_decode_repack = requested_decode_repack and not ar_repack_veto
+    allowed_slots = (
+        None if slot_filter is None else frozenset(str(slot) for slot in slot_filter)
+    )
     root_specs = {
         slot: _spec_for_tensor(
             f"root.{slot}",
@@ -337,6 +342,7 @@ def plan_qwen35_gguf_materialization(
             dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
         )
         for slot, tensor in model_map.root_tensors.items()
+        if allowed_slots is None or f"root.{slot}" in allowed_slots
     }
     layer_specs = tuple(
         _plan_layer(
@@ -354,6 +360,7 @@ def plan_qwen35_gguf_materialization(
             dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
             dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
             dense_q6_qmicro_planar_excluded_slots=q6_planar_excluded,
+            slot_filter=allowed_slots,
         )
         for layer in model_map.layers
     )
@@ -641,6 +648,17 @@ def materialize_qwen35_gguf_weights(
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     file_type_name = getattr(reader.info, "file_type_name", None)
+    selected = None if selected_slots is None else set(selected_slots)
+    # The trailing NextN block participates in the artifact manifest
+    # fingerprint (structural records only; draft admission is gated
+    # separately by the NextN materializer).
+    nextn_map = None
+    if model_map.config.ignored_block_ids:
+        from hipengine.loading.qwen35_gguf_nextn import (
+            build_qwen35_gguf_nextn_tensor_map,
+        )
+
+        nextn_map = build_qwen35_gguf_nextn_tensor_map(reader.info, strict=False)
     # Dense-capability and environment-override resolution is shared policy
     # (hipengine.loading.qwen35_gguf_policy); the runtime passes the
     # backend-package reader, the metadata audit passes a source-reading one.
@@ -650,12 +668,35 @@ def materialize_qwen35_gguf_weights(
         capability_reader=backend_package_capability,
         environ=os.environ,
     )
+    # UD-U1 admission preflight: qualify every requested operation over every
+    # planned slot BEFORE any device allocation, aggregating every unsupported
+    # slot/mode. Unknown manifests (plain stamp lane) resolve to no preset and
+    # keep the historical behavior; pinned UD manifests without certified
+    # consumers are refused here with the full refusal list. Imported lazily:
+    # the admission module imports this module's per-slot planner.
+    from hipengine.loading.qwen35_gguf_admission import (
+        DEFAULT_AR_OPERATIONS,
+        preflight_qwen35_gguf_artifact,
+    )
+
+    admission_report = preflight_qwen35_gguf_artifact(
+        model_map,
+        backend=backend,
+        file_type_stamp=(None if file_type_name is None else str(file_type_name)),
+        operations=DEFAULT_AR_OPERATIONS,
+        decode_repack=decode_repack,
+        slot_filter=None if selected is None else tuple(sorted(selected)),
+        nextn_map=nextn_map,
+        **dense_flags,
+    )
+    if not admission_report.supported:
+        admission_report.raise_for_errors()
     plan = plan_qwen35_gguf_materialization(
         model_map,
         decode_repack=decode_repack,
+        slot_filter=None if selected is None else tuple(sorted(selected)),
         **dense_flags,
     )
-    selected = None if selected_slots is None else set(selected_slots)
     deferred = set() if deferred_device_slots is None else {str(slot) for slot in deferred_device_slots}
     known_slots = {spec.slot_path for spec in plan.specs}
     unknown_deferred = tuple(sorted(deferred - known_slots))
@@ -781,6 +822,11 @@ def materialize_qwen35_gguf_weights(
         allocation_arena=allocation_arena,
         allocation_mode=allocation_mode,
         allocation_arena_reason=allocation_arena_reason,
+        artifact_preset_key=(
+            None
+            if admission_report.preset is None
+            else admission_report.preset.preset_key
+        ),
     )
 
 
@@ -800,7 +846,11 @@ def _plan_layer(
     dense_q5_t16_h5120: bool = False,
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: frozenset[str] = frozenset(),
+    slot_filter: frozenset[str] | None = None,
 ) -> dict[str, Qwen35GGUFWeightSpec]:
+    def _allowed(slot: str) -> bool:
+        return slot_filter is None or f"layers.{layer.layer_id}.{slot}" in slot_filter
+
     return {
         slot: _spec_for_tensor(
             f"layers.{layer.layer_id}.{slot}",
@@ -822,6 +872,7 @@ def _plan_layer(
             ),
         )
         for slot, tensor in layer.tensors.items()
+        if _allowed(slot)
     }
 
 
