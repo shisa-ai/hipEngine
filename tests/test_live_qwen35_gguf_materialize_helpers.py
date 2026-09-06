@@ -11,6 +11,7 @@ from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_T16,
     HIPENGINE_GGUF_DECODE_REPACK_ENV,
     LAYOUT_GGUF_Q5_K_QMICRO_T16,
     LAYOUT_Q4_K_PACK8,
@@ -221,3 +222,128 @@ def _tensor(name: str, qtype: GGMLQuantizationType) -> GGUFTensorInfo:
         data_offset=0,
         byte_shape=(2, 3),
     )
+
+
+# ---------------------------------------------------------------------------
+# UD-U1: the AR raw-IQ decode-repack veto and the model-wide F32 linear
+# contraction are separate policy knobs on the AR planner. Defaults are
+# unchanged (both derive from the shared raw-IQ predicate), but enabling one
+# must not silently move the other, and unchanged manifests keep identical
+# plans (MoE semantics retained).
+# ---------------------------------------------------------------------------
+
+
+def _raw_iq_map() -> Qwen35GGUFMaterializationPlan:
+    from hipengine.loading.qwen35_gguf import Qwen35GGUFConfig, Qwen35GGUFLayerMap, Qwen35GGUFModelMap
+    from hipengine.loading.qwen35_gguf import LINEAR_ATTENTION
+    from types import MappingProxyType as _MPP
+
+    def tensor(name, shape, qtype):
+        n = int(np.prod(shape)) if shape else 1
+        return GGUFTensorInfo(
+            name=name,
+            shape=shape,
+            ggml_shape=tuple(reversed(shape)),
+            ggml_type=int(qtype),
+            ggml_type_name=qtype.name,
+            n_elements=n,
+            nbytes=n * (4 if qtype == GGMLQuantizationType.F32 else 2),
+            offset=0,
+            data_offset=0,
+            byte_shape=shape,
+        )
+
+    config = Qwen35GGUFConfig(
+        architecture="qwen35",
+        block_count=1,
+        hidden_size=8,
+        vocab_size=11,
+        feed_forward_length=5,
+        context_length=64,
+        head_count=2,
+        head_count_kv=1,
+        key_length=4,
+        value_length=4,
+        full_attention_interval=4,
+        layer_types=(LINEAR_ATTENTION,),
+        rms_norm_eps=1e-6,
+        rope_dimension_count=4,
+        rope_dimension_sections=(),
+        rope_freq_base=10000.0,
+        ssm_inner_size=16,
+        ssm_group_count=2,
+        ssm_state_size=4,
+        ssm_conv_kernel=2,
+        ssm_time_step_rank=2,
+        lm_head_tensor_name="token_embd.weight",
+    )
+    layer = {
+        "attn_norm": tensor("blk.0.attn_norm.weight", (8,), GGMLQuantizationType.F32),
+        "attn_qkv": tensor("blk.0.attn_qkv.weight", (28, 8), GGMLQuantizationType.IQ4_XS),
+        "ssm_alpha": tensor("blk.0.ssm_alpha.weight", (2, 8), GGMLQuantizationType.F32),
+        "ssm_beta": tensor("blk.0.ssm_beta.weight", (2, 8), GGMLQuantizationType.F32),
+        "ssm_a": tensor("blk.0.ssm_a", (2,), GGMLQuantizationType.F32),
+        "ssm_dt_bias": tensor("blk.0.ssm_dt.bias", (2,), GGMLQuantizationType.F32),
+        "ssm_conv1d": tensor("blk.0.ssm_conv1d.weight", (28, 2), GGMLQuantizationType.F32),
+        "ssm_norm": tensor("blk.0.ssm_norm.weight", (3,), GGMLQuantizationType.F32),
+        "ssm_out": tensor("blk.0.ssm_out.weight", (8, 16), GGMLQuantizationType.Q4_K),
+        "ffn_gate": tensor("blk.0.ffn_gate.weight", (17_408, 5_120), GGMLQuantizationType.Q4_K),
+        "ffn_up": tensor("blk.0.ffn_up.weight", (17_408, 5_120), GGMLQuantizationType.Q4_K),
+        "ffn_down": tensor("blk.0.ffn_down.weight", (5_120, 17_408), GGMLQuantizationType.Q4_K),
+    }
+    root = {
+        "token_embedding": tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q4_K),
+        "output_norm": tensor("output_norm.weight", (8,), GGMLQuantizationType.F32),
+    }
+    return Qwen35GGUFModelMap(
+        config=config,
+        root_tensors=_MPP(root),
+        layers=(Qwen35GGUFLayerMap(layer_id=0, layer_type=LINEAR_ATTENTION, tensors=_MPP(layer)),),
+        validation=None,
+    )
+
+
+def test_raw_iq_planner_defaults_veto_repack_and_contract_f32():
+    plan = plan_qwen35_gguf_materialization(
+        _raw_iq_map(), decode_repack=True, dense_q4_t16=True
+    )
+
+    # The raw-IQ veto keeps the policy-shaped Q4_K FFN slots on pack8 even
+    # though the backend declares the dense Q4 T16 capability.
+    assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_Q4_K_PACK8
+    assert plan.layer_specs[0]["ssm_alpha"].layout == LAYOUT_DENSE_BF16
+    assert plan.layer_specs[0]["ssm_alpha"].quant_key == "bf16"
+    # Unrelated F32 slots keep their F32 residents.
+    assert plan.layer_specs[0]["ssm_a"].layout == LAYOUT_DENSE_F32
+    assert plan.layer_specs[0]["attn_norm"].layout == LAYOUT_DENSE_F32
+
+
+def test_repack_eligibility_can_proceed_without_moving_f32_contraction():
+    plan = plan_qwen35_gguf_materialization(
+        _raw_iq_map(),
+        decode_repack=True,
+        dense_q4_t16=True,
+        repack_veto=False,
+    )
+
+    # Per-tensor repack eligibility is granted (T16 selection for the Q4_K
+    # shapes the sidecar policy covers) while the F32 alpha/beta contraction
+    # stays bound to its own knob (contract_f32_linear defaults to the raw-IQ
+    # predicate -> still contracted).
+    assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_GGUF_Q4_K_T16
+    assert plan.layer_specs[0]["ssm_alpha"].layout == LAYOUT_DENSE_BF16
+
+
+def test_f32_contraction_can_be_disabled_without_granting_repack():
+    plan = plan_qwen35_gguf_materialization(
+        _raw_iq_map(),
+        decode_repack=True,
+        dense_q4_t16=True,
+        contract_f32_linear=False,
+    )
+
+    # Repack stays vetoed by the raw-IQ predicate...
+    assert plan.layer_specs[0]["ffn_up"].layout == LAYOUT_Q4_K_PACK8
+    # ...while the F32 alpha/beta slots keep their F32 residents.
+    assert plan.layer_specs[0]["ssm_alpha"].layout == LAYOUT_DENSE_F32
+    assert plan.layer_specs[0]["ssm_alpha"].quant_key == "f32"

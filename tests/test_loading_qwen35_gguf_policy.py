@@ -174,3 +174,41 @@ def test_fp16_recurrent_state_default_normalizes_like_the_runner():
     assert gguf_fp16_recurrent_state_default("b", "MOSTLY_Q4_K_S", capability_reader=_stub_reader({})) is False
     assert gguf_fp16_recurrent_state_default("b", None, capability_reader=reader) is False
     assert gguf_fp16_recurrent_state_default(None, "MOSTLY_Q4_K_S", capability_reader=reader) is False
+
+
+# ---------------------------------------------------------------------------
+# UD-U1: per-tensor repack eligibility is a separate policy knob from the
+# model-wide F32 linear contraction. Both derive from the same raw-IQ
+# predicate today (identical defaults), but a future per-tensor repack
+# eligibility change (UD-U3 layout selection) must not silently move the
+# F32 alpha/beta/router contraction, and vice versa.
+# ---------------------------------------------------------------------------
+
+
+def test_repack_veto_and_f32_contraction_are_separate_named_policy_functions():
+    from hipengine.loading.qwen35_gguf_policy import (
+        gguf_ar_decode_repack_veto,
+        gguf_ar_f32_linear_contraction,
+    )
+
+    raw_iq = [int(GGMLQuantizationType.IQ4_XS)]
+    plain = [int(GGMLQuantizationType.Q4_K)]
+    # Identical defaults derived from the same raw-IQ predicate...
+    assert gguf_ar_decode_repack_veto(raw_iq) is True
+    assert gguf_ar_f32_linear_contraction(raw_iq) is True
+    assert gguf_ar_decode_repack_veto(plain) is False
+    assert gguf_ar_f32_linear_contraction(plain) is False
+    # ...but they are distinct callables, so either can move independently.
+    assert gguf_ar_decode_repack_veto is not gguf_ar_f32_linear_contraction
+
+
+def test_raw_iq_functions_are_undefined_for_non_iterable_scopes():
+    from hipengine.loading.qwen35_gguf_policy import (
+        gguf_ar_decode_repack_veto,
+        gguf_ar_f32_linear_contraction,
+    )
+
+    with pytest.raises(TypeError):
+        gguf_ar_decode_repack_veto(None)
+    with pytest.raises(TypeError):
+        gguf_ar_f32_linear_contraction(None)
