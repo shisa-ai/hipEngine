@@ -18,7 +18,7 @@ speculative decoding, which is enabled only where it is qualified for that
 model and shape. Rows use different models and protocols — compare within a
 row, not across them.
 
-### At a glance — one request
+### Performance
 
 #### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
@@ -46,21 +46,12 @@ row, not across them.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
-Blank cells are shapes we have not measured yet, not failures. Max context is
-published only where a dedicated ceiling run exists.
-
-- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` is tight.** Measured on a physical
-  RX 7900 XTX: one request starts and completes at **3,072 context tokens** and
-  fails to start at 4,096, on BF16 and INT8 alike; at 512-token prompts the same
-  budget allows four to five concurrent requests. **INT8 KV saves no memory
-  today** -- identical peaks to BF16 and the same failure point. Why the
-  footprint grows as steeply as it does is under investigation.
-
 ### Serving several requests at once
 
-This is where hipEngine pulls furthest ahead. Aggregate tokens per second
-across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900 under one server
-protocol; the peers use F16 KV where hipEngine uses BF16.
+hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).
+Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
+on the W7900 under one server protocol; the peers use F16 KV where hipEngine
+uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -78,7 +69,7 @@ generated tokens per request, showing what each added request costs in memory:
 | Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
 
 Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
-larger card; a 24 GB card runs the same model comfortably at one or two.
+larger card. What the same model tolerates on a 24 GB card is not qualified yet.
 
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
@@ -175,6 +166,14 @@ Aggregate prefill drops from c1 to c2 and then stays flat because one request
 prefills its 512 rows in a single slab while wider groups split into slot-fair
 bounded rounds against the 256-row prefill scratch. Tracked peak grows about
 0.85 GiB per added request, so the c8 shape does not fit a 24 GB card.
+No long-context setting is qualified for a 24 GB RX 7900 XTX. The 2026-09-06
+startup probe served one request at 3,072 context tokens and failed to start at
+4,096, with no measured BF16-versus-INT8 difference, but it sampled memory
+outside the prefill and decode peaks and never checked the live context length,
+so those points are not a published ceiling. Rerun condition: a repaired
+[`gguf_context_ceiling_probe.py`](../scripts/gguf_context_ceiling_probe.py)
+([`capacity notes`](../docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md),
+[`probe artifact`](results/2026-09-06-rx7900xtx-qwen38-c1-context-ceiling.json)).
 Evidence: [`direct c1-c8 sweep`](results/2026-09-06-gfx1100-qwen38-q4km-direct-c1c8-sweep.json).
 
 ### Agentic quality (quality-only; no speed claim)
@@ -445,7 +444,8 @@ CUDA resident batching and serving are not claimed by these c1 rows.
 
 Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
 model/quant/KV, concurrency, and memory scopes; bold identifies the reported
-row, not a universal leader.
+row, not a universal leader. A blank cell is a shape not yet measured, not a
+failure, and Max context is published only where a dedicated ceiling run exists.
 
 ## Maintenance contract
 
