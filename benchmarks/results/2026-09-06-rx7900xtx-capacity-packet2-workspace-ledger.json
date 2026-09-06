@@ -274,7 +274,8 @@
     "request_transient_sysfs_gib": -1.017
   },
   "page_independent_residents_unattributed": {
-    "per_layer_buffers": "32 x ~69.7 MiB = 2.179 GiB, identical before/after",
+    "ffn_down_q6_t16_weights": "32 x 69.73 MiB = 2.179 GiB, identified 2026-09-06 as the planned blk.*.ffn_down.weight Q6_K_T16 residents; the planned weight census reconciles exactly (zero unexplained weight bytes)",
+    "prefill_scratch_liveness_arena": "1 x 350.81 MiB at _allocate_prefill_scratch_liveness_arenas, page-independent",
     "sysfs_over_tracked_gib": 0.58
   }
 }
