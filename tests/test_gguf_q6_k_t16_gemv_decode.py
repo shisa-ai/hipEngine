@@ -408,6 +408,9 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
     monkeypatch.setattr(t16_mod, "_Q6_PLANAR_EXACT_PREFILL_RESOLVED", None)
 
     for rows, shape in (
+        (4, (17_408, 5_120)),
+        (6, (17_408, 5_120)),
+        (24, (17_408, 5_120)),
         (32, (17_408, 5_120)),
         (33, (17_408, 5_120)),
         (64, (17_408, 5_120)),
@@ -417,18 +420,23 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
         (511, (17_408, 5_120)),
         (512, (17_408, 5_120)),
         (35, (5_120, 10_240)),
+        (3, (17_408, 5_120)),
     ):
         t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
             1, 2, 3, rows, *shape
         )
     assert calls == [
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "shared256",
+        "shared256",
         "parent",
-        "row64",
-        "row64",
-        "row64",
-        "row64",
-        "shared256",
-        "shared256",
         "parent",
         "parent",
     ]
@@ -1239,7 +1247,7 @@ def test_q6_t16_standard_shared4_wmma_is_bit_exact_to_retained_wmma(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [17, 35, 64, 65])
+@pytest.mark.parametrize("rows", [4, 6, 17, 24, 32, 35, 64, 65])
 def test_q6_t16_qmicro_planar_shared4_row64_wmma_is_bit_exact_to_retained_wmma(
     q6_t16_library,
     rows: int,
