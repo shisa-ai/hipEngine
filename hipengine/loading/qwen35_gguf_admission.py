@@ -815,6 +815,7 @@ def preflight_qwen35_gguf_artifact(
     decode_repack: bool | None = None,
     repack_veto: bool | None = None,
     contract_f32_linear: bool | None = None,
+    slot_filter: Iterable[str] | None = None,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -837,7 +838,9 @@ def preflight_qwen35_gguf_artifact(
 
     ``decode_repack=None`` resolves through the loader's shared environment
     gate (:func:`gguf_decode_repack_enabled`) so the preflight sees the same
-    plan the loader would materialize.
+    plan the loader would materialize.  ``slot_filter`` restricts the
+    preflight to a subset of canonical slot paths (the loader's test/debug
+    ``selected_slots`` hook); unlisted slots are neither covered nor refused.
     """
 
     if decode_repack is None:
@@ -951,7 +954,10 @@ def preflight_qwen35_gguf_artifact(
         )
 
     checked_ops = tuple(op for op in requested if op != QWEN35_GGUF_OP_MTP_NEXTN_DRAFT)
+    allowed_slots = None if slot_filter is None else {str(slot) for slot in slot_filter}
     for slot_path, tensor in slot_tensors:
+        if allowed_slots is not None and str(slot_path) not in allowed_slots:
+            continue
         role_class = _role_class_for_slot(str(slot_path).rsplit(".", 1)[-1])
         if not role_class:
             unsupported.append(
