@@ -475,6 +475,13 @@ def _gguf_mtp_server_target_verify_mode() -> str:
     return mode
 
 
+def _trace_mtp2_resolution(reason: str) -> None:
+    """Echo why the MTP2 adapter did not resolve, under an opt-in env flag."""
+
+    if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+        print(f"[mtp2-resolve] {reason}", file=sys.stderr, flush=True)
+
+
 def _gguf_mtp_server_candidate_budget() -> int:
     """Return the dense MTP candidate budget for server serving (default 3)."""
 
@@ -6315,12 +6322,18 @@ class Qwen35GGUFResidentModelRunner:
             )
         )
         if not enabled or not self.generator.supports_speculative_mtp:
+            _trace_mtp2_resolution(
+                f"adapter unresolved: capability {capability_name}={enabled}, "
+                f"supports_speculative_mtp="
+                f"{bool(self.generator.supports_speculative_mtp)}"
+            )
             return None
         adapter_key = str(
             getattr(self.generator.model_plugin, "speculative_mtp2_adapter", "")
             or ""
         ).strip()
         if not adapter_key:
+            _trace_mtp2_resolution("adapter unresolved: model plugin has no adapter key")
             return None
         from hipengine.generation.qwen35_gguf_mtp2_registry import (
             register_builtin_gguf_mtp2_adapters,
