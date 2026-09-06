@@ -1243,7 +1243,7 @@ def test_q6_t16_standard_shared4_wmma_is_bit_exact_to_retained_wmma(
 
 
 @pytest.mark.skipif(not HIP_AVAILABLE, reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", [4, 6, 17, 24, 32, 35, 64, 65])
+@pytest.mark.parametrize("rows", list(range(1, 37)) + [48, 64, 65])
 def test_q6_t16_qmicro_planar_shared4_row64_wmma_is_bit_exact_to_retained_wmma(
     q6_t16_library,
     rows: int,
