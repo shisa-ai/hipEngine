@@ -1,12 +1,12 @@
 """Guards for the GGUF quant-route audit used by docs/UD-QUANTS.md.
 
-The script reads backend capability constants out of kernel package source instead
-of importing the package, because importing it registers kernels and needs the HIP
-runtime. Two bugs found while writing it are pinned here: reading
-``frozenset({"mostly_q4_k_s"})`` as a single token, which silently reported the
-FP16-recurrent-state default as off on the backend that turns it on for Q4_K_S
-files; and treating a capability defined by only one backend as "renamed", which
-made the constant check fail on the backend that legitimately has no such default.
+The script reads backend capability constants out of kernel package source with
+a bounded AST literal reader instead of importing the package, and resolves
+them through the shared pure policy API
+``hipengine.loading.qwen35_gguf_policy`` -- the same function the runtime
+loader calls with ``backend_package_capability``. A source constant that is
+absent or defined by a nonliteral expression is reported per capability and
+resolves to the runtime default; it is never guessed.
 
 The UD-U0a section pins the parser-validation contract: complete files are
 admitted by production ``scan_gguf``; files production refuses fall into an
@@ -30,20 +30,35 @@ AR borrow), and keep NextN failures from discarding a valid AR report. When the
 model map cannot be built, the audit stays parser-only: no route table is
 produced from guessed slots and the file is never called loadable or
 consumer-qualified.
+
+The UD-U0c section pins the v2 report contract: shared-policy capability
+resolution with per-capability status, backend-policy parity (gfx1100 Q5
+raw-MMQ sidecar, gfx1151 planar-Q6 exclusion), model-wide F32 contraction in
+both planner modes, environment-override behavior, allocation-formula bytes
+with sidecar reasons and both hypothetical refusal treatments, header identity
+over the [0, data_start) region, and the report ``schema_version``.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import pathlib
 import sys
+from dataclasses import replace
 from struct import pack
 
 import pytest
 
 from hipengine.loading.gguf import GGUF_SUPPORTED_VERSIONS, scan_gguf
-from hipengine.quant.gguf import GGMLQuantizationType, GGUFValueType
+from hipengine.loading.qwen35_gguf_policy import GGUF_DENSE_CAPABILITY_NAMES
+from hipengine.quant.gguf import (
+    GGMLQuantizationType,
+    GGUFValueType,
+    nbytes_for_shape,
+    quant_shape_to_byte_shape,
+)
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "gguf_quant_route_audit.py"
@@ -57,29 +72,136 @@ sys.modules[spec.name] = audit
 spec.loader.exec_module(audit)
 
 
-def test_quoted_members_reads_container_forms():
-    assert audit.quoted_members('frozenset({"mostly_q4_k_s"})') == {"mostly_q4_k_s"}
-    assert audit.quoted_members('frozenset({"Q4_K_S", "Q4_K_M"})') == {"q4_k_s", "q4_k_m"}
-    assert audit.quoted_members('("MOSTLY_Q4_K_S",)') == {"mostly_q4_k_s"}
-    assert audit.quoted_members("frozenset()") == set()
+def test_source_capability_reader_reads_literal_assignments(tmp_path: pathlib.Path):
+    # The AST reader resolves literal assignments exactly and never guesses:
+    # absent names and nonliteral expressions both fall back to the default.
+    root = tmp_path
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        (root / "hipengine" / "kernels" / backend).mkdir(parents=True)
+    (root / "hipengine" / "kernels" / "hip_gfx1100" / "__init__.py").write_text(
+        "GGUF_DENSE_Q4_T16 = True\n"
+        "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES = (\"MOSTLY_Q4_K_S\",)\n"
+        "GGUF_C8_Q5_RAW_MMQ_SSM_OUT = True if FLAGS else False\n"
+    )
+    (root / "hipengine" / "kernels" / "hip_gfx1151" / "__init__.py").write_text(
+        "GGUF_DENSE_Q4_T16 = False\n"
+    )
+
+    reader = audit.source_capability_reader(root=root)
+    assert reader("hip_gfx1100", "GGUF_DENSE_Q4_T16", False) is True
+    assert reader("hip_gfx1100", "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES", ()) == (
+        "MOSTLY_Q4_K_S",
+    )
+    # Nonliteral and absent resolve to the runtime default, never a guess.
+    assert reader("hip_gfx1100", "GGUF_C8_Q5_RAW_MMQ_SSM_OUT", False) is False
+    assert reader("hip_gfx1151", "GGUF_DENSE_Q4_T16", False) is False
+    assert reader("hip_gfx1151", "GGUF_C8_Q5_RAW_MMQ_SSM_OUT", False) is False
+
+    statuses = audit.capability_status(root=root)
+    assert statuses["hip_gfx1100"]["GGUF_DENSE_Q4_T16"] == "literal"
+    assert statuses["hip_gfx1100"]["GGUF_C8_Q5_RAW_MMQ_SSM_OUT"] == "nonliteral"
+    assert statuses["hip_gfx1100"]["GGUF_DENSE_Q5_T16_SSM_OUT"] == "missing"
+    assert statuses["hip_gfx1151"]["GGUF_DENSE_Q4_T16"] == "literal"
+    assert statuses["hip_gfx1151"]["GGUF_C8_Q5_RAW_MMQ_SSM_OUT"] == "missing"
+
+
+def test_source_capability_reader_resolves_frozenset_wrapper_literals():
+    # gfx1151 declares the FP16-recurrent-state default as frozenset({...});
+    # the bounded wrapper form must resolve as a literal, not "nonliteral".
+    statuses = audit.capability_status()
+    assert (
+        statuses["hip_gfx1151"]["GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES"]
+        == "literal"
+    )
+    reader = audit.source_capability_reader()
+    assert reader(
+        "hip_gfx1151", "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES", ()
+    ) == frozenset({"mostly_q4_k_s"})
+
+
+def test_every_capability_name_is_defined_by_some_backend_and_literal():
+    # A capability may legitimately exist on one backend only; a rename removes
+    # it from both (the --check-constants gate catches exactly that). All
+    # constants that do exist must be literal; a nonliteral drift is reported.
+    statuses = audit.capability_status()
+    missing_everywhere = [
+        name
+        for name in GGUF_DENSE_CAPABILITY_NAMES
+        if all(statuses[backend][name] == "missing" for backend in statuses)
+    ]
+    assert missing_everywhere == []
+    nonliteral = [
+        (backend, name)
+        for backend, per in statuses.items()
+        for name, status in per.items()
+        if status == "nonliteral"
+    ]
+    assert nonliteral == []
 
 
 def test_fp16_recurrent_state_default_follows_the_file_type_stamp():
-    # gfx1151 defaults FP16 recurrent state on for files stamped Q4_K_S.
-    assert audit.fp16_recurrent_state_default("hip_gfx1151", "MOSTLY_Q4_K_S") is True
-    assert audit.fp16_recurrent_state_default("hip_gfx1151", "MOSTLY_Q4_K_M") is False
-    # gfx1100 declares no such default, which must read as off rather than crash.
-    assert audit.fp16_recurrent_state_default("hip_gfx1100", "MOSTLY_Q4_K_S") is False
+    # Shared policy resolution over the source reader: gfx1151 defaults FP16
+    # recurrent state on for files stamped Q4_K_S; gfx1100 declares no default.
+    reader = audit.source_capability_reader()
+    assert (
+        audit.gguf_fp16_recurrent_state_default(
+            "hip_gfx1151", "MOSTLY_Q4_K_S", capability_reader=reader
+        )
+        is True
+    )
+    assert (
+        audit.gguf_fp16_recurrent_state_default(
+            "hip_gfx1151", "MOSTLY_Q4_K_M", capability_reader=reader
+        )
+        is False
+    )
+    assert (
+        audit.gguf_fp16_recurrent_state_default(
+            "hip_gfx1100", "MOSTLY_Q4_K_S", capability_reader=reader
+        )
+        is False
+    )
 
 
-def test_every_capability_name_is_defined_by_some_backend():
-    # A capability may legitimately exist on one backend only; a rename removes it
-    # from both, which is what this catches.
-    caps = {b: audit.backend_capabilities(b) for b in ("hip_gfx1100", "hip_gfx1151")}
-    missing_everywhere = [
-        name for name in audit.CAPABILITY_NAMES if all(caps[b][name] == "<missing>" for b in caps)
-    ]
-    assert missing_everywhere == []
+def test_resolve_flags_match_pinned_backend_capabilities():
+    # The audit must plan with the same dense flags the runtime resolves for
+    # each backend. gfx1100 carries the raw-MMQ Q5 sidecar capability; gfx1151
+    # excludes attn_qkv from the planar-Q6 default and gates qmicro gate/up on
+    # the Q4_K_S file-type stamp.
+    reader = audit.source_capability_reader()
+    assert audit.resolve_gguf_dense_flags(
+        "hip_gfx1100", "MOSTLY_Q4_K_M", capability_reader=reader, environ={}
+    ) == {
+        "dense_q4_t16": True,
+        "dense_q4_qmicro_t16_gate_up": False,
+        "dense_q4_t16_attn_q_08b": False,
+        "dense_q5_t16_ssm_out": True,
+        "dense_q5_raw_mmq_ssm_out": True,
+        "dense_q5_qmicro_planar_ssm_out": False,
+        "dense_q5_t16_ssm_out_08b": False,
+        "dense_q5_t16_qkv": False,
+        "dense_q5_t16_h5120": False,
+        "dense_q6_qmicro_planar": True,
+        "dense_q6_qmicro_planar_excluded_slots": (),
+    }
+    assert audit.resolve_gguf_dense_flags(
+        "hip_gfx1151", "MOSTLY_Q4_K_S", capability_reader=reader, environ={}
+    ) == {
+        "dense_q4_t16": True,
+        "dense_q4_qmicro_t16_gate_up": True,
+        "dense_q4_t16_attn_q_08b": True,
+        "dense_q5_t16_ssm_out": True,
+        "dense_q5_raw_mmq_ssm_out": False,
+        "dense_q5_qmicro_planar_ssm_out": False,
+        "dense_q5_t16_ssm_out_08b": True,
+        "dense_q5_t16_qkv": True,
+        "dense_q5_t16_h5120": True,
+        "dense_q6_qmicro_planar": True,
+        "dense_q6_qmicro_planar_excluded_slots": ("attn_qkv",),
+    }
+    assert audit.resolve_gguf_dense_flags(
+        "hip_gfx1151", "MOSTLY_Q4_K_M", capability_reader=reader, environ={}
+    )["dense_q4_qmicro_t16_gate_up"] is False
 
 
 def test_slot_path_guessing_is_removed_from_the_audit():
@@ -1180,3 +1302,314 @@ def test_text_summary_marks_valid_nextn_as_passed_without_invented_failures(caps
     assert "nextn shape" not in printed
     assert "NOT BUILT" not in printed
     assert "FAILED" not in printed
+
+
+# --- UD-U0c shared policy, allocation accounting, and report schema ------------
+#
+# Backend-policy parity with the runtime planner (gfx1100 Q5 raw-MMQ sidecar,
+# gfx1151 planar-Q6 exclusion), model-wide F32 contraction in both planner
+# modes, environment overrides, allocation-formula bytes with sidecar reasons
+# and both hypothetical refusal treatments, header identity, and the report
+# schema_version. All CPU-only: metadata and planner specs, no device use.
+
+
+def _replace_tensor(tensors: list, name: str, replacement) -> list:
+    return [replacement if tensor.name == name else tensor for tensor in tensors]
+
+
+def _quant_tensor(name: str, shape: tuple[int, ...], qtype: GGMLQuantizationType):
+    """Fixture tensor with the real stored-nbytes and byte shape for qtype."""
+
+    return replace(
+        _t(name, shape, qtype),
+        nbytes=nbytes_for_shape(shape, qtype),
+        byte_shape=quant_shape_to_byte_shape(shape, qtype),
+    )
+
+
+def _q5_ssm_out(layer_id: int = 0):
+    return _quant_tensor(f"blk.{layer_id}.ssm_out.weight", (5_120, 6_144), GGMLQuantizationType.Q5_K)
+
+
+def _q6_attn_qkv(layer_id: int = 0):
+    return _quant_tensor(f"blk.{layer_id}.attn_qkv.weight", (10_240, 5_120), GGMLQuantizationType.Q6_K)
+
+
+def test_gfx1100_q5_ssm_out_plans_raw_mmq_sidecar_and_gfx1151_does_not():
+    # The gfx1100 raw-MMQ Q5 sidecar (GGUF_C8_Q5_RAW_MMQ_SSM_OUT) must reach the
+    # audit plan: a Q5_K ssm_out under decode repack plans the T16 resident WITH
+    # the raw sidecar on gfx1100 and without it on gfx1151 (no capability).
+    tensors = _replace_tensor(_fixture_tensors(), "blk.0.ssm_out.weight", _q5_ssm_out())
+    maps = _mapped(tensors)
+    gfx1100 = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    gfx1151 = audit.plan("hip_gfx1151", dict(_QWEN35_METADATA), maps)
+
+    assert gfx1100["package_flags"]["dense_q5_t16_ssm_out"] is True
+    assert gfx1100["package_flags"]["dense_q5_raw_mmq_ssm_out"] is True
+    assert gfx1151["package_flags"]["dense_q5_raw_mmq_ssm_out"] is False
+
+    # Plan the single slot through the same production call the audit uses.
+    tensor = next(t for t in tensors if t.name == "blk.0.ssm_out.weight")
+    reader = audit.source_capability_reader()
+    flags1100 = audit.resolve_gguf_dense_flags("hip_gfx1100", "MOSTLY_Q4_K_M", capability_reader=reader, environ={})
+    flags1151 = audit.resolve_gguf_dense_flags("hip_gfx1151", "MOSTLY_Q4_K_M", capability_reader=reader, environ={})
+    spec1100 = audit.plan_qwen35_gguf_weight_spec(
+        "layers.0.ssm_out", tensor, decode_repack=True, **flags1100
+    )
+    spec1151 = audit.plan_qwen35_gguf_weight_spec(
+        "layers.0.ssm_out", tensor, decode_repack=True, **flags1151
+    )
+    assert spec1100.layout == "gguf_q5_k_t16_v1"
+    assert spec1100.allocation_names == ("tiles", "raw")
+    assert spec1151.allocation_names == ("tiles",)
+
+    # The audit's own AR allocation section carries the sidecar with a reason.
+    sidecars = gfx1100["allocation"]["sidecars"]
+    assert sidecars["raw"]["count"] == 1
+    assert sidecars["raw"]["planned_bytes"] == tensor.nbytes
+    assert "sidecar" in sidecars["raw"]["reason"]
+    assert "raw" not in gfx1151["allocation"]["sidecars"]
+    assert (
+        gfx1100["allocation"]["accepted_planned_bytes"]
+        - gfx1151["allocation"]["accepted_planned_bytes"]
+        == tensor.nbytes
+    )
+
+
+def test_gfx1151_q6_planar_exclusion_excludes_attn_qkv_and_gfx1100_does_not():
+    # GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS = ("attn_qkv",) on gfx1151:
+    # a wide rank-2 Q6 attn_qkv must plan the standard T16 layout there, while
+    # gfx1100 plans the qmicro-planar resident. The planned bytes differ.
+    tensors = _replace_tensor(_fixture_tensors(), "blk.0.attn_qkv.weight", _q6_attn_qkv())
+    maps = _mapped(tensors)
+    tensor = next(t for t in tensors if t.name == "blk.0.attn_qkv.weight")
+    reader = audit.source_capability_reader()
+    flags1100 = audit.resolve_gguf_dense_flags("hip_gfx1100", "MOSTLY_Q4_K_M", capability_reader=reader, environ={})
+    flags1151 = audit.resolve_gguf_dense_flags("hip_gfx1151", "MOSTLY_Q4_K_M", capability_reader=reader, environ={})
+    spec1100 = audit.plan_qwen35_gguf_weight_spec(
+        "layers.0.attn_qkv", tensor, decode_repack=True, **flags1100
+    )
+    spec1151 = audit.plan_qwen35_gguf_weight_spec(
+        "layers.0.attn_qkv", tensor, decode_repack=True, **flags1151
+    )
+    assert spec1100.layout == "gguf_q6_k_t16_qmicro_planar_v1"
+    assert spec1151.layout == "gguf_q6_k_t16_v1"
+
+    gfx1100 = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    gfx1151 = audit.plan("hip_gfx1151", dict(_QWEN35_METADATA), maps)
+    assert gfx1151["package_flags"]["dense_q6_qmicro_planar_excluded_slots"] == ("attn_qkv",)
+    assert gfx1100["package_flags"]["dense_q6_qmicro_planar_excluded_slots"] == ()
+    # Both layouts are formula-sizable here; their resident identity differs
+    # even though this particular shape happens to size identically.
+    assert spec1100.layout != spec1151.layout
+    assert sum(n for _, n in audit.planned_qwen35_gguf_weight_allocation_nbytes(spec1100)) > 0
+    assert sum(n for _, n in audit.planned_qwen35_gguf_weight_allocation_nbytes(spec1151)) > 0
+    # The route table shows the different resident identities per backend.
+    assert gfx1100["routes"]["Q6_K"] == {"kernel:gguf_q6_k_t16_qmicro_planar_v1": 1}
+    assert gfx1151["routes"]["Q6_K"] == {"kernel:gguf_q6_k_t16_v1": 1}
+
+
+def test_env_overrides_change_the_audit_plan(monkeypatch):
+    # HIPENGINE_GGUF_DECODE_REPACK gates decode repack; HIPENGINE_GGUF_C8_Q5_RAW_MMQ
+    # and HIPENGINE_C8_Q5_PLANAR_DP4A gate the Q5 sidecars -- all through the
+    # shared policy API, so audit and runtime see the same environment.
+    tensors = _replace_tensor(_fixture_tensors(), "blk.0.ssm_out.weight", _q5_ssm_out())
+    maps = _mapped(tensors)
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", raising=False)
+    monkeypatch.delenv("HIPENGINE_C8_Q5_PLANAR_DP4A", raising=False)
+
+    default = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert default["decode_repack_requested"] is True
+    assert default["package_flags"]["dense_q5_raw_mmq_ssm_out"] is True
+    assert default["package_flags"]["dense_q5_qmicro_planar_ssm_out"] is False
+    assert default["allocation"]["sidecars"]["raw"]["count"] == 1
+
+    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "0")
+    no_raw = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert no_raw["package_flags"]["dense_q5_raw_mmq_ssm_out"] is False
+    assert "raw" not in no_raw["allocation"]["sidecars"]
+
+    monkeypatch.setenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
+    monkeypatch.setenv("HIPENGINE_C8_Q5_PLANAR_DP4A", "1")
+    planar = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert planar["package_flags"]["dense_q5_qmicro_planar_ssm_out"] is True
+    # The optional planar sidecar has no production allocation formula yet: the
+    # resident is reported as formula-unavailable instead of inventing bytes.
+    unavailable = planar["allocation"]["formula_unavailable_residents"]
+    assert any(
+        entry["source"] == "blk.0.ssm_out.weight"
+        and entry["layout"] == "gguf_q5_k_t16_v1"
+        and "qmicro_planar" in entry["reason"]
+        for entry in unavailable
+    )
+    assert planar["allocation"]["accepted_planned_bytes_complete"] is False
+
+    monkeypatch.setenv("HIPENGINE_GGUF_DECODE_REPACK", "0")
+    no_repack = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert no_repack["decode_repack_requested"] is False
+    assert no_repack["decode_repack_enabled"] is False
+
+
+def _iq4_xs_tensor(name: str = "blk.0.ssm_out.weight"):
+    # Rank-2 IQ4_XS: elements must be a multiple of the 256-block.
+    return _t(name, (16, 256), GGMLQuantizationType.IQ4_XS)
+
+
+def _count_f32_contracted(backend_report: dict) -> int:
+    return backend_report["f32_contracted_slots"]
+
+
+def test_raw_iq_contract_contracts_f32_slots_in_production_planner_mode():
+    # With raw-IQ AR storage the production planner contracts F32 alpha/beta
+    # linear slots to BF16; the audit must report those contracted slots.
+    tensors = _replace_tensor(_fixture_tensors(), "blk.0.ssm_out.weight", _iq4_xs_tensor())
+    maps = _mapped(tensors)
+    report = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert report["decode_repack_enabled"] is False  # raw-IQ veto surfaced
+    # 56 linear layers x (ssm_alpha, ssm_beta); blk.0.ssm_out itself became IQ4_XS.
+    assert _count_f32_contracted(report) == 112
+    assert report["routes"]["F32"] == {"f32-resident": 873 - 1 - 112, "bf16-expand": 112}
+
+
+def test_raw_iq_contract_contracts_f32_slots_in_per_slot_fallback_mode():
+    # A refused slot forces per-slot fallback planning; the model-wide F32
+    # contraction must still apply there (it was silently omitted before the
+    # shared policy API), so fallback matches production planner semantics.
+    tensors = _fixture_tensors(embedding_qtype=GGMLQuantizationType.Q3_K)
+    tensors = _replace_tensor(tensors, "blk.0.ssm_out.weight", _iq4_xs_tensor())
+    maps = _mapped(tensors)
+    report = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    assert report["planner_mode"] == "per_slot_fallback"
+    assert report["rejected_tensors"] == 2  # refused Q3_K embedding + tied head
+    assert _count_f32_contracted(report) == 112
+    assert report["routes"]["F32"] == {"f32-resident": 873 - 1 - 112, "bf16-expand": 112}
+
+
+def test_nextn_scope_keeps_its_own_flags_and_no_contraction():
+    # AR policies are not applied to the NextN planner: the draft scope plans
+    # with the four production NextN flags and no model-wide F32 contraction.
+    tensors = _fixture_tensors()
+    tensors = _replace_tensor(tensors, "blk.0.ssm_out.weight", _iq4_xs_tensor())
+    maps = _mapped(tensors)
+    report = audit.plan("hip_gfx1100", dict(_QWEN35_METADATA), maps)
+    nextn = report["nextn_routes"]
+    assert nextn is not None
+    for scope in ("own", "fallback"):
+        assert nextn[scope]["allocation"]["refused_slot_count"] == 0
+        assert nextn[scope]["allocation"]["accepted_planned_bytes"] > 0
+        assert nextn[scope]["allocation"]["native_refusal_lower_bound_bytes"] == (
+            nextn[scope]["allocation"]["accepted_planned_bytes"]
+        )
+
+
+def test_allocation_account_reports_formula_bytes_sidecars_and_refusal_treatments():
+    # Hand-computed bytes: a Q4_K 256x256 pack8 resident is
+    # 32768 (qweight) + 8192 (scales) + 8192 (mins) = 49152; a refused Q3_K
+    # 256x256 source is 28160 source bytes or 131072 BF16 bytes, so the two
+    # hypothetical treatments are 77312 and 180224.
+    q4 = _t("blk.0.attn_gate.weight", (256, 256), GGMLQuantizationType.Q4_K)
+    # Real Q3_K stored bytes (110 per 256-block), not the test helper's shortcut.
+    q3 = replace(
+        _t("token_embd.weight", (256, 256), GGMLQuantizationType.Q3_K),
+        nbytes=nbytes_for_shape((256, 256), GGMLQuantizationType.Q3_K),
+    )
+    flags = {
+        "dense_q4_t16": False,
+        "dense_q4_qmicro_t16_gate_up": False,
+        "dense_q4_t16_attn_q_08b": False,
+        "dense_q5_t16_ssm_out": False,
+        "dense_q5_raw_mmq_ssm_out": False,
+        "dense_q5_qmicro_planar_ssm_out": False,
+        "dense_q5_t16_ssm_out_08b": False,
+        "dense_q5_t16_qkv": False,
+        "dense_q5_t16_h5120": False,
+        "dense_q6_qmicro_planar": False,
+        "dense_q6_qmicro_planar_excluded_slots": (),
+    }
+    spec = audit.plan_qwen35_gguf_weight_spec("layers.0.attn_gate", q4, decode_repack=False, **flags)
+    planned = [("layers.0.attn_gate", q4, spec)]
+    refused = [("root.token_embedding", q3), ("root.lm_head", q3)]
+    account = audit._allocation_account(planned, refused)
+
+    assert account["unique_residents"] == 1
+    assert account["accepted_planned_bytes"] == 49_152
+    assert account["residents_by_layout"]["q4_k_pack8"] == {
+        "count": 1,
+        "planned_bytes": 49_152,
+    }
+    assert account["sidecars"] == {}
+    # The refused source has two consumer slots but one physical source.
+    assert account["refused_slot_count"] == 2
+    assert account["refused_unique_sources"] == 1
+    assert account["refused_source_bytes"] == 28_160
+    assert account["refused_bf16_bytes"] == 131_072
+    assert account["native_refusal_lower_bound_bytes"] == 49_152 + 28_160
+    assert account["bf16_refusal_scenario_bytes"] == 49_152 + 131_072
+    assert "scratch" in account["accounting"] and "never" in account["accounting"]
+
+
+def test_report_schema_version_and_header_identity(tmp_path):
+    path = _complete_file(tmp_path, name="identity.gguf")
+    out = tmp_path / "report.json"
+
+    assert audit.main([str(path), "--json", str(out)]) == 0
+    report = json.loads(out.read_text())
+    assert report["schema_version"] == 2
+    entry = report["files"][0]
+
+    identity = entry["header_identity"]
+    data_start = entry["parser_validation"]["data_start_bytes"]
+    assert identity["bytes"] == data_start > 0
+    with path.open("rb") as handle:
+        expected = hashlib.sha256(handle.read(data_start)).hexdigest()
+    assert identity["sha256"] == expected
+    assert identity["boundary"].startswith("sha256 over raw file bytes [0, data_start_bytes)")
+
+
+def test_header_identity_is_withheld_when_the_boundary_is_unknown(tmp_path):
+    path = tmp_path / "bad-alignment.gguf"
+    prefix = _header(3, 1, 3) + _standard_metadata(alignment=0) + _descriptor(_TENSOR_NAME)
+    path.write_bytes(_aligned(prefix) + bytes(_TENSOR_BYTES))
+    out = tmp_path / "report.json"
+
+    assert audit.main([str(path), "--json", str(out)]) == 0
+    entry = json.loads(out.read_text())["files"][0]
+    identity = entry["header_identity"]
+    assert identity["sha256"] is None and identity["bytes"] is None
+    assert "no header identity claimed" in identity["note"]
+
+
+def test_capability_path_adds_no_backend_package_imports():
+    # The audit's capability/policy path must never import a GPU backend
+    # package. (The base hipengine import chain loads hip_gfx1100 through the
+    # engine root __init__; this guard covers the delta the audit adds.)
+    import sys as _sys
+
+    before = set(_sys.modules)
+    audit.capability_status()
+    audit.source_capability_reader()("hip_gfx1151", "GGUF_DENSE_Q4_T16", False)
+    audit.resolve_gguf_dense_flags(
+        "hip_gfx1100", "MOSTLY_Q4_K_M", capability_reader=audit.source_capability_reader(), environ={}
+    )
+    loaded = sorted(set(_sys.modules) - before)
+    assert [name for name in loaded if name.startswith("hipengine.kernels.hip_")] == []
+
+
+def test_check_constants_gate_fails_when_a_name_vanishes(tmp_path, capsys):
+    root = tmp_path
+    for backend in ("hip_gfx1100", "hip_gfx1151"):
+        (root / "hipengine" / "kernels" / backend).mkdir(parents=True)
+        (root / "hipengine" / "kernels" / backend / "__init__.py").write_text(
+            "GGUF_DENSE_Q4_T16 = True\n"
+        )
+    original_root = audit.REPO_ROOT
+    audit.REPO_ROOT = root
+    try:
+        assert audit.main(["--check-constants", str(tmp_path / "unused.gguf")]) == 2
+    finally:
+        audit.REPO_ROOT = original_root
+    assert "not defined by any backend" in capsys.readouterr().err
+
+    # With the real repository the gate passes (paths are still required).
+    assert audit.main(["--check-constants", str(tmp_path / "unused.gguf")]) == 0

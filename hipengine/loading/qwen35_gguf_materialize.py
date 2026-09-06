@@ -27,6 +27,10 @@ from hipengine.loading.qwen35_gguf import (
     Qwen35GGUFModelMap,
     build_qwen35_gguf_tensor_map,
 )
+from hipengine.loading.qwen35_gguf_policy import (
+    resolve_gguf_dense_flags,
+    gguf_ar_raw_iq_contract,
+)
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
@@ -280,13 +284,11 @@ def plan_qwen35_gguf_materialization(
     q6_planar_excluded = frozenset(
         str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
     )
-    contract_q3_f32_linear = any(
-        GGMLQuantizationType(tensor.ggml_type)
-        in {
-            GGMLQuantizationType.IQ2_XS,
-            GGMLQuantizationType.IQ3_XXS,
-            GGMLQuantizationType.IQ4_XS,
-        }
+    # Shared pure policy predicate (hipengine.loading.qwen35_gguf_policy):
+    # raw-IQ AR layers veto decode repack and contract the model's F32
+    # alpha/beta/router linear slots to BF16.
+    contract_q3_f32_linear = gguf_ar_raw_iq_contract(
+        tensor.ggml_type
         for layer in model_map.layers
         for tensor in layer.tensors.values()
     )
@@ -617,111 +619,19 @@ def materialize_qwen35_gguf_weights(
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     file_type_name = getattr(reader.info, "file_type_name", None)
-    raw_qmicro_file_types = backend_package_capability(
+    # Dense-capability and environment-override resolution is shared policy
+    # (hipengine.loading.qwen35_gguf_policy); the runtime passes the
+    # backend-package reader, the metadata audit passes a source-reading one.
+    dense_flags = resolve_gguf_dense_flags(
         backend,
-        "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES",
-        (),
-    )
-    qmicro_file_types = (
-        frozenset(str(item) for item in raw_qmicro_file_types)
-        if isinstance(raw_qmicro_file_types, (tuple, list, set, frozenset))
-        else frozenset()
+        file_type_name,
+        capability_reader=backend_package_capability,
+        environ=os.environ,
     )
     plan = plan_qwen35_gguf_materialization(
         model_map,
         decode_repack=decode_repack,
-        dense_q4_t16=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q4_T16",
-                False,
-            )
-        ),
-        dense_q4_qmicro_t16_gate_up=(
-            bool(
-                backend_package_capability(
-                    backend,
-                    "GGUF_DENSE_Q4_QMICRO_T16_GATE_UP",
-                    False,
-                )
-            )
-            and file_type_name in qmicro_file_types
-        ),
-        dense_q4_t16_attn_q_08b=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q4_T16_ATTN_Q_08B",
-                False,
-            )
-        ),
-        dense_q5_t16_ssm_out=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_SSM_OUT",
-                False,
-            )
-        ),
-        dense_q5_raw_mmq_ssm_out=(
-            os.environ.get("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", "1")
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "on"}
-            and bool(
-                backend_package_capability(
-                    backend,
-                    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
-                    False,
-                )
-            )
-        ),
-        dense_q5_qmicro_planar_ssm_out=(
-            os.environ.get("HIPENGINE_C8_Q5_PLANAR_DP4A", "0")
-            .strip()
-            .lower()
-            in {"1", "true", "yes", "on"}
-            and bool(
-                backend_package_capability(
-                    backend,
-                    "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
-                    False,
-                )
-            )
-        ),
-        dense_q5_t16_ssm_out_08b=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_SSM_OUT_08B",
-                False,
-            )
-        ),
-        dense_q5_t16_qkv=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_QKV",
-                False,
-            )
-        ),
-        dense_q5_t16_h5120=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q5_T16_H5120",
-                False,
-            )
-        ),
-        dense_q6_qmicro_planar=bool(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
-                False,
-            )
-        ),
-        dense_q6_qmicro_planar_excluded_slots=tuple(
-            backend_package_capability(
-                backend,
-                "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS",
-                (),
-            )
-        ),
+        **dense_flags,
     )
     selected = None if selected_slots is None else set(selected_slots)
     deferred = set() if deferred_device_slots is None else {str(slot) for slot in deferred_device_slots}
@@ -1021,6 +931,7 @@ def plan_qwen35_gguf_weight_spec(
     tensor: GGUFTensorInfo,
     *,
     decode_repack: bool = False,
+    contract_f32_linear: bool = False,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -1033,12 +944,19 @@ def plan_qwen35_gguf_weight_spec(
     dense_q6_qmicro_planar: bool = False,
     dense_q6_qmicro_planar_excluded_slots: Iterable[str] = (),
 ) -> Qwen35GGUFWeightSpec:
-    """Plan one canonical GGUF weight for AR or draft-model materialization."""
+    """Plan one canonical GGUF weight for AR or draft-model materialization.
+
+    ``contract_f32_linear`` carries the model-wide F32 contraction that the AR
+    planner derives from its raw-IQ predicate; callers that plan a draft or an
+    isolated slot without that model-wide context leave it False (the
+    historical default).
+    """
 
     return _spec_for_tensor(
         slot_path,
         tensor,
         decode_repack=bool(decode_repack),
+        contract_f32_linear=bool(contract_f32_linear),
         dense_q4_t16=bool(dense_q4_t16),
         dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
         dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
