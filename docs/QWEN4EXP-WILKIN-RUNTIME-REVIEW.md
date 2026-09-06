@@ -174,3 +174,29 @@ Add the runtime/graph census and qualified three-arm PM4 revisit to the
 campaign; retain UMA ownership and semantic-safe TOP_K as measured-cost-gated
 follow-ups. Keep the existing halo-box Vulkan target and binding quant.
 No dependency, runtime default, architecture admission or quality gate changes.
+
+## First Local Census
+
+At clean `e6f78c35d`, the existing collector measured code-p4096 prefill and
+three snapshot-restored live4097 decode steps on Framework. Prefill uses zero
+graph launches:26.992s kernel union in27.330s profiled wall. Its337ms residual
+is an upper bound on time without recorded kernels, not removable dispatch.
+Decode has48 kernel-only MoE graphs/625 nodes, accounting for625 of1836
+kernel dispatches. Intra-graph gaps total1.35-1.43ms per68.45-68.77ms window;
+API calls overlap kernels, so their2.12-2.78ms summed graph duration must not
+be added to that gap. No hot graph create/update calls; repeated token/state
+and lifecycle gates pass, with zero final tracked allocations.
+
+This does not justify replacing the runtime as the next **prefill** action.
+Keep a bounded decode revisit, and do not confuse structural kernel-only
+eligibility with full PM4 ABI/ownership qualification. Cold graph construction
+was outside the measured windows. The diagnostic capacities are4097 prefill
+(resolved from the pinned helper defaults) and4098 decode, not auto-native
+262144 serving. Native-capacity promotion would require its own gates.
+
+Artifact:
+[`2026-09-06-framework-qwen4exp-wilkin-graph-census.json`](../benchmarks/results/2026-09-06-framework-qwen4exp-wilkin-graph-census.json).
+Regenerate with `scripts/qwen4exp_graph_census.py --capture
+/tmp/qwen4exp-wilkin-graph-census.json --output <path>`. It checks child hashes,
+clean captured source and closed ownership, and uses interval unions to avoid
+double-counting concurrent kernel/API durations.

@@ -76,6 +76,22 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**WIL-1 current graph census (September6 UTC):** clean `e6f78c35d` code4096
+prefill has24940 kernel dispatches and **zero graph launches**; recorded kernel
+union26.992s of27.330s profiled wall, residual337ms (1.23%). This residual
+includes copies/waits/Python/profiling, not a PM4-saving estimate.
+At live4097 decode,48 MoE graphs contain625 kernel nodes and cover625/1836
+dispatches. Three exact token/state repeats record68.45-68.77ms windows,
+60.77-60.83ms kernel union and1.35-1.43ms intra-graph gaps. Graph API duration
+sums2.12-2.78ms mostly overlap kernels; only0.136-0.167ms lies outside recorded
+kernel intervals. No graph create/update APIs inside hot windows; captures
+stay48, replays increase0->144, no rejects/eager fallback, zero final ownership.
+**Decision:** no custom-runtime build justified as the next prefill fix.
+Retain PM4 as a bounded decode follow-up; neither graph gaps nor the7.62-7.98ms
+total non-kernel residual is a measured attainable speedup. Full ABI/lifecycle
+PM4 eligibility and unprofiled A/B remain unrun.21 parser/collector tests pass.
+[Reproducible census](../benchmarks/results/2026-09-06-framework-qwen4exp-wilkin-graph-census.json).
+
 **Q4 packed LDS cache rejected (September6 UTC):** staging packed nibbles
 in8192 additional LDS bytes avoids full K unrolling but still loses0.646x
 on actual layer3/mixed4096 chunk7. Thirteen GPU tests and ten real pairs exact.
@@ -1255,8 +1271,8 @@ No external code or library installed; no new local speed claim.
 
 | Follow-up | Concrete difference / applicability | Next gate and disposition |
 | --- | --- | --- |
-| WIL-1: gfx1151 PM4 through HIP queue | External prepared lists use HIP's tracked queue and queue-aware scratch leases; ours is gfx1100-only with synchronous dedicated-queue boundaries. | **Open, first runtime follow-up:** census current Flash-Next graph eligibility and exposed dispatch cost. If paying, isolated current HIP graph / custom AQL graph / custom PM4 A/B, exact logits/state/KV/lifecycle/c2. Preserve prefill-first ranking by measured ceiling. |
-| WIL-2: graph update and collapsed batches | Batched packet rebuilding, topology caching and optional collapsed-stream merge may reduce construction/rebuild cost without changing kernels. | **Open, cost-gated:** count actual updates and amortize preparation; test independently of PM4. Stable per-layer MoE graphs may have little update work. |
+| WIL-1: gfx1151 PM4 through HIP queue | External prepared lists use HIP's tracked queue and queue-aware scratch leases; ours is gfx1100-only with synchronous dedicated-queue boundaries. | **Census measured; runtime A/B deferred for prefill:** current code4096 has no prefill graph launches. Decode48 graphs/625 nodes, intra-graph gaps1.35-1.43ms; full ABI qualification and current HIP graph / custom AQL graph / custom PM4 A/B remain open for a paying decode scope. |
+| WIL-2: graph update and collapsed batches | Batched packet rebuilding, topology caching and optional collapsed-stream merge may reduce construction/rebuild cost without changing kernels. | **Hot-window update opportunity absent in measured case:** zero create/update APIs, stable48 graphs,144 replays. Cold/rebuild cost remains unmeasured by this hot census; test independently of PM4 if it becomes material. |
 | WIL-3: UMA input ownership | Ring slot retirement, pointer-generation invalidation and async allocation-root pinning are useful design checks. PLE currently documents synchronous consumption. | **Open before async PLE changes:** delayed consumer/wrap/cancel/c2 tests plus complete copy/wait timing and capacity charge; not a demonstrated current race or automatic ring-depth increase. |
 | WIL-4: semantic-safe TOP_K | Multi-CTA radix thresholding may help long-context selection; our QSA already has radix selection and strict ordered expansion. | **Open, lower priority until owner cost pays:** exact lower-index ties and sorted compaction after threshold. External atomic gather is not admissible unchanged. Separate QSA, top10 router and vocabulary k1 owners. |
 
