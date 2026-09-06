@@ -2,8 +2,10 @@
 
 ## Qwen4Exp folded Q5_1 pair-reduction candidate
 
-- Kernel-only `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out`
-  shares barrier stages across folded outputs. No runtime flag yet.
+- `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out` shares barrier
+  stages across folded outputs. Default-off
+  `HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL` applies only after fold128
+  selection and rows>=512;both profile binders pin0 during admission.
 - Admit only measured rows>=512;64-row timing has an adverse order stratum.
   Keep sequential fold128 for smaller chunks and rollback.
 - Full-model invocation/logits/state/KV plus12-case A/B must pass before

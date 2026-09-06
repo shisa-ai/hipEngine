@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Folded Q5_1 pair default-off admission passes five exact full-logit/state/KV
+cases:25/200 prefill calls,zero decode calls/leaks. Clean12-case A/B pending.
+[State evidence](results/2026-09-06-framework-qwen4exp-q51-fold-pair-state.json).
+
 Folded Q5_1 pair-reduction candidate: captured code/mixed512 two-bank screens
 40.002->34.404ms (1.163x)/39.123->33.729ms (1.160x),exact.
 Small-row order regression excludes that scope;model gates pending.

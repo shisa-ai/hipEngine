@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Folded Q5_1 pair default-off admission (September6 UTC):** selector applies
+only after fold128 and rows>=512;both binders0,smaller chunks stay sequential.
+Five code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
+four decode steps,state/full KV exactly. Calls0/25/0 or0/200/0 only in prefill,
+zero decode/final owners.28 CPU tests pass. Next clean12-case A/B:
+`--route-package q51-fold-pair`;no new throughput or native-capacity claim.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair-state.json).
+
 **Folded Q5_1 pair reduction candidate (September6 UTC):** combine both
 fold128 output reductions within the original unfolded pair2 LDS budget,
 not the rejected doubled unfolded arena. Captured code/mixed512-row screens

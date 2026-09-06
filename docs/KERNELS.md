@@ -912,6 +912,12 @@ Small64-row candidate-first loses0.936x,so only rows>=512 is eligible for
 future admission. No runtime/default change before complete-model gates.
 Evidence: `2026-09-06-framework-qwen4exp-q51-fold-pair.json`.
 
+Default-off folded-pair admission passes five full-model logits/state/KV
+cases,four decode steps each;25/200 candidate calls only in enabled prefill,
+zero final allocations. Only fold128-selected rows>=512 eligible,both binders0.
+Twenty-eight CPU route/profile/harness tests pass;clean12-case A/B pending.
+Evidence: `2026-09-06-framework-qwen4exp-q51-fold-pair-state.json`.
+
 Earlier default-off model admission passes five full logits/state/full-KV cases,
 four decode steps each, with25/200 candidate calls only in enabled prefill
 and zero final allocations.38 CPU route/profile/harness tests pass.
