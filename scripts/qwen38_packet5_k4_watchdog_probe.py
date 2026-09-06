@@ -131,7 +131,8 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=900.0)
     parser.add_argument("--width", type=int, default=8)
     parser.add_argument("--budget", type=int, default=4)
-    parser.add_argument("--max-tokens", type=int, default=12)
+    parser.add_argument("--max-tokens", type=int, default=24,
+                        help="24 matches every Qwen3.8 evidence row's output horizon")
     parser.add_argument("--prompt-count", type=int, default=0,
                         help="0 keeps the canonical suite (required by the bench gate)")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
