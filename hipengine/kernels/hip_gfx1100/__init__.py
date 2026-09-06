@@ -609,19 +609,21 @@ GGUF_SHARED_SLOT_AR_PHYSICAL_WIDTHS = (1, 2, 3, 4, 5, 6, 7, 8)
 GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # Performance policy: which speculative depths are worth offering per physical
 # width. This is a tuning surface, not a safety one -- model serving evidence
-# (hipengine/models/qwen35.py) independently gates correctness by profile
-# hash, capacity, context, horizon, and sampling mode, and an unmatched key
-# always falls back to K0. Widths/depths absent here are simply never offered.
-# Held open across C1-C8 x K1-K4 while the depth sweep runs; it is narrowed to
-# the measured optimum once the matrix is recorded.
+# (hipengine/models/qwen35.py) independently gates correctness by profile hash,
+# capacity, context, horizon, and sampling mode, and an unmatched key always
+# falls back to K0. Widths/depths absent here are simply never offered.
+#
+# The table is backend-wide, so it stays at the union of cells the qualified
+# models still use. Per-model depth choices belong in that model's serving
+# evidence: Qwen3.8-27B Q4_K_M measured K0 as optimal at every width on this
+# backend and its rows are no longer automatic, while the Qwen3.6 C1/C2 cells
+# here remain in use and unmeasured by that sweep.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
-    "production": tuple(
-        (width, depth) for width in range(1, 9) for depth in range(1, 5)
-    ),
+    "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
     "strict": ((2, 2),),
 }
 # Production prompt streaming follows the same model-local physical evidence.

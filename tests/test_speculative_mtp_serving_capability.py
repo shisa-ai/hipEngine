@@ -163,9 +163,16 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
 
     decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
     assert decision.admitted is True
-    assert decision.automatic_eligible is True
+    # Qwen3.8 MTP is no longer automatic on gfx1100: the 2026-09-06 C x K
+    # sweep measured every width below its own AR arm (best cell C8/K3 at
+    # 0.9902x), so the rows stay admissible for explicit opt-in and
+    # re-measurement but the automatic route selects AR.
+    assert decision.automatic_eligible is False
     assert decision.selected_candidate_count == 2
-    assert decision.reason == "qualified_automatic_gfx1100_production_c2_k2_d24"
+    assert decision.reason == (
+        "qualified_automatic_gfx1100_production_c2_k2_d24"
+        "_measured_slower_than_ar_2026_09_06"
+    )
     assert decision.static_eligibility.max_realized_group_rows == 2
     assert any(
         path.endswith("2026-08-30-w7900-qwen38-q4km-p12-c2-automatic-promotion.json")
@@ -226,9 +233,16 @@ def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> No
 
     decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
     assert decision.admitted is True
-    assert decision.automatic_eligible is True
+    # Qwen3.8 MTP is no longer automatic on gfx1100: the 2026-09-06 C x K
+    # sweep measured every width below its own AR arm (best cell C8/K3 at
+    # 0.9902x), so the rows stay admissible for explicit opt-in and
+    # re-measurement but the automatic route selects AR.
+    assert decision.automatic_eligible is False
     assert decision.selected_candidate_count == 3
-    assert decision.reason == "qualified_automatic_gfx1100_production_c8_k3_d24"
+    assert decision.reason == (
+        "qualified_automatic_gfx1100_production_c8_k3_d24"
+        "_measured_slower_than_ar_2026_09_06"
+    )
     assert decision.static_eligibility.max_realized_group_rows == 8
     assert decision.evidence_artifacts[-1].endswith(
         "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"

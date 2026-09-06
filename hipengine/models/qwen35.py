@@ -421,7 +421,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         max_context_tokens=95,
         min_output_horizon_tokens=24,
         max_output_horizon_tokens=24,
-        reason="qualified_automatic_gfx1100_production_c2_k2_d24",
+        reason="qualified_automatic_gfx1100_production_c2_k2_d24_measured_slower_than_ar_2026_09_06",
         evidence_artifacts=(
             "benchmarks/results/2026-08-29-w7900-qwen38-q4km-p8-c2-correctness-closure.json",
             "benchmarks/results/2026-08-30-w7900-qwen38-q4km-p11-integrated-explicit-c2.json",
@@ -430,7 +430,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         ),
         max_realized_group_rows=2,
         strict_fallback_key="gguf_target_ar",
-        automatic_eligible=True,
+        automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1100-production-bf16-c8-k3-d24",
@@ -449,14 +449,14 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         kv_layout="uniform",
         realized_group_rows=8,
         resident_capacity=8,
-        candidate_budget=4,
+        candidate_budget=3,
         sampling_modes=("greedy_fast",),
         max_sequence_length=1024,
         min_context_tokens=4,
         max_context_tokens=95,
         min_output_horizon_tokens=24,
         max_output_horizon_tokens=24,
-        reason="qualified_automatic_gfx1100_production_c8_k3_d24",
+        reason="qualified_automatic_gfx1100_production_c8_k3_d24_measured_slower_than_ar_2026_09_06",
         evidence_artifacts=(
             "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-l4-numerics.json",
             "benchmarks/results/2026-09-04-w7900-q4km-k3-c8-p4-q6-dp4a-retention-e2e.json",
@@ -464,7 +464,7 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         ),
         max_realized_group_rows=8,
         strict_fallback_key="gguf_target_ar",
-        automatic_eligible=True,
+        automatic_eligible=False,
     ),
 )
 

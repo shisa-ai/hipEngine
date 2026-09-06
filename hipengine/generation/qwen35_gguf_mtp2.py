@@ -552,9 +552,16 @@ _MTP2_CERTIFIED_WIDTH_DEPTHS = tuple(
 )
 _MTP2_MAX_PHYSICAL_REQUESTS = 8
 # Single source of truth for speculative candidate depth. Every clamp, default,
-# and validator must derive from this; duplicating the literal is how K4 stayed
-# unreachable while the server env already accepted it.
-MTP2_MAX_CANDIDATE_DEPTH = 4
+# and validator must derive from this; the limit was previously duplicated as a
+# validator constant, a hardcoded adapter clamp, and a getattr default.
+#
+# Held at 3 because depth 4 does not complete. Raising it to 4 and qualifying a
+# K4 serving-evidence row on the W7900 (Qwen3.8-27B Q4_K_M, physical C8) made
+# the bench hang: two runs produced no prompt output and were killed at 20 and
+# 50 minutes, against roughly 4-5 minutes for the same shape at K3. The server
+# env has always accepted budgets 1-4, so this bound is what keeps a K4 request
+# from reaching that path.
+MTP2_MAX_CANDIDATE_DEPTH = 3
 _MTP2_MAX_CANDIDATE_DEPTH = MTP2_MAX_CANDIDATE_DEPTH
 
 

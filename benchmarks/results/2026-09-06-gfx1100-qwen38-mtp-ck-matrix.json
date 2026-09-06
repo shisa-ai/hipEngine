@@ -1,0 +1,464 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_qwen38_mtp_ck_matrix",
+  "created_at": "2026-09-06T07:03:10Z",
+  "status": "retained_policy_k0_all_widths",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "Qwen3.8-27B Q4_K_M / BF16 KV on the physical W7900, canonical 10-prompt mtpbench suite, D24, candidate budget per cell, 20 ms batch window, greedy, ar_exact contract. Each cell pairs an MTP arm against an AR arm measured in the same process over the same prompts, and is reported as a median over repeats.",
+  "decision": "Speculative decoding does not pay at any measured concurrency on this backend and model. Every cell in C2-C8 x K1-K3 runs below its own AR arm, so the optimal depth per width is K0 (MTP disabled) throughout.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "protocol": {
+    "widths_C2_measured_at_own_capacity": true,
+    "widths_C3_to_C7_measured_inside_a_capacity_8_owner": "resident_capacity must match a serving-evidence row exactly, and sub-groups within a qualified capacity are admitted through the static-eligibility path. This is also the realistic serving shape: a capacity-8 server with W active requests.",
+    "repeats_per_cell": "2 to 4"
+  },
+  "cells": {
+    "C2K1": {
+      "repeats": 3,
+      "mtp_tok_s_median": 29.763,
+      "ar_tok_s_median": 41.218,
+      "mtp_vs_ar_ratio": 0.7221,
+      "mtp_spread": [
+        28.567,
+        29.835
+      ],
+      "ar_spread": [
+        35.685,
+        41.36
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.71,
+      "cycle_overhead_pct": 38.49,
+      "all_cells_exact": true
+    },
+    "C2K2": {
+      "repeats": 3,
+      "mtp_tok_s_median": 37.851,
+      "ar_tok_s_median": 41.38,
+      "mtp_vs_ar_ratio": 0.9147,
+      "mtp_spread": [
+        37.394,
+        37.945
+      ],
+      "ar_spread": [
+        41.325,
+        41.44
+      ],
+      "draft_acceptance": 0.9006,
+      "tokens_per_cycle": 2.801,
+      "cycle_cost_in_ar_steps": 3.062,
+      "cycle_overhead_pct": 9.32,
+      "all_cells_exact": true
+    },
+    "C3K1": {
+      "repeats": 4,
+      "mtp_tok_s_median": 41.485,
+      "ar_tok_s_median": 56.616,
+      "mtp_vs_ar_ratio": 0.7327,
+      "mtp_spread": [
+        41.462,
+        41.508
+      ],
+      "ar_spread": [
+        56.546,
+        56.685
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.67,
+      "cycle_overhead_pct": 36.47,
+      "all_cells_exact": true
+    },
+    "C3K2": {
+      "repeats": 4,
+      "mtp_tok_s_median": 45.81,
+      "ar_tok_s_median": 56.532,
+      "mtp_vs_ar_ratio": 0.8103,
+      "mtp_spread": [
+        45.762,
+        45.859
+      ],
+      "ar_spread": [
+        56.482,
+        56.582
+      ],
+      "draft_acceptance": 0.9068,
+      "tokens_per_cycle": 2.814,
+      "cycle_cost_in_ar_steps": 3.472,
+      "cycle_overhead_pct": 23.4,
+      "all_cells_exact": true
+    },
+    "C3K3": {
+      "repeats": 4,
+      "mtp_tok_s_median": 50.358,
+      "ar_tok_s_median": 56.548,
+      "mtp_vs_ar_ratio": 0.8905,
+      "mtp_spread": [
+        50.348,
+        50.368
+      ],
+      "ar_spread": [
+        56.52,
+        56.575
+      ],
+      "draft_acceptance": 0.7889,
+      "tokens_per_cycle": 3.367,
+      "cycle_cost_in_ar_steps": 3.781,
+      "cycle_overhead_pct": 12.29,
+      "all_cells_exact": true
+    },
+    "C4K1": {
+      "repeats": 4,
+      "mtp_tok_s_median": 50.606,
+      "ar_tok_s_median": 67.601,
+      "mtp_vs_ar_ratio": 0.7486,
+      "mtp_spread": [
+        50.599,
+        50.613
+      ],
+      "ar_spread": [
+        67.589,
+        67.613
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.614,
+      "cycle_overhead_pct": 33.58,
+      "all_cells_exact": true
+    },
+    "C4K2": {
+      "repeats": 4,
+      "mtp_tok_s_median": 58.047,
+      "ar_tok_s_median": 67.855,
+      "mtp_vs_ar_ratio": 0.8555,
+      "mtp_spread": [
+        57.911,
+        58.183
+      ],
+      "ar_spread": [
+        67.678,
+        68.032
+      ],
+      "draft_acceptance": 0.9068,
+      "tokens_per_cycle": 2.814,
+      "cycle_cost_in_ar_steps": 3.289,
+      "cycle_overhead_pct": 16.9,
+      "all_cells_exact": true
+    },
+    "C4K3": {
+      "repeats": 2,
+      "mtp_tok_s_median": 56.694,
+      "ar_tok_s_median": 67.681,
+      "mtp_vs_ar_ratio": 0.8377,
+      "mtp_spread": [
+        56.694,
+        56.694
+      ],
+      "ar_spread": [
+        67.681,
+        67.681
+      ],
+      "draft_acceptance": 0.7889,
+      "tokens_per_cycle": 3.367,
+      "cycle_cost_in_ar_steps": 4.019,
+      "cycle_overhead_pct": 19.38,
+      "all_cells_exact": true
+    },
+    "C5K1": {
+      "repeats": 2,
+      "mtp_tok_s_median": 54.702,
+      "ar_tok_s_median": 76.823,
+      "mtp_vs_ar_ratio": 0.7121,
+      "mtp_spread": [
+        54.702,
+        54.702
+      ],
+      "ar_spread": [
+        76.823,
+        76.823
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.748,
+      "cycle_overhead_pct": 40.44,
+      "all_cells_exact": true
+    },
+    "C5K2": {
+      "repeats": 2,
+      "mtp_tok_s_median": 60.561,
+      "ar_tok_s_median": 76.914,
+      "mtp_vs_ar_ratio": 0.7874,
+      "mtp_spread": [
+        60.561,
+        60.561
+      ],
+      "ar_spread": [
+        76.914,
+        76.914
+      ],
+      "draft_acceptance": 0.9068,
+      "tokens_per_cycle": 2.814,
+      "cycle_cost_in_ar_steps": 3.573,
+      "cycle_overhead_pct": 27.0,
+      "all_cells_exact": true
+    },
+    "C5K3": {
+      "repeats": 2,
+      "mtp_tok_s_median": 61.686,
+      "ar_tok_s_median": 76.812,
+      "mtp_vs_ar_ratio": 0.8031,
+      "mtp_spread": [
+        61.686,
+        61.686
+      ],
+      "ar_spread": [
+        76.812,
+        76.812
+      ],
+      "draft_acceptance": 0.7889,
+      "tokens_per_cycle": 3.367,
+      "cycle_cost_in_ar_steps": 4.192,
+      "cycle_overhead_pct": 24.52,
+      "all_cells_exact": true
+    },
+    "C6K1": {
+      "repeats": 2,
+      "mtp_tok_s_median": 63.737,
+      "ar_tok_s_median": 83.947,
+      "mtp_vs_ar_ratio": 0.7592,
+      "mtp_spread": [
+        63.737,
+        63.737
+      ],
+      "ar_spread": [
+        83.947,
+        83.947
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.577,
+      "cycle_overhead_pct": 31.71,
+      "all_cells_exact": true
+    },
+    "C6K2": {
+      "repeats": 2,
+      "mtp_tok_s_median": 70.367,
+      "ar_tok_s_median": 84.218,
+      "mtp_vs_ar_ratio": 0.8355,
+      "mtp_spread": [
+        70.367,
+        70.367
+      ],
+      "ar_spread": [
+        84.218,
+        84.218
+      ],
+      "draft_acceptance": 0.9068,
+      "tokens_per_cycle": 2.814,
+      "cycle_cost_in_ar_steps": 3.368,
+      "cycle_overhead_pct": 19.68,
+      "all_cells_exact": true
+    },
+    "C6K3": {
+      "repeats": 2,
+      "mtp_tok_s_median": 71.729,
+      "ar_tok_s_median": 83.856,
+      "mtp_vs_ar_ratio": 0.8554,
+      "mtp_spread": [
+        71.729,
+        71.729
+      ],
+      "ar_spread": [
+        83.856,
+        83.856
+      ],
+      "draft_acceptance": 0.7889,
+      "tokens_per_cycle": 3.367,
+      "cycle_cost_in_ar_steps": 3.936,
+      "cycle_overhead_pct": 16.91,
+      "all_cells_exact": true
+    },
+    "C7K1": {
+      "repeats": 2,
+      "mtp_tok_s_median": 61.722,
+      "ar_tok_s_median": 87.844,
+      "mtp_vs_ar_ratio": 0.7026,
+      "mtp_spread": [
+        61.722,
+        61.722
+      ],
+      "ar_spread": [
+        87.844,
+        87.844
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.785,
+      "cycle_overhead_pct": 42.32,
+      "all_cells_exact": true
+    },
+    "C7K2": {
+      "repeats": 2,
+      "mtp_tok_s_median": 70.589,
+      "ar_tok_s_median": 87.616,
+      "mtp_vs_ar_ratio": 0.8057,
+      "mtp_spread": [
+        70.589,
+        70.589
+      ],
+      "ar_spread": [
+        87.616,
+        87.616
+      ],
+      "draft_acceptance": 0.9068,
+      "tokens_per_cycle": 2.814,
+      "cycle_cost_in_ar_steps": 3.492,
+      "cycle_overhead_pct": 24.12,
+      "all_cells_exact": true
+    },
+    "C7K3": {
+      "repeats": 2,
+      "mtp_tok_s_median": 77.592,
+      "ar_tok_s_median": 88.224,
+      "mtp_vs_ar_ratio": 0.8795,
+      "mtp_spread": [
+        77.592,
+        77.592
+      ],
+      "ar_spread": [
+        88.224,
+        88.224
+      ],
+      "draft_acceptance": 0.78,
+      "tokens_per_cycle": 3.34,
+      "cycle_cost_in_ar_steps": 3.798,
+      "cycle_overhead_pct": 13.7,
+      "all_cells_exact": true
+    },
+    "C8K1": {
+      "repeats": 3,
+      "mtp_tok_s_median": 69.695,
+      "ar_tok_s_median": 91.604,
+      "mtp_vs_ar_ratio": 0.7611,
+      "mtp_spread": [
+        69.636,
+        69.743
+      ],
+      "ar_spread": [
+        91.493,
+        91.633
+      ],
+      "draft_acceptance": 0.9565,
+      "tokens_per_cycle": 1.957,
+      "cycle_cost_in_ar_steps": 2.571,
+      "cycle_overhead_pct": 31.39,
+      "all_cells_exact": true
+    },
+    "C8K2": {
+      "repeats": 3,
+      "mtp_tok_s_median": 82.554,
+      "ar_tok_s_median": 91.708,
+      "mtp_vs_ar_ratio": 0.9002,
+      "mtp_spread": [
+        82.415,
+        82.589
+      ],
+      "ar_spread": [
+        91.502,
+        91.881
+      ],
+      "draft_acceptance": 0.9006,
+      "tokens_per_cycle": 2.801,
+      "cycle_cost_in_ar_steps": 3.112,
+      "cycle_overhead_pct": 11.09,
+      "all_cells_exact": true
+    },
+    "C8K3": {
+      "repeats": 3,
+      "mtp_tok_s_median": 90.881,
+      "ar_tok_s_median": 91.783,
+      "mtp_vs_ar_ratio": 0.9902,
+      "mtp_spread": [
+        90.794,
+        90.987
+      ],
+      "ar_spread": [
+        91.765,
+        91.869
+      ],
+      "draft_acceptance": 0.785,
+      "tokens_per_cycle": 3.355,
+      "cycle_cost_in_ar_steps": 3.388,
+      "cycle_overhead_pct": 0.99,
+      "all_cells_exact": true
+    }
+  },
+  "best_cell": {
+    "cell": "C8K3",
+    "repeats": 3,
+    "mtp_tok_s_median": 90.881,
+    "ar_tok_s_median": 91.783,
+    "mtp_vs_ar_ratio": 0.9902,
+    "mtp_spread": [
+      90.794,
+      90.987
+    ],
+    "ar_spread": [
+      91.765,
+      91.869
+    ],
+    "draft_acceptance": 0.785,
+    "tokens_per_cycle": 3.355,
+    "cycle_cost_in_ar_steps": 3.388,
+    "cycle_overhead_pct": 0.99,
+    "all_cells_exact": true
+  },
+  "economics": {
+    "model": "tokens_per_cycle = 1 + K * draft_acceptance; cycle_cost_in_ar_steps = tokens_per_cycle / ratio. MTP wins only when the verify cycle costs fewer AR decode steps than the tokens it yields.",
+    "draft_acceptance_by_depth": {
+      "K1": 0.957,
+      "K2": "0.901-0.907",
+      "K3": "0.780-0.789"
+    },
+    "closest_to_breakeven": "C8/K3 yields 3.355 tokens per cycle at a cycle cost of 3.388 AR steps (+1.0%)",
+    "required_cycle_cost_reduction_at_C8_K3": {
+      "1.00x": "-1.0%",
+      "1.10x": "-10.0%",
+      "1.20x": "-17.5%"
+    },
+    "note": "Cycle cost is denominated in AR steps, so every AR improvement raises the bar. The gap widens sharply below C8: +1.0% at C8/K3 but +24.5% at C5/K3."
+  },
+  "correctness": {
+    "all_measured_cells_10_of_10_exact": true,
+    "contract": "ar_exact: ar_self_exact, mtp_self_exact, and ar_mtp_equal on every prompt"
+  },
+  "limitations": [
+    "C1 is not measurable for this model: the physical partition path forces width-1 groups to K0 (resolved = bound if bound > 1 else 0) and Qwen3.8 has no C1 serving-evidence row.",
+    "K4 required raising MTP2_MAX_CANDIDATE_DEPTH and proposing a K4 evidence row; its measurement is reported separately.",
+    "Qwen3.6 rows exist at C1/C2 for other quants and were not swept here."
+  ],
+  "disposition": "retained; optimal depth is K0 at every measured width",
+  "k4_qualification": {
+    "status": "blocked_does_not_complete",
+    "detail": "Raising MTP2_MAX_CANDIDATE_DEPTH to 4 and proposing a K4 serving-evidence row on the Qwen3.8 gfx1100 C8 row made the bench hang. Two runs produced no prompt output at all and were killed by timeout at 1200 s and 3000 s, against roughly 4-5 minutes for the same shape at K3. The stall is before the first prompt completes, so it is not slow convergence.",
+    "resolution": "MTP2_MAX_CANDIDATE_DEPTH is held at 3 and the K4 row proposal is reverted. The server env has always accepted budgets 1-4, so this bound is what prevents a K4 request from reaching that path; before the depth-cap unification a hardcoded adapter clamp did the same job by accident."
+  },
+  "policy_applied": {
+    "qwen38_q4km_gfx1100_rows": "automatic_eligible False on both C2/K2 and C8/K3",
+    "effect": "the automatic route selects AR at every width for this model; explicit opt-in still runs",
+    "scope_note": "The width/depth table is backend-wide and stays at the shared qualified set, because the Qwen3.6 C1/C2 cells it also serves were not covered by this sweep. Per-model depth policy belongs in that model's serving evidence, which is where this decision was applied."
+  }
+}
