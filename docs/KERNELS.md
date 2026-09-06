@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+The Q5_1 folded-pair decoded-LDS weight-cache experiment is rejected and
+removed: captured actual two-bank projection34.449->58.987ms (0.584x),
+exact. Dynamic LDS8672->13792B,VGPR72/scratch0 unchanged. Original
+folded-pair production and strict fallback remain. Do not repeat unchanged
+LDS materialization;see `2026-09-06-framework-qwen4exp-q51-weight-cache-rejected.json`.
+
 Q8 MMQ also exposes
 `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`. It copies aligned
 four-word activation groups instead of scalar words, preserving all three

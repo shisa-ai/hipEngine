@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q5_1 decoded-LDS cache rejected: actual captured-routing two-bank projection
+34.449->58.987ms (+71.23% time),exact and both orders slower. Candidate
+removed;production unchanged,no model A/B spent.
+[Evidence](results/2026-09-06-framework-qwen4exp-q51-weight-cache-rejected.json).
+
 | Framework UD-Q4_K_XL / BF16 KV fresh combined-default screen | p512 PP / TG | p1024 PP / TG | p4096 PP / TG |
 | --- | ---: | ---: | ---: |
 | hipEngine production | 168.58 / 19.64 | 166.86 / 19.01 | 155.89 / 14.89 |

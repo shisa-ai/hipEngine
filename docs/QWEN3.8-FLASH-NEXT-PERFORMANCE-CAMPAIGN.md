@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 decoded-LDS weight reuse rejected (September6 UTC):** decode both
+640-element output weight rows once before the routed-row loop, preserving
+folded-pair arithmetic. Captured code4096chunk0 routing/actual layer0+1
+banks measure34.449->58.987ms (+71.23% time,0.584x),both orders negative,
+all20 pairs exact.17 GPU tests pass. Cached trace17.155->29.344ms per
+projection;72 VGPR/zero scratch unchanged,requested dynamic LDS8672->
+13792B. Staging/residency costs are not isolated,so do not overstate the
+cause. Candidate removed;no model A/B and no runtime default change.
+Do not repeat unchanged decoded-LDS caching on this owner.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-weight-cache-rejected.json).
+
 **Combined-default baseline refresh (September6 UTC):** clean `5104604e1`
 serial hipEngine/Vulkan/HIP full12-case suites complete,36 samples each,
 all within-engine outputs repeat and clean teardown. hipEngine PP/TG:
