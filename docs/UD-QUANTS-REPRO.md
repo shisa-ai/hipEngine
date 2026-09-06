@@ -159,3 +159,34 @@ print(json.dumps(report, indent=2))
   outside the weight formulas, or loader transient coexistence is included.
 - This review's snapshot output is [UD-QUANTS-REVIEW.json](UD-QUANTS-REVIEW.json).
   No full tensor-payload hashes were read during this CPU-only analysis.
+
+## Schema-v2 Snapshot (UD-U0 repair, 2026-09-07)
+
+The repaired audit supersedes the inline script above for reporting. Its
+schema-v2 output is [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json)
+(`schema_version: 2`: header identity over `[0, data_start)`, per-scope
+allocation accounting from `planned_qwen35_gguf_weight_allocation_nbytes` with
+sidecar reasons and both hypothetical refusal treatments, shared-policy
+capability resolution with per-capability status, and `f32_contracted_slots`).
+The artifact is the exact CLI output below, so a byte-identical regeneration
+on the same pinned files is the reproduction test:
+
+```bash
+cd /home/lhl/hipEngine-ud-quants && git checkout <commit>
+env -u HIPENGINE_GGUF_DECODE_REPACK -u HIPENGINE_GGUF_C8_Q5_RAW_MMQ \
+  -u HIPENGINE_C8_Q5_PLANAR_DP4A \
+  .venv/bin/python scripts/gguf_quant_route_audit.py \
+  /models/gguf/Qwen3.8-27B-Q4_K_M.gguf \
+  /models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf \
+  /models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf \
+  --json /tmp/ud-u0-v2-full.json
+```
+
+Artifact identity (upstream revisions, payload checksum provenance, local
+sizes, header hashes) is pinned in
+[UD-QUANTS-U0-IDENTITY.json](UD-QUANTS-U0-IDENTITY.json). The allocation
+totals of this snapshot reproduce the section-3/4 tables of
+[UD-QUANTS.md](UD-QUANTS.md) exactly; per-scope refusal lists, sidecar
+counts/bytes, and NextN draft scopes are additional detail the older snapshot
+did not carry. Everything remains metadata-only: no payload bytes beyond the
+header region are read, and no section is model admission.
