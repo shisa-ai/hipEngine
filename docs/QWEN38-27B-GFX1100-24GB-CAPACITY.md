@@ -410,8 +410,21 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 3 — Qualify smaller weights and compact INT8
 
-- [ ] Compare actual resident and load-peak `Q4_K_M`/`Q4_K_S` bytes, throughput
+- [x] Compare actual resident and load-peak `Q4_K_M`/`Q4_K_S` bytes, throughput
   and quality. Inventory MTP tensor availability and preserve artifact identity.
+  Bytes done 2026-09-06: Q4_K_S saves 0.918 GiB of file bytes but parks more
+  device memory (resident +0.176 GiB, request peak +2.061 GiB pre-scratch-cap)
+  because it stores 8 ffn_down, 3 attn_qkv and 1 attn_v as dense BF16 where
+  Q4_K_M stores Q6_K_T16 layouts. Throughput and MTP availability done
+  2026-09-07: same-session matched pairs on the XTX at 512/128 (BF16 KV,
+  persistent session, graph-replay decode) — decode ties (~34.0 tok/s both
+  routes) while Q4_K_S prefills 38.4% slower on the shipping AR route (602.5
+  vs 978.7 tok/s; default route 320.1 vs 963.3), and both files carry the
+  identical 4 `blk.64.nextn` tensors so MTP availability is unchanged.
+  Evidence: `results/2026-09-07-rx7900xtx-capacity-q4ks-q4km-throughput.json`
+  and `results/2026-09-06-rx7900xtx-capacity-q4ks-vs-q4km-bytes.json`.
+  Q4_K_M remains the default; per-quant quality gates stay with the
+  teacher-gating item (no reuse of Q4_K_M/gfx1151 evidence for Q4_K_S/XTX).
 - [ ] Prove effective compact INT8 has no persistent BF16 shadow. Bound and
   reuse prefill oracles; a smaller steady cache with an oversized prefill peak
   does not fit. Account for scales, pool planes and graph scratch.
