@@ -1,15 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp Q5_K bundled row4 candidate
+## Qwen4Exp Q5_K bundled row4 candidate: removed
 
-- `selected_grouped_row4_bundle_gemv_bf16_bf16_out` bundles publication
-  with exact arithmetic. Default-off `HIPENGINE_QWEN4_EXP_Q5K_BUNDLE_PREFILL`
-  substitutes only the already-admitted Q5_K row4 gate/up path,rows>=64.
-  Both profile binders pin0 until model performance validation.
-- Require invocation-checked model state/KV and canonical A/B before
-  promotion;retain original row4 rollback and strict selected GEMV.
-- Small expected whole-model contribution:record micro/window evidence
-  separately from model throughput;remove if complete-model gates reject it.
+- Closed September6 UTC: all72 canonical trajectories exact, but five
+  prefill and six request-wall cases regress. Removed candidate kernel,
+  registry key, flag and harness routes; original row4 and strict fallback
+  remain. The separately retained Q8 bundle is unaffected.
+- Do not reopen unchanged bundled publication on the strength of its
+  isolated1.02x screen. Evidence:
+  `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.
 
 ## Qwen4Exp folded Q5_1 pair-reduction rollback
 

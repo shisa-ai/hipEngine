@@ -2,14 +2,16 @@
 
 Last updated: **2026-09-06 UTC**
 
-Q5_K bundle default-off admission passes five exact full-logit/state/KV
-cases:2/16 prefill calls,zero decode calls/leaks. Throughput A/B pending.
-[State evidence](results/2026-09-06-framework-qwen4exp-q5k-bundle-state.json).
+Q5_K bundle rejected after the complete12-case A/B: all72 trajectories exact,
+but five prefill and six request-wall cases regress. Candidate removed;
+retained production defaults unchanged.
 
-Q5_K bundled row4 kernel candidate: layer2 gate/up plus group map improves
-108.295->106.043ms (1.021x) at512 tokens,exact. Model gates pending;
-whole-model contribution is expected to be small.
-[Evidence](results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json).
+| Framework UD-Q4_K_XL / BF16 KV rejected Q5_K bundle | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> rejected candidate | 165.556 -> 165.781 (+0.136%) | 163.883 -> 163.842 (-0.025%) | 151.007 -> 151.462 (+0.301%) |
+
+Mixed case signs and drift preclude retention; this is not a new topline.
+[Rejection evidence](results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json).
 
 Q4 row4/output4 activation-reuse retile rejected as a blanket replacement:
 captured layer3/mixed0.992x versus layer0/code1.008x,exact. Candidate removed;

@@ -1,0 +1,106 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_campaign_ab_rejection",
+  "status": "rejected_removed",
+  "performance_claim": false,
+  "reason": "Exact but not broadly non-regressive: five prefill cases and six request-wall cases lose. No unchanged favorable rerun.",
+  "raw_evidence": {
+    "path": "/tmp/qwen4exp-q5k-bundle-production.json",
+    "sha256": "d44e942dccf4f1ab7fd4b5a9d4d78d4a538dd3f42d79e8012c3d0ffa1ff5245b"
+  },
+  "source": {
+    "head": "4b39fbfa5a140e798f78b748c2981dfd610d75c5",
+    "tracked_clean": true,
+    "reproduction": "Run at this measured revision; the rejected route is removed in the recording commit."
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "hardware": "Framework Desktop / Ryzen AI Max+ 395 / Radeon 8060S",
+    "backend": "hip_gfx1151",
+    "target_arch": "gfx1151",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_profile": "accelerator-performance",
+    "cpu_governor": "performance",
+    "gpu_power_policy": "high",
+    "hip_version": "7.15.26333-0000000",
+    "clang_revision": "8f497e0992fb7513f7f78a6f6b6f1056c375e961"
+  },
+  "model": {
+    "name": "Qwen3.8-Flash-Next",
+    "root": "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "quant": "UD-Q4_K_XL",
+    "kv": "BF16",
+    "first_part_sha256": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+    "teacher": "Same-artifact production parent, not a BF16 full-model oracle"
+  },
+  "command": "/home/lhl/hipEngine/.venv/bin/python /home/lhl/hipEngine/scripts/qwen4exp_halo_box_campaign_ab.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --route-package q5k-bundle --output /tmp/qwen4exp-q5k-bundle-production.json",
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt"
+  },
+  "protocol": {
+    "fixture": "benchmarks/fixtures/qwen4exp_canonical_ar_p512_p1024_p4096.json",
+    "fixture_sha256": "42b562bd8e9644bea5b8891c61633dce7f6e75daca64cf79e9cb45c432099da1",
+    "profile": "production",
+    "manifest_sha256": "fe6ea5a2a7835e95faa83f0024dc8e59d4caf27b19b0ce4165ed52ee63843875",
+    "one_model_residency": true,
+    "concurrency": 1,
+    "cases": 12,
+    "categories": ["code", "general_en", "general_ja", "mixed_ja_en"],
+    "prompt_lengths": [512, 1024, 4096],
+    "prefill_chunk_size": 512,
+    "decode_transitions": 128,
+    "visible_output_tokens": 129,
+    "warmups_per_arm_per_case": 1,
+    "measured_repetitions_per_arm_per_case": 3,
+    "even_case_order": ["before", "after", "after", "before", "before", "after"],
+    "odd_case_order": ["after", "before", "before", "after", "after", "before"],
+    "before": "selected_grouped_row4_gemv_bf16_bf16_out",
+    "after": "selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+    "timing_boundary": "Synchronized prefill including first greedy output; 128 step transitions and final synchronize",
+    "first_to_last_measured_seconds": 1850.713,
+    "duration_caveat": "Includes inter-case warmups, excludes initial load and initial warmups"
+  },
+  "by_shape": [
+    {"prompt_tokens": 512, "before_pp": 165.55579445350108, "after_pp": 165.7811610396643, "before_tg": 19.830270759750398, "after_tg": 19.824400043131586},
+    {"prompt_tokens": 1024, "before_pp": 163.8828803424052, "after_pp": 163.84181284630696, "before_tg": 18.98719741138402, "after_tg": 18.983452197588136},
+    {"prompt_tokens": 4096, "before_pp": 151.0073489781072, "after_pp": 151.46150634861834, "before_tg": 14.835444954663213, "after_tg": 14.833248742124352}
+  ],
+  "by_case_rounded": [
+    {"case_id": "code-p512", "pp_delta_percent": 0.176, "request_before_over_after": 1.001182},
+    {"case_id": "code-p1024", "pp_delta_percent": -0.018, "request_before_over_after": 0.999955},
+    {"case_id": "code-p4096", "pp_delta_percent": -0.026, "request_before_over_after": 0.999819},
+    {"case_id": "general_en-p512", "pp_delta_percent": -0.138, "request_before_over_after": 0.999382},
+    {"case_id": "general_en-p1024", "pp_delta_percent": -0.022, "request_before_over_after": 0.999895},
+    {"case_id": "general_en-p4096", "pp_delta_percent": 1.038, "request_before_over_after": 1.007978},
+    {"case_id": "general_ja-p512", "pp_delta_percent": 0.372, "request_before_over_after": 1.001679},
+    {"case_id": "general_ja-p1024", "pp_delta_percent": -0.209, "request_before_over_after": 0.999006},
+    {"case_id": "general_ja-p4096", "pp_delta_percent": 0.048, "request_before_over_after": 1.000076},
+    {"case_id": "mixed_ja_en-p512", "pp_delta_percent": 0.135, "request_before_over_after": 0.998735},
+    {"case_id": "mixed_ja_en-p1024", "pp_delta_percent": 0.146, "request_before_over_after": 1.000255},
+    {"case_id": "mixed_ja_en-p4096", "pp_delta_percent": 0.144, "request_before_over_after": 1.001094}
+  ],
+  "uncertainty": {
+    "max_prefill_cv_percent": 2.68145,
+    "caveat": "English4096 dominates the positive aggregate with noticeable drift; mixed signs do not establish a non-regressive model win."
+  },
+  "correctness": {
+    "measured_trajectories": 72,
+    "cross_arm_output_exact": true,
+    "within_arm_deterministic": true,
+    "state_gate": "benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-state.json",
+    "kernel_gate": "benchmarks/results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json",
+    "final_allocated_bytes": 0,
+    "final_active_allocations": 0,
+    "peak_allocated_bytes": 85338330020
+  },
+  "cleanup_validation": {
+    "gpu": "tests/test_qwen4exp_q5k_grouped_row4.py tests/test_gguf_k_gemv.py: 22 passed",
+    "cpu": "profiles, campaign A/B, Q5_1 fold-pair and Q8 bundle routes: 18 passed",
+    "retained": "Original Q5_K row4, all promoted Q8/Q5_1 paths, expanded thread-count and CPU-reference tests",
+    "removed": "Q5_K bundle kernel/key, environment flag, model selector, harness routes and candidate-only tests"
+  }
+}
