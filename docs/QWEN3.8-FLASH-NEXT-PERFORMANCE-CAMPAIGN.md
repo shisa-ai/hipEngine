@@ -53,6 +53,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-Q8 current-HE family refresh:** six cases/twelve phase captures at
+`39eb07a0a` pass100% ownership coverage, same-root decode checks and clean
+lifecycle. Reuse the pinned Vulkan profile explicitly, not as newly measured
+throughput. Four-category p4096 non-FFN/non-GR linear is now5.551s;
+FFN14.445s and GR4.362s remain the other large prefill owners. Decode QSA
+is16.982ms. Rank is unchanged; next screen is exact wave-uniform scale
+addressing in the GR up+sigmoid+mean composite, preserving both gate and
+mixed outputs before model admission. No new tiling or numerical widening.
+[Updated generated table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [source packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
+
 **Q8 wave-scale production (2026-09-05 UTC):** normal model execution,
 clean24e7b5fe7, full12-case72-trajectory A/B improves prefill
 **154.29->155.45 (+0.75%)**, **151.67->153.43 (+1.17%)**,
@@ -65,8 +76,8 @@ prefill only; strict, MMQ/WMMA and decode owners stay unchanged.
 [Model evidence](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
 The earlier adverse unconditioned microbench remains valid for that protocol;
 the full model result, without synthetic memory preconditioning, is the
-promotion basis. The generated family table remains explicitly the pre-Q8
-snapshot until its current-HE capture is refreshed.
+promotion basis. The subsequent current-HE family refresh above supersedes
+the pre-Q8 table without relabeling the older Vulkan capture.
 
 **Q8 wave-uniform scale candidate (2026-09-05 UTC):** a new T0 raw-Q8 coltile
 variant preserves original F32 FMA/reduction order while explicitly making
