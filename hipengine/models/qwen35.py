@@ -497,6 +497,38 @@ _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
         automatic_eligible=False,
     ),
     SpeculativeMTPServingEvidence(
+        evidence_key="qwen38-q4km-gfx1100-production-bf16-c2-k3-d24",
+        artifact_sha256=(
+            "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+        ),
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        weight_quant="gguf_q4_k_m",
+        execution_profile="production",
+        execution_profile_manifest_sha256=(
+            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+        ),
+        kv_storage="bf16",
+        kv_layout="uniform",
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=3,
+        sampling_modes=("greedy_fast",),
+        max_sequence_length=1024,
+        min_context_tokens=4,
+        max_context_tokens=95,
+        min_output_horizon_tokens=24,
+        max_output_horizon_tokens=24,
+        reason="qualified_explicit_gfx1100_production_c2_k3_d24_packet6_grid_selection_2026_09_06",
+        evidence_artifacts=(
+            "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json",
+        ),
+        max_realized_group_rows=2,
+        strict_fallback_key="gguf_target_ar",
+        automatic_eligible=False,
+    ),
+    SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1100-production-bf16-c8-k3-d24",
         artifact_sha256=(
             "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"

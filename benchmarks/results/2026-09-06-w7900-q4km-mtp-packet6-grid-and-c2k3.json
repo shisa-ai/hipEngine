@@ -1,0 +1,70 @@
+{
+ "schema": 1,
+ "kind": "w7900_qwen38_q4km_packet6_grid_and_c2k3_qualification",
+ "date": "2026-09-06",
+ "status": "retained_explicit_route",
+ "performance_claim": true,
+ "decision": "Register the production C2/K3 explicit serving row for the exact Qwen3.8-27B Q4_K_M W7900/gfx1100 key and admit the (2,3) policy cell. The Packet 6 56-cell diagnostic grid (K1-K7 x C1-C8, canonical suite) selected K3 at every MTP-winning width: C1 1.665x, C2 1.069x, C8 1.067x, with widths 3-7 losing at every depth. The retained C2/K3 qualification run confirms 1.067x vs the registered C2/K2 row's 1.005x under the same protocol.",
+ "hardware": {
+  "host": "epyc",
+  "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+  "gpu": "AMD Radeon Pro W7900",
+  "target_arch": "gfx1100",
+  "rocm": "7.2.53211-3d9ef42",
+  "visible_device": "0",
+  "gpu_max_hw_queues": "1"
+ },
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "artifact_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "artifact_size_bytes": 17106773984,
+  "sampled_fingerprint_sha256": "2512f262273074db82860f1f3d6c15b4d9054b29b3c4babb0e2c770d6474c850",
+  "kv": "BF16"
+ },
+ "protocol": {
+  "suite": "benchmarks/prompts/mtpbench-code-general-ja.jsonl",
+  "suite_sha256": "fac920be5e691fec2cb70fd8b7eedddab8926b89d6a1627f62ec4f441d86084a",
+  "prompts": 10,
+  "output_horizon_tokens": 24,
+  "max_sequence_length": 1024,
+  "batch_window_ms": 20.0,
+  "sampling": "raw greedy",
+  "correctness_contract": "ar_exact (MTP stream token-identical to the same-process AR arm)",
+  "grid_stage": "diagnostic screening rows via scripts/qwen38_packet5_k4_watchdog_probe.py (probe label: packet5_k4_watchdog_probe_diagnostic_not_for_claims), one run per cell, cells sequential on GPU0",
+  "retained_stage": "scripts/gguf_mtp_c1c8_server_bench.py through registered evidence rows (product cells) and the bench diagnostic resolver (C2/K3 qualification), commands in campaign-artifacts/packet6/run_p6_retained.sh"
+ },
+ "grid": {
+  "cells": 56,
+  "engaged_exact_budget_conformed": "56/56 cells at 10/10 prompts each",
+  "per_width_best": {
+   "1": {"budget": 3, "mtp_tok_s": 40.5, "ar_tok_s": 24.3, "ratio": 1.665},
+   "2": {"budget": 3, "mtp_tok_s": 44.8, "ar_tok_s": 41.9, "ratio": 1.069},
+   "3": {"budget": 5, "mtp_tok_s": 55.0, "ar_tok_s": 56.9, "ratio": 0.966},
+   "4": {"budget": 6, "mtp_tok_s": 65.4, "ar_tok_s": 68.1, "ratio": 0.960},
+   "5": {"budget": 6, "mtp_tok_s": 70.6, "ar_tok_s": 77.7, "ratio": 0.908},
+   "6": {"budget": 5, "mtp_tok_s": 79.6, "ar_tok_s": 84.6, "ratio": 0.940},
+   "7": {"budget": 4, "mtp_tok_s": 84.5, "ar_tok_s": 88.6, "ratio": 0.953},
+   "8": {"budget": 3, "mtp_tok_s": 96.8, "ar_tok_s": 90.7, "ratio": 1.067}
+  },
+  "losing_widths": "widths 3-7 measure below AR at every depth (best 0.908-0.982); the certified policy table excludes them and they remain diagnostic-only screening cells",
+  "losing_depths": "K1 loses everywhere it was measured (0.760-0.938); K4-K7 never beat K3 beyond single-run noise at widths 1/2/8",
+  "aggregate_artifact": "campaign-artifacts/packet6/grid-aggregate.json"
+ },
+ "retained_runs": {
+  "p6-c1k3-retained": {"width": 1, "budget": 3, "ar_tok_s": 24.44, "mtp_tok_s": 40.40, "ratio": 1.653, "engaged": "10/10", "exact": "10/10", "budget_conformed": "10/10"},
+  "p6-c1k2-retained": {"width": 1, "budget": 2, "ar_tok_s": 24.26, "mtp_tok_s": 35.06, "ratio": 1.445, "engaged": "10/10", "exact": "10/10", "budget_conformed": "10/10"},
+  "p6-c2k2-retained": {"width": 2, "budget": 2, "ar_tok_s": 42.20, "mtp_tok_s": 42.41, "ratio": 1.005, "engaged": "10/10", "exact": "10/10", "budget_conformed": "10/10"},
+  "p6-c8k3-retained": {"width": 8, "budget": 3, "ar_tok_s": 92.67, "mtp_tok_s": 97.35, "ratio": 1.051, "engaged": "10/10", "exact": "10/10", "budget_conformed": "10/10"},
+  "p6-c2k3-screen": {"width": 2, "budget": 3, "ar_tok_s": 41.87, "mtp_tok_s": 44.69, "ratio": 1.067, "engaged": "10/10", "exact": "10/10", "budget_conformed": "10/10", "note": "diagnostic-resolver qualification run; becomes the registered explicit row"},
+  "p6-c1-automatic-k0": {"width": 1, "ar_tok_s": 24.21, "mtp_tok_s": 24.19, "engaged": "0/10", "exact": "10/10", "note": "automatic scope stays K0"},
+  "p6-c2-automatic-k0": {"width": 2, "ar_tok_s": 41.86, "mtp_tok_s": 41.70, "engaged": "0/10", "exact": "10/10", "note": "automatic scope stays K0"},
+  "p6-c8-automatic-k0": {"width": 8, "ar_tok_s": 92.19, "mtp_tok_s": 92.29, "engaged": "0/10", "exact": "10/10", "note": "automatic scope stays K0"}
+ },
+ "validation": {
+  "c2k3_vs_c2k2_ratio": "1.067 vs 1.005 retained; +6.2% ratio, +5.4% MTP tok/s (44.69 vs 42.41), same protocol, same host, same session block",
+  "grid_vs_retained_consistency": "every retained product cell reproduces its grid cell within noise (C1-K3 1.665->1.653, C1-K2 1.436->1.445, C2-K2 1.009->1.005, C8-K3 1.067->1.051; C2-K3 1.069->1.067)",
+  "k0_controls": "automatic scope engages 0/10 at C1/C2/C8 and stays token-exact",
+  "raw_packets": "/tmp/he-bettermtp-raw/packet6/ (per-cell probe JSON + retained run JSON; not committed)"
+ }
+}

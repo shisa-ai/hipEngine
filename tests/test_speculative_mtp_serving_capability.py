@@ -200,7 +200,6 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
             {"realized_group_rows": 3, "resident_capacity": 3},
             "physical_group_not_qualified",
         ),
-        ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
         ({"context_tokens": 96}, "context_bucket_not_qualified"),
         ({"context_tokens": 3}, "context_bucket_not_qualified"),
         ({"output_horizon_tokens": 25}, "output_horizon_not_qualified"),
@@ -213,6 +212,51 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
         assert rejected.admitted is False
         assert rejected.automatic_eligible is False
         assert rejected.reason == reason
+
+
+def test_qwen38_q4km_gfx1100_production_c2_k3_d24_is_explicit_packet6_selection() -> None:
+    """The Packet 6 grid selection qualifies C2/K3 as an explicit row.
+
+    The 56-cell diagnostic grid measured K3 as the best C2 depth (1.069x
+    diagnostic; 1.067x retained vs the K2 row's 1.005x), so budget-3
+    requests at C2 now admit through the registered row while budget-4
+    still fails closed on the depth axis.
+    """
+
+    evidence = Qwen35GGUFModel().speculative_mtp_serving_evidence
+    key = _key(
+        artifact_sha256=_W7900_MODEL_SHA256,
+        artifact_size_bytes=17_106_773_984,
+        backend="hip_gfx1100",
+        target_arch="gfx1100",
+        execution_profile="production",
+        execution_profile_manifest_sha256=_W7900_PRODUCTION_MANIFEST_SHA256,
+        realized_group_rows=2,
+        resident_capacity=2,
+        candidate_budget=3,
+        context_tokens=95,
+        output_horizon_tokens=24,
+    )
+
+    decision = resolve_speculative_mtp_serving_plan(evidence, key=key)
+    assert decision.admitted is True
+    assert decision.automatic_eligible is False
+    assert decision.selected_candidate_count == 3
+    assert decision.reason == (
+        "qualified_explicit_gfx1100_production_c2_k3_d24"
+        "_packet6_grid_selection_2026_09_06"
+    )
+    assert decision.static_eligibility.max_realized_group_rows == 2
+    assert decision.evidence_artifacts[-1].endswith(
+        "2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json"
+    )
+
+    deeper = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, candidate_budget=4),
+    )
+    assert deeper.admitted is False
+    assert deeper.reason == "candidate_budget_not_qualified"
 
 
 def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> None:
@@ -571,7 +615,11 @@ def test_qwen36_dense_production_c2_k2_plan_is_exact_automatic_scope() -> None:
     assert frontend_c1.static_eligibility.max_realized_group_rows == 2
 
     for overrides, reason in (
-        ({"candidate_budget": 3}, "candidate_budget_not_qualified"),
+        # candidate_budget=3 ties the dense row (budget axis) with the
+        # earlier-declared qwen38 C2/K3 row (artifact axis) at one failed
+        # check each; the documented declaration-order tie-break attributes
+        # the rejection to the qwen38 row.
+        ({"candidate_budget": 3}, "artifact_not_qualified"),
         ({"output_horizon_tokens": 23}, "output_horizon_not_qualified"),
         ({"context_tokens": 96}, "context_bucket_not_qualified"),
         ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),

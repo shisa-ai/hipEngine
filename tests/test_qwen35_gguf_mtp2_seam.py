@@ -125,7 +125,7 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
     ) == {
-        "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+        "production": ((1, 2), (1, 3), (2, 2), (2, 3), (8, 3)),
         "strict": ((2, 2),),
     }
     assert backend_package_capability(
@@ -491,9 +491,10 @@ def test_screening_unqualified_cells_admits_explicit_only_group(
     )
     capability = adapter.capability(semantics)
     assert capability is not None
-    # Depth-3 listed cells exist at widths 1 and 8, so the listed derivation
+    # Depth-3 listed cells exist at widths 1, 2, and 8 (C2/K3 qualified by
+    # the Packet 6 grid + retained reproduction), so the listed derivation
     # still owns the tuple; the screening group does not extend it.
-    assert capability.proposal_widths == (1, 8)
+    assert capability.proposal_widths == (1, 2, 8)
     assert adapter.claims_fit(
         SimpleNamespace(
             request_ids=ids,
@@ -593,7 +594,7 @@ def test_screening_unqualified_cells_require_static_eligibility(
         candidate_budget=3,
     )
 
-    assert adapter._physical_width_depth_admitted_for_group(2, 3, (31, 32)) is False
+    assert adapter._physical_width_depth_admitted_for_group(2, 4, (31, 32)) is False
     assert adapter._last_screening_cell is None
 
 
