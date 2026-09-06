@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 paired-input layout rejected:packing+gate/up+SiLU17.470->22.938ms,
+exact and both orders slower. Consumer itself regresses despite VGPR88->72;
+packer costs only0.184ms. Candidate removed,production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-input-pair-rejected.json).
+
 Q4 wave-metadata scalarization rejected:VGPR88->80 but actual gate/up+
 SiLU17.478->17.490ms,order-sensitive and exact. Candidate removed;
 production unchanged,no full-model A/B spent.
