@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 import os
+import sys
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -550,7 +551,11 @@ _MTP2_CERTIFIED_WIDTH_DEPTHS = tuple(
     for depth in range(1, 4)
 )
 _MTP2_MAX_PHYSICAL_REQUESTS = 8
-_MTP2_MAX_CANDIDATE_DEPTH = 3
+# Single source of truth for speculative candidate depth. Every clamp, default,
+# and validator must derive from this; duplicating the literal is how K4 stayed
+# unreachable while the server env already accepted it.
+MTP2_MAX_CANDIDATE_DEPTH = 4
+_MTP2_MAX_CANDIDATE_DEPTH = MTP2_MAX_CANDIDATE_DEPTH
 
 
 def _physical_width_depths(generator: Any) -> tuple[tuple[int, int], ...]:
@@ -1548,6 +1553,26 @@ class Qwen35GGUFMTP2Adapter:
             )
         self._prompt_hidden_rows[rid] = rows
 
+    def _decline(self, reason: str):
+        """Record why a speculative capability was refused, then refuse it.
+
+        Admission has many independent gates; without a recorded reason a
+        non-engaging cell is indistinguishable from a disabled one. The
+        attribute is always set (cheap) and echoed to stderr only when
+        HIPENGINE_MTP2_TRACE_DECLINE is set.
+        """
+
+        self._last_capability_decline = str(reason)
+        if os.environ.get("HIPENGINE_MTP2_TRACE_DECLINE", "").strip() not in {"", "0"}:
+            seen = getattr(self, "_declines_traced", None)
+            if seen is None:
+                seen = set()
+                self._declines_traced = seen
+            if reason not in seen:
+                seen.add(reason)
+                print(f"[mtp2-decline] {reason}", file=sys.stderr, flush=True)
+        return None
+
     def capability(
         self,
         request_semantics: Sequence[SpeculativeRequestSemantics],
@@ -1557,7 +1582,11 @@ class Qwen35GGUFMTP2Adapter:
         if not self.enabled or not (
             1 <= len(semantics) <= physical_max_requests
         ):
-            return None
+            return self._decline(
+                f"width {len(semantics)} outside 1..{physical_max_requests}"
+                if self.enabled
+                else "adapter disabled"
+            )
         static_eligibilities = tuple(
             self._static_eligibility(item.request_id)
             for item in semantics
@@ -1568,7 +1597,9 @@ class Qwen35GGUFMTP2Adapter:
             if eligibility is not None
         )
         if static_bounds and len(semantics) > min(static_bounds):
-            return None
+            return self._decline(
+                f"width {len(semantics)} exceeds static group bound {min(static_bounds)}"
+            )
         static_candidate_bounds = tuple(
             int(eligibility.max_candidate_count)
             for eligibility in static_eligibilities
@@ -1582,7 +1613,10 @@ class Qwen35GGUFMTP2Adapter:
             len(semantics),
             max_candidate_count,
         ):
-            return None
+            return self._decline(
+                f"cell (C{len(semantics)}, K{max_candidate_count}) not in policy "
+                f"{self._physical_width_depth_policy()}"
+            )
         singleton_only = tuple(
             self._singleton_only(item.request_id)
             for item in semantics
@@ -1591,7 +1625,7 @@ class Qwen35GGUFMTP2Adapter:
         for item in semantics:
             rid = int(item.request_id)
             if rid not in self._intents or rid in self._disabled_requests:
-                return None
+                return self._decline(f"request {rid} unregistered or disabled")
             row = self.owner._row(rid)
             if (
                 not row.native_greedy
@@ -1606,7 +1640,7 @@ class Qwen35GGUFMTP2Adapter:
                 return None
             target = row.lease.session
             if not self._target_profile_supported(target):
-                return None
+                return self._decline("target execution profile unsupported")
             targets.append(target)
         if len(semantics) == 1:
             existing = self._states.get(int(semantics[0].request_id))
@@ -1630,7 +1664,14 @@ class Qwen35GGUFMTP2Adapter:
                     or int(getattr(self.owner, "capacity", 1)) > 1
                 )
             ):
-                return None
+                return self._decline(
+                    "c1 singleton shape refused: "
+                    f"existing_state={existing is not None}, "
+                    f"automatic_singleton={automatic_singleton}, "
+                    f"physical_singleton={physical_singleton}, "
+                    f"slot_count={int(getattr(owner, 'slot_count', 1))}, "
+                    f"capacity={int(getattr(self.owner, 'capacity', 1))}"
+                )
         # Streaming activation is retained only through the already-qualified
         # short target context. Longer requests stay K0 until an exact shifted-
         # page eager target owner is qualified independently of graph capture.
@@ -1645,7 +1686,9 @@ class Qwen35GGUFMTP2Adapter:
             and state.verifier is not None
         }
         if len(realized_verify_modes) > 1:
-            return None
+            return self._decline(
+                f"mixed target verify modes {sorted(realized_verify_modes)}"
+            )
         realized_verify_mode = (
             next(iter(realized_verify_modes))
             if realized_verify_modes
