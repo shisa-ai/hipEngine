@@ -4,8 +4,11 @@ Last updated: **2026-09-06 UTC**
 
 Native-capacity short-context check (2051->262144 allocated tokens):
 p512/p1024 decode-0.066%/-0.095%, prefill-0.737%/-0.238%;48/48 trajectories
-exact. Public default is not changed by this measurement.
+exact. Public serving now resolves native262144 on Framework through memory
+admission; c2 completions/chat8K retrieval and over-limit rejection pass.
+No new256K-length inference claim.
 [Capacity A/B](results/2026-09-06-framework-qwen4exp-context-capacity-ab.json).
+[Serving/boundary gates](results/2026-09-06-framework-qwen4exp-native-context-final.json).
 
 | Framework UD-Q4_K_XL / BF16 KV incremental promotion | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |

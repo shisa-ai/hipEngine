@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework public native context] Registered serving now admits up to262144 tokens instead of fixed2051, subject to c1/c2 memory admission. Native-capacity boundary2051/2052/4097 repeats exact; completions8192/chat8154 retrieval pass, over-limit requests reject cleanly, final ownership zero. No new256K-length inference or speed claim. `benchmarks/results/2026-09-06-framework-qwen4exp-native-context-final.json`.
+
 - [2026-09-06 UTC Framework native-capacity gate] 2051->262144 capacity with shared weights: p512 PP159.150->157.977 (-0.737%), TG20.052->20.039 (-0.066%); p1024 PP158.140->157.764 (-0.238%), TG19.357->19.339 (-0.095%).48/48 exact, zero final owners,13m14.8s. Full KV reset cost preserved; public plumbing still pending. `benchmarks/results/2026-09-06-framework-qwen4exp-context-capacity-ab.json`.
 
 - [2026-09-06 UTC post-MMQ family refresh] Clean ef63870f9 twelve-phase capture: p4096 non-GR linear5.545->5.367s (-3.21% snapshot delta, not causal A/B), FFN14.433s, GR4.282s.100% coverage, matched decode roots, zero final ownership; pinned prior Vulkan explicitly reused. Generated starting/current and family-gap tables refreshed. `benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json`.
