@@ -400,6 +400,154 @@ def test_physical_width_depth_policy_gates_capability_and_claims() -> None:
         ) is False
 
 
+def _gfx1100_screening_owner(*, capacity: int = 8) -> SimpleNamespace:
+    return SimpleNamespace(
+        generator=SimpleNamespace(
+            backend="hip_gfx1100",
+            execution_profile="production",
+        ),
+        capacity=capacity,
+        _shared_runner=None,
+        _row=lambda rid: SimpleNamespace(
+            native_greedy=True,
+            first_token_emitted=True,
+            lease=SimpleNamespace(
+                session=SimpleNamespace(
+                    runner=SimpleNamespace(fp16_recurrent_state=False),
+                    target_layout=SimpleNamespace(max_sequence_length=1024),
+                    kv_storage_dtype="bf16",
+                )
+            ),
+            slot=SimpleNamespace(),
+        ),
+    )
+
+
+def _explicit_only_eligibility(rid: int, *, rows: int = 8, depth: int = 3) -> SpeculativeMTPStaticEligibility:
+    return SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="screening_test_explicit_only_row",
+        max_candidate_count=depth,
+        max_realized_group_rows=rows,
+        automatic_eligible=False,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key=f"test-screening-{rid}",
+        evidence_fingerprint=f"sha256:test-screening-{rid}",
+    )
+
+
+def test_screening_unqualified_cells_default_off_keeps_policy_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the screening env, an explicit-only unqualified cell stays K0."""
+
+    monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = (11, 12, 13, 14, 15)
+    adapter._static_eligibility_by_request = {
+        rid: _explicit_only_eligibility(rid) for rid in ids
+    }
+
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
+    assert adapter._last_screening_cell is None
+
+
+def test_screening_unqualified_cells_admits_explicit_only_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The screening env opens unlisted cells only for explicit-only rows."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = tuple(range(1, 6))
+    adapter._intents = {rid: 3 for rid in ids}
+    adapter._static_eligibility_by_request = {
+        rid: _explicit_only_eligibility(rid) for rid in ids
+    }
+    adapter._prompt_hidden_rows = {rid: object() for rid in ids}
+    adapter._states = {}
+    adapter._disabled_requests = set()
+    adapter._active_claims = None
+
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is True
+    assert adapter._last_screening_cell == {
+        "width": 5,
+        "depth": 3,
+        "request_ids": list(ids),
+    }
+    semantics = tuple(
+        SpeculativeRequestSemantics(rid, "greedy", "verify_chain", 32, 25)
+        for rid in ids
+    )
+    capability = adapter.capability(semantics)
+    assert capability is not None
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=ids,
+            speculative_request_ids=ids,
+            candidate_counts=(3,) * len(ids),
+        )
+    ) is True
+
+
+def test_screening_unqualified_cells_never_widen_automatic_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Qwen3.6/gfx1151 automatic policy cannot inherit screening cells."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+    ids = (21, 22, 23, 24, 25)
+    adapter._static_eligibility_by_request = {
+        rid: SpeculativeMTPStaticEligibility(
+            state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+            reason="automatic_qualified_row",
+            max_candidate_count=3,
+            max_realized_group_rows=8,
+            automatic_eligible=True,
+            strict_fallback_key="gguf_target_ar",
+            evidence_key=f"test-automatic-{rid}",
+            evidence_fingerprint=f"sha256:test-automatic-{rid}",
+        )
+        for rid in ids
+    }
+
+    assert adapter._physical_width_depth_admitted_for_group(5, 3, ids) is False
+    assert adapter._last_screening_cell is None
+
+
+def test_screening_unqualified_cells_require_static_eligibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A request without a serving-evidence row cannot screen a cell open."""
+
+    monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    adapter = Qwen35GGUFMTP2Adapter(
+        _gfx1100_screening_owner(capacity=2),
+        enabled=True,
+        target_verify_mode="packed",
+        candidate_budget=3,
+    )
+
+    assert adapter._physical_width_depth_admitted_for_group(2, 3, (31, 32)) is False
+    assert adapter._last_screening_cell is None
+
+
 def test_unregistered_model_plugin_mtp2_adapter_fails_closed() -> None:
     runner = object.__new__(Qwen35GGUFResidentModelRunner)
     runner._mtp2_adapter = None

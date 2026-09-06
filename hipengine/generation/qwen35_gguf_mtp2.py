@@ -108,6 +108,12 @@ _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
 )
+# Screening-only admission for explicitly unqualified width/depth cells
+# (Qwen3.8 gfx1100 better-MTP campaign Packet 0). Default off; scoped to
+# static eligibility rows that are NOT automatic_eligible so no automatic
+# model policy can widen. Remove with the campaign's screening harness
+# (docs/REFACTOR.md).
+_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -779,6 +785,7 @@ class Qwen35GGUFMTP2Adapter:
             padded_frontier_rows,
         )
         self._last_partition_contract: dict[str, Any] = {}
+        self._last_screening_cell: dict[str, Any] | None = None
         self._intents: dict[int, int] = {}
         self._static_eligibility_by_request: dict[
             int, SpeculativeMTPStaticEligibility
@@ -838,6 +845,44 @@ class Qwen35GGUFMTP2Adapter:
 
     def _physical_width_depth_admitted(self, width: int, depth: int) -> bool:
         return (int(width), int(depth)) in self._physical_width_depth_policy()
+
+    def _physical_width_depth_admitted_for_group(
+        self,
+        width: int,
+        depth: int,
+        request_ids: Sequence[int],
+    ) -> bool:
+        """Admit a listed policy cell, or an explicit-only screening cell.
+
+        The listed policy stays authoritative. The screening path exists only
+        so the better-MTP campaign can measure explicitly unqualified cells;
+        it refuses every request whose static eligibility is missing or
+        automatic_eligible, so automatic model policy cannot widen.
+        """
+
+        if self._physical_width_depth_admitted(width, depth):
+            return True
+        if not _env_enabled(_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV):
+            return False
+        ids = tuple(int(value) for value in request_ids)
+        if not ids:
+            return False
+        eligibilities = tuple(self._static_eligibility(rid) for rid in ids)
+        if any(
+            row is None or not row.eligible or row.automatic_eligible
+            for row in eligibilities
+        ):
+            return False
+        if not 1 <= int(depth) <= _MTP2_MAX_CANDIDATE_DEPTH:
+            return False
+        if not 1 <= int(width) <= _MTP2_MAX_PHYSICAL_REQUESTS:
+            return False
+        self._last_screening_cell = {
+            "width": int(width),
+            "depth": int(depth),
+            "request_ids": list(ids),
+        }
+        return True
 
     def _max_physical_requests(self) -> int:
         """Return the largest listed width that fits resident capacity."""
@@ -1616,9 +1661,10 @@ class Qwen35GGUFMTP2Adapter:
             self.candidate_budget,
             *(static_candidate_bounds or (self.candidate_budget,)),
         )
-        if not self._physical_width_depth_admitted(
+        if not self._physical_width_depth_admitted_for_group(
             len(semantics),
             max_candidate_count,
+            [item.request_id for item in semantics],
         ):
             return self._decline(
                 f"cell (C{len(semantics)}, K{max_candidate_count}) not in policy "
@@ -1820,9 +1866,10 @@ class Qwen35GGUFMTP2Adapter:
             # this adapter must fail it closed before provider mutation.
             and tuple(int(value) for value in plan.request_ids) == request_ids
             and 1 <= len(request_ids) <= self._max_physical_requests()
-            and self._physical_width_depth_admitted(
+            and self._physical_width_depth_admitted_for_group(
                 len(request_ids),
                 realized_depth,
+                request_ids,
             )
             and not (
                 len(request_ids) == 1
@@ -2025,6 +2072,9 @@ class Qwen35GGUFMTP2Adapter:
             ),
             "last_partition": dict(
                 getattr(self, "_last_partition_contract", {})
+            ),
+            "last_screening_cell": dict(
+                getattr(self, "_last_screening_cell", None) or {}
             ),
         }
 

@@ -5395,3 +5395,17 @@ run justifies each:
   `<|im_start|>user` block; the checkpoint template merges consecutive tool
   messages into one user block. Merge when multi-tool transcripts show
   degraded behavior.
+
+## 2026-09-06 HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS — screening-only env
+
+`HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1` lets `Qwen35GGUFMTP2Adapter`
+admit width/depth cells outside the backend's listed
+`GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS` policy so the Qwen3.8 gfx1100
+better-MTP campaign (Packet 0) can measure explicitly unqualified cells.
+It is scoped to groups whose every request carries static eligibility with
+`automatic_eligible=false`, so automatic policy cannot widen and qualified
+Qwen3.6/gfx1151 routes are untouched; admission is recorded in
+`physical_width_contract()["last_screening_cell"]`. Remove this env, the
+`_physical_width_depth_admitted_for_group` screening branch, and its tests
+when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
+either has a qualified serving-evidence row or stays explicitly rejected.
