@@ -92,3 +92,28 @@ def test_device_arena_rejects_overflow_and_double_close_is_safe() -> None:
     arena.close()
     arena.close()
     assert runtime.freed == [arena.owner.ptr]
+
+
+def test_live_allocation_histogram_buckets_live_buffers() -> None:
+    from hipengine.core.memory import live_allocation_histogram
+
+    runtime = FakeRuntime()
+    reset_memory_stats()
+
+    small = malloc(1024, runtime=runtime)  # type: ignore[arg-type]
+    large = malloc(300 << 20, runtime=runtime)  # type: ignore[arg-type]
+    try:
+        histogram = live_allocation_histogram(min_bytes=1 << 20)
+        # Only the 300 MiB buffer clears the floor; the 1 KiB buffer is excluded.
+        assert histogram["allocation_count"] == 1
+        assert histogram["total_bytes"] == 300 << 20
+        assert histogram["largest_bytes"] == 300 << 20
+        assert histogram["top_sizes"] == [[300 << 20, 1]]
+
+        full = live_allocation_histogram(min_bytes=0)
+        assert full["allocation_count"] == 2
+        assert full["total_bytes"] == (300 << 20) + 1024
+    finally:
+        free(large, runtime=runtime)  # type: ignore[arg-type]
+        free(small, runtime=runtime)  # type: ignore[arg-type]
+    assert live_allocation_histogram(min_bytes=0)["allocation_count"] == 0

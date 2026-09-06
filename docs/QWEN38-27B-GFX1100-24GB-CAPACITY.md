@@ -281,9 +281,14 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   plan, graph/prefix settings, full command, source and exit/stage logs.
 - [ ] Classify OOM only from matching error evidence; test other HIP errors,
   process exits, readiness/request timeouts and malformed/short responses.
-- [ ] Compare N=1/2/4/8 at C=1 and full occupancy. Attribute global request pages,
+- [x] Compare N=1/2/4/8 at C=1 and full occupancy. Attribute global request pages,
   leased workspace, private preparation, recurrent state and cached graphs.
   Trace the eight-slot workspace minimum before changing it.
+  Traced 2026-09-06: the floor lives in `_packed_verify_union_geometry` and the
+  global-pool lease in `configure_engine_loop`; serving slot requests (MTP
+  widths, packed group layouts, prefill widths) are all bounded by
+  `max_active_requests`, and the only >1-slot C1 path (B3 C2-shadow ABI) has no
+  callers. Right-sized both sites to the honest capacity (see Packet 2).
 - [ ] Test atomic admission against complete claims, including temporary/MTP
   peaks. Shared free capacity, not a per-request private cache maximum, decides
   aggregate fit. Retain bounded rejection and exact reclaim under pressure.
@@ -294,9 +299,15 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   Measure MTP-capable K0 both before and after active MTP; do not call it unloaded.
 - [ ] Deduplicate actual weight aliases and release conversion staging safely.
   Count resident payloads, not GGUF size, as the device-weight baseline.
-- [ ] Right-size shared workspace and prefill scratch by supported execution
+- [x] Right-size shared workspace and prefill scratch by supported execution
   shapes; reuse sequential scratch without merging per-request GDN state.
   Preserve graph pointer lifetimes and overlap constraints.
+  Workspace done 2026-09-06: lease + union geometry follow the real serving
+  capacity instead of the 8-slot floor; measured on the XTX at BF16/3072/N=1:
+  load 19.742 -> 18.429 GiB, request peak 23.328 -> 20.998 GiB (-2.330, -10.0%),
+  lease 96 -> 12 pages, transients 3.586 -> 2.569 GiB; INT8 fp32 route verified
+  serving under the smaller lease (peak 20.841 GiB). Prefill scratch rows,
+  bucket bounding and retirement remain open.
 - [ ] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
   and C1-to-wide histories. Report reusable pool capacity separately from memory
   returned to the device allocator.

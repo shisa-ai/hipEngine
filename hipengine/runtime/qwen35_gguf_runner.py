@@ -24208,7 +24208,12 @@ class Qwen35GGUFResidentSession:
         scratch = self._packed_verify_scratch
         capacity = getattr(self, "max_batch_size", None)
         try:
-            capacity = max(_PACKED_VERIFY_DEFAULT_SLOT_CAPACITY, int(capacity))
+            # Capacity-honest workspace ceiling: the serving loop can never
+            # open more resident slots than max_active_requests (MTP serving
+            # widths and packed group layouts are both bounded by it), so the
+            # workspace follows the real cap instead of the historical 8-slot
+            # floor. Absent or invalid caps keep the historical fallback.
+            capacity = max(1, int(capacity))
         except (TypeError, ValueError):
             capacity = _PACKED_VERIFY_DEFAULT_SLOT_CAPACITY
         state_slots = capacity
