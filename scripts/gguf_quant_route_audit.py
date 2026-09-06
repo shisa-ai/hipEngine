@@ -1156,9 +1156,22 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps, *, environ=None) 
         and GGMLQuantizationType(tensor.ggml_type) == GGMLQuantizationType.F32
     )
     statuses = capability_status().get(backend, {})
+    # UD-U1 F5: bind the artifact qualification (pinned plain control /
+    # UD preset / unknown-manifest sentinel) so the reported default can never
+    # claim a plain-certified stamp default for an unqualified manifest.
+    from hipengine.loading.qwen35_gguf_admission import (
+        qwen35_gguf_artifact_preset_key,
+    )
+
+    artifact_preset_key = qwen35_gguf_artifact_preset_key(
+        maps.model_map,
+        nextn_map=maps.nextn_map,
+        file_type_stamp=file_type,
+    )
     return {
         "backend": backend,
         "file_type_name": file_type,
+        "artifact_preset_key": artifact_preset_key,
         "scope": "ar_map_plus_nextn_map",
         "map_validation_passed": maps.model_map.validation.passed,
         "planner_mode": planner_mode,
@@ -1168,7 +1181,10 @@ def plan(backend: str, metadata: dict, maps: MappedTensorMaps, *, environ=None) 
         "package_flags": flags,
         "capability_status": statuses,
         "fp16_recurrent_state_default_on": gguf_fp16_recurrent_state_default(
-            backend, file_type, capability_reader=source_capability_reader()
+            backend,
+            file_type,
+            capability_reader=source_capability_reader(),
+            artifact_preset_key=artifact_preset_key,
         ),
         "ar_consumer_slots": len(ar_pairs),
         "ar_unique_sources": len({tensor.name for _, tensor in ar_pairs}),
