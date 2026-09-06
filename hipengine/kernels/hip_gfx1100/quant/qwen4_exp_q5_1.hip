@@ -388,7 +388,7 @@ __device__ inline float q51_cached_weight(
   return d[block] * static_cast<float>(low | (high << 4)) + m[block];
 }
 
-template <bool FOLD128 = false, bool PAIR_REDUCE = false>
+template <bool FOLD128 = false, bool PAIR_REDUCE = false, bool REGISTER_CACHE = false>
 __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
     const uint16_t* __restrict__ input, const int64_t* __restrict__ starts,
     const uint8_t* __restrict__ weights, uint16_t* __restrict__ output,
@@ -419,8 +419,40 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
         }
       }
       __syncthreads();
+      float cached[2][REGISTER_CACHE ? 5 : 1] = {};
+      if constexpr (REGISTER_CACHE) {
+#pragma unroll
+        for (int p = 0; p < 2; ++p) {
+#pragma unroll
+          for (int i = 0; i < 5; ++i) {
+            if (out_base+offset+p < n)
+              cached[p][i] = q51_cached_weight(
+                  wr[p], threadIdx.x+i*128, d+p*blocks, m+p*blocks, qh+p*blocks);
+          }
+        }
+      }
       for (int64_t base = begin; base < end; base += R) {
         float acc0[2][R] = {}, acc1[2][R] = {};
+        if constexpr (REGISTER_CACHE) {
+          // K640 has five physical-lane partials: preserve the two logical256 streams.
+#pragma unroll
+          for (int pass = 0; pass < 3; ++pass) {
+#pragma unroll
+            for (int r = 0; r < R; ++r) {
+              if (base+r < end) {
+                const int column = threadIdx.x+pass*256;
+                const float x0 = bf16_bits_to_float(input[(base+r)*k+column]);
+                const float x1 = pass < 2
+                    ? bf16_bits_to_float(input[(base+r)*k+column+128]) : 0.0f;
+#pragma unroll
+                for (int p = 0; p < 2; ++p) {
+                  acc0[p][r] += x0*cached[p][pass*2];
+                  if (pass < 2) acc1[p][r] += x1*cached[p][pass*2+1];
+                }
+              }
+            }
+          }
+        } else {
         for (int column = threadIdx.x; column < k; column += L) {
           const int column1 = column + 128;
           float w0[2] = {}, w1[2] = {};
@@ -444,6 +476,7 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
               }
             }
           }
+        }
         }
         if constexpr (PAIR_REDUCE) {
           static_assert(FOLD128);
@@ -1005,14 +1038,14 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
   return static_cast<int>(hipGetLastError());
 }
 
-template <bool FOLD128, bool PAIR_REDUCE = false>
+template <bool FOLD128, bool PAIR_REDUCE = false, bool REGISTER_CACHE = false>
 int launch_q51_pair2(
     const void* input, const void* starts, const void* weights, void* output,
     int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t stream) {
   if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||
-      k <= 0 || k % 32 || k > 4096 || n <= 0)
+      k <= 0 || k % 32 || k > 4096 || n <= 0 || (REGISTER_CACHE && k != 640))
     return static_cast<int>(hipErrorInvalidValue);
-  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<FOLD128, PAIR_REDUCE>),
+  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<FOLD128, PAIR_REDUCE, REGISTER_CACHE>),
       dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),
       dim3(128), (PAIR_REDUCE ? 2 : 1)*8*(FOLD128 ? 128 : 256)*sizeof(float)+(k/32)*24, stream,
       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),
@@ -1030,6 +1063,12 @@ Q51_PAIR_ENTRY(hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16
 Q51_PAIR_ENTRY(hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out, true, false)
 Q51_PAIR_ENTRY(hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out, true, true)
 #undef Q51_PAIR_ENTRY
+
+extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_register_cache_bf16_bf16_out(
+    const void* x, const void* starts, const void* w, void* y,
+    int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t s) {
+  return launch_q51_pair2<true, true, true>(x, starts, w, y, rows, experts, k, n, s);
+}
 
 extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     const void* input,

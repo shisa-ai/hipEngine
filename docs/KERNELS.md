@@ -788,6 +788,16 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q5_1 exposes kernel-only
+`selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` for K640.
+It predecodes ten weights per thread across an output pair, reusing them
+without growing LDS. Captured code/mixed two-bank512 projections improve
+34.450->28.195ms /33.756->27.819ms (1.222x/1.213x), all40 pairs exact
+and both orders positive.17 GPU tests pass. Trace VGPR72->96 and
+private scratch0->36B, dynamic LDS8672B unchanged: not spill-free.
+Full-residency model gates remain; original folded-pair and M1 fallbacks
+stay registered. Evidence: `2026-09-06-framework-qwen4exp-q51-register-cache.json`.
+
 The Q5_1 folded-pair decoded-LDS weight-cache experiment is rejected and
 removed: captured actual two-bank projection34.449->58.987ms (0.584x),
 exact. Dynamic LDS8672->13792B,VGPR72/scratch0 unchanged. Original

@@ -12,6 +12,7 @@ PARENT="qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgri
 CANDIDATE="qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out"
 FOLD="qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
 FOLD_PAIR="qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"
+REGISTER_CACHE="qwen4_exp_q5_1_selected_grouped_prefill_pair2_register_cache_bf16_bf16_out"
 
 
 def hip_available():
@@ -42,6 +43,23 @@ def test_pair_registry_and_bounds():
         getattr(q5,FOLD)(1,1,1,1,1,1,8192,1)
     with pytest.raises(ValueError,match="4096"):
         getattr(q5,FOLD_PAIR)(1,1,1,1,1,1,8192,1)
+
+
+def test_register_cache_scope():
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+    from hipengine.kernels.registry import resolve
+    register_gfx1151_kernels(replace=True)
+    fn = resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
+                 variant="selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
+    assert fn is getattr(q5,REGISTER_CACHE)
+    with pytest.raises(ValueError,match="640"):
+        fn(1,1,1,1,1,1,256,1)
+
+
+@pytest.mark.skipif(not hip_available(),reason="HIP unavailable")
+@pytest.mark.parametrize("rows,experts,n", [(17,8,7),(65,64,33),(5120,512,2560)])
+def test_register_cache_exact(rows,experts,n):
+    test_pair_exact(rows,experts,640,n,REGISTER_CACHE)
 
 
 @pytest.mark.skipif(not hip_available(),reason="HIP unavailable")

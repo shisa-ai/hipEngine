@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 register-resident short-K reuse (September6 UTC):** unlike the
+rejected LDS materialization below, K640 needs ten cached decoded weights
+per thread/output pair. Exact two-bank projections at captured code0/mixed7
+512-row routing improve34.450->28.195ms /33.756->27.819ms
+(1.222x/1.213x);both orders positive,all40 pairs exact.17 GPU tests pass.
+Cached trace17.124->14.060ms;VGPR72->96,private scratch0->36B,dynamic
+LDS8672B unchanged. Retain kernel-only with this resource cost explicit.
+Full-model state/KV and canonical12-case A/B are next, limited to current
+folded-pair rows>=512 and K640;no production throughput claim yet.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache.json).
+
 **Q5_1 decoded-LDS weight reuse rejected (September6 UTC):** decode both
 640-element output weight rows once before the routed-row loop, preserving
 folded-pair arithmetic. Captured code4096chunk0 routing/actual layer0+1
