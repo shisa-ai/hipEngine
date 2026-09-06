@@ -749,8 +749,11 @@ class Qwen35GGUFMTP2Adapter:
             "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
         )
         self._post_reject_pending: set[int] = set()
-        if self.candidate_budget not in {1, 2, 3}:
-            raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
+        if not 1 <= self.candidate_budget <= _MTP2_MAX_CANDIDATE_DEPTH:
+            raise ValueError(
+                "MTP2 candidate budget must be within "
+                f"[1, {_MTP2_MAX_CANDIDATE_DEPTH}]"
+            )
         policy_max_requests = max(
             width for width, _depth in self.physical_width_depths
         )

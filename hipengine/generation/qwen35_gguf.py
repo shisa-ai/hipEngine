@@ -20,7 +20,7 @@ from typing import Any, ClassVar, Iterator, Mapping, Sequence
 import numpy as np
 
 from hipengine.benchmark.provenance import collect_model_identity, detect_device_name
-from hipengine.generation.qwen35_gguf_mtp2 import MTP2_MAX_CANDIDATE_DEPTH
+import hipengine.generation.qwen35_gguf_mtp2 as _qwen35_gguf_mtp2_module
 from hipengine.core.dtype import DType
 from hipengine.core.memory import free, malloc, memory_stats
 from hipengine.dispatch import (
@@ -492,7 +492,7 @@ def _gguf_mtp_server_candidate_budget() -> int:
         budget = int(str(raw).strip())
     except ValueError:
         return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
-    if not 1 <= budget <= MTP2_MAX_CANDIDATE_DEPTH:
+    if not 1 <= budget <= _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH:
         return _GGUF_MTP_SERVER_DEFAULT_CANDIDATE_BUDGET
     return budget
 
@@ -6356,7 +6356,7 @@ class Qwen35GGUFResidentModelRunner:
             enabled=True,
             target_verify_mode=_gguf_mtp_server_target_verify_mode(),
             candidate_budget=min(
-                MTP2_MAX_CANDIDATE_DEPTH,
+                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH,
                 int(
                     getattr(
                         self.generator,
@@ -6398,7 +6398,11 @@ class Qwen35GGUFResidentModelRunner:
     def speculative_desired_candidate_count(self, request: GenerationRequest) -> int:
         adapter = self._resolved_mtp2_adapter()
         max_budget = int(
-            getattr(adapter, "candidate_budget", MTP2_MAX_CANDIDATE_DEPTH)
+            getattr(
+                adapter,
+                "candidate_budget",
+                _qwen35_gguf_mtp2_module.MTP2_MAX_CANDIDATE_DEPTH,
+            )
         )
         return min(max_budget, max(1, int(request.max_tokens)))
 

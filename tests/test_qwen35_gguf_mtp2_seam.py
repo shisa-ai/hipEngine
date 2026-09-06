@@ -4293,3 +4293,40 @@ def test_mtp2_production_routes_full_batches_above_the_measured_bound_to_ar() ->
     # Over-width due batches route to a single full-batch AR decode.
     assert adapter.partition_max_requests(ids) == 0
     assert adapter.partition_max_requests(ids[:5]) == 0
+
+
+def test_mtp2_candidate_budget_admission_derives_from_declared_depth() -> None:
+    """Adapter admission must follow the declared implementation-depth limit.
+
+    The K4 server hang traced to a hardcoded ``{1, 2, 3}`` admission literal:
+    lifting the declared depth constant did not lift admission, and the
+    resulting ValueError escaped the batcher worker and orphaned queued
+    requests. Admission now derives from ``_MTP2_MAX_CANDIDATE_DEPTH``.
+    """
+
+    import hipengine.generation.qwen35_gguf_mtp2 as module
+
+    assert module._MTP2_MAX_CANDIDATE_DEPTH == 3
+
+    # At the declared depth, budget 4 remains rejected.
+    with pytest.raises(ValueError, match="candidate budget"):
+        Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=4,
+        )
+
+    # Lifting the declared depth lifts admission coherently.
+    original = module._MTP2_MAX_CANDIDATE_DEPTH
+    module._MTP2_MAX_CANDIDATE_DEPTH = 4
+    try:
+        lifted = Qwen35GGUFMTP2Adapter(
+            _width_bound_owner(profile="production", capacity=8),
+            enabled=True,
+            target_verify_mode="packed",
+            candidate_budget=4,
+        )
+        assert lifted.candidate_budget == 4
+    finally:
+        module._MTP2_MAX_CANDIDATE_DEPTH = original
