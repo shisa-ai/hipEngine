@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q5_K bundled row4 candidate
+
+- Kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` bundles
+  publication with exact arithmetic. No runtime flag/default change yet.
+- Require invocation-checked model state/KV and canonical A/B before
+  promotion;retain original row4 rollback and strict selected GEMV.
+- Small expected whole-model contribution:record micro/window evidence
+  separately from model throughput;remove if complete-model gates reject it.
+
 ## Qwen4Exp folded Q5_1 pair-reduction rollback
 
 - `selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out` shares barrier

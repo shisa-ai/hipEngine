@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_K bundled row4 kernel candidate (September6 UTC):** exact bundled
+publication improves actual layer2 gate/up plus identical group-map work
+1.015x/1.021x at64/512 tokens,means/both orders positive. Forty pairs exact;
+34 GPU tests pass including CPU floor and64/128/256 threads. Trace24 VGPR/
+512B LDS/scratch0 unchanged. Retain kernel candidate,not runtime default;
+full-model gates pending. At a0.787s owner,1.02x projects only~15ms savings,
+so no substantial model speedup is implied.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json).
+
 **Q4 row4/output4 blanket replacement rejected (September6 UTC):** increase
 concurrent output activation reuse while retaining32 accumulator slots.
 Captured layer3/mixed4096chunk7 loses0.992x in both orders;layer0/code4096chunk0

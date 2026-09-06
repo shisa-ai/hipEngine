@@ -34,6 +34,7 @@ def main():
     parser.add_argument("--pairs", type=int, default=10)
     parser.add_argument("--compiler-version-file", type=Path, required=True)
     parser.add_argument("--require-cached-build", action="store_true")
+    parser.add_argument("--bundle", action="store_true")
     args = parser.parse_args()
     if args.pairs < 1 or any(r < 1 for r in args.rows):
         parser.error("positive rows and pairs required")
@@ -75,6 +76,11 @@ def main():
         "routing_fixture": "seeded distinct top-10 per token, broad and uneven experts; not prompt tuned",
         "cases": [],
     }
+    if args.bundle:
+        report.update(
+            boundary="Two Q5_K grouped projections; both arms include identical GPU group-map work",
+            parent_variant="selected_grouped_row4_gemv_bf16_bf16_out",
+            candidate_variant="selected_grouped_row4_bundle_gemv_bf16_bf16_out")
     try:
         dw = [upload(w) for w in weights]
         for rows in args.rows:
@@ -99,7 +105,7 @@ def main():
             candidate_out = [upload(np.zeros((compact, 640), np.uint16)) for _ in dw]
 
             def run(mode):
-                if mode == "candidate":
+                if mode == "candidate" or args.bundle:
                     runtime.memset(counts.ptr, 0, counts.nbytes)
                     group.qwen35_moe_group_count(
                         ds.ptr, counts.ptr, compact, 512, library=group_library, runtime=runtime)
@@ -112,13 +118,17 @@ def main():
                         sorted_experts.ptr, sorted_routing.ptr, compact, 512,
                         library=group_library, runtime=runtime)
                 for weight, parent, candidate in zip(dw, parent_out, candidate_out):
-                    if mode == "parent":
+                    if mode == "parent" and not args.bundle:
                         gemv.gguf_q5_k_selected_gemv_bf16_bf16_out(
                             dx.ptr, ds.ptr, weight.ptr, parent.ptr, rows, compact,
                             512, 2560, 640, library=library, runtime=runtime)
                     else:
-                        gemv.gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out(
-                            dx.ptr, starts.ptr, lanes.ptr, weight.ptr, candidate.ptr,
+                        fn = (gemv.gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out
+                              if args.bundle and mode == "candidate" else
+                              gemv.gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out)
+                        fn(
+                            dx.ptr, starts.ptr, lanes.ptr, weight.ptr,
+                            candidate.ptr if mode == "candidate" else parent.ptr,
                             rows, compact, 512, 2560, 640, library=library, runtime=runtime)
                 runtime.device_synchronize()
 

@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q5_K bundled row4 kernel candidate: layer2 gate/up plus group map improves
+108.295->106.043ms (1.021x) at512 tokens,exact. Model gates pending;
+whole-model contribution is expected to be small.
+[Evidence](results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json).
+
 Q4 row4/output4 activation-reuse retile rejected as a blanket replacement:
 captured layer3/mixed0.992x versus layer0/code1.008x,exact. Candidate removed;
 retained production unchanged.
