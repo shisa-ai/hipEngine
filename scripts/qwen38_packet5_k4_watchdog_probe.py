@@ -389,7 +389,10 @@ def main() -> int:
         "--prompts", str(prompts_file),
         "--mtp-request-mode", "explicit",
         "--widths", str(args.width),
-        "--resident-capacity", str(max(int(args.width), 2)),
+        # The injected evidence row inherits the registered row's
+        # resident_capacity and the serving key compares it exactly: C1/C8
+        # evidence was measured at capacity 8, C2 at capacity 2.
+        "--resident-capacity", str(2 if int(args.width) == 2 else 8),
         "--expected-mtp-widths", str(args.width),
         "--max-tokens", str(args.max_tokens),
         "--candidate-budget", str(args.budget),
