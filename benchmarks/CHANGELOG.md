@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC post-Q8-row4 code4096 owners] Clean e959a095c:32 row4 grouped-down calls/1.401s, FFN14.679s/linear5.370s/GR4.254s.100% coverage, matched decode roots and zero final owners; earlier Vulkan reused. Snapshot only, no causal delta. `benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-down-family.json`.
+
 - [2026-09-06 UTC Framework Q8 down row4 production] Full12-case PP512/1024/4096:158.216->159.516 (+0.822%)/155.729->156.718 (+0.635%)/144.452->145.470 (+0.705%),72 exact trajectories,all prefill/request walls improve,total1.00522x. Preserve three tiny TG losses; no new memory. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json`.
 
 - [2026-09-06 UTC Framework Q8 row4 model admission] Five full-logit/state/KV off/on/off cases exact; prefill calls0/4/0 or0/32/0, decode0, final owners0. Default-off rows>=512 scope,31 CPU tests. Throughput delta N/A until canonical12-case A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-state.json`.

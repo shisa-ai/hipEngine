@@ -519,7 +519,29 @@ Reading rules and caveats, binding on any use of these rows:
 
 ### 5.2.1 Framework starting and current owner snapshots
 
-The current snapshot is post-MMQ production `ef63870f9`, captured on
+**Latest code-only checkpoint, September6:** after Q8 down row4 promotion,
+clean `e959a095c` code4096 prefill/decode capture has100% coverage, matched
+decode root, exact decode repeats and zero final owners. The table below is
+**code4096 only**, not the four-category aggregate in the generated block.
+Pinned earlier Vulkan is reused; different instruments remain diagnostic.
+
+| Prefill owner | hipEngine ms | halo-box Vulkan ms | HE / Vulkan |
+| --- | ---: | ---: | ---: |
+| MoE/FFN including shared | 14679.242 | 4541.955 | 3.232x |
+| Non-GR linear | 5369.641 | 1018.844 | 5.270x |
+| GR projections/read/mix | 4253.931 | 1708.654 | 2.490x |
+| QSA | 1918.758 | 645.530 | 2.972x |
+| GDN | 777.248 | 1390.027 | 0.559x |
+
+All32 grouped-Q8 down calls use row4, totaling1400.674ms; no row1 calls
+remain in this prefill owner. Total FFN/device sums need not fall across
+separate profiling sessions: the retained speed claim comes from the paired
+12-case A/B, not this snapshot. Decode QSA remains16.953ms versus3.081ms.
+[Joined packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-down-family.json).
+The full multi-category snapshot below remains explicitly post-MMQ until its
+next complete six-case refresh.
+
+The full multi-category snapshot is post-MMQ production `ef63870f9`, captured on
 September6 UTC. The post-GR snapshot remains linked historical evidence.
 
 The generated tables below supersede the subsequent post-GDN checkpoint
