@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 cooperative residual staging rejected:61.357ms versus exact17.403ms;
+no-unroll59.887ms and LDS-padding57.152ms still lose. Reference-exact,
+not strict-exact;cooperative code removed,production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json).
+
 Q4 two-plane WMMA diagnostic:gate/up BF16 agreement89.66%->99.65%,
 post-SiLU82.46%->99.37% on one actual-weight fixture,but all tested
 widths lose to exact pair2. T2 reference only;no model/default change.

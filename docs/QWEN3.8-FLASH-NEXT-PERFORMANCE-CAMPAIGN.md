@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 cooperative residual staging rejected (September6 UTC):** four-wave
+64-output/16-row K64 producer/consumer matches the two-plane reference
+but takes61.357ms versus exact17.403ms. Trace224 VGPR/18KiB LDS/scratch0.
+Explicit no-unroll59.887ms,then padded LDS stride68/alignment-safe copies
+57.152ms do not rescue it. Each passes numerical/reference-control tests;
+all cooperative code removed,no model gate or default change. These
+results reject this dataflow,not every WMMA implementation.
+Stop further tuning of this K64 staging scheme. The unoptimized residual
+reference remains diagnostic only,with cleanup decision required before
+another new consumer;no performance promotion or numerical waiver.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json).
+
 **Q4 two-plane WMMA numerical reference (September6 UTC):** declared T2,
 not exact and not a production candidate. FP16 high+residual weight
 planes improve captured layer0/code4096chunk0 BF16 element agreement

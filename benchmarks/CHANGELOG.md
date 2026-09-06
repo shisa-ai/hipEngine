@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework cooperative Q4 rejected] Exact17.403ms vs cooperative61.357ms (+252.6% time);no-unroll59.887ms/padded57.152ms still lose.224 VGPR/18KiB LDS initial,reference-exact T2;cooperative code removed,no model gate. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json`.
+
 - [2026-09-06 UTC Framework Q4 residual WMMA reference] Actual gate/up BF16 agreement89.66%->99.65%,SiLU82.46%->99.37%;two-plane widths16/32/64 cost19.399/18.237/17.823ms versus exact17.430/17.405/17.392ms,all lose. T2 diagnostic reference only,30 tests,no model route. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json`.
 
 - [2026-09-06 UTC Framework Q4 paired input rejected] Actual pack+gate/up+SiLU17.470->22.938ms (+31.29% time),all20 pairs exact,both orders lose. Consumer17.333->22.657ms versus pack0.184ms;VGPR88->72. Candidate removed,17 candidate/9 restored-parent tests. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-input-pair-rejected.json`.
