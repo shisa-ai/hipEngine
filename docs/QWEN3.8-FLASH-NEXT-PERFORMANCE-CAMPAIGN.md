@@ -76,13 +76,26 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Framework chunk512/1024 diagnostic (September6 UTC):** clean `bc00c771f`,
+one shared1024-capacity residency,three code cases/18 exact trajectories.
+Actual chunk coverage verified. PP512180.835->180.837 (neutral);
+PP1024179.228->190.609 (+6.350%);PP4096168.062->177.264 (+5.475%).
+Request ratios1.000025x/1.028450x/1.038810x. Decode4096-0.461%;
+short decode essentially neutral. Max PP/TG CV0.174%/0.126%,zero final
+allocations. Tracked peak86,093,186,980B,754,856,960B above recent
+512-capacity run;not a simultaneous allocation-size comparison.
+This is stronger current-host evidence than the old zbook sweep,but still
+code-only. Require full categories,full logits/state/KV and admission
+accounting before any chunk-default change. Default512 unchanged.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-chunk1024-code.json).
+
 **Current-host chunk diagnostic prepared (September6 UTC):** the prior
 P0 chunk sweep was zbook/070803e,not Framework/current kernels. New
 `--route-package chunk1024 --prefill-chunk-size1024` in the canonical
 A/B harness shares one1024-capacity allocation and changes only active
 chunk512/1024. It verifies actual executed chunk lengths,keeps kernel
 flags fixed and requires exact trajectories for this screen.
-21 CPU tests pass;no GPU result or default change yet. Larger allocation
+21 CPU tests pass;the subsequent GPU screen above is positive. Larger allocation
 admission and production numerical/state qualification remain separate.
 Begin with code512/code1024/code4096 diagnostic,not a full ladder.
 
