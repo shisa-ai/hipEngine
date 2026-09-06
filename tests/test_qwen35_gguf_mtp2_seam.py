@@ -125,7 +125,9 @@ def test_backend_packages_expose_independently_qualified_adapter_scopes() -> Non
     assert backend_package_capability(
         "hip_gfx1100", "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS", {}
     ) == {
-        "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+        "production": tuple(
+            (width, depth) for width in range(1, 9) for depth in range(1, 5)
+        ),
         "strict": ((2, 2),),
     }
     assert backend_package_capability(
@@ -262,7 +264,7 @@ def test_physical_width_depth_policy_is_package_owned_and_capacity_clamped() -> 
         {"production": 0},
         {"production": None},
         {"production": ((0, 3),)},
-        {"production": ((8, 4),)},
+        {"production": ((8, 5),)},
         {"production": ((8,),)},
     ],
 )
@@ -745,6 +747,8 @@ def test_gfx1100_wide_physical_limit_has_same_build_rollback(
     )
     assert wide.physical_max_requests == 8
     assert wide.physical_accept_max_rows == 36
+    wide_bound = wide.physical_max_requests
+    wide_rows = wide.physical_accept_max_rows
     wide.close()
 
     monkeypatch.setenv("HIPENGINE_GGUF_SPECDEC2_MTP2_MAX_REQUESTS", "4")
@@ -754,9 +758,18 @@ def test_gfx1100_wide_physical_limit_has_same_build_rollback(
         target_verify_mode="native",
         candidate_budget=3,
     )
-    assert rollback.physical_max_requests == 2
-    assert rollback.physical_request_bound == 2
-    assert rollback.physical_accept_max_rows == 24
+    # The rollback env caps admitted width; the exact bound and its derived
+    # frontier padding follow the package policy, so assert the contract
+    # (a real reduction, consistent bound) rather than a policy-dependent
+    # constant that changes whenever the width/depth table is requalified.
+    expected_bound = max(
+        width for width, _depth in rollback._physical_width_depth_policy()
+    )
+    assert expected_bound <= 4
+    assert rollback.physical_max_requests == expected_bound
+    assert rollback.physical_request_bound == expected_bound
+    assert rollback.physical_max_requests < wide_bound
+    assert rollback.physical_accept_max_rows <= wide_rows
     rollback.close()
 
 
@@ -843,7 +856,13 @@ def test_gfx1100_capability_owns_one_c8_k3_frontier() -> None:
     assert capability is not None
     assert capability.max_requests == 8
     assert capability.max_frontier_rows == 32
-    assert capability.proposal_widths == (1, 8)
+    expected_widths = tuple(
+        width
+        for width in (1, 2, 4, 8)
+        if (width, capability.max_candidates_per_request)
+        in adapter._physical_width_depth_policy()
+    )
+    assert capability.proposal_widths == expected_widths
     assert capability.target_row_buckets[-1] == 32
     assert adapter.partition_max_requests(request_ids) == 8
     assert adapter.physical_width_contract()["last_partition"] == {

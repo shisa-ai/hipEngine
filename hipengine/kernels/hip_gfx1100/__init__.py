@@ -618,7 +618,9 @@ GGUF_SPECDEC2_MTP2_PHYSICAL = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
-    "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+    "production": tuple(
+        (width, depth) for width in range(1, 9) for depth in range(1, 5)
+    ),
     "strict": ((2, 2),),
 }
 # Production prompt streaming follows the same model-local physical evidence.
