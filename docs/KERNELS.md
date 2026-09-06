@@ -86,6 +86,13 @@ order, and keeps `selected_gemv_bf16_bf16_out` as its strict fallback.
 Qwen4Exp gfx1151 production selects it for ungrouped gate/up rows>=64;
 strict, short rows and missing registry capabilities keep selected GEMV.
 
+Its kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` sibling
+bundles exact row reductions. Actual layer2 gate/up plus group-map work
+improves1.015x/1.021x at64/512 tokens,both orders positive.34 GPU tests
+pass;trace24 VGPR/512B LDS/no spills unchanged. Full-model state/KV and
+canonical A/B remain required;the owner's small wall ceiling is explicit.
+Evidence: `2026-09-06-framework-qwen4exp-q5k-row4-bundle.json`.
+
 `hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code objects and registers a peer backend key. `hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions, thresholds, and architecture-specific defaults. A gfx1100 variant is not a gfx1151 default merely because the source compiles there; each promotion needs its own correctness and performance gate.
 
 ### CUDA is a peer backend

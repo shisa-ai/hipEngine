@@ -1,0 +1,39 @@
+{
+  "schema":1,
+  "status":"kernel_candidate_retained_model_gate_pending",
+  "source":"bf2f43ee2 plus in-tree candidate",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary":"Actual layer2 Q5_K gate/up weights;both arms include GPU count/prefix/scatter and zeroing. Synthetic BF16 activations and distinct top10 routing. Outputs are separate BF16 projections;SiLU/down/combine unchanged and not timed.",
+  "mechanism":"Bundle four original wave-shuffle reductions,one shared publication phase,one thread per row performs ascending serial wave sum. Preserve K accumulation and lane-to-row ownership;original row4 and selected GEMV remain fallbacks.",
+  "owner_prior":"Q5_K row4 gate/up about0.787s of code4096. At1.02x the arithmetic projection is only about15ms saved,not a measured model speedup.",
+  "command":".venv/bin/python scripts/qwen4exp_q5k_grouped_row4_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --bundle --rows 64 512 --pairs 20 --output /tmp/qwen4exp-q5k-row4-bundle.json",
+  "environment":{
+    "PATH_prefix":"/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH":"/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH":"gfx1151",
+    "compiler":"HIP7.15.26333-0000000 clang23.0.0git 8f497e0992fb7513f7f78a6f6b6f1056c375e961",
+    "clock_policy":"unchanged high/2900-requested"
+  },
+  "cases":[
+    {"tokens":64,"parent_ms":24.3393370183,"candidate_ms":23.9774920046,"speedup":1.0150910284,"mean_speedup":1.0155998216,"order_speedups":[1.0173966359,1.0139817673],"pairs":20,"exact":true},
+    {"tokens":512,"parent_ms":108.2951130811,"candidate_ms":106.0434179381,"speedup":1.0212337096,"mean_speedup":1.0222901931,"order_speedups":[1.0247566727,1.0194009453],"pairs":20,"exact":true}
+  ],
+  "correctness":"Registry RED;34 GPU tests pass including64/128/256 threads,mapped/compact rows,empty experts,repeat exact bits vs selected GEMV,CPU float64 dequantized oracle/KL<=0.05/top1>=90%,existing quant tests. Forty two-projection/map pairs exact.",
+  "trace":{
+    "prefix":"HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q5k-row4-bundle-trace --",
+    "arguments":"same command with --rows 512 --pairs 2 --output /tmp/qwen4exp-q5k-row4-bundle-trace.json",
+    "symbols":"gguf_q5_k_selected_grouped_row4_bf16_kernel<false>/<true>",
+    "last_parent_bank_ns":[53164207,53134630],"last_candidate_bank_ns":[52210969,52083811],
+    "both_vgpr":24,"both_lds_bytes":512,"both_scratch_bytes":0
+  },
+  "raw":{
+    "/tmp/qwen4exp-q5k-row4-bundle.json":"31fa7b6020e0c767ab48b150a036f0a5cb2d85d938f74bf809ad261d1bf10770",
+    "/tmp/qwen4exp-q5k-row4-bundle-trace/gfx1151/3316468_kernel_trace.csv":"2e653b535db6c018838d3299d07d60f6b932469c30db5649ace2db090da85d40"
+  },
+  "runtime_default_changed":false,
+  "promotion_blocker":"Invocation-checked full-model logits/state/KV and canonical12-case A/B pending;small projected wall contribution must not be exaggerated.",
+  "metadata_note":"Initial raw boundary text inherited candidate-only map wording;actual --bundle code runs maps in both arms. Current screen labels this explicitly."
+}

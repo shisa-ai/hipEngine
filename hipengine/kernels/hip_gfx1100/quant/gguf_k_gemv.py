@@ -506,6 +506,9 @@ gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out = _make_selected_group
 gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_grouped_row4_gemv_bf16_bf16_out")
 )
+gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q5_k", _symbol("gguf_q5_k", "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+)
 gguf_q8_0_selected_pack8_gemv_bf16_bf16_out = _make_selected_pack8_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_pack8_gemv_bf16_bf16_out"))
 gguf_q8_0_prefill_f32_f32_out = gguf_q8_0_gemv_f32_f32_out
 gguf_q8_0_prefill_f32_fp16_out = gguf_q8_0_gemv_f32_fp16_out
@@ -1605,6 +1608,7 @@ _WRAPPERS = {
         "wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out": gguf_q5_k_wave32x2_swar_pair_fixed_meta_gemv_decode_bf16_bf16_out,
         "selected_gemv_bf16_bf16_out": gguf_q5_k_selected_gemv_bf16_bf16_out,
         "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out,
+        "selected_grouped_row4_bundle_gemv_bf16_bf16_out": gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out,
         "selected_silu_gemv_bf16_bf16_out": gguf_q5_k_selected_silu_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_gemv_bf16_bf16_out,
         "selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out": gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out,
@@ -1739,6 +1743,7 @@ __all__ = [
     "gguf_q5_k_wave32x2_gemv_decode_bf16_f32_out",
     "gguf_q5_k_selected_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out",
+    "gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_silu_gemv_bf16_bf16_out",
     "gguf_q5_k_selected_pack8_q8_1_dp4a_gemv_bf16_bf16_out",
     "gguf_q5_k_prefill_f32_f32_out",

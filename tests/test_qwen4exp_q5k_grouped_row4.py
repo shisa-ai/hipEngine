@@ -52,17 +52,24 @@ def test_grouped_row4_registry_keeps_strict_parent():
         variant="selected_gemv_bf16_bf16_out")
     assert candidate is gemv.gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out
     assert parent is gemv.gguf_q5_k_selected_gemv_bf16_bf16_out
+    assert resolve(
+        backend="hip_gfx1151", layer="linear", quant="gguf_q5_k",
+        variant="selected_grouped_row4_bundle_gemv_bf16_bf16_out"
+    ) is gemv.gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP unavailable")
+@pytest.mark.parametrize("bundle", [False, True])
+@pytest.mark.parametrize("threads", [64,128,256])
 @pytest.mark.parametrize("x_rows,topk,experts,k,n,sorted_rows", [
     (1, 10, 16, 256, 7, False),
     (9, 3, 8, 512, 17, False),
     (27, 1, 8, 512, 17, True),
     (64, 10, 512, 2560, 640, False),
 ])
-def test_grouped_row4_exact(x_rows, topk, experts, k, n, sorted_rows):
-    candidate = getattr(gemv, "gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out")
+def test_grouped_row4_exact(x_rows, topk, experts, k, n, sorted_rows, bundle, threads):
+    candidate = getattr(gemv, "gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out"
+                        if bundle else "gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out")
     rows = x_rows * topk
     rng = np.random.default_rng(403)
     selected = rng.integers(0, experts - 1, rows, dtype=np.int64)
@@ -95,21 +102,32 @@ def test_grouped_row4_exact(x_rows, topk, experts, k, n, sorted_rows):
         output = upload(np.full((rows, n), 0x7FC1, np.uint16))
         gemv.gguf_q5_k_selected_gemv_bf16_bf16_out(
             dx.ptr, ds.ptr, dw.ptr, parent.ptr, x_rows, rows, experts, k, n,
-            library=library, runtime=runtime,
+            library=library, runtime=runtime, threads=threads,
         )
         expected = download(parent)
         for _ in range(2):
             candidate(
                 dx.ptr, dp.ptr, None if sorted_rows else dm.ptr, dw.ptr, output.ptr,
-                x_rows, rows, experts, k, n, library=library, runtime=runtime,
+                x_rows, rows, experts, k, n, library=library, runtime=runtime, threads=threads,
             )
             got = download(output)
             np.testing.assert_array_equal(got, expected)
         # Check all columns of a small row sample against independent GGUF math.
+        oracles = []
         for row in range(min(rows, 3)):
             weights = dequantize_gguf_data(raw[selected[row]], GGMLQuantizationType.Q5_K)
             oracle = weights.astype(np.float64) @ f32(x[row // topk]).astype(np.float64)
             np.testing.assert_allclose(f32(got[row]), oracle, rtol=0.008, atol=0.005)
+            oracles.append(oracle)
+        def logsoftmax(v):
+            v = np.asarray(v,dtype=np.float64)
+            v -= v.max(axis=-1,keepdims=True)
+            return v - np.log(np.exp(v).sum(axis=-1,keepdims=True))
+        oracle = np.stack(oracles)
+        actual = f32(got[:len(oracles)])
+        lp,lq = logsoftmax(oracle),logsoftmax(actual)
+        assert np.max(np.sum(np.exp(lp)*(lp-lq),axis=-1)) <= .05
+        assert np.mean(oracle.argmax(-1)==actual.argmax(-1)) >= .9
     finally:
         runtime.device_synchronize()
         for ptr in reversed(allocations):

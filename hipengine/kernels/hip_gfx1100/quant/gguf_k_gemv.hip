@@ -1247,6 +1247,7 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
 
 // Preserve selected GEMV's per-row arithmetic while amortizing Q5 decoding
 // over four lanes belonging to the same expert.
+template <bool BUNDLE = false>
 __launch_bounds__(256, 2)
 __global__ void gguf_q5_k_selected_grouped_row4_bf16_kernel(
     const uint16_t* __restrict__ x,
@@ -1286,6 +1287,26 @@ __global__ void gguf_q5_k_selected_grouped_row4_bf16_kernel(
         }
       }
     }
+    if constexpr (BUNDLE) {
+      __shared__ float sums[4][8];
+#pragma unroll
+      for (int r = 0; r < 4; ++r) {
+        for (int offset = 16; offset > 0; offset >>= 1)
+          acc[r] += __shfl_down(acc[r], offset);
+        if ((threadIdx.x & 31) == 0) sums[r][threadIdx.x >> 5] = acc[r];
+      }
+      __syncthreads();
+      if (threadIdx.x < 4) {
+        const int r = threadIdx.x;
+        float total = 0.0f;
+        for (int wave = 0; wave < (blockDim.x + 31) / 32; ++wave)
+          total += sums[r][wave];
+        if (dest[r] >= 0 && dest[r] < rows)
+          store_output<uint16_t>(output,
+              static_cast<int64_t>(dest[r]) * out_features + out_col, total);
+      }
+      __syncthreads();
+    } else {
 #pragma unroll
     for (int r = 0; r < 4; ++r) {
       const float total = reduce_block_sum(acc[r]);
@@ -1294,6 +1315,7 @@ __global__ void gguf_q5_k_selected_grouped_row4_bf16_kernel(
             output, static_cast<int64_t>(dest[r]) * out_features + out_col, total);
       }
       __syncthreads();
+    }
     }
   }
 }
@@ -4689,7 +4711,8 @@ HIPENGINE_GGUF_K_EXPORTS(gguf_q8_0, 8)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q5_k, 5)
 HIPENGINE_GGUF_K_EXPORTS(gguf_q6_k, 6)
 
-extern "C" int hipengine_gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out(
+template <bool BUNDLE>
+int launch_q5k_row4(
     const uint16_t* x, const int64_t* expert_start, const int64_t* lane_to_row,
     const uint8_t* weights, uint16_t* output,
     int64_t x_rows, int64_t rows, int64_t experts,
@@ -4703,11 +4726,21 @@ extern "C" int hipengine_gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out(
   }
   const dim3 grid(static_cast<unsigned int>(out_features),
                   static_cast<unsigned int>(experts));
-  gguf_q5_k_selected_grouped_row4_bf16_kernel<<<grid, threads, 0, stream>>>(
+  gguf_q5_k_selected_grouped_row4_bf16_kernel<BUNDLE><<<grid, threads, 0, stream>>>(
       x, expert_start, lane_to_row, weights, output, x_rows, rows, experts,
       in_features, out_features);
   return static_cast<int>(hipGetLastError());
 }
+
+#define Q5K_ROW4_ENTRY(NAME, BUNDLE) \
+extern "C" int NAME(const uint16_t* x, const int64_t* starts, const int64_t* map, \
+    const uint8_t* w, uint16_t* y, int64_t xr, int64_t rows, int64_t experts, \
+    int64_t k, int64_t n, int64_t threads, hipStream_t s) { \
+  return launch_q5k_row4<BUNDLE>(x, starts, map, w, y, xr, rows, experts, k, n, threads, s); \
+}
+Q5K_ROW4_ENTRY(hipengine_gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out, false)
+Q5K_ROW4_ENTRY(hipengine_gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out, true)
+#undef Q5K_ROW4_ENTRY
 
 // PF-1 fork (b) T0 candidate: grouped selected down (Q8_0 only). Consumes the
 // per-expert group map (exclusive expert_start[num_experts+1] prefix plus the
