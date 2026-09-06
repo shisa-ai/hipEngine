@@ -28,7 +28,15 @@ from scripts.qwen4exp_layer2_profile_gate import _state_summary
 from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_down_row4_expected_calls, q51_fold128_expected_calls, q51_fold_pair_expected_calls,
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
-    q8_bundle_call_in_scope)
+    q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage)
+
+
+def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
+    if package == "chunk1024":
+        apply_chunk_mode(runner,"after" if enabled=="1" else "before",
+                         allocated_chunk_size=1024)
+    else:
+        environment[flag] = "page256" if package=="qsa-h256-page256" and enabled=="1" else enabled
 
 
 def main():
@@ -36,7 +44,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -56,7 +64,8 @@ def main():
     generator = resolved.construct_generator(lambda: Qwen4ExpGGUFTextGenerator(
         model_path=args.model_root, weight_index=index,
         model_plugin=resolve_model(index.architecture or ""),
-        backend="hip_gfx1151", max_sequence_length=4352, prefill_chunk_size=512))
+        backend="hip_gfx1151", max_sequence_length=4352,
+        prefill_chunk_size=1024 if args.route_package=="chunk1024" else 512))
     flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
             if args.route_package == "q5k-row4"
             else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
@@ -139,7 +148,8 @@ def main():
     if args.route_package == "q51-register-cache":
         key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
                         "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
-    original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
+    original = (None if args.route_package=="chunk1024" else
+                resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant))
     calls = [0]
 
     def counted(*a, **kw):
@@ -147,7 +157,17 @@ def main():
             calls[0] += 1
         return original(*a, **kw)
 
-    register(key, counted, replace=True)
+    observed_chunks = []
+    original_chunk = None
+    if args.route_package=="chunk1024":
+        original_chunk = generator.runner._prefill_chunk
+        def counted_chunk(token_ids, **kwargs):
+            observed_chunks.append(len(token_ids))
+            calls[0] += 1
+            return original_chunk(token_ids,**kwargs)
+        generator.runner._prefill_chunk = counted_chunk
+    else:
+        register(key, counted, replace=True)
     qsa_calls = [0]
     qsa_original = None
     if args.route_package == "prefill-bundle":
@@ -164,6 +184,7 @@ def main():
 
         register(qsa_key, counted_qsa, replace=True)
     report = {
+        "status": "running",
         "source": _git_metadata(ROOT), "host": _host_metadata(), "command": sys.argv,
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
@@ -177,6 +198,12 @@ def main():
         ),
         "timing_scope": "diagnostic per-step wall; host logit copies between steps; first arm not warmed",
     }
+    if args.route_package=="chunk1024":
+        report["chunk_protocol"] = {
+            "allocated_chunk_size":1024,"active_sequence":[512,1024,512],
+            "kernel_flags_changed":False,
+            "memory_scope":"Shared larger allocation;not an allocation-size A/B",
+        }
     try:
         if args.route_package == "q8-mmq-prepack":
             assert os.environ.get(flag) == "1", "production must bind prepacked MMQ by default"
@@ -200,9 +227,8 @@ def main():
             baseline = None
             summaries = []
             for enabled in ("0", "1", "0"):
-                os.environ[flag] = (
-                    "page256" if args.route_package == "qsa-h256-page256" and enabled == "1"
-                    else enabled)
+                apply_state_gate_mode(generator.runner,args.route_package,enabled,flag)
+                observed_chunks.clear()
                 if args.route_package == "prefill-bundle":
                     os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = (
                         "page256" if enabled == "1" else "0")
@@ -272,6 +298,11 @@ def main():
                     expected = expected_raw_calls > 0
                 if args.route_package == "q8-mapped-down":
                     expected = expected_mapped_calls > 0
+                if args.route_package == "chunk1024":
+                    validate_chunk_coverage(observed_chunks,case["prompt_tokens"],
+                                            generator.runner.prefill_chunk_size)
+                    assert invoked == prefill_invoked,"prefill chunks executed during decode"
+                    expected = True
                 assert (invoked > 0) == expected, f"route not engaged correctly: {case['id']}"
                 invoked_qsa = qsa_calls[0] - start_qsa_calls
                 if args.route_package == "prefill-bundle":
@@ -296,11 +327,23 @@ def main():
                     "step_seconds": step_seconds,
                     "full_kv_sha256": state.get("full_kv_sha256"),
                 })
+                if args.route_package=="chunk1024":
+                    summaries[-1].update(active_chunk_size=generator.runner.prefill_chunk_size,
+                                         executed_prefill_chunks=list(observed_chunks))
             report["cases"].append({"id": case["id"], "exact": True, "captures": summaries})
             print(case["id"], "full logits/state exact", flush=True)
+        report["status"] = "passed"
+    except Exception as error:
+        report["status"] = "failed"
+        report["error"] = f"{type(error).__name__}: {error}"
+        raise
     finally:
-        os.environ[flag] = "1"
-        register(key, original, replace=True)
+        if original_chunk is not None:
+            generator.runner._prefill_chunk = original_chunk
+            generator.runner.prefill_chunk_size = 1024
+        else:
+            os.environ[flag] = "1"
+            register(key, original, replace=True)
         if qsa_original is not None:
             register(qsa_key, qsa_original, replace=True)
             os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] = "page256"
