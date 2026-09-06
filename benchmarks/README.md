@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+GR-specific MMQ64x128 rejected: real layer0/4 rows512 complete-chain speedups
+0.722x/0.720x, exact. Production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-mmq64n128-rejected.json).
+
 Direct Q5_1 metadata also rejected (0.910x/0.921x at64/512 tokens);
 production unchanged.
 [Evidence](results/2026-09-06-framework-qwen4exp-q51-direct-meta-rejected.json).
