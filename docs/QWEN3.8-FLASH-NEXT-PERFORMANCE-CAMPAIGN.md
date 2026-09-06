@@ -7,7 +7,10 @@ on six structured-output scenarios; remaining misses involve model tool choices,
 not the former empty-message transport defect. These are not a frozen full69-case
 qualification or a comparator-speed result. See [contract/evidence](QWEN4EXP-TOOLS-GRAMMAR.md).
 
-**Owner priority, 2026-09-06:** pause further performance experiments for the
+**Owner priority, 2026-09-06:** resume prefill tuning after the validated
+context-capacity and tool-protocol detours. Capture actual expert routing before
+the next FFN scheduling screen; retain exact prefill wins and tackle decode later.
+The following records the completed
 [served context-capacity correctness detour](QWEN4EXP-CONTEXT-CAPACITY.md).
 Expose admission-aware native context through the public factory/prepare path,
 preserving the2051 model constant and exact sparse control. Short-capacity
@@ -72,6 +75,19 @@ not repeating the completed suffix admission. The next portfolio is routed
 MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
+
+**Real-routing capture (September6 UTC):** resumed prefill work captures1683
+exact Q4/Q5_1 pair boundaries: code512 plus all four4096 categories, each
+uninstrumented/instrumented/uninstrumented with identical prefill/next logits
+and checked recurrent state/metadata, zero final tracked allocations.
+At4096, Q4 active-expert medians are9-12 rows;88.7-91.7% of rows belong to
+experts with more than8 rows. This supports examining reuse under real skew,
+not reviving unchanged rejected RB16/RB32 or worker-grid candidates.
+The committed capture tool emits compact summaries and identity-checked Q4
+replay; actual layer3/mixed4096/chunk7 gate/up+SiLU replay passes two exact
+counterbalanced pairs. Activations remain synthetic; no new speedup claimed.
+Full KV bytes are not covered by the capture state digest.
+[Routing packet](../benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json).
 
 **Post-MMQ family refresh (September6 UTC):** clean `ef63870f9` six-case/
 twelve-phase capture passes100% ownership coverage, matched decode roots,
