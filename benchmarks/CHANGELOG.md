@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q5_K bundle rejected] Full12-case PP512/1024/4096:165.556->165.781 (+0.136%)/163.883->163.842 (-0.025%)/151.007->151.462 (+0.301%). All72 trajectories exact, but five prefill/six request-wall cases regress; candidate removed, production unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.
+
 - [2026-09-06 UTC Framework Q5_K bundle admission] Five full logits/state/KV cases exact;calls0/2/0 or0/16/0 in prefill,zero decode/final owners. Both binders0,27 CPU tests;throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-state.json`.
 
 - [2026-09-06 UTC Framework Q5_K bundle candidate] Layer2 gate/up+map64/512:24.339->23.977ms (-1.49%)/108.295->106.043ms (-2.08%),40 pairs exact,both orders positive.34 GPU tests,resources unchanged;model admission pending,small wall ceiling. `benchmarks/results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json`.

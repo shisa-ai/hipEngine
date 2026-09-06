@@ -86,18 +86,14 @@ order, and keeps `selected_gemv_bf16_bf16_out` as its strict fallback.
 Qwen4Exp gfx1151 production selects it for ungrouped gate/up rows>=64;
 strict, short rows and missing registry capabilities keep selected GEMV.
 
-Its kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` sibling
-bundles exact row reductions. Actual layer2 gate/up plus group-map work
-improves1.015x/1.021x at64/512 tokens,both orders positive.34 GPU tests
-pass;trace24 VGPR/512B LDS/no spills unchanged. Full-model state/KV and
-canonical A/B remain required;the owner's small wall ceiling is explicit.
-Evidence: `2026-09-06-framework-qwen4exp-q5k-row4-bundle.json`.
-
-Default-off Q5_K bundle model admission passes five full logits/state/KV
-cases,four decode steps each.2/16 calls only in enabled prefill,zero final
-owners.27 CPU tests pass;existing row4 rows>=64 only,both binders0.
-Clean12-case A/B remains the promotion blocker.
-Evidence: `2026-09-06-framework-qwen4exp-q5k-bundle-state.json`.
+The experimental Q5_K bundled row-reduction sibling was removed after the
+clean `4b39fbfa5` canonical A/B: all72 trajectories exact, but five prefill
+and six request-wall cases regress. Earlier kernel1.015x/1.021x screens
+and five full-logit/state/KV cases did not establish a whole-model win.
+The original row4 implementation remains; its64/128/256-thread and
+CPU-reference coverage is retained. This removal does not affect the
+separate production Q8 bundled variant.
+Evidence: `2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json`.
 
 `hip_gfx1151` compiles shared gfx11 `.hip` bodies as native `gfx1151` code objects and registers a peer backend key. `hipengine/kernels/hip_gfx1151/__init__.py` controls aliases, exclusions, thresholds, and architecture-specific defaults. A gfx1100 variant is not a gfx1151 default merely because the source compiles there; each promotion needs its own correctness and performance gate.
 

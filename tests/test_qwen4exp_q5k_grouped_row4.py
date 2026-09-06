@@ -52,14 +52,9 @@ def test_grouped_row4_registry_keeps_strict_parent():
         variant="selected_gemv_bf16_bf16_out")
     assert candidate is gemv.gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out
     assert parent is gemv.gguf_q5_k_selected_gemv_bf16_bf16_out
-    assert resolve(
-        backend="hip_gfx1151", layer="linear", quant="gguf_q5_k",
-        variant="selected_grouped_row4_bundle_gemv_bf16_bf16_out"
-    ) is gemv.gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP unavailable")
-@pytest.mark.parametrize("bundle", [False, True])
 @pytest.mark.parametrize("threads", [64,128,256])
 @pytest.mark.parametrize("x_rows,topk,experts,k,n,sorted_rows", [
     (1, 10, 16, 256, 7, False),
@@ -67,9 +62,8 @@ def test_grouped_row4_registry_keeps_strict_parent():
     (27, 1, 8, 512, 17, True),
     (64, 10, 512, 2560, 640, False),
 ])
-def test_grouped_row4_exact(x_rows, topk, experts, k, n, sorted_rows, bundle, threads):
-    candidate = getattr(gemv, "gguf_q5_k_selected_grouped_row4_bundle_gemv_bf16_bf16_out"
-                        if bundle else "gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out")
+def test_grouped_row4_exact(x_rows, topk, experts, k, n, sorted_rows, threads):
+    candidate = gemv.gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out
     rows = x_rows * topk
     rng = np.random.default_rng(403)
     selected = rng.integers(0, experts - 1, rows, dtype=np.int64)

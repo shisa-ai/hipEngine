@@ -76,20 +76,33 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Q5_K bundle default-off admission (September6 UTC):** existing row4
+**Q5_K bundle rejected and removed (September6 UTC):** clean `4b39fbfa5`
+canonical 12-case A/B is complete: all72 trajectories exact, zero final
+allocations, but five prefill cases and six request-wall cases regress.
+Aggregate PP512/1024/4096 changes +0.136%/-0.025%/+0.301%; the last
+aggregate is dominated by English4096 (+1.038%) with measurable drift.
+Max PP CV2.681%; first-to-last measured span30m50.7s excludes initial
+load/warmup. No broad non-regressive win: candidate kernel, registry key,
+flag and harness routes removed; existing Q5_K row4 and Q8/Q5_1 defaults
+unchanged. Do not repeat the unchanged mechanism to obtain a favorable run.
+[Rejection packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-rejected.json).
+Next structural target is non-GR linear: split its5.363s by actual shape
+and variant before choosing a kernel change. Its5.262x Vulkan ratio is
+diagnostic, not a guarantee that every kernel improvement transfers to wall.
+
+**Earlier Q5_K bundle default-off admission (superseded):** existing row4
 gate/up rows>=64 only,both binders0. Five code512/code4096/en512/ja512/
 mixed512 off/on/off cases pass full logits,four decode steps,state/full KV.
 Prefill calls0/2/0 or0/16/0,zero decode/final owners.27 CPU tests pass.
-Clean12-case `--route-package q5k-bundle` A/B is next;small projected wall
-benefit remains a caveat,not a reason to claim unmeasured throughput.
+The subsequent canonical A/B above rejects retention despite exactness.
 [State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-bundle-state.json).
 
-**Q5_K bundled row4 kernel candidate (September6 UTC):** exact bundled
+**Earlier Q5_K bundled row4 kernel screen (candidate now removed):** exact bundled
 publication improves actual layer2 gate/up plus identical group-map work
 1.015x/1.021x at64/512 tokens,means/both orders positive. Forty pairs exact;
 34 GPU tests pass including CPU floor and64/128/256 threads. Trace24 VGPR/
-512B LDS/scratch0 unchanged. Retain kernel candidate,not runtime default;
-full-model gates pending. At a0.787s owner,1.02x projects only~15ms savings,
+512B LDS/scratch0 unchanged. Full-model performance subsequently failed
+retention. At a0.787s owner,1.02x projects only~15ms savings,
 so no substantial model speedup is implied.
 [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q5k-row4-bundle.json).
 
