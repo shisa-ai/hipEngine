@@ -468,19 +468,30 @@ not campaign completion. Valid K1-K3 wins can ship before this packet closes.
 
 ### Packet 6 — Re-sweep, select by width, and close the public path
 
-- [ ] Evaluate K0-K7 at C1-C8, admitting deeper test cells as Packet 5 qualifies
+- [x] Evaluate K0-K7 at C1-C8, admitting deeper test cells as Packet 5 qualifies
   them. Record all 56 positive-depth cells, including explicit losing depths;
   automatic selection may still choose K0-K3. Run capacity-8 realized-width
   curves and separate N=1/2 controls. Preserve canonical N=2/C2
   and N=8/C8 comparisons; never present an own-capacity curve as fixed-N=8.
-- [ ] Select depth from immutable model/profile/shape evidence, not prompt
+  (Done 2026-09-06: all 56 cells engaged/token-exact/budget-conformed 10/10;
+  K3 wins C1 1.665x / C2 1.069x / C8 1.067x diagnostic; widths 3-7 lose at
+  every depth and stay screening-only. Artifact:
+  `campaign-artifacts/packet6/grid-aggregate.json` +
+  `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json`.)
+- [x] Select depth from immutable model/profile/shape evidence, not prompt
   identity or observed benchmark token IDs. Ragged/remaining-horizon budgets
   must stay at or below requested and qualified maxima. Recheck policy after
   any shared kernel change that speeds AR as well as MTP.
-- [ ] Test automatic winning cells and automatic K0 losing/missing cells before
+  (Done 2026-09-06: K3 selected at every retained width from the grid;
+  C2 moved K2→K3 on retained same-session evidence 1.067x vs 1.005x;
+  registered-route proof 1.079x 10/10 exact.)
+- [x] Test automatic winning cells and automatic K0 losing/missing cells before
   provider mutation; retain explicit safety-qualified cells for diagnostics.
   Add stable decline reasons, requested/effective K and physical engagement
   telemetry. No public safety-evidence bypass and no duplicate width/depth gate.
+  (Done 2026-09-06: automatic K0 controls re-proven at C1/C2/C8 engaged 0/10
+  before the C2/K3 row registration; requested-vs-admitted depth telemetry
+  landed in Packet 5; screening env remains the only unqualified-cell route.)
 - [ ] Run delayed arrival, width/depth switching, cancellation, sparse refill,
   failure, streaming/non-streaming output, usage and final-owner drain through
   the actual service owner. Measure throughput, latency and queueing together;
