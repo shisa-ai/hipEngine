@@ -141,8 +141,11 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     bench_output = out_dir / f"k4-w{args.width}-b{args.budget}-probe.json"
     watchdog_file = out_dir / f"k4-w{args.width}-b{args.budget}-watchdog-stacks.txt"
-    prompts_file = out_dir / f"k4-prompts-slice-{args.prompt_count}.jsonl"
-    _slice_prompts(args.prompts, args.prompt_count, prompts_file)
+    prompts_file = _slice_prompts(
+        args.prompts,
+        args.prompt_count,
+        out_dir / f"k4-prompts-slice-{args.prompt_count}.jsonl",
+    )
 
     patched = _patch_depth_bound(args.budget)
     evidence_key = _inject_k4_evidence_row(args.width, args.budget)
