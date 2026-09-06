@@ -340,8 +340,15 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 - [ ] Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
   Measure MTP-capable K0 both before and after active MTP; do not call it unloaded.
-- [ ] Deduplicate actual weight aliases and release conversion staging safely.
+- [x] Deduplicate actual weight aliases and release conversion staging safely.
   Count resident payloads, not GGUF size, as the device-weight baseline.
+  Done 2026-09-06: the planned residency census reports 851 logical tensors,
+  0 aliases, 15.995 GiB planned resident vs 15.932 GiB GGUF file bytes, and a
+  malloc-site attribution run mapped every >=64 MiB live load allocation to a
+  planned weight (the 32 x 69.73 MiB group is the `ffn_down` Q6_K_T16 set) or
+  the 350.81 MiB prefill-scratch liveness arena — zero retained conversion
+  staging. Baseline: resident payload bytes. Evidence:
+  `results/2026-09-06-rx7900xtx-capacity-packet2-workspace-ledger.json`.
 - [x] Right-size shared workspace and prefill scratch by supported execution
   shapes; reuse sequential scratch without merging per-request GDN state.
   Preserve graph pointer lifetimes and overlap constraints.
