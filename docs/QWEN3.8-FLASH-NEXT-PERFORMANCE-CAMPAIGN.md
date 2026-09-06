@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-Q8-down code4096 refresh (September6 UTC):** clean `e959a095c`
+confirms32 row4 grouped-Q8 calls/1400.674ms, no row1 calls in that prefill
+owner. FFN14.679s, non-GR linear5.370s, GR4.254s, QSA1.919s, GDN0.777s.
+Shared-taxonomy join to reused pinned Vulkan gives code-only gaps
+3.232x/5.270x/2.490x/2.972x; GDN remains ahead.100% coverage, matched
+decode root, exact repeats and zero final owners. Decode QSA16.953ms versus
+3.081ms stays open. This snapshot is not a causal before/after speed test and
+does not replace the previous four-category overview.
+[Code-only table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-down-family.json).
+
 **Q8 down row4 production (September6 UTC):** clean `c7dd804cb` full12-case
 same-residency A/B preserves all72 measured trajectories and improves every
 case's prefill and complete prefill+decode wall. Weighted PP512/1024/4096:
