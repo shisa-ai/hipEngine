@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 fixed-geometry screen near-flat (September6 UTC):** specialize K2560/
+N640 without K unrolling or new caches. Thirteen GPU tests and40 actual
+layer3/0 captured-routing pairs are exact. Medians1.003x/1.004x, but
+candidate-first strata0.9997x/0.9994x; trace resources unchanged88 VGPR/
+4608B LDS/scratch0. Removed rather than promote an uncertain small effect;
+no full-model A/B. Do not repeat this specialization unchanged.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-shape-rejected.json).
+
 **WIL-1 current graph census (September6 UTC):** clean `e6f78c35d` code4096
 prefill has24940 kernel dispatches and **zero graph launches**; recorded kernel
 union26.992s of27.330s profiled wall, residual337ms (1.23%). This residual

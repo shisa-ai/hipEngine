@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 fixed K2560/N640 screen: exact but near-flat1.003x/1.004x on real
+layer3/0 routing, with candidate-first order reversals. Removed, no promotion.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-shape-rejected.json).
+
 | Framework current HIP graph census, UD-Q4_K_XL/BF16 KV | Captured graph activity | Diagnostic result |
 | --- | --- | --- |
 | code4096 prefill / live4097 decode | 0 prefill launches;48 decode graphs/625 nodes | Prefill337ms non-kernel residual; decode1.35-1.43ms intra-graph gaps |

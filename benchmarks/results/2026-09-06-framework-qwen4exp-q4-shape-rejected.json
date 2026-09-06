@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "status": "rejected_removed_near_flat",
+  "source": "5cd19de79 plus uncommitted candidate; all runtime edits removed",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "model_fingerprint": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+  "boundary": "Q4_K gate/up plus unchanged BF16 SiLU, actual layer0/3 weights and captured routing, synthetic activations",
+  "recipe": "Template FIXED_K/FIXED_N in pair2; replace dimensions with2560/640 on matching shape, generic0/0 otherwise. Keep RB8, no added cache, same math/publication; pragma unroll1 on K loop in both instances. Separate shape wrapper/registry and screen flag, all removed after near-flat screen.",
+  "command": ".venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 512 --pairs 20 --shape-specialization --layer 3 --routing-capture /tmp/qwen4exp-routing-categories.json --routing-case mixed_ja_en-p4096 --routing-chunk 7 --output /tmp/qwen4exp-q4-shape-real.json",
+  "second_command": "Same command with --layer 0 --routing-case code-p4096 --routing-chunk 0 --output /tmp/qwen4exp-q4-shape-layer0.json",
+  "environment": "Same therock devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151,high/2900-requested GPU policy and compiler identity recorded in raw files. No host policy changes.",
+  "opportunity": "Q4 owner prior3.599s/code4096 device26.72s,zero-cost1.156x; current fresh total FFN14.619s remains first owner. No new whole-model timing.",
+  "cases": [
+    {"layer": 3, "routing": "mixed4096 chunk7", "parent_ms": 16.9835678535, "candidate_ms": 16.9383579632, "median_speedup": 1.0026690834, "mean_speedup": 1.0029349525, "order_speedups": [1.0060101010,0.9997147173], "pairs": 20, "exact": true},
+    {"layer": 0, "routing": "code4096 chunk0", "parent_ms": 17.4642393831, "candidate_ms": 17.3937880900, "median_speedup": 1.0040503709, "mean_speedup": 1.0038036131, "order_speedups": [1.0066488976,0.9994440941], "pairs": 20, "exact": true}
+  ],
+  "correctness": "Missing-registry RED then13 GPU tests pass; binding full shape exact and generic shape fallbacks exact, reduced CPU floor retained. All40 real-weight pairs preserve gate/up/SiLU bits.",
+  "trace": {
+    "prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-shape-trace --",
+    "arguments": "first command with --pairs 2 --output /tmp/qwen4exp-q4-shape-trace.json",
+    "symbols": "gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<0,0>/<2560,640>",
+    "parent_ns": [16871924,16947147],
+    "candidate_ns": [16827404,16870123],
+    "both_vgpr": 88,
+    "both_lds_bytes": 4608,
+    "both_scratch_bytes": 0
+  },
+  "raw": {
+    "/tmp/qwen4exp-q4-shape-real.json": "7b538a833f4738fa633b330f98c74e6b9421c6e5ec9e84bc8a2b549727220fd3",
+    "/tmp/qwen4exp-q4-shape-layer0.json": "01475f26b5111cb12917a7fd729832e5d6b160942b677c5b5046b97a8247e018",
+    "/tmp/qwen4exp-q4-shape-trace/gfx1151/3130419_kernel_trace.csv": "7230a5a83586dddbe0004592e195382a0eddf9e59ab70c0f7a641ce154634e92"
+  },
+  "disposition": "Exact, small positive aggregates and profiled kernel samples, but both candidate-first strata slightly regress. No repeatably non-regressive complete-chain admission established; remove rather than promote or run costly model A/B. Not evidence that every fixed-shape specialization loses."
+}
