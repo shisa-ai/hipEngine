@@ -389,7 +389,7 @@ def main() -> int:
         "--prompts", str(prompts_file),
         "--mtp-request-mode", "explicit",
         "--widths", str(args.width),
-        "--resident-capacity", str(args.width),
+        "--resident-capacity", str(max(int(args.width), 2)),
         "--expected-mtp-widths", str(args.width),
         "--max-tokens", str(args.max_tokens),
         "--candidate-budget", str(args.budget),
