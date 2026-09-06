@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-raw-MMQ-vector full owner refresh (September6 UTC):** clean
+`eee086e25` six cases/twelve phases pass100% attribution,matched decode
+roots,restored state/output checks and zero final ownership. Raw-vector
+calls242/484/1936 in prefill,zero in all18 decode windows.
+Four-category p4096 FFN12.698s,non-GR linear4.556s,GR3.755s,
+QSA1.922s,GDN0.784s. Prior linear4.762s/GR4.254s become4.556s/3.755s
+(-4.34%/-11.73% snapshot changes);reused-Vulkan ratios4.470x/2.199x.
+Other owner variation is not attributed to raw-MMQ promotion.
+Code4096 device23.939s,wall24.269s,FFN53.68%,zero-cost2.159x.
+Decode QSA16.947vs3.161ms stays open. Generated family tables updated;
+external throughput screen remains tied to5104604e1.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-raw-vector-family.json).
+
 **Q4 residual diagnostic cleanup (September6 UTC):** remove the unused
 two-plane raw-WMMA template branches,export/wrapper/key,harness and
 candidate tests after raw and cooperative implementations lost timing.

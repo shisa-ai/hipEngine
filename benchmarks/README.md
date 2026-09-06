@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-06 UTC**
 
+Post-raw-MMQ-vector full owner refresh at `eee086e25`:p4096 four-category
+linear4.762->4.556s,GR4.254->3.755s (-4.34%/-11.73% snapshot changes).
+FFN12.698s remains largest;all12 phases have100% attribution and clean
+teardown. Vulkan profile explicitly reused,not a new throughput comparison.
+[Family evidence](results/2026-09-06-framework-qwen4exp-post-raw-vector-family.json).
+
 | Framework UD-Q4_K_XL / BF16 KV raw MMQ vector staging | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Same-residency parent -> production | 173.204 -> 179.037 (+3.367%) | 170.840 -> 175.707 (+2.849%) | 157.211 -> 161.879 (+2.969%) |
