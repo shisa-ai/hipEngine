@@ -1,5 +1,18 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q4 residual WMMA diagnostic reference
+
+- `selected_dual_wmma_f16x2_bf16_bf16_out` is T2,explicit-only and
+  performance-unqualified.16/32/64 output tiles all lost to exact pair2,
+  although two-plane weight reconstruction substantially improves local
+  numerical agreement. No model selector or production manifest entry.
+- Retain temporarily as GPU arithmetic reference for cooperative K-block
+  staging. Remove the raw consumer if that follow-up is abandoned or also
+  loses; if an optimized replacement qualifies, keep only the reference
+  needed for its tests and remove unused launch variants.
+- No further unchanged tile sweep or model A/B on this slower consumer.
+  Full numerical/category/task/control gates still bind any replacement.
+
 ## Qwen4Exp Q5_1 register weight-cache rollback
 
 - `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` is

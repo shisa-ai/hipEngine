@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q4 residual WMMA reference] Actual gate/up BF16 agreement89.66%->99.65%,SiLU82.46%->99.37%;two-plane widths16/32/64 cost19.399/18.237/17.823ms versus exact17.430/17.405/17.392ms,all lose. T2 diagnostic reference only,30 tests,no model route. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json`.
+
 - [2026-09-06 UTC Framework Q4 paired input rejected] Actual pack+gate/up+SiLU17.470->22.938ms (+31.29% time),all20 pairs exact,both orders lose. Consumer17.333->22.657ms versus pack0.184ms;VGPR88->72. Candidate removed,17 candidate/9 restored-parent tests. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-input-pair-rejected.json`.
 
 - [2026-09-06 UTC Framework Q4 wave metadata rejected] Captured code4096chunk0 gate/up+SiLU17.478->17.490ms (+0.069% time),order ratios1.002x/0.996x,all20 pairs exact. VGPR88->80 but no repeatable win;candidate removed,13 candidate/9 parent GPU tests. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-wave-meta-rejected.json`.

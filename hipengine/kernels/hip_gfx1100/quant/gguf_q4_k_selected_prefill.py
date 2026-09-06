@@ -401,6 +401,20 @@ def gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out(
     )
 
 
+def gguf_q4_k_selected_dual_wmma_f16x2_bf16_bf16_out(*args, **kwargs):
+    """Experimental T2 two-plane weight reconstruction,16-row tiles."""
+    if kwargs.get("tile_n") not in (None, 16):
+        raise ValueError("f16x2 WMMA requires16-row tiles")
+    kwargs["tile_n"] = 16
+    if kwargs.get("tile_m") is None:
+        kwargs["tile_m"] = 16
+    kwargs.setdefault("stream", 0)
+    kwargs.setdefault("library", None)
+    kwargs.setdefault("runtime", None)
+    _launch_dual("hipengine_gguf_q4_k_selected_dual_wmma_f16x2_bf16_bf16_out",
+                 *args, **kwargs)
+
+
 def gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out(
     x_ptr: int,
     expert_start_compact_ptr: int,
@@ -1068,6 +1082,9 @@ def register_gguf_q4_k_selected_prefill_kernels(*, replace: bool = True) -> None
         replace=replace,
     )
     register(
+        KernelKey("hip_gfx1100","moe_linear","gguf_q4_k","selected_dual_wmma_f16x2_bf16_bf16_out"),
+        gguf_q4_k_selected_dual_wmma_f16x2_bf16_bf16_out,replace=replace)
+    register(
         KernelKey("hip_gfx1100", "moe_linear", "gguf_q4_k",
                   "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out"),
         gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out,
@@ -1181,6 +1198,7 @@ __all__ = [
     "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
     "gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_m1_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out",
+    "gguf_q4_k_selected_dual_wmma_f16x2_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_bf16_bf16_out",
     "gguf_q4_k_selected_dual_wmma_prefill_compact_hot_fulltile_fp16_fp16_out",

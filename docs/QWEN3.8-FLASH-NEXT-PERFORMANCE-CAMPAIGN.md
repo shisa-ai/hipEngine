@@ -76,6 +76,22 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 two-plane WMMA numerical reference (September6 UTC):** declared T2,
+not exact and not a production candidate. FP16 high+residual weight
+planes improve captured layer0/code4096chunk0 BF16 element agreement
+89.66%->99.65% at gate/up and82.46%->99.37% after SiLU.
+This is projection agreement,not LM token top1 or full-profile quality.
+The raw-weight16/32/64-output implementations all lose to exact pair2:
+two-plane19.399/18.237/17.823ms versus17.430/17.405/17.392ms.
+30 tests pass,including finite/deterministic CPU-reference floors and
+two-plane cross-tile equality;full model gates remain unrun.
+Keep the explicit-only kernel as a numerical reference for cooperative
+weight staging,with cleanup debt;no runtime route/default change.
+Next investigate four-wave K64 staging with coalesced raw weight loads
+and shared activation fragments. That is a new dataflow,not another
+unchanged output-tile sweep;its full boundary and quality must both win.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json).
+
 **Q4 paired-activation layout rejected (September6 UTC):** transpose each
 K256 BF16 block from2x128 to128x2 so the consumer uses one32-bit load
 for its two logical input values. Packing included:17.470->22.938ms,

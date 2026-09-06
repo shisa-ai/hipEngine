@@ -474,7 +474,7 @@ __device__ inline half16_t load_compact_row_half16<half_t>(
 // The output is row-major [compact_rows, out_features_a + out_features_b],
 // matching the PARO compact dual WMMA kernel. Gate columns occupy the first
 // out_features_a columns; up columns occupy the second out_features_b columns.
-template <typename scalar_t>
+template <typename scalar_t, bool WEIGHT_RESIDUAL = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
     const scalar_t* __restrict__ x,
@@ -527,6 +527,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
       valid_col ? (expert_base + out_col * row_bytes) : expert_base;
 
   float8_t acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  float8_t residual_acc = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
 
   for (int64_t blk = 0; blk < blocks_per_row; ++blk) {
     const uint8_t* __restrict__ block_ptr = weight_row + blk * Q4_K_BLOCK_BYTES;
@@ -546,19 +547,27 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
         const int64_t k_base = g_k_base + k_off;
         const half16_t a_reg = load_compact_row_half16<scalar_t>(
             x, compact_row, in_features, k_base, valid_row);
-        half16_t b_reg;
+        half16_t b_reg, residual_reg;
         if (valid_col) {
 #pragma unroll
           for (int kk = 0; kk < 16; ++kk) {
             const int lane32 = kt * K_TILE + kk;
             const uint8_t q = gguf_q4_k_quant(qs, sb, lane32);
-            b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
+            const float weight = scale_f * static_cast<float>(q) - min_f;
+            b_reg[kk] = static_cast<half_t>(weight);
+            if constexpr (WEIGHT_RESIDUAL)
+              residual_reg[kk] = static_cast<half_t>(weight-static_cast<float>(b_reg[kk]));
           }
         } else {
 #pragma unroll
-          for (int kk = 0; kk < 16; ++kk) b_reg[kk] = static_cast<half_t>(0.0f);
+          for (int kk = 0; kk < 16; ++kk) {
+            b_reg[kk] = static_cast<half_t>(0.0f);
+            if constexpr (WEIGHT_RESIDUAL) residual_reg[kk] = static_cast<half_t>(0.0f);
+          }
         }
         acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, b_reg, acc);
+        if constexpr (WEIGHT_RESIDUAL)
+          residual_acc = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(a_reg, residual_reg, residual_acc);
       }
     }
   }
@@ -573,7 +582,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
         const int64_t compact_out_row = compact_base + local_out_row;
         if (compact_out_row < compact_rows) {
           out[compact_out_row * out_features_total + global_out_col] =
-              float_to_scalar<scalar_t>(acc[j]);
+              float_to_scalar<scalar_t>(WEIGHT_RESIDUAL ? acc[j]+residual_acc[j] : acc[j]);
         }
       }
     }
@@ -592,7 +601,7 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel(
 // TILE_N=32 can combine two neighbouring WMMA row tiles but still handles the
 // case where those row tiles belong to different experts by resolving expert
 // metadata per TN tile.
-template <typename scalar_t, int AWQ_TILE_M, int AWQ_TILE_N>
+template <typename scalar_t, int AWQ_TILE_M, int AWQ_TILE_N, bool WEIGHT_RESIDUAL = false>
 __launch_bounds__(32, HIPENGINE_SELECTED_WMMA_LAUNCH_BOUNDS)
 __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
     const scalar_t* __restrict__ x,
@@ -655,11 +664,14 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
   const int64_t row_bytes = blocks_per_row * Q4_K_BLOCK_BYTES;
 
   float8_t acc[TM][TN];
+  float8_t residual_acc[TM][TN];
 #pragma unroll
   for (int tm = 0; tm < TM; ++tm) {
 #pragma unroll
     for (int tn = 0; tn < TN; ++tn) {
       acc[tm][tn] = float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+      if constexpr (WEIGHT_RESIDUAL)
+        residual_acc[tm][tn] = float8_t{0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
     }
   }
 
@@ -707,20 +719,29 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
             const uint8_t* __restrict__ qs = block_ptr + Q4_K_QS_OFFSET;
             const float scale_f = valid_col ? d_f * static_cast<float>(gguf_q4_k_scale(scales, sb)) : 0.0f;
             const float min_f = valid_col ? dmin_f * static_cast<float>(gguf_q4_k_min(scales, sb)) : 0.0f;
-            half16_t b_reg;
+            half16_t b_reg, residual_reg;
             if (valid_col) {
 #pragma unroll
               for (int kk = 0; kk < 16; ++kk) {
                 const int lane32 = kt * K_TILE + kk;
                 const uint8_t q = gguf_q4_k_quant(qs, sb, lane32);
-                b_reg[kk] = static_cast<half_t>(scale_f * static_cast<float>(q) - min_f);
+                const float weight = scale_f * static_cast<float>(q) - min_f;
+                b_reg[kk] = static_cast<half_t>(weight);
+                if constexpr (WEIGHT_RESIDUAL)
+                  residual_reg[kk] = static_cast<half_t>(weight-static_cast<float>(b_reg[kk]));
               }
             } else {
 #pragma unroll
-              for (int kk = 0; kk < 16; ++kk) b_reg[kk] = static_cast<half_t>(0.0f);
+              for (int kk = 0; kk < 16; ++kk) {
+                b_reg[kk] = static_cast<half_t>(0.0f);
+                if constexpr (WEIGHT_RESIDUAL) residual_reg[kk] = static_cast<half_t>(0.0f);
+              }
             }
             acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
                 a_reg[tn], b_reg, acc[tm][tn]);
+            if constexpr (WEIGHT_RESIDUAL)
+              residual_acc[tm][tn] = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32(
+                  a_reg[tn], residual_reg, residual_acc[tm][tn]);
           }
         }
       }
@@ -741,7 +762,8 @@ __global__ void gguf_q4_k_selected_dual_wmma_prefill_compact_kernel(
           const int64_t compact_out_row = compact_base[tn] + local_out_row;
           if (compact_out_row < compact_rows) {
             out[compact_out_row * out_features_total + global_out_col] =
-                float_to_scalar<scalar_t>(acc[tm][tn][j]);
+                float_to_scalar<scalar_t>(WEIGHT_RESIDUAL
+                    ? acc[tm][tn][j]+residual_acc[tm][tn][j] : acc[tm][tn][j]);
           }
         }
       }
@@ -1409,7 +1431,7 @@ bool valid_selected_dual_common(
       (tile_n == 16 || tile_n == 32);
 }
 
-template <typename scalar_t>
+template <typename scalar_t, bool WEIGHT_RESIDUAL = false>
 int launch_selected_dual(
     const scalar_t* x,
     const int64_t* expert_start_compact,
@@ -1445,6 +1467,8 @@ int launch_selected_dual(
           tile_n)) {
     return static_cast<int>(hipErrorInvalidValue);
   }
+  if (WEIGHT_RESIDUAL && tile_n != 16)
+    return static_cast<int>(hipErrorInvalidValue);
   const int64_t out_features_total = out_features_a + out_features_b;
   const int64_t row_tiles = wmma_total_rows / 16;
   const int64_t tile_n_tiles = tile_n / 16;
@@ -1455,7 +1479,7 @@ int launch_selected_dual(
 
 #define HIPENGINE_LAUNCH_Q4K_SELECTED_DUAL(TM, TN) \
   hipLaunchKernelGGL( \
-      (gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<scalar_t, TM, TN>), \
+      (gguf_q4_k_selected_dual_wmma_prefill_compact_kernel<scalar_t, TM, TN, WEIGHT_RESIDUAL>), \
       grid, \
       block, \
       0, \
@@ -1477,7 +1501,7 @@ int launch_selected_dual(
 
   if (tile_m == 16 && tile_n == 16) {
     hipLaunchKernelGGL(
-        (gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel<scalar_t>),
+        (gguf_q4_k_selected_dual_wmma_prefill_compact_legacy_kernel<scalar_t, WEIGHT_RESIDUAL>),
         grid,
         block,
         0,
@@ -2020,6 +2044,15 @@ extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_
       tile_m,
       tile_n,
       stream);
+}
+
+extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_f16x2_bf16_bf16_out(
+    const uint16_t* x, const int64_t* starts, const int64_t* padded_starts,
+    const int64_t* tiles, const uint8_t* a, const uint8_t* b, uint16_t* out,
+    int64_t rows, int64_t k, int64_t na, int64_t nb, int64_t experts,
+    int64_t padded_rows, int64_t tm, int64_t tn, hipStream_t stream) {
+  return launch_selected_dual<uint16_t, true>(
+      x,starts,padded_starts,tiles,a,b,out,rows,k,na,nb,experts,padded_rows,tm,tn,stream);
 }
 
 extern "C" int hipengine_gguf_q4_k_selected_dual_wmma_prefill_compact_fp16_fp16_out(
