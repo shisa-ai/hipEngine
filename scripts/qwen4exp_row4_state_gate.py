@@ -137,7 +137,7 @@ def main():
     }
     try:
         if args.route_package == "q8-mmq-prepack":
-            os.environ[flag] = "1"
+            assert os.environ.get(flag) == "1", "production must bind prepacked MMQ by default"
             generator.runner.configure_mmq_prefill_resources()
             report["sidecar_bytes"] = generator.runner._q8_mmq_weight_sidecars.nbytes
             report["sidecar_count"] = len(generator.runner._q8_mmq_weight_sidecars.mapping)

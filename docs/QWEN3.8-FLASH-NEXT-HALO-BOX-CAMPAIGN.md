@@ -77,6 +77,15 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+**MMQ prepack promotion (September6 UTC):** same-residency full12-case
+prefill156.707->157.748 /154.396->155.375 /143.903->144.736 tok/s
+at512/1K/4K (+0.664%/+0.634%/+0.579%),72/72 trajectories exact.
+All prefill rows improve;11/12 request-wall rows improve, mixed512 loses0.14%.
+Decode is slightly lower; no intrinsic decode claim. Additional memory1.67GiB,
+cold preparation0.107s. [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
+The generated family tables remain the named **pre-MMQ, post-GR** snapshot
+until recaptured; the pinned Vulkan baseline is not newly measured here.
+
 **GR wave-scale promotion (September6 UTC):** the next exact full12-case A/B
 improves prefill156.017->156.711 /153.748->154.285 /143.419->143.908 tok/s
 at512/1K/4K (+0.445%/+0.350%/+0.341%). All72 trajectories are exact,
@@ -509,6 +518,9 @@ Reading rules and caveats, binding on any use of these rows:
   mechanism-existence evidence.
 
 ### 5.2.1 Framework starting and current owner snapshots
+
+This named post-GR snapshot **precedes the MMQ prepack promotion**. Its
+"Current" column is not a post-MMQ measurement; recapture is the next task.
 
 The generated tables below supersede the subsequent post-GDN checkpoint
 for the current family comparison. Captures use the post-GR production

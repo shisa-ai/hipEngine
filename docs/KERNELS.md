@@ -787,22 +787,24 @@ The aligned weight tile copies directly to the unchanged57856-byte dynamic
 LDS arena; activation planes, integer dots, F32 accumulation and risk detection
 are unchanged. Exact repair still consumes **raw Q8**, not packed weights.
 Framework real QKV rows512 confirms1.094/1.095x on layers0/4, SSM output1.022x;
-58 tests pass, trace VGPR184->144 and scratch0. GR is not a promotion target:
-its near-flat/order-sensitive evidence remains recorded. No model/default
-change yet: persistent sidecar ownership, invocation-counted state/KV gates
-and full12-case A/B are pending. Raw MMQ and the exact projection chain stay
-registered fallbacks.
+58 tests pass, trace VGPR184->144 and scratch0. GR remains excluded:
+its near-flat/order-sensitive evidence is retained. Production now selects
+prepacked MMQ only for measured GDN QKV/SSM shapes after full72-trajectory
+exact A/B with every prefill case faster (+0.58-0.66% weighted).
+Mixed512 request wall loses0.14%; retention follows prefill-first direction.
+Raw MMQ remains production-parent rollback, strict coltile the declared
+numerical fallback. Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack-production.json`.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack.json`.
 The registered `weight_pack/gguf_q8_0/mmq_kmajor76` packer now builds this
 layout directly from resident raw device weights. Nine focused tests cover
 byte-exact CPU layout, signed-zero/subnormal scales, output tails and repeats;
 cached trace shows24 VGPR, no scratch/LDS.
 Evidence: `2026-09-06-framework-qwen4exp-mmq-gpu-pack.json`.
-Default-off Qwen4Exp runtime admission now passes five full logits/state/KV
+Qwen4Exp runtime admission passes five full logits/state/KV
 cases with live calls0/72/0 at512 and0/576/0 at4096. Runner-owned72 sidecars
 add1,793,064,960 bytes and close cleanly; session maps only substitute the
-matmul weight pointer, never decode/repair. Complete12-case performance gate
-remains pending. Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack-state.json`.
+matmul weight pointer, never decode/repair. The full12-case performance gate
+is retained above. Evidence: `2026-09-06-framework-qwen4exp-mmq-prepack-state.json`.
 
 The GR up+sigmoid+branch-mean composite also registers the separate T0
 `coltile2_branch4_rowbatch4_wave_scale_f32_exact` sibling. At rows512,

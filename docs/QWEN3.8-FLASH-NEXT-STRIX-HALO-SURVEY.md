@@ -27,6 +27,13 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
+The later MMQ prepack production A/B measures157.75/155.37/144.74 pp/s
+at512/1K/4K (+0.664%/+0.634%/+0.579% against its same-residency parent),
+all72 trajectories exact. Mixed512 request wall loses0.14%; memory rises
+1.67GiB. This is not a refreshed cross-engine comparison. Current family
+tables remain the explicitly named pre-MMQ snapshot pending recapture.
+[MMQ production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
+
 September6 GR wave-scale production A/B subsequently measures prefill
 156.71/154.29/143.91 tok/s at512/1K/4K (+0.44%/+0.35%/+0.34%
 against its same-residency parent), all72 trajectories exact. This is an
