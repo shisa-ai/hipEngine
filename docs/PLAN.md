@@ -804,6 +804,15 @@ fallback, and promotion gates are specified in [`PM4.md`](PM4.md).
 
 **Rule:** we do not add levers #2–5 without `rocprofv3` evidence that dispatch is above ~3% of decode wall time.
 
+September 6, 2026 follow-up: compare Wilkin's gfx1151-qualified experimental
+HIP-queue prepared PM4 lists with our existing dedicated-queue gfx1100 design;
+this is not new architecture admission or a runtime replacement. First census
+Flash-Next graph eligibility/cost, then consider an isolated ordinary-AQL/PM4
+runtime A/B. Profiler activity forces that external PM4 path to AQL, so PM4
+engagement/timing must additionally be verified unprofiled. See
+[pinned review](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) and campaign WIL-1 through WIL-4
+for graph-update, UMA ownership and semantic-safe TOP_K follow-ups.
+
 #### Fusion Planner
 
 Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.
