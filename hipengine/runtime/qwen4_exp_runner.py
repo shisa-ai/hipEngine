@@ -2986,6 +2986,15 @@ def _qwen4_exp_q51_fold128_key(key: KernelKey, *, rows: int) -> KernelKey:
     return candidate if is_registered(candidate) else key
 
 
+def _qwen4_exp_q8_down_bundle_key(key: KernelKey, *, rows: int) -> KernelKey:
+    if (rows < 512 or key.variant != "selected_grouped_row4_gemv_bf16_bf16_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL", "0") != "1"):
+        return key
+    candidate = KernelKey(key.backend, key.layer, key.quant,
+                          "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+    return candidate if is_registered(candidate) else key
+
+
 def _qwen4_exp_q8_down_row4_key(key: KernelKey, *, rows: int) -> KernelKey:
     if (rows < 512 or key.variant != "selected_grouped_gemv_bf16_bf16_out"
             or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL", "0") != "1"):
@@ -3742,6 +3751,7 @@ def run_qwen4_exp_moe(
                 grouped_key = _qwen4_exp_q8_down_row4_key(
                     KernelKey(backend, "linear", weights["expert_down"].spec.quant_key,
                               "selected_grouped_gemv_bf16_bf16_out"), rows=rows)
+                grouped_key = _qwen4_exp_q8_down_bundle_key(grouped_key, rows=rows)
                 grouped_q8_down = resolve(
                     backend=grouped_key.backend, layer=grouped_key.layer,
                     quant=grouped_key.quant, variant=grouped_key.variant)

@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q8 bundle admission] Five full logits/state/KV off/on/off cases exact;calls0/4/0 or0/32/0 in prefill,zero decode/final owners. Both binders0,28 CPU tests. Throughput delta N/A pending12-case A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-state.json`.
+
 - [2026-09-06 UTC Framework Q8 down bundled reduction candidate] Layer4 actual43.003->37.343ms (-13.16%);layer30 weights/borrowed layer4 routing41.395->35.915ms (-13.24%).40 pairs exact,24 GPU tests,resource footprint unchanged. Kernel retained,model admission pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle.json`.
 
 - [2026-09-06 UTC post-fold128 code4096 owners] Clean1dacd1edb:200 fold128 calls/3.919s; FFN14.266s,linear5.350s,GR4.237s.100% coverage,matched decode roots/exact repeats/zero owners. Earlier Vulkan reused; no causal delta. `benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json`.

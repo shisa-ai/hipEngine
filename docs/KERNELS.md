@@ -843,6 +843,12 @@ Twenty-four GPU tests pass; trace24 VGPR/512B LDS/no spills unchanged.
 Full-model engagement/state/KV and12-case A/B remain the promotion blocker.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-bundle.json`.
 
+Default-off bundle admission passes five full-model logits/state/KV cases,
+four decode steps each; candidate calls4/32 only in prefill and final owners0.
+Only existing row4 rows>=512 is eligible,both binders0.28 CPU tests pass;
+clean12-case A/B remains required.
+Evidence: `2026-09-06-framework-qwen4exp-q8-down-bundle-state.json`.
+
 Clean c7dd804cb full12-case A/B now passes72 exact trajectories and all
 prefill/request-wall cases. PP512/1024/4096 improves0.822%/0.635%/0.705%.
 Production binds1 for rows>=512; strict0. No new allocation or intrinsic

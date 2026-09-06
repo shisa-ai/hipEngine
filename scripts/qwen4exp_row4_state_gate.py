@@ -33,7 +33,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -75,6 +75,8 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"
     if args.route_package == "q51-fold128":
         flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"
+    if args.route_package == "q8-down-bundle":
+        flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
     from hipengine.kernels.registry import KernelKey, register, resolve
     key = (KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
                      "selected_grouped_row4_gemv_bf16_bf16_out")
@@ -109,6 +111,9 @@ def main():
     if args.route_package == "q51-fold128":
         key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
                         "selected_grouped_prefill_pair2_fold128_bf16_bf16_out")
+    if args.route_package == "q8-down-bundle":
+        key = KernelKey("hip_gfx1151", "linear", "gguf_q8_0",
+                        "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
     original = resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant)
     calls = [0]
 
@@ -207,14 +212,14 @@ def main():
                         case["prompt_tokens"], 512) if enabled == "1" else 0
                     assert prefill_invoked == expected_fold_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "fold128 ran during decode"
-                if args.route_package == "q8-down-row4":
+                if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
                     expected_calls = q8_down_row4_expected_calls(
                         case["prompt_tokens"], 512) if enabled == "1" else 0
                     assert prefill_invoked == expected_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "prefill candidate ran during decode"
                 expected = enabled == "1" and (
                     args.route_package in {"q5k-row4","q4-bundle","prefill-bundle","q51-pair","gdn-register","q4-pair","q8-wave-scale","gr-wave-scale","q8-mmq-prepack","q8-down-row4","q51-fold128"} or case["prompt_tokens"] > 2051)
-                if args.route_package == "q8-down-row4":
+                if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
                     expected = expected_calls > 0
                 if args.route_package == "q51-fold128":
                     expected = expected_fold_calls > 0
