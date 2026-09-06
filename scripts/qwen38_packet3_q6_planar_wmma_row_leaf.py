@@ -37,6 +37,8 @@ def main() -> int:
     parser.add_argument(
         "--rows", type=int, nargs="+", default=[4, 6, 12, 16, 24, 32, 33, 48]
     )
+    parser.add_argument("--shapes", type=str, nargs="*", default=None,
+                        help="optional subset of role names to screen")
     parser.add_argument("--output", type=str, required=True)
     args = parser.parse_args()
 
@@ -66,6 +68,8 @@ def main() -> int:
         ("recurrent_qkv", "blk.0.attn_qkv.weight"),
         ("attention_v", "blk.3.attn_v.weight"),
     ):
+        if args.shapes and role not in args.shapes:
+            continue
         info = reader.tensor_info(name)
         cases.append((role, name, int(info.shape[0]), int(info.shape[1])))
 

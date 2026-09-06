@@ -1111,7 +1111,10 @@ def test_q4_t16_dense_small_row_pair_silu_uses_canonical_tiles() -> None:
 @pytest.mark.parametrize(
     ("rows", "expected_variant"),
     (
-        (33, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+        (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (36, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (48, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (49, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
         (64, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
         (65, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
         (128, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
@@ -1138,6 +1141,7 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
     variants = (
         "dense_dual_wmma_prefill_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
         "dense_dual_wmma_prefill_row64_bf16_bf16_out",
         "dense_dual_wmma_prefill_row128_bf16_bf16_out",
     )
@@ -1373,10 +1377,13 @@ def test_q4_t16_physical_r36_pair_silu_defaults_row48_with_rollback(monkeypatch)
         gguf_linear_module._rowtile_variant_policy_env_cache.clear()
         clear_gguf_linear_dispatch_cache()
 
+    # The packet4 measured band owns rows 33-48 outright (bit-exact row screen,
+    # 1.9x over row64): disabling the exact-row policy env no longer rolls the
+    # owner back at row 36, and neither does leaving the physical session.
     assert calls == [
         "dense_dual_wmma_prefill_row48_bf16_bf16_out",
-        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
-        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
     ]
 
 
