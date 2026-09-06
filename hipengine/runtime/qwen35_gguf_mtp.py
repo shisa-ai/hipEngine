@@ -352,7 +352,10 @@ def _effective_target_verify_mode(
     """Select only locally qualified native target rows before mutation."""
 
     selected = str(requested)
-    if selected == "native" and int(rows) > 4:
+    # The native spec target-graph layer qualifies B1-B7 buckets (rows 2-8);
+    # the cap derives from the declared candidate ladder, not a literal.
+    native_max_rows = max(_GGUF_MTP_CANDIDATE_BUDGETS) + 1
+    if selected == "native" and int(rows) > native_max_rows:
         return "serial_exact"
     if selected == "native" and backend is not None and end_position is not None:
         native_context_limit = int(
