@@ -128,6 +128,21 @@ def test_partition_still_rejects_unqualified_singletons() -> None:
     # evidence partitions at its evidence width and rides the packed route.
     assert wide.partition_max_requests((7,)) == 8
 
+
+def test_partition_never_decomposes_multi_request_batch_into_serial_c1() -> None:
+    """A multi-request due batch of C1-qualified rows must not chain C1 cycles."""
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=8,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    adapter._intents[8] = 3
+    adapter._static_eligibility_by_request[8] = _c1_eligibility(8)
+    adapter._prompt_hidden_rows[8] = object()
+    assert adapter.partition_max_requests((7, 8)) == 0
+
     legacy = _adapter(
         backend="hip_gfx1151",
         capacity=8,
