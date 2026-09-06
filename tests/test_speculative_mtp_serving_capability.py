@@ -175,6 +175,17 @@ def test_qwen38_q4km_gfx1100_production_c2_k2_d24_is_exact_automatic_key() -> No
         "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
     )
 
+    # A row qualifies a maximum speculative depth, not one exact depth. A
+    # shallower chain is strictly less speculative work through the same
+    # verified path, so it must admit and must select the requested depth
+    # rather than silently running the row's deeper budget.
+    shallower = resolve_speculative_mtp_serving_plan(
+        evidence,
+        key=replace(key, candidate_budget=1),
+    )
+    assert shallower.admitted is True
+    assert shallower.selected_candidate_count == 1
+
     for changes, reason in (
         ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
         ({"realized_group_rows": 1}, "physical_group_not_qualified"),
@@ -330,7 +341,7 @@ def test_qwen38_q4km_strict_c1_b3_plan_is_automatic_product_scope() -> None:
         ({"kv_layout": "paged_int8"}, "kv_layout_not_qualified"),
         ({"realized_group_rows": 2}, "physical_group_not_qualified"),
         ({"resident_capacity": 4}, "resident_capacity_not_qualified"),
-        ({"candidate_budget": 2}, "candidate_budget_not_qualified"),
+        ({"candidate_budget": 4}, "candidate_budget_not_qualified"),
         ({"sampling_mode": "processed_argmax"}, "sampling_mode_not_qualified"),
         ({"max_sequence_length": 2048}, "max_sequence_length_not_qualified"),
         ({"context_tokens": 68}, "context_bucket_not_qualified"),

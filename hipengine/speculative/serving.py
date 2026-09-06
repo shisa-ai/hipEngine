@@ -145,6 +145,10 @@ class SpeculativeMTPServingEvidence:
     kv_layout: str
     realized_group_rows: int
     resident_capacity: int
+    # Inclusive maximum qualified speculative depth. A request at or below
+    # this depth admits; a deeper one does not. Depth is a tuning axis, not
+    # a correctness axis: the verifier keeps output exact at any depth, and
+    # a shallower chain is strictly less speculative work on the same path.
     candidate_budget: int
     sampling_modes: tuple[str, ...]
     max_sequence_length: int
@@ -533,7 +537,7 @@ def _evidence_checks(
             "resident_capacity_not_qualified",
         ),
         (
-            key.candidate_budget == row.candidate_budget,
+            key.candidate_budget <= row.candidate_budget,
             "candidate_budget_not_qualified",
         ),
         (key.sampling_mode in row.sampling_modes, "sampling_mode_not_qualified"),
@@ -563,7 +567,11 @@ def _admit(
         key=key,
         admitted=True,
         selected_route="speculative_mtp",
-        selected_candidate_count=row.candidate_budget,
+        # The row qualifies a maximum depth; honour the requested one so a
+        # shallower request never silently runs the deeper qualified chain.
+        selected_candidate_count=min(
+            int(key.candidate_budget), int(row.candidate_budget)
+        ),
         reason=row.reason,
         strict_fallback_key=row.strict_fallback_key,
         evidence_key=row.evidence_key,
