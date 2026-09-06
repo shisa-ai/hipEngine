@@ -265,10 +265,10 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "moe_linear", "prefill_rows_ge64_exact_grouped_q5_1_down",
-            "selected_grouped_prefill_pair2_bf16_bf16_out",
+            "selected_grouped_prefill_pair2_fold128_bf16_bf16_out",
             "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out",
             "gguf_q5_1",
-            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q51-pair-production.json",
+            evidence="benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold128-production.json",
         ),
         _selection(
             "moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up",
@@ -446,7 +446,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": "0",
+        "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27

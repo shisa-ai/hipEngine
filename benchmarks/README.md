@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Framework UD-Q4_K_XL / BF16 KV Q5_1 fold128 promotion | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 159.222 -> 160.363 (+0.716%) | 156.767 -> 158.300 (+0.978%) | 145.546 -> 146.878 (+0.915%) |
+
+All72 trajectories exact; all12 prefill/request walls improve. Tiny per-case
+decode decreases preserved; no intrinsic decode gain or added allocation.
+[Production evidence](results/2026-09-06-framework-qwen4exp-q51-fold128-production.json).
+
 Q5_1 fold128 default-off model gate passes five full logits/state/KV cases:
 25/200 calls in enabled prefill, zero decode calls/leaks. Throughput A/B pending.
 [State evidence](results/2026-09-06-framework-qwen4exp-q51-fold128-state.json).
