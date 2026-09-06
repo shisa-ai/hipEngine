@@ -428,9 +428,32 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [ ] Prove effective compact INT8 has no persistent BF16 shadow. Bound and
   reuse prefill oracles; a smaller steady cache with an oversized prefill peak
   does not fit. Account for scales, pool planes and graph scratch.
-- [ ] Inspect existing `qwen38_int8_batch_decode_gate.py` and service selection.
+- [x] Inspect existing `qwen38_int8_batch_decode_gate.py` and service selection.
   Separate serial compact residency from native no-mirror batched prefill,
   decode, graphs and MTP. Coordinate missing integration with the INT8 campaign.
+  Inspection and gate run recorded 2026-09-07. Serial compact residency is
+  qualified: IKV-C1 no-mirror audits report zero persistent BF16 payload bytes
+  and the 2026-09-06 XTX probe points are serial c=1 per-token/head INT8
+  (FP32 scales) at 2,048/3,072/4,096 ok (request peaks 21.35/22.60/23.75 GiB)
+  and 5,120 OOM at startup. Batched decode (IKV-C2) is now model-level proven
+  on the XTX: the gate passes exactly (token-exact, max KL 0.0, top-1 1.0,
+  zero hidden and zero state/KV-scale mismatches over 4 rows x 4 steps vs
+  independent c1 oracles) with every step routed `kv_live_spans_int8_batch`,
+  physical_rows 4 and zero host row iterations under the
+  `per_token_head_gqa_splitk_gate_bf16_batch_strided_spans` variant; the
+  artifact capability still admits c1, so this is a pre-promotion gate and
+  capability promotion belongs to the INT8 campaign
+  (`results/2026-09-07-rx7900xtx-ikv-c2-batch-decode-gate.json`). Not
+  integrated: batched prefill stays IKV-C3-blocked (the gate prefetches
+  prompts through independent scalar sessions by design); packed decode
+  graphs hard-require BF16 KV (`gguf_packed_decode_graph` raises
+  NotImplementedError), so all INT8 decode is eager; c=1 decode graphs admit
+  INT8 only in the tail4-Hadamard-group32 layout, not the per-token/head
+  FP32-scale layout the probe points use; and the MTP native spec target
+  graph N1 requires BF16 KV, so INT8+MTP is unproven on both axes. Capacity
+  consequence: INT8 buys residency at serial widths today; batched-eager
+  decode is proven but graph and prefill ownership must land before INT8
+  batched serving is throughput-eligible.
 - [ ] Gate each quant's INT8 against its same-weight BF16 teacher. Do not reuse
   `Q4_K_M`/gfx1151 evidence for `Q4_K_S`/XTX. MTP composition needs its own
   acceptance, selected-prefix and provider/target rollback tests.
