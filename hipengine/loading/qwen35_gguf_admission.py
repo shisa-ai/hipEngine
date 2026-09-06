@@ -106,6 +106,7 @@ from hipengine.loading.qwen35_gguf_materialize import (
     gguf_decode_repack_enabled,
     plan_qwen35_gguf_weight_spec,
     planned_qwen35_gguf_weight_allocation_nbytes,
+    validate_qwen35_gguf_resident_prerequisites,
 )
 from hipengine.kernels.backends import (
     CUDA_BACKEND_TARGET_ARCH,
@@ -1964,12 +1965,11 @@ def preflight_qwen35_gguf_artifact(
         applicable_ops = tuple(
             op for op in checked_ops if role_class in _OPERATION_ROLE_CLASSES.get(op, frozenset())
         )
-        if not applicable_ops:
-            continue
-        # From here on the slot is inside the operation contract: it MUST be
-        # accounted (qualified record or refusal) for the contract to be
-        # complete.
-        required_plan_slots.add(str(slot_path))
+        # Every selected resident will be materialized, even when none of
+        # the requested operations consumes it. Check resident prerequisites
+        # independently of operation qualification (including debug subsets).
+        if applicable_ops:
+            required_plan_slots.add(str(slot_path))
         try:
             spec = plan_qwen35_gguf_weight_spec(
                 str(slot_path),
@@ -1977,15 +1977,13 @@ def preflight_qwen35_gguf_artifact(
                 contract_f32_linear=contraction,
                 **plan_flags,
             )
-            # Shape/dtype/repack prerequisites: the planned resident must have
-            # computable, tile-aligned device allocations (the same contracts
-            # the actual repack and allocation-accounting routines enforce),
-            # so a misaligned plan (e.g. a Q6_K T16 head whose N is not a
-            # multiple of 16) is refused HERE instead of after earlier root
-            # allocations during materialization.
+            # Shape validity is NOT a consequence of computable bytes:
+            # byte-neutral T16/X8 repacks still impose rank/tile constraints.
+            validate_qwen35_gguf_resident_prerequisites(spec)
             planned_qwen35_gguf_weight_allocation_nbytes(spec)
         except ValueError as error:
-            for operation in applicable_ops:
+            required_plan_slots.add(str(slot_path))
+            for operation in applicable_ops or ("-",):
                 unsupported.append(
                     Qwen35GGUFUnsupportedOperation(
                         slot_path=str(slot_path),
@@ -1997,6 +1995,8 @@ def preflight_qwen35_gguf_artifact(
                         reason=str(error),
                     )
                 )
+            continue
+        if not applicable_ops:
             continue
         slot_supported = True
         for operation in applicable_ops:

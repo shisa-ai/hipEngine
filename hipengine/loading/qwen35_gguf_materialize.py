@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import prod
 import os
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Iterable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Mapping
 
 from hipengine.core.device import Device
 from hipengine.core.dtype import DType
@@ -37,7 +38,15 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle guard, annotations only
     from hipengine.loading.qwen35_gguf_admission import (
         Qwen35GGUFAdmissionCertificate,
     )
-from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
+from hipengine.quant.gguf import (
+    GGMLQuantizationType, dequantize_gguf_data, dequantization_supported,
+    nbytes_for_shape, quant_shape_to_byte_shape, quant_layout,
+)
+from hipengine.quant.gguf_repack import (
+    GGUFRepackShape, Q4_K_PACK8_SHAPE, Q4_K_T16_SHAPE,
+    Q5_K_T16_SHAPE, Q6_K_T16_SHAPE, Q8_0_T16_SHAPE,
+    Q4_K_X8_SHAPE, Q5_K_X8_SHAPE, Q6_K_X8_SHAPE,
+)
 from hipengine.quant.gguf_q4_k import (
     GGUF_Q4_K_BLOCK_BYTES,
     GGUF_Q4_K_TILE16_BLOCK_BYTES,
@@ -104,6 +113,103 @@ class Qwen35GGUFWeightSpec:
     layout: str
     allocation_names: tuple[str, ...]
     sidecar_layouts: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _ResidentRepack:
+    """One actual converter route, with its shared source-shape contract."""
+
+    shape: GGUFRepackShape
+    converter: Callable[[Any], Any]
+    promote_dense: bool = False
+
+    def validate(self, source: GGUFTensorInfo) -> None:
+        if int(source.ggml_type) != int(self.shape.source_type):
+            raise ValueError(f"repack requires {self.shape.source_type.name} source")
+        byte_shape = source.byte_shape
+        if self.promote_dense and len(byte_shape) == 2:
+            byte_shape = (1, *byte_shape)
+        self.shape.validate(byte_shape)
+
+    def convert(self, raw):
+        if self.promote_dense and raw.ndim == 2:
+            raw = raw[None, ...]
+        return self.converter(raw)
+
+
+# This is the materializer's converter dispatch, NOT a parallel admission
+# whitelist. Repackers themselves use these same immutable shape contracts.
+_RESIDENT_REPACKS = MappingProxyType({
+    LAYOUT_Q4_K_PACK8: _ResidentRepack(Q4_K_PACK8_SHAPE, repack_gguf_q4_k_pack8),
+    LAYOUT_GGUF_Q4_K_T16: _ResidentRepack(Q4_K_T16_SHAPE, repack_gguf_q4_k_tile16, True),
+    LAYOUT_GGUF_Q4_K_QMICRO_T16: _ResidentRepack(Q4_K_T16_SHAPE, repack_gguf_q4_k_tile16_qmicro, True),
+    LAYOUT_GGUF_Q4_K_X8: _ResidentRepack(Q4_K_X8_SHAPE, repack_gguf_q4_k_x8),
+    LAYOUT_GGUF_Q5_K_T16: _ResidentRepack(Q5_K_T16_SHAPE, repack_gguf_q5_k_tile16, True),
+    LAYOUT_GGUF_Q5_K_QMICRO_T16: _ResidentRepack(Q5_K_T16_SHAPE, repack_gguf_q5_k_qmicro_tile16),
+    LAYOUT_GGUF_Q6_K_T16: _ResidentRepack(Q6_K_T16_SHAPE, repack_gguf_q6_k_tile16, True),
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR: _ResidentRepack(Q6_K_T16_SHAPE, repack_gguf_q6_k_tile16_qmicro_planar, True),
+    LAYOUT_GGUF_Q8_0_T16: _ResidentRepack(Q8_0_T16_SHAPE, repack_gguf_q8_0_tile16),
+    LAYOUT_GGUF_Q5_K_X8: _ResidentRepack(Q5_K_X8_SHAPE, repack_gguf_q5_k_x8),
+    LAYOUT_GGUF_Q6_K_X8: _ResidentRepack(Q6_K_X8_SHAPE, repack_gguf_q6_k_x8),
+})
+_Q6_X8_SIDECAR_REPACK = _ResidentRepack(Q6_K_X8_SHAPE, repack_gguf_q6_k_x8, True)
+_Q5_PLANAR_SIDECAR_REPACK = _ResidentRepack(Q5_K_T16_SHAPE, repack_gguf_q5_k_qmicro_tile16, True)
+
+
+def validate_qwen35_gguf_resident_prerequisites(spec: Qwen35GGUFWeightSpec) -> None:
+    """Validate the selected resident and each allocated sidecar without bytes accounting.
+
+    No payload reads, arrays, backend imports, device work or invocation/profile
+    qualification. The source geometry is checked with canonical GGUF helpers;
+    repack shape constraints are shared with the real CPU converters. Optional
+    expert-sidecar *eligibility* in sidecar_layouts is not an allocated sidecar.
+    """
+
+    source = spec.source
+    try:
+        shape = tuple(int(dim) for dim in source.shape)
+        if not shape or any(dim <= 0 for dim in shape):
+            raise ValueError("source dimensions must be positive")
+        if source.byte_shape != quant_shape_to_byte_shape(shape, source.ggml_type):
+            raise ValueError("source byte_shape disagrees with GGUF logical/block geometry")
+        if source.n_elements != prod(shape) or source.nbytes != nbytes_for_shape(shape, source.ggml_type):
+            raise ValueError("source element/byte counts disagree with GGUF geometry")
+        route = _RESIDENT_REPACKS.get(spec.layout)
+        if route is not None:
+            route.validate(source)
+            if spec.layout == LAYOUT_Q4_K_PACK8:
+                primary = {"qweight", "scales", "mins"}
+                allowed = primary | {Q4_T16_DECODE_TILES, Q4_T16_DECODE_TILES_R3PLUS}
+            else:
+                primary = {"tiles"}
+                allowed = primary | {"raw"}
+                if spec.layout == LAYOUT_GGUF_Q6_K_T16:
+                    allowed.add("x8")
+                if spec.layout == LAYOUT_GGUF_Q5_K_T16:
+                    allowed.add("qmicro_planar")
+        elif spec.layout in {LAYOUT_RAW_GGUF, LAYOUT_DENSE_F32, LAYOUT_DENSE_BF16}:
+            primary = allowed = {"raw"}
+            if spec.layout == LAYOUT_RAW_GGUF and (
+                len(shape) not in (2, 3) or quant_layout(source.ggml_type).storage_dtype != "uint8_blocks"
+            ):
+                raise ValueError("raw GGUF resident requires rank-2 or rank-3 block storage")
+            if spec.layout == LAYOUT_DENSE_F32 and source.ggml_type != GGMLQuantizationType.F32:
+                raise ValueError("dense F32 resident requires F32 source")
+            if spec.layout == LAYOUT_DENSE_BF16 and not dequantization_supported(source.ggml_type):
+                raise ValueError("dense BF16 resident requires a supported CPU decoder")
+        else:
+            raise ValueError(f"unsupported resident layout {spec.layout!r}")
+        names = set(spec.allocation_names)
+        if len(names) != len(spec.allocation_names) or not primary <= names or not names <= allowed:
+            raise ValueError(f"unsupported resident allocations {spec.allocation_names!r} for {spec.layout!r}")
+        if names & {Q4_T16_DECODE_TILES, Q4_T16_DECODE_TILES_R3PLUS}:
+            _RESIDENT_REPACKS[LAYOUT_GGUF_Q4_K_T16].validate(source)
+        if "x8" in names:
+            _Q6_X8_SIDECAR_REPACK.validate(source)
+        if "qmicro_planar" in names:
+            _Q5_PLANAR_SIDECAR_REPACK.validate(source)
+    except ValueError as error:
+        raise ValueError(f"{spec.slot_path}: resident prerequisites: {error}") from error
 
 
 @dataclass(frozen=True)
@@ -1735,12 +1841,13 @@ def _materialize_spec(
             allocator=allocator,
         )
 
+    validate_qwen35_gguf_resident_prerequisites(spec)
     raw = np.ascontiguousarray(reader.tensor_data(spec.source.name))
     if spec.slot_path.endswith(".ssm_a"):
         raw = _gguf_ssm_a_to_kernel_a_log(raw)
     allocations: dict[str, DeviceTensorAllocation]
     if spec.layout == LAYOUT_Q4_K_PACK8:
-        packed = repack_gguf_q4_k_pack8(raw)
+        packed = _RESIDENT_REPACKS[spec.layout].convert(raw)
         allocations = {
             "qweight": load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.pack8.qweight",
@@ -1776,9 +1883,7 @@ def _materialize_spec(
             if name in spec.allocation_names
         )
         if q4_t16_sidecar_names:
-            decode_tiles = repack_gguf_q4_k_tile16(
-                raw if raw.ndim == 3 else raw[None, ...]
-            ).tiles
+            decode_tiles = _RESIDENT_REPACKS[LAYOUT_GGUF_Q4_K_T16].convert(raw).tiles
             for sidecar_name in q4_t16_sidecar_names:
                 allocations[sidecar_name] = load_host_array_to_device_as_dtype(
                     f"{spec.source.name}.t16_decode_sidecar",
@@ -1788,46 +1893,8 @@ def _materialize_spec(
                     device=device,
                     runtime=runtime,
                 )
-    elif spec.layout in {
-        LAYOUT_GGUF_Q4_K_T16,
-        LAYOUT_GGUF_Q4_K_QMICRO_T16,
-        LAYOUT_GGUF_Q4_K_X8,
-        LAYOUT_GGUF_Q5_K_T16,
-        LAYOUT_GGUF_Q5_K_QMICRO_T16,
-        LAYOUT_GGUF_Q6_K_T16,
-        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
-        LAYOUT_GGUF_Q8_0_T16,
-        LAYOUT_GGUF_Q5_K_X8,
-        LAYOUT_GGUF_Q6_K_X8,
-    }:
-        if spec.layout == LAYOUT_GGUF_Q4_K_T16:
-            packed = repack_gguf_q4_k_tile16(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q4_K_QMICRO_T16:
-            packed = repack_gguf_q4_k_tile16_qmicro(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q4_K_X8:
-            packed = repack_gguf_q4_k_x8(raw)
-        elif spec.layout == LAYOUT_GGUF_Q5_K_T16:
-            packed = repack_gguf_q5_k_tile16(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q5_K_QMICRO_T16:
-            packed = repack_gguf_q5_k_qmicro_tile16(raw)
-        elif spec.layout == LAYOUT_GGUF_Q6_K_T16:
-            packed = repack_gguf_q6_k_tile16(raw if raw.ndim == 3 else raw[None, ...])
-        elif spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR:
-            packed = repack_gguf_q6_k_tile16_qmicro_planar(
-                raw if raw.ndim == 3 else raw[None, ...]
-            )
-        elif spec.layout == LAYOUT_GGUF_Q5_K_X8:
-            packed = repack_gguf_q5_k_x8(raw)
-        elif spec.layout == LAYOUT_GGUF_Q6_K_X8:
-            packed = repack_gguf_q6_k_x8(raw)
-        else:
-            packed = repack_gguf_q8_0_tile16(raw)
+    elif spec.layout in _RESIDENT_REPACKS:
+        packed = _RESIDENT_REPACKS[spec.layout].convert(raw)
         allocations = {
             "tiles": load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.t16.tiles",
@@ -1839,9 +1906,7 @@ def _materialize_spec(
             )
         }
         if "x8" in spec.allocation_names:
-            if spec.layout != LAYOUT_GGUF_Q6_K_T16:
-                raise ValueError("X8 sidecar is only supported for Q6_K T16 residents")
-            x8_packed = repack_gguf_q6_k_x8(raw if raw.ndim == 3 else raw[None, ...])
+            x8_packed = _Q6_X8_SIDECAR_REPACK.convert(raw)
             x8_tiles = x8_packed.tiles[0] if raw.ndim == 2 else x8_packed.tiles
             allocations["x8"] = load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.x8_sidecar",
@@ -1852,12 +1917,8 @@ def _materialize_spec(
                 runtime=runtime,
             )
         if "qmicro_planar" in spec.allocation_names:
-            if spec.layout != LAYOUT_GGUF_Q5_K_T16:
-                raise ValueError(
-                    "qmicro_planar sidecar is only supported for Q5_K T16 residents"
-                )
             planar = convert_gguf_q5_k_qmicro_tile16_to_planar(
-                repack_gguf_q5_k_qmicro_tile16(raw if raw.ndim == 3 else raw[None, ...])
+                _Q5_PLANAR_SIDECAR_REPACK.convert(raw)
             )
             allocations["qmicro_planar"] = load_host_array_to_device_as_dtype(
                 f"{spec.source.name}.qmicro_planar",
@@ -1923,6 +1984,7 @@ def _materialize_spec(
 
 
 __all__ = [
+    "validate_qwen35_gguf_resident_prerequisites",
     "LAYOUT_DENSE_BF16",
     "LAYOUT_DENSE_F32",
     "HIPENGINE_GGUF_DECODE_REPACK_ENV",
