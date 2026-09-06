@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Framework UD-Q4_K_XL / BF16 KV routing diagnostic | Coverage | Gate |
+| --- | --- | --- |
+| Real Q4/Q5_1 pair boundaries | code512 + four4096 categories;1683 boundaries | Three-arm logits/state exact; zero final allocations |
+
+Q4 p4096 medians9-12 active rows;88.7-91.7% of rows are in experts with>8
+rows. No new throughput claim; captured-count replay still uses synthetic
+activations. [Evidence](results/2026-09-06-framework-qwen4exp-real-routing.json).
+
 Qwen4Exp tool/grammar development checks: short15 scenarios93/100;
 structured-output6 scenarios83/100. Model-choice failures remain; not a
 full69-case qualification or throughput comparison.

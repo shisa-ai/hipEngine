@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework real routing] Synthetic-only routing screens gain identity-checked actual-count replay. Captured1683 Q4/Q5_1 boundaries across code512/four4096 categories; three-arm logits/state exact and zero final allocations. Q4 p4096 median9-12;88.7-91.7% of rows in experts>8. Throughput delta N/A: diagnostic capture, no runtime change. `benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json`.
+
 - [2026-09-06 UTC Framework tools/grammar correctness] Embedded XML protocol, JSON compatibility and pre-argmax llguidance masks pass HTTP sanity. Development tool-eval-bench short15 scores93/100; CategoryO6 scores83/100, remaining partials are tool-choice behavior. No paired prior score or throughput claim. `benchmarks/results/2026-09-06-framework-qwen4exp-tools-grammar.json`.
 
 - [2026-09-06 UTC Framework public native context] Registered serving now admits up to262144 tokens instead of fixed2051, subject to c1/c2 memory admission. Native-capacity boundary2051/2052/4097 repeats exact; completions8192/chat8154 retrieval pass, over-limit requests reject cleanly, final ownership zero. No new256K-length inference or speed claim. `benchmarks/results/2026-09-06-framework-qwen4exp-native-context-final.json`.

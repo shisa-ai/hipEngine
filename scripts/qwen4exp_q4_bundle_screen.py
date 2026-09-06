@@ -34,7 +34,23 @@ def main():
     p.add_argument("--pair-reuse", action="store_true")
     p.add_argument("--routing", choices=("uniform", "skewed"), default="uniform")
     p.add_argument("--layer", type=int, default=0)
+    p.add_argument("--routing-capture", type=Path)
+    p.add_argument("--routing-case")
+    p.add_argument("--routing-chunk", type=int, default=0)
     a=p.parse_args()
+    capture = None
+    if a.routing_capture:
+        from scripts.qwen4exp_routing_capture import select_routing, validate_replay_identity
+        from scripts.qwen4exp_canonical_ar_bench import DEFAULT_FIXTURE, load_fixture
+        from scripts.qwen4exp_framework_family_refresh import check_host, model_identity
+        if not a.routing_case or a.routing != "uniform":
+            p.error("capture requires --routing-case and no synthetic routing override")
+        check_host()
+        model_identity(a.model_root)
+        capture = json.loads(a.routing_capture.read_text())
+        validate_replay_identity(capture, fixture_sha256=load_fixture(DEFAULT_FIXTURE)[1])
+    elif a.routing_case or a.routing_chunk:
+        p.error("routing case/chunk requires --routing-capture")
     parent_name, candidate_name = (CANDIDATE, PAIR) if a.pair_reuse else (PARENT, CANDIDATE)
     if a.pairs<1 or any(r<1 for r in a.rows):
         p.error("positive rows and pairs required")
@@ -62,6 +78,10 @@ def main():
             "parent_variant": parent_name, "candidate_variant": candidate_name,
             "routing": a.routing, "layer": a.layer,
             "cases":[]}
+    if capture is not None:
+        report.update(routing="captured_counts_synthetic_activations",
+                      routing_capture_sha256=hashlib.sha256(a.routing_capture.read_bytes()).hexdigest(),
+                      routing_case=a.routing_case, routing_chunk=a.routing_chunk)
     allocations=[]
     try:
         wa,wb=[_upload(w,runtime,allocations) for w in weights]
@@ -74,6 +94,11 @@ def main():
                 scores = -np.log(np.maximum(scores, np.finfo(np.float64).tiny)) / priorities
             selected=np.argsort(scores,axis=1)[:,:10]
             counts=np.bincount(selected.reshape(-1),minlength=512)
+            if capture is not None:
+                counts = select_routing(capture, case_id=a.routing_case, layer=a.layer,
+                                        chunk=a.routing_chunk, tokens=rows)
+                if counts.shape != (512,):
+                    raise ValueError("replay requires the model's 512 experts")
             starts=np.concatenate(([0],np.cumsum(counts))).astype(np.int64)
             compact=rows*10
             x,_=_make_activation(compact,2560,3456+rows)
