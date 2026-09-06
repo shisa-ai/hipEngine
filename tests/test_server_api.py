@@ -22199,3 +22199,41 @@ def test_usage_exposes_reasoning_tokens() -> None:
     assert usage["reasoning_tokens"] == 9
     assert usage["completion_tokens_details"] == {"reasoning_tokens": 9}
     assert _finish_reasoning_token_total(details) == 9
+
+
+def test_generation_batcher_finishes_queued_items_when_worker_raises() -> None:
+    """A dispatch-loop exception must fail queued requests, not orphan them.
+
+    Regression guard for the K4 server hang: a ValueError escaping the
+    batcher's dispatch loop killed the worker while queued items waited on
+    futures that nothing would ever resolve. The handler now finishes every
+    in-flight item with the exception before the worker exits.
+    """
+
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        def exploding_route_cap(route: str) -> None:
+            raise ValueError("route cap resolution failed")
+
+        batcher._route_request_cap = exploding_route_cap  # type: ignore[method-assign]
+
+        async def guarded_submit(*prompts: str):
+            return await asyncio.wait_for(
+                batcher.submit(prompts, sampling),
+                timeout=10.0,
+            )
+
+        results = await asyncio.gather(
+            guarded_submit("one"),
+            guarded_submit("two"),
+            return_exceptions=True,
+        )
+        assert all(isinstance(result, ValueError) for result in results), results
+
+    asyncio.run(run())
