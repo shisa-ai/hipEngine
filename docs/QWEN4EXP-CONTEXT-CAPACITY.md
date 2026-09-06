@@ -1,7 +1,8 @@
 # Qwen4Exp context capacity: the 2051 cap, why it exists, and what raising it costs
 
-Status: public native-context plumbing and real c2 server startup/8K retrieval
-gate complete on Framework gfx1151 (2026-09-06). Section4c records the short
+Status: public native-context plumbing, real c2 completions/chat startup and
+8K retrieval, native-capacity boundary gates complete on Framework gfx1151
+(2026-09-06). Section4c records the short
 capacity A/B. Native262144 allocation is supported when admitted; this is not
 a fresh262144-token inference result. Historical diagnosis below describes the
 prior cap; section6 records its replacement.
@@ -145,7 +146,7 @@ Two things that table must not be over-read:
   selected spans of 4,096/16,384/65,536 tokens and mean gaps 2.00/8.00/32.02.
   Low coverage is not the same as low recall.
 
-So the practical reading of the cutoff is: **below2051 the dense-equivalent
+So the practical reading of the cutoff is: **through2051 the dense-equivalent
 oracle applies; above2051 full-dense output equality is not the right oracle.**
 Native QSA selection, tail inclusion, buffer ownership and declared arithmetic
 gates remain binding. Retrieval/task evidence additionally evaluates the model's
@@ -413,6 +414,13 @@ A262145-token prompt returned HTTP400 `context_length_exceeded`; close freed
 all tracked allocations. Peak tracked bytes105,093,140,904 included weights,
 both native-capacity runners and sidecars.
 [Serving evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-native-context-serving.json).
+Clean `6ed342313` followup passes chat retrieval at8154 rendered prompt tokens
+and HTTP400 `context_length_exceeded` on oversized chat, with zero final
+ownership. At allocated capacity262144, the boundary probe retains live2051
+dense-equivalent and2052/4097 indexed-sparse, each three-repeat token/state
+exact. Steady windows are allocation-stable;2048 bytes of cross-bucket growth
+are recorded and all ownership is released on close.
+[Final chat/boundary packet](../benchmarks/results/2026-09-06-framework-qwen4exp-native-context-final.json).
 This enables the full native allocation/serving limit subject to memory; it does
 not claim a new full256K-length quality/performance qualification. P10's prior
 4K/16K/64K evidence remains named separately.
@@ -479,8 +487,13 @@ Likely to need review because they encode a **capacity** assumption:
 - `tests/test_qwen4exp_perf_gap_report.py:26` — `"2051"` keyed row
 - Any server test that asserts startup succeeds without `--max-context-tokens`
 
-Gates to re-run once the GPUs are free (per `docs/TESTING.md` tiers; none of
-this was run in this session):
+Original proposed validation list (per `docs/TESTING.md` tiers):
+
+**September6 completion:** the originally proposed gates below are now backed
+by610 server/LLM/model/config tests,17 GPU native-QSA tests (including65,536
+pooled blocks versus CPU top-k), the48-trajectory short-capacity A/B, real
+c2 completions/chat startup and retrieval, and native-capacity boundary
+repeats. Keep their protocol/coverage limits: this is not a fresh256K prompt run.
 
 - Narrow: the focused Qwen4Exp test bundle, which the campaign records at 268
   tests (`:2405-2410`).
