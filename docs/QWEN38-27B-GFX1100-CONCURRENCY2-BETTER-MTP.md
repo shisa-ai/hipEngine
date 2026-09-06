@@ -188,16 +188,21 @@ with the CPU-reference KL/top-1 gate plus cross-arm exact generated-ID equality
 as the correctness oracle. Width-5 cycles also pay width-8 prices
 (capacity-padded frontier), and C8 leaves a 0.217 s straggler AR tail.
 
-Packet 2 status (2026-09-06): physical C1 is routable and proven E2E —
-package flag `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`, adapter route helpers, partition
-bound 1 for qualified one-request groups, physical one-row provider-group open,
-and the first GPU route proof (C1/K3, 3 graph-routed cycles, exact IDs, 0.714
-complete / 0.533 decode-only MTP-over-AR on the 12-token proof prompt).
-Artifact: `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-physical-route-proof.json`;
-worklog `20260906T104813.252711Z-lhl-gfx1100-better-mtp-packet2-d53fcc`.
-Remaining: K1/K2 cells, rejection/EOS/clipping/cancellation/failure-restore
-tests, resident-transition tests, then suite economics before any automatic
-admission.
+Packet 2 status (2026-09-06): physical C1 is routable, proven E2E, and
+RETAINED with registered evidence. Package flag `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`,
+adapter route helpers, partition bound 1 for qualified one-request groups,
+physical one-row provider-group open, GPU route proof (5 runs incl. a
+mid-chain rejection recovered exactly), and full-suite retained economics
+through the registered `qwen38-q4km-gfx1100-production-bf16-c1-k{2,3}-d24`
+rows: **C1/K3 1.4734x (23.731→34.965 tok/s), C1/K2 1.5590x (23.823→37.140)**,
+10/10 token-exact vs the in-run native AR arm, engaged and budget-conformed.
+Automatic stays K0; rows are explicit-only and capacity-8-specific.
+Artifacts: `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-retained-economics.json`
+(+) `-c1-suite-economics.json`, `-c1-physical-route-proof.json`,
+`-packet1-attribution.json`; worklog
+`20260906T111334.382095Z-lhl-gfx1100-better-mtp-packet2-8e1921`.
+Remaining: resident-transition CPU matrix (C1→C2→C1, C8→C1→C8, sparse
+survivors, refill/compaction, K0↔MTP), then the automatic-promotion decision.
 
 Protocol note: these 12-token attribution runs are not comparable to the
 retained Packet-0 suite ratios (C8/K3 0.987–0.989, C2/K2 0.917–0.926,
