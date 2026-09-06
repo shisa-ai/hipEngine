@@ -77,6 +77,13 @@ not relax any correctness, evidence, or anti-gaming rule.
 
 ## 0. Current Framework Desktop c=1 overview
 
+**GR wave-scale promotion (September6 UTC):** the next exact full12-case A/B
+improves prefill156.017->156.711 /153.748->154.285 /143.419->143.908 tok/s
+at512/1K/4K (+0.445%/+0.350%/+0.341%). All72 trajectories are exact,
+every case improves request wall, and elapsed is33m22s. No decode-kernel win
+or new external parity claim. [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
+The generated post-Q8 family costs below are **pre-GR promotion** until refreshed.
+
 **Later Q8 promotion:** normal-model full A/B improves prefill
 154.29->155.45 /151.67->153.43 /141.58->143.41 tok/s at512/1K/4K
 (+0.75%/+1.17%/+1.29%), with all72 trajectories exact and every complete

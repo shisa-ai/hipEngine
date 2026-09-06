@@ -56,6 +56,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE",
+        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
@@ -149,9 +150,9 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert qsa["strict_fallback_variant"] == "bf16_context_batch_paged_c1_exact_spans"
     assert qsa["evidence_artifact"].endswith("p4-qsa-dense-fixed256.json")
     gr_up = selections[("linear+gr_gated_mean", "qwen4exp_rows_gt256_gr_up")]
-    assert gr_up["selected_variant"] == "coltile2_branch4_rowbatch4_f32_exact"
+    assert gr_up["selected_variant"] == "coltile2_branch4_rowbatch4_wave_scale_f32_exact"
     assert gr_up["strict_fallback_variant"] == "coltile2_branch4_rowbatch4_f32_exact"
-    assert gr_up["evidence_artifact"].endswith("p3-gr-up-sigmoid-mean.json")
+    assert gr_up["evidence_artifact"].endswith("gr-wave-production.json")
     router = selections[("router_logits", "qwen4exp_multirow_f32_router")]
     assert router["selected_variant"] == "f32_hidden_token_tile4_dense_exact"
     assert router["strict_fallback_variant"] == "f32_hidden_token_tile4_dense_exact"
@@ -244,6 +245,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
     wave = _selection_map(production)[("linear", "prefill_exact_q8_f32_coltile")]
     assert wave["selected_variant"] == "coltile8_rowbatch4_wave_scale_f32_f32_out"
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
@@ -335,6 +337,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
