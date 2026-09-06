@@ -1,0 +1,97 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_mtp_ck_matrix_blocked",
+  "created_at": "2026-09-06T05:04:41Z",
+  "status": "blocked_evidence_gate_with_material_finding",
+  "passed": true,
+  "performance_claim": false,
+  "claim_scope": "Attempted C1-C8 x K1-K4 MTP/AR sweep for Qwen3.8-27B Q4_K_M on the physical W7900, canonical 10-prompt suite, D24, 20 ms window, greedy, each width run at its own resident capacity.",
+  "decision": "The matrix cannot be swept without an engine change. Only cells with a pre-existing SpeculativeMTPServingEvidence record engage, in explicit and automatic request modes alike, so unqualified cells cannot be measured to produce the evidence they require. Separately, the two cells that do engage now measure below their own AR arm.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "gpu_max_hw_queues": 1
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "measured_cells": {
+    "C2K1": {
+      "mtp_tok_s": 41.753,
+      "ar_tok_s": 41.771,
+      "ratio": 0.9996,
+      "engaged_cells": 0,
+      "cells": 10,
+      "exact_cells": 10,
+      "draft_acceptance": null
+    },
+    "C2K2": {
+      "mtp_tok_s": 38.328,
+      "ar_tok_s": 41.769,
+      "ratio": 0.9176,
+      "engaged_cells": 10,
+      "cells": 10,
+      "exact_cells": 10,
+      "draft_acceptance": 0.9006211180124224
+    },
+    "C2K3": {
+      "mtp_tok_s": 41.513,
+      "ar_tok_s": 41.527,
+      "ratio": 0.9997,
+      "engaged_cells": 0,
+      "cells": 10,
+      "exact_cells": 10,
+      "draft_acceptance": null
+    },
+    "C2K4": {
+      "mtp_tok_s": 41.463,
+      "ar_tok_s": 41.625,
+      "ratio": 0.9961,
+      "engaged_cells": 0,
+      "cells": 10,
+      "exact_cells": 10,
+      "draft_acceptance": null
+    }
+  },
+  "gates_found": {
+    "c1_hard_disable": "Qwen35GGUFMTP2Adapter.partition_max_requests computes resolved = bound if bound > 1 else 0, so any group resolving to width 1 is forced to K0 on the physical partition path. C1 MTP exists only through the separate GGUF_SPECDEC2_MTP2_C1 singleton route.",
+    "serving_evidence_gate": "hipengine/models/qwen35.py holds SpeculativeMTPServingEvidence records keyed by backend, arch, quant, profile, execution-profile manifest sha256, KV storage, realized group rows, resident capacity, candidate budget, sampling mode, context bounds, and output horizon. A cell without a record does not engage. Opening GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS to all 32 cells was necessary but not sufficient: C2 K1/K3/K4 still reported engaged 0/10.",
+    "depth_caps_unified": "MTP2_MAX_CANDIDATE_DEPTH is now the single source of truth and is 4. The bound was previously duplicated as a validator constant, a hardcoded min(3, ...) adapter clamp, and a getattr default of 3, while the server env already accepted 1-4."
+  },
+  "material_finding": {
+    "summary": "Both currently qualified MTP cells now run at or below their own AR arm. AR improved far more than MTP since the published rows were taken, so MTP's advantage has been consumed rather than MTP having broken.",
+    "comparison": {
+      "C2_K2": {
+        "published_ar": 30.72,
+        "published_mtp": 36.726,
+        "published_ratio": 1.1955,
+        "current_ar": 41.769,
+        "current_mtp": 38.328,
+        "current_ratio": 0.9176,
+        "ar_delta_pct": 35.96,
+        "mtp_delta_pct": 4.36
+      },
+      "C8_K3": {
+        "published_ar": 88.25,
+        "published_mtp": 98.643,
+        "published_ratio": 1.1178,
+        "current_ar": 91.969,
+        "current_mtp": 91.421,
+        "current_ratio": 0.994,
+        "ar_delta_pct": 4.21,
+        "mtp_delta_pct": -7.32
+      }
+    },
+    "interpretation": "At C2 the AR arm gained 35.96% while MTP gained only 4.36%, inverting a 1.1955x win into 0.9176x. At C8 AR gained 4.21% while MTP lost 7.32%. Both cells remain 10/10 token-exact with healthy draft acceptance (0.901 at C2/K2), so this is an economics change, not a correctness regression. It also explains the packet G non-reproduction of the C8/K3 row."
+  },
+  "limitations": [
+    "Only C2 K1-K4 and C1 were attempted; C3-C8 were not swept because the same evidence gate applies.",
+    "K4 is now reachable in code but no K4 cell has ever engaged, so K4 remains unmeasured.",
+    "The current-vs-published comparison spans different sessions; the C2 AR figure is from this session's paired arm, which is the correct same-protocol control for the ratio."
+  ],
+  "disposition": "blocked; no policy changed. GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS restored to its qualified 4-cell set. K4 support and the unified depth cap are retained; the sweep needs a screening bypass for unqualified cells before it can proceed."
+}
