@@ -425,9 +425,25 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   and `results/2026-09-06-rx7900xtx-capacity-q4ks-vs-q4km-bytes.json`.
   Q4_K_M remains the default; per-quant quality gates stay with the
   teacher-gating item (no reuse of Q4_K_M/gfx1151 evidence for Q4_K_S/XTX).
-- [ ] Prove effective compact INT8 has no persistent BF16 shadow. Bound and
+- [x] Prove effective compact INT8 has no persistent BF16 shadow. Bound and
   reuse prefill oracles; a smaller steady cache with an oversized prefill peak
   does not fit. Account for scales, pool planes and graph scratch.
+  Proven 2026-09-07 on the XTX with a mid-flight residency audit: one
+  per-token/head INT8 (FP32 scales) request at 3,168 prompt tokens sampled
+  `device_kv_layout_audit()` 206 times while the row was resident — every
+  sample reports zero `persistent_bf16_payload_bytes` and zero
+  `persistent_bf16_mirror_bytes`, with INT8 payload and scale bytes exactly
+  `request_pages x 8,388,608` and `x 131,072` (13-page peak = 3,328 tokens).
+  Pool accounting agrees exactly: 64 planes (32 INT8 payload + 32 scale),
+  272,629,760 B for 32 pages = 8,519,680 B/page, zero slack — a BF16 shadow
+  plane set would cost 16,777,216 B/page. Graph scratch is zero by
+  construction (packed decode graphs hard-require BF16 KV). Transient
+  prefill oracle cost at the 4,096 boundary is bounded by the ledger point:
+  request peak 19.192 GiB versus 19.162 GiB after request (whole-card sysfs,
+  20 ms sampling; 3,072/4,096 INT8 points stay ~1.8-2.1 GiB below the
+  equivalent BF16 request peaks). Evidence:
+  `results/2026-09-07-rx7900xtx-int8-kv-no-shadow-audit.json` and
+  `results/2026-09-07-rx7900xtx-int8-kv-boundary-ledger-4096.json`.
 - [x] Inspect existing `qwen38_int8_batch_decode_gate.py` and service selection.
   Separate serial compact residency from native no-mirror batched prefill,
   decode, graphs and MTP. Coordinate missing integration with the INT8 campaign.
