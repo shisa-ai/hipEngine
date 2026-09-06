@@ -94,10 +94,19 @@ def _inject_k4_evidence_row(width: int, budget: int) -> str:
 
 
 def _slice_prompts(source: Path, count: int, destination: Path) -> Path:
+    """Pass the canonical suite through unchanged when count is 0.
+
+    The bench validates canonical prompt IDs/order, so any slice breaks
+    admission; count=0 (default) keeps the full canonical file. A nonzero
+    count only helps future probes that target a suite-relaxed entry point.
+    """
+
+    if int(count) <= 0:
+        return source
     lines = source.read_text(encoding="utf-8").splitlines()
     if not lines:
         raise RuntimeError(f"prompt file {source} is empty")
-    keep = lines[: max(1, int(count))]
+    keep = lines[: int(count)]
     destination.write_text("\n".join(keep) + "\n", encoding="utf-8")
     return destination
 
@@ -123,7 +132,8 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=8)
     parser.add_argument("--budget", type=int, default=4)
     parser.add_argument("--max-tokens", type=int, default=12)
-    parser.add_argument("--prompt-count", type=int, default=1)
+    parser.add_argument("--prompt-count", type=int, default=0,
+                        help="0 keeps the canonical suite (required by the bench gate)")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
     args = parser.parse_args()
 
