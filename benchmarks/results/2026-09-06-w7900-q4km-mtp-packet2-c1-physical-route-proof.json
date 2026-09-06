@@ -1,0 +1,46 @@
+{
+ "kind": "mtp-packet2-c1-physical-route-proof",
+ "created": "2026-09-06",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+ "model": "Qwen3.8-27B Q4_K_M GGUF (greedy, D24 outputs capped at 12 tokens, 1 train prompt)",
+ "protocol": "specdec2 bridge, staged verify_chain arm vs no-MTP true AR arm at the same resident capacity 8 with one due request; rows==1 diagnostic static eligibility certifies the physical-C1 route (never automatic); cross-arm exact generated-ID equality is the bridge's built-in gate",
+ "commands": [
+  ".venv/bin/python scripts/specdec2_perf_bridge.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --target-arch gfx1100 --quant-label Q4_K_M --execution-profile production --scope train --limit 1 --concurrency 1 --service-capacity 8 --budgets 3 --max-tokens 12 --runs 1 --max-sequence-length 1024 --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --roctx-markers --diagnostic-plan --output /tmp/he-bettermtp-raw/packet2/c1k3-physical-proof.json"
+ ],
+ "raw_run": "/tmp/he-bettermtp-raw/packet2/c1k3-physical-proof.json (outside repo)",
+ "route_proof": {
+  "realized_route": "specdec2",
+  "staged_cycles": 3,
+  "candidate_counts": [
+   3,
+   3,
+   2
+  ],
+  "accepted_counts": [
+   3,
+   3,
+   2
+  ],
+  "execution_routes": [
+   "graph",
+   "graph",
+   "graph"
+  ],
+  "prompt_streaming": true,
+  "serial_decode_fallback": false,
+  "failure_reasons": [],
+  "recoverable_failures": 0,
+  "cross_arm_exact_ids": true
+ },
+ "walls_seconds": {
+  "specdec2_complete": 0.4088,
+  "specdec2_decode_only": 0.1959,
+  "true_ar_complete": 0.5729,
+  "true_ar_decode_only": 0.3676
+ },
+ "diagnostic_ratios": {
+  "complete_wall_mtp_over_ar": 0.7136,
+  "decode_only_mtp_over_ar": 0.533
+ },
+ "scope_note": "Single-prompt 12-token route proof, not a retained benchmark row. A C1/K3 economics claim requires the full multi-prompt suite protocol with a true no-MTP AR baseline from the same benchmark protocol."
+}
