@@ -63,12 +63,14 @@ def _passes_for_tick(records: list[dict[str, Any]], t: int) -> list[tuple[int, f
             int(records[i]["specdec2_mtp2_candidate_counts"][t]) + 1
             for i in members
         )
-        if member_rows != rows:
+        if member_rows > rows:
             raise AssertionError(
-                f"tick {t} bucket rows={rows} ms={ms}: member rows sum {member_rows} "
-                "!= reported rows (impossible bucket: either telemetry drift or two "
-                "passes shared byte-identical samples)"
+                f"tick {t} bucket rows={rows} ms={ms}: member rows sum "
+                f"{member_rows} exceeds reported rows (impossible bucket: either "
+                "telemetry drift or two passes shared byte-identical samples)"
             )
+        # rows >= member_rows records frontier padding: inactive tail rows are
+        # owned by the last member, dispatched, and not committed.
         passes.append((rows, ms))
     return passes
 
@@ -131,11 +133,12 @@ def _target_windows_for_cell(cell: dict[str, Any]) -> list[dict[str, int]]:
                 int(record["specdec2_mtp2_candidate_counts"][tick]) + 1
                 for record in group
             )
-            if member_rows != rows:
+            if member_rows > rows:
                 raise AssertionError(
                     f"tick {tick} timestamp bucket rows={rows}: member rows sum "
-                    f"{member_rows} != reported rows"
+                    f"{member_rows} exceeds reported rows"
                 )
+            # rows >= member_rows records frontier padding (dispatched, inactive).
             windows.append({"rows": rows, "start_ns": start_ns, "end_ns": end_ns})
     return windows
 
