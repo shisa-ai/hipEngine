@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 packed-nibble register cache rejected (September6 UTC):** ten uint32
+words/thread replace the preceding80-float cache, but fully unrolled code
+allocates256 VGPR and gives0.404x on the same real routing. A trace-directed
+volatile-metadata variant remains256 VGPR, spills1208 bytes and gives0.136x.
+Both pass13 GPU tests and ten exact real gate/up/SiLU pairs. Removed both.
+Source cache size is not generated live-register cost; do not repeat these
+fully-unrolled cache forms. This does not rule out bounded staged reuse.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-packed-cache-rejected.json).
+
 **Q4 full decoded-weight register cache rejected (September6 UTC):**
 cache80 exact F32 values/thread across row groups at K2560, keeping RB8.
 Real layer3/mixed4096/chunk7 gate/up+SiLU loses17.013->25.548ms (0.666x),

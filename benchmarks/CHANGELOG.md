@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q4 packed cache rejected] Same real layer3/routing gate/up+SiLU17.060->42.283ms (+147.7%); volatile metadata17.143->126.057ms (+635.3%). Both10-pair exact,256 VGPR; volatile spills1208B. Removed both, production unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-packed-cache-rejected.json`.
+
 - [2026-09-06 UTC Framework Q4 register cache rejected] Actual layer3/mixed4096 chunk7 gate/up+SiLU17.013->25.548ms (+50.17%), all10 pairs exact; cache80 F32 values/thread raises VGPR88->168 without spills. Removed candidate, production unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json`.
 
 - [2026-09-06 UTC Framework GR column reuse rejected] RB4/H2->RB2/H4 at512: attention3.228->3.209ms (-0.62%), FFN3.204->3.216ms (+0.36%), all80 pairs exact but timing-order reversals and slightly slower trace. Candidate removed; no model improvement claimed. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-col-reuse-rejected.json`.

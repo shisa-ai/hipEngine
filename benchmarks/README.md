@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 packed-nibble cache also rejected:0.404x parent throughput; volatile
+metadata variant0.136x. Both exact, both256 VGPR; latter spills1208 bytes.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-packed-cache-rejected.json).
+
 Q4 full decoded-weight register cache rejected: real layer3/captured mixed4096
 routing gives0.666x parent throughput, exact; VGPR88->168 with no spills.
 [Evidence](results/2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json).
