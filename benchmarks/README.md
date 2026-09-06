@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-06 UTC**
 
+Full post-MMQ-vector owner refresh at clean `1e89361d5`: p4096 four-category
+non-GR linear5.363->4.770s (-11.07% snapshot delta),FFN13.442s,GR4.268s.
+All12 phases have100% coverage,matched decode roots and zero final owners.
+Vulkan profile explicitly reused;not a new throughput comparison.
+[Family evidence](results/2026-09-06-framework-qwen4exp-post-vec4-family.json).
+
 | Framework UD-Q4_K_XL / BF16 KV MMQ vector staging | p512 PP | p1024 PP | p4096 PP |
 | --- | ---: | ---: | ---: |
 | Same-residency parent -> production | 164.712 -> 168.040 (+2.021%) | 162.186 -> 165.711 (+2.173%) | 150.246 -> 153.335 (+2.056%) |
