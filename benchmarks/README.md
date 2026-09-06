@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Opposite GR RB2/H4 column reuse also rejected:512-row attention1.006x,
+FFN0.996x, exact but order-dependent. No runtime change.
+[Evidence](results/2026-09-06-framework-qwen4exp-gr-col-reuse-rejected.json).
+
 GR constant-accumulator row reuse rejected: real attention/FFN up at512
 rows is0.847x/0.841x parent throughput, exact. Candidate removed.
 [Evidence](results/2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json).

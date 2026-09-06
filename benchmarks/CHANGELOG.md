@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework GR column reuse rejected] RB4/H2->RB2/H4 at512: attention3.228->3.209ms (-0.62%), FFN3.204->3.216ms (+0.36%), all80 pairs exact but timing-order reversals and slightly slower trace. Candidate removed; no model improvement claimed. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-col-reuse-rejected.json`.
+
 - [2026-09-06 UTC Framework GR row reuse rejected] Constant32-accumulator RB4/H2->RB8/H1 changes real512-row attention/FFN up3.244->3.828ms (+18.01%)/3.209->3.817ms (+18.93%), exact; same72 VGPR/512B LDS/scratch0. Removed candidate, production unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json`.
 
 - [2026-09-06 UTC Framework real routing] Synthetic-only routing screens gain identity-checked actual-count replay. Captured1683 Q4/Q5_1 boundaries across code512/four4096 categories; three-arm logits/state exact and zero final allocations. Q4 p4096 median9-12;88.7-91.7% of rows in experts>8. Throughput delta N/A: diagnostic capture, no runtime change. `benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json`.
