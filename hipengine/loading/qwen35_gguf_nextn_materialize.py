@@ -24,15 +24,18 @@ from hipengine.loading.materialize import (
 )
 from hipengine.loading.qwen35_gguf import FULL_ATTENTION
 from hipengine.loading.qwen35_gguf_materialize import (
+    LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
     Qwen35GGUFDeviceWeight,
     Qwen35GGUFResidentLayerWeights,
     Qwen35GGUFResidentWeights,
     Qwen35GGUFWeightSpec,
     materialize_qwen35_gguf_weight_spec,
     plan_qwen35_gguf_weight_spec,
+    validate_qwen35_gguf_resident_prerequisites,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
 from hipengine.quant.gguf_t16 import repack_gguf_q6_k_tile16_qmicro_planar
+from hipengine.quant.gguf_repack import Q6_K_T16_SHAPE
 from hipengine.loading.qwen35_gguf_nextn import (
     Qwen35GGUFNextNMap,
     build_qwen35_gguf_nextn_tensor_map,
@@ -147,6 +150,32 @@ class Qwen35GGUFNextNResidentWeights:
             weight.free(runtime=runtime)
 
 
+def _validate_hot_vocab_prerequisites(
+    reader: GGUFReader,
+    spec: Qwen35GGUFWeightSpec,
+    selection: GGUFHotVocabSelection,
+) -> None:
+    """Check source and selected-row repack prerequisites without payload reads."""
+
+    validate_qwen35_gguf_resident_prerequisites(spec)
+    if GGMLQuantizationType(spec.source.ggml_type) != GGMLQuantizationType.Q6_K:
+        raise ValueError("GGUF MTP hot vocabulary requires a Q6_K output head")
+    if (
+        spec.layout != LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+        or spec.quant_key != LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+    ):
+        raise ValueError("GGUF MTP hot vocabulary requires the planar Q6 T16 output layout")
+    vocab_size = len(reader.info.metadata.get("tokenizer.ggml.tokens", ()))
+    if len(spec.source.shape) != 2 or int(spec.source.shape[0]) != vocab_size:
+        raise ValueError("GGUF MTP hot-vocabulary output head has an unexpected shape")
+    # The full source and compact resident have different N. The actual CPU
+    # converter uses this same contract; do not infer alignment from byte size
+    # or merely from the full head's successful validation.
+    Q6_K_T16_SHAPE.validate((1, selection.size, spec.source.byte_shape[1]))
+    if any(token < 0 or token >= vocab_size for token in selection.token_ids):
+        raise ValueError("GGUF MTP hot-vocabulary token ID is outside the model vocabulary")
+
+
 def _materialize_hot_vocab(
     reader: GGUFReader,
     spec: Qwen35GGUFWeightSpec,
@@ -160,10 +189,7 @@ def _materialize_hot_vocab(
 
     import numpy as np
 
-    if GGMLQuantizationType(spec.source.ggml_type) != GGMLQuantizationType.Q6_K:
-        raise ValueError("GGUF MTP hot vocabulary requires a Q6_K output head")
-    if spec.quant_key != "gguf_q6_k_t16_qmicro_planar_v1":
-        raise ValueError("GGUF MTP hot vocabulary requires the planar Q6 T16 output layout")
+    _validate_hot_vocab_prerequisites(reader, spec, selection)
     raw = np.asarray(reader.tensor_data(spec.source.name))
     if raw.ndim != 2 or int(raw.shape[0]) != len(
         reader.info.metadata["tokenizer.ggml.tokens"]
@@ -364,6 +390,36 @@ def materialize_qwen35_gguf_nextn_weights(
             borrowed_specs[slot] = borrowed_spec
         plan = replace(plan, fallback_specs=MappingProxyType(borrowed_specs))
 
+    # Resolve borrowing BEFORE validation: an unused replacement layout may
+    # be invalid even though the actual borrowed raw resident is legal. Check
+    # every slot, not the source/layout-deduplicated plan.specs (sidecars may
+    # differ). No load, payload read or upload can precede this whole-plan gate.
+    errors: list[str] = []
+    for spec in (*plan.draft_specs, *plan.fallback_specs.values()):
+        try:
+            validate_qwen35_gguf_resident_prerequisites(spec)
+        except ValueError as error:
+            errors.append(str(error))
+    if errors:
+        raise ValueError(
+            "GGUF NextN resident prerequisites refused before loading:\n"
+            + "\n".join(dict.fromkeys(errors))
+        )
+    resolved_hot_vocab_path = (
+        default_gguf_hot_vocab_path(
+            reader.info, artifact_preset_key=artifact_preset_key,
+        )
+        if hot_vocab_path == "auto"
+        else hot_vocab_path
+    )
+    hot_selection = (
+        load_gguf_hot_vocab_selection(resolved_hot_vocab_path, reader.info)
+        if resolved_hot_vocab_path is not None
+        else None
+    )
+    if hot_selection is not None:
+        _validate_hot_vocab_prerequisites(reader, plan.fallback_specs["lm_head"], hot_selection)
+
     materialized: dict[tuple[str, str], Qwen35GGUFDeviceWeight] = {}
 
     def load(spec: Qwen35GGUFWeightSpec) -> Qwen35GGUFDeviceWeight:
@@ -387,24 +443,16 @@ def materialize_qwen35_gguf_nextn_weights(
             slot: borrowed[slot] if borrowed is not None and slot in borrowed else load(spec)
             for slot, spec in plan.fallback_specs.items()
         }
-        resolved_hot_vocab_path = (
-            default_gguf_hot_vocab_path(
-                reader.info,
-                artifact_preset_key=artifact_preset_key,
-            )
-            if hot_vocab_path == "auto"
-            else hot_vocab_path
-        )
         hot_vocab = (
             _materialize_hot_vocab(
                 reader,
                 plan.fallback_specs["lm_head"],
-                load_gguf_hot_vocab_selection(resolved_hot_vocab_path, reader.info),
+                hot_selection,
                 device=device,
                 runtime=runtime,
                 backend=str(backend),
             )
-            if resolved_hot_vocab_path is not None
+            if hot_selection is not None
             else None
         )
     except Exception:

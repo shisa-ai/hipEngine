@@ -68,6 +68,11 @@ def _gguf_scalar(value_type: int, value: object) -> bytes:
 def _gguf_value(value_type: int, value: object) -> bytes:
     if value_type == 8:  # STRING
         return _gguf_string(str(value))
+    if value_type == 9:  # ARRAY: (element type, elements), as in GGUF metadata
+        item_type, items = value
+        return struct.pack("<IQ", item_type, len(items)) + b"".join(
+            _gguf_value(item_type, item) for item in items
+        )
     return _gguf_scalar(value_type, value)
 
 
