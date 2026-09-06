@@ -1750,6 +1750,26 @@ class Qwen35GGUFMTP2Adapter:
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = physical_max_requests
         max_frontier_rows = max_requests * (max_candidate_count + 1)
+        group_width = len(semantics)
+        listed_proposal_widths = [
+            width
+            for width in (1, 2, 4, 8)
+            if (width, max_candidate_count) in self._physical_width_depth_policy()
+        ]
+        if listed_proposal_widths:
+            proposal_widths = tuple(listed_proposal_widths)
+        else:
+            # Screening-only groups have no listed cell at this depth; the
+            # realized due group is the one admissible proposal width.
+            proposal_widths = (
+                (group_width,)
+                if self._physical_width_depth_admitted_for_group(
+                    group_width,
+                    max_candidate_count,
+                    [item.request_id for item in semantics],
+                )
+                else ()
+            )
         return SpeculativeCapability(
             capability_key=(
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
@@ -1785,12 +1805,7 @@ class Qwen35GGUFMTP2Adapter:
             max_requests=max_requests,
             max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
-            proposal_widths=tuple(
-                width
-                for width in (1, 2, 4, 8)
-                if (width, max_candidate_count)
-                in self._physical_width_depth_policy()
-            ),
+            proposal_widths=proposal_widths,
             target_row_buckets=tuple(range(2, max_frontier_rows + 1)),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
