@@ -529,6 +529,29 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
             note="Selected-expert consumers require expert IDs and rank-3 metadata.",
         )
     )
+    # Rank-3 IQ3_XXS selected experts: the materializer keeps them raw GGUF and
+    # the registered gguf_iq3_xxs selected moe_linear families (hip_gfx1100 and
+    # hip_gfx1151 gguf_iq_gemv wrappers) consume them. There is no IQ3_XXS T16
+    # or X8 repack, so only the raw layout is certified; rank-2 dense IQ3_XXS
+    # remains unsupported until UD-U2..U5 (the planner refuses it).
+    records.extend(
+        _linear_records(
+            (*row_ops, QWEN35_GGUF_OP_AR_PREFILL),
+            "moe_experts",
+            layouts=(LAYOUT_RAW_GGUF,),
+            source_types=frozenset({"IQ3_XXS"}),
+            kernel_layer="moe_selected",
+            strict_fallback=(
+                "rank-3 raw selected-expert consumers (gguf_iq3_xxs selected "
+                "gemv / dual-SiLU / weighted-down moe_linear registrations)"
+            ),
+            note=(
+                "Rank-3 selected IQ3_XXS experts stay raw GGUF; consumed by the "
+                "registered gguf_iq3_xxs selected moe_linear consumers. Rank-2 "
+                "dense IQ3_XXS has no consumer until UD-U2..U5."
+            ),
+        )
+    )
     # Embedding gather: raw compressed lookup forwards every row.  The dense
     # BF16 consumer resolves a singleton lookup (rows are dropped before the
     # launch), so there is deliberately NO certified dense-BF16 embedding
