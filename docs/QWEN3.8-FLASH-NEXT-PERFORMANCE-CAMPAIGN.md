@@ -76,13 +76,27 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Q5_1 register-cache default-off admission (September6 UTC):** five
+**Q5_1 register-cache production (September6 UTC):** clean `67fdfccb4`
+full12-case A/B preserves all72 trajectories and improves every prefill/
+request-wall case. PP512/1024/4096:168.518->173.392 /165.910->170.780 /
+153.381->157.547 tok/s (+2.892%/+2.936%/+2.716%).
+Total request1.01790x. Aggregate TG+0.212%/+0.012%/+0.434%;
+worst individual code1024-0.023%,incidental timing not a decode-kernel win.
+Max PP/TG CV1.210%/1.250%;measured span30m26.4s excludes initial
+load/warmup. Zero final allocations;tracked peak unchanged85,338,330,020B.
+Production binds register-cache1,strict0,only after folded-pair rows>=512
+and K640;manifest names that scope and the original strict fallback.
+Private scratch36B remains explicit despite the positive full-residency
+result. Family refresh is next; the fresh external screen remains tied
+to5104604e1 rather than silently updated with these A/B rates.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-production.json).
+
+**Earlier Q5_1 register-cache default-off admission (September6 UTC):** five
 code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
 four decode steps,state and full KV. Calls0/25/0 or0/200/0,zero decode/
 final ownership;18 CPU tests pass. Existing folded-pair rows>=512 and
-K640 only,both profile binders0. Next is clean canonical12-case
-`--route-package q51-register-cache` A/B;private scratch36B remains
-explicit and no model throughput gain is claimed yet.
+K640 only,both profile binders0 at admission. The subsequent canonical
+A/B above passes and promotes the candidate;private scratch36B remains explicit.
 [State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-state.json).
 
 **Q5_1 register-resident short-K reuse (September6 UTC):** unlike the
@@ -91,9 +105,8 @@ per thread/output pair. Exact two-bank projections at captured code0/mixed7
 512-row routing improve34.450->28.195ms /33.756->27.819ms
 (1.222x/1.213x);both orders positive,all40 pairs exact.17 GPU tests pass.
 Cached trace17.124->14.060ms;VGPR72->96,private scratch0->36B,dynamic
-LDS8672B unchanged. Retain kernel-only with this resource cost explicit.
-Full-model state/KV and canonical12-case A/B are next, limited to current
-folded-pair rows>=512 and K640;no production throughput claim yet.
+LDS8672B unchanged. This kernel screen preceded the full-model gates and
+promotion above,limited to folded-pair rows>=512 and K640.
 [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache.json).
 
 **Q5_1 decoded-LDS weight reuse rejected (September6 UTC):** decode both

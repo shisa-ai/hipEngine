@@ -2,15 +2,24 @@
 
 Last updated: **2026-09-06 UTC**
 
-Q5_1 register-cache model admission:five full-logit/state/KV cases exact,
-25/200 enabled prefill calls,zero decode/final owners. Both binders0;
-canonical12-case throughput gate remains.
+| Framework UD-Q4_K_XL / BF16 KV Q5_1 register reuse | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 168.518 -> 173.392 (+2.892%) | 165.910 -> 170.780 (+2.936%) | 153.381 -> 157.547 (+2.716%) |
+
+All72 trajectories exact;all prefill/request cases improve,total1.01790x.
+Aggregate TG+0.212%/+0.012%/+0.434% incidental;private scratch36B
+explicit,tracked peak unchanged. Not a new external comparator row.
+[Production evidence](results/2026-09-06-framework-qwen4exp-q51-register-cache-production.json).
+
+Earlier Q5_1 register-cache model admission:five full-logit/state/KV cases exact,
+25/200 enabled prefill calls,zero decode/final owners. Both binders0 at
+admission;subsequent canonical gate above passes.
 [State evidence](results/2026-09-06-framework-qwen4exp-q51-register-cache-state.json).
 
-Q5_1 K640 register reuse kernel candidate: captured code/mixed512
+Earlier Q5_1 K640 register reuse kernel screen: captured code/mixed512
 two-bank projections34.450->28.195ms /33.756->27.819ms
 (1.222x/1.213x),all40 pairs exact.17 GPU tests;private scratch36B
-and96 VGPR explicit. Full-model gates pending,production unchanged.
+and96 VGPR explicit. Subsequent full-model gates passed.
 [Evidence](results/2026-09-06-framework-qwen4exp-q51-register-cache.json).
 
 Q5_1 decoded-LDS cache rejected: actual captured-routing two-bank projection
