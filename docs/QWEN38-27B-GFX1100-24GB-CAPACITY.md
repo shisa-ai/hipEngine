@@ -650,9 +650,18 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 6 — Select operational settings and publish
 
-- [ ] Freeze dedicated-card and display-reserve contracts before measurement.
+- [x] Freeze dedicated-card and display-reserve contracts before measurement.
   Suggested initial reserves are 512 MiB and an additional 2 GiB respectively;
   these are policy choices, not hardware constants. Avoid double-counting usage.
+  Frozen 2026-09-07 for this campaign's XTX lane: all capacity points run on a
+  dedicated card (card0, `0000:10:00.0`, verified identity + baseline VRAM
+  before sampling; observed idle baseline 22-26 MiB), so the dedicated-card
+  reserve is 0 in practice — the suggested 512 MiB policy floor is recorded
+  but never exercised; display-reserve is 0 (headless). Whole-card sysfs
+  sampling already includes driver/runtime overhead exactly once; tracked-
+  allocator, dynamic-pool and sysfs numbers are reported as separate domains
+  and never summed, so usage is not double-counted. Failure peaks are sampled
+  evidence, not policy reserves.
 - [x] Run the full `benchmarks/prompts/mtpbench-code-general-ja.jsonl` suite
   (`code`, `general_en`, `general_ja`, `mixed_ja_en`) and fixed category-heldouts.
   Document long-context construction; repeated-token probes are not task gates.
@@ -672,16 +681,59 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   not affect the AR task gate. Long-context construction remains documented
   in the retained suite protocols; repeated-token probes are used only for
   fixed-shape throughput and never as task gates.
-- [ ] Test admission, cancellation, refill, overload, teardown and relevant
+- [x] Test admission, cancellation, refill, overload, teardown and relevant
   prefix/MTP transitions. Require exact ownership, usage and clean drain.
-- [ ] Compare complete memory and latency/throughput on the same XTX, with
+  Assembled from retained XTX evidence 2026-09-07: admission and overload
+  accounting with mixed 512/1K/2K lengths, graph seed/regrow bucket workloads,
+  exact token accounting and idle ownership snapshots (zero active requests,
+  zero queue depth) are in the Packet 1 admission-pressure gate
+  (`results/2026-09-06-rx7900xtx-capacity-packet1-admission-pressure.json`,
+  including `pool_lifecycle` with a recorded `grow_failures: 1` and clean
+  final pages); cancellation and survivor continuation are the IKV-C1
+  staggered-SSE record (admit 4, cancel 1, three survivors exact,
+  admitted/reclaimed/cancelled 4/4/1, ownership drained to zero); refill and
+  shape-changing reuse is the pool-history probe's five-phase wide↔C1
+  alternation in one cold session (card flat, zero grow/shrink/retire).
+  Prefix transitions ran with prefix off in every capacity point by design;
+  MTP transitions are blocked by the MTP warmup/journal bugs (Packet 2/5
+  records) and are not simulated. Teardown returns to baseline in every
+  probe point (post-request sysfs within sampling noise of pre-request).
+- [x] Compare complete memory and latency/throughput on the same XTX, with
   paired repeated controls. MTP needs true no-MTP AR; arithmetic, weight/KV
   quantization and DMS eviction need their applicable numerical/task gates.
   Collect reference logits separately from timed capacity runs.
-- [ ] Report physical fit separately from useful service. Keep exact savings
+  Assembled 2026-09-07 from same-XTX paired runs: per-quant throughput pairs
+  are route-matched back-to-back (Q4_K_S vs Q4_K_M shipping-AR 602.5/978.7
+  prefill, decode tie ~34.0; `results/2026-09-07-rx7900xtx-capacity-q4ks-q4km-throughput.json`);
+  KV-storage pairs are the C1 boundary refinement (BF16 last pass 40,960 vs
+  INT8 fp32 15,872 functional-blocked, per-context peaks in
+  `...-scratch-row-cap.json`); concurrency pairs are the D=24/128/512 arms
+  (boundaries N=6/N=6/N=4). MTP pairs use true no-MTP AR: the natural25 AR
+  rows (35.40-35.85 tok/s, 10/10) are the no-MTP control and B3 rows are
+  blocked by the MTP journal bug — no MTP ratio is claimed. Task gates: AR
+  10/10 exact-greedy suite (this packet); INT8 per-token/head teacher-gated
+  (Q4_K_M promoted 2026-08, Q4_K_S diagnostic 512/8+4K/16); reference logits
+  are collected by the correctness harnesses (suite, teacher gates, IKV-C2
+  gate) separately from timed capacity runs, which validate accounting and
+  ownership only.
+- [x] Report physical fit separately from useful service. Keep exact savings
   with non-regressive controls; report explicit tradeoffs for smaller quant,
   mapped-host placement or slower compact routes. More aggressive quantization,
   sub-INT8 codecs and general offload remain separate optional experiments.
+  Reported 2026-09-07. Physical fit (memory): BF16 KV serves C=40,960 declared
+  tokens single-request (post-scratch-cap; razor-thin at 23.973 GiB) and N=6
+  at the 768-token budget (23.676 GiB); INT8 fp32 KV serves 15,872 with zero
+  BF16 shadow before its pre-existing functional blocker; Q4_K_S parks more
+  than Q4_K_M (request peak +2.061 GiB pre-cap) despite 0.918 GiB smaller
+  file. Useful service: 512/128 decode ~34.0 tok/s for both quants, prefill
+  978.7 (Q4_K_M shipping AR) with AR suite task gate 10/10. Explicit
+  tradeoffs: Q4_K_S buys file bytes but costs prefill (-38.4%) and parked
+  memory — not a win here; INT8 buys residency (~2x context at the boundary
+  pre-blocker) but runs eager-only (graphs BF16-only) and its batched route
+  is pre-promotion; DMS is unavailable on this host (fails closed). Mapped-
+  host placement, more aggressive quantization, sub-INT8 codecs and general
+  offload remain separate optional experiments; no fit claim is extrapolated
+  to them.
 - [ ] Update compact artifacts, benchmark README/date, changelog and public
   settings. Run `scripts/sync_benchmark_readme.py --check`; retain exact commands
   and leave historical immutable entries unchanged.
