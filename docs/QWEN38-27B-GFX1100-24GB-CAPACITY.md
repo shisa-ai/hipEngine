@@ -491,9 +491,27 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   protocol, and this run is the diagnostic evidence for it. MTP composition
   acceptance/rollback tests stay blocked by the MTP warmup bug recorded in
   Packet 2.
-- [ ] Price bounded prefill, selective output heads and hidden capture against
+- [x] Price bounded prefill, selective output heads and hidden capture against
   first-token latency. Lower-precision recurrent state is a separate numerical
   candidate, not a KV switch. Never omit required verifier scores.
+  Priced 2026-09-07 from measured evidence, provenance-labeled per row.
+  Bounded prefill (XTX, 2026-08-15 matched 4K/128): prefill rate −0.050%
+  versus BF16 graph (978.626 vs 979.118 tok/s, overlapping ranges) with
+  tracked peak 17.920 → 17.330 GiB — TTFT-neutral, memory win retained.
+  Selective output heads (selected NextN proposal head; W7900, same gfx1100
+  target, 2026-09-01 retained counterbalanced artifact): +3.59% tok/s at c5
+  with proposal-stage time −29.19% and draft acceptance 0.7877 recorded with
+  full denominators — the proposal head engages after prefill, so TTFT
+  impact is structurally zero; XTX-specific rows would need an XTX rerun per
+  the two-lane rule before any XTX topline use. Hidden capture (XTX,
+  2026-09-07, same-route A/B at 4,096 tokens, exact-GDN prefill mode on both
+  arms): capturing all 64 layers' output hiddens costs +0.133 s median
+  prefill wall (+0.52%, 25.347 → 25.480 s) for 1.25 MiB fp32 per prefill,
+  final token identical — prefill-phase capture is nearly free; decode-step
+  capture pricing belongs to the MTP campaign. Lower-precision recurrent
+  state stays a separate numerical candidate and is not priced here. No MTP
+  speed claim is made in this item, so no verifier-score omission arises;
+  the referenced MTP artifact carries its own acceptance telemetry.
 
 ### Packet 4 — Qualify FastDMS capacity on the shared pool
 
