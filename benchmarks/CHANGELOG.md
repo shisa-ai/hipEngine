@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework GR row reuse rejected] Constant32-accumulator RB4/H2->RB8/H1 changes real512-row attention/FFN up3.244->3.828ms (+18.01%)/3.209->3.817ms (+18.93%), exact; same72 VGPR/512B LDS/scratch0. Removed candidate, production unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json`.
+
 - [2026-09-06 UTC Framework real routing] Synthetic-only routing screens gain identity-checked actual-count replay. Captured1683 Q4/Q5_1 boundaries across code512/four4096 categories; three-arm logits/state exact and zero final allocations. Q4 p4096 median9-12;88.7-91.7% of rows in experts>8. Throughput delta N/A: diagnostic capture, no runtime change. `benchmarks/results/2026-09-06-framework-qwen4exp-real-routing.json`.
 
 - [2026-09-06 UTC Framework tools/grammar correctness] Embedded XML protocol, JSON compatibility and pre-argmax llguidance masks pass HTTP sanity. Development tool-eval-bench short15 scores93/100; CategoryO6 scores83/100, remaining partials are tool-choice behavior. No paired prior score or throughput claim. `benchmarks/results/2026-09-06-framework-qwen4exp-tools-grammar.json`.

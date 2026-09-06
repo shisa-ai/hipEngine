@@ -62,6 +62,8 @@ def main():
         "order_balanced": args.pairs % 2 == 0,
         "device_fill_precondition_mib": args.pressure_mib,
         "boundary": "GR up+sigmoid+branch mean" if args.gr_composite else "Q8 projection",
+        "parent_variant": parent_name,
+        "candidate_variant": candidate_name,
     }
     defaults = (
         ["blk.0.hc_attn_up.weight", "blk.0.hc_ffn_up.weight"]

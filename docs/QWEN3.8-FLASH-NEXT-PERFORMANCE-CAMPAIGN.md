@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GR constant-accumulator row reuse rejected (September6 UTC):** rebalance
+the operation-complete up composite from four rows/two hidden columns to
+eight rows/one column, preserving32 accumulators and exact per-output math.
+Thirteen tests and all80 actual-weight pairs pass;512-row attention/FFN
+up loses at0.847x/0.841x. Both orders and means lose. Cached trace confirms
+same72 VGPR/512-byte LDS/zero scratch: not a register-pressure loss.
+Candidate removed; no full-model A/B warranted.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json).
+
 **Real-routing capture (September6 UTC):** resumed prefill work captures1683
 exact Q4/Q5_1 pair boundaries: code512 plus all four4096 categories, each
 uninstrumented/instrumented/uninstrumented with identical prefill/next logits
