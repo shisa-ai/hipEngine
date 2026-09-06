@@ -940,6 +940,41 @@ class Qwen35GGUFMTP2Adapter:
             and int(getattr(self.owner, "capacity", 1)) > 1
         )
 
+    def _physical_c1_enabled(self) -> bool:
+        """Return the package-owned physical-C1 route flag."""
+
+        # Partially constructed test doubles may omit ``generator``; the route
+        # stays closed for them exactly as for unflagged backends.
+        generator = getattr(self, "generator", None)
+        if generator is None:
+            return False
+        return bool(
+            backend_package_capability(
+                str(getattr(generator, "backend", "") or ""),
+                "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
+                False,
+            )
+        )
+
+    def _physical_c1_request(self, request_id: int) -> bool:
+        """True when this request runs the packed one-row physical route.
+
+        Requires rows==1 static evidence, a listed (1, K) policy cell, and the
+        package-owned physical-C1 flag. Capacity-1 engines keep the legacy
+        AR-row singleton route; gfx1151/Qwen3.6 never enable the flag.
+        """
+
+        if not self._physical_c1_enabled():
+            return False
+        eligibility = self._static_eligibility(request_id)
+        if eligibility is None or not eligibility.eligible:
+            return False
+        if int(eligibility.max_realized_group_rows) != 1:
+            return False
+        if int(getattr(self.owner, "capacity", 1)) <= 1:
+            return False
+        return self._physical_width_depth_admitted(1, self.candidate_budget)
+
     def register_request(
         self,
         request_id: int,
@@ -1405,7 +1440,10 @@ class Qwen35GGUFMTP2Adapter:
                     if len(ids) == 1
                     and (
                         int(getattr(self.owner, "capacity", 1)) == 1
-                        or self._singleton_only(request_id)
+                        or (
+                            self._singleton_only(request_id)
+                            and not self._physical_c1_request(request_id)
+                        )
                     )
                     else None
                 )
@@ -1674,6 +1712,10 @@ class Qwen35GGUFMTP2Adapter:
             self._singleton_only(item.request_id)
             for item in semantics
         )
+        physical_c1 = tuple(
+            self._physical_c1_request(item.request_id)
+            for item in semantics
+        )
         targets = []
         for item in semantics:
             rid = int(item.request_id)
@@ -1699,6 +1741,7 @@ class Qwen35GGUFMTP2Adapter:
             existing = self._states.get(int(semantics[0].request_id))
             owner = getattr(targets[0], "_target_scratch_owner", None)
             automatic_singleton = bool(singleton_only[0])
+            physical_c1_singleton = bool(physical_c1[0])
             eligibility = static_eligibilities[0]
             physical_singleton = bool(
                 eligibility is not None
@@ -1709,9 +1752,11 @@ class Qwen35GGUFMTP2Adapter:
                 existing is not None
                 and existing.verifier is None
                 and not physical_singleton
+                and not physical_c1_singleton
             ) or (
                 not automatic_singleton
                 and not physical_singleton
+                and not physical_c1_singleton
                 and (
                     int(getattr(owner, "slot_count", 1)) > 1
                     or int(getattr(self.owner, "capacity", 1)) > 1
@@ -1836,7 +1881,15 @@ class Qwen35GGUFMTP2Adapter:
         )
         # Exact automatic-singleton evidence must fail the composed due group to
         # K0; it may not be reinterpreted as many independently profitable C1s.
-        resolved = bound if bound > 1 else 0
+        # An explicitly qualified physical-C1 request (rows==1 evidence, listed
+        # (1, K) cell, package route flag) resolves bound 1 and rides the packed
+        # one-row provider group, never the legacy singleton verifier.
+        if bound == 1 and all(
+            self._physical_c1_request(request_id) for request_id in ids
+        ):
+            resolved = 1
+        else:
+            resolved = bound if bound > 1 else 0
         # M5 whole-batch routing: over-width due batches measured slower as MTP
         # sub-groups fall through to one full-batch AR decode.
         route = backend_package_capability(
@@ -1890,6 +1943,7 @@ class Qwen35GGUFMTP2Adapter:
                 len(request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1
                 and not self._singleton_only(request_ids[0])
+                and not self._physical_c1_request(request_ids[0])
                 and not physical_singleton
             )
             and not any(
@@ -2205,6 +2259,11 @@ class Qwen35GGUFMTP2Adapter:
     def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
         missing = tuple(request_id for request_id in ids if request_id not in self._states)
         if not missing:
+            return
+        if len(missing) == 1 and self._physical_c1_request(missing[0]):
+            # Physical C1: a one-row provider group under the staged batch
+            # owner, never the legacy AR-row singleton verifier.
+            self._open_batch_requests(missing)
             return
         if len(missing) == 1 and self._singleton_only(missing[0]):
             self._states[missing[0]] = self._open_request(missing[0])

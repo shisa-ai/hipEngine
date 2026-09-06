@@ -620,6 +620,10 @@ GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # here remain in use and unmeasured by that sweep.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
+# Physical C1 routes a rows==1-evidence request through the packed one-row
+# provider group + R2/R3/R4 frontier (Packet 2), never the legacy AR-row
+# singleton verifier. gfx1151/Qwen3.6 keep the legacy route (flag absent).
+GGUF_SPECDEC2_MTP2_PHYSICAL_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
@@ -1164,6 +1168,7 @@ __all__ = [
     "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",
