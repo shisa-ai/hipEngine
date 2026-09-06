@@ -1,4 +1,4 @@
-# Qwen4Exp context capacity: the 2051 cap, why it exists, and what raising it costs
+# Qwen4Exp context capacity: the 2051 boundary, the cap that was raised, and what it cost
 
 Status: public native-context plumbing, real c2 completions/chat startup and
 8K retrieval, native-capacity boundary gates complete on Framework gfx1151
@@ -7,10 +7,12 @@ capacity A/B. Native262144 allocation is supported when admitted; this is not
 a fresh262144-token inference result. Historical diagnosis below describes the
 prior cap; section6 records its replacement.
 
-Audience: whoever owns the Qwen4Exp serving/prefill path next. This exists
-because the served default silently caps a 262,144-token model at 2,051 tokens,
-and because the number `2051` means two unrelated things in this tree that are
-easy to conflate.
+Audience: whoever owns the Qwen4Exp serving/prefill path next. This exists for
+two reasons, and only the first one expired. The served default used to silently
+cap a 262,144-token model at 2,051 tokens; that was fixed on 2026-09-06 and
+section 6 records the replacement. The second reason outlives the fix: the
+number `2051` still means two unrelated things in this tree that are easy to
+conflate, and the boundary in section 1 is a permanent property of the model.
 
 ## TL;DR
 
@@ -23,11 +25,13 @@ easy to conflate.
    at or below 2051 the sparse machinery is provably inert and results are
    bit-exact dense; at 2052 and above the indexer genuinely chooses which 2,048
    tokens each QSA layer sees. Section 1 tabulates both.
-3. The same number is used for two different purposes: as a **model constant**
+3. The same number was used for two different purposes: as a **model constant**
    (`qsa_dense_equivalent_max_tokens`, correct, must not change) and as the
-   **default runner capacity** (`max_sequence_length`, a bring-up default that
-   should not have been frozen at the same value). Anyone grepping `2051` will
-   hit both. This is the single biggest trap in this area.
+   **default sequence capacity** (`max_sequence_length`, a bring-up default that
+   should not have been frozen at the same value). The generator default is now
+   admission-resolved, but the runner constructor default is deliberately still
+   `2051`, so anyone grepping `2051` still hits both meanings. This remains the
+   single biggest trap in this area; section 2 tabulates every site.
 4. The old public factory did not forward capacity. It now accepts
    `max_sequence_length` and `resident_capacity`; LLM forwards these only to
    factories explicitly declaring them. Auto defaults to the largest admitted
@@ -162,20 +166,26 @@ everywhere the architecture permits dense.
 
 ## 2. The number collision
 
+Current as of 2026-09-06, after the capacity fix.
+
 | Meaning | Value | Where | Change it? |
 | --- | --- | --- | --- |
-| Model constant: largest exactly-dense live context | 2051 | `models/qwen4_exp.py:23`, `loading/qwen4_exp_gguf.py:107`, `runtime/qwen4_exp_runner.py:1082` | **Never.** Derived from the artifact. |
+| Model constant: largest exactly-dense live context | 2051 | `models/qwen4_exp.py:23`, `loading/qwen4_exp_gguf.py:108`, `runtime/qwen4_exp_runner.py:1082` | **Never.** Derived from the artifact. |
 | Selection-buffer capacity (max positions one query can select) | 2051 | `qwen4_exp_runner.py:5112`, `:5166` | **Never.** 512 blocks x 4 + 3 tail is the true maximum at any context. |
-| Default runner/generator sequence capacity | 2051 | `generation/qwen4_exp_gguf.py:59`, `runtime/qwen4_exp_runner.py:5013` | **Yes.** This is the bring-up default under discussion. |
+| Generator default sequence capacity | was 2051, now admission-resolved | `generation/qwen4_exp_gguf.py:59` (`max_sequence_length` defaults to `None`) | **Already changed 2026-09-06.** `resolve_qwen4_exp_context` picks the largest admitted context; section 6. |
+| Runner constructor default sequence capacity | 2051 | `runtime/qwen4_exp_runner.py:5013` | **Deliberately left at 2051.** Only direct script/test constructions reach it; the generator always passes an explicit value. Raising it would silently hand every harness a 256K allocation. |
 
-Only the third row is a policy choice. The first two are geometry. A blanket
-find-and-replace on `2051` will silently break exactness.
+Rows 1-2 are geometry and rows 3-4 are policy, but note that three of the four
+sites still read `2051` today — the fix removed one of the two meanings from the
+*served* path, not the collision itself. A blanket find-and-replace on `2051`
+will still silently break exactness.
 
-## 3. Why the cap cannot currently be raised
+## 3. Why the cap could not be raised (historical: fixed 2026-09-06)
 
-**Historical diagnosis, fixed September6:** the factory now forwards context
-and residency and the generator implements `prepare()`. The excerpt below
-documents the old behavior; see section6 for the new admission policy.
+**Every claim in this section describes pre-fix behavior and is no longer true
+of the tree.** It is kept because it names the exact plumbing gap, which is the
+fastest way to understand what section 6 replaced. The factory now forwards
+context and residency, and the generator implements `prepare()`.
 
 The registered factory (`generation/qwen4_exp_gguf.py:764-777`) does not accept
 or forward `max_sequence_length`:
@@ -205,11 +215,12 @@ compare against the already-constructed runner:
 and per-request generation rejects the same way at `:229`.
 
 Meanwhile `Qwen4ExpGGUFModel.native_context_length = 262144`
-(`models/qwen4_exp.py:22`) is declared and read by **nothing** except
-`tests/test_qwen4_exp_model.py:31`. The server's auto path sizes from
+(`models/qwen4_exp.py:22`) was declared and read by **nothing** except
+`tests/test_qwen4_exp_model.py:31`. The server's auto path sized from
 `_prepared_context_tokens` / model metadata rather than from this plugin field,
-which is why startup asks for more than 2051 and then fails at the scratch
-probe until `--max-context-tokens 2051` is passed by hand.
+which is why startup asked for more than 2051 and then failed at the scratch
+probe until `--max-context-tokens 2051` was passed by hand. (It is now the
+input to `resolve_qwen4_exp_context`, bounded by artifact context metadata.)
 
 ### Load-bearing detail: the capacity parameter already works
 
@@ -252,8 +263,10 @@ Index state is `_qsa_index_state_bytes`
 Two notes. `plan_qwen4_exp_memory_admission`
 (`loading/qwen4_exp_materialize.py:185-231`) already computes exactly this,
 including weights, staging, runtime state, scratch and reserve, and is already
-driven by `scripts/qwen4_exp_memory_plan.py` — it is the right function to
-resolve the default against, and it needs no new code. And the PLE table is
+driven by `scripts/qwen4_exp_memory_plan.py`. It was the right function to
+resolve the default against, and it is now what
+`hipengine/loading/qwen4_exp_context.py` binary-searches, adding only the
+256-token physical KV page rounding the logical planner omits. And the PLE table is
 `device_resident=False` (host sparse mmap, `:146-155`), so it is correctly
 excluded from device bytes despite dominating the on-disk footprint.
 
@@ -376,13 +389,15 @@ if device_position_owned:
         raise ValueError("device-owned dense QSA capture cannot cross sparse selection")
 ```
 
-Today `device_position_owned=True` is reached only from
+`device_position_owned=True` is still reached only from
 `scripts/qwen4exp_stateful_layer_graph_probe.py:138` and one unit test, never
-from the production runner, so it does not block raising the default. But it
-does mean **the graph-owned/device-position optimization as currently written
-cannot be promoted to a default while long context is enabled.** If the prefill
-or graph work is heading toward device-owned positions, that constraint has to
-be designed for now rather than discovered at promotion time.
+from the production runner, which is why it did not block raising the default.
+**Now that long context is served, this is an active constraint rather than a
+hypothetical one:** the graph-owned/device-position optimization as currently
+written cannot be promoted to a default, because served traffic can now cross
+the boundary that guard rejects. If the prefill or graph work is heading toward
+device-owned positions, it needs native sparse selection support designed in,
+not discovered at promotion time. `docs/REFACTOR.md` carries this as debt.
 
 **5.4 Startup cost.** The eager `memset` of 6 GiB of KV per sequence (12 GiB at
 c2) happens during construction **and runner.reset() at each request**.
@@ -480,12 +495,16 @@ their continuing to pass is the guard against conflating the two meanings:
 - `tests/test_qwen4exp_qsa_h256_wave.py:120` — `(4, 2051, False, 1)`
 - `tests/test_qwen4exp_context_decode_profile.py:117` — boundary probe defaults `[2051, 2052, 4097]`
 
-Likely to need review because they encode a **capacity** assumption:
+Encode a **capacity** assumption; reviewed 2026-09-06 and intentionally left at
+2051, because each one wants the dense-equivalent regime to stay comparable
+against its oracle rather than the largest admissible context. Pass an explicit
+flag to take any of them above the boundary:
 
 - `scripts/qwen4exp_layer2_profile_gate.py:735` — `--max-sequence-length` default 2051
 - `scripts/qwen4_exp_compare_suite.py:83`, `scripts/qwen4_exp_compare_logits.py:132` — `--context` default 2051
 - `tests/test_qwen4exp_perf_gap_report.py:26` — `"2051"` keyed row
 - Any server test that asserts startup succeeds without `--max-context-tokens`
+  now exercises the admission path instead of the fixed cap.
 
 Original proposed validation list (per `docs/TESTING.md` tiers):
 
@@ -519,10 +538,11 @@ The concrete symptom that started this: on tool-eval-bench, 58 of 69 scenarios
 were rejected `context_length_exceeded` against the 2051 cap (the suite peaks
 around 6.4K tokens/request), producing a 9/100 that is a capacity artifact and
 not a behavior score. On the 11 scenarios that fit, safety behavior matched both
-llama.cpp lanes exactly. Any published hipEngine number on a suite whose prompts
-exceed 2051 tokens is measuring this cap, not the engine.
+llama.cpp lanes exactly. Any hipEngine number published **before 2026-09-06** on
+a suite whose prompts exceed 2051 tokens is measuring that cap, not the engine,
+and must not be compared against a post-fix rerun.
 
-Note the honest trade being made by raising it: crossing2051 introduces the
+Note the honest trade made by raising it: crossing2051 introduces the
 model's sparse-route cost. The cited69.3->96.0ms/token example is about1.39x,
 not4x, and other protocols must not be divided into it. Raising the cap converts "refuses the request" into "serves it
 slowly". That is the right trade for a 256K-context model, but it will move
