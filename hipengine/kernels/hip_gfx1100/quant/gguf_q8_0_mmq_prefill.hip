@@ -228,7 +228,7 @@ __global__ void q8_0_mmq128_quantize_f32_residual_d4_kernel(
   }
 }
 
-template <int MMQ_M_T, int MMQ_N_T, bool need_output_check, int activation_passes, typename output_t, bool collect_risks>
+template <int MMQ_M_T, int MMQ_N_T, bool need_output_check, int activation_passes, typename output_t, bool collect_risks, bool PREPACKED = false>
 __launch_bounds__(256, 2)
 __global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
     const block_q8_1_mmq_d4* __restrict__ x_d4,
@@ -281,6 +281,16 @@ __global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
   for (int i = 0; i < MMQ_N_T / 2; ++i) acc[i] = 0.0f;
 
   for (int k_iter = 0; k_iter < k_iters; ++k_iter) {
+    if constexpr (PREPACKED) {
+      // Packed rows and tail padding match LDS exactly, so tile copies are vectorized.
+      const int padded_outputs = (out_features + 127) / 128 * 128;
+      const int* src = reinterpret_cast<const int*>(qweight) +
+          (static_cast<int64_t>(k_iter) * padded_outputs + out_start) * MMQ_WEIGHT_STRIDE_I32;
+      for (int linear = tid * 4; linear < WEIGHT_I32; linear += THREADS * 4) {
+        *reinterpret_cast<i32x4_t*>(weight_tile + linear) =
+            *reinterpret_cast<const i32x4_t*>(src + linear);
+      }
+    } else {
     // Exact llama.cpp load_tiles_q8_0 mapping for RDNA3 wave32 generalized to
     // WAVES waves: each wave owns rows i0 + rep*WAVES + wave, and each lane
     // loads two packed int32 fragments from the first/second K128 halves.
@@ -318,6 +328,7 @@ __global__ void q8_0_raw_mmq_tile_q8_1_d4_kernel(
       reinterpret_cast<float*>(weight_tile)[
           row_local * MMQ_WEIGHT_STRIDE_I32 + MMQ_QS_I32 + local_block] =
           fp16_bytes_to_float(block);
+    }
     }
     __syncthreads();
 
@@ -510,7 +521,7 @@ int launch_quantize(
   return static_cast<int>(hipGetLastError());
 }
 
-template <int MMQ_M_T, int MMQ_N_T, int activation_passes, typename output_t, bool collect_risks = false>
+template <int MMQ_M_T, int MMQ_N_T, int activation_passes, typename output_t, bool collect_risks = false, bool PREPACKED = false>
 int launch_mmq_tile(
     const block_q8_1_mmq_d4* x_d4,
     const uint8_t* qweight,
@@ -543,7 +554,7 @@ int launch_mmq_tile(
   if ((out_features % MMQ_M_T) == 0) {
     hipLaunchKernelGGL(
         (q8_0_raw_mmq_tile_q8_1_d4_kernel<
-            MMQ_M_T, MMQ_N_T, false, activation_passes, output_t, collect_risks>),
+            MMQ_M_T, MMQ_N_T, false, activation_passes, output_t, collect_risks, PREPACKED>),
         grid, block, SHARED_BYTES, stream,
         x_d4, qweight, out, risk_count, risk_indices,
         static_cast<int>(max_risks), risk_threshold,
@@ -552,7 +563,7 @@ int launch_mmq_tile(
   } else {
     hipLaunchKernelGGL(
         (q8_0_raw_mmq_tile_q8_1_d4_kernel<
-            MMQ_M_T, MMQ_N_T, true, activation_passes, output_t, collect_risks>),
+            MMQ_M_T, MMQ_N_T, true, activation_passes, output_t, collect_risks, PREPACKED>),
         grid, block, SHARED_BYTES, stream,
         x_d4, qweight, out, risk_count, risk_indices,
         static_cast<int>(max_risks), risk_threshold,
@@ -847,6 +858,17 @@ extern "C" int hipengine_gguf_q8_0_mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out(
     int64_t out_features,
     hipStream_t stream) {
   return launch_mmq<3, float, true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
+      qweight, out, rows, hidden, out_features, stream,
+      risk_count, risk_indices, max_risks, risk_threshold);
+}
+
+extern "C" int hipengine_gguf_q8_0_mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x_d4, const uint8_t* qweight, float* out,
+    int* risk_count, int* risk_indices, int64_t max_risks,
+    float risk_threshold, int64_t rows, int64_t hidden,
+    int64_t out_features, hipStream_t stream) {
+  return launch_mmq_tile<128, 128, 3, float, true, true>(
       reinterpret_cast<const block_q8_1_mmq_d4*>(x_d4),
       qweight, out, rows, hidden, out_features, stream,
       risk_count, risk_indices, max_risks, risk_threshold);
