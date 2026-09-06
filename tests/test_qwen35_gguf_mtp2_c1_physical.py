@@ -15,13 +15,28 @@ from types import SimpleNamespace
 import pytest
 
 import hipengine.generation.qwen35_gguf_mtp2 as mtp2_module
-from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.tensor import Tensor
+from hipengine.generation.qwen35_gguf_mtp2 import (
+    Qwen35GGUFMTP2Adapter,
+    _MTP2RequestState,
+)
 from hipengine.speculative import (
+    CandidateGraph,
+    SpecK0Class,
+    SpecPlanReason,
+    SpecRequestPlan,
+    SpecTransactionMode,
     SpeculativeMTPStaticEligibility,
     SpeculativeMTPStaticState,
     SpeculativeRequestSemantics,
+    TargetFrontier,
 )
+from hipengine.kvcache.backend import ResourceClaimSet
+from hipengine.speculative.transaction import SpecCycleStage
 from hipengine.kernels.backends import backend_package_capability
+from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNBatchDeviceProposal
 
 
 def _owner(*, backend: str, capacity: int) -> SimpleNamespace:
@@ -41,6 +56,7 @@ def _owner(*, backend: str, capacity: int) -> SimpleNamespace:
                     _target_scratch_owner=SimpleNamespace(slot_count=capacity),
                     target_layout=SimpleNamespace(max_sequence_length=1024),
                     kv_storage_dtype="bf16",
+                    position=31,
                 )
             ),
             slot=SimpleNamespace(),
@@ -278,3 +294,169 @@ def test_physical_c1_state_open_routes_to_batch_owner(
     )
     legacy._ensure_request_states((7,))
     assert calls == [("legacy", (7,))]
+
+
+def _c1_plan(rid: int = 7) -> SpecRequestPlan:
+    return SpecRequestPlan(
+        operation_id="specdec2-cycle:test",
+        cycle_id=1,
+        request_ids=(rid,),
+        resident_slots=(0,),
+        candidate_counts=(3,),
+        reasons=(SpecPlanReason.SPECULATIVE_QUALIFIED,),
+        k0_classes=(SpecK0Class.NOT_K0,),
+        mode="verify_chain",
+        capability_key="gguf_mtp2_c1:hip_gfx1100:gguf_q4_k_m:native:3",
+        provider_key="qwen_nextn_dense",
+        target_transaction_mode=SpecTransactionMode.RESERVED_APPEND,
+        provider_transaction_mode=SpecTransactionMode.RESERVED_APPEND,
+        proposal_widths=(1,),
+        target_row_decomposition=(4,),
+        context_bucket_size=64,
+        execution_route="graph",
+    )
+
+
+def _c1_frontier(plan: SpecRequestPlan, graph_tokens: Tensor) -> TargetFrontier:
+    graph = CandidateGraph(
+        provider_key="qwen_nextn_dense",
+        method_key="mtp2",
+        policy_fingerprint="fake-policy:v1",
+        cycle_id=plan.cycle_id,
+        transaction_id=1,
+        request_ids=plan.request_ids,
+        resident_slots=plan.resident_slots,
+        root_positions=(31,),
+        row_offsets=(0, 3),
+        row_to_request=(plan.request_ids[0],) * 3,
+        parent_candidate_rows=(-1, 0, 1),
+        draft_depths=(1, 2, 3),
+        active_mask=(True, True, True),
+        candidate_tokens=(101, 102, 103),
+        token_ids=graph_tokens,
+    )
+    return TargetFrontier(
+        operation_id=plan.operation_id,
+        cycle_id=plan.cycle_id,
+        request_ids=plan.request_ids,
+        resident_slots=plan.resident_slots,
+        root_tokens=(90,),
+        root_positions=(31,),
+        physical_row_decomposition=(4,),
+        transaction_mode=plan.target_transaction_mode,
+        kv_storage_view_key="bf16",
+        kv_live_spans_owner="fake-live-spans",
+        execution_route="graph",
+        candidate_graph=graph,
+        provider_transaction_id=1,
+    )
+
+
+class _CancelExecutor:
+    def __init__(self, calls: list) -> None:
+        self._calls = calls
+
+    def restore_request_checkpoint(self, checkpoint):
+        self._calls.append(("restore", checkpoint))
+
+    def release_request_checkpoint(self, checkpoint):
+        self._calls.append(("release", checkpoint))
+
+
+def test_physical_c1_cancelled_cycle_restores_provider_and_fails_closed() -> None:
+    """A cancelled C1 cycle never mutates target or provider state."""
+
+    calls: list[tuple[object, ...]] = []
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=8,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    provider = SimpleNamespace(
+        executor=_CancelExecutor(calls),
+        release_request=lambda rid: None,
+    )
+    graph_tokens = Tensor.from_handle(0x5000, (3,), DType.INT32, Device("hip", 0))
+    proposal = Qwen35GGUFNextNBatchDeviceProposal(
+        request_ids=(7,),
+        root_tokens=(90,),
+        root_positions=(31,),
+        candidate_counts=(3,),
+        token_ids=graph_tokens,
+        hidden_rows=(
+            (
+                Tensor.from_handle(0x6000, (1, 4), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x6010, (1, 4), DType.BF16, Device("hip", 0)),
+                Tensor.from_handle(0x6020, (1, 4), DType.BF16, Device("hip", 0)),
+            ),
+        ),
+    )
+    adapter._states[7] = _MTP2RequestState(
+        request_id=7,
+        provider=provider,
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=None,
+        root_hidden_buffer=SimpleNamespace(ptr=1),
+        proposal_checkpoint="checkpoint-1",
+        proposal_device_batch=proposal,
+    )
+    adapter._provider_groups[(7,)] = SimpleNamespace(
+        key=(7,), provider=provider, request_ids={7}
+    )
+    claims = ResourceClaimSet(claim_id="specdec2-cycle:test")
+    adapter._active_claims = claims
+
+    result = adapter.execute_target_frontier(
+        _c1_plan(7),
+        _c1_frontier(_c1_plan(7), graph_tokens),
+        claims,
+        commit=True,
+        cancelled_request_ids=lambda: (7,),
+    )
+
+    assert result.stage is SpecCycleStage.CANCELLED
+    assert result.cancelled_request_ids == (7,)
+    assert result.transaction.rolled_back is True
+    assert result.transaction.target_open is False
+    assert result.transaction.provider_open is False
+    assert calls == [("restore", "checkpoint-1"), ("release", "checkpoint-1")]
+    assert adapter._states[7].proposal_checkpoint is None
+
+
+def test_physical_c1_survivor_of_larger_group_claims_one_row_plan() -> None:
+    """A lone C1-qualified survivor of a wider owner keeps the packed route."""
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=8,
+        rid=3,
+        eligibility=_c1_eligibility(3),
+    )
+    provider = SimpleNamespace(executor=SimpleNamespace(max_requests=8))
+    adapter._states[3] = _MTP2RequestState(
+        request_id=3,
+        provider=provider,
+        provider_pool_key=None,
+        provider_group_key=(1, 2, 3, 4, 5, 6, 7, 8),
+        verifier=None,
+        root_hidden_buffer=SimpleNamespace(ptr=3),
+    )
+    adapter._provider_groups[(1, 2, 3, 4, 5, 6, 7, 8)] = SimpleNamespace(
+        key=(1, 2, 3, 4, 5, 6, 7, 8),
+        provider=provider,
+        request_ids={3},
+    )
+
+    # The survivor keeps its physical group membership (verifier stays None)
+    # and a one-row cycle claim fits the listed (1, K) cell.
+    assert adapter._states[3].verifier is None
+    assert adapter._physical_c1_request(3) is True
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=(3,),
+            speculative_request_ids=(3,),
+            candidate_counts=(3,),
+        )
+    ) is True
