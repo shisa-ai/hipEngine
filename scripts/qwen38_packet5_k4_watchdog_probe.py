@@ -303,6 +303,35 @@ def _trace_adapter_registration() -> None:
 
     original_register = m2.Qwen35GGUFMTP2Adapter.register_request
     original_release = m2.Qwen35GGUFMTP2Adapter.release_request
+    original_capability = m2.Qwen35GGUFMTP2Adapter.capability
+
+    def traced_capability(self: Any, request_semantics: Any) -> Any:
+        result = original_capability(self, request_semantics)
+        if result is None:
+            ids = tuple(
+                int(getattr(item, "request_id", -1)) for item in request_semantics
+            )
+            gates = []
+            for rid in ids:
+                try:
+                    row = self.owner._row(rid)
+                    gates.append(
+                        f"rid={rid} greedy={row.native_greedy}"
+                        f" first={row.first_token_emitted}"
+                        f" lease={row.lease is not None} slot={row.slot is not None}"
+                        f" state={rid in self._states}"
+                        f" prompt_hidden={rid in self._prompt_hidden_rows}"
+                        f" intent={self._intents.get(rid)}"
+                    )
+                except Exception as exc:
+                    gates.append(f"rid={rid} row_error={type(exc).__name__}")
+            print(
+                f"[probe-cap] capability None for {ids}: {'; '.join(gates)}",
+                flush=True,
+            )
+        return result
+
+    m2.Qwen35GGUFMTP2Adapter.capability = traced_capability  # type: ignore[method-assign]
 
     def traced_register(
         self: Any,
