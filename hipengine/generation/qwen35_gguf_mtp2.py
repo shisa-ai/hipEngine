@@ -1883,10 +1883,10 @@ class Qwen35GGUFMTP2Adapter:
         # K0; it may not be reinterpreted as many independently profitable C1s.
         # An explicitly qualified physical-C1 request (rows==1 evidence, listed
         # (1, K) cell, package route flag) resolves bound 1 and rides the packed
-        # one-row provider group, never the legacy singleton verifier.
-        if bound == 1 and all(
-            self._physical_c1_request(request_id) for request_id in ids
-        ):
+        # one-row provider group, never the legacy singleton verifier. A
+        # multi-request due batch of C1-qualified rows stays closed: it must not
+        # decompose into serial singleton MTP cycles.
+        if len(ids) == 1 and bound == 1 and self._physical_c1_request(ids[0]):
             resolved = 1
         else:
             resolved = bound if bound > 1 else 0
