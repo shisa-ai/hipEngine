@@ -2,7 +2,9 @@
 
 Last updated: 2026-09-07.
 Status: verified analysis and coder handoff; **U0 audit/identity/pinning
-complete** (CPU-only), **no implementation or GPU validation**.
+complete** (CPU-only, including the startup-isolation review fix:
+`import hipengine` loads no GPU backend package), **no implementation or GPU
+validation**.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
 U0 audit/identity repair landed on the `ud-quants` branch (see
 [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
@@ -637,7 +639,9 @@ No speculative optimization precedes its strict fallback.
 
 Dependencies: none; CPU-only.
 Files: `scripts/gguf_quant_route_audit.py`,
-`tests/test_scripts_gguf_quant_route_audit.py`;
+`tests/test_scripts_gguf_quant_route_audit.py`,
+`tests/test_hipengine_public_api.py`, `hipengine/__init__.py` (startup
+isolation only; no runtime arithmetic or dispatch change);
 loader scanner/model-map modules are references, not automatic edits.
 
 - [x] Pin upstream model revision, payload checksum, file size and header identity
@@ -675,7 +679,22 @@ tests/test_loading_qwen35_gguf_policy.py -q`.
 Exit: real planner accounting without device use, clearly distinct from consumer
 qualification. U0 is complete (parser validation, production AR/NextN maps,
 shared-policy capability resolution, allocation accounting, identity pins,
-versioned schema); U1+ admission work follows.
+versioned schema, startup isolation); U1+ admission work follows.
+
+Startup isolation (U0 review follow-up, 2026-09-07): a fresh process running
+the audit must load no GPU backend package at all. The engine root
+`hipengine/__init__.py` eagerly imported `hipengine.llm`, whose speculative
+chain loads `hipengine.kernels.hip_gfx1100`; the root package now resolves
+`LLM`/`SamplingParams` lazily (PEP 562) so a bare `import hipengine` is
+CPU-safe and `from hipengine import LLM, SamplingParams, ExecutionProfile` is
+unchanged. Bound by
+`tests/test_scripts_gguf_quant_route_audit.py::test_fresh_process_audit_never_imports_gpu_backend_packages`
+(fresh subprocess installs a meta-path guard rejecting
+`hipengine.kernels.hip_*` / `cuda_*` / torch before any import, then runs the
+actual CLI over a deterministic fixture) and the lazy-export contracts in
+`tests/test_hipengine_public_api.py`. Deliberately untouched: the audit's
+planner, policy, and report logic, and every runtime numerical or dispatch
+path.
 
 ### U1. Role-safe Admission And Policy
 
