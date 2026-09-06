@@ -4,7 +4,10 @@
 
 - Kernel-only `mmq128_prepacked_vec4_q8_1_d4x3_guarded_f32_f32_out`
   preserves the prepacked three-plane chain while vectorizing LDS staging.
-  No runtime flag/default change yet. Existing scalar-stage prepacked parent,
+  Default-off `HIPENGINE_QWEN4_EXP_Q8_MMQ_VEC4` applies only in the existing
+  prepacked MMQ path at rows>=64; both profile binders pin0. Five full-model
+  logits/state/KV cases pass; canonical12-case A/B remains.
+  Existing scalar-stage prepacked parent,
   raw MMQ rollback and strict coltile fallback remain.
 - Require model invocation/logits/state/KV and canonical A/B before default
   promotion; remove if complete-model validation fails. Collapse the

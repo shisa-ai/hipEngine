@@ -76,6 +76,13 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**MMQ vector staging default-off admission (September6 UTC):** five
+off/on/off cases pass full logits, four decode steps, state and full KV.
+Calls0/72/0 at512 or0/576/0 at4096;zero decode/final owners.23 CPU tests
+pass. Existing prepacked MMQ rows>=64 only;both profile binders0.
+Next is the clean canonical12-case `--route-package q8-mmq-vec4` A/B.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json).
+
 **MMQ vector activation staging (September6 UTC):** the fresh four-category
 linear split is3.329s MMQ compute,1.590s exact Q8 attention-gate coltile,
 43ms quantization and13ms repair, with the remaining small dense roles/head.

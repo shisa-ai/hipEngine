@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+MMQ vector staging model admission passes five exact full-logit/state/KV
+cases:72/576 prefill calls,zero decode/final owners. Both binders remain0;
+canonical12-case throughput gate is next.
+[State evidence](results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json).
+
 MMQ vector activation staging, kernel-only: actual QKV/SSM complete chains
 at512 rows improve5.196->4.022ms (1.292x)/2.857->2.156ms (1.325x).
 All80 pairs exact, both orders positive;25 tests pass. Same VGPR/LDS/scratch.
