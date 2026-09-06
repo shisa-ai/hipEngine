@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "status": "rejected_removed_flat_order_sensitive",
+  "performance_claim": false,
+  "raw_sha256": "c2cf04519b2dd954df8e9bef36e8575ba93bf8793f2c6af89cd5cb61145bbc6d",
+  "parent_mean_ms": 17.47757283737883,
+  "candidate_mean_ms": 17.489603476133198,
+  "mean_order_speedups": [1.002342035489787,0.9962904528010319],
+  "candidate_recipe": {
+    "base_commit": "a7b535b3eb32a56c6fa7dfb9b09a7287b6c58575",
+    "kernel": "hipengine/kernels/hip_gfx1100/quant/gguf_q4_k_selected_prefill.hip",
+    "change": "Template gguf_q4_k_weight_pair128 and grouped_pair2 kernel on WAVE_META=false. Load d0/m0/d1/m1 from existing shared metadata; for candidate replace each float with __uint_as_float(__builtin_amdgcn_readfirstlane(__float_as_uint(value))). Then original multiply/subtract. Pass WAVE_META only for paired kernel, preserve original other callers.",
+    "scope": "Scale/minimum values are constant within each wave32 subblock. No K/reduction/tree/tile changes.",
+    "harness": "--wave-meta compares current PAIR against separately registered wave_meta variant, same actual gate/up weights and SiLU",
+    "removal": "All experimental code and candidate-only tests removed; tracked code restored byte-for-byte."
+  },
+  "validation": {
+    "red": "Missing candidate registry key",
+    "candidate_gpu_tests": 13,
+    "contracts": "Repeated exact BF16 gate/up outputs, output tails, K256/4096, CPU-reference KL/top1 floor; all20 timed pairs exact",
+    "trace_command_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-wave-meta-trace --",
+    "trace_arguments": "Original screen command with --pairs 2 --output /tmp/qwen4exp-q4-wave-meta-trace.json",
+    "trace_path": "/tmp/qwen4exp-q4-wave-meta-trace/gfx1151/3485492_kernel_trace.csv",
+    "trace_calls_per_arm": 3,
+    "trace_parent_mean_ms": 17.35189666666667,
+    "trace_candidate_mean_ms": 17.315300333333333,
+    "parent_vgpr": 88,
+    "candidate_vgpr": 80,
+    "sgpr_both": 128,
+    "lds_bytes_both": 4608,
+    "scratch_bytes_both": 0,
+    "trace_limit": "Short trace is engagement/resource evidence, not proof of a repeatable sub-window win against flat/order-sensitive complete boundary.",
+    "cleanup_gpu_tests": 9,
+    "lineage": "Broad audit fails on missing hb-pr11 reference; no external code port."
+  },
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "clock_policy": "unchanged high/requested2900MHz"
+  },
+  "kind": "qwen4exp_q4_bundle_gate_up_silu",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "a7b535b3eb32a56c6fa7dfb9b09a7287b6c58575",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q4_bundle_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--wave-meta",
+    "--rows",
+    "512",
+    "--pairs",
+    "20",
+    "--layer",
+    "0",
+    "--routing-capture",
+    "/tmp/qwen4exp-routing-categories.json",
+    "--routing-case",
+    "code-p4096",
+    "--routing-chunk",
+    "0",
+    "--output",
+    "/tmp/qwen4exp-q4-wave-meta-code.json"
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "weights": [
+    {
+      "tensor": "blk.0.ffn_gate_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "c52d2ded80cdbdb92f75c08ecfdd0ae3e2bc97198edda3d62ef8645df19a6947"
+    },
+    {
+      "tensor": "blk.0.ffn_up_exps.weight",
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "sha256": "92e1eb072ea457687ae6b531c9402817c1d8ac6043a70ceed7986fd0e4997450"
+    }
+  ],
+  "arithmetic_class": "T0",
+  "runtime_default_changed": false,
+  "boundary": "grouped Q4_K gate/up plus unchanged BF16 SiLU, no routing/down/combine",
+  "parent_variant": "gguf_q4_k_selected_dual_grouped_pair2_bf16_bf16_out",
+  "candidate_variant": "gguf_q4_k_selected_dual_grouped_pair2_wave_meta_bf16_bf16_out",
+  "routing": "captured_counts_synthetic_activations",
+  "layer": 0,
+  "cases": [
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "active_experts": 343,
+      "seconds": {
+        "parent": [
+          0.01740721706300974,
+          0.017452151980251074,
+          0.017491545993834734,
+          0.017358827171847224,
+          0.017445509787648916,
+          0.01744459685869515,
+          0.017450437881052494,
+          0.017471267143264413,
+          0.017587014939635992,
+          0.017352444119751453,
+          0.01746139908209443,
+          0.017428156919777393,
+          0.017527102027088404,
+          0.01744308485649526,
+          0.017528575146570802,
+          0.01756229903548956,
+          0.017595149809494615,
+          0.017577315913513303,
+          0.017573117977008224,
+          0.017394243041053414
+        ],
+        "candidate": [
+          0.01736631104722619,
+          0.01743404706940055,
+          0.017391839064657688,
+          0.017550325952470303,
+          0.017534906044602394,
+          0.017510961974039674,
+          0.017345942091196775,
+          0.017439658986404538,
+          0.017369806999340653,
+          0.017457992071285844,
+          0.017534516053274274,
+          0.017473512096330523,
+          0.0174546770285815,
+          0.01746653881855309,
+          0.01757088489830494,
+          0.01766237593255937,
+          0.0175352580845356,
+          0.017603846034035087,
+          0.01755387312732637,
+          0.01753479614853859
+        ]
+      },
+      "max_expert_rows": 100,
+      "median_active_expert_rows": 11.0,
+      "weight_passes_by_row_batch": {
+        "8": 806,
+        "16": 510,
+        "32": 389
+      },
+      "speedup": 0.9979727290488337,
+      "all_pairs_exact": true
+    }
+  ],
+  "routing_capture_sha256": "d34381f22f85fc5603b87b32dd1487ad41246b32ca76d5355e24bee4f4f34766",
+  "routing_case": "code-p4096",
+  "routing_chunk": 0
+}
