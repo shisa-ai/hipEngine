@@ -175,14 +175,39 @@ its own qualification data.
 
 ### Packet 1 — Attribute complete cycle cost and select candidates
 
+Status (2026-09-06): first attribution pass complete for C8/K3, C2/K2, C5/K3,
+C3/K3 via the specdec2 bridge under rocprofv3 (stage marker ranges, cycle-scoped
+kernel families, profiled-vs-unprofiled reconciliation within 2–4%).
+Artifact: `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet1-attribution.json`;
+worklog entry `20260906T103748.579086Z-lhl-gfx1100-better-mtp-packet1-b20cef`.
+Dominant-cost hypothesis selected: the width-5 verify-GEMV tile shape
+(`q4_k_t16_dense_rowtile16_w2_grouped_gemv`, ~58 ms/cycle at width 5 vs
+~33 ms/cycle at width 3 and ~30 ms/cycle at width 8; ~31% of the C5/K3 cycle).
+Expected maximum saving ≈ 25–45 ms/cycle at width 5 (cycle 0.187 → ~0.14 s),
+with the CPU-reference KL/top-1 gate plus cross-arm exact generated-ID equality
+as the correctness oracle. Width-5 cycles also pay width-8 prices
+(capacity-padded frontier), and C8 leaves a 0.217 s straggler AR tail.
+
+Protocol note: these 12-token attribution runs are not comparable to the
+retained Packet-0 suite ratios (C8/K3 0.987–0.989, C2/K2 0.917–0.926,
+C5/K3 0.800–0.803 on the server protocol). The attribution window carries the
+one-time prompt prefill + NextN prime in every arm (≈0.45 s of the 1.03 s C5/K3
+MTP window), so short-horizon ratios read worse than suite economics; the
+per-cycle structure above is the point of this artifact.
+
+Remaining below stays open (per-depth MTP telemetry splits, K4–K7 curves,
+full row-cost sweep, ragged tails).
+
 - [ ] Extend existing MTP telemetry/profiler harnesses with proposal per depth,
   target projection/attention/GDN/head, accept, selected state commit, rollback,
   provider repair, and host synchronization boundaries. Separate prefill/priming,
   first cycle, steady cycles, final clipped cycle, and ordinary AR fallback.
-- [ ] Profile C8/K3, C2/K2, C3/K3 and C5/K3; add C1/K1-K3 after Packet 2.
+- [x] Profile C8/K3, C2/K2, C3/K3 and C5/K3; add C1/K1-K3 after Packet 2.
   Add K4-K7 row/cycle curves as Packet 5 enables them, including C8/K7.
   Record kernel interval union as well as family sums. A blocking API's duration
   may be waiting for queued GPU work, not evidence of expensive copying.
+  (First pass done 2026-09-06 via the bridge + ROCTX markers; per-depth splits
+  and K4–K7 remain.)
 - [ ] Audit fast AR versus MTP owners by role/shape: quant payload/layout,
   activation dtype, row tile, graph capture, GDN schedule, head chunking, and
   scratch. Identify which AR improvements are missing from MTP **and are
@@ -191,9 +216,11 @@ its own qualification data.
   recurrent/KV snapshots. Sweep R2-R4 and the real active/padded boundaries up
   through C8/K3. Include ragged tails. Record launches, bytes read/written,
   registers/local scratch, and active versus padded computation.
-- [ ] Reconcile cycle accounting to unprofiled wall; report instrumentation
+- [x] Reconcile cycle accounting to unprofiled wall; report instrumentation
   overhead. Use the measured component fractions to set millisecond budgets
   for break-even/1.10x/1.20x. Select one dominant-cost hypothesis per unit.
+  (2026-09-06: profiled walls within 2–4% of unprofiled; dominant hypothesis =
+  width-5 verify-GEMV tile shape; see the artifact above.)
 
 Exit: an artifact that names the next operation, its caller and kernel, its
 fraction of wall, expected maximum saving, and a correctness oracle. If target
