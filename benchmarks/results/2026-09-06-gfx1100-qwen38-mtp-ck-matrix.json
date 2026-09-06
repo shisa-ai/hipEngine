@@ -453,7 +453,7 @@
   "disposition": "retained; optimal depth is K0 at every measured width",
   "k4_qualification": {
     "status": "blocked_does_not_complete",
-    "detail": "Raising MTP2_MAX_CANDIDATE_DEPTH to 4 and proposing a K4 serving-evidence row on the Qwen3.8 gfx1100 C8 row made the bench hang. Two runs produced no prompt output at all and were killed by timeout at 1200 s and 3000 s, against roughly 4-5 minutes for the same shape at K3. The stall is before the first prompt completes, so it is not slow convergence.",
+    "detail": "Raising MTP2_MAX_CANDIDATE_DEPTH to 4 and proposing a K4 serving-evidence row on the Qwen3.8 gfx1100 C8 row made the bench hang. Two runs produced no prompt output at all: the first was killed by its 1200 s timeout, the second was killed manually after about 37 minutes while still silent. The same shape at K3 completes in roughly 4-5 minutes. The stall precedes the first completed prompt, so it is not slow convergence.",
     "resolution": "MTP2_MAX_CANDIDATE_DEPTH is held at 3 and the K4 row proposal is reverted. The server env has always accepted budgets 1-4, so this bound is what prevents a K4 request from reaching that path; before the depth-cap unification a hardcoded adapter clamp did the same job by accident."
   },
   "policy_applied": {
