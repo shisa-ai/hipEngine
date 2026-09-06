@@ -7,6 +7,8 @@ GPU measurement. Every number here comes from reading files and from the repo's
 existing loader/plan code paths; nothing was loaded onto a device to produce them.
 
 Related: [`GGUF.md`](GGUF.md) (intake and native-quant plan),
+[`QUANTS.md`](QUANTS.md) (the wider quantization portfolio, including the
+per-type coverage table this document's status lists must be read against),
 [`GGUF-Q3-OPT.md`](GGUF-Q3-OPT.md) (the merged `UD-Q3_K_M` work, which is the
 Qwen3.6-35B-A3B mixture-of-experts route),
 [`KERNELS.md`](KERNELS.md) (kernel catalog),
@@ -128,8 +130,14 @@ Implemented on both gfx1100 (Radeon Pro W7900) and gfx1151 (Strix Halo):
 | F32 | kept as F32 where the layer reads it (router weights), or converted to BF16 |
 | BF16 | dense BF16 kernel |
 
-Unreachable on the dense route, split by *why*. These five formats have no dense
-decode path at all, so any tensor using them stops the load:
+Unreachable on the dense route, split by *why*. Read these two tables against the
+per-type coverage table in [`QUANTS.md`](QUANTS.md): that table's word "native" can
+mean a kernel for the selected-expert (mixture-of-experts) route, which is a wider
+set than the dense route's, so a format can be listed there as native and still
+refuse a dense load. What differs is the consumer, not the quantizer.
+
+These five formats have no dense decode path at all, so any tensor using them stops
+the load:
 
 | Format | Count in `UD-Q4_K_S` | Count in `UD-Q4_K_M` |
 | --- | ---: | ---: |
@@ -236,8 +244,13 @@ complete model.
 **Phase 1 — IQ4_XS as a dense quantized format.** Highest value: it is the most
 frequent non-standard format in both UD files studied (117 and 172 tensors), it is
 what the external study chose, and it needs one decoder plus one repack policy.
-Required pieces: block decode for the IQ4_XS codebook, a resident layout the fused
-T16 split-K consumer can read, and decode-time repacking for raw IQ blocks.
+Scope is smaller than "write a new quantized GEMM": the block decode already runs
+on device in the selected-expert family (`gguf_iq4_xs_selected_*` and
+`gguf_iq3_xxs_selected_*` kernels, at fixed expert widths such as K=1024 and
+K=3072/N=1024/E=256). What is missing is a dense consumer: a resident layout the
+fused T16 split-K path reads for projection-width matrices, plus decode-time
+repacking for raw IQ blocks, which is also what currently forces the whole file off
+the fast path.
 The measured payoff, in resident bytes for `UD-Q4_K_S` assuming the refusals are
 also resolved, is the reason to order the phases this way:
 
@@ -256,10 +269,15 @@ CPU reference.
 
 **Phase 2 — Q3_K and the IQ3 family.** Needed only if we want the published UD
 mixes as shipped rather than a chosen layout: these are the five formats that
-refuse the load above. Q3_K first (the 35B expert path and the `gguf_ud_q3_k_m`
-plugin already have a Q3_K read path to compare against), then IQ3_S/IQ3_XXS and
-IQ4_NL. Each format needs its own RED contract; codebook formats are not a copy of
-the K-quant code.
+refuse the load above. They are not one job, because the decode side differs:
+a Q3_K GEMV builder already exists in the tree (`build_gguf_q3_k_gemv`) and
+[`QUANTS.md`](QUANTS.md) records Q3_K as native on the selected-expert route, so
+Q3_K needs a dense consumer; `IQ4_NL` needs little beyond Phase 1, because the
+`IQ4_NL` codebook values are already embedded in the IQ4_XS implementation, which
+[`QUANTS.md`](QUANTS.md) notes is not itself an `IQ4_NL` kernel; `IQ3_S` and
+`IQ2_S` are layout-only today, so those two need a real decoder written and gated.
+Each format needs its own RED contract; codebook formats are not a copy of the
+K-quant code.
 
 **Phase 3 — replace stamp-based switches with layout detection.** Read the actual
 format histogram before deciding FP16-recurrent-state and Q4_K_S scope behavior.
