@@ -371,7 +371,11 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   unchanged and still scratch-dominated below the 1,024-row threshold.
 - [ ] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
   and C1-to-wide histories. Report reusable pool capacity separately from memory
-  returned to the device allocator.
+  returned to the device allocator. In-session interleave stability is
+  enforced under the capacity-honest union (2026-09-06: repaired the stale
+  interleave fake that predated the serving-cap right-size — the fake now
+  declares `max_batch_size`, and a contract test pins the first packed
+  allocation to the declared cap; failure window bisected to b753495b4).
 - [ ] Provide a true AR-only configuration. Optional lazy MTP activation must
   reserve its full peak before mutation; unloading must not free borrowed or
   in-flight graph assets. Do not load/unload weights per decode cycle.
