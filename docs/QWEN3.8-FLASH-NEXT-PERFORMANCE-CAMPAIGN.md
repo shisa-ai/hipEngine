@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 down bundled reduction candidate (September6 UTC):** bundle row4 wave
+reductions into one LDS publication phase, preserving every row's arithmetic.
+Actual layer4 weights/counts and independent layer30 weights/borrowed layer4
+counts improve1.152x/1.153x, all40 pairs exact and both orders positive.
+24 GPU tests pass; trace24 VGPR/512B LDS/scratch0 unchanged.
+Kernel retained, no runtime promotion until full-model state/KV and12-case A/B.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle.json).
+
 **Post-fold128 code4096 refresh (September6 UTC):** clean `1dacd1edb`
 confirms200 fold128 Q5_1 calls/3919.051ms. FFN14.266s, non-GR linear5.350s,
 GR4.237s, QSA1.919s and GDN0.778s; code-only reused-Vulkan gaps

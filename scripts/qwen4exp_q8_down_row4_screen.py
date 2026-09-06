@@ -34,6 +34,7 @@ def main():
     p.add_argument("--routing-layer", type=int)
     p.add_argument("--pairs", type=int, default=20)
     p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--bundle", action="store_true")
     args = p.parse_args()
     if args.pairs < 2 or args.pairs % 2:
         p.error("use a positive even pair count")
@@ -65,6 +66,9 @@ def main():
         outputs = [_alloc((5120, 2560), np.uint16, runtime, allocations) for _ in range(2)]
         functions = [gemv.gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
                      gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out]
+        if args.bundle:
+            functions = [gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,
+                         gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out]
 
         def run(i):
             functions[i](dx.ptr, ds.ptr, 0, dw.ptr, outputs[i].ptr,
@@ -84,6 +88,7 @@ def main():
                 _download(outputs[1], (5120, 2560), np.uint16, runtime))
         report = dict(
             schema=1, source=_git_metadata(ROOT), host=_host_metadata(),
+            parent_variant=functions[0].__name__, candidate_variant=functions[1].__name__,
             model_identity=identity, quant="UD-Q4_K_XL", command=sys.argv,
             tensor=name, shape=[5120, 640, 2560],
             weight_sha256=hashlib.sha256(raw).hexdigest(),

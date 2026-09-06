@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q8 down bundled-reduction kernel candidate:43.003->37.343ms (1.152x) on
+layer4 actual weights/counts; second weight bank confirms1.153x with borrowed
+routing. Exact; runtime defaults unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q8-down-bundle.json).
+
 Post-fold128 code4096 attribution verifies200 candidate calls; FFN14.266s,
 linear5.350s and GR4.237s remain dominant. Code-only, reused Vulkan,
 diagnostic instruments; the full-category snapshot is separately labeled.

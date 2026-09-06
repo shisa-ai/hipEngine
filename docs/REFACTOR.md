@@ -1,5 +1,13 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 down bundled reduction candidate
+
+- Kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
+  row4 arithmetic and bundles publication. No runtime flag/default yet.
+- Promote only after full-model invocation/logits/state/KV and12-case A/B;
+  remove if those reject it. Keep row4 rollback, row1 small-chunk owner and
+  strict selected-GEMV fallback.
+
 ## Qwen4Exp Q5_1 fold128 rollback
 
 - `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves reduction
