@@ -89,15 +89,16 @@ two concurrent requests on the W7900.
 
 W7900 automatic MTP is deliberately narrow. Qwen3.6 enables only its qualified
 C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
-production/BF16 C2/K2 only at resident capacity 2, context 4-95, and D24
-(**36.726 vs 30.720 tok/s, 1.1970x AR**) and now also enables the exact
-resident-capacity-8 C8/K3/D24 key (98.643 vs 88.250 tok/s, 1.1178x AR).
-Capacity-8 C1-C7 and every other scope miss remain K0. Evidence links are in
-the model sections below.
+production/BF16 C2/K2 at resident capacity 2, context 4-95, and D24. Every
+other scope miss remains K0. Evidence links are in the model sections below.
 
-The C8/K3 rate is **under review**: re-running its own commit on 2026-09-06 gave
-91.884 MTP against 92.631 AR at identical fingerprint/manifest/protocol/acceptance;
-tokens stay exact ([artifact](results/2026-09-06-gfx1100-mtp-width-depth-policy-unchanged.json)).
+**Qwen3.8-27B `Q4_K_M` no longer uses speculative decoding on this backend.** A
+full depth sweep on 2026-09-06 measured 20 cells across C2-C8 and K1-K3, each
+against an AR arm in the same process: every cell ran below its own AR, the
+closest being C8/K3 at 0.9902x. Both Qwen3.8 rows are therefore no longer
+automatic and the route selects AR at every width; explicit opt-in still works.
+Earlier published C2/K2 and C8/K3 speedups are withdrawn
+([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -139,8 +140,8 @@ on one physical host. Its binding two-order D24 suite puts the C8 candidate at
 **95.240 tok/s mean**: above the published (94.735) and fresh (92.345)
 current-llama.cpp exact-peer rows, below the published (101.072) and fresh
 (95.830) Laurent strongest-peer rows. hipEngine uses BF16 KV; the peers use
-F16 KV. A later production gate promoted the exact capacity-8 C8/K3 key, whose
-automatic route validation recorded **98.643 tok/s (1.1178x AR)**.
+F16 KV. A later gate promoted a capacity-8 C8/K3 key, but the 2026-09-06 depth
+sweep withdrew it: MTP measured below AR at every width.
 The direct packed-AR decode route uses the singleton-indexed GDN recurrence
 (2026-09-05): 512/128 graph decode improves **c2 +7.40%, c4 +6.06%, native C8
 +5.91%**, exact ([artifact](results/2026-09-05-gfx1100-gdn-singleton-retained.json)).
@@ -191,8 +192,8 @@ See result artifacts, [`CHANGELOG.md`](CHANGELOG.md), the
 [`harness catalog`](HARNESSES.md), and [`BENCHMARK.md`](../docs/BENCHMARK.md).
 Optimization history lives there, not in this current-row scoreboard.
 
-The current Qwen3.8 C8/K3 product route is automatic only for its exact
-production key; its recorded rate is under review as noted above.
+Qwen3.8 runs plain AR on this backend; its speculative rows are retained for
+explicit opt-in and re-measurement only.
 
 ## Evidence status
 
