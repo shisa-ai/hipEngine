@@ -469,8 +469,11 @@ routes remain available, and Qwen3.6 policies are unchanged. The follow-up
 requires native physical C1 on the Generation-2 provider/frontier/transaction
 path, not a legacy singleton verifier substitution, plus measured complete-cycle
 reductions and width-specific numerical/lifecycle/performance qualification.
-K4 stays bounded off pending hang diagnosis. Existing kernel improvements
-remain enabled in their qualified scopes. Source audit and rejected alternatives remain in
+The follow-up must fix the K4 hang and implement depth-generic K1-K7 execution
+at C1-C8; diagnosis alone is not completion. Deeper public execution remains
+safety-gated during implementation, and automatic depth selection is qualified
+separately from functional support. Existing kernel improvements remain enabled
+in their qualified scopes. Source audit and rejected alternatives remain in
 [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,

@@ -17,7 +17,7 @@ decode without MTP. The previous C2/K2 and C8/K3 automatic speed claims are
 withdrawn. Their safety-qualified explicit routes remain available for testing.
 Qwen3.6 policies were not swept and must remain unchanged.
 
-Deliver three independently reviewable outcomes:
+Deliver four independently reviewable outcomes:
 
 1. A functional, tested C1 path using the concurrency engine's provider, target
    frontier, resource claims, and commit/rollback ownership. A legacy singleton
@@ -25,7 +25,11 @@ Deliver three independently reviewable outcomes:
 2. Measured reductions in MTP cycle cost, prioritized at C8/K3 and C2/K2, then
    across the width/depth matrix. Keep qualified smaller wins even if a cell
    still loses to AR; such a cell remains explicit-only.
-3. Automatic MTP only for same-host, full-suite winning keys with complete
+3. Functional K4, K5, K6 and K7 on the same native concurrency path at C1-C8.
+   Generalize depth-dependent storage and execution rather than moving a
+   hardcoded K3 limit to K4. Correct execution is required even if deeper
+   speculation is slower; a diagnosis alone does not complete this outcome.
+4. Automatic MTP only for same-host, full-suite winning keys with complete
    numerical and lifecycle evidence. Use K0 elsewhere, with recorded reasons.
 
 Aim for 1.10x matched AR in a first winning scope and investigate the cost of
@@ -136,7 +140,8 @@ Each packet requires RED tests where practical, focused validation, an
 immutable worklog entry, and a scoped commit. Commit a completed unit before
 starting the next. Proposed instrumentation/tests below are deliverables,
 not assertions that commands already exist. C1 is required even if C8 finds
-an early win; K4 diagnosis must not delay valid K1-K3 improvements.
+an early win. K4-K7 implementation must not delay valid K1-K3 improvements,
+but the campaign cannot close with deeper depths merely diagnosed or disabled.
 
 ### Packet 0 — Freeze public truth, provenance and reachable shapes
 
@@ -154,7 +159,9 @@ an early win; K4 diagnosis must not delay valid K1-K3 improvements.
 - [ ] Reproduce C8/K3, C2/K2 and one inefficient middle width first, with matched
   AR in both process orders. Inventory all 24 C1-C8 × K1-K3 cells explicitly
   as engaged, rejected before mutation, unmeasured, or failing. C2/K3 needs its
-  own status; no full-matrix claim from the existing 20 rows.
+  own status; no full-matrix claim from the existing 20 rows. This is the
+  starting inventory; the final implementation matrix is 56 C1-C8 × K1-K7
+  cells, plus K0 controls.
 - [ ] Preserve maximum-depth safety admission: `_admit` chooses
   `min(requested, qualified)`. Keep the width/depth performance policy separate
   from safety evidence. Depth is a tuning axis **inside a proved implementation
@@ -173,6 +180,7 @@ its own qualification data.
   provider repair, and host synchronization boundaries. Separate prefill/priming,
   first cycle, steady cycles, final clipped cycle, and ordinary AR fallback.
 - [ ] Profile C8/K3, C2/K2, C3/K3 and C5/K3; add C1/K1-K3 after Packet 2.
+  Add K4-K7 row/cycle curves as Packet 5 enables them, including C8/K7.
   Record kernel interval union as well as family sums. A blocking API's duration
   may be waiting for queued GPU work, not evidence of expensive copying.
 - [ ] Audit fast AR versus MTP owners by role/shape: quant payload/layout,
@@ -223,6 +231,8 @@ is not this deliverable.
 - [ ] Test K1/K2/K3, all accepted, first/middle/final rejection, EOS at every
   depth, final-horizon clipping, cancellation and recoverable failure. Restore
   both provider and target state and continue with the correct hidden seed.
+  Extend every depth-sensitive C1 test through K7 in Packet 5; K3-only C1
+  coverage is an intermediate milestone, not final depth support.
 - [ ] Test N=1,2,8 and every physical slot: delayed C1→C2→C1, C8→C1→C8,
   sparse survivors, refill and compaction; K0→MTP→K0→MTP at transaction
   boundaries. Preserve IDs, page ownership, output/usage and clean drain.
@@ -286,41 +296,86 @@ full-suite explicit measurements and capacity-specific policy decisions.
   does not use them. Count resource contention and complete wall, not inclusive
   overlapping kernel-time sums.
 
-### Packet 5 — Diagnose K4 safely as a separate bounded unit
+### Packet 5 — Fix K4 and implement depth-generic execution through K7
 
-K4 is not an extra tuning row yet. The reported two hangs ended after 1200 s
-and 3000 s without a completed prompt. Do not repeat full 20–50 minute sweeps
-or raise the production maximum before localization.
+K4-K7 are required functional deliverables, not optional profitable cells.
+Repeated use of the existing draft block can form a deeper chain; there is no
+campaign-level algorithmic requirement to stop at K3. Buffer sizes, graph
+buckets, kernel bounds and state handling still need implementation and proof.
+This does not promise unlimited depth or useful acceptance at K7.
 
-- [ ] Keep `MTP2_MAX_CANDIDATE_DEPTH=3` as the public implementation limit.
-  Add a test that an explicit request for 4 cannot silently be reported as
-  engaged K4 when clamped/declined; record requested and effective depth.
+The reported K4 hangs ended after 1200 s and 3000 s without a completed prompt.
+Localize that failure first; do not repeat full 20–50 minute sweeps or open
+untested depths publicly. Keep the K3 public safety limit until replacements
+pass their gates, then expose qualified deeper depths for explicit execution.
+
 - [ ] Build a watchdog-bounded, cached-build reproducer with progress markers
   for initialization, prompt prefill, proposal depth, frontier build, graph
   capture/replay, target completion, acceptance, commit and drain. Save host
   stack and last completed GPU event on timeout. Begin with a few cycles and
-  a small safe case, not the whole prompt suite.
-- [ ] Inspect capacity arithmetic and allocations at R32/36/40 and the actual
-  padded K4 count. The code computes `physical_accept_max_rows` from maximum
-  requests, depth and padding; it is **not a proved hardcoded 36-row limit**.
-  With eight requests and rows6 padding, logical R40 can require P42. Exact
-  R32 is separately enabled for C8/K3. Audit every allocator, launch bound,
-  accept payload, graph key and tail mask rather than changing 36 to 40 blindly.
-- [ ] Validate logical and padded sizes on the CPU before GPU launch. Sweep
-  boundary payloads with guard sentinels, nonzero slots, ragged depths, EOS and
-  invalid token padding. Distinguish a cache/JIT stall from a graph deadlock or
-  out-of-bounds kernel; preserve evidence before any recovery/reset.
-- [ ] After a root-cause fix, gate K4 mechanics and numerical behavior at every
-  proposed C/N scope, then measure full-suite economics. Keep one shared depth
-  bound. A functional K4 can still lose to K3/K0 and remain unselected.
+  a small safe case, not the whole prompt suite. Distinguish cache/JIT stalls,
+  graph deadlocks and out-of-bounds kernels; preserve evidence before recovery.
+- [ ] Trace depth from server/request parsing through serving admission,
+  adapter validation, provider unrolling, frontier metadata, target dispatch,
+  accept, selected commit and provider repair. Audit hardcoded ranges, fixed
+  arrays, unrolled loops, cached graph keys, masks and native ABI limits. Update
+  CLI/environment diagnostics and tests along with the implementation; accepting
+  a budget in the parser does not prove the runner can execute it.
+- [ ] Make geometry derive from declared C, per-request depths and actual P.
+  Keep a single implementation-depth limit, initially extending support through
+  7, separate from qualified maxima and automatic performance policy. Derive
+  memory claims before allocation; reject unsupported/resource-exceeding shapes
+  before mutation. Do not replace K3-specific constants with K7-specific arrays.
+- [ ] Inspect logical/padded boundaries, including the following C8 examples.
+  The adapter computes `physical_accept_max_rows` dynamically; a fixed 36-row
+  bound is not an established root cause. Exact R32 is separately enabled for
+  C8/K3, so record actual dispatch rather than inferring it from this table.
 
-Exit: either a localized blocker with a small reproducer, or independently
-qualified K4. Neither blocks promotion of a valid K1-K3 win.
+  | Depth | Logical R = 8 × (K+1) | P if rows6 padding applies |
+  | --- | ---: | ---: |
+  | K3 | 32 | 36 |
+  | K4 | 40 | 42 |
+  | K5 | 48 | 48 |
+  | K6 | 56 | 60 |
+  | K7 | 64 | 66 |
+
+- [ ] Size target/accept payloads, position/token arrays, logits or selected
+  scores, recurrent snapshots, journals and hidden-seed storage for all active
+  and padded rows. Audit 32/64-bit mask and index boundaries: P66 cannot fit
+  in one 64-bit row-validity mask. Check actual representations rather than
+  assuming such a mask exists. Keep inactive rows valid but noncommitting.
+- [ ] Implement K4, then K5/K6/K7, including C1 R5-R8 and C8 R40-R64. Preserve
+  one physical staged target frontier; qualified tiled/chunked kernels are
+  allowed, but serial whole-request singleton calls are not. Graph and eager
+  paths must agree under their declared arithmetic contract and terminate.
+- [ ] Add CPU geometry/admission REDs and guarded GPU fixtures for every depth
+  1-7, every C1-C8, ragged per-request depths, nonzero/sparse slots, and padded
+  boundaries. Use guard sentinels for buffer overruns. Assert requested,
+  admitted and executed depth; an explicit K7 test that silently runs K3 fails.
+  Existing `min(requested, qualified)` admission may still cap a request, but
+  must report that cap and cannot count as deeper-depth execution evidence.
+- [ ] At each new depth test rejection and EOS at every candidate position,
+  zero/all accepted, correction/bonus handling, output-horizon clipping,
+  cancellation, rollback, retry and following-cycle state. Verify both target
+  and provider state. Exercise K7↔K1↔K0 and C1↔C2 / C8↔C1 transitions,
+  including resident N=1/2/8 and clean final drain.
+- [ ] Qualify K4-K7 numerical/task behavior and explicit execution through the
+  actual service owner, then measure the full category/heldout suite. Preserve
+  existing Qwen3.6/gfx1151 safety limits unless independently qualified; raising
+  shared implementation capacity must not widen their public evidence.
+
+Exit: K1-K7 all execute correctly in the declared C1-C8/context/capacity matrix,
+with real K4-K7 engagement, bounded resources and no hangs. A deeper cell may
+lose to K3/K0 and remain explicit-only, but low speed or acceptance is not a
+reason to leave it non-functional. A concrete blocker is a progress handoff,
+not campaign completion. Valid K1-K3 wins can ship before this packet closes.
 
 ### Packet 6 — Re-sweep, select by width, and close the public path
 
-- [ ] Evaluate K0-K3 at C1-C8; add K4 only after Packet 5 passes. Run capacity-8
-  realized-width curves and separate N=1/2 controls. Preserve canonical N=2/C2
+- [ ] Evaluate K0-K7 at C1-C8, admitting deeper test cells as Packet 5 qualifies
+  them. Record all 56 positive-depth cells, including explicit losing depths;
+  automatic selection may still choose K0-K3. Run capacity-8 realized-width
+  curves and separate N=1/2 controls. Preserve canonical N=2/C2
   and N=8/C8 comparisons; never present an own-capacity curve as fixed-N=8.
 - [ ] Select depth from immutable model/profile/shape evidence, not prompt
   identity or observed benchmark token IDs. Ragged/remaining-horizon budgets
@@ -439,9 +494,11 @@ Track experimental flags, rejected forks and removal conditions in
 
 - [ ] Native physical C1 is engaged on the concurrency owner at the qualified
   capacities/slots; tests prove no singleton verifier/scheduler substitution.
-- [ ] C1-C8/K1-K3 has a complete measured-or-explicitly-blocked inventory,
-  current true AR controls, full-suite correctness, and complete-cycle cost
-  attribution. K4 has a bounded diagnosis or a qualified implementation.
+- [ ] All 56 C1-C8/K1-K7 cells execute at their actual requested depth inside
+  the declared safety envelope, with current true AR controls, full-suite
+  correctness and complete-cycle attribution. C1 also passes N=1/2 controls.
+  No K4-K7 hang, silent downgrade or diagnosis-only outcome counts as completion;
+  unsupported contexts/resource sizes outside that envelope fail closed.
 - [ ] Each candidate is retained, rejected, or blocked by a named measured
   prerequisite; no open-ended “tune verification” handoff and no repeated
   rejected experiment without changed evidence.
