@@ -236,12 +236,33 @@ def q8_mapped_down_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
     return full*(chunk_size>=512)+(tail>=512)
 
 
+def apply_chunk_mode(runner: Any, mode: str, *, allocated_chunk_size: int) -> None:
+    if mode not in {"before","after"}:
+        raise ValueError("invalid chunk mode")
+    chunk = 512 if mode=="before" else 1024
+    if allocated_chunk_size < chunk:
+        raise ValueError("chunk exceeds preallocated capacity")
+    runner.prefill_chunk_size = chunk
+
+
+def validate_chunk_coverage(chunks: Sequence[int], tokens: int, size: int) -> None:
+    if tokens < 1 or size < 1:
+        raise ValueError("positive token and chunk sizes required")
+    expected = [min(size,tokens-start) for start in range(0,tokens,size)]
+    if list(chunks) != expected:
+        raise ValueError(f"chunk coverage {list(chunks)} != {expected}")
+
+
 def _apply_mode(
     mode: str,
     *,
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
+    if route_package == "chunk1024":
+        if mode not in {"before","after"}:
+            raise ValueError("invalid chunk mode")
+        return
     if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
@@ -314,7 +335,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -325,6 +346,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit("--warmups-per-mode must be at least 1")
     if args.repetitions_per_mode != 3:
         raise SystemExit("publication protocol requires --repetitions-per-mode 3")
+    if args.route_package == "chunk1024" and args.prefill_chunk_size != 1024:
+        raise SystemExit("chunk1024 requires --prefill-chunk-size1024 for shared allocation")
     if args.compiler_version_file is not None:
         os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(
             args.compiler_version_file.resolve()
@@ -436,6 +459,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     _write_json(args.output, artifact)
 
     generator = resolved.construct_generator(factory)
+    observed_chunks = []
+    original_chunk = None
+    if args.route_package == "chunk1024":
+        original_chunk = generator.runner._prefill_chunk
+        def counted_chunk(token_ids, **kwargs):
+            observed_chunks.append(len(token_ids))
+            return original_chunk(token_ids,**kwargs)
+        generator.runner._prefill_chunk = counted_chunk
+        artifact["arms"] = {"before":{"prefill_chunk_size":512},
+                            "after":{"prefill_chunk_size":1024}}
+        artifact["protocol"]["allocated_chunk_size"] = args.prefill_chunk_size
+        artifact["protocol"]["prefill_chunk_size"] = "arm_specific_512_or_1024"
+        artifact["protocol"]["memory_scope"] = (
+            "Both arms share1024-capacity PLE/prefill/MMQ scratch, allocated before timing. "
+            "Does not measure512-sized allocation vs1024-sized allocation.")
+        artifact["protocol"]["correctness_scope"] = (
+            "Exact generated trajectories are required by this screening harness. "
+            "A mismatch requires full declared production numerical/state gates, not relaxed checks.")
     row4_calls = [0]
     original_row4 = None
     if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"}:
@@ -601,9 +642,17 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     def sample(mode, case, repetition):
         _apply_mode(mode, route_package=args.route_package)
+        if args.route_package == "chunk1024":
+            apply_chunk_mode(generator.runner,mode,allocated_chunk_size=args.prefill_chunk_size)
+            observed_chunks.clear()
         start_calls = row4_calls[0]
         row = _hipengine_case_sample(
             generator.runner, case=case, repetition=repetition, transitions=transitions)
+        if args.route_package == "chunk1024":
+            validate_chunk_coverage(observed_chunks,int(case["prompt_tokens"]),
+                                    generator.runner.prefill_chunk_size)
+            row["executed_prefill_chunks"] = list(observed_chunks)
+            row["active_chunk_size"] = generator.runner.prefill_chunk_size
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
             if args.route_package == "q8-mapped-down":
@@ -705,6 +754,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     finally:
         _apply_mode("after", route_package=args.route_package)
+        if original_chunk is not None:
+            generator.runner._prefill_chunk = original_chunk
+            generator.runner.prefill_chunk_size = args.prefill_chunk_size
         if original_row4 is not None:
             register(row4_key, original_row4, replace=True)
         generator.close()
