@@ -9,23 +9,15 @@
   Remove the rollback selector after next qualified MMQ change or release
   window;prepacked vector path and strict/scalar raw fallbacks remain.
 
-## Qwen4Exp Q4 residual WMMA diagnostic reference
+## Qwen4Exp Q4 residual WMMA diagnostic: removed
 
-- Cooperative K64 follow-up rejected:61.36ms,59.89ms no-unroll,
-  57.15ms padded versus~17.4ms exact. Cooperative code removed.
-  The raw reference has no qualified consumer yet; remove it when the
-  residual-matrix investigation closes, or retain only the minimum
-  differential oracle for a concretely declared different dataflow.
-- `selected_dual_wmma_f16x2_bf16_bf16_out` is T2,explicit-only and
-  performance-unqualified.16/32/64 output tiles all lost to exact pair2,
-  although two-plane weight reconstruction substantially improves local
-  numerical agreement. No model selector or production manifest entry.
-- Retain temporarily as GPU arithmetic reference for cooperative K-block
-  staging. Remove the raw consumer if that follow-up is abandoned or also
-  loses; if an optimized replacement qualifies, keep only the reference
-  needed for its tests and remove unused launch variants.
-- No further unchanged tile sweep or model A/B on this slower consumer.
-  Full numerical/category/task/control gates still bind any replacement.
+- Closed September6 UTC after both raw and cooperative implementations
+  failed timing. Removed residual template branches,export/wrapper/key,
+  diagnostic harness and candidate-only tests. Original Q4 code restored
+  byte-for-byte to24934b692;all retained production paths unchanged.
+- Reproduction source20e39e32e and the residual/cooperative artifacts
+  preserve numerical findings and losses. Do not revive unchanged
+  candidates or relax production quality thresholds.
 
 ## Qwen4Exp Q5_1 register weight-cache rollback
 

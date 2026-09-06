@@ -815,16 +815,17 @@ padded-stride57.152ms still lose. Numerical equality with residual reference
 does not imply model qualification. Evidence:
 `2026-09-06-framework-qwen4exp-q4-cooperative-rejected.json`.
 
-`selected_dual_wmma_f16x2_bf16_bf16_out` is a **T2 diagnostic reference**,
-not a production/performance-qualified variant. It reconstructs raw Q4_K
+`selected_dual_wmma_f16x2_bf16_bf16_out` was a **T2 diagnostic reference**,
+now removed after the cooperative follow-up also failed. It reconstructed raw Q4_K
 weights with FP16 high/residual planes, accumulates each separately and
 adds before the BF16 gate/up boundary.16-row tiles with16/32/64 output
 columns preserve reference outputs across tile widths. On one captured
 actual-weight screen, gate/up BF16 agreement improves89.66%->99.65% and
 post-SiLU82.46%->99.37%,but all tested widths lose to exact pair2.
-The raw-weight implementation is kept only for differential validation of
-an alternative cooperative loader. No runtime flag/manifest selection.
-30 tests pass; full production gates unrun. Evidence:
+The template branches,export/wrapper/key,harness and candidate tests are
+removed;original Q4 files match24934b692. No production route ever used
+the reference. Reproduction source20e39e32e retains the implementation.
+25 existing Q4 regression tests pass after removal. Evidence:
 `2026-09-06-framework-qwen4exp-q4-residual-wmma-reference.json`.
 
 Q4 pair2 paired-BF16 input layout was rejected and removed. Bitwise
