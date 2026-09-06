@@ -561,8 +561,22 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   argument) in (15,872, 16,128], reproduced uncapped on the base tree — not a
   memory ceiling. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json`.
-- [ ] Budget D=24/128/512 and reduce L to leave output/lookahead space. Include
+- [x] Budget D=24/128/512 and reduce L to leave output/lookahead space. Include
   natural long-output cases; an early EOS proves only the work actually done.
+  Measured 2026-09-07 on the XTX (BF16 KV, one cold server per point, exact
+  request accounting): D=24 at declared 768 (prompt 512, page-aligned) passes
+  N=1..6 at request peaks 18.748/20.859/21.381/22.822/23.358/23.676 GiB with
+  N=7/8 failing eager warmup (STARTUP_SCRATCH_PROBE OOM, sampled failure
+  peaks 23.972/23.961 GiB) — boundary identical to the D=128 arm (last pass
+  N=6, slope ~0.99 GiB/request): the per-request peak is startup-scratch +
+  pool dominated and the 104-token output-horizon difference is below
+  sampling resolution. D=512 at declared 1,280 is strictly tighter (last
+  solid N=4 post-scratch-cap, N=5 marginal) because two extra KV pages per
+  request push the warmup probe over one row earlier. All arms use
+  `ignore_eos`-equivalent exact token accounting, so a completed point proves
+  the full declared horizon was served. Artifact:
+  `results/2026-09-07-rx7900xtx-capacity-concurrency-d24.json` (cross-ref:
+  `...-concurrency-512-128.json`, `...-concurrency-d512.json`).
 - [ ] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
   the disputed c5/c6 boundary. Increase per-request budgets through 1K/2K/4K/
   8K/16K where possible. Add N=8/C=1, mixed lengths, gradual fill and survivors.
