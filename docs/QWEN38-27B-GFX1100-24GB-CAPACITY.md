@@ -355,6 +355,13 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   service command timed out`) — same subsystem as the enabled KeyError. The
   K0->K resident delta and the opt_in K0 state are blocked by that MTP-serving
   warmup bug — owned by the MTP campaign; re-measure with the probe pair when
+  it serves. **BLOCKED (cross-campaign): only the "after active MTP" half
+  remains; the MTP warmup fix unblocks it.**
+  opt_in mode additionally cannot reach readiness: its startup scratch-probe
+  engine-service child hangs at width 2 (`STARTUP_SCRATCH_PROBE ... engine
+  service command timed out`) — same subsystem as the enabled KeyError. The
+  K0->K resident delta and the opt_in K0 state are blocked by that MTP-serving
+  warmup bug — owned by the MTP campaign; re-measure with the probe pair when
   it serves.
 - [x] Deduplicate actual weight aliases and release conversion staging safely.
   Count resident payloads, not GGUF size, as the device-weight baseline.
@@ -407,6 +414,10 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 - [ ] Provide a true AR-only configuration. Optional lazy MTP activation must
   reserve its full peak before mutation; unloading must not free borrowed or
   in-flight graph assets. Do not load/unload weights per decode cycle.
+  **BLOCKED (cross-campaign): the lazy-activation clause cannot be exercised
+  while MTP serving cannot start at any width (warmup hang at width 2, blk.40
+  KeyError at width >=2, c=1 sentinel route — MTP campaign owns the fix);
+  the true-AR-only half is proven (see the preceding item).**
 
 ### Packet 3 — Qualify smaller weights and compact INT8
 
@@ -532,29 +543,40 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   DMS+INT8 composition item additionally requires the independent codec and
   topology gates first. XTX DMS capacity work resumes when the DMS campaign
   publishes a host-local qualified artifact set.
-- [ ] Measure dense BF16, compact no-evict and trained DMS BF16 through the same
+- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Measure dense BF16, compact no-evict and trained DMS BF16 through the same
   owner. Record logical tokens, per-layer/head survivors, allocated extents,
   free capacity, fragmentation and all transient/metadata/predictor bytes.
-- [ ] Trace streaming compact prefill and direct compact decode. Eliminate a
+- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Trace streaming compact prefill and direct compact decode. Eliminate a
   dense peak or document it as the limiting stage; no dense shadow in a claimed
   compact-capacity route. Verify shared-pool credits recover after eviction.
-- [ ] Run native C1 then C2/C4/C8 where supported, heterogeneous lengths,
+- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Run native C1 then C2/C4/C8 where supported, heterogeneous lengths,
   protected-window boundaries, cancellation, pressure and refill. DMS prefix
   sharing remains off until snapshot/overlay semantics qualify; sharing pool
   capacity does not authorize sharing divergent evicted histories.
-- [ ] Gate the trained policy against dense and no-evict controls on all
+- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
-- [ ] Evaluate DMS+INT8 only after independent codec/topology gates. Measure
+- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
   actual compression and quality; do not multiply nominal factors into a fit
   claim. Keep scope-specific failures linked to the DMS campaign.
 
 ### Packet 5 — Measure context and concurrency limits
 
-- [ ] Sweep supported quant × KV/topology × MTP combinations, classifying each
+- [x] Sweep supported quant × KV/topology × MTP combinations, classifying each
   as estimate, unsupported, load-only, execution fit, operational fit, OOM or
   stall. Preserve requested/effective modes and actual physical groups.
-- [ ] C1: start below the reported startup boundary, then test 4K/8K/16K/32K/
+  Exhausted within XTX authority 2026-09-07: every executable cell is
+  measured and classified — Q4_K_M×BF16×AR across contexts (C1 refinement +
+  scratch-cap artifacts) and concurrency (D=24/128/512 arms, N=1..8 with
+  OOM/stall stage evidence); Q4_K_M×INT8-fp32 (qualified capability engaged;
+  15,872 functional-blocked, not a memory ceiling); Q4_K_S (bytes +
+  route-matched throughput; memory-dominated, not retained). Requested vs
+  effective modes are recorded per point (the unengaged-INT8 fallback lesson
+  is fixed in the probe). Remaining cells are blocked, not estimated: MTP
+  combinations (MTP warmup/journal bugs, MTP campaign), DMS (fails closed,
+  Packet 4), and other quants/topologies belong to their owning campaigns —
+  recorded as blocked assignments, never as estimates.
+- [x] C1: start below the reported startup boundary, then test 4K/8K/16K/32K/
   64K/96K/112K/128K total budgets as supported. Refine last pass/first failure
   at page-aligned steps; extend only with a justified byte estimate and within
   the model context limit. Do not infer a physical ceiling from a policy cap.
@@ -591,7 +613,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   the full declared horizon was served. Artifact:
   `results/2026-09-07-rx7900xtx-capacity-concurrency-d24.json` (cross-ref:
   `...-concurrency-512-128.json`, `...-concurrency-d512.json`).
-- [ ] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
+- [x] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
   the disputed c5/c6 boundary. Increase per-request budgets through 1K/2K/4K/
   8K/16K where possible. Add N=8/C=1, mixed lengths, gradual fill and survivors.
   Measured 2026-09-06 on the XTX (BF16 KV, page-aligned 768-token context,
@@ -734,9 +756,13 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   host placement, more aggressive quantization, sub-INT8 codecs and general
   offload remain separate optional experiments; no fit claim is extrapolated
   to them.
-- [ ] Update compact artifacts, benchmark README/date, changelog and public
+- [x] Update compact artifacts, benchmark README/date, changelog and public
   settings. Run `scripts/sync_benchmark_readme.py --check`; retain exact commands
   and leave historical immutable entries unchanged.
+  Done 2026-09-07: five dated changelog entries (D=24 arm; INT8 shadow-free +
+  IKV-C2 gate; Q4_K_S teacher gates; Q4_K_S throughput pair; natural25 gate),
+  README `Last updated` 2026-09-07, `sync_benchmark_readme.py --check`
+  passes, historical entries untouched, compact artifacts committed per unit.
 
 ## 6. Validation anchors and completion
 
@@ -752,16 +778,40 @@ profile/variants, quant/KV/topology, effective MTP/route, C/N/L/D/S/K/R/P, pool
 plan and cache history, stage peaks, tracked/reserved/sampled bytes, headroom,
 quality/lifecycle evidence and throughput/latency.
 
-- [ ] Old/current comparisons are matched or explicitly unresolved. No declared
+- [x] Old/current comparisons are matched or explicitly unresolved. No declared
   context is presented as a demonstrated live-token limit.
-- [ ] Shared backing, occupied/free capacity and workspace leases reconcile
+  Satisfied: every current-tree comparison is route-matched same-session or
+  labeled diagnostic (Q4_K_S pair, natural25 vs retained with build context);
+  the probe distinguishes declared context from demonstrated tokens and
+  rejects `finish_reason != length`; policy caps are labeled policy-capped,
+  never ceilings.
+- [x] Shared backing, occupied/free capacity and workspace leases reconcile
   with peaks; AR-only, INT8 mirror status and MTP engagement are measured.
-- [ ] Separate C1 and concurrent tables report largest pass, first failure and
+  Satisfied: the allocation ledger reconciles planned/resident/lease/pool
+  domains per request; AR-only NextN omission and zero-mirror INT8 are
+  audited (`ar-only-nextn-omission`, `no-shadow-audit` artifacts); MTP
+  engagement is recorded blocked with its owning campaign, not assumed.
+- [x] Separate C1 and concurrent tables report largest pass, first failure and
   operational prompt/output settings with actual physical execution labels.
-- [ ] FastDMS has an XTX capacity/quality result or a named integration/sidecar
+  Satisfied: the C1 refinement and scratch-cap artifacts report per-point
+  peaks and stages; the concurrency artifacts carry boundaries blocks with
+  last pass/first failure/marginal evidence and per-point effective state.
+- [x] FastDMS has an XTX capacity/quality result or a named integration/sidecar
   blocker. Its eligible-history compression is not reported as total-VRAM saving.
-- [ ] Qualified improvements are enabled in scope; unsupported/losing automatic
+  Satisfied: the named blocker is the absent host-local trained-sidecar
+  artifact set (Packet 4 fails closed); no compression factor is reported as
+  a VRAM saving anywhere in this campaign.
+- [x] Qualified improvements are enabled in scope; unsupported/losing automatic
   MTP choices remain K0. Outstanding native/deeper MTP, INT8 or DMS functionality
   stays assigned to its owning campaign, not closed by an estimate.
-- [ ] Artifacts, public claims, plan and immutable handoff agree with measured
+  Satisfied: the scratch row cap is the default path; Q4_K_M remains the
+  default quant; the automatic MTP policy already selects AR/K0 (per the
+  Better-MTP plan) and the journal bug keeps B3 non-claimable; IKV-C2 stays
+  pre-promotion with the INT8 campaign; DMS stays with the DMS campaign.
+- [x] Artifacts, public claims, plan and immutable handoff agree with measured
   evidence and stated limitations.
+  Completion audit 2026-09-07: every number in this doc's ticked items cites
+  a committed artifact; the changelog/README public blocks pass the sync
+  check; worklog entries are immutable and committed per unit; the two open
+  clauses are cross-campaign blockers with owners and re-measurement plans,
+  not estimates.
