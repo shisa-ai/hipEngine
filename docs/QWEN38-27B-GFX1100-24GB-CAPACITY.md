@@ -356,8 +356,19 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   capacity instead of the 8-slot floor; measured on the XTX at BF16/3072/N=1:
   load 19.742 -> 18.429 GiB, request peak 23.328 -> 20.998 GiB (-2.330, -10.0%),
   lease 96 -> 12 pages, transients 3.586 -> 2.569 GiB; INT8 fp32 route verified
-  serving under the smaller lease (peak 20.841 GiB). Prefill scratch rows,
-  bucket bounding and retirement remain open.
+  serving under the smaller lease (peak 20.841 GiB). Prefill scratch rows done
+  2026-09-06: a gfx1100 geometry policy (`GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_
+  POLICIES`, dense H5120 Q4_K_M, min_capacity 1024 -> max_rows 1024) bounds the
+  session scratch that previously scaled with the declared context (~1 MiB per
+  declared token vs the 64 KiB/token BF16 KV payload); measured on the XTX:
+  BF16 3,840 request peak 21.820 -> 19.375 GiB (-11.2%), BF16 declared-context
+  boundary 3,840 -> 40,960 tokens (10.7x), INT8 fp32 5,120-class passes at
+  19.290 GiB, d512 solid concurrency N=3 -> N=4; exactness: a 2,650-token
+  greedy server request is token-identical capped vs uncapped (the 1,024-row
+  chunks route through the registered exact F16/rocBLAS pair producer;
+  full production-profile KL/top-1 gates remain a Packet 6 item). Bucket
+  bounding and retirement remain open; the 512/128 arm (declared 768) is
+  unchanged and still scratch-dominated below the 1,024-row threshold.
 - [ ] Bound cached graph/workspace buckets and safe retirement. Test wide-to-C1
   and C1-to-wide histories. Report reusable pool capacity separately from memory
   returned to the device allocator.
@@ -421,6 +432,15 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   card-infeasible at this model size; 8K-128K rows are policy-capped
   unreachable, not measured ceilings. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-c1-boundary-refinement.json`.
+  Superseded same day by the prefill scratch row cap (that scratch, not KV
+  bytes, was the binding constraint below 4K): BF16 last pass **40,960**
+  declared tokens (4,096/8,192/16,384/32,768 pass at 19.379/19.955/21.098/
+  23.162 GiB; 40,960 razor-thin at 23.973; 45,056 first fails startup OOM at
+  23.943 GiB); qualified INT8 fp32 reaches **15,872** (20.349 GiB) before a
+  pre-existing functional blocker — request-time HIP error 1 (invalid
+  argument) in (15,872, 16,128], reproduced uncapped on the base tree — not a
+  memory ceiling. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json`.
 - [ ] Budget D=24/128/512 and reduce L to leave output/lookahead space. Include
   natural long-output cases; an early EOS proves only the work actually done.
 - [ ] Concurrent baseline: 512 prompt/128 output at N=C=1 through 8, including
@@ -434,13 +454,20 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   resolved: last pass **N=6**, per-request slope ~0.99 GiB — superseding the
   withdrawn "four to five" estimate, which predated the repaired probe and
   the workspace right-size. N=3 not separately measured (monotone between
-  N=2 and N=4). Wider per-request budgets are bounded by the C1 3,840/4,864
-  boundaries. At the D=512 budget (512-token prompts, page-aligned 1,280
-  context) the solid last pass drops to **N=3** (22.692 GiB): N=4 is marginal
-  at the card edge (one run served the horizon but failed the 128 MiB
-  idle-reclaim gate at 159 MiB; a repeat failed warmup OOM at 23.947 GiB),
-  N=5-7 fail warmup OOM — per-session prefill scratch scales with
-  max_positions. Artifact:
+  N=2 and N=4). Wider per-request budgets are bounded by the C1 boundaries
+  (after the scratch row cap: BF16 40,960 / INT8 fp32 15,872 functional-
+  blocked). At the D=512 budget (512-token prompts, page-aligned 1,280
+  context) the scratch row cap moves the solid last pass from **N=3** to
+  **N=4** (23.821 GiB, clean): N=5 is marginal (serves the horizon; idle
+  residue 159 MiB vs the 128 MiB gate, reproduced), N=6 fails warmup OOM at
+  23.976 GiB; N=3 improved 22.692 -> 22.129 GiB (~-0.19 GiB/session). The
+  512/128 arm (declared 768, below the 1,024-row cap threshold) is unchanged:
+  last pass **N=6**, per-request slope ~0.99 GiB, N=7/8 fail eager warmup
+  (STARTUP_SCRATCH_PROBE OOM, sampled failure peaks 23.972/23.955 GiB) — its
+  slope is still prefill-scratch-dominated and is the recorded next lever
+  (sub-1,024 row cap or served-chunk sizing, gated on the GDN 512-row chunk
+  qualification). Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json`. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-concurrency-d512.json`. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-concurrency-512-128.json`.
 - [ ] Measure K1-K3 where engaged; include K4-K7 as their owning campaign

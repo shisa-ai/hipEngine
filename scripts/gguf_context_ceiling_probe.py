@@ -246,6 +246,18 @@ def token_ids_sha256(token_ids: Sequence[int]) -> str:
     return digest.hexdigest()
 
 
+def default_prompt_token_target(context_tokens: int, max_tokens: int) -> int:
+    """Default live prompt target: reserve the server continuation token.
+
+    The server requires ``prompt + max_tokens + 1 <= context``; targeting
+    ``context - max_tokens`` alone lets an exact fit overflow by one and fail
+    with 400 context_length_exceeded (observed at declared 8192/32768 on
+    2026-09-06).
+    """
+
+    return int(context_tokens) - int(max_tokens) - 1
+
+
 def fit_prompt_tokens(
     *,
     unit_token_ids: Sequence[int],
@@ -658,7 +670,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 target_prompt_tokens = int(
                     args.prompt_tokens
                     if args.prompt_tokens is not None
-                    else args.context - args.max_tokens
+                    else default_prompt_token_target(args.context, args.max_tokens)
                 )
                 try:
                     prompt_text, counted = fit_prompt_tokens(

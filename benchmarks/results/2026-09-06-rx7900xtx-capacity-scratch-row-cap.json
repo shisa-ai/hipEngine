@@ -1,0 +1,219 @@
+{
+ "schema": 1,
+ "date": "2026-09-06",
+ "kind": "rx7900xtx_qwen38_dense_prefill_scratch_row_cap",
+ "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+ "packet": "Packet 2 remainder: prefill scratch rows (right-size by execution shape)",
+ "performance_claim": false,
+ "diagnostic": true,
+ "summary": "Registering a gfx1100 dense-H5120 Q4_K_M prefill scratch row-cap policy (GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES, min_capacity 1024 -> max_rows 1024) removed the declared-context-proportional session scratch (~1 MiB per declared token vs the 64 KiB/token BF16 KV payload). The BF16 single-request declared-context boundary moved 3,840 -> 40,960 tokens (10.7x) on the same probe protocol; the INT8 route passed 5,120 (its pre-fix first OOM) and reaches a pre-existing functional blocker (request-time HIP error 1) in (15872, 16128], reproduced uncapped on the base tree; the d512 concurrency boundary moved solid N=3 -> solid N=4 with N=5 marginal (serves the horizon, idle residue 159 MiB vs the 128 MiB gate).",
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "sampled_fingerprint_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+ },
+ "device": {
+  "gpu_index_requested": 1,
+  "pci_id": "0000:10:00.0",
+  "drm_card": "card0",
+  "vram_total_bytes": 25753026560,
+  "hip_visible_devices": "1"
+ },
+ "protocol": {
+  "backend": "hip_gfx1100",
+  "max_tokens": 16,
+  "speculative_mtp_serving": "off",
+  "prefix_cache": "off",
+  "gpu_max_hw_queues": 1,
+  "kv_pool_idle_grace_seconds": 0,
+  "sample_interval_ms": 20,
+  "probe": "scripts/gguf_context_ceiling_probe.py (repaired probe; prompt-fit target fixed to context - max_tokens - 1 in this unit)",
+  "one_cold_server_per_point": true
+ },
+ "change": {
+  "policy": "GGUF_DENSE_PREFILL_SCRATCH_ROW_CAP_POLICIES",
+  "geometry": "QWEN35_DENSE_H5120_GEOMETRY",
+  "file_type": "MOSTLY_Q4_K_M",
+  "min_capacity": 1024,
+  "max_rows": 1024,
+  "exactness_evidence": [
+   "Short-prompt (27-token) greedy trajectory at declared 3072 identical cap-off vs cap-on (48-token sha16 cdf9568b27561826 both).",
+   "Long-prompt 2,650-token server greedy request: identical authoritative token-id sha256 dbdf47b8f77e9fa09c4167c4b0a601318f7f354feebfcffdc9f8c2869480bc53 across cap-off (single 2,650-row pass, exact Q4T16 singletons) and cap-on (1,024-row outer chunks, F16/rocBLAS pair producer at the registered (1024,2047) interval).",
+   "GDN linear chunk unchanged (1024); per-row full attention is independent of query-row batching.",
+   "Caveat recorded: trajectory parity is not the full production-profile gate; mean/tail/max KL and top-1 by category remain a Packet 6 evidence item before any serving-default promotion beyond this campaign."
+  ]
+ },
+ "bf16_points": [
+  {
+   "declared_context_tokens": 3840,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 19.374820709228516,
+   "prior_request_peak_gib": 21.82,
+   "prior_status": "ok"
+  },
+  {
+   "declared_context_tokens": 4096,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 19.37863540649414,
+   "prior_status": "oom_startup",
+   "prior_sampled_failure_peak_gib": 23.951
+  },
+  {
+   "declared_context_tokens": 8192,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 19.95498275756836
+  },
+  {
+   "declared_context_tokens": 16384,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 21.097572326660156
+  },
+  {
+   "declared_context_tokens": 32768,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 23.161914825439453
+  },
+  {
+   "declared_context_tokens": 40960,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 23.973438262939453
+  },
+  {
+   "declared_context_tokens": 45056,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "oom_startup",
+   "sampled_peak_gib": 23.943252563476562
+  }
+ ],
+ "bf16_boundary": {
+  "last_pass_tokens": 40960,
+  "first_failure_tokens": 45056,
+  "first_failure_status": "oom_startup"
+ },
+ "int8_points": [
+  {
+   "declared_context_tokens": 5120,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 19.290260314941406,
+   "prior_status": "oom_startup (first failure pre-fix)"
+  },
+  {
+   "declared_context_tokens": 8192,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 19.58332061767578
+  },
+  {
+   "declared_context_tokens": 12288,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 19.973724365234375
+  },
+  {
+   "declared_context_tokens": 15872,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "ok",
+   "sampled_peak_gib": 20.349018096923828
+  },
+  {
+   "declared_context_tokens": 16128,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "hip_error_1_request",
+   "sampled_peak_gib": 20.35662841796875,
+   "base_tree_status": "hip_error_1_request (pre-existing, reproduced uncapped)"
+  },
+  {
+   "declared_context_tokens": 16384,
+   "max_tokens": 16,
+   "max_active_requests": 1,
+   "status": "hip_error_1_request",
+   "sampled_peak_gib": 20.360591888427734,
+   "base_tree_status": "hip_error_1_request (pre-existing, reproduced uncapped at 22.771 GiB)"
+  }
+ ],
+ "int8_boundary": {
+  "last_pass_tokens": 15872,
+  "functional_blocker": "request-time HIP error 1 (invalid argument) in (15872, 16128]; pre-existing, reproduced on the uncapped base tree at 16384; not a memory ceiling"
+ },
+ "d512_concurrency": {
+  "workload": {
+   "prompt_tokens": 512,
+   "output_tokens": 512,
+   "context_tokens": 1280
+  },
+  "points": {
+   "n3": {
+    "declared_context_tokens": 1280,
+    "max_tokens": 512,
+    "max_active_requests": 3,
+    "status": "ok",
+    "sampled_peak_gib": 22.129009246826172,
+    "prior_request_peak_gib": 22.692
+   },
+   "n4": {
+    "declared_context_tokens": 1280,
+    "max_tokens": 512,
+    "max_active_requests": 4,
+    "status": "ok",
+    "sampled_peak_gib": 23.820556640625,
+    "prior_status": "not_idle (marginal)"
+   },
+   "n5": {
+    "declared_context_tokens": 1280,
+    "max_tokens": 512,
+    "max_active_requests": 5,
+    "status": "not_idle",
+    "sampled_peak_gib": null,
+    "prior_status": "oom_startup"
+   },
+   "n6": {
+    "declared_context_tokens": 1280,
+    "max_tokens": 512,
+    "max_active_requests": 6,
+    "status": "oom_startup",
+    "sampled_peak_gib": 23.976055145263672,
+    "prior_status": "oom_startup"
+   }
+  },
+  "boundary": {
+   "last_solid_pass": 4,
+   "marginal": 5,
+   "first_oom": 6,
+   "prior_last_solid_pass": 3
+  },
+  "per_session_delta_gib": "N=3 peak 22.692 -> 22.129 (-0.563 over 3 sessions, ~-0.19/session from the 1,280 -> 1,024 scratch-row cut)"
+ },
+ "untouched_arm": {
+  "workload": "512/128 (declared context 768)",
+  "reason": "declared context is below the 1,024-row cap threshold; the arm's ~0.986 GiB/request slope remains scratch-dominated and is the recorded next lever (sub-1,024 row cap or served-chunk sizing), gated on the GDN 512-row chunk qualification (KL/top-1 production gates)."
+ },
+ "probe_fix": {
+  "defect": "default prompt target was context - max_tokens; the server requires prompt + max_tokens + 1 <= context, so an exact fit failed with 400 context_length_exceeded at declared 8192/32768 (observed prompt 8177/32752).",
+  "fix": "default_prompt_token_target() reserves the +1; unit test added."
+ },
+ "pre_existing_unrelated_test_failure": "tests/test_gguf_packed_workspace_stability.py::test_packed_workspace_interleave_is_alloc_stable fails identically on the base tree (verified via stash run); not caused by this unit.",
+ "commands": [
+  "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 uv run python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --context <CTX> --max-tokens 16 --max-active-requests 1 --gpu-index 1 --json <OUT>",
+  "INT8 points add --kv-storage int8_per_token_head --kv-scale-dtype fp32 --kv-scale-granularity per_token_head",
+  "d512 points add --context 1280 --prompt-tokens 512 --max-tokens 512 --max-active-requests <N>"
+ ]
+}
