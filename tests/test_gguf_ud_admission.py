@@ -13,6 +13,9 @@ from pathlib import Path
 
 import pytest
 
+from hipengine.core.device import Device
+from hipengine.core.dtype import DType
+from hipengine.core.tensor import Tensor
 from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.qwen35_gguf import (
     FULL_ATTENTION,
@@ -40,6 +43,7 @@ from hipengine.loading.qwen35_gguf_admission import (
     build_qwen35_gguf_role_manifest,
     certificate_covers_artifact,
     preflight_qwen35_gguf_artifact,
+    qwen35_gguf_native_row_binding_errors,
     resolve_qwen35_gguf_artifact_preset,
 )
 from hipengine.loading.qwen35_gguf_materialize import (
@@ -1166,3 +1170,291 @@ def test_loader_selected_subset_preflight_passes_on_qualified_subset(monkeypatch
             backend="hip_gfx1100",
             selected_slots=("root.output_norm",),
         )
+
+
+# ---------------------------------------------------------------------------
+# U1 review repair 1: the native-row owner contract is enforced at the real
+# loader and runner entries, not only in isolated preflight records
+# ---------------------------------------------------------------------------
+
+
+def _fake_allocation(shape: tuple[int, ...], dtype: DType):
+    """A CPU allocation stand-in exposing a real-dtype Tensor like the loader."""
+
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        tensor=Tensor.from_handle(0x5000, shape, dtype, Device("hip", 0)),
+    )
+
+
+def _resident_with_alpha_beta(layout: str, *, raw_dtype: DType | None):
+    """One-layer resident whose alpha/beta carry the given layout/allocations."""
+
+    from types import MappingProxyType
+
+    from hipengine.loading.qwen35_gguf_materialize import (
+        LAYOUT_DENSE_BF16,
+        Qwen35GGUFDeviceWeight,
+        Qwen35GGUFResidentLayerWeights,
+        Qwen35GGUFResidentWeights,
+        Qwen35GGUFWeightSpec,
+    )
+
+    def spec_for(slot: str) -> Qwen35GGUFWeightSpec:
+        if slot in ("ssm_alpha", "ssm_beta"):
+            return Qwen35GGUFWeightSpec(
+                slot_path=f"layers.0.{slot}",
+                source=_tensor(f"blk.0.{slot}.weight", (2, 8)),
+                quant_key="bf16" if layout == LAYOUT_DENSE_BF16 else layout,
+                layout=layout,
+                allocation_names=("raw",) if raw_dtype is not None else ("tiles",),
+            )
+        raise AssertionError(slot)
+
+    allocations = {}
+    if raw_dtype is not None:
+        allocations["raw"] = _fake_allocation((2, 8), raw_dtype)
+    else:
+        allocations["tiles"] = _fake_allocation((2, 1, 8), DType.INT8)
+    weight = Qwen35GGUFDeviceWeight(
+        spec=spec_for("ssm_alpha"),
+        allocations=MappingProxyType(allocations),
+        backend="hip_gfx1100",
+    )
+    beta = Qwen35GGUFDeviceWeight(
+        spec=spec_for("ssm_beta"),
+        allocations=MappingProxyType(dict(allocations)),
+        backend="hip_gfx1100",
+    )
+    return Qwen35GGUFResidentWeights(
+        config=_config((LINEAR_ATTENTION,)),
+        root_weights={},
+        layers=(
+            Qwen35GGUFResidentLayerWeights(
+                layer_id=0,
+                layer_type=LINEAR_ATTENTION,
+                weights=MappingProxyType({"ssm_alpha": weight, "ssm_beta": beta}),
+            ),
+        ),
+        backend="hip_gfx1100",
+    )
+
+
+def test_native_row_binding_errors_name_every_invalid_alpha_beta_owner():
+    from hipengine.loading.qwen35_gguf_materialize import (
+        LAYOUT_DENSE_BF16,
+        LAYOUT_DENSE_F32,
+        LAYOUT_GGUF_Q8_0_T16,
+        LAYOUT_RAW_GGUF,
+    )
+
+    valid = _resident_with_alpha_beta(LAYOUT_DENSE_BF16, raw_dtype=DType.BF16)
+    assert qwen35_gguf_native_row_binding_errors(valid) == ()
+
+    raw_q8 = _resident_with_alpha_beta(LAYOUT_RAW_GGUF, raw_dtype=DType.INT8)
+    raw_errors = qwen35_gguf_native_row_binding_errors(raw_q8)
+    assert len(raw_errors) == 2
+    assert all("layers.0.ssm_alpha" in e or "layers.0.ssm_beta" in e for e in raw_errors)
+    assert all("ar_decode_native_rows" in e for e in raw_errors)
+
+    sole_t16 = _resident_with_alpha_beta(LAYOUT_GGUF_Q8_0_T16, raw_dtype=None)
+    t16_errors = qwen35_gguf_native_row_binding_errors(sole_t16)
+    assert len(t16_errors) == 2
+    assert all("raw" in e for e in t16_errors)
+
+    dense_f32 = _resident_with_alpha_beta(LAYOUT_DENSE_F32, raw_dtype=DType.FP32)
+    f32_errors = qwen35_gguf_native_row_binding_errors(dense_f32)
+    assert len(f32_errors) == 2
+    assert all("dense_f32" in e for e in f32_errors)
+
+
+def _cpu_allocation_fakes(monkeypatch):
+    """Let the real loader materialize real allocation records on CPU."""
+
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+
+    copied: list[tuple[str, int]] = []
+
+    class _FakeBuffer:
+        def __init__(self, nbytes: int, ptr: int):
+            self.nbytes = int(nbytes)
+            self.ptr = int(ptr)
+
+    counter = {"ptr": 0x10000}
+
+    def fake_malloc(nbytes, runtime=None):
+        counter["ptr"] += 0x1000
+        return _FakeBuffer(nbytes, counter["ptr"])
+
+    def fake_copy(buffer, host_array, nbytes, runtime=None):
+        copied.append((getattr(host_array, "name", "?"), int(nbytes)))
+
+    monkeypatch.setattr(host_materialize, "malloc", fake_malloc)
+    monkeypatch.setattr(host_materialize, "copy_host_to_device", fake_copy)
+    monkeypatch.setattr(loader, "malloc", fake_malloc)
+    return copied
+
+
+def _materialize_fixture_on_cpu(path: Path, monkeypatch, **kwargs):
+    from hipengine.loading.qwen35_gguf_materialize import materialize_qwen35_gguf_weights
+
+    _cpu_allocation_fakes(monkeypatch)
+    return materialize_qwen35_gguf_weights(str(path), backend="hip_gfx1100", **kwargs)
+
+
+def _native_entry_session(resident, *, scratch_owner):
+    """A real Qwen35GGUFResidentSession frame without device construction."""
+
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+    session = object.__new__(Qwen35GGUFResidentSession)
+    session.model_path = "<fixture>"
+    session.runtime = object()
+    session.backend = "hip_gfx1100"
+    session.max_batch_size = 8
+    session._position = 0
+    session.runner = SimpleNamespace(
+        weights=resident,
+        backend="hip_gfx1100",
+        hidden_size=256,
+        vocab_size=64,
+    )
+    session._target_scratch_owner = scratch_owner
+    session._token_buf = object()
+    session._hidden_a = object()
+    session._hidden_b = object()
+    session._logits_buf = object()
+    session._native_cu_seqlens_buf = object()
+    session._native_state_indices_buf = object()
+    session._native_token_ids_host = object()
+    return session
+
+
+class _PositionOwnerSentinel:
+    """Records set_full_attention_positions calls; device work must not happen."""
+
+    def __init__(self, rows: int = 2):
+        import numpy as np
+
+        self.position_host = np.zeros(rows, dtype=np.int64)
+        self.calls: list[tuple] = []
+
+    def set_full_attention_positions(self, positions, runtime):
+        self.calls.append(tuple(positions))
+
+
+@pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
+def test_materializer_requested_operations_bind_native_rows_before_allocation(monkeypatch):
+    """Requesting ar_decode_native_rows at load refuses an unqualified artifact
+    through the aggregated preflight BEFORE any allocation (the requested mode
+    is bound to pre-allocation admission, not only to the runtime entry)."""
+
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+
+    sentinel = _AllocationSentinel("allocator invoked before native-row admission")
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+        materialize_qwen35_gguf_weights(
+            str(SMALL_Q8_0),
+            backend="hip_gfx1100",
+            requested_operations=(*DEFAULT_AR_OPERATIONS, QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS),
+        )
+    assert sentinel.calls == []
+    message = str(excinfo.value)
+    assert "ssm_alpha" in message and "ssm_beta" in message
+    assert "native" in message.lower()
+
+
+def test_step_rows_native_refuses_unbound_native_owner_before_state_or_device(monkeypatch, tmp_path):
+    """RED (U1 review repair 1): a real loader-materialized resident whose
+    alpha/beta are dense F32 (uncontracted plain lane) must be refused at the
+    real step_rows_native entry BEFORE positions mutate or any device call."""
+
+    from tests._qwen35_gguf_fixture import (
+        default_fixture_tensors,
+        fixture_metadata,
+        write_qwen35_gguf,
+    )
+
+    path = tmp_path / "f32-alpha-beta.gguf"
+    write_qwen35_gguf(path, default_fixture_tensors(1), fixture_metadata(1))
+    resident = _materialize_fixture_on_cpu(path, monkeypatch)
+    owner = _PositionOwnerSentinel()
+    session = _native_entry_session(resident, scratch_owner=owner)
+
+    with pytest.raises(ValueError) as excinfo:
+        session.step_rows_native((11, 22))
+    message = str(excinfo.value)
+    assert "ar_decode_native_rows" in message
+    assert "ssm_alpha" in message and "ssm_beta" in message
+    assert owner.calls == [], "positions mutated before the native-row binding check"
+    assert int(owner.position_host[0]) == 0
+
+
+def test_capture_native_rows_graph_refuses_unbound_native_owner_before_device(monkeypatch, tmp_path):
+    from tests._qwen35_gguf_fixture import (
+        default_fixture_tensors,
+        fixture_metadata,
+        write_qwen35_gguf,
+    )
+
+    path = tmp_path / "f32-alpha-beta-capture.gguf"
+    write_qwen35_gguf(path, default_fixture_tensors(1), fixture_metadata(1))
+    resident = _materialize_fixture_on_cpu(path, monkeypatch)
+    owner = _PositionOwnerSentinel()
+    session = _native_entry_session(resident, scratch_owner=owner)
+
+    with pytest.raises(ValueError) as excinfo:
+        session.capture_native_rows_graph(rows=2, max_context_len=64)
+    assert "ar_decode_native_rows" in str(excinfo.value)
+    assert owner.calls == []
+
+
+def test_step_rows_native_admits_contracted_bf16_owner_and_reaches_device_entry(monkeypatch, tmp_path):
+    """The valid owner (raw-IQ manifest contracts F32 alpha/beta to dense BF16)
+    passes the entry check and proceeds into device staging."""
+
+    from tests._qwen35_gguf_fixture import (
+        fixture_metadata,
+        linear_attention_layer_slots,
+        write_qwen35_gguf,
+    )
+    from hipengine.quant.gguf import GGMLQuantizationType
+
+    tensors = [
+        ("token_embd.weight", (64, 256), GGMLQuantizationType.Q8_0),
+        ("output_norm.weight", (256,), GGMLQuantizationType.F32),
+    ]
+    tensors.extend(
+        linear_attention_layer_slots(
+            0,
+            projection_type=GGMLQuantizationType.Q4_K,
+            alpha_beta_type=GGMLQuantizationType.F32,
+            attn_qkv_type=GGMLQuantizationType.IQ4_XS,
+        )
+    )
+    path = tmp_path / "raw-iq-contracted.gguf"
+    write_qwen35_gguf(path, tensors, fixture_metadata(1))
+    resident = _materialize_fixture_on_cpu(path, monkeypatch)
+    assert qwen35_gguf_native_row_binding_errors(resident) == ()
+
+    owner = _PositionOwnerSentinel()
+    session = _native_entry_session(resident, scratch_owner=owner)
+
+    def _fail_device_entry(*args, **kwargs):
+        raise RuntimeError("reached-device-entry")
+
+    session._native_compact_scratch = _fail_device_entry
+    with pytest.raises(RuntimeError, match="reached-device-entry"):
+        session.step_rows_native((11, 22))
+    # The position owner was staged before the (mocked) device scratch step,
+    # proving the entry gate admitted a genuinely contracted resident.
+    assert owner.calls == [(0, 0)]
