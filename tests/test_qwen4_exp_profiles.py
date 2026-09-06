@@ -57,6 +57,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE",
+        "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
@@ -141,6 +142,9 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert production.manifest["kv_policy"] == "paged_bf16_qsa_index_f32"
     assert production.manifest["graph_policy"] == "request_owned_exact_moe_graph_c1"
     selections = _selection_map(production)
+    packed = selections[("linear", "prefill_gdn_qkv_ssm_prepacked_mmq")]
+    assert packed["selected_variant"] == "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out"
+    assert packed["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
     argmax = selections[("argmax", "qwen4exp_normal_greedy_output")]
     assert argmax["selected_variant"] == "top1_i64"
     assert argmax["strict_fallback_variant"] == "top1_i64"
@@ -246,6 +250,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "1"
     wave = _selection_map(production)[("linear", "prefill_exact_q8_f32_coltile")]
     assert wave["selected_variant"] == "coltile8_rowbatch4_wave_scale_f32_f32_out"
     assert wave["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
@@ -338,6 +343,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"

@@ -53,7 +53,23 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Q8 MMQ prepack runtime admission (September6 UTC):** default-off
+**Q8 MMQ prepack production (September6 UTC):** clean `3d20550df` full12-case
+A/B preserves all72 trajectories and improves every case's prefill:
+156.707->157.748 /154.396->155.375 /143.903->144.736 tok/s at512/1K/4K
+(+0.664%/+0.634%/+0.579%). Eleven request-wall rows improve; mixed512
+regresses0.14%. Aggregate decode changes-0.057%/-0.027%/-0.138%, not a
+decode-kernel win. Retention follows the owner's exact-prefill-first direction.
+Overall request speedup1.00347x; max per-case PP/TG CV0.864%/1.804%.
+The72 GPU-packed sidecars add1,793,064,960 bytes; preparation0.1069s is
+reported separately and both A/B arms retain the allocation. Full run33m15.6s.
+Production binds measured GDN QKV/SSM only; GR and strict arithmetic stay
+unchanged. Raw MMQ remains the production-parent rollback, strict coltile
+the declared numerical fallback. Larger-context/c2 capacity is not requalified
+by this timing result. The post-GR owner table is now **pre-MMQ promotion**
+and must be refreshed before selecting the next kernel.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json).
+
+**Earlier Q8 MMQ prepack runtime admission (September6 UTC):** default-off
 `HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` prepares72 runner-owned sidecars
 (1,793,064,960 additional bytes) for measured GDN QKV/SSM shapes. All five
 code512/code4096/English512/Japanese512/mixed512 full logits/state/KV cases
@@ -65,7 +81,7 @@ preparation/memory reporting; both timing arms retain sidecars. Next run
 No default promotion or new throughput claim yet.
 [State/ownership packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-state.json).
 
-**Exact Q8 MMQ K-major prepack candidate (September6 UTC):** matching the
+**Earlier Q8 MMQ K-major prepack kernel screen (September6 UTC):** matching the
 padded76-word LDS weight layout permits direct vector tile copies while
 preserving all three activation planes and per-output arithmetic.
 Real layer0/4 QKV rows512 confirms1.094/1.095x complete-chain speedup;

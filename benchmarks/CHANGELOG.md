@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q8 MMQ prepack production] Full12-case A/B prefill156.707->157.748 (+0.664%),154.396->155.375 (+0.634%),143.903->144.736 (+0.579%) at512/1K/4K;72/72 exact, all prefill rows faster,11/12 request rows improve (mixed512-0.14%). Memory+1.67GiB, prep0.107s,33m15.6s elapsed; retained per prefill-first direction. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json`.
+
 - [2026-09-06 UTC Framework Q8 MMQ prepack candidate] Exact K-major padded layout yields layer0/4 rows512 QKV1.094x/1.095x (+9.4%/+9.5%) and SSM1.022x (+2.2%) complete-chain speedup;58 tests, VGPR184->144/scratch0. GR remains inconclusive; memory/pack costs explicit, model admission pending. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack.json`.
 
 - [2026-09-06 UTC Framework GR MMQ64x128 rejection] Removing320-output padding with64x128 loses versus128x128: layer0/4 rows512 complete-chain0.722x/0.720x, rows64 also slower;4 tests and all20-pair outputs exact. Candidate removed; Q8 packing203ms versus5351ms matmul directs next work toward compute. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq64n128-rejected.json`.
