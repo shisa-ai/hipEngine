@@ -202,11 +202,13 @@ Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
 - **On a 24 GB card, Qwen3.8-27B `Q4_K_M` is tight.** Measured on a physical
-  RX 7900 XTX: one request starts and completes at **3,072 context tokens** and
-  fails to start at 4,096, on BF16 and INT8 alike; at 512-token prompts the same
-  budget allows four to five concurrent requests. **INT8 KV saves no memory
-  today** -- identical peaks to BF16 and the same failure point. Why the
-  footprint grows as steeply as it does is under investigation.
+  RX 7900 XTX with one active request: BF16 KV starts and completes at
+  **3,072 context tokens** and fails server warmup at 4,096 (21.869 and
+  23.328 GiB peak). Qualified compact INT8 KV (FP32 per-token/head scales,
+  no BF16 mirror) completes **4,096** and first fails warmup at 5,120, at
+  21.349 / 22.601 / 23.751 GiB for 2K / 3K / 4K — 0.5–0.7 GiB under BF16.
+  Most of the single-request footprint is fixed runtime residency, not KV.
+  [`startup boundary`](results/2026-09-06-rx7900xtx-startup-boundary-repaired-probe.json)
 
 ### Serving several requests at once
 

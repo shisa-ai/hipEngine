@@ -249,6 +249,9 @@ class LLM:
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
+        kv_storage: str | None = None,
+        kv_scale_dtype: str | None = None,
+        kv_scale_granularity: str | None = None,
     ) -> None:
         if max_active_requests is not None and int(max_active_requests) <= 0:
             raise ValueError("max_active_requests must be positive when set")
@@ -289,6 +292,11 @@ class LLM:
         self.speculative_provider = provider
         self.draft_model = drafter
         self.speculative_candidate_budget = candidate_budget
+        self.kv_storage = None if kv_storage is None else str(kv_storage)
+        self.kv_scale_dtype = None if kv_scale_dtype is None else str(kv_scale_dtype)
+        self.kv_scale_granularity = (
+            None if kv_scale_granularity is None else str(kv_scale_granularity)
+        )
         if prefix_cache is None:
             self.prefix_cache = None
         else:
@@ -905,6 +913,15 @@ class LLM:
             engine_loop_config_from_env(),
             generator,
         )
+        if self.kv_storage is not None:
+            # Publish the server-configured KV policy so the eager model-load
+            # prepare locks it instead of auto-resolving BF16 (which would
+            # reject the explicit per-request policy at startup).
+            generator.request_kv_policy_hint = (
+                self.kv_storage,
+                self.kv_scale_dtype or "fp16",
+                self.kv_scale_granularity or "per_token_head",
+            )
         resident_capacity = self.max_active_requests
         registered_plain_ar_capacity = _server_plain_ar_capacity(
             generator,
