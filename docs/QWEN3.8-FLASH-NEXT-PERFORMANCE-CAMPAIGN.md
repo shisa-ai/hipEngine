@@ -5,7 +5,10 @@
 Expose admission-aware native context through the public factory/prepare path,
 preserving the2051 model constant and exact sparse control. Short-capacity
 A/B is complete (48 exact trajectories; decode changes below0.1%, prefill
-cost explicit); plumbing and served sparse-context validation remain pending.
+cost explicit). Public plumbing now admits native262144 context on Framework,
+with c2 startup, served8K retrieval and clean over-limit rejection verified.
+Native-capacity boundary/chat followup is the remaining detour validation;
+do not claim fresh256K-length inference from this allocation evidence.
 MTP's independent1024 cap is not lifted by this work.
 
 ## Active execution contract (2026-09-05)
@@ -2119,6 +2122,12 @@ warm GPU-kernel claims.
       `benchmarks/results/2026-09-02-gfx1151-qwen38-flash-next-p9-load-drop-behind.json`.
 
 ### Phase P10 — long-context AR and optional KV profile
+
+September6 context correctness update: [capacity documentation](QWEN4EXP-CONTEXT-CAPACITY.md)
+separates the immutable2051 dense-equivalence limit from admission-aware native
+sequence capacity. Registered serving now exposes262144 on Framework with c2
+startup and8K retrieval passing. Prior depth-quality rows below remain their own
+evidence; native allocation does not replace full-depth inference validation.
 
 Goal: close depth-dependent competitor gaps only after short BF16 AR parity and
 the existing escalation thresholds permit each rung.
