@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 bundled reduction production (September6 UTC):** clean `c0fc635b5`
+full12-case A/B preserves all72 trajectories and improves every case's prefill
+and request wall. PP512/1024/4096:160.762->162.095 /158.892->159.958 /
+147.110->148.240 tok/s (+0.829%/+0.671%/+0.768%). Total request1.00458x.
+Aggregate TG-0.041%/-0.011%/-0.085%; worst individual TG-0.268%
+(Japanese4096). Retain under the exact-prefill-first owner decision, not a
+decode win. Max PP/TG CV0.955%/0.936%. Measured first-to-last span31m22.8s,
+excluding initial load/warmup; zero final owners and no new sidecars.
+Production selects bundle only within existing Q8 row4 rows>=512; strict,
+row1 small chunks and decode unchanged. Owner refresh follows separately.
+[Production evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json).
+
 **Q8 bundled reduction default-off admission (September6 UTC):** selector
 applies only after existing Q8 row4 prefill selection, rows>=512; both binders0.
 Five code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,

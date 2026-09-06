@@ -2,8 +2,16 @@
 
 Last updated: **2026-09-06 UTC**
 
-Q8 bundled reduction default-off model gate passes five exact full-logit/
-state/KV cases;4/32 prefill calls,zero decode calls/leaks. Throughput A/B pending.
+| Framework UD-Q4_K_XL / BF16 KV Q8 bundled reduction | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 160.762 -> 162.095 (+0.829%) | 158.892 -> 159.958 (+0.671%) | 147.110 -> 148.240 (+0.768%) |
+
+All72 trajectories exact; every case improves prefill/request wall. Aggregate
+decode-0.041%/-0.011%/-0.085% retained explicitly; no new allocations.
+[Production evidence](results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json).
+
+Earlier Q8 bundle admission passed five exact full-logit/state/KV cases;
+4/32 prefill calls,zero decode calls/leaks. Promotion evidence is above.
 [State evidence](results/2026-09-06-framework-qwen4exp-q8-down-bundle-state.json).
 
 Q8 down bundled-reduction kernel candidate:43.003->37.343ms (1.152x) on
