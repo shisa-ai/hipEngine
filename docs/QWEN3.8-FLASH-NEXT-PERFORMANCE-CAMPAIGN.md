@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 full decoded-weight register cache rejected (September6 UTC):**
+cache80 exact F32 values/thread across row groups at K2560, keeping RB8.
+Real layer3/mixed4096/chunk7 gate/up+SiLU loses17.013->25.548ms (0.666x),
+all ten pairs exact;13 GPU tests pass. Trace VGPR88->168, scratch0,
+LDS4608 unchanged, confirms the intended route. Register occupancy cost is
+a plausible explanation, not measured occupancy. Candidate removed.
+Do not repeat full-register caching unchanged.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json).
+
 **GR equal-accumulator column reuse also rejected (September6 UTC):**
 the opposite RB2/H4 trade is exact in13 tests/all80 real-weight pairs but
 near-flat:512-row attention1.006x, FFN0.996x, all order strata reverse.

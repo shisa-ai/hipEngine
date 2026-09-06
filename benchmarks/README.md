@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q4 full decoded-weight register cache rejected: real layer3/captured mixed4096
+routing gives0.666x parent throughput, exact; VGPR88->168 with no spills.
+[Evidence](results/2026-09-06-framework-qwen4exp-q4-weight-cache-rejected.json).
+
 Opposite GR RB2/H4 column reuse also rejected:512-row attention1.006x,
 FFN0.996x, exact but order-dependent. No runtime change.
 [Evidence](results/2026-09-06-framework-qwen4exp-gr-col-reuse-rejected.json).
