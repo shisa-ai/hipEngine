@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 bundled reduction default-off admission (September6 UTC):** selector
+applies only after existing Q8 row4 prefill selection, rows>=512; both binders0.
+Five code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
+four decode steps,state/full KV exactly. Calls0/4/0 or0/32/0 only in prefill,
+zero decode/final owners.28 CPU tests pass. Previous Q8 row4 and Q5 fold128
+promotions remain active. Clean12-case `--route-package q8-down-bundle` A/B
+is next; no new throughput or native-capacity claim.
+[State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-state.json).
+
 **Q8 down bundled reduction candidate (September6 UTC):** bundle row4 wave
 reductions into one LDS publication phase, preserving every row's arithmetic.
 Actual layer4 weights/counts and independent layer30 weights/borrowed layer4

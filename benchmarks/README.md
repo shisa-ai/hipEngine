@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q8 bundled reduction default-off model gate passes five exact full-logit/
+state/KV cases;4/32 prefill calls,zero decode calls/leaks. Throughput A/B pending.
+[State evidence](results/2026-09-06-framework-qwen4exp-q8-down-bundle-state.json).
+
 Q8 down bundled-reduction kernel candidate:43.003->37.343ms (1.152x) on
 layer4 actual weights/counts; second weight bank confirms1.153x with borrowed
 routing. Exact; runtime defaults unchanged.

@@ -2,8 +2,10 @@
 
 ## Qwen4Exp Q8 down bundled reduction candidate
 
-- Kernel-only `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
-  row4 arithmetic and bundles publication. No runtime flag/default yet.
+- Default-off `selected_grouped_row4_bundle_gemv_bf16_bf16_out` preserves
+  row4 arithmetic and bundles publication. Runtime admission adds default-off
+  `HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL` only after existing row4
+  selection, rows>=512; both profile binders pin0 until model A/B passes.
 - Promote only after full-model invocation/logits/state/KV and12-case A/B;
   remove if those reject it. Keep row4 rollback, row1 small-chunk owner and
   strict selected-GEMV fallback.
