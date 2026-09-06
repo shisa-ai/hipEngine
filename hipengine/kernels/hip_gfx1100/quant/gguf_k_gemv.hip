@@ -748,6 +748,7 @@ __global__ void gguf_k_prefill_out_coltile_rowbatch_kernel(
 // serial wave publication. The eight output slots are remapped to two hidden
 // columns across four branches so the publication threads can emit the exact
 // materialized sigmoid gate and branch-ordered mean.
+template <bool WAVE_SCALE = false>
 __launch_bounds__(128, 2)
 __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     const float* __restrict__ x,
@@ -784,7 +785,8 @@ __global__ void q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel(
     for (int branch = 0; branch < BRANCHES; ++branch) {
 #pragma unroll
       for (int col = 0; col < HIDDEN_TILE; ++col) {
-        weights[branch][col] = q8_0_weight(weight_rows[branch][col], k);
+        weights[branch][col] = WAVE_SCALE ? q8_0_weight_wave_scale(weight_rows[branch][col], k)
+                                         : q8_0_weight(weight_rows[branch][col], k);
       }
     }
 #pragma unroll
@@ -4731,7 +4733,8 @@ HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT(32)
 
 #undef HIPENGINE_GGUF_Q8_F32_ROWBATCH_EXPORT
 
-extern "C" int hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
+template <bool WAVE_SCALE>
+int launch_q8_gr_up_scale(
     const float* x,
     const uint8_t* qweight,
     const float* normalized,
@@ -4750,7 +4753,7 @@ extern "C" int hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4
     return static_cast<int>(hipErrorInvalidValue);
   }
   hipLaunchKernelGGL(
-      q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel,
+      (q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<WAVE_SCALE>),
       dim3(
           static_cast<unsigned int>(hidden / 2),
           static_cast<unsigned int>((rows + 3) / 4)),
@@ -4768,6 +4771,17 @@ extern "C" int hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4
       static_cast<int>(hidden));
   return static_cast<int>(hipGetLastError());
 }
+
+#define Q8_GR_SCALE_ENTRY(NAME, WAVE) \
+extern "C" int NAME(const float* x, const uint8_t* qweight, const float* normalized, \
+    float* gate, float* mixed, int64_t rows, int64_t in_features, int64_t branches, \
+    int64_t hidden, int64_t threads, hipStream_t stream) { \
+  return launch_q8_gr_up_scale<WAVE>(x, qweight, normalized, gate, mixed, rows, \
+      in_features, branches, hidden, threads, stream); \
+}
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32, false)
+Q8_GR_SCALE_ENTRY(hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32, true)
+#undef Q8_GR_SCALE_ENTRY
 
 #define HIPENGINE_GGUF_Q8_F32_COLTILE_EXPORT(COL_TILE, ROW_BATCH) \
 extern "C" int hipengine_gguf_q8_0_gemv_coltile##COL_TILE##_rowbatch##ROW_BATCH##_f32_f32_out( \
