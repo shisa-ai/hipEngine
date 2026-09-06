@@ -3905,7 +3905,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
 
     if rows <= 0:
         raise ValueError("rows must be positive")
-    _check_prefill_shape(rows, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_INDEXED_LOWP_BF16)
@@ -3977,7 +3977,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16(
 
     if rows <= 0:
         raise ValueError("rows must be positive")
-    _check_prefill_shape(rows, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     if rows < 8:
         qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16(
             conv_out_ptr,
@@ -4077,7 +4077,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state(
 
     if rows <= 0:
         raise ValueError("rows must be positive")
-    _check_prefill_shape(rows, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_INDEXED_LOWP_BF16_FP16STATE)
@@ -4154,7 +4154,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_indexed_shared_statecache24_lowp_bf16_fp16
 
     if rows <= 0:
         raise ValueError("rows must be positive")
-    _check_prefill_shape(rows, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     if rows < 8:
         qwen35_gdn_recurrent_rmsnorm_gate_indexed_lowp_bf16_fp16state(
             conv_out_ptr,
@@ -4249,9 +4249,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16(
 ) -> None:
     """Launch segmented BF16-gated decode-order recurrent GDN kernel."""
 
-    _check_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-    if segments <= 0:
-        raise ValueError("segments must be positive")
+    _check_segmented_gdn_shape(total_tokens, segments, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     from hipengine.loading.qwen35_gguf_consumer_surface import GDN_SEGMENTS
@@ -4270,9 +4268,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_state_rows_bf16(
 ) -> None:
     """Launch strict segmented GDN and publish every FP32 state row."""
 
-    _check_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-    if segments <= 0:
-        raise ValueError("segments must be positive")
+    _check_segmented_gdn_shape(total_tokens, segments, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_STATE_ROWS_BF16)
@@ -4329,9 +4325,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_bf16_fp16state(
     fallback.
     """
 
-    _check_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-    if segments <= 0:
-        raise ValueError("segments must be positive")
+    _check_segmented_gdn_shape(total_tokens, segments, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     from hipengine.loading.qwen35_gguf_consumer_surface import resolve_gdn_segments_contract
@@ -4365,9 +4359,7 @@ def qwen35_gdn_recurrent_rmsnorm_gate_segments_lowp_fp16(
 ) -> None:
     """Launch segmented FP16-gated decode-order recurrent GDN kernel."""
 
-    _check_prefill_shape(total_tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
-    if segments <= 0:
-        raise ValueError("segments must be positive")
+    _check_segmented_gdn_shape(total_tokens, segments, num_k_heads, num_v_heads, head_k_dim, head_v_dim)
     library = library or build_qwen35_linear_attn_gdn(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, _SYMBOL_SEGMENTS_LOWP_FP16)
@@ -5347,7 +5339,16 @@ def _check_prefill_shape(
 ) -> None:
     from hipengine.loading.qwen35_gguf_consumer_surface import validate_gdn_geometry
     _check_positive(tokens, "tokens")
-    validate_gdn_geometry(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
+    validate_gdn_geometry(num_k_heads, num_v_heads, head_k_dim, head_v_dim, prefill=True)
+
+
+def _check_segmented_gdn_shape(
+    total_tokens: int, segments: int, num_k_heads: int, num_v_heads: int,
+    head_k_dim: int, head_v_dim: int,
+) -> None:
+    _check_positive(total_tokens, "total_tokens")
+    _check_positive(segments, "segments")
+    _check_gdn_shape(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
 
 
 def _check_exact_prefill_shape(
@@ -5385,8 +5386,7 @@ def _check_gdn_shape(
     head_v_dim: int,
 ) -> None:
     from hipengine.loading.qwen35_gguf_consumer_surface import validate_gdn_geometry
-    validate_gdn_geometry(num_k_heads, num_v_heads, head_k_dim, head_v_dim,
-                          single_step=True)
+    validate_gdn_geometry(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
 
 
 def _check_positive(value: int, name: str) -> None:
