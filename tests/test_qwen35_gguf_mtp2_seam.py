@@ -518,12 +518,12 @@ def test_screening_depth_without_listed_cell_keeps_nonempty_proposal_widths(
         _gfx1100_screening_owner(capacity=2),
         enabled=True,
         target_verify_mode="packed",
-        candidate_budget=3,
+        candidate_budget=1,
     )
     ids = (41, 42)
     adapter._intents = {rid: 1 for rid in ids}
     adapter._static_eligibility_by_request = {
-        rid: _explicit_only_eligibility(rid, rows=8, depth=3) for rid in ids
+        rid: _explicit_only_eligibility(rid, rows=8, depth=1) for rid in ids
     }
     adapter._prompt_hidden_rows = {rid: object() for rid in ids}
     adapter._states = {}
