@@ -283,7 +283,10 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "1"
+    mapped = _selection_map(production)[("linear","prefill_rows_ge512_token_major_mapped_q8_down")]
+    assert mapped["selected_variant"] == "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
+    assert mapped["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"] == "1"

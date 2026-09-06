@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework mapped Q8 down production] Full12-case PP512/1024/4096:178.770->181.065 (+1.284%)/175.601->178.108 (+1.427%)/161.575->164.150 (+1.594%). All72 exact,all request cases faster,total1.00962x;TG-0.059%/+0.031%/+0.239%,tracked peak unchanged,current-call map guard retained. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-production.json`.
+
 - [2026-09-06 UTC Framework mapped Q8 down admission] Five full-logit/state/KV cases exact,calls0/1/0 or0/8/0,zero decode/final owners;22 CPU tests,both binders0. Current-call map guard and shared-kernel counter isolation;throughput delta N/A pending A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json`.
 
 - [2026-09-06 UTC Framework mapped Q8 down] Layer2 weights/borrowed layer0 code,mixed counts:selected80.728->mapped37.969ms /80.566->37.420ms (-52.97%/-53.55%),40 exact pairs,both orders positive.15 existing kernel tests,zero trace scratch;runtime gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down.json`.
