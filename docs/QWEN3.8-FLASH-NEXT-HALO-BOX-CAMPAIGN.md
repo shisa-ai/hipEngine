@@ -519,27 +519,27 @@ Reading rules and caveats, binding on any use of these rows:
 
 ### 5.2.1 Framework starting and current owner snapshots
 
-**Latest code-only checkpoint, September6:** after Q5_1 fold128 promotion,
-clean `1dacd1edb` code4096 prefill/decode capture has100% coverage, matched
+**Latest code-only checkpoint, September6:** after Q8 bundled reduction promotion,
+clean `2c132e253` code4096 prefill/decode capture has100% coverage, matched
 decode root, exact decode repeats and zero final owners. The table below is
 **code4096 only**, not the four-category aggregate in the generated block.
 Pinned earlier Vulkan is reused; different instruments remain diagnostic.
 
 | Prefill owner | hipEngine ms | halo-box Vulkan ms | HE / Vulkan |
 | --- | ---: | ---: | ---: |
-| MoE/FFN including shared | 14265.907 | 4541.955 | 3.141x |
-| Non-GR linear | 5349.549 | 1018.844 | 5.251x |
-| GR projections/read/mix | 4236.739 | 1708.654 | 2.480x |
-| QSA | 1918.930 | 645.530 | 2.973x |
-| GDN | 778.124 | 1390.027 | 0.560x |
+| MoE/FFN including shared | 14104.380 | 4541.955 | 3.105x |
+| Non-GR linear | 5359.522 | 1018.844 | 5.260x |
+| GR projections/read/mix | 4249.462 | 1708.654 | 2.487x |
+| QSA | 1920.757 | 645.530 | 2.975x |
+| GDN | 777.912 | 1390.027 | 0.560x |
 
-All200 pair2 Q5_1 calls use fold128, totaling3919.051ms. Earlier post-Q8
-row4 code-only snapshot remains
-[historical evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-down-family.json).
+All32 grouped-Q8 calls use bundled reduction, totaling1207.650ms.
+Earlier post-fold128 code-only snapshot remains
+[historical evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json).
 Total FFN/device sums need not fall across
 separate profiling sessions: the retained speed claim comes from the paired
-12-case A/B, not this snapshot. Decode QSA remains16.939ms versus3.081ms.
-[Joined packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-fold128-family.json).
+12-case A/B, not this snapshot. Decode QSA remains16.998ms versus3.081ms.
+[Joined packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json).
 The full multi-category snapshot below remains explicitly post-MMQ until its
 next complete six-case refresh.
 

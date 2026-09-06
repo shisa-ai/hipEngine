@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC post-Q8-bundle code4096 owners] Clean2c132e253:32 bundled calls/1.208s;FFN14.104s,linear5.360s,GR4.249s.100% coverage,matched decode/exact repeats/zero owners. Reused Vulkan,snapshot only,no causal delta. `benchmarks/results/2026-09-06-framework-qwen4exp-post-q8-bundle-family.json`.
+
 - [2026-09-06 UTC Framework Q8 bundle production] Full12-case PP512/1024/4096:160.762->162.095 (+0.829%)/158.892->159.958 (+0.671%)/147.110->148.240 (+0.768%).72 exact trajectories,all prefill/request walls improve,total1.00458x. TG-0.041%/-0.011%/-0.085% retained,no new memory. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.
 
 - [2026-09-06 UTC Framework Q8 bundle admission] Five full logits/state/KV off/on/off cases exact;calls0/4/0 or0/32/0 in prefill,zero decode/final owners. Both binders0,28 CPU tests. Throughput delta N/A pending12-case A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-state.json`.
