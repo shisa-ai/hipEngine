@@ -2,6 +2,13 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Incremental Framework UD-Q4_K_XL / BF16 KV result | p512 PP | p1024 PP | p4096 PP | Gate |
+| --- | ---: | ---: | ---: | --- |
+| GR wave-scale production, same-residency parent -> candidate | 156.017 -> 156.711 (+0.445%) | 153.748 -> 154.285 (+0.350%) | 143.419 -> 143.908 (+0.341%) | 72/72 exact; all12 request walls improve |
+
+[GR production evidence](results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
+Not a new external baseline or intrinsic decode-speed claim.
+
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
 authoritative evidence. It is not an optimization journal.

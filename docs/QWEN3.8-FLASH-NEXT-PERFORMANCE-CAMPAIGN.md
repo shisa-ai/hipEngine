@@ -53,15 +53,24 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**GR up wave-scale candidate (2026-09-06 UTC):** reuse the exact Q8
+**GR up wave-scale production (2026-09-06 UTC):** full12-case A/B at
+clean `d692f8f50` preserves all72 trajectories and improves weighted prefill
+156.017->156.711 /153.748->154.285 /143.419->143.908 tok/s
+at512/1K/4K (+0.445%/+0.350%/+0.341%). All cases improve prefill and
+complete-request wall; elapsed2002.339s (33m22s). Decode remains effectively
+flat; no intrinsic decode win is claimed. Production binds the existing
+rows>256/four-branch exact composite; strict retains the parent.
+[Promotion packet](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
+The post-Q8 family snapshot below is explicitly **pre-GR promotion** pending refresh.
+
+**GR up wave-scale kernel screen (2026-09-06 UTC):** reuse the exact Q8
 wave-uniform scale-address helper inside the operation-complete GR
 up+sigmoid+branch-mean composite. Actual layer0 rows512 attention/FFN up
 improves1.032/1.039x, layer4 confirms1.036/1.032x, without synthetic memory
 preconditioning. Means and both orders are positive;20 tests pass and gate/
 mixed F32 bits are exact. Both trace variants use72 VGPR/512 LDS/scratch0.
-Rows64 unconditioned order reversals remain explicit. No model default change;
-next is existing rows>256 composite admission via live invocation counts,
-full logits/state/KV and complete normal-model A/B.
+Rows64 unconditioned order reversals remain explicit. Subsequent model admission
+above covers only existing rows>256 composite use.
 [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-scale.json).
 
 **Post-Q8 current-HE family refresh:** six cases/twelve phase captures at
