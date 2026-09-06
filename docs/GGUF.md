@@ -78,6 +78,21 @@ The intake implementation is now past scanner/GEMV bring-up for the local Q4_K_M
 
 Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the accelerated runtime pieces land.
 
+## Mixed-format (Unsloth Dynamic) files
+
+A "UD-" GGUF assigns a different quantization format to each weight tensor, so one
+file names many formats at once. Whether such a file loads is decided by whether
+its format mix happens to sit inside what the route implements, not by the format
+family named in its filename. The mixture-of-experts route absorbs formats the
+dense route cannot: on the dense Qwen models, Qwen3.8-27B `UD-Q4_K_S` refuses 41
+tensors and `UD-Q4_K_M` refuses 18, while a plain `Q4_K_M` file refuses none.
+Widening the dense route to accept them means new kernels; converting them to
+dense BF16 instead raises resident weights from 14.29 GiB stored to about
+35.8 GiB, which no target machine can hold alongside a context. Measured per-format
+routing, the staged plan, and the gates each step must pass are in
+[`UD-QUANTS.md`](UD-QUANTS.md), produced by
+[`scripts/gguf_quant_route_audit.py`](../scripts/gguf_quant_route_audit.py).
+
 ## GGUF Q8 / INT8 KV cache status
 
 Last updated: 2026-08-13. Evidence artifacts:
