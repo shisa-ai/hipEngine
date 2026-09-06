@@ -240,6 +240,44 @@ GDN_PREFILL = replace(GDN_SINGLE, layer="gdn_prefill_recurrent", quant="gguf_qwe
     boundary="hipengine.runtime.qwen35_gguf_runner:Qwen35GGUFFullStackRunner._run_gdn_prefill")
 
 
+def validate_positive_geometry(value: int, name: str) -> None:
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+
+
+def validate_gdn_geometry(num_k_heads: int, num_v_heads: int,
+                          head_k_dim: int, head_v_dim: int, *,
+                          single_step: bool = False) -> None:
+    """Existing wrapper constraints, shared with cold invocation admission.
+
+    The c1 lowp wrapper caps the value head at 128. Segmented and baseline
+    prefill wrappers do not; do not borrow stricter exact-chain constraints.
+    Token/segment counts are checked by wrappers and admission's row domain.
+    """
+    validate_positive_geometry(num_k_heads, "num_k_heads")
+    validate_positive_geometry(num_v_heads, "num_v_heads")
+    if num_v_heads % num_k_heads != 0:
+        raise ValueError("num_v_heads must be divisible by num_k_heads")
+    validate_positive_geometry(head_k_dim, "head_k_dim")
+    validate_positive_geometry(head_v_dim, "head_v_dim")
+    if single_step and head_v_dim > 128:
+        raise ValueError("head_v_dim must be <= 128")
+
+
+def gdn_value_head_dim(inner_size: int, num_v_heads: int) -> int:
+    """Exact model-to-caller geometry; never truncate an incomplete head."""
+    validate_positive_geometry(num_v_heads, "num_v_heads")
+    validate_positive_geometry(inner_size, "ssm_inner_size")
+    if inner_size % num_v_heads:
+        raise ValueError("ssm_inner_size must be divisible by num_v_heads")
+    return inner_size // num_v_heads
+
+
+def validate_conv_geometry(channels: int, kernel_size: int) -> None:
+    validate_positive_geometry(channels, "channels")
+    validate_positive_geometry(kernel_size, "kernel_size")
+
+
 @lru_cache(maxsize=32)
 def resolve_gdn_operation_contract(operation: str, state_dtype: str = "f32") -> ConsumerContract:
     if operation not in {"ar_decode_c1", "ar_decode_rows", "ar_prefill", "ar_decode_native_rows"}:

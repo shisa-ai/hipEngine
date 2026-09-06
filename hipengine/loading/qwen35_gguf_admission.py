@@ -119,7 +119,8 @@ from hipengine.loading.qwen35_gguf_consumer_surface import (
     OPERATION_ROW_LIMITS, resolve_embedding_consumer_contract,
     resolve_router_consumer_contract, resolve_gdn_segments_contract,
     native_alpha_beta_consumer_contract, resolve_gdn_operation_contract, conv_operation_contract,
-    resolve_gdn_output_handoff,
+    resolve_gdn_output_handoff, validate_gdn_geometry, gdn_value_head_dim,
+    validate_conv_geometry,
     GGUF_ACTIVATION_BF16,
     GGUF_ACTIVATION_F32,
     GGUF_OUTPUT_BF16,
@@ -532,10 +533,19 @@ class Qwen35GGUFOperationCoverage:
         """Bind a qualified role to its concrete consumer and geometry."""
         if self.role_class in {"gdn_scalar", "gdn_norm"}:
             consumer = resolve_gdn_operation_contract(self.operation, recurrent_state_dtype)
+            validate_gdn_geometry(
+                config.ssm_group_count, config.ssm_time_step_rank, config.ssm_state_size,
+                gdn_value_head_dim(config.ssm_inner_size, config.ssm_time_step_rank),
+                single_step=consumer.abi == "single_gdn",
+            )
         elif self.role_class == "recurrent_alpha_beta" and self.operation == QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS:
             consumer = native_alpha_beta_consumer_contract()
         elif self.role_class == "conv1d":
             consumer = conv_operation_contract(self.operation)
+            validate_conv_geometry(
+                2 * config.ssm_group_count * config.ssm_state_size + config.ssm_inner_size,
+                config.ssm_conv_kernel,
+            )
         elif self.role_class == "token_embedding":
             consumer = resolve_embedding_consumer_contract(spec.layout, spec.quant_key)
         elif self.role_class == "moe_router":

@@ -3878,7 +3878,9 @@ class Qwen35GGUFFullStackRunner:
     @property
     def ssm_value_dim(self) -> int:
         assert self.weights is not None
-        return self.weights.config.ssm_inner_size // self.weights.config.ssm_time_step_rank
+        from hipengine.loading.qwen35_gguf_consumer_surface import gdn_value_head_dim
+        return gdn_value_head_dim(self.weights.config.ssm_inner_size,
+                                  self.weights.config.ssm_time_step_rank)
 
     def run_prompt_hidden(
         self,
