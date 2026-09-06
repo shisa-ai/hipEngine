@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q5_1 fold128 kernel candidate: actual two-bank down with captured code/mixed
+routing41.501->40.236ms (1.031x)/40.624->39.219ms (1.036x), exact.
+Runtime defaults unchanged; model admission pending.
+[Evidence](results/2026-09-06-framework-qwen4exp-q51-fold128.json).
+
 Q5_1 simultaneous pair reduction rejected: exact but0.661x at512 tokens
 on two actual down banks. Production remains unchanged.
 [Evidence](results/2026-09-06-framework-qwen4exp-q51-dual-reduce-rejected.json).

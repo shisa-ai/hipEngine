@@ -388,15 +388,17 @@ __device__ inline float q51_cached_weight(
   return d[block] * static_cast<float>(low | (high << 4)) + m[block];
 }
 
+template <bool FOLD128 = false>
 __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
     const uint16_t* __restrict__ input, const int64_t* __restrict__ starts,
     const uint8_t* __restrict__ weights, uint16_t* __restrict__ output,
     int64_t rows, int64_t experts, int64_t k, int64_t n) {
   constexpr int R = 8, L = 256;
+  constexpr int S = FOLD128 ? 128 : L;
   extern __shared__ float partial[];
   const int blocks = k / 32;
   const int row_bytes = blocks * 24;
-  float* d = partial + R * L;
+  float* d = partial + R * S;
   float* m = d + blocks * 2;
   uint32_t* qh = reinterpret_cast<uint32_t*>(m + blocks * 2);
   const int out_base = blockIdx.x * 8;
@@ -448,22 +450,26 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(
           if (out_base + offset + p >= n) continue;
 #pragma unroll
           for (int r = 0; r < R; ++r) {
-            partial[r*L+threadIdx.x] = acc0[p][r];
-            partial[r*L+threadIdx.x+128] = acc1[p][r];
+            if constexpr (FOLD128) {
+              partial[r*S+threadIdx.x] = acc0[p][r] + acc1[p][r];
+            } else {
+              partial[r*S+threadIdx.x] = acc0[p][r];
+              partial[r*S+threadIdx.x+128] = acc1[p][r];
+            }
           }
           __syncthreads();
-          for (int stride = 128; stride > 0; stride >>= 1) {
+          for (int stride = S / 2; stride > 0; stride >>= 1) {
             if (threadIdx.x < stride) {
 #pragma unroll
               for (int r = 0; r < R; ++r)
-                partial[r*L+threadIdx.x] += partial[r*L+threadIdx.x+stride];
+                partial[r*S+threadIdx.x] += partial[r*S+threadIdx.x+stride];
             }
             __syncthreads();
           }
           if (threadIdx.x == 0) {
 #pragma unroll
             for (int r = 0; r < R; ++r)
-              if (base+r < end) output[(base+r)*n+out_base+offset+p] = float_to_bf16_bits(partial[r*L]);
+              if (base+r < end) output[(base+r)*n+out_base+offset+p] = float_to_bf16_bits(partial[r*S]);
           }
           __syncthreads();
         }
@@ -973,20 +979,30 @@ extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatc
   return static_cast<int>(hipGetLastError());
 }
 
-extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out(
+template <bool FOLD128>
+int launch_q51_pair2(
     const void* input, const void* starts, const void* weights, void* output,
     int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t stream) {
   if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||
       k <= 0 || k % 32 || k > 4096 || n <= 0)
     return static_cast<int>(hipErrorInvalidValue);
-  hipLaunchKernelGGL(q5_1_selected_grouped_prefill_pair2_bf16_kernel,
+  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<FOLD128>),
       dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),
-      dim3(128), 8*256*sizeof(float)+(k/32)*24, stream,
+      dim3(128), 8*(FOLD128 ? 128 : 256)*sizeof(float)+(k/32)*24, stream,
       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),
       static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),
       rows, experts, k, n);
   return static_cast<int>(hipGetLastError());
 }
+
+#define Q51_PAIR_ENTRY(NAME, FOLD) \
+extern "C" int NAME(const void* x, const void* starts, const void* w, void* y, \
+    int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t s) { \
+  return launch_q51_pair2<FOLD>(x, starts, w, y, rows, experts, k, n, s); \
+}
+Q51_PAIR_ENTRY(hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out, false)
+Q51_PAIR_ENTRY(hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out, true)
+#undef Q51_PAIR_ENTRY
 
 extern "C" int hipengine_qwen4_exp_q5_1_selected_grouped_wmma_prefill_compact_bf16_bf16_out(
     const void* input,

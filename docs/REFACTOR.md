@@ -1,5 +1,15 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q5_1 fold128 candidate
+
+- Kernel-only `selected_grouped_prefill_pair2_fold128_bf16_bf16_out` halves
+  reduction scratch with exact arithmetic. No runtime flag/default change yet.
+- Promote only after invocation-checked full logits/state/KV and canonical
+  12-case A/B; remove if complete-model evidence rejects it. Keep current
+  pair2 rollback and strict M1/fallback chains.
+- The existing Q5 screen now supports same-layer captured counts, still with
+  synthetic activations. Those micros do not replace model admission.
+
 ## Qwen4Exp Q8 down row4 rollback
 
 - `selected_grouped_row4_gemv_bf16_bf16_out` passes invocation-checked model
