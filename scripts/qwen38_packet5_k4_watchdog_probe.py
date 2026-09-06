@@ -299,6 +299,8 @@ def _wrap_batcher_run_group(app: Any, out_dir: Path) -> None:
 def _trace_adapter_registration() -> None:
     """Log adapter register/release calls to localize C1 non-engagement."""
 
+    import traceback as _tb
+
     import hipengine.generation.qwen35_gguf_mtp2 as m2
 
     original_register = m2.Qwen35GGUFMTP2Adapter.register_request
@@ -337,6 +339,39 @@ def _trace_adapter_registration() -> None:
         return result
 
     m2.Qwen35GGUFMTP2Adapter.capability = traced_capability  # type: ignore[method-assign]
+
+    out_path = None
+
+    def traced_cycle(name: str, original: Any) -> Any:
+        def wrapper(self: Any, *args: Any, **kwargs: Any):
+            try:
+                return original(self, *args, **kwargs)
+            except BaseException as exc:  # noqa: BLE001 - probe records and re-raises
+                nonlocal out_path
+                if out_path is None:
+                    out_path = Path("/tmp/he-bettermtp-raw/packet5")
+                with open(
+                    out_path / "adapter-cycle-exceptions.log", "a", encoding="utf-8"
+                ) as handle:
+                    handle.write(f"=== {time.strftime('%H:%M:%S')} {name} ===\n")
+                    handle.write(_tb.format_exception(type(exc), exc, exc.__traceback__))
+                    handle.write("\n")
+                raise
+
+        return wrapper
+
+    for cycle_name in (
+        "execute_speculative_cycle",
+        "execute_target_frontier",
+        "propose_batch",
+    ):
+        original_cycle = getattr(m2.Qwen35GGUFMTP2Adapter, cycle_name, None)
+        if callable(original_cycle):
+            setattr(
+                m2.Qwen35GGUFMTP2Adapter,
+                cycle_name,
+                traced_cycle(cycle_name, original_cycle),
+            )
 
     def traced_register(
         self: Any,
