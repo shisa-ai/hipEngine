@@ -7,6 +7,9 @@
 set -u
 cd /home/lhl/hipEngine-gfx1100-concurrency2-better-mtp
 export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100
+# Screening cells (widths/depths without a listed policy cell) need explicit
+# opt-in since 96fa31006; the product-route cells do not use it.
+export HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1
 OUT=/tmp/he-bettermtp-raw/packet3
 mkdir -p "$OUT"
 PY=.venv/bin/python
