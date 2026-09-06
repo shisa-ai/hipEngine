@@ -259,28 +259,59 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 ### Packet 0 — Establish matched XTX controls
 
-- [ ] Record model hashes/tensor census, XTX UUID/PCI identity, driver/compiler,
+- [x] Record model hashes/tensor census, XTX UUID/PCI identity, driver/compiler,
   profile/variants, environment, display/other usage and actual total/free bytes.
-- [ ] Recover the 18.618 GiB 128/24 and historical 32K/112K commands and routes.
+  Recorded 2026-09-06: Q4_K_M 17,106,773,984 B / 866 tensors,
+  Q4_K_S 16,121,359,328 B / 866 tensors with inventory hashes, XTX PCI
+  `0000:10:00.0` unique_id `0xcc4d02090dc9c3ff`, ROCm 7.2.4 userspace on driver
+  7.1.3-2-cachyos. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-packet0-controls.json`.
+- [x] Recover the 18.618 GiB 128/24 and historical 32K/112K commands and routes.
   Run a narrow matched control first; mark unrecoverable anchors unmatched.
-- [ ] Freeze direct versus service-owner 512/128 controls, C/N, S, pool plan,
+  Recovered 2026-09-06 with per-anchor statuses (soak 112K INT8 RECOVERED with
+  harness+measured commits, 126K page-aligned probes RECOVERED, BF16 32K graph
+  row PARTIALLY RECOVERED); unsupported public interpretations corrected in the
+  same unit. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-packet0-controls.json`.
+- [x] Freeze direct versus service-owner 512/128 controls, C/N, S, pool plan,
   prefix policy, graph mode and MTP residency. Verify device selection at runtime.
-- [ ] Recover original probe logs/commands; correct unsupported public ceiling
+  Frozen 2026-09-06: direct-probe and service-owner 512/128 controls with
+  C/N=1, MTP off, prefix off, one cold server per point, runtime device
+  cross-check. Artifact:
+  `results/2026-09-06-rx7900xtx-startup-boundary-repaired-probe.json`.
+- [x] Recover original probe logs/commands; correct unsupported public ceiling
   or regression interpretations without modifying recorded sample values.
+  Done 2026-09-06: original anchors recovered with commands where available;
+  the published 32K/112K context rows were withdrawn and the INT8 "no memory
+  saving" row was re-interpreted as an unengaged BF16 fallback, with recorded
+  samples left untouched.
 
 ### Packet 1 — Repair the probe and account for shared reservations
 
-- [ ] Tokenize prompts and record actual L, requested/actual D, usage and finish
+- [x] Tokenize prompts and record actual L, requested/actual D, usage and finish
   reason. Complete the intended horizon or label it early-stop; do not equate
   configured context with live tokens. Validate response schema and correctness.
-- [ ] Sample through load, prefill and decode concurrently with the request;
+  Done 2026-09-06 (`caacf3bcf`): the probe fits the prompt to the exact token
+  target through the server tokenizer and validates choices/usage/finish
+  reason/authoritative token IDs before accepting a sample.
+- [x] Sample through load, prefill and decode concurrently with the request;
   record interval/gaps and allocation-stage peaks. Treat samples as lower bounds
   unless transient peaks are covered by instrumentation.
-- [ ] Verify child/device/port identity; freeze inherited configuration. Record
+  Done 2026-09-06: 20 ms sysfs `VramSampler` spans startup through request, and
+  warmup-failure sampling was corrected (the prior artifact's 16.9 GiB was
+  incomplete sampling; true 4,096 failure peak 23.951 GiB).
+- [x] Verify child/device/port identity; freeze inherited configuration. Record
   effective KV/scales/mirrors, MTP allocation/engagement, profile, pool/workspace
   plan, graph/prefix settings, full command, source and exit/stage logs.
-- [ ] Classify OOM only from matching error evidence; test other HIP errors,
+  Done 2026-09-06: the probe resolves the card by PCI id, requires the server
+  readiness payload to report the same device, and records effective KV/MTP/
+  pool/graph state with the full command; the INT8-with-FP16-scales fallback
+  (`runtime_action fallback_bf16`) is now classified instead of misreported.
+- [x] Classify OOM only from matching error evidence; test other HIP errors,
   process exits, readiness/request timeouts and malformed/short responses.
+  Done 2026-09-06: OOM matches only `out of memory` / `hipErrorOutOfMemory` /
+  `HIP error 2`; other HIP errors, process exits, readiness/request timeouts
+  and malformed/short responses are classified separately.
 - [x] Compare N=1/2/4/8 at C=1 and full occupancy. Attribute global request pages,
   leased workspace, private preparation, recurrent state and cached graphs.
   Trace the eight-slot workspace minimum before changing it.
