@@ -491,16 +491,17 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
-# avoid one-wave underfill on W7900. Rows4-128 use the four-wave row64 sibling
-# over one 16-row tile each (bit-exact to the parent at the verify-frontier
-# rows 4-32 per the 2026-09-06 packet3 row screen, 1.6-1.9x faster);
-# rows129-511 use the existing four-wave 256-row owner. Rows<=3 keep the
-# one-wave parent (unmeasured below 4), and rows>=512 retain the independently
-# gated source-F16 route. The one-wave parent remains a registered strict
-# fallback.
+# avoid one-wave underfill on W7900. Rows33-128 use four waves over one 16-row
+# tile each; rows129-511 use the existing four-wave 256-row owner. Rows<=32 keep
+# verifier ownership unchanged, and rows>=512 retain the independently gated
+# source-F16 route. The one-wave parent remains a registered strict fallback.
+# NOTE(packet3): rows 4-32 must stay on the parent until the shared4_row64
+# sibling is validated bit-exactly at EVERY in-engine frontier row count;
+# rows 20/28 (C5/K3, C7/K3 specdec2 physical) produced a GPU hang and
+# qualification refusals on 2026-09-06. See worklog packet3 L1 checkpoint.
 GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS = {
     (17_408, 5_120): (
-        (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
+        (33, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
         (129, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
     ),
 }
