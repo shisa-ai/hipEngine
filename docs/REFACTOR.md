@@ -6766,3 +6766,25 @@ The KV policy comparison in `hipengine/server/api.py` now resolves the
 re-resolving `config.kv_storage`. Before that, an artifact that failed closed to
 BF16 would reject an explicit BF16 request, because the comparison still believed
 the server was on INT8.
+
+## 2026-09-07 UD-U1 F3 — raw rank-3 Q4_K selected-expert consumer is not registry-mediated
+
+The F3 concrete-consumer qualification (UD-QUANTS U1 round 6) binds every
+certified admission coverage record to a concrete four-axis registry key,
+except one documented escape hatch: the raw rank-3 Q4_K selected-expert
+consumer. The production runtime (`_launch_selected_raw_gguf_moe_linear` in
+`runtime/qwen35_gguf_runner.py`) calls the direct module wrapper
+`hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_gemv:gguf_q4_k_selected_gemv_bf16_bf16_out`,
+which is not registered under its own registry key (only the
+`selected_dual_gemv_bf16_bf16_out`/`selected_pack8_gemv_bf16_bf16_out`
+siblings are). The admission record therefore names the module symbol
+(`consumer_module`/`consumer_symbol`) and the parity test proves the symbol
+exists on both HIP backends.
+
+Removal trigger: register the single selected wrapper under
+`(backend, "linear", "gguf_q4_k", "selected_gemv_bf16_bf16_out")` in
+`register_gguf_q4_k_gemv_kernels` (the Q5_K/Q6_K/Q8_0 raw selected singles are
+already registered this way by `register_gguf_k_gemv_kernels`), switch the
+runtime call site to registry resolution, and drop the
+`consumer_module`/`consumer_symbol` fields plus their parity branch from
+`hipengine/loading/qwen35_gguf_admission.py`.

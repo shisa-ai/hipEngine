@@ -665,6 +665,7 @@ def materialize_qwen35_gguf_weights(
     selective_weight_max_allocation_bytes: int = GGUF_SELECTIVE_WEIGHT_ARENA_MAX_ALLOCATION_BYTES,
     requested_operations: Iterable[str] | None = None,
     admission_certificate: Qwen35GGUFAdmissionCertificate | None = None,
+    f32_input_operations: Iterable[str] = (),
 ) -> Qwen35GGUFResidentWeights:
     """Materialize a validated Qwen3.5 GGUF map to resident device records.
 
@@ -688,7 +689,12 @@ def materialize_qwen35_gguf_weights(
     certificate that does not cover the plan this load would materialize is
     refused fail-closed. Callers that skip the preflight re-run can rely on
     it; the minted certificate is attached to the returned residents for
-    downstream re-verification.
+    downstream re-verification.  ``f32_input_operations`` declares
+    operations whose callers will supply F32 activation inputs (the
+    c1/verifier F32-input override route, for example the dense-F32
+    lm-head's registered ``dense_gemv/f32/f32_hidden_f32_out`` consumer); it
+    is recorded on the admission plan contract so certificates never
+    transfer across activation contracts.
     """
 
     reader = reader_or_path if isinstance(reader_or_path, GGUFReader) else GGUFReader(reader_or_path)
@@ -741,6 +747,7 @@ def materialize_qwen35_gguf_weights(
         decode_repack=decode_repack,
         slot_filter=None if selected is None else tuple(sorted(selected)),
         nextn_map=nextn_map,
+        f32_input_operations=f32_input_operations,
         **dense_flags,
     )
     if not admission_report.supported:
