@@ -636,6 +636,19 @@ def _diagnostic_static_eligibility(budget: int, *, max_realized_group_rows: int 
     )
 
 
+def _diag_eligibility_for(
+    args: argparse.Namespace, budget: int, concurrency: int
+) -> SpeculativeMTPStaticEligibility | None:
+    """Screening eligibility for one cell; concurrency 1 certifies C1 rows."""
+
+    if not args.diagnostic_plan:
+        return None
+    return _diagnostic_static_eligibility(
+        int(budget),
+        max_realized_group_rows=(1 if int(concurrency) == 1 else 8),
+    )
+
+
 def _request(
     prompt: str,
     max_tokens: int,
@@ -1317,11 +1330,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     max_sequence_length=int(args.max_sequence_length),
                     speculative_candidate_budget=int(budget),
                 )
-                diag_eligibility = (
-                    _diagnostic_static_eligibility(int(budget))
-                    if args.diagnostic_plan
-                    else None
-                )
                 ledger: _StageLedger | None = None
                 load_row: dict[str, Any] | None = None
                 try:
@@ -1364,12 +1372,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         warm_prompt = _render_prompt_suite_messages(
                             [{"role": "user", "content": "Write one short greeting."}]
                         )
-                        warm_request = _request(
-                            warm_prompt,
-                            min(int(args.max_tokens), 5),
-                            diag_eligibility,
-                        )
                         for concurrency in args.concurrency:
+                            warm_request = _request(
+                                warm_prompt,
+                                min(int(args.max_tokens), 5),
+                                _diag_eligibility_for(args, int(budget), int(concurrency)),
+                            )
                             for arm in ARMS:
                                 warm = _run_arm(
                                     arm=arm,
@@ -1413,11 +1421,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
                     for run_index in range(int(args.runs)):
                         for prompt_index, prompt in enumerate(prompts):
-                            request = _request(
-                                str(prompt["rendered_prompt"]),
-                                int(args.max_tokens),
-                                diag_eligibility,
-                            )
                             prompt_tokens = tuple(
                                 int(token)
                                 for token in service.tokenize(
@@ -1444,6 +1447,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                     "exact": False,
                                 }
                                 payload["cells"].append(cell)
+                                request = _request(
+                                    str(prompt["rendered_prompt"]),
+                                    int(args.max_tokens),
+                                    _diag_eligibility_for(
+                                        args, int(budget), int(concurrency)
+                                    ),
+                                )
                                 for arm in cell["execution_order"]:
                                     result = _run_arm(
                                         arm=str(arm),
