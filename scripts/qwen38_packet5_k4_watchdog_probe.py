@@ -296,6 +296,39 @@ def _wrap_batcher_run_group(app: Any, out_dir: Path) -> None:
     print("[probe] batcher._run_group/_generate_prompts wrapped for exception capture", flush=True)
 
 
+def _trace_adapter_registration() -> None:
+    """Log adapter register/release calls to localize C1 non-engagement."""
+
+    import hipengine.generation.qwen35_gguf_mtp2 as m2
+
+    original_register = m2.Qwen35GGUFMTP2Adapter.register_request
+    original_release = m2.Qwen35GGUFMTP2Adapter.release_request
+
+    def traced_register(
+        self: Any,
+        request_id: int,
+        candidate_budget: int,
+        *,
+        static_eligibility: Any = None,
+    ) -> Any:
+        print(
+            f"[probe-reg] register rid={request_id} budget={candidate_budget}"
+            f" elig={'yes' if static_eligibility is not None else 'NO'}",
+            flush=True,
+        )
+        return original_register(
+            self, request_id, candidate_budget, static_eligibility=static_eligibility
+        )
+
+    def traced_release(self: Any, request_id: int) -> Any:
+        print(f"[probe-reg] release rid={request_id}", flush=True)
+        return original_release(self, request_id)
+
+    m2.Qwen35GGUFMTP2Adapter.register_request = traced_register  # type: ignore[method-assign]
+    m2.Qwen35GGUFMTP2Adapter.release_request = traced_release  # type: ignore[method-assign]
+    print("[probe] adapter registration tracing enabled", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
@@ -313,6 +346,11 @@ def main() -> int:
         "--direct",
         action="store_true",
         help="bypass the server batcher and call the engine runner directly",
+    )
+    parser.add_argument(
+        "--trace-registration",
+        action="store_true",
+        help="log adapter register/release calls",
     )
     args = parser.parse_args()
 
@@ -380,6 +418,8 @@ def main() -> int:
 
     _server_api.create_app = _create_app_with_wrapper
     _bench_module.create_app = _create_app_with_wrapper
+    if args.trace_registration:
+        _trace_adapter_registration()
 
     argv = [
         "--model", str(args.model),
