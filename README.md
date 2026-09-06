@@ -202,11 +202,11 @@ Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
 - **On a 24 GB card, Qwen3.8-27B `Q4_K_M` is tight.** Measured on a physical
-  RX 7900 XTX: weights 15.9 GiB plus ~3.0 GiB fixed state leaves ~5 GiB of the
-  23.98 GiB. At ~1.46 MiB per token one request reaches **3,072 context tokens**
-  and fails to start at 4,096; at 512-token prompts the same budget allows four
-  to five concurrent requests. **INT8 KV saves no memory today** -- identical
-  peaks to BF16 and the same failure point.
+  RX 7900 XTX: one request starts and completes at **3,072 context tokens** and
+  fails to start at 4,096, on BF16 and INT8 alike; at 512-token prompts the same
+  budget allows four to five concurrent requests. **INT8 KV saves no memory
+  today** -- identical peaks to BF16 and the same failure point. Why the
+  footprint grows as steeply as it does is under investigation.
 
 ### Serving several requests at once
 
