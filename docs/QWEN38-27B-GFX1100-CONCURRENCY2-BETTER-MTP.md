@@ -314,18 +314,34 @@ measurements and capacity-specific policy decisions.
 
 ### Packet 3 — Amortize target verification across real frontier rows
 
-- [ ] Prioritize C8/K3 and C2/K2 using Packet 1, then include middle-width controls.
+- [x] Prioritize C8/K3 and C2/K2 using Packet 1, then include middle-width controls.
   Compare actual R/P dispatch, not only C/K labels. Eliminate unnecessary
   padding only if the replacement keeps or improves the complete fused owner.
+  Done: Packet 1 named the width-flat q6-planar verify-GEMV tile gap (~58 ms
+  at width 5 vs ~33 at width 3) as the dominant cost; this packet's lever
+  attacked it directly (see below).
 - [ ] Audit Q4 gate/up and QKV pairs, Q5 state-output projection, Q6 recurrent
   QKV/full-attention V/down projections, and target output head. First enable an
   already-qualified better owner if missing; otherwise develop one in-tree
   row-reuse/tile candidate with a registered strict fallback.
-- [ ] Avoid one weight stream per verifier row. Compare current grouped/vector,
+  Partially done: the Q6 FFN-down projection is re-owned (below). The Q6
+  recurrent_qkv/attention_v shapes measured 1.07-2.02x standalone for the
+  same sibling but ride fused pair/dual owners in cycles — deferred as a
+  Packet 4-adjacent lever, recorded in the packet3 decision entry.
+- [x] Avoid one weight stream per verifier row. Compare current grouped/vector,
   row-amortized and matrix-tile implementations at actual layouts. Price the
   benefit against register pressure, scratch spills and extra reduction work.
   Do not reopen old small-row or unfused rejections without a changed shape,
   caller, implementation, or measured bottleneck documented first.
+  Done: the cooperative `shared4_row64` sibling is bit-exact to the one-wave
+  parent at EVERY row 1-36 on all three planar shapes (108/108 standalone
+  combos, 1.60-1.89x on ffn_down) and moved the staged verify frontier
+  (rows 4-32) off the underfilled one-wave owner. Band (33,128) -> (4,128);
+  one-wave parent stays the registered strict fallback. An intermediate
+  landing was reverted after an unreproduced GPU-hang observation in a
+  screening run whose MTP arms never engaged (harness config: missing
+  `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` opt-in); the re-land carries the
+  full row-coverage evidence the revert demanded.
 - [ ] Separate independent per-row projections from causal GDN recurrence.
   Batch/reuse projections across chain positions, then evolve each request's
   recurrent state in order. Optimize recurrence setup/state traffic only with
@@ -337,9 +353,19 @@ measurements and capacity-specific policy decisions.
   recapturing every token or reusing stale inputs. Measure replay versus eager
   without collecting full logits in the timed product path. Keep valid inactive
   tokens/masks and causal row mapping.
-- [ ] Retain measured exact or fully quality-gated production gains with
+- [x] Retain measured exact or fully quality-gated production gains with
   non-regressive complete affected cycles and current AR controls. A sub-window
   gain remains useful even before automatic MTP becomes profitable.
+  Done: fresh nine-cell sweep with the band ON — all seven MTP cells above
+  their retained floors (product C1/K3 1.6301x, C1/K2 1.5989x, C2/K2 1.0536x,
+  C8/K3 1.0484x; screens C5/K3 0.8729x, C2/K1 0.8333x, C7/K3 0.9361x),
+  10/10 token-exact everywhere, K0 controls clean, zero hang events.
+  Automatic stays K0.
+
+Packet 3 outcome: **retained** — every affected cell improved, two
+product-route cells crossed AR parity for the first time. Artifacts:
+[`retained economics`](../benchmarks/results/2026-09-06-w7900-q4km-mtp-packet3-row64-band-retained.json),
+[`band screen`](../benchmarks/results/2026-09-06-w7900-q4km-q6-planar-down-row64-band-screen.json).
 
 ### Packet 4 — Reduce draft/head/commit costs where the trace warrants it
 
