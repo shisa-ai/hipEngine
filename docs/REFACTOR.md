@@ -18,6 +18,24 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-06 GGUF file-type stamp switches — open
+
+- Two gfx1151 switches choose behavior from the GGUF header's claimed format
+  (`general.file_type`) instead of the file's actual per-tensor format mix:
+  `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` and
+  `GGUF_DENSE_Q4_QMICRO_T16_GATE_UP_FILE_TYPES`. Any file stamped `MOSTLY_Q4_K_S`
+  turns both on whether or not its layout is Q4_K_S-shaped. Measured with
+  `scripts/gguf_quant_route_audit.py`: `Qwen3.8-27B-UD-Q4_K_S.gguf` stamps
+  `MOSTLY_Q4_K_S`, turns both switches on, and cannot load at all because 41 of its
+  tensors use formats the dense route does not decode.
+- Removal trigger: replace the stamp comparison with a check on the scanned format
+  histogram, or gate the stamp check on a successful load plan. Add a fixture that
+  stamps a file `MOSTLY_Q4_K_S` while giving it a different mix, so stamp-only
+  reasoning cannot come back.
+- Analysis and the wider campaign this sits inside:
+  [`UD-QUANTS.md`](UD-QUANTS.md), sections "The header stamp is not a layout
+  check" and Phase 3.
+
 ## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
 - The complete counterbalanced C5-C8 category+heldout gate retained the exact
