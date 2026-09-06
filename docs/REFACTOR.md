@@ -5370,3 +5370,28 @@ the registered F16-input/BF16-output siblings; missing or undersized ownership
 fails closed to BF16. Complete C2/C8 wall falls 18.13%/17.35% and profile logits
 are bit-identical. Strict, fallback, no-profile, and env zero keep BF16. Retire
 the override after the normal rollback window; keep registered BF16 fallbacks.
+
+## 2026-09-06 Qwen3.5-family XML tool-call surface — open follow-ups
+
+The server now prompts for and lifts the Qwen3.5-family XML function envelope
+(`<tool_call>\n<function=name>\n<parameter=k>\nv\n</parameter>\n</function>\n</tool_call>`);
+the legacy JSON body remains accepted by the parser. Three pieces were
+deliberately kept on the legacy JSON path and should move once a real-model
+run justifies each:
+
+- `_tool_call_name_prefix_text` still forces the atomic JSON prefix
+  (`<tool_call>{"name":...,"arguments":`) for `tool_choice=required/function`.
+  Forced tokens keep those requests machine-formatted and parseable, but the
+  prefix fights the trained XML format. Replace with
+  `<tool_call>\n<function=NAME>\n` after a required-mode XML run on the PARO
+  or Qwen3.8-Flash-Next model, and update the capability descriptor's
+  `specific_tool_name_prefix_forcing_scope`.
+- `_tool_call_close_repair_token_sequences` has no
+  `</function>\n</tool_call>` completion candidate, so a length-truncated XML
+  envelope fails closed as `invalid_tool_call` instead of being auto-closed
+  the way truncated JSON envelopes are. Add the tokenized XML close sequence
+  once truncated XML calls are observed in practice.
+- `render_chat_prompt` wraps each `tool` message in its own
+  `<|im_start|>user` block; the checkpoint template merges consecutive tool
+  messages into one user block. Merge when multi-tool transcripts show
+  degraded behavior.
