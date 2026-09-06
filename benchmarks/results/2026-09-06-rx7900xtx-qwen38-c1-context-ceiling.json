@@ -51,21 +51,27 @@
     }
   },
   "derived": {
-    "per_token_kv_mib": 1.459,
+    "per_token_kv_mib": null,
     "fixed_overhead_gib": 18.951,
     "fixed_runtime_above_weights_gib": 3.019,
     "predicted_token_ceiling": 3532,
-    "method": "linear fit through the two BF16 successes (2048 -> 21.869 GiB, 3072 -> 23.328 GiB)"
+    "method": "linear fit through the two BF16 successes (2048 -> 21.869 GiB, 3072 -> 23.328 GiB)",
+    "per_declared_token_slope_mib": 1.459,
+    "bf16_kv_payload_kib_per_token": 64,
+    "slope_vs_payload": "The 1.459 MiB per declared token is a growth slope, not KV payload. docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md computes the BF16 K+V payload for this geometry (16 full-attention layers, 4 KV heads, head dim 256) as 65,536 B/token, so the measured slope is roughly 22x the payload. The excess is unattributed and must not be called irreducible KV growth."
   },
   "findings": {
     "context_ceiling": "BF16 succeeds at 2048 and 3072 and fails at 4096 and 8192; INT8 succeeds at 2048 and 3072 and fails at 4096. Every failure is a HIP out-of-memory raised during eager server warmup, before any request is issued, so it is independent of the prompt used.",
-    "int8_saves_nothing": "int8_per_token_head and bf16 produce byte-identical peaks at both 2048 (21.869 GiB) and 3072 (23.328 GiB), and fail at the same context. Whatever dominates the footprint is not KV element width, so the INT8 KV option currently buys no capacity.",
-    "published_rows_contradicted": "benchmarks/README.md published 32K on BF16 and 112K/126K on pure INT8 for this card. Measured today the same card reaches roughly 3K on either. Notably the published BF16 figure of 21.869 GiB peak with 2.115 GiB headroom is reproduced exactly here at 2048 context, not at 32K, so the memory number survives while the context label does not."
+    "int8_saves_nothing": "int8_per_token_head and bf16 produce identical peaks at 2048 and 3072 and fail at the same 4096. This is consistent with the persistent-BF16-shadow failure mode described in the capacity campaign: an INT8 payload retained alongside a BF16 mirror is not compact. It does not by itself prove the INT8 route is unreachable.",
+    "published_rows_contradicted": "benchmarks/README.md published 32K on BF16 and 112K/126K on pure INT8 for this card. Measured today the same card reaches roughly 3K on either. Notably the published BF16 figure of 21.869 GiB peak with 2.115 GiB headroom is reproduced exactly here at 2048 context, not at 32K, so the memory number survives while the context label does not.",
+    "boundary_is_a_startup_reservation": "Every failure is a HIP out-of-memory during eager warmup, before any request, so the boundary is a reservation limit at the declared --max-context-tokens rather than a live-token limit."
   },
   "limitations": [
     "Runs use a minimal default server invocation: model, backend, quant, kv-storage, max-context-tokens, max-active-requests 1. The published rows may have used additional flags (chunked prefill, prefix cache, or a growing rather than preallocated KV pool) that were not reconstructed here.",
     "Peak is sampled at 5 s intervals, so failing points report the last value seen before the process died rather than a true peak.",
-    "Only Qwen3.8-27B Q4_K_M was tested; other models and quants may behave differently."
+    "Only Qwen3.8-27B Q4_K_M was tested; other models and quants may behave differently.",
+    "Does not resolve the memory-regression question: the 18.618 GiB C1 anchor was not recovered and the historical 32K BF16 / 112K INT8 configurations were not reconstructed, so those rows remain unmatched rather than refuted.",
+    "Prefix cache and graph mode were not recorded, and MTP was not loaded, so these are not stage-complete capacity evidence."
   ],
   "disposition": "published XTX context rows withdrawn; ~3K measured ceiling published in their place with the INT8 parity noted as an open defect"
 }
