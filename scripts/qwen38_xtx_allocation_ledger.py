@@ -188,6 +188,74 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     load_sysfs = _sysfs_used_bytes(card)
     sampler.start()
 
+    mtp_warmup_info: dict[str, Any] | None = None
+    mtp_after_snapshot: dict[str, Any] | None = None
+    mtp_after_sysfs: int | None = None
+    if args.speculative_mtp_serving == "enabled":
+        preparer = getattr(adapter, "prepare_request_scratch", None)
+        if not callable(preparer):
+            mtp_warmup_info = {
+                "status": "unsupported",
+                "reason": "generator has no prepare_request_scratch",
+            }
+        else:
+            warmup_env = "HIPENGINE_GGUF_MTP_SERVER_STARTUP_WARMUP"
+            previous = os.environ.get(warmup_env)
+            os.environ[warmup_env] = "1"
+            try:
+                probe = preparer(
+                    max_prompt_tokens=int(
+                        min(int(args.mtp_probe_prompt_tokens), int(args.context))
+                    ),
+                    max_new_tokens=0,
+                    sampling_params=sampling,
+                    max_batch_size=max(1, int(args.max_active_requests)),
+                    release_after_probe=True,
+                )
+            except Exception as exc:  # noqa: BLE001 - record and keep measuring
+                mtp_warmup_info = {
+                    "status": "failed",
+                    "exception_type": type(exc).__name__,
+                    "message": str(exc)[:300],
+                }
+            else:
+                mtp_warmup_info = {
+                    "status": "warmed",
+                    "probe": probe,
+                    "packed_mtp_prefill_widths": list(
+                        probe.get("packed_mtp_prefill_widths") or []
+                    ),
+                    "packed_mtp_verify_widths": list(
+                        probe.get("packed_mtp_verify_widths") or []
+                    ),
+                    "packed_mtp_prefill_skipped": bool(
+                        probe.get("packed_mtp_prefill_skipped")
+                    ),
+                    "packed_mtp_prefill_reason": probe.get(
+                        "packed_mtp_prefill_reason"
+                    ),
+                }
+            finally:
+                if previous is None:
+                    os.environ.pop(warmup_env, None)
+                else:
+                    os.environ[warmup_env] = previous
+            if mtp_warmup_info.get("status") == "warmed":
+                mtp_after_snapshot = _snapshot(runner)
+                mtp_after_sysfs = _sysfs_used_bytes(card)
+                # Functional note: at N=1 the packed MTP warmup is width-gated
+                # and post-hoc draft acquisition on an AR-only load cannot work
+                # (the materialization plan deliberately omitted NextN), so the
+                # K0->K resident delta is measured server-side by the context
+                # ceiling probe with --speculative-mtp-serving enabled (its
+                # load plans NextN and the startup warmup engages it).
+                mtp_warmup_info["k0_k_delta_vehicle"] = (
+                    "gguf_context_ceiling_probe --speculative-mtp-serving enabled"
+                )
+                if mtp_warmup_info.get("status") == "warmed":
+                    mtp_after_snapshot = _snapshot(runner)
+                    mtp_after_sysfs = _sysfs_used_bytes(card)
+
     request_info: dict[str, Any] | None = None
     if args.run_request:
         tokenizer = runner.generator.tokenizer
@@ -248,6 +316,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "max_active_requests": args.max_active_requests,
             "max_tokens": args.max_tokens,
             "run_request": bool(args.run_request),
+            "speculative_mtp_serving": str(args.speculative_mtp_serving),
         },
         "device": {
             "pci_id": card.pci_id,
@@ -260,10 +329,13 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "snapshots": {
             "after_load": load_snapshot,
             "after_load_sysfs_used_bytes": load_sysfs,
+            "after_mtp_warmup": mtp_after_snapshot,
+            "after_mtp_warmup_sysfs_used_bytes": mtp_after_sysfs,
             "after_request": after_snapshot,
             "after_request_sysfs_used_bytes": after_sysfs,
             "request_sysfs_peak_bytes": request_sysfs_peak,
         },
+        "mtp_warmup": mtp_warmup_info,
         "request": request_info,
         "metric_note": (
             "tracked_allocator counts hipengine malloc/free bookkeeping; "
@@ -286,6 +358,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-active-requests", default=1, type=int)
     parser.add_argument("--max-tokens", default=16, type=int)
     parser.add_argument("--run-request", action="store_true")
+    parser.add_argument(
+        "--speculative-mtp-serving",
+        default="off",
+        choices=("off", "enabled"),
+        help=(
+            "off measures the AR-only configuration (NextN unplanned, no draft "
+            "assets); enabled warms the MTP serving route after the load "
+            "snapshot (the server startup-warmup path) and records the K0->K "
+            "delta: draft weights, runner/session and graph assets that stay "
+            "pooled after engagement"
+        ),
+    )
+    parser.add_argument("--mtp-probe-prompt-tokens", default=512, type=int)
     parser.add_argument("--pci-id", default="0000:10:00.0")
     parser.add_argument("--gpu-index", default=1, type=int)
     parser.add_argument("--json", type=Path, required=True)

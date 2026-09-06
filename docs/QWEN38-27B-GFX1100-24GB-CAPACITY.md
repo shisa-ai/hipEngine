@@ -340,6 +340,16 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
 
 - [ ] Prove AR-only omits NextN weights and MTP-only state/graphs/hidden capture.
   Measure MTP-capable K0 both before and after active MTP; do not call it unloaded.
+  AR-only omission proven 2026-09-06: with MTP serving off the materialization
+  plan omits the 4 NextN tensors (0.052 GiB source bytes), the resident census
+  holds 851 tensors / 15.992 GiB with zero NextN bytes, and the draft provider
+  is lazily acquired and pooled (never load/unloaded per decode cycle) — so
+  true AR-only is the default configuration. Evidence:
+  `results/2026-09-06-rx7900xtx-capacity-ar-only-nextn-omission.json`. The K0->K
+  resident delta is blocked by an MTP-serving functional bug (startup warmup
+  KeyError `blk.40.attn_q_norm.weight` at width >=2 despite a correct block-64
+  resolution; c=1 route leaks the invalid-token sentinel into output ids) —
+  owned by the MTP campaign; re-measure with the probe pair when it serves.
 - [x] Deduplicate actual weight aliases and release conversion staging safely.
   Count resident payloads, not GGUF size, as the device-weight baseline.
   Done 2026-09-06: the planned residency census reports 851 logical tensors,
