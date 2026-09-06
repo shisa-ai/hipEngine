@@ -2,14 +2,23 @@
 
 Last updated: **2026-09-06 UTC**
 
-Mapped Q8 down admission:five full-logit/state/KV cases exact,
+| Framework UD-Q4_K_XL / BF16 KV mapped Q8 down | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 178.770 -> 181.065 (+1.284%) | 175.601 -> 178.108 (+1.427%) | 161.575 -> 164.150 (+1.594%) |
+
+All72 trajectories exact,every prefill/request case improves,total1.00962x.
+No new allocation;TG-0.059%/+0.031%/+0.239% incidental.
+Max PP CV3.027%;not a new external comparator row.
+[Production evidence](results/2026-09-06-framework-qwen4exp-q8-mapped-down-production.json).
+
+Earlier mapped Q8 down admission:five full-logit/state/KV cases exact,
 1/8 enabled prefill calls,zero decode/final owners. Current-call map
-ownership explicit;both binders0,throughput A/B pending.
+ownership explicit;both binders0 at admission,subsequent A/B above passes.
 [State evidence](results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json).
 
 Mapped Q8 down screen:layer2 weights with borrowed code/mixed layer0
 counts80.728->37.969ms /80.566->37.420ms (2.126x/2.153x),40 pairs
-exact. Reuses existing kernel and map ABI;model integration/gates pending.
+exact. Reuses existing kernel and map ABI;model gates subsequently passed.
 [Evidence](results/2026-09-06-framework-qwen4exp-q8-mapped-down.json).
 
 Post-raw-MMQ-vector full owner refresh at `eee086e25`:p4096 four-category

@@ -102,6 +102,10 @@ def _selection(
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
         _selection(
+            "linear","prefill_rows_ge512_token_major_mapped_q8_down",
+            "selected_gemv_bf16_bf16_out","selected_gemv_bf16_bf16_out","gguf_q8_0",
+        ),
+        _selection(
             "linear", "prefill_gdn_qkv_ssm_prepacked_mmq",
             "coltile8_rowbatch4_f32_f32_out", "coltile8_rowbatch4_f32_f32_out",
             "gguf_q8_0",
@@ -257,6 +261,12 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection(
+            "linear","prefill_rows_ge512_token_major_mapped_q8_down",
+            "selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+            "selected_gemv_bf16_bf16_out","gguf_q8_0",
+            evidence="benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-production.json",
+        ),
         _selection(
             "linear", "prefill_exact_q8_f32_coltile",
             "coltile8_rowbatch4_wave_scale_f32_f32_out", "coltile8_rowbatch4_f32_f32_out",
@@ -461,7 +471,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL": "1" if production else "0",

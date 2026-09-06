@@ -76,7 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Mapped Q8 down default-off admission (September6 UTC):** current-call
+**Mapped Q8 down production (September6 UTC):** clean `8740dc13f`
+canonical12-case A/B passes all72 exact trajectories and every prefill/
+request case. PP512/1024/4096:178.770->181.065 /175.601->178.108 /
+161.575->164.150 tok/s (+1.284%/+1.427%/+1.594%).
+Total request1.00962x. TG-0.059%/+0.031%/+0.239%,worst
+mixed512-0.267%,explicit under prefill-first policy. Max PP/TG
+CV3.027%/1.576%;measured span29m35.9s excludes initial load/warmup.
+Zero final allocations,tracked peak85,338,330,020B unchanged.
+Production mapped-down1,strict0;current-call map-ready guard remains
+mandatory. Manifest names mapped token-major route and selected-GEMV
+strict fallback. This qualifies real layer2 behavior,not only borrowed
+microbenchmark counts. Family refresh next;no fresh external parity claim.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-production.json).
+
+**Earlier mapped Q8 down default-off admission (September6 UTC):** current-call
 map-ready flag starts false and becomes true only after ungrouped Q5_K
 row4 map construction. Existing bundled Q8 down consumes original-order
 activations through that map, preserving output/SiLU/combine ordering.
@@ -84,7 +98,7 @@ Five off/on/off cases pass full logits,four decode steps,state/full KV:
 calls0/1/0 at512 or0/8/0 at4096,zero decode/final allocations.
 22 CPU tests pass;both binders0. Shared-kernel counters filter mapped
 and compact calls separately,so prior bundle A/B remains usable.
-Next:clean canonical12-case `--route-package q8-mapped-down` A/B.
+Subsequent canonical12-case A/B above passes and promotes the route.
 [State evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down-state.json).
 
 **Mapped Q8 down dispatch gap (September6 UTC):** the ungrouped Q5_K
@@ -97,7 +111,7 @@ and seeded permutation measure80.728->37.969ms /80.566->37.420ms,
 kernel tests pass;trace80.787->37.820ms,VGPR16->24/scratch0.
 No new kernel or default change. Integrate only when the current request
 actually built the map;stale scratch must never enable the route. Then
-full logits/state/KV and canonical A/B must qualify model retention.
+full logits/state/KV and canonical A/B subsequently qualified retention above.
 [Screen evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down.json).
 
 **Post-raw-MMQ-vector full owner refresh (September6 UTC):** clean
