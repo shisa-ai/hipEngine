@@ -4870,3 +4870,14 @@ under the manifest; retain rollback and registered strict fallbacks.
   scoped prefill geometry with registry-checked fallback. Production1/strict0;
   MMQ/WMMA and decode stay unchanged. Remove the flag after admission/rollback
   needs end, or remove the candidate if the actual-model gate loses.
+
+## Qwen4Exp GR wave-scale candidate admission
+
+- Separate registered GR up wave-scale composite is retained at the kernel
+  stage after exact gate/mixed-output and CPU/unfused checks plus actual-weight
+  rows512 gains in both orders. No runtime flag/default changed yet.
+- Scope model admission to existing rows>256 fused GR use; rows64 microbench
+  has small order reversals and is not a small-row promotion basis.
+- Require invocation-counted full state/KV/logit and12-case normal-model A/B.
+  Keep parent composite and unfused chain as strict fallbacks. Remove temporary
+  admission routing after qualification or rejection.

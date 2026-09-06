@@ -208,6 +208,20 @@ The post-Q8 current-HE refresh keeps that ranking, with linear5.551s,
 GR4.362s and FFN14.445s at p4096; the Vulkan profile is explicitly reused,
 not remeasured. [Updated family packet](results/2026-09-05-framework-qwen4exp-post-q8-family.json).
 
+Standalone GR up+sigmoid+mean screen, actual weights, rows512, no memory
+preconditioning:
+
+| Weight | Parent (ms) | Candidate (ms) | Speedup |
+| --- | ---: | ---: | ---: |
+| Layer0 attention up | 3.338 | 3.234 | 1.032x |
+| Layer0 FFN up | 3.331 | 3.207 | 1.039x |
+| Layer4 attention up | 3.320 | 3.204 | 1.036x |
+| Layer4 FFN up | 3.313 | 3.209 | 1.032x |
+
+F32 gate/mixed bits exact,20 tests pass, both order strata positive at512;
+small-row order reversals are disclosed. Model admission pending.
+[GR screen](results/2026-09-06-framework-qwen4exp-gr-wave-scale.json).
+
 Latest retained Q8 wave-scale production A/B, normal model execution:
 
 | Prompt | Parent prefill | Wave-scale prefill | Gain |

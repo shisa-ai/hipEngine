@@ -330,6 +330,7 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    _wave_scale: bool = False,
 ) -> None:
     """Launch exact raw-Q8 GR up, sigmoid gate, and branch mean."""
 
@@ -342,7 +343,9 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
     runtime = runtime or get_hip_runtime()
     fn = _cached_fn(
         library,
-        "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
+        ("hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32"
+         if _wave_scale else
+         "hipengine_gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32"),
         [_VOID, _VOID, _VOID, _VOID, _VOID,
          _I64, _I64, _I64, _I64, _I64, _VOID],
     )
@@ -360,6 +363,10 @@ def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(
         stream,
     )
     _check_launch(runtime, err)
+
+
+def gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32(*args, **kwargs):
+    gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32(*args, **kwargs, _wave_scale=True)
 
 
 gguf_q8_0_gemv_f32_f32_out = _make_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "gemv_f32_f32_out"))
@@ -946,6 +953,10 @@ def register_gguf_k_gemv_kernels(*, replace: bool = True) -> None:
     for quant in ("gguf_q8_0", "gguf_q5_k", "gguf_q6_k"):
         for variant, fn in _WRAPPERS[quant].items():
             register(KernelKey("hip_gfx1100", "linear", quant, variant), fn, replace=replace)
+    register(KernelKey("hip_gfx1100", "linear+gr_gated_mean", "gguf_q8_0",
+                       "coltile2_branch4_rowbatch4_wave_scale_f32_exact"),
+             gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32,
+             replace=replace)
     register(
         KernelKey(
             "hip_gfx1100",
@@ -1670,6 +1681,7 @@ __all__ = [
     "gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
+    "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
     "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out",
     "gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out",
