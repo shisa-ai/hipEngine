@@ -15,6 +15,7 @@ import json
 import os
 import shlex
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Mapping, MutableMapping, Sequence
@@ -190,7 +191,7 @@ def _apply_mode(
     environment: MutableMapping[str, str] = os.environ,
     route_package: str = "pf13",
 ) -> None:
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -206,6 +207,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE"
         if route_package == "gr-wave-scale":
             flag = "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE"
+        if route_package == "q8-mmq-prepack":
+            flag = "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK"
         environment[flag] = "1" if mode == "after" else "0"
         if route_package == "qsa-h256-page256" and mode == "after":
             environment[flag] = "page256"
@@ -244,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -368,7 +371,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     generator = resolved.construct_generator(factory)
     row4_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -401,6 +404,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             row4_key = KernelKey(
                 "hip_gfx1151", "linear+gr_gated_mean", "gguf_q8_0",
                 "coltile2_branch4_rowbatch4_wave_scale_f32_exact")
+        if args.route_package == "q8-mmq-prepack":
+            row4_key = KernelKey(
+                "hip_gfx1151", "linear", "gguf_q8_0",
+                "mmq128_prepacked_q8_1_d4x3_guarded_f32_f32_out")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -449,6 +456,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "before": {"gr_up": "coltile2_branch4_rowbatch4_f32_exact"},
                 "after": {"gr_up": row4_key.variant},
             }
+        elif args.route_package == "q8-mmq-prepack":
+            artifact["arms"] = {
+                "before": {"qkv_ssm_mmq": "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"},
+                "after": {"qkv_ssm_mmq": row4_key.variant},
+            }
     artifact["route_package"] = args.route_package
     artifact["diagnostic_subset"] = bool(args.case_id)
 
@@ -467,6 +479,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         return row
 
     try:
+        if args.route_package == "q8-mmq-prepack":
+            _apply_mode("after",route_package=args.route_package)
+            prepare_start = time.perf_counter()
+            generator.runner.configure_mmq_prefill_resources()
+            owner = generator.runner._q8_mmq_weight_sidecars
+            artifact["sidecar"] = {
+                "prepare_seconds": time.perf_counter()-prepare_start,
+                "bytes": owner.nbytes,
+                "count": len(owner.mapping),
+                "protocol": "Prepared before either timing arm; raw weights remain resident.",
+            }
         for case in cases:
             case_index = fixture_case_index(fixture["cases"], case)
             warmup_modes = ("before", "after") if case_index % 2 == 0 else ("after", "before")

@@ -53,6 +53,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 MMQ prepack runtime admission (September6 UTC):** default-off
+`HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK=1` prepares72 runner-owned sidecars
+(1,793,064,960 additional bytes) for measured GDN QKV/SSM shapes. All five
+code512/code4096/English512/Japanese512/mixed512 full logits/state/KV cases
+pass exactly, candidate calls0/72/0 or0/576/0, zero final ownership.
+144 CPU dispatch/cache/profile/ownership/harness tests pass.
+The complete12-case A/B route is wired with invocation checks and separate
+preparation/memory reporting; both timing arms retain sidecars. Next run
+`--route-package q8-mmq-prepack` from the clean admission commit.
+No default promotion or new throughput claim yet.
+[State/ownership packet](../benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-state.json).
+
 **Exact Q8 MMQ K-major prepack candidate (September6 UTC):** matching the
 padded76-word LDS weight layout permits direct vector tile copies while
 preserving all three activation planes and per-output arithmetic.
