@@ -1,5 +1,13 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp raw MMQ vector staging candidate
+
+- Kernel-only `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out` preserves
+  raw weights/three planes/repair. No model flag/default yet; no sidecar.
+- Require full-model invocation/state/KV and canonical A/B before raw
+  route promotion. Remove if rejected; prepacked vector path and strict/
+  scalar raw fallbacks remain independently retained.
+
 ## Qwen4Exp Q4 residual WMMA diagnostic reference
 
 - Cooperative K64 follow-up rejected:61.36ms,59.89ms no-unroll,

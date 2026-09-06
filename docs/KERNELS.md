@@ -788,6 +788,15 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 MMQ exposes kernel-only `mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out`.
+It retains raw-weight staging and uses the previously proven aligned
+activation copies. Actual GR/query/output512 complete chains improve
+1.891->1.371 /6.452->5.293 /2.891->2.229ms,all120 pairs exact and
+both orders positive.25 tests pass;trace184 VGPR/scratch0 unchanged.
+No packed-weight sidecar. Existing raw and strict fallbacks remain;
+model state/KV and canonical A/B required before promotion.
+Evidence: `2026-09-06-framework-qwen4exp-mmq-raw-vector.json`.
+
 Four-wave K64 Q4 residual staging is rejected/removed:61.357ms versus
 exact17.403ms,224 VGPR/18432B LDS/no scratch. No-unroll59.887ms and
 padded-stride57.152ms still lose. Numerical equality with residual reference
