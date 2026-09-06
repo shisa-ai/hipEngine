@@ -623,7 +623,7 @@ loader scanner/model-map modules are references, not automatic edits.
   aliases without double counting.
 - [ ] RED: `root.token_embedding`, 64 AR layers, ignored block64, raw Q4
   embedding, and MTP-only tensor exclusion.
-- [ ] RED: unsupported version, duplicates, invalid alignment, incomplete table
+- [x] RED: unsupported version, duplicates, invalid alignment, incomplete table
   versus incomplete data. Partial diagnostic mode cannot report loadable.
 - [ ] Report allocation-formula bytes, sidecars, reasons, and both hypothetical
   refusal treatments.
