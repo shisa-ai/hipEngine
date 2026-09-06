@@ -51,7 +51,7 @@ working on.
 | [`RELAXED.md`](RELAXED.md) | Historical relaxed-mode inventory and first changed-arithmetic kernel provenance; superseded as normative policy by `EXECUTION-PROFILES.md`. |
 | [`MARLIN.md`](MARLIN.md) | Marlin-K / PARO W4 layout plan and porting context. |
 | [`QUANTS.md`](QUANTS.md) | GGUF tensor-type coverage, Qwen3.5 quality cliffs, Laguna S 2.1 quant targets, hardware headroom, and BF16 K/V capacity math. |
-| [`UD-QUANTS.md`](UD-QUANTS.md) | Why mixed-format Unsloth Dynamic GGUFs load on the mixture-of-experts route and refuse on dense models, the measured per-format load verdicts, and the staged scope of a campaign to support them. |
+| [`UD-QUANTS.md`](UD-QUANTS.md) | Verified dense UD K_S/K_M campaign: corrected loader/accounting audit, pinned llama.cpp/Halo/Pwilkin kernel review, reproducible metadata evidence, and staged implementation/qualification punchlist. |
 | [`OPTIMIZE-KERNEL-IQ2_XS.md`](OPTIMIZE-KERNEL-IQ2_XS.md) | IQ2_XS decode/prefill bottleneck analysis, priority list, tuning order, precedent, and Laguna acceptance gates. |
 | [`GGUF_DECODE_REPACK.md`](GGUF_DECODE_REPACK.md) | P9.H2 qwen35moe GGUF decode-side replacement layout, memory budget, and acceptance plan. |
 | [`TUNING-gguf.md`](TUNING-gguf.md) | GGUF performance tuning playbook, baseline refresh protocol, and lane backlog. |
