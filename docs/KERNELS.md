@@ -785,10 +785,12 @@ actual layer0 attention/FFN up banks improve1.032/1.039x without memory
 preconditioning, with means and both order strata positive; layer4 confirms
 1.036/1.032x. Gate and mixed F32 bits are exact,20 focused tests pass,
 and both trace variants use72 VGPR/512-byte LDS/zero scratch. Small-row
-unconditioned order reversals remain disclosed; production still selects
-the original composite pending rows>256 model admission. The registered
+unconditioned order reversals remain disclosed. Production selects the wave-scale
+composite only in existing rows>256/four-branch scope after all72 model
+trajectories pass exactly and all12 cases improve prefill and request wall.
+Weighted prefill improves0.34-0.44%. The registered
 parent and unfused projection/sigmoid/mean chain remain strict fallbacks.
-Evidence: `2026-09-06-framework-qwen4exp-gr-wave-scale.json`.
+Evidence: `2026-09-06-framework-qwen4exp-gr-wave-production.json`.
 
 The raw Q8 coltile family has a separate T0
 `coltile8_rowbatch4_wave_scale_f32_f32_out` sibling. It makes the Q8 scale

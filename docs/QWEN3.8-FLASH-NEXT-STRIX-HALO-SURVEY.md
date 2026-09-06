@@ -27,6 +27,12 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
+September6 GR wave-scale production A/B subsequently measures prefill
+156.71/154.29/143.91 tok/s at512/1K/4K (+0.44%/+0.35%/+0.34%
+against its same-residency parent), all72 trajectories exact. This is an
+incremental paired result, not a refreshed cross-engine baseline.
+[GR promotion](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
+
 The later Q8 wave-scale promotion improves same-suite prefill0.75-1.29%
 with all72 trajectories exact. Its measured after rates are155.45/153.43/
 143.41 tok/s at512/1K/4K; decode has drift.

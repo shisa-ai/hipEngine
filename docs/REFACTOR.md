@@ -4871,17 +4871,16 @@ under the manifest; retain rollback and registered strict fallbacks.
   MMQ/WMMA and decode stay unchanged. Remove the flag after admission/rollback
   needs end, or remove the candidate if the actual-model gate loses.
 
-## Qwen4Exp GR wave-scale candidate admission
+## Qwen4Exp GR wave-scale production rollback
 
-- Separate registered GR up wave-scale composite is retained at the kernel
-  stage after exact gate/mixed-output and CPU/unfused checks plus actual-weight
-  rows512 gains in both orders. No runtime flag/default changed yet.
+- Separate registered GR up wave-scale composite is promoted after exact
+  gate/mixed-output, full logits/state/KV and all72 normal-model trajectories.
+  All12 cases improve prefill and request wall (weighted prefill+0.34-0.44%).
 - Scope model admission to existing rows>256 fused GR use; rows64 microbench
   has small order reversals and is not a small-row promotion basis.
-- Require invocation-counted full state/KV/logit and12-case normal-model A/B.
-  Keep parent composite and unfused chain as strict fallbacks. Remove temporary
-  admission routing after qualification or rejection.
-- Default-off `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE` selects the registered
+- Keep parent composite and unfused chain as strict fallbacks.
+- Production-bound `HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE=1` selects the registered
   candidate only inside existing rows>256/four-branch fused GR use. Parent
-  and unfused fallback selection remain intact; remove this admission flag
-  once qualification and rollback needs are settled.
+  and unfused fallback selection remain intact; strict binds0. Remove the
+  positive selector after one release window and a defaults-only refresh,
+  retaining explicit rollback only while bisection needs it.

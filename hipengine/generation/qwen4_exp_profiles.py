@@ -314,10 +314,10 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         _selection(
             "linear+gr_gated_mean",
             "qwen4exp_rows_gt256_gr_up",
-            "coltile2_branch4_rowbatch4_f32_exact",
+            "coltile2_branch4_rowbatch4_wave_scale_f32_exact",
             "coltile2_branch4_rowbatch4_f32_exact",
             "gguf_q8_0",
-            evidence=_GR_UP_SIGMOID_MEAN_EVIDENCE,
+            evidence="benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json",
         ),
         _selection(
             "router_logits",
@@ -418,6 +418,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
+        "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
