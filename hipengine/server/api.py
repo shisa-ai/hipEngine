@@ -4535,6 +4535,9 @@ def create_app(config: ServerConfig, *, llm: Any | None = None) -> FastAPI:
                 speculative_provider=config.speculative_provider,
                 draft_model=config.draft_model,
                 speculative_candidate_budget=config.speculative_candidate_budget,
+                kv_storage=config.kv_storage,
+                kv_scale_dtype=config.kv_scale_dtype,
+                kv_scale_granularity=config.kv_scale_granularity,
             )
             _log_effective_mtp_config(config, engine=app.state.hipengine_llm)
         mtp_circuit_breaker.attach(app.state.hipengine_llm)

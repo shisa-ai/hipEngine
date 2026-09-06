@@ -13,6 +13,7 @@ import weakref
 from collections import Counter, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 from functools import wraps
 from pathlib import Path
 from typing import Any, ClassVar, Iterator, Mapping, Sequence
@@ -1074,6 +1075,23 @@ class Qwen35GGUFBringupGenerator:
         requested_storage = getattr(params, "kv_storage", "auto") or "auto"
         if current is not None and str(requested_storage) == "auto":
             return
+        if params is None or str(requested_storage) == "auto":
+            hint = getattr(self, "request_kv_policy_hint", None)
+            if hint is not None:
+                # The eager model-load prepare passes no request. A
+                # server-configured policy hint locks the real policy instead
+                # of auto-resolving BF16, which would later reject the
+                # explicit policy as "cannot change after preparation".
+                hint_storage, hint_scale_dtype, hint_granularity = (
+                    str(hint[0]),
+                    str(hint[1]),
+                    str(hint[2]),
+                )
+                params = SimpleNamespace(
+                    kv_storage=hint_storage,
+                    kv_scale_dtype=hint_scale_dtype,
+                    kv_scale_granularity=hint_granularity,
+                )
         policy, scale_dtype, signature = self._resolve_request_kv_policy(params)
         if current is not None and current != signature:
             raise ValueError(
