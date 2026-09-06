@@ -99,13 +99,13 @@ with the earlier pinned Vulkan profile explicitly reused.
 (+0.75%/+1.17%/+1.29%), with all72 trajectories exact and every complete
 request faster. This incremental result is not a new external baseline;
 decode drifts in both arms. [Q8 promotion](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
-The following frozen throughput baseline is the **pre-Q8-wave-scale snapshot**.
-The generated family table has now been refreshed for hipEngine `ef63870f9`,
+The following throughput baseline now includes the retained MMQ-vector default.
+The generated family table has been refreshed for hipEngine `1e89361d5`,
 while explicitly reusing the pinned prior Vulkan profile; it is not a new
 simultaneous throughput comparison.
 
-**Frozen three-engine refresh (2026-09-05 UTC):** controller/runtime
-`bd451a417`, halo-box `b212548e0`, Framework machine
+**Frozen three-engine refresh (2026-09-06 UTC):** controller/runtime
+`5104604e1`, halo-box `b212548e0`, Framework machine
 `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL/BF16 KV, identical12-case
 canonical fixture, one warmup plus three measured tg128 requests per case.
 All108 measured trajectories repeat within their engine, hipEngine closes
@@ -113,20 +113,41 @@ to zero allocations, and both external servers exit0. Logger/profiler off.
 
 | Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG | Max per-case PP / TG CV |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine combined production | 153.96 / 19.38 | 152.30 / 18.75 | 142.03 / 14.42 | 2.45% / 9.02% |
-| halo-box Vulkan target | 316.28 / 25.27 | 391.68 / 25.30 | 425.72 / 24.51 | 12.52% / 3.91% |
-| halo-box HIP diagnostic | 282.76 / 21.08 | 368.33 / 20.56 | 351.08 / 18.83 | 11.26% / 4.10% |
+| hipEngine combined production | 168.58 / 19.64 | 166.86 / 19.01 | 155.89 / 14.89 | 2.78% / 4.62% |
+| halo-box Vulkan target | 346.78 / 26.12 | 397.38 / 25.69 | 421.63 / 24.83 | 0.17% / 0.09% |
+| halo-box HIP diagnostic | 307.38 / 21.45 | 393.31 / 20.95 | 355.00 / 19.18 | 10.93% / 2.70% |
 
 Rates are weighted tok/s. The corresponding Vulkan/hipEngine target factors
-are **2.054/2.572/2.997x prefill** and **1.304/1.349/1.700x decode**.
+are **2.057/2.382/2.705x prefill** and **1.330/1.352/1.668x decode**.
 These are sequential same-host screening ratios, not inter-engine
-counterbalanced confidence bounds. Every lane exceeds the2% stability
-criterion on at least one metric; no statistical match/beat claim follows.
-Full execution36m18s (hipEngine17m21s, Vulkan8m39s, HIP10m17s).
-[Frozen baseline packet](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json).
+counterbalanced confidence bounds. hipEngine and HIP exceed the2% stability
+criterion on some cases; Vulkan is stable in this run. No statistical
+match/beat claim follows. Serial stage time34m56s
+(hipEngine16m19s, Vulkan8m33s, HIP10m04s).
+[Current baseline/variance packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
+The [September5 packet](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json)
+remains historical. hipEngine PP rises9.50%/9.56%/9.76% between these
+same-protocol snapshots; do not attribute that whole delta to the last promotion.
 This closes the missing standalone combined-default decode measurement.
 The shared-family matrix is now generated in section5.2.1 from matching
 Framework captures; the overall optimization campaign remains open.
+
+**Variance, without a tuning detour:** the committed
+`scripts/qwen4exp_baseline_retention.py` regenerates tables and per-case
+mean/median/sample SD/CV/range/last-versus-first drift, verifies exact
+repeatability and rejects identity/lifecycle/count/hash mismatches.
+SD uses n-1; different workloads are not pooled into one variance estimate.
+Three repetitions are descriptive, not reliable tail or significance evidence.
+Median within-case PP/TG CV is2.36%/2.95% for hipEngine,
+0.05%/0.04% for Vulkan and1.00%/1.61% for HIP.
+Heat, shared APU power and CPU/GPU contention remain hypotheses. No controls
+changed in this refresh. Requested2900/2900/high is not proof of fixed
+effective clocks; see the earlier
+[2700MHz diagnostic](../worklog/entries/20260905T124901.011545Z-lhl-qwen4exp-qsa-fixed-clock-control-d6ce53.md).
+The owner deferred a new cooldown/clock campaign on September6: continue
+substantial compute/reuse work; document a protocol before any later formal
+thermal intervention, use read-only telemetry first, and retain original
+operating-policy results rather than normalizing away adverse samples.
 
 The following promotion notes and earlier comparator screen are retained
 as revision-specific history, not the current baseline table above.

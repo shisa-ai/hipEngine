@@ -76,6 +76,29 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Combined-default baseline refresh (September6 UTC):** clean `5104604e1`
+serial hipEngine/Vulkan/HIP full12-case suites complete,36 samples each,
+all within-engine outputs repeat and clean teardown. hipEngine PP/TG:
+168.58/19.64,166.86/19.01,155.89/14.89 at512/1024/4096.
+Vulkan PP346.78/397.38/421.63,TG26.12/25.69/24.83;prefill target
+factors2.057x/2.382x/2.705x. Max per-case PP/TG CV:
+HE2.78%/4.62%,VK0.17%/0.09%,HIP10.93%/2.70%. This is a current
+screening checkpoint,not statistical closure. New retention helper emits
+per-case mean,median,sample SD,CV,range and repetition drift with identity/
+repeatability/lifecycle gates. Keep n=3 uncertainty explicit.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
+
+**Owner priority clarification, September6:** defer a new thermal/clock/
+cooldown campaign; collect variance from existing runs and return to large
+compute/reuse opportunities. No clock/power setting changed here.
+Prior2700MHz control and varying effective clocks under2900/high are
+recorded evidence,not unexplored levers. Any future formal intervention
+needs a documented protocol and read-only `ryzenadj`/CPU/GPU telemetry
+first; CPU/APU contention and heat are plausible,not proven explanations.
+Next optimization should address substantial MoE projection work:
+code4096 exact Q4 pair gate/up3.596s and Q5_1 folded down3.438s,
+within13.586s complete FFN. Avoid further unchanged marginal retiles.
+
 **Post-MMQ-vector full owner refresh (September6 UTC):** clean `1e89361d5`
 six cases/twelve phases pass100% attribution, matched decode roots,
 repeated state/output checks and zero final ownership. MMQ-vector
