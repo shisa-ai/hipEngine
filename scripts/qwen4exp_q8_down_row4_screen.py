@@ -35,9 +35,12 @@ def main():
     p.add_argument("--pairs", type=int, default=20)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--bundle", action="store_true")
+    p.add_argument("--mapped-selected", action="store_true")
     args = p.parse_args()
     if args.pairs < 2 or args.pairs % 2:
         p.error("use a positive even pair count")
+    if args.mapped_selected and args.bundle:
+        p.error("mapped-selected compares selected GEMV to bundled row4")
     check_host()
     identity = model_identity(args.model_root)
     capture = json.loads(args.routing_capture.read_text())
@@ -63,6 +66,12 @@ def main():
     allocations = []
     try:
         dx, ds, dw = [_upload(a, runtime, allocations) for a in (x, starts, raw)]
+        mapping = selected = None
+        if args.mapped_selected:
+            lanes = np.random.default_rng(5421).permutation(5120).astype(np.int64)
+            ids = np.empty(5120,dtype=np.int64)
+            ids[lanes] = np.repeat(np.arange(512),counts)
+            mapping,selected = [_upload(a,runtime,allocations) for a in (lanes,ids)]
         outputs = [_alloc((5120, 2560), np.uint16, runtime, allocations) for _ in range(2)]
         functions = [gemv.gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
                      gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out]
@@ -71,8 +80,18 @@ def main():
                          gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out]
 
         def run(i):
-            functions[i](dx.ptr, ds.ptr, 0, dw.ptr, outputs[i].ptr,
-                         5120, 5120, 512, 640, 2560, library=library, runtime=runtime)
+            if args.mapped_selected:
+                if i == 0:
+                    gemv.gguf_q8_0_selected_gemv_bf16_bf16_out(
+                        dx.ptr,selected.ptr,dw.ptr,outputs[i].ptr,
+                        5120,5120,512,640,2560,library=library,runtime=runtime)
+                else:
+                    gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out(
+                        dx.ptr,ds.ptr,mapping.ptr,dw.ptr,outputs[i].ptr,
+                        5120,5120,512,640,2560,library=library,runtime=runtime)
+            else:
+                functions[i](dx.ptr, ds.ptr, 0, dw.ptr, outputs[i].ptr,
+                             5120, 5120, 512, 640, 2560, library=library, runtime=runtime)
             runtime.device_synchronize()
 
         run(0)
@@ -104,6 +123,12 @@ def main():
             mean_speedup=statistics.mean(times[0]) / statistics.mean(times[1]),
             order_speedups=[statistics.median(times[0][i::2]) / statistics.median(times[1][i::2])
                             for i in (0, 1)])
+        if args.mapped_selected:
+            report.update(
+                parent_variant="gguf_q8_0_selected_gemv_bf16_bf16_out",
+                candidate_variant="gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+                boundary="Token-major BF16 activation/output; supplied counts and seeded random sorted-lane-to-original-row permutation. Both consume same expert selection. Mapping already exists after Q5_K row4 gate/up in target runtime; no map construction charged.",
+                mapping_seed=5421)
     finally:
         for buf in reversed(allocations):
             free(buf, runtime=runtime)

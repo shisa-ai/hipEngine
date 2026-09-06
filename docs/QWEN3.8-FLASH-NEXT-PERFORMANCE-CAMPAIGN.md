@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Mapped Q8 down dispatch gap (September6 UTC):** the ungrouped Q5_K
+row4 gate/up branch already builds expert starts and sorted-to-original
+lane map,then still launches selected Q8 down. Existing bundled Q8 row4
+accepts that map and preserves token-major input/output order.
+Layer2 actual weights with explicitly borrowed layer0 code/mixed counts
+and seeded permutation measure80.728->37.969ms /80.566->37.420ms,
+2.126x/2.153x;40 pairs exact,both orders positive.15 existing mapped
+kernel tests pass;trace80.787->37.820ms,VGPR16->24/scratch0.
+No new kernel or default change. Integrate only when the current request
+actually built the map;stale scratch must never enable the route. Then
+full logits/state/KV and canonical A/B must qualify model retention.
+[Screen evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down.json).
+
 **Post-raw-MMQ-vector full owner refresh (September6 UTC):** clean
 `eee086e25` six cases/twelve phases pass100% attribution,matched decode
 roots,restored state/output checks and zero final ownership. Raw-vector

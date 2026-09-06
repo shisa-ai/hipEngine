@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework mapped Q8 down] Layer2 weights/borrowed layer0 code,mixed counts:selected80.728->mapped37.969ms /80.566->37.420ms (-52.97%/-53.55%),40 exact pairs,both orders positive.15 existing kernel tests,zero trace scratch;runtime gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q8-mapped-down.json`.
+
 - [2026-09-06 UTC post-raw-MMQ-vector families] Cleaneee086e25 six-case/twelve-phase capture:linear4.762->4.556s (-4.34%),GR4.254->3.755s (-11.73%),snapshot not causal A/B. Vulkan ratios4.470x/2.199x,FFN12.698s;100% attribution,exact restored state/decode,zero owners. `benchmarks/results/2026-09-06-framework-qwen4exp-post-raw-vector-family.json`.
 
 - [2026-09-06 UTC Framework raw MMQ vector production] Full12-case PP512/1024/4096:173.204->179.037 (+3.367%)/170.840->175.707 (+2.849%)/157.211->161.879 (+2.969%). All72 exact,all prefill/request cases improve,total1.01730x;TG-0.354%/-0.064%/-0.214% retained,tracked peak unchanged. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-raw-vector-production.json`.
