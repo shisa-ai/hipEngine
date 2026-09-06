@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "kind": "qwen4exp_q51_pair_screen",
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "47bc0a03ece8800630618ad828671244238160e1",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q51_pair_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--require-cached-build",
+    "--direct-meta",
+    "--rows",
+    "64",
+    "512",
+    "--pairs",
+    "20",
+    "--output",
+    "/tmp/qwen4exp-q51-direct-meta.json"
+  ],
+  "weights": [
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.0.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "b8182533b10a398040d86f4026f4cdbee23b5b666414c37b4c6f73bcfa3f5663"
+    },
+    {
+      "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+      "name": "blk.1.ffn_down_exps.weight",
+      "shape": [
+        512,
+        2560,
+        640
+      ],
+      "sha256": "74b2d0bdc9090ab85924b670c079cf6d93bbee0a764d37c519f1a14e17831c95"
+    }
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "arithmetic_class": "T0",
+  "boundary": "two rotating grouped Q5_1 down banks; maps supplied, no routing or combine",
+  "runtime_default_changed": false,
+  "cases": [
+    {
+      "tokens": 64,
+      "compact_rows": 640,
+      "seconds": {
+        "parent": [
+          0.01493068691343069,
+          0.014942018082365394,
+          0.016872179927304387,
+          0.014926149044185877,
+          0.019737466936931014,
+          0.014941958943381906,
+          0.01637223199941218,
+          0.014955634018406272,
+          0.01669117109850049,
+          0.015030375216156244,
+          0.02034613979049027,
+          0.015010956907644868,
+          0.017823314992710948,
+          0.01502628717571497,
+          0.01771569298580289,
+          0.015053587965667248,
+          0.016165884910151362,
+          0.014952928991988301,
+          0.01992720295675099,
+          0.0150585169903934
+        ],
+        "candidate": [
+          0.01594070205464959,
+          0.01710469601675868,
+          0.01596580003388226,
+          0.018566570011898875,
+          0.015933969989418983,
+          0.017641574144363403,
+          0.015927216969430447,
+          0.01765408692881465,
+          0.01597199193201959,
+          0.017798007000237703,
+          0.015990726882591844,
+          0.017397826071828604,
+          0.015913662035018206,
+          0.017922681057825685,
+          0.015969827072694898,
+          0.018067514058202505,
+          0.0159269068390131,
+          0.018962391884997487,
+          0.01595090189948678,
+          0.020947067067027092
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 0.9098570834896803
+    },
+    {
+      "tokens": 512,
+      "compact_rows": 5120,
+      "seconds": {
+        "parent": [
+          0.04369688592851162,
+          0.043550471076741815,
+          0.0437374128960073,
+          0.04356911708600819,
+          0.04380314494483173,
+          0.04359639808535576,
+          0.04372358601540327,
+          0.04357003793120384,
+          0.043660617899149656,
+          0.04362131399102509,
+          0.043849773006513715,
+          0.043617246905341744,
+          0.04364281496964395,
+          0.04366758093237877,
+          0.04371836711652577,
+          0.04360886197537184,
+          0.043759594205766916,
+          0.04361579520627856,
+          0.043624449986964464,
+          0.04360377206467092
+        ],
+        "candidate": [
+          0.047213434940204024,
+          0.047431414015591145,
+          0.04736049100756645,
+          0.047397861955687404,
+          0.04731471510604024,
+          0.047396599082276225,
+          0.047393823973834515,
+          0.04738697083666921,
+          0.04724956303834915,
+          0.04739587800577283,
+          0.047325065126642585,
+          0.04732012585736811,
+          0.047371661057695746,
+          0.04739143908955157,
+          0.047295178985223174,
+          0.04726353893056512,
+          0.04736263491213322,
+          0.04735643300227821,
+          0.04729104111902416,
+          0.047407659934833646
+        ]
+      },
+      "all_pairs_exact": true,
+      "speedup": 0.921287849290237
+    }
+  ],
+  "date": "2026-09-06",
+  "status": "rejected_variants_removed",
+  "performance_claim": false,
+  "rejected_source_patch": "diff --git a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip\nindex 8005fcb8b..2a96fc645 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip\n+++ b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.hip\n@@ -377,17 +377,23 @@ __global__ void q5_1_selected_grouped_prefill_logical256_m1_bf16_bf16_kernel(\n   }\n }\n \n+template <bool DIRECT_META = false>\n __device__ inline float q51_cached_weight(\n     const uint8_t* row, int column, const float* d, const float* m,\n     const uint32_t* qh) {\n-  const int block = column / 32;\n+  const int block = DIRECT_META ? __builtin_amdgcn_readfirstlane(column / 32) : column / 32;\n   const int within = column & 31;\n   const uint8_t packed = row[block * 24 + 8 + (within & 15)];\n   const int low = within < 16 ? (packed & 15) : (packed >> 4);\n-  const int high = (qh[block] >> within) & 1;\n-  return d[block] * static_cast<float>(low | (high << 4)) + m[block];\n+  const uint32_t high_bits = DIRECT_META ?\n+      *reinterpret_cast<const uint32_t*>(row + block * 24 + 4) : qh[block];\n+  const int high = (high_bits >> within) & 1;\n+  const float scale = DIRECT_META ? load_fp16(row + block * 24) : d[block];\n+  const float offset = DIRECT_META ? load_fp16(row + block * 24 + 2) : m[block];\n+  return scale * static_cast<float>(low | (high << 4)) + offset;\n }\n \n+template <bool DIRECT_META = false>\n __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n     const uint16_t* __restrict__ input, const int64_t* __restrict__ starts,\n     const uint8_t* __restrict__ weights, uint16_t* __restrict__ output,\n@@ -408,7 +414,7 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n #pragma unroll\n       for (int p = 0; p < 2; ++p) {\n         wr[p] = weights + (expert * n + out_base + offset + p) * row_bytes;\n-        if (out_base + offset + p < n && threadIdx.x < blocks) {\n+        if (!DIRECT_META && out_base + offset + p < n && threadIdx.x < blocks) {\n           const uint8_t* block = wr[p] + threadIdx.x * 24;\n           const int idx = p * blocks + threadIdx.x;\n           d[idx] = load_fp16(block);\n@@ -416,7 +422,7 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n           qh[idx] = *reinterpret_cast<const uint32_t*>(block + 4);\n         }\n       }\n-      __syncthreads();\n+      if constexpr (!DIRECT_META) __syncthreads();\n       for (int64_t base = begin; base < end; base += R) {\n         float acc0[2][R] = {}, acc1[2][R] = {};\n         for (int column = threadIdx.x; column < k; column += L) {\n@@ -425,9 +431,9 @@ __global__ void q5_1_selected_grouped_prefill_pair2_bf16_kernel(\n #pragma unroll\n           for (int p = 0; p < 2; ++p) {\n             if (out_base + offset + p < n) {\n-              w0[p] = q51_cached_weight(wr[p], column, d+p*blocks, m+p*blocks, qh+p*blocks);\n+              w0[p] = q51_cached_weight<DIRECT_META>(wr[p], column, d+p*blocks, m+p*blocks, qh+p*blocks);\n               if (column1 < k)\n-                w1[p] = q51_cached_weight(wr[p], column1, d+p*blocks, m+p*blocks, qh+p*blocks);\n+                w1[p] = q51_cached_weight<DIRECT_META>(wr[p], column1, d+p*blocks, m+p*blocks, qh+p*blocks);\n             }\n           }\n #pragma unroll\n@@ -979,7 +985,22 @@ extern \"C\" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16\n   if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||\n       k <= 0 || k % 32 || k > 4096 || n <= 0)\n     return static_cast<int>(hipErrorInvalidValue);\n-  hipLaunchKernelGGL(q5_1_selected_grouped_prefill_pair2_bf16_kernel,\n+  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<false>),\n+      dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),\n+      dim3(128), 8*256*sizeof(float)+(k/32)*24, stream,\n+      static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),\n+      static_cast<const uint8_t*>(weights), static_cast<uint16_t*>(output),\n+      rows, experts, k, n);\n+  return static_cast<int>(hipGetLastError());\n+}\n+\n+extern \"C\" int hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_direct_meta_bf16_bf16_out(\n+    const void* input, const void* starts, const void* weights, void* output,\n+    int64_t rows, int64_t experts, int64_t k, int64_t n, hipStream_t stream) {\n+  if (!input || !starts || !weights || !output || rows <= 0 || experts <= 0 ||\n+      k <= 0 || k % 32 || k > 4096 || n <= 0)\n+    return static_cast<int>(hipErrorInvalidValue);\n+  hipLaunchKernelGGL((q5_1_selected_grouped_prefill_pair2_bf16_kernel<true>),\n       dim3(static_cast<uint32_t>((n+7)/8), static_cast<uint32_t>(experts < 64 ? experts : 64)),\n       dim3(128), 8*256*sizeof(float)+(k/32)*24, stream,\n       static_cast<const uint16_t*>(input), static_cast<const int64_t*>(starts),\ndiff --git a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py\nindex e02c9cab7..566f3f18b 100644\n--- a/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py\n+++ b/hipengine/kernels/hip_gfx1100/quant/qwen4_exp_q5_1.py\n@@ -329,6 +329,7 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_\n     library: ctypes.CDLL | None = None,\n     runtime: HipRuntime | None = None,\n     _pair: bool = False,\n+    _direct_meta: bool = False,\n ) -> None:\n     \"\"\"Run the PF-3 M1 candidate: fused single-loop logical256 Q5_1 row8/\n     output8 over a fixed 64-CTA expert grid (strict fallback:\n@@ -344,7 +345,8 @@ def qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_\n     runtime = runtime or get_hip_runtime()\n     fn = signed_kernel_fn(\n         library,\n-        (\"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out\" if _pair else\n+        (\"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_direct_meta_bf16_bf16_out\" if _direct_meta else\n+         \"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out\" if _pair else\n          \"hipengine_qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out\"),\n         _ARGS_GROUPED,\n         ctypes.c_int,\n@@ -368,6 +370,10 @@ def qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out(*args, **kwargs)\n     qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out(\n         *args, **kwargs, _pair=True)\n \n+def qwen4_exp_q5_1_selected_grouped_prefill_pair2_direct_meta_bf16_bf16_out(*args, **kwargs):\n+    qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out(\n+        *args, **kwargs, _pair=True, _direct_meta=True)\n+\n \n def qwen4_exp_q5_1_selected_weighted_sum_logical256_t64_bf16_bf16_out(\n     input_ptr: int,\n@@ -574,6 +580,12 @@ def qwen4_exp_q5_1_selected_gemv_bf16_bf16_out(\n \n \n def register_qwen4_exp_q5_1_kernels(*, replace: bool = True) -> None:\n+    register(\n+        KernelKey(\"hip_gfx1100\", \"moe_linear\", \"gguf_q5_1\",\n+                  \"selected_grouped_prefill_pair2_direct_meta_bf16_bf16_out\"),\n+        qwen4_exp_q5_1_selected_grouped_prefill_pair2_direct_meta_bf16_bf16_out,\n+        replace=replace,\n+    )\n     register(\n         KernelKey(\"hip_gfx1100\", \"moe_linear\", \"gguf_q5_1\",\n                   \"selected_grouped_prefill_pair2_bf16_bf16_out\"),\ndiff --git a/scripts/qwen4exp_q51_pair_screen.py b/scripts/qwen4exp_q51_pair_screen.py\nindex af0d7a4d4..817f4fd43 100644\n--- a/scripts/qwen4exp_q51_pair_screen.py\n+++ b/scripts/qwen4exp_q51_pair_screen.py\n@@ -17,7 +17,7 @@ from hipengine.core.memory import free\n from hipengine.loading.gguf import GGUFReader, discover_gguf_files\n from hipengine.kernels.hip_gfx1100.quant import qwen4_exp_q5_1 as q5\n from scripts.qwen4exp_canonical_ar_bench import _git_metadata, _host_metadata\n-from tests.test_qwen4exp_q51_pair import PARENT,CANDIDATE\n+from tests.test_qwen4exp_q51_pair import PARENT,CANDIDATE,DIRECT_META\n from tests.test_qwen4_exp_pf3_moe_schedules import _upload,_alloc,_download,_make_activation\n \n \n@@ -29,6 +29,7 @@ def main():\n     p.add_argument(\"--compiler-version-file\",type=Path,required=True)\n     p.add_argument(\"--require-cached-build\",action=\"store_true\")\n     p.add_argument(\"--output\",type=Path,required=True)\n+    p.add_argument(\"--direct-meta\",action=\"store_true\")\n     a=p.parse_args()\n     if a.pairs<1 or any(r<1 for r in a.rows):\n         p.error(\"positive rows/pairs required\")\n@@ -67,7 +68,8 @@ def main():\n             dx,ds=[_upload(v,runtime,allocations) for v in (x,starts)]\n             out=[_alloc((compact,2560),np.uint16,runtime,allocations) for _ in range(4)]\n             def run(candidate):\n-                fn=getattr(q5,CANDIDATE if candidate else PARENT)\n+                fn=getattr(q5,(DIRECT_META if candidate else CANDIDATE)\n+                           if a.direct_meta else (CANDIDATE if candidate else PARENT))\n                 for i,w in enumerate(weights):\n                     fn(dx.ptr,ds.ptr,w.ptr,out[(2 if candidate else 0)+i].ptr,\n                        compact,512,640,2560,library=library,runtime=runtime)\ndiff --git a/tests/test_qwen4exp_q51_pair.py b/tests/test_qwen4exp_q51_pair.py\nindex 68095df5f..360598b01 100644\n--- a/tests/test_qwen4exp_q51_pair.py\n+++ b/tests/test_qwen4exp_q51_pair.py\n@@ -10,6 +10,7 @@ from tests.test_qwen4_exp_pf3_moe_schedules import (\n \n PARENT=\"qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out\"\n CANDIDATE=\"qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out\"\n+DIRECT_META=\"qwen4_exp_q5_1_selected_grouped_prefill_pair2_direct_meta_bf16_bf16_out\"\n \n \n def hip_available():\n@@ -20,14 +21,15 @@ def hip_available():\n         return False\n \n \n-def test_pair_registry_and_bounds():\n+@pytest.mark.parametrize(\"candidate_name\", [CANDIDATE, DIRECT_META])\n+def test_pair_registry_and_bounds(candidate_name):\n     from types import SimpleNamespace\n     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels\n     from hipengine.kernels.registry import resolve\n     register_gfx1151_kernels(replace=True)\n     fn=resolve(backend=\"hip_gfx1151\",layer=\"moe_linear\",quant=\"gguf_q5_1\",\n-               variant=\"selected_grouped_prefill_pair2_bf16_bf16_out\")\n-    assert fn is getattr(q5,CANDIDATE)\n+               variant=candidate_name.removeprefix(\"qwen4_exp_q5_1_\"))\n+    assert fn is getattr(q5,candidate_name)\n     assert callable(resolve(backend=\"hip_gfx1151\",layer=\"moe_linear\",quant=\"gguf_q5_1\",\n         variant=\"selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out\"))\n     with pytest.raises(ValueError,match=\"4096\"):\n@@ -35,9 +37,10 @@ def test_pair_registry_and_bounds():\n \n \n @pytest.mark.skipif(not hip_available(),reason=\"HIP unavailable\")\n+@pytest.mark.parametrize(\"candidate_name\", [CANDIDATE, DIRECT_META])\n @pytest.mark.parametrize(\"rows,experts,k,n\",[(17,8,96,7),(65,64,640,33),(5120,512,640,2560)])\n-def test_pair_exact(rows,experts,k,n):\n-    candidate=getattr(q5,CANDIDATE)\n+def test_pair_exact(rows,experts,k,n,candidate_name):\n+    candidate=getattr(q5,candidate_name)\n     runtime=get_hip_runtime()\n     library=q5.build_qwen4_exp_q5_1(load=True)\n     rng=np.random.default_rng(5151)\n",
+  "tests_passed": 8,
+  "disposition": "Direct wave-uniform metadata loses to LDS-staged pair2 at both token counts; production unchanged.",
+  "limitations": [
+    "Actual weights, synthetic routing and activations; two rotating banks, no model A/B.",
+    "No profiler resource or compiler-causality claim.",
+    "Broad lineage check failed on missing historical hb-pr11 checkout; no external port involved."
+  ]
+}
