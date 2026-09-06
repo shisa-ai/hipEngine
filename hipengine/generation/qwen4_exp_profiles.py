@@ -215,9 +215,14 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "linear",
-            "grouped_prefill_q8_0_expert_down",
+            "grouped_prefill_rows_lt512_q8_0_expert_down",
             "selected_gemv_bf16_bf16_out",
             "selected_gemv_bf16_bf16_out",
+            "gguf_q8_0",
+        ),
+        _selection(
+            "linear", "grouped_prefill_rows_ge512_q8_0_expert_down",
+            "selected_gemv_bf16_bf16_out", "selected_gemv_bf16_bf16_out",
             "gguf_q8_0",
         ),
         _selection(
@@ -366,11 +371,17 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "linear",
-            "grouped_prefill_q8_0_expert_down",
+            "grouped_prefill_rows_lt512_q8_0_expert_down",
             "selected_grouped_gemv_bf16_bf16_out",
             "selected_gemv_bf16_bf16_out",
             "gguf_q8_0",
             evidence=_HALO_PF13_EVIDENCE,
+        ),
+        _selection(
+            "linear", "grouped_prefill_rows_ge512_q8_0_expert_down",
+            "selected_grouped_row4_gemv_bf16_bf16_out", "selected_gemv_bf16_bf16_out",
+            "gguf_q8_0",
+            evidence="benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json",
         ),
         _selection(
             "linear",
@@ -433,7 +444,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "0",
+        "HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",

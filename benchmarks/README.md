@@ -2,6 +2,15 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Framework UD-Q4_K_XL / BF16 KV Q8-down row4 promotion | p512 PP | p1024 PP | p4096 PP |
+| --- | ---: | ---: | ---: |
+| Same-residency parent -> production | 158.216 -> 159.516 (+0.822%) | 155.729 -> 156.718 (+0.635%) | 144.452 -> 145.470 (+0.705%) |
+
+All72 trajectories exact; every case improves prefill and request wall.
+Small per-case decode decreases remain in the packet; no intrinsic decode
+gain claimed. No additional sidecars, zero final allocations.
+[Production evidence](results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json).
+
 Q8 down row4 default-off model gate: five cases pass full logits/state/KV
 and four decode steps exactly; candidate runs only in prefill, final owners0.
 Clean12-case throughput A/B remains pending.

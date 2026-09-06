@@ -148,7 +148,7 @@ def main():
             report["sidecar_bytes"] = generator.runner._q8_mmq_weight_sidecars.nbytes
             report["sidecar_count"] = len(generator.runner._q8_mmq_weight_sidecars.mapping)
             os.environ[flag] = "0"
-        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale"}:
+        if args.route_package in {"q5k-row4", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-down-row4"}:
             assert os.environ[flag] == "1", "production must select the retained route without an override"
         if args.route_package == "prefill-bundle":
             assert os.environ[flag] == "1"

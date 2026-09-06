@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 down row4 production (September6 UTC):** clean `c7dd804cb` full12-case
+same-residency A/B preserves all72 measured trajectories and improves every
+case's prefill and complete prefill+decode wall. Weighted PP512/1024/4096:
+158.216->159.516 /155.729->156.718 /144.452->145.470 tok/s
+(+0.822%/+0.635%/+0.705%). Total request-wall ratio1.00522x.
+Aggregate TG changes+0.249%/+0.110%/+0.260%, not a decode-kernel gain;
+code512/code1024/English1024 individually lose0.074%/0.002%/0.006% TG.
+Max per-case PP/TG CV0.575%/1.020%; measured first-to-last span31m48.2s,
+excluding initial loading/warmups. Zero final ownership, no new sidecars.
+Promote only existing grouped-Q8 prefill rows>=512; smaller chunks stay row1
+and strict stays selected GEMV. The split manifest scopes change identity,
+not strict arithmetic. Post-promotion owner refresh follows separately.
+[Production packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json).
+
 **Q8 down row4 runtime admission (September6 UTC):** default-off selector
 is wired only into existing grouped-Q8 prefill, with measured rows>=512;
 smaller chunks and c1 keep row1. Both profile binders pin0. Five code512/

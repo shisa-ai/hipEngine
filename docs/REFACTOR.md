@@ -1,16 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp Q8 down row4 candidate
+## Qwen4Exp Q8 down row4 rollback
 
-- `selected_grouped_row4_gemv_bf16_bf16_out` is a default-off runtime candidate.
-  Keep row1 and strict selected GEMV until invocation-checked model gates and
-  canonical12-case A/B establish retention.
+- `selected_grouped_row4_gemv_bf16_bf16_out` passes invocation-checked model
+  gates and canonical12-case A/B and is production for rows>=512.
 - `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` selects row4 only inside the
-  existing grouped-Q8 path and for measured rows>=512. Both profile binders pin0 during
-  admission. After a passing full12-case gate, promote the production binder
-  and remove the experimental default-off status; keep row1 for rollback.
-- Remove the candidate if complete-model evidence loses; if it wins, promote
-  only the measured grouped-prefill scope and retain the strict fallback.
+  existing grouped-Q8 path and for measured rows>=512. Production pins1,
+  strict0. Remove the opt-out after the next independently qualified Q8-down
+  improvement or a release window; keep row1 for smaller chunks and the
+  strict selected-GEMV fallback.
 - Diagnostic `scripts/qwen4exp_q8_down_row4_screen.py` labels borrowed routing
   counts separately from weight identity; replace with whole-model evidence
   before claiming production gains.

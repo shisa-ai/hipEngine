@@ -129,7 +129,7 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
         "expertgrid64_bf16_bf16_out"
     )
     strict_q8_grouped = _selection_map(strict)[
-        ("linear", "grouped_prefill_q8_0_expert_down")
+        ("linear", "grouped_prefill_rows_lt512_q8_0_expert_down")
     ]
     assert strict_q8_grouped["selected_variant"] == (
         "selected_gemv_bf16_bf16_out"
@@ -192,7 +192,10 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     assert q5_m1["evidence_artifact"].endswith(
         "halo-pf13-production-refresh.json"
     )
-    q8_grouped = selections[("linear", "grouped_prefill_q8_0_expert_down")]
+    q8_grouped = selections[("linear", "grouped_prefill_rows_lt512_q8_0_expert_down")]
+    q8_row4 = selections[("linear", "grouped_prefill_rows_ge512_q8_0_expert_down")]
+    assert q8_row4["selected_variant"] == "selected_grouped_row4_gemv_bf16_bf16_out"
+    assert q8_row4["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
     assert q8_grouped["selected_variant"] == (
         "selected_grouped_gemv_bf16_bf16_out"
     )
@@ -266,7 +269,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert pair["strict_fallback_variant"] == (
         "selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_bf16_bf16_out")
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "page256"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     selected = _selection_map(production)
     assert selected[("moe_linear", "prefill_rows_ge2_lt64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")

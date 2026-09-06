@@ -813,6 +813,12 @@ engagement/timing must additionally be verified unprofiled. See
 [pinned review](QWEN4EXP-WILKIN-RUNTIME-REVIEW.md) and campaign WIL-1 through WIL-4
 for graph-update, UMA ownership and semantic-safe TOP_K follow-ups.
 
+Qwen4Exp grouped Q8 expert-down prefill now uses exact four-row reuse for
+rows>=512 in production, with row1 for smaller chunks and strict selected GEMV
+unchanged. Full12-case A/B preserves72 trajectories and improves all prefill/
+request walls; PP512/1024/4096 improves0.822%/0.635%/0.705%. No new sidecars.
+See `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-row4-production.json`.
+
 #### Fusion Planner
 
 Dispatch converts a layer's op chain into a kernel plan. Fused composites are preferred when a registered kernel matches a contiguous sub-chain; otherwise the planner falls back to unfused primitives. Every fused kernel must have a registered strict unfused chain. Strict composites satisfy their declared exact/parent-parity contract; production composites may reassociate arithmetic only after the profile-wide semantic gate and still fall back to that strict chain.
