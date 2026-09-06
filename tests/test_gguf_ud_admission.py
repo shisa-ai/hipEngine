@@ -1788,3 +1788,186 @@ def test_coverage_families_are_registered_consumers_not_just_valid_keys():
         key.layer == "moe_linear" and key.quant == "gguf_iq3_xxs"
         for key in registered
     )
+
+
+def test_partial_preflight_certificate_does_not_cover_full_artifact():
+    """U1 repair 4: a slot-filtered preflight certifies exactly the slots it
+    checked; the certificate must not read as full-artifact coverage."""
+
+    plain_map = _synthetic_model_map()
+    report = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        slot_filter=("root.output_norm",),
+    )
+    assert report.supported is True
+    assert report.covered_slots == 1
+    certificate = report.certificate()
+    assert certificate.slot_filter == ("root.output_norm",)
+
+    # Same manifest identity, but the caller now intends the FULL artifact:
+    # the one-slot certificate does not cover it.
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=None,
+        )
+        is False
+    )
+    # A different partial use is not covered either.
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("root.lm_head",),
+        )
+        is False
+    )
+    # The exact checked subset is covered (debug/subset loading preserved).
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("root.output_norm",),
+        )
+        is True
+    )
+
+    # Conversely, a full-artifact certificate covers a one-slot debug load.
+    full_certificate = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100"
+    ).certificate()
+    assert full_certificate.slot_filter is None
+    assert (
+        certificate_covers_artifact(
+            full_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("root.output_norm",),
+        )
+        is True
+    )
+
+
+def test_empty_slot_filter_certificate_covers_only_the_empty_use():
+    plain_map = _synthetic_model_map()
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=()
+    )
+    assert report.supported is True
+    assert report.covered_slots == 0
+    certificate = report.certificate()
+    assert certificate.slot_filter == ()
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=(),
+        )
+        is True
+    )
+    assert (
+        certificate_covers_artifact(
+            certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("root.output_norm",),
+        )
+        is False
+    )
+
+
+def test_certificate_binds_the_effective_plan_contract():
+    """A contraction-enabled certificate must not be reusable on an
+    uncontracted plan (and vice versa); the contract is the certificate's
+    effective resident/operation contract, not a caller claim."""
+
+    from hipengine.loading.qwen35_gguf_admission import Qwen35GGUFPlanContract
+
+    plain_map = _synthetic_model_map()
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+
+    contracted = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", contract_f32_linear=True
+    )
+    uncontracted = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", contract_f32_linear=False
+    )
+    cert_contracted = contracted.certificate()
+    assert cert_contracted.plan_contract is not None
+    assert cert_contracted.plan_contract.contract_f32_linear is True
+    assert uncontracted.plan_contract.contract_f32_linear is False
+
+    # Same manifest identity, same backend, but the intended plan is the
+    # uncontracted one: the contraction-enabled certificate must refuse it.
+    assert (
+        certificate_covers_artifact(
+            cert_contracted,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=uncontracted.plan_contract,
+        )
+        is False
+    )
+    # And the exact contract is covered.
+    assert (
+        certificate_covers_artifact(
+            cert_contracted,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=cert_contracted.plan_contract,
+        )
+        is True
+    )
+
+    # decode_repack is part of the contract: a repack-vetoed plan is not the
+    # certified plan even when the veto was implicit.
+    vetoed = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", repack_veto=True
+    )
+    assert vetoed.plan_contract.decode_repack is False
+    assert (
+        certificate_covers_artifact(
+            cert_contracted,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=vetoed.plan_contract,
+        )
+        is False
+    )
+
+    # A legacy certificate without contract metadata cannot verify a plan
+    # contract at all (fail closed).
+    from dataclasses import replace as dataclass_replace
+
+    legacy = dataclass_replace(cert_contracted, plan_contract=None)
+    assert (
+        certificate_covers_artifact(
+            legacy,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=cert_contracted.plan_contract,
+        )
+        is False
+    )
+    assert Qwen35GGUFPlanContract is not None
+
+
+def test_plan_contract_records_effective_operations_and_slot_scope():
+    plain_map = _synthetic_model_map()
+    report = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_AR_PREFILL, QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS),
+        slot_filter=("root.lm_head", "layers.0.attn_qkv"),
+    )
+    contract = report.plan_contract
+    assert contract is not None
+    assert contract.operations == (
+        QWEN35_GGUF_OP_AR_PREFILL,
+        QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS,
+    )
+    assert contract.slot_filter == ("layers.0.attn_qkv", "root.lm_head")
+    certificate = report.certificate()
+    assert certificate.plan_contract == contract
+    # as_dict exports the scoped contract for audit trails.
+    exported = certificate.as_dict()
+    assert exported["slot_filter"] == ["layers.0.attn_qkv", "root.lm_head"]
+    assert exported["plan_contract"]["contract_f32_linear"] in (True, False)
