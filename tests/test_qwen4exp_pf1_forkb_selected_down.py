@@ -99,11 +99,15 @@ def test_q8_grouped_row4_registry():
     assert resolve(backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
                    variant="selected_grouped_row4_gemv_bf16_bf16_out") is (
         gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)
+    assert resolve(backend="hip_gfx1151", layer="linear", quant="gguf_q8_0",
+                   variant="selected_grouped_row4_bundle_gemv_bf16_bf16_out") is (
+        gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out)
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
 @pytest.mark.parametrize("threads", [64, 128, 256])
-def test_q8_row4_compact_tails_and_cpu_reference(threads):
+@pytest.mark.parametrize("bundle", [False, True])
+def test_q8_row4_compact_tails_and_cpu_reference(threads, bundle):
     from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv as gemv
     from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
     from tests.test_qwen4_exp_pf3_moe_schedules import _alloc, _upload, _download
@@ -117,8 +121,9 @@ def test_q8_row4_compact_tails_and_cpu_reference(threads):
     try:
         dx, ds, dw = [_upload(v, runtime, allocations) for v in (x, starts, weights)]
         outputs = [_alloc((rows, n), np.uint16, runtime, allocations) for _ in range(2)]
-        for i, fn in enumerate((gemv.gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
-                                gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)):
+        candidate = (gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out
+                     if bundle else gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out)
+        for i, fn in enumerate((gemv.gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,candidate)):
             fn(dx.ptr, ds.ptr, None, dw.ptr, outputs[i].ptr, rows, rows, experts, k, n,
                runtime=runtime, threads=threads)
         actual = [_download(o, (rows, n), np.uint16, runtime) for o in outputs]
@@ -152,7 +157,7 @@ def test_pf1_forkb_grouped_selected_down_imports() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("row_batch", [1, 4])
+@pytest.mark.parametrize("row_batch", [1, 4, "bundle"])
 @pytest.mark.parametrize(
     "x_rows,top_k,num_experts,in_features,out_features",
     [
@@ -172,6 +177,11 @@ def test_pf1_forkb_grouped_selected_down_bit_parity(
     if row_batch == 4:
         from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
             gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out as
+            gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
+        )
+    elif row_batch == "bundle":
+        from hipengine.kernels.hip_gfx1100.quant.gguf_k_gemv import (
+            gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out as
             gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
         )
 

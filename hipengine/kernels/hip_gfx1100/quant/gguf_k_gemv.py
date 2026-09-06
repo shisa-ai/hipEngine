@@ -500,6 +500,9 @@ gguf_q8_0_selected_grouped_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
 gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
     "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_gemv_bf16_bf16_out")
 )
+gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+)
 gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_grouped_row4_gemv_bf16_bf16_out")
 )
@@ -1561,6 +1564,7 @@ _WRAPPERS = {
         "selected_gemv_bf16_bf16_out": gguf_q8_0_selected_gemv_bf16_bf16_out,
         "selected_grouped_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
         "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,
+        "selected_grouped_row4_bundle_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q8_0_selected_pack8_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q8_0_prefill_f32_f32_out,
         "prefill_f32_fp16_out": gguf_q8_0_prefill_f32_fp16_out,
@@ -1678,6 +1682,7 @@ __all__ = [
     "build_gguf_k_gemv",
     "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out",
     "gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
     "gguf_q8_0_gemv_rowbatch4_f32_f32_out",
     "gguf_q8_0_gemv_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_rowbatch16_f32_f32_out",
