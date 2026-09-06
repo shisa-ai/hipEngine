@@ -2407,3 +2407,315 @@ def test_repacked_moe_experts_still_qualify_with_decode_repack():
     assert LAYOUT_GGUF_Q4_K_T16 in repacked
 
 
+# ---------------------------------------------------------------------------
+# U1 repair round 2 (F3): the mandatory allocation-formula validation must
+# keep the previously supported env-gated Q5 planar sidecar loadable.
+# ---------------------------------------------------------------------------
+
+_Q5_PLANAR_SSM_OUT_SHAPE = (5_120, 6_144)
+
+_Q5_PLANAR_FLAGS = dict(
+    dense_q5_t16_ssm_out=True,
+    dense_q5_raw_mmq_ssm_out=True,
+    dense_q5_qmicro_planar_ssm_out=True,
+)
+
+
+def _q5_planar_ssm_out_map() -> Qwen35GGUFModelMap:
+    from types import MappingProxyType
+
+    config = _config((LINEAR_ATTENTION,))
+    root = {
+        "token_embedding": _tensor(
+            "token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0
+        ),
+        "output_norm": _tensor("output_norm.weight", (256,)),
+        "lm_head": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
+    }
+    tensors = dict(_linear_layer_tensors(0))
+    tensors["ssm_out"] = _tensor(
+        "blk.0.ssm_out.weight",
+        _Q5_PLANAR_SSM_OUT_SHAPE,
+        GGMLQuantizationType.Q5_K,
+    )
+    return Qwen35GGUFModelMap(
+        config=config,
+        root_tensors=MappingProxyType(root),
+        layers=(
+            Qwen35GGUFLayerMap(
+                layer_id=0,
+                layer_type=LINEAR_ATTENTION,
+                tensors=MappingProxyType(tensors),
+            ),
+        ),
+        validation=None,
+    )
+
+
+def _expected_q5_planar_nbytes() -> tuple[dict[str, int], object]:
+    """Exact per-allocation bytes for the planar Q5 T16 ssm_out resident.
+
+    The planar sidecar payload is the INT8 ``planar.tiles`` array of the real
+    converter chain ``convert_gguf_q5_k_qmicro_tile16_to_planar(
+    repack_gguf_q5_k_qmicro_tile16(raw[None, ...]))``: shape
+    ``[1, out/16, bytes_per_row/176, GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES]``.
+    """
+
+    import numpy as np
+    from hipengine.quant.gguf_t16 import (
+        GGUF_Q5_K_BLOCK_BYTES,
+        GGUF_Q5_K_T16_BLOCK_BYTES,
+        GGUF_Q5_K_QMICRO_PLANAR_T16_BLOCK_BYTES,
+        convert_gguf_q5_k_qmicro_tile16_to_planar,
+        repack_gguf_q5_k_qmicro_tile16,
+    )
+
+    model_map = _q5_planar_ssm_out_map()
+    source = model_map.layers[0].tensors["ssm_out"]
+    out_features, bytes_per_row = (int(dim) for dim in source.byte_shape)
+    blocks_per_row = bytes_per_row // GGUF_Q5_K_BLOCK_BYTES
+    raw = np.zeros(
+        (out_features, bytes_per_row), dtype=np.uint8
+    )
+    planar = convert_gguf_q5_k_qmicro_tile16_to_planar(
+        repack_gguf_q5_k_qmicro_tile16(raw[None, ...])
+    )
+    expected = {
+        "tiles": (out_features // 16)
+        * blocks_per_row
+        * GGUF_Q5_K_T16_BLOCK_BYTES,
+        "raw": int(source.nbytes),
+        "qmicro_planar": int(planar.tiles.nbytes),
+    }
+    return expected, source
+
+
+def test_q5_planar_sidecar_resident_plans_exact_converter_bytes():
+    """RED (F3 regression): the allocation-formula validation added with U1
+    repair 3 hard-refused the previously supported qmicro_planar sidecar
+    (``unsupported resident allocation 'qmicro_planar'``). The planner must
+    size the sidecar exactly like the host-side converter/allocation ABI."""
+
+    from hipengine.loading.qwen35_gguf_materialize import (
+        LAYOUT_GGUF_Q5_K_T16,
+        plan_qwen35_gguf_weight_spec,
+        planned_qwen35_gguf_weight_allocation_nbytes,
+    )
+
+    model_map = _q5_planar_ssm_out_map()
+    spec = plan_qwen35_gguf_weight_spec(
+        "layers.0.ssm_out",
+        model_map.layers[0].tensors["ssm_out"],
+        decode_repack=True,
+        **_Q5_PLANAR_FLAGS,
+    )
+    assert spec.layout == LAYOUT_GGUF_Q5_K_T16
+    assert spec.allocation_names == ("tiles", "raw", "qmicro_planar")
+    expected, _source = _expected_q5_planar_nbytes()
+    planned = dict(planned_qwen35_gguf_weight_allocation_nbytes(spec))
+    assert planned == expected
+    assert planned["qmicro_planar"] > 0
+
+
+def test_q5_planar_sidecar_resident_is_admitted_with_planar_flags():
+    """The previously supported env-gated planar resident passes admission
+    again (all three flags on), alongside the default-off control."""
+
+    planar_report = preflight_qwen35_gguf_artifact(
+        _q5_planar_ssm_out_map(),
+        backend="hip_gfx1100",
+        decode_repack=True,
+        **_Q5_PLANAR_FLAGS,
+    )
+    assert planar_report.unsupported == (), planar_report.render_refusals()
+    assert planar_report.supported
+
+    # Default-off control: raw sidecar without the planar sidecar stays exact.
+    off_report = preflight_qwen35_gguf_artifact(
+        _q5_planar_ssm_out_map(),
+        backend="hip_gfx1100",
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q5_raw_mmq_ssm_out=True,
+    )
+    assert off_report.unsupported == (), off_report.render_refusals()
+
+
+def test_q5_planar_env_gate_resolves_off_by_default_and_on_with_env(monkeypatch):
+    """End-to-end through the shared policy API: HIPENGINE_C8_Q5_PLANAR_DP4A
+    defaults off (tiles+raw only) and resolves the planar sidecar on with the
+    env set — both variants must size exactly, on with no refusal."""
+
+    import os
+
+    from hipengine.loading.qwen35_gguf_materialize import (
+        LAYOUT_GGUF_Q5_K_T16,
+        plan_qwen35_gguf_weight_spec,
+        planned_qwen35_gguf_weight_allocation_nbytes,
+    )
+    from hipengine.loading.qwen35_gguf_policy import resolve_gguf_dense_flags
+
+    monkeypatch.delenv("HIPENGINE_C8_Q5_PLANAR_DP4A", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_C8_Q5_RAW_MMQ", raising=False)
+    flags = resolve_gguf_dense_flags(
+        "hip_gfx1100",
+        "MOSTLY_Q4_K_M",
+        capability_reader=_gguf_backend_capability(),
+        environ=os.environ,
+    )
+    assert flags["dense_q5_t16_ssm_out"] is True
+    assert flags["dense_q5_raw_mmq_ssm_out"] is True
+    assert flags["dense_q5_qmicro_planar_ssm_out"] is False
+    source = _q5_planar_ssm_out_map().layers[0].tensors["ssm_out"]
+    off_spec = plan_qwen35_gguf_weight_spec(
+        "layers.0.ssm_out", source, decode_repack=True, **flags
+    )
+    assert off_spec.allocation_names == ("tiles", "raw")
+    assert dict(planned_qwen35_gguf_weight_allocation_nbytes(off_spec)) == {
+        "tiles": _expected_q5_planar_nbytes()[0]["tiles"],
+        "raw": _expected_q5_planar_nbytes()[0]["raw"],
+    }
+
+    monkeypatch.setenv("HIPENGINE_C8_Q5_PLANAR_DP4A", "1")
+    flags_on = resolve_gguf_dense_flags(
+        "hip_gfx1100",
+        "MOSTLY_Q4_K_M",
+        capability_reader=_gguf_backend_capability(),
+        environ=os.environ,
+    )
+    assert flags_on["dense_q5_qmicro_planar_ssm_out"] is True
+    on_spec = plan_qwen35_gguf_weight_spec(
+        "layers.0.ssm_out", source, decode_repack=True, **flags_on
+    )
+    assert on_spec.allocation_names == ("tiles", "raw", "qmicro_planar")
+    planned_on = dict(planned_qwen35_gguf_weight_allocation_nbytes(on_spec))
+    assert planned_on == _expected_q5_planar_nbytes()[0]
+
+
+def test_unaffected_sidecar_and_t16_controls_keep_exact_accounting():
+    """Controls that never involved the planar formula: raw Q8_0 sidecar,
+    Q5 08b T16, and the Q6 qmicro-planar resident layout all keep sizing"""
+
+    from hipengine.loading.qwen35_gguf_materialize import (
+        LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR,
+        LAYOUT_GGUF_Q8_0_T16,
+        plan_qwen35_gguf_weight_spec,
+        planned_qwen35_gguf_weight_allocation_nbytes,
+    )
+
+    # Raw-sidecar control: Q8_0 alpha/beta with decode repack plans sole T16
+    # tiles (the raw sidecar needs its own env); the tiles accounting is exact.
+    q8_map = _synthetic_model_map(
+        embedding_type=GGMLQuantizationType.Q8_0,
+        alpha_beta_type=GGMLQuantizationType.Q8_0,
+    )
+    alpha = q8_map.layers[0].tensors["ssm_alpha"]
+    q8_spec = plan_qwen35_gguf_weight_spec(
+        "layers.0.ssm_alpha", alpha, decode_repack=True
+    )
+    assert q8_spec.layout == LAYOUT_GGUF_Q8_0_T16
+    q8_planned = dict(planned_qwen35_gguf_weight_allocation_nbytes(q8_spec))
+    assert q8_planned["tiles"] == (int(alpha.byte_shape[0]) // 16) * (
+        int(alpha.byte_shape[1]) // GGUF_Q8_0_BLOCK_BYTES
+    ) * GGUF_Q8_0_T16_BLOCK_BYTES
+
+    # Q6 qmicro-planar resident layout control (already formula-supported).
+    config = _config((LINEAR_ATTENTION,))
+    tensors = dict(_linear_layer_tensors(0))
+    tensors["attn_v"] = _tensor(
+        "blk.0.attn_v.weight", (1_024, 5_120), GGMLQuantizationType.Q6_K
+    )
+    from types import MappingProxyType
+
+    q6_map = Qwen35GGUFModelMap(
+        config=config,
+        root_tensors=MappingProxyType(
+            {
+                "token_embedding": _tensor(
+                    "token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0
+                ),
+                "output_norm": _tensor("output_norm.weight", (256,)),
+                "lm_head": _tensor(
+                    "token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0
+                ),
+            }
+        ),
+        layers=(
+            Qwen35GGUFLayerMap(
+                layer_id=0,
+                layer_type=LINEAR_ATTENTION,
+                tensors=MappingProxyType(tensors),
+            ),
+        ),
+        validation=None,
+    )
+    q6_report = preflight_qwen35_gguf_artifact(
+        q6_map,
+        backend="hip_gfx1100",
+        decode_repack=True,
+        dense_q6_qmicro_planar=True,
+    )
+    assert q6_report.unsupported == (), q6_report.render_refusals()
+    q6_spec = plan_qwen35_gguf_weight_spec(
+        "layers.0.attn_v",
+        tensors["attn_v"],
+        decode_repack=True,
+        dense_q6_qmicro_planar=True,
+    )
+    assert q6_spec.layout == LAYOUT_GGUF_Q6_K_T16_QMICRO_PLANAR
+    assert dict(planned_qwen35_gguf_weight_allocation_nbytes(q6_spec)) == {
+        "tiles": int(tensors["attn_v"].nbytes)
+    }
+
+
+def test_invalid_planar_layouts_and_shapes_still_fail_closed():
+    """Supporting the planar formula must not waive the mandatory shape or
+    layout checks: the never-produced Q5 planar resident layout, a planar
+    allocation on a non-Q5-T16 layout, and a non-tile-aligned planar shape
+    are all still refused by the allocation formula."""
+
+    from hipengine.loading.gguf import GGUFTensorInfo
+    from hipengine.loading.qwen35_gguf_materialize import (
+        LAYOUT_GGUF_Q5_K_QMICRO_PLANAR,
+        LAYOUT_GGUF_Q5_K_QMICRO_T16,
+        LAYOUT_GGUF_Q5_K_T16,
+        planned_qwen35_gguf_weight_allocation_nbytes,
+    )
+
+    good_source = _q5_planar_ssm_out_map().layers[0].tensors["ssm_out"]
+
+    def spec_with(layout: str, allocation_names: tuple[str, ...], source=None):
+        return Qwen35GGUFWeightSpec(
+            slot_path="layers.0.ssm_out",
+            source=good_source if source is None else source,
+            quant_key="gguf_q5_k_t16_v1",
+            layout=layout,
+            allocation_names=allocation_names,
+        )
+
+    # The never-produced standalone Q5 planar resident layout stays refused.
+    with pytest.raises(ValueError, match="unsupported resident layout"):
+        planned_qwen35_gguf_weight_allocation_nbytes(
+            spec_with(LAYOUT_GGUF_Q5_K_QMICRO_PLANAR, ("tiles",))
+        )
+    # A planar allocation outside the Q5 T16 resident layout is refused
+    # (mirrors the materializer's own sidecar gate).
+    with pytest.raises(ValueError, match="qmicro_planar"):
+        planned_qwen35_gguf_weight_allocation_nbytes(
+            spec_with(LAYOUT_GGUF_Q5_K_QMICRO_T16, ("tiles", "qmicro_planar"))
+        )
+    # A non-tile-aligned planar shape is refused by the same T16 tile check
+    # the tiles allocation enforces (out_features not a multiple of 16).
+    import dataclasses
+
+    misaligned = dataclasses.replace(
+        good_source,
+        shape=(5_122, 6_144),
+        n_elements=5_122 * 6_144,
+        byte_shape=(5_122, int(good_source.byte_shape[1])),
+        nbytes=5_122 * int(good_source.byte_shape[1]),
+    )
+    with pytest.raises(ValueError, match="tile-aligned"):
+        planned_qwen35_gguf_weight_allocation_nbytes(
+            spec_with(LAYOUT_GGUF_Q5_K_T16, ("tiles", "qmicro_planar"), misaligned)
+        )
