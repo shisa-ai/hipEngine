@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "kind": "gfx1100_qwen38_q4km_direct_c1c8_sweep",
+  "created_at": "2026-09-06T03:24:25Z",
+  "status": "retained_current_scoreboard_rows",
+  "passed": true,
+  "performance_claim": true,
+  "claim_scope": "Direct engine packed-AR route on the physical W7900: aggregate prefill and decode throughput, per-request TTFT, and tracked peak memory at physical widths c1 through c8, 512-token prompts and 128 generated tokens per request.",
+  "decision": "Publish as the current direct-engine c1-c8 rows for Qwen3.8-27B Q4_K_M on gfx1100. This is the first full-width sweep after the 2026-09-05/06 audit campaign, so it is the first published set that includes the singleton-indexed GDN, Q8T16 pair rowtile, Q4 selected pair-reuse, and packed-prefill final-row mask routes.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon Pro W7900",
+    "arch": "gfx1100",
+    "vram_gib": 48,
+    "hip_visible_devices": "0",
+    "gpu_max_hw_queues": 1,
+    "rocm": "HIP version: 7.2.53211-3d9ef42",
+    "compiler_version_file": "/tmp/hipengine-gfx1100-hipcc-version.txt"
+  },
+  "software": {
+    "commit": null,
+    "tracked_clean": null
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "kv": "BF16"
+  },
+  "workload": {
+    "prompt_length": 512,
+    "decode_steps": 128,
+    "warmup_runs": 1,
+    "measured_runs": 3,
+    "prompt_token_id": 9707,
+    "sampling": "greedy_top1",
+    "configurations": [
+      "c1",
+      "c2",
+      "c3",
+      "c4",
+      "c5",
+      "c6",
+      "c7",
+      "native_c8"
+    ],
+    "command": ".venv/bin/python3 scripts/gguf_packed_ar_bench.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --configurations c1,c2,c3,c4,c5,c6,c7,native_c8 --prompt-length 512 --decode-steps 128 --warmup-runs 1 --measured-runs 3 --compiler-version-file /tmp/hipengine-gfx1100-hipcc-version.txt --require-cached-build --json <artifact>"
+  },
+  "measurements": {
+    "c1": {
+      "prefill_tok_s_aggregate": 678.785,
+      "decode_tok_s_aggregate": 29.632,
+      "decode_tok_s_per_request": 29.632,
+      "ttft_seconds_per_request": 0.754,
+      "tracked_peak_gib": 19.414,
+      "hip_used_peak_gib": 19.609,
+      "decode_stdev_pct_of_median": 0.279
+    },
+    "c2": {
+      "prefill_tok_s_aggregate": 368.906,
+      "decode_tok_s_aggregate": 53.965,
+      "decode_tok_s_per_request": 26.983,
+      "ttft_seconds_per_request": 2.776,
+      "tracked_peak_gib": 20.264,
+      "hip_used_peak_gib": 20.519,
+      "decode_stdev_pct_of_median": 0.404
+    },
+    "c3": {
+      "prefill_tok_s_aggregate": 362.56,
+      "decode_tok_s_aggregate": 75.186,
+      "decode_tok_s_per_request": 25.062,
+      "ttft_seconds_per_request": 4.237,
+      "tracked_peak_gib": 21.115,
+      "hip_used_peak_gib": 21.458,
+      "decode_stdev_pct_of_median": 0.131
+    },
+    "c4": {
+      "prefill_tok_s_aggregate": 379.976,
+      "decode_tok_s_aggregate": 92.254,
+      "decode_tok_s_per_request": 23.063,
+      "ttft_seconds_per_request": 5.39,
+      "tracked_peak_gib": 21.965,
+      "hip_used_peak_gib": 22.38,
+      "decode_stdev_pct_of_median": 0.122
+    },
+    "c5": {
+      "prefill_tok_s_aggregate": 378.273,
+      "decode_tok_s_aggregate": 105.87,
+      "decode_tok_s_per_request": 21.174,
+      "ttft_seconds_per_request": 6.768,
+      "tracked_peak_gib": 22.815,
+      "hip_used_peak_gib": 23.314,
+      "decode_stdev_pct_of_median": 0.1
+    },
+    "c6": {
+      "prefill_tok_s_aggregate": 403.582,
+      "decode_tok_s_aggregate": 117.632,
+      "decode_tok_s_per_request": 19.605,
+      "ttft_seconds_per_request": 7.612,
+      "tracked_peak_gib": 23.666,
+      "hip_used_peak_gib": 24.241,
+      "decode_stdev_pct_of_median": 0.081
+    },
+    "c7": {
+      "prefill_tok_s_aggregate": 385.332,
+      "decode_tok_s_aggregate": 123.911,
+      "decode_tok_s_per_request": 17.702,
+      "ttft_seconds_per_request": 9.301,
+      "tracked_peak_gib": 24.516,
+      "hip_used_peak_gib": 25.173,
+      "decode_stdev_pct_of_median": 0.031
+    },
+    "native_c8": {
+      "prefill_tok_s_aggregate": 376.638,
+      "decode_tok_s_aggregate": 131.299,
+      "decode_tok_s_per_request": 16.412,
+      "ttft_seconds_per_request": 10.875,
+      "tracked_peak_gib": 25.366,
+      "hip_used_peak_gib": 26.103,
+      "decode_stdev_pct_of_median": 0.054
+    }
+  },
+  "notes": [
+    "Aggregate prefill falls from c1 to c2 and then stays flat: a single request prefills its 512 rows in one slab, while c>1 splits into slot-fair bounded rounds bounded by the 256-row prefill scratch.",
+    "Tracked peak memory grows about 0.85 GiB per added request, from 19.414 GiB at c1 to 25.366 GiB at c8, so the c8 shape does not fit a 24 GB card.",
+    "This is the direct engine route and is a different protocol from the server-protocol C1-C8 peer tables; the two must not be compared cell by cell."
+  ],
+  "disposition": "retained; published as the current direct-engine c1-c8 scoreboard rows"
+}
