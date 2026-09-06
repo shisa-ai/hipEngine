@@ -1,0 +1,34 @@
+{
+  "schema":1,
+  "status":"rejected_blanket_replacement_removed",
+  "source":"74d8cc4ca plus uncommitted candidate;all runtime edits removed",
+  "host":"gfx1151",
+  "machine_id":"55ea6c509d0b49eea8de7094a1023668",
+  "hardware":"Framework Ryzen AI Max+395 Radeon8060S gfx1151",
+  "model":"Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary":"Actual Q4_K gate/up weights,captured same-layer counts,synthetic BF16 activations;unchanged BF16 SiLU included. Routing/down/combine not timed.",
+  "recipe":"Template existing pair kernel ROWS/OUTPUTS/BANKS=2*OUTPUTS. Parent8/2,candidate4/4;32 accumulators per thread in both. Keep output grid4,metadata and reduction geometry parameterized,original128-thread K sequence and wave/serial-wave arithmetic. More concurrent output activation reuse trades less row weight reuse and larger metadata LDS.",
+  "command":".venv/bin/python scripts/qwen4exp_q4_bundle_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --require-cached-build --rows 512 --pairs 20 --row4-pair4 --layer 3 --routing-capture /tmp/qwen4exp-routing-categories.json --routing-case mixed_ja_en-p4096 --routing-chunk 7 --output /tmp/qwen4exp-q4-row4-pair4.json",
+  "second_command":"same command with --layer 0 --routing-case code-p4096 --routing-chunk 0 --output /tmp/qwen4exp-q4-row4-pair4-layer0.json",
+  "environment":"Established therock SDK devel/bin PATH,devel/lib:core/lib LD_LIBRARY_PATH,HIPENGINE_HIP_ARCH=gfx1151,require_cached,unchanged high/2900-requested clocks. Raw packets preserve compiler/weight identities.",
+  "owner_prior":"Fresh code4096 Q4 pair3593.677ms;larger full FFN owner remains first. No model speedup projection from mixed signs.",
+  "cases":[
+    {"layer":3,"routing":"mixed4096 chunk7","parent_ms":16.9959024061,"candidate_ms":17.1312971506,"speedup":0.9920966437,"order_speedups":[0.9947143715,0.9900215845],"pairs":20,"exact":true},
+    {"layer":0,"routing":"code4096 chunk0","parent_ms":17.4256295431,"candidate_ms":17.2834574478,"speedup":1.0082259059,"order_speedups":[1.0109760617,1.0042095503],"pairs":20,"exact":true}
+  ],
+  "correctness":"Registry RED,13 GPU tests pass with tails,K256/512/2560/4096,empty experts,exact repeated outputs and reduced CPU KL/top1 floor. All40 actual-weight gate/up/SiLU pairs exact.",
+  "trace":{
+    "prefix":"HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-q4-row4-pair4-trace --",
+    "arguments":"first command with --pairs 2 --output /tmp/qwen4exp-q4-row4-pair4-trace.json",
+    "symbols":"gguf_q4_k_selected_dual_grouped_pair2_bf16_kernel<8,2>/<4,4>",
+    "parent_ns":[16944161,16893678],
+    "candidate_ns":[16986452,17009615],
+    "vgpr":[88,104],"lds_bytes":[4608,8704],"scratch_bytes":[0,0]
+  },
+  "raw":{
+    "/tmp/qwen4exp-q4-row4-pair4.json":"76328c77beae6cc3be8c65ad88f46cf10e09d53baad8a102cdaa4409028072d2",
+    "/tmp/qwen4exp-q4-row4-pair4-layer0.json":"2f9fc5fc00507165b5d831f8385781216fcb6f1387250ae317da65d4f18805d6",
+    "/tmp/qwen4exp-q4-row4-pair4-trace/gfx1151/3314886_kernel_trace.csv":"4f548545b29d6b0c6886b08899fd8780f783d7ba7385c70542d34321949d0a85"
+  },
+  "disposition":"Remove blanket replacement:one routing/weight case loses in both orders,another wins. No full-model A/B warranted. Do not hand-pick layers/prompts;an expert-count-adaptive mechanism would require broader count-controlled evidence and complete dispatch overhead."
+}
