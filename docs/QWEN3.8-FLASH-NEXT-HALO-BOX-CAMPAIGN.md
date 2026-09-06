@@ -82,7 +82,8 @@ improves prefill156.017->156.711 /153.748->154.285 /143.419->143.908 tok/s
 at512/1K/4K (+0.445%/+0.350%/+0.341%). All72 trajectories are exact,
 every case improves request wall, and elapsed is33m22s. No decode-kernel win
 or new external parity claim. [Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
-The generated post-Q8 family costs below are **pre-GR promotion** until refreshed.
+The generated family costs below now use post-GR production `9efbf6d23`,
+with the earlier pinned Vulkan profile explicitly reused.
 
 **Later Q8 promotion:** normal-model full A/B improves prefill
 154.29->155.45 /151.67->153.43 /141.58->143.41 tok/s at512/1K/4K
@@ -90,7 +91,7 @@ The generated post-Q8 family costs below are **pre-GR promotion** until refreshe
 request faster. This incremental result is not a new external baseline;
 decode drifts in both arms. [Q8 promotion](../benchmarks/results/2026-09-05-framework-qwen4exp-q8-wave-scale-production.json).
 The following frozen throughput baseline is the **pre-Q8-wave-scale snapshot**.
-The generated family table has now been refreshed for hipEngine `39eb07a0a`,
+The generated family table has now been refreshed for hipEngine `9efbf6d23`,
 while explicitly reusing the pinned prior Vulkan profile; it is not a new
 simultaneous throughput comparison.
 
@@ -510,14 +511,15 @@ Reading rules and caveats, binding on any use of these rows:
 ### 5.2.1 Framework starting and current owner snapshots
 
 The generated tables below supersede the subsequent post-GDN checkpoint
-for the current family comparison. Captures use the post-Q8 production
+for the current family comparison. Captures use the post-GR production
 runtime, halo-box Vulkan `b212548e0`, identical fixtures and this Framework
 machine. Fine per-node/per-kernel provenance and the regeneration command
-are in the [post-Q8 family packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
-The fresh hipEngine capture is from `39eb07a0a`; Vulkan is the unchanged
+are in the [post-GR family packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json).
+The fresh hipEngine capture is from `9efbf6d23` on September6 UTC; Vulkan is the unchanged
 earlier capture named in that packet, not a newly measured target. The
 [pre-Q8 packet](../benchmarks/results/2026-09-05-framework-qwen4exp-family-alignment.json)
-remains immutable historical evidence.
+remains immutable historical evidence, as does the
+[post-Q8 packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
 
 <!-- BEGIN FRAMEWORK FAMILY REFRESH -->
 #### Generated Framework Family Tables
@@ -530,15 +532,15 @@ Use the logger-off baseline table for throughput and parity factors.
 
 | Owner | Framework arrival (ms) | Current (ms) | Device share | Device zero-cost ceiling | Wall zero-cost ceiling |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 19,773.694 | 14,618.359 | 53.46% | 2.149x | 2.123x |
-| Non-FFN, non-GR linear | 5,828.219 | 5,568.827 | 20.37% | 1.256x | 1.252x |
-| GR projections + read/mix | 4,351.404 | 4,357.375 | 15.93% | 1.190x | 1.187x |
-| QSA | 8,982.811 | 1,920.700 | 7.02% | 1.076x | 1.075x |
-| GDN | 3,906.453 | 788.297 | 2.88% | 1.030x | 1.029x |
-| Boundary / residual combine | 76.563 | 77.249 | 0.28% | 1.003x | 1.003x |
-| PLE | 14.224 | 14.161 | 0.05% | 1.001x | 1.001x |
+| MoE/FFN (routed + shared) | 19,773.694 | 14,624.200 | 53.65% | 2.157x | 2.133x |
+| Non-FFN, non-GR linear | 5,828.219 | 5,544.822 | 20.34% | 1.255x | 1.252x |
+| GR projections + read/mix | 4,351.404 | 4,284.210 | 15.72% | 1.186x | 1.184x |
+| QSA | 8,982.811 | 1,926.545 | 7.07% | 1.076x | 1.075x |
+| GDN | 3,906.453 | 788.241 | 2.89% | 1.030x | 1.029x |
+| Boundary / residual combine | 76.563 | 76.945 | 0.28% | 1.003x | 1.003x |
+| PLE | 14.224 | 14.088 | 0.05% | 1.001x | 1.001x |
 
-Current kernel sum 27,344.968 ms; profiled wall 27,636.282 ms.
+Current kernel sum 27,259.050 ms; profiled wall 27,531.745 ms.
 Ceilings are sensitivity bounds, not expected realizable speedups. Snapshot deltas
 are historical attribution, not replacements for each retained A/B.
 
@@ -546,27 +548,27 @@ are historical attribution, not replacements for each retained A/B.
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| MoE/FFN (routed + shared) | 14,444.815 | 4,372.034 | 3.304x | +10,072.781 |
-| Non-FFN, non-GR linear | 5,550.966 | 1,019.237 | 5.446x | +4,531.729 |
-| GR projections + read/mix | 4,361.658 | 1,707.311 | 2.555x | +2,654.347 |
-| QSA | 1,921.184 | 645.424 | 2.977x | +1,275.760 |
-| PLE | 13.951 | 75.456 | 0.185x | -61.505 |
-| Boundary / residual combine | 76.222 | 506.861 | 0.150x | -430.639 |
-| GDN | 787.084 | 1,390.400 | 0.566x | -603.317 |
-| **Total device time** | **27,155.880** | **9,716.723** | | |
+| MoE/FFN (routed + shared) | 14,407.130 | 4,372.034 | 3.295x | +10,035.096 |
+| Non-FFN, non-GR linear | 5,544.934 | 1,019.237 | 5.440x | +4,525.697 |
+| GR projections + read/mix | 4,266.589 | 1,707.311 | 2.499x | +2,559.278 |
+| QSA | 1,923.098 | 645.424 | 2.980x | +1,277.674 |
+| PLE | 13.871 | 75.456 | 0.184x | -61.585 |
+| Boundary / residual combine | 76.595 | 506.861 | 0.151x | -430.267 |
+| GDN | 785.842 | 1,390.400 | 0.565x | -604.558 |
+| **Total device time** | **27,018.059** | **9,716.723** | | |
 
 **Decode, four-category p4096 mean (ms):**
 
 | Owner | hipEngine | halo-box Vulkan | HE / Vulkan | Difference |
 | --- | ---: | ---: | ---: | ---: |
-| QSA | 16.982 | 3.161 | 5.373x | +13.821 |
-| MoE/FFN (routed + shared) | 17.348 | 12.469 | 1.391x | +4.879 |
-| Non-FFN, non-GR linear | 17.074 | 16.394 | 1.041x | +0.679 |
-| GR projections + read/mix | 6.613 | 6.115 | 1.082x | +0.499 |
-| PLE | 0.032 | 0.115 | 0.275x | -0.084 |
-| GDN | 2.350 | 2.777 | 0.846x | -0.427 |
-| Boundary / residual combine | 0.456 | 1.386 | 0.329x | -0.930 |
-| **Total device time** | **60.854** | **42.416** | | |
+| QSA | 16.969 | 3.161 | 5.369x | +13.809 |
+| MoE/FFN (routed + shared) | 17.325 | 12.469 | 1.390x | +4.857 |
+| Non-FFN, non-GR linear | 17.071 | 16.394 | 1.041x | +0.677 |
+| GR projections + read/mix | 6.610 | 6.115 | 1.081x | +0.495 |
+| PLE | 0.032 | 0.115 | 0.276x | -0.083 |
+| GDN | 2.348 | 2.777 | 0.846x | -0.429 |
+| Boundary / residual combine | 0.457 | 1.386 | 0.330x | -0.928 |
+| **Total device time** | **60.812** | **42.416** | | |
 
 Decode is a fixed-live4097 diagnostic, averaged over three restored HIP repetitions
 and one Vulkan appended-root query per category, not a tg128 trajectory average.
@@ -584,7 +586,7 @@ from the [owner refresh](../benchmarks/results/2026-09-05-framework-gfx1151-qwen
 the post-GDN snapshot is `511dd977a` from
 [Q4 pair screen -> owner_refresh](../benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-reuse.json).
 The latter precedes Q4 pair production. The subsequent measured post-Q4
-and post-Q8 packets supersede its current-cost role; no later values are
+and post-Q8/post-GR packets supersede its current-cost role; no later values are
 inferred from microbenchmark gains.
 
 | Exclusive owner | Framework arrival (ms) | Post-GDN (ms) | Post-GDN device share | Device zero-cost ceiling | Wall zero-cost ceiling |
@@ -622,7 +624,7 @@ engine's prefill/next-token reference, and all HIP decode repetitions pass
 state and lifecycle checks. Fine role sources, node IDs, binary/library hashes,
 commands and regeneration inputs are retained. This is diagnostic alignment,
 not identical instrumentation or statistical throughput parity. The generated
-table is now updated by the separately linked post-Q8 current-HE refresh.
+table is now updated by the separately linked post-GR current-HE refresh.
 
 **Collector implementation update:** `scripts/qwen4exp_framework_family_refresh.py`
 now captures request-bounded Vulkan logs, runs serial baseline commands,
