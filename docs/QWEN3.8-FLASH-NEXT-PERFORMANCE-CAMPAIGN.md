@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 register-cache default-off admission (September6 UTC):** five
+code512/code4096/en512/ja512/mixed512 off/on/off cases pass full logits,
+four decode steps,state and full KV. Calls0/25/0 or0/200/0,zero decode/
+final ownership;18 CPU tests pass. Existing folded-pair rows>=512 and
+K640 only,both profile binders0. Next is clean canonical12-case
+`--route-package q51-register-cache` A/B;private scratch36B remains
+explicit and no model throughput gain is claimed yet.
+[State packet](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-state.json).
+
 **Q5_1 register-resident short-K reuse (September6 UTC):** unlike the
 rejected LDS materialization below, K640 needs ten cached decoded weights
 per thread/output pair. Exact two-bank projections at captured code0/mixed7

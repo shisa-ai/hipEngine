@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q5_1 register admission] Five full-logit/state/KV cases exact,calls0/25/0 or0/200/0,zero decode/final owners;18 CPU tests,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache-state.json`.
+
 - [2026-09-06 UTC Framework Q5_1 register cache] Captured code/mixed512 two-bank projection34.450->28.195ms (-18.16%)/33.756->27.819ms (-17.59%),all40 pairs exact,both orders positive;17 GPU tests. VGPR72->96/private scratch0->36B,LDS unchanged. Kernel-only,model gates pending. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-register-cache.json`.
 
 - [2026-09-06 UTC Framework Q5_1 LDS cache rejected] Captured code4096chunk0 actual two-bank projection34.449->58.987ms (+71.23% time,0.584x),all20 pairs exact,both orders lose.17 candidate tests;dynamic LDS8672->13792B,VGPR72/scratch0 unchanged. Candidate removed,no model A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-weight-cache-rejected.json`.
