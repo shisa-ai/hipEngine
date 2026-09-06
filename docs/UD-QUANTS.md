@@ -1178,6 +1178,14 @@ gate/alpha/beta operands, and prefill GDN publishes BF16 through its composite
 caller. `ssm_norm` belongs to that composite. The row-local `ssm_out` handoff
 resolves actual F32 input where supported or records the executed BF16 cast.
 Native alpha/beta name the direct BF16 owner, not a rewritten prefill kernel.
+The P2 review follow-up validates GDN geometry through the same CPU-safe rules
+used by the actual wrappers: positive head counts/dimensions, value-head count
+divisible by key-head count, and the c1/row-local value-head limit of 128.
+Segmented/prefill wrappers keep their existing uncapped positive value-head
+contract. The runner and admission share exact inner-size/value-head division;
+conv channel/kernel positivity is shared too. Geometry refusals retain required
+slot/invocation accounting and cannot mint or transfer certificates. This
+follow-up is pending independent review, not F1/F5 closure.
 Native head input stays BF16; no F32 declaration was added to force admission.
 The historical Q8T16 `(bf16 selector, fp16 output)` row keeps its runtime key,
 but metadata identifies its actual FP16 pointer ABI and does not qualify a
