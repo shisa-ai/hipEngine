@@ -326,6 +326,7 @@ def _trace_adapter_registration() -> None:
                         f" rowbudget={getattr(row, 'mtp2_candidate_budget', None)}"
                         f" fb={getattr(row, 'mtp2_prompt_fallback_reason', None)}"
                         f" prefix={getattr(row, 'prefix_reused_tokens', None)}"
+                        f" failures={getattr(row, 'mtp2_failure_reasons', None)}"
                     )
                 except Exception as exc:
                     gates.append(f"rid={rid} row_error={type(exc).__name__}")
