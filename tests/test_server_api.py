@@ -58,6 +58,7 @@ from hipengine.server.api import (
     _generation_route_for_request,
     _GenerationBatcher,
     _MTPCircuitBreaker,
+    _parse_chat_tool_calls,
     _QueuedBatchResult,
     _QueuedGeneration,
     _SPECULATIVE_MTP_AUTO_ROUTE,
@@ -1553,8 +1554,10 @@ def test_capabilities_endpoint_reports_manifest_and_auth(monkeypatch) -> None:
             "writeOnly",
             "format",
         ],
-        "format": "qwen_tool_call_json",
+        "format": "qwen_tool_call_xml_with_json_fallback",
         "compatibility_parser_repairs": [
+            "qwen35_family_xml_function_envelope",
+            "legacy_json_tool_call_body",
             "duplicated_tool_call_start",
             "incomplete_duplicate_tool_prefix_control_residue",
             "outer_qwen_template_control_residue",
@@ -2138,7 +2141,10 @@ def test_token_diagnostics_endpoints_handle_text_and_chat() -> None:
     assert chat_body["input_type"] == "chat"
     assert "<|im_start|>user\nhello<|im_end|>" in chat_body["text"]
     assert "<tools>" in chat_body["text"]
-    assert '<tool_call>{"name":"lookup","arguments":{"query":"hello"}}</tool_call>' in chat_body["text"]
+    assert (
+        "<tool_call>\n<function=lookup>\n<parameter=query>\nhello\n</parameter>\n</function>\n</tool_call>"
+        in chat_body["text"]
+    )
     assert "<tool_response>\ntool result\n</tool_response>" in chat_body["text"]
     assert "use 'closing now</think>\\n' as the close sequence" in chat_body["text"]
     assert chat_body["token_count"] == fake.count_tokens(chat_body["text"])
@@ -9396,7 +9402,10 @@ def test_chat_session_visible_only_commits_tool_calls_without_reasoning() -> Non
     assert second.status_code == 200
     assert first.json()["choices"][0]["finish_reason"] == "tool_calls"
     prompt = fake.calls[1][0][0]
-    assert '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>' in prompt
+    assert (
+        "<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n</function>\n</tool_call>"
+        in prompt
+    )
     assert "<tool_response>\nfile text\n</tool_response>" in prompt
     assert "need file" not in prompt
     assert first.json()["choices"][0]["finish_details"]["cache_action"] == "append_visible_only"
@@ -15253,7 +15262,7 @@ def test_render_chat_prompt_includes_qwen_tool_blocks() -> None:
     assert '"name":"read"' in prompt
     assert "You must call the function named 'read'." in prompt
     assert "<|im_start|>system\nUse tools carefully.<|im_end|>" in prompt
-    assert '<tool_call>{"name":"read","arguments":{"path":"README.md"}}</tool_call>' in prompt
+    assert '<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n</function>\n</tool_call>' in prompt
     assert "<tool_response>\nfile text\n</tool_response>" in prompt
 
 
@@ -15296,6 +15305,173 @@ def test_chat_completion_returns_openai_tool_calls() -> None:
     assert tool_call["function"]["name"] == "read"
     assert json.loads(tool_call["function"]["arguments"]) == {"path": "README.md"}
     assert "<tools>" in fake.calls[0][0][0]
+
+
+_QWEN35_XML_TOOL_CALL = (
+    "<tool_call>\n"
+    "<function=get_weather>\n"
+    "<parameter=city>\n"
+    "Tokyo\n"
+    "</parameter>\n"
+    "<parameter=days>\n"
+    "3\n"
+    "</parameter>\n"
+    "</function>\n"
+    "</tool_call>"
+)
+_WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get the weather for a city",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string"},
+                "days": {"type": "integer"},
+            },
+            "required": ["city"],
+        },
+    },
+}
+
+
+def test_chat_completion_lifts_qwen35_family_xml_function_tool_call() -> None:
+    fake = FakeLLM(outputs=[_QWEN35_XML_TOOL_CALL])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "weather in Tokyo"}],
+            "tools": [_WEATHER_TOOL],
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    message = choice["message"]
+    assert message["content"] == ""
+    _assert_openai_tool_call_shape(
+        message["tool_calls"][0],
+        name="get_weather",
+        arguments={"city": "Tokyo", "days": 3},
+    )
+    assert "<function=" not in json.dumps(message)
+
+
+def test_chat_completion_preserves_reasoning_with_qwen35_xml_tool_call() -> None:
+    fake = FakeLLM(
+        outputs=["<think>The user wants Tokyo weather.</think>\n\n" + _QWEN35_XML_TOOL_CALL]
+    )
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "weather in Tokyo"}],
+            "tools": [_WEATHER_TOOL],
+            "enable_thinking": True,
+        },
+    )
+
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "tool_calls"
+    message = choice["message"]
+    assert message["content"] == ""
+    assert message["reasoning_content"] == "The user wants Tokyo weather."
+    _assert_openai_tool_call_shape(
+        message["tool_calls"][0],
+        name="get_weather",
+        arguments={"city": "Tokyo", "days": 3},
+    )
+    assert "<tool_call>" not in json.dumps(message)
+
+
+def test_chat_completion_tools_prompt_matches_qwen35_family_template() -> None:
+    fake = FakeLLM(outputs=[_QWEN35_XML_TOOL_CALL])
+    app = create_app(ServerConfig(model="fake-path", served_model_name="fake-model"), llm=fake)
+    client = TestClient(app)
+
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "fake-model",
+            "messages": [{"role": "user", "content": "weather in Tokyo"}],
+            "tools": [_WEATHER_TOOL],
+        },
+    )
+
+    assert response.status_code == 200
+    prompt = fake.calls[0][0][0]
+    assert "<function=example_function_name>" in prompt
+    assert "<parameter=example_parameter_1>" in prompt
+    # The legacy JSON-envelope instruction must not fight the trained format.
+    assert '"name":"function_name"' not in prompt
+
+
+def test_parse_chat_tool_calls_lifts_xml_multiline_string_values_verbatim() -> None:
+    raw = (
+        "<tool_call>\n"
+        "<function=record_notes>\n"
+        "<parameter=notes>\n"
+        "first line\nsecond line\n"
+        "\n</parameter>\n"
+        "<parameter=priority>\n"
+        "2\n"
+        "</parameter>\n"
+        "</function>\n"
+        "</tool_call>"
+    )
+
+    parsed = _parse_chat_tool_calls(raw, tools=None)
+
+    assert parsed.text == ""
+    (call,) = parsed.tool_calls
+    assert call.name == "record_notes"
+    assert json.loads(call.arguments) == {
+        "notes": "first line\nsecond line\n",
+        "priority": 2,
+    }
+
+
+def test_render_chat_prompt_renders_assistant_tool_calls_in_family_xml_format() -> None:
+    prompt = render_chat_prompt(
+        [
+            {"role": "user", "content": "weather in Tokyo"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": json.dumps({"city": "Tokyo", "days": 3}),
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "sunny"},
+        ],
+        tools=[_WEATHER_TOOL],
+    )
+
+    assert (
+        "<tool_call>\n<function=get_weather>\n"
+        "<parameter=city>\nTokyo\n</parameter>\n"
+        "<parameter=days>\n3\n</parameter>\n"
+        "</function>\n</tool_call>"
+    ) in prompt
+    # String arguments render verbatim; non-string arguments as compact JSON.
+    assert '<parameter=days>\n"3"\n</parameter>' not in prompt
 
 
 def test_chat_completion_strips_qwen_terminal_residue_around_tool_call() -> None:
@@ -20163,6 +20339,8 @@ def test_replay_artifact_redacts_failed_request(tmp_path) -> None:
         "tokenizer_safe_marker_or_object_envelope_then_stop"
     )
     assert artifact["capabilities"]["features"]["tools"]["compatibility_parser_repairs"] == [
+        "qwen35_family_xml_function_envelope",
+        "legacy_json_tool_call_body",
         "duplicated_tool_call_start",
         "incomplete_duplicate_tool_prefix_control_residue",
         "outer_qwen_template_control_residue",

@@ -175,7 +175,8 @@ def test_agentic_conformance_tool_result_replay_renders_once() -> None:
 
     prompt = llm.calls[0][0][0]
     rendered_call = (
-        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"summary"}}</tool_call>'
+        '<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n'
+        '<parameter=mode>\nsummary\n</parameter>\n</function>\n</tool_call>'
     )
     assert prompt.count(rendered_call) == 1
     assert prompt.count("<tool_response>\nhello\n</tool_response>") == 1
@@ -414,7 +415,8 @@ def test_agentic_conformance_visible_session_replays_tool_loop_without_reasoning
     assert second_choice["finish_details"] == {"reason": "stop", "cache_action": "append_none"}
 
     rendered_call = (
-        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+        '<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n'
+        '<parameter=mode>\nraw\n</parameter>\n</function>\n</tool_call>'
     )
     prompt = llm.calls[1][0][0]
     assert prompt.count(rendered_call) == 1
@@ -503,7 +505,8 @@ def test_agentic_conformance_snapshot_restore_replays_tool_loop_without_reasonin
     }
 
     rendered_call = (
-        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"raw"}}</tool_call>'
+        '<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n'
+        '<parameter=mode>\nraw\n</parameter>\n</function>\n</tool_call>'
     )
     prompt = llm.calls[1][0][0]
     assert prompt.count(rendered_call) == 1
@@ -749,10 +752,12 @@ def test_agentic_conformance_streaming_parallel_tool_loop_continues_from_tool_re
 
     prompt = llm.calls[1][0][0]
     readme_call = (
-        '<tool_call>{"name":"read","arguments":{"path":"README.md","mode":"summary"}}</tool_call>'
+        '<tool_call>\n<function=read>\n<parameter=path>\nREADME.md\n</parameter>\n'
+        '<parameter=mode>\nsummary\n</parameter>\n</function>\n</tool_call>'
     )
     worklog_call = (
-        '<tool_call>{"name":"read","arguments":{"path":"WORKLOG.md","mode":"summary"}}</tool_call>'
+        '<tool_call>\n<function=read>\n<parameter=path>\nWORKLOG.md\n</parameter>\n'
+        '<parameter=mode>\nsummary\n</parameter>\n</function>\n</tool_call>'
     )
     assert prompt.count(readme_call) == 1
     assert prompt.count(worklog_call) == 1

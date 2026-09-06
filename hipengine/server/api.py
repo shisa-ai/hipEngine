@@ -1210,8 +1210,10 @@ def _tools_capability(
         "schema_subset": _tool_schema_subset(),
         "unsupported_schema_keywords_rejected": True,
         "annotation_keywords_ignored": list(_JSON_SCHEMA_ANNOTATION_KEYWORDS),
-        "format": "qwen_tool_call_json",
+        "format": "qwen_tool_call_xml_with_json_fallback",
         "compatibility_parser_repairs": [
+            "qwen35_family_xml_function_envelope",
+            "legacy_json_tool_call_body",
             "duplicated_tool_call_start",
             "incomplete_duplicate_tool_prefix_control_residue",
             "outer_qwen_template_control_residue",
@@ -9825,16 +9827,44 @@ def _render_tools_prompt(
         return ""
     tool_lines = [json.dumps(dict(tool), ensure_ascii=False, separators=(",", ":")) for tool in tools]
     directive = _tool_choice_directive(tool_choice)
+    # Mirror the Qwen3.5-family checkpoint chat template's tools block so the
+    # model sees the exact XML function-call envelope it was trained on
+    # (Qwen3.5/Qwen3.6/Qwen3.8-Flash-Next lineage). The legacy JSON-object
+    # envelope is still accepted by the response parser, but prompting for it
+    # pushes the model off its trained distribution.
     return "\n".join(
         [
-            "You may call one or more functions to assist with the user request.",
-            "Available functions are provided in JSON schema form inside <tools></tools> tags:",
+            "# Tools",
+            "",
+            "You have access to the following functions:",
+            "",
             "<tools>",
             *tool_lines,
             "</tools>",
+            "",
+            "If you choose to call a function ONLY reply in the following format with NO suffix:",
+            "",
+            "<tool_call>",
+            "<function=example_function_name>",
+            "<parameter=example_parameter_1>",
+            "value_1",
+            "</parameter>",
+            "<parameter=example_parameter_2>",
+            "This is the value for the second parameter",
+            "that can span",
+            "multiple lines",
+            "</parameter>",
+            "</function>",
+            "</tool_call>",
+            "",
+            "<IMPORTANT>",
+            "Reminder:",
+            "- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags",
+            "- Required parameters MUST be specified",
+            "- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after",
+            "- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls",
+            "</IMPORTANT>",
             directive,
-            "For each function call, respond with a JSON object inside <tool_call></tool_call> tags and no extra prose:",
-            '<tool_call>{"name":"function_name","arguments":{"arg":"value"}}</tool_call>',
         ]
     )
 
@@ -9877,8 +9907,18 @@ def _render_tool_call_for_prompt(tool_call: Mapping[str, Any]) -> str:
             arguments = raw_arguments
     else:
         arguments = raw_arguments
-    payload = {"name": name, "arguments": arguments if arguments is not None else {}}
-    return f"<tool_call>{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}</tool_call>"
+    if not isinstance(arguments, Mapping):
+        arguments = {}
+    rendered = [f"<tool_call>\n<function={name}>\n"]
+    for key, value in arguments.items():
+        value_text = (
+            value
+            if isinstance(value, str)
+            else json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        )
+        rendered.append(f"<parameter={key}>\n{value_text}\n</parameter>\n")
+    rendered.append("</function>\n</tool_call>")
+    return "".join(rendered)
 
 
 def render_chat_prompt(
@@ -9965,8 +10005,11 @@ def render_chat_prompt(
             rendered.append(f"<|im_start|>user\n<tool_response>\n{content}\n</tool_response><|im_end|>")
             continue
         if role == "assistant" and normalized_tool_calls:
-            tool_call_text = "\n".join(_render_tool_call_for_prompt(item) for item in normalized_tool_calls)
-            content = "\n".join(part for part in (content, tool_call_text) if part)
+            tool_call_text = "\n".join(
+                _render_tool_call_for_prompt(item) for item in normalized_tool_calls
+            )
+            separator = "\n\n" if content else ""
+            content = f"{content}{separator}{tool_call_text}"
         rendered.append(f"<|im_start|>{role}\n{content}<|im_end|>")
     rendered.append(_assistant_prefix_for_thinking(thinking))
     return "\n".join(rendered)
@@ -15086,14 +15129,24 @@ def _find_marker(lowered: str, marker: str, start: int, end: int | None = None) 
     return lowered.find(marker, start, end)
 
 
-def _find_valid_tool_call_block(text: str, lowered: str, start_at: int) -> _ToolCallBlock | None:
+def _find_valid_tool_call_block(
+    text: str,
+    lowered: str,
+    start_at: int,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> _ToolCallBlock | None:
     start = _find_marker(lowered, _TOOL_CALL_START_MARKER, start_at)
     while start >= 0:
         body_start = start + len(_TOOL_CALL_START_MARKER)
         end = _find_marker(lowered, _TOOL_CALL_END_MARKER, body_start)
         while end >= 0:
             raw_text = text[start : end + len(_TOOL_CALL_END_MARKER)]
-            parsed = _parsed_tool_call_from_block_body(text[body_start:end], raw_text=raw_text)
+            parsed = _parsed_tool_call_from_block_body(
+                text[body_start:end],
+                raw_text=raw_text,
+                tools=tools,
+            )
             if parsed is not None:
                 return _ToolCallBlock(
                     start=start,
@@ -15105,12 +15158,16 @@ def _find_valid_tool_call_block(text: str, lowered: str, start_at: int) -> _Tool
     return None
 
 
-def _valid_tool_call_blocks(text: str) -> tuple[_ToolCallBlock, ...]:
+def _valid_tool_call_blocks(
+    text: str,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[_ToolCallBlock, ...]:
     lowered = text.lower()
     blocks: list[_ToolCallBlock] = []
     cursor = 0
     while cursor < len(text):
-        block = _find_valid_tool_call_block(text, lowered, cursor)
+        block = _find_valid_tool_call_block(text, lowered, cursor, tools=tools)
         if block is None:
             break
         blocks.append(block)
@@ -15194,7 +15251,7 @@ def _parse_chat_tool_calls_for_engine(
     parser = getattr(target, "chat_tool_parser", None)
     parse = getattr(parser, "parse", None)
     if not callable(parse):
-        return _parse_chat_tool_calls(text)
+        return _parse_chat_tool_calls(text, tools=tools)
     parser_name = str(getattr(parser, "name", type(parser).__name__))
     try:
         result = parse(str(text), tools=tools)
@@ -15238,11 +15295,15 @@ def _parse_chat_tool_calls_for_engine(
         )
 
 
-def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
+def _parse_chat_tool_calls(
+    text: str,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> _ParsedChatOutput:
     calls: list[_ParsedToolCall] = []
     text_parts: list[str] = []
     last_end = 0
-    for block in _valid_tool_call_blocks(text):
+    for block in _valid_tool_call_blocks(text, tools=tools):
         text_parts.append(text[last_end : block.start])
         calls.append(block.parsed)
         last_end = block.end
@@ -15264,15 +15325,153 @@ def _parse_chat_tool_calls(text: str) -> _ParsedChatOutput:
     return _ParsedChatOutput(text=visible_text, tool_calls=tuple(calls))
 
 
-def _parsed_tool_call_from_block_body(raw: str, *, raw_text: str = "") -> _ParsedToolCall | None:
+def _parsed_tool_call_from_block_body(
+    raw: str,
+    *,
+    raw_text: str = "",
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> _ParsedToolCall | None:
     stripped = raw.strip()
     parsed = _parsed_tool_call_from_json(stripped, raw_text=raw_text)
     if parsed is not None:
         return parsed
     repaired = _strip_duplicate_tool_call_start(stripped)
-    if repaired == stripped:
+    if repaired != stripped:
+        parsed = _parsed_tool_call_from_json(repaired, raw_text=raw_text)
+        if parsed is not None:
+            return parsed
+    return _parsed_tool_call_from_function_xml(repaired, raw_text=raw_text, tools=tools)
+
+
+_XML_FUNCTION_ENVELOPE_RE = re.compile(
+    r"<function=(?P<name>[^<>\n]+?)>\s*\n(?P<body>.*?)</function>\s*\Z",
+    re.DOTALL,
+)
+_XML_PARAMETER_RE = re.compile(
+    r"<parameter=(?P<key>[^<>\n]+?)>\n?(?P<value>.*?)\n?</parameter>",
+    re.DOTALL,
+)
+
+
+def _parsed_tool_call_from_function_xml(
+    raw: str,
+    *,
+    raw_text: str = "",
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> _ParsedToolCall | None:
+    """Lift the Qwen3.5-family XML function envelope into a tool call.
+
+    Qwen3.5-and-later checkpoints (including the Qwen3.8-Flash-Next lineage)
+    are trained on ``<tool_call>\n<function=name>\n<parameter=key>\nvalue\n"
+    "</parameter>\n</function>\n</tool_call>`` envelopes rather than the
+    legacy JSON body. String-typed parameters stay verbatim (multi-line
+    safe); other parameters decode as JSON and fall back to the raw string,
+    matching llama.cpp's Qwen3-Coder-family parser semantics.
+    """
+
+    envelope = _XML_FUNCTION_ENVELOPE_RE.fullmatch(raw.strip())
+    if envelope is None:
         return None
-    return _parsed_tool_call_from_json(repaired, raw_text=raw_text)
+    name = envelope.group("name").strip()
+    if not name:
+        return None
+    body = envelope.group("body")
+    arguments: dict[str, Any] = {}
+    cursor = 0
+    for parameter in _XML_PARAMETER_RE.finditer(body):
+        if body[cursor : parameter.start()].strip():
+            return None
+        key = parameter.group("key").strip()
+        if not key:
+            return None
+        raw_value = parameter.group("value")
+        arguments[key] = _xml_parameter_value(
+            raw_value,
+            string_typed=_xml_parameter_is_string_typed(tools, tool_name=name, key=key),
+        )
+        cursor = parameter.end()
+    if body[cursor:].strip():
+        return None
+    return _ParsedToolCall(
+        id=f"call_{uuid.uuid4().hex[:24]}",
+        name=name,
+        arguments=_tool_arguments_json(arguments),
+        raw_text=str(raw_text),
+    )
+
+
+def _xml_parameter_value(raw_value: str, *, string_typed: bool) -> Any:
+    if string_typed:
+        return raw_value
+    try:
+        return json.loads(raw_value)
+    except Exception:
+        return raw_value
+
+
+def _xml_parameter_is_string_typed(
+    tools: Sequence[Mapping[str, Any]] | None,
+    *,
+    tool_name: str,
+    key: str,
+) -> bool:
+    schema = _tool_parameter_property_schema(tools, tool_name=tool_name, key=key)
+    if schema is None:
+        return False
+    return _json_schema_resolves_to_string(schema)
+
+
+def _tool_parameter_property_schema(
+    tools: Sequence[Mapping[str, Any]] | None,
+    *,
+    tool_name: str,
+    key: str,
+) -> Mapping[str, Any] | None:
+    for tool in tools or ():
+        if not isinstance(tool, Mapping):
+            continue
+        function = tool.get("function")
+        source = function if isinstance(function, Mapping) else tool
+        if str(source.get("name", "")) != tool_name:
+            continue
+        parameters = source.get("parameters")
+        if not isinstance(parameters, Mapping):
+            return None
+        properties = parameters.get("properties")
+        if not isinstance(properties, Mapping):
+            return None
+        schema = properties.get(key)
+        return schema if isinstance(schema, Mapping) else None
+    return None
+
+
+def _json_schema_resolves_to_string(schema: Mapping[str, Any]) -> bool:
+    """Mirror llama.cpp's resolves_to_string for XML argument typing."""
+
+    schema_type = schema.get("type")
+    if isinstance(schema_type, str) and schema_type == "string":
+        return True
+    if isinstance(schema_type, Sequence) and not isinstance(schema_type, (str, bytes)):
+        if any(str(item) == "string" for item in schema_type):
+            return True
+    enum = schema.get("enum")
+    if isinstance(enum, Sequence) and not isinstance(enum, (str, bytes)) and enum:
+        return all(isinstance(item, str) for item in enum)
+    for combinator in ("oneOf", "anyOf"):
+        alternatives = schema.get(combinator)
+        if isinstance(alternatives, Sequence) and not isinstance(alternatives, (str, bytes)):
+            if any(
+                isinstance(alternative, Mapping) and _json_schema_resolves_to_string(alternative)
+                for alternative in alternatives
+            ):
+                return True
+    components = schema.get("allOf")
+    if isinstance(components, Sequence) and not isinstance(components, (str, bytes)) and components:
+        return all(
+            isinstance(component, Mapping) and _json_schema_resolves_to_string(component)
+            for component in components
+        )
+    return False
 
 
 def _strip_duplicate_tool_call_start(text: str) -> str:
@@ -15371,8 +15570,10 @@ def _validate_chat_tool_result(
         malformed_blocks = parsed.invalid_tool_call_blocks if strict else ()
         unparseable_blocks = parsed.invalid_tool_call_blocks
     else:
-        malformed_blocks = _malformed_tool_call_blocks(raw_text) if strict else ()
-        unparseable_blocks = _unparseable_tool_call_blocks(raw_text)
+        malformed_blocks = (
+            _malformed_tool_call_blocks(raw_text, tools=request.tools) if strict else ()
+        )
+        unparseable_blocks = _unparseable_tool_call_blocks(raw_text, tools=request.tools)
     if strict:
         if mode == "none":
             if parsed.tool_calls or malformed_blocks:
@@ -15541,19 +15742,31 @@ def _tool_call_arguments_value(call: _ParsedToolCall) -> Any:
         return call.arguments
 
 
-def _malformed_tool_call_blocks(text: str) -> tuple[str, ...]:
-    return _invalid_tool_call_blocks(text)
+def _malformed_tool_call_blocks(
+    text: str,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[str, ...]:
+    return _invalid_tool_call_blocks(text, tools=tools)
 
 
-def _unparseable_tool_call_blocks(text: str) -> tuple[str, ...]:
-    return _invalid_tool_call_blocks(text)
+def _unparseable_tool_call_blocks(
+    text: str,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[str, ...]:
+    return _invalid_tool_call_blocks(text, tools=tools)
 
 
-def _invalid_tool_call_blocks(text: str) -> tuple[str, ...]:
+def _invalid_tool_call_blocks(
+    text: str,
+    *,
+    tools: Sequence[Mapping[str, Any]] | None = None,
+) -> tuple[str, ...]:
     lowered = text.lower()
     invalid: list[str] = []
     cursor = 0
-    blocks = _valid_tool_call_blocks(text)
+    blocks = _valid_tool_call_blocks(text, tools=tools)
     for block in blocks:
         invalid.extend(_invalid_tool_call_blocks_between(text, lowered, cursor, block.start, flag_unclosed=False))
         cursor = block.end
