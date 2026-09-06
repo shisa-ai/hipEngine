@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q4 residual diagnostic cleanup (September6 UTC):** remove the unused
+two-plane raw-WMMA template branches,export/wrapper/key,harness and
+candidate tests after raw and cooperative implementations lost timing.
+Q4 kernel files match pre-experiment24934b692 byte-for-byte;25 existing
+GPU regression tests pass. No runtime/performance default change.
+Reproduction source20e39e32e and retained numerical/timing artifacts remain;
+temporary reference debt is closed. Next measurement is the combined-default
+owner refresh after raw-MMQ vector promotion,not another Q4/thermal detour.
+
 **Raw MMQ vector production (September6 UTC):** clean `cea077722` canonical
 12-case A/B passes all72 exact trajectories and every prefill/request-wall
 case. PP512/1024/4096:173.204->179.037 /170.840->175.707 /
