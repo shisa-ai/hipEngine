@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC post-MMQ-vector families] Clean1e89361d5 six-case/twelve-phase capture: non-GR linear5.363->4.770s (-11.07% snapshot,not causal A/B),Vulkan ratio5.262x->4.680x. FFN13.442s,GR4.268s;100% attribution,exact repeated decode/state,zero owners. `benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-family.json`.
+
 - [2026-09-06 UTC Framework MMQ vector production] Full12-case PP512/1024/4096:164.712->168.040 (+2.021%)/162.186->165.711 (+2.173%)/150.246->153.335 (+2.056%). All72 trajectories exact,all prefill/request cases improve,total1.01205x. TG-0.180%/-0.038%/-0.349% retained,no new memory. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-production.json`.
 
 - [2026-09-06 UTC Framework MMQ vector admission] Five full-logit/state/KV cases exact,calls0/72/0 or0/576/0,zero decode/final owners;23 CPU tests pass,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-vec4-state.json`.

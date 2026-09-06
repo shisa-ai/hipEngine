@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-MMQ-vector full owner refresh (September6 UTC):** clean `1e89361d5`
+six cases/twelve phases pass100% attribution, matched decode roots,
+repeated state/output checks and zero final ownership. MMQ-vector
+engagement72/144/576 in prefill,zero decode. Four-category p4096:
+FFN13.442s,non-GR linear4.770s,GR4.268s,QSA1.920s,GDN0.781s.
+Non-GR linear was5.363s (-11.07% snapshot delta);reused-Vulkan ratio
+5.262x->4.680x. Remaining linear compute:MMQ2.737s,coltile1.588s;
+quantization43ms and repair12ms are small. Decode QSA16.959vs3.161ms
+remains the largest decode gap. Tables regenerated in the halo-box campaign;
+next checkpoint is an unprofiled combined-default comparator refresh.
+[Packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-family.json).
+
 **MMQ vector staging production (September6 UTC):** clean `9b0d14cec`
 canonical12-case A/B preserves all72 trajectories and improves every
 prefill/request-wall case. PP512/1024/4096:
