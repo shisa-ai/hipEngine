@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework Q5_1 direct metadata rejection] Direct wave-uniform metadata versus LDS-staged pair2 measures0.910x/0.921x at64/512 tokens,20 counterbalanced actual-weight pairs,8 tests and all outputs exact. Candidate removed; no production change. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-direct-meta-rejected.json`.
+
 - [2026-09-06 UTC Framework Q5_1 wave-tail rejection] Exact pair2 reduction screen0.949x/0.974x at64/512 tokens versus retained pair2,20 counterbalanced actual-weight pairs;8 tests passed. Candidate removed, no production or topline change. `benchmarks/results/2026-09-06-framework-qwen4exp-q51-wave-reduce-rejected.json`.
 
 - [2026-09-06 UTC post-GR family refresh] Current-HE12-phase capture at9efbf6d23 passes100% coverage, matched decode roots and zero final ownership; p4096 complete GR4.362->4.267s (-2.18% snapshot delta, not causal A/B), FFN14.407s, non-GR linear5.545s. Prior pinned Vulkan profile explicitly reused; generated starting/current and gap tables refreshed. `benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json`.

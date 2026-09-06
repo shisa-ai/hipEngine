@@ -53,6 +53,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 direct metadata rejected (September6 UTC):** direct wave-uniform
+scale/offset/high-bit loads in pair2, preserving reduction, pass8 tests and
+all actual-weight comparisons but lose at64/512 tokens (0.910x/0.921x,
+20 alternating pairs). Candidate removed; retain LDS staging. With this and
+the wave-tail result below, move to complete Q8 MMQ work rather than repeating
+these unchanged Q5_1 mechanisms.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-direct-meta-rejected.json).
+
 **Q5_1 pair2 wave-tail rejected (September6 UTC):** replacing the original
 LDS reduction with the same logical256 addition tree and a wave-register
 tail passes8 tests and every actual-weight pair exactly, but measures

@@ -2,6 +2,10 @@
 
 Last updated: **2026-09-06 UTC**
 
+Direct Q5_1 metadata also rejected (0.910x/0.921x at64/512 tokens);
+production unchanged.
+[Evidence](results/2026-09-06-framework-qwen4exp-q51-direct-meta-rejected.json).
+
 Q5_1 pair2 wave-tail screen rejected (0.949x/0.974x at64/512 tokens);
 production and retained rates unchanged.
 [Evidence](results/2026-09-06-framework-qwen4exp-q51-wave-reduce-rejected.json).
