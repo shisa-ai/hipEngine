@@ -345,11 +345,17 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   holds 851 tensors / 15.992 GiB with zero NextN bytes, and the draft provider
   is lazily acquired and pooled (never load/unloaded per decode cycle) — so
   true AR-only is the default configuration. Evidence:
-  `results/2026-09-06-rx7900xtx-capacity-ar-only-nextn-omission.json`. The K0->K
-  resident delta is blocked by an MTP-serving functional bug (startup warmup
-  KeyError `blk.40.attn_q_norm.weight` at width >=2 despite a correct block-64
-  resolution; c=1 route leaks the invalid-token sentinel into output ids) —
-  owned by the MTP campaign; re-measure with the probe pair when it serves.
+  `results/2026-09-06-rx7900xtx-capacity-ar-only-nextn-omission.json`.
+  The K0-off "before" points are measured 2026-09-07: N=2 request peaks
+  21.307 GiB at context 1024 and 21.578 GiB at context 1536 (BF16 KV,
+  post-scratch-cap; pre-cap 1536 was 22.574). Evidence:
+  `results/2026-09-07-rx7900xtx-capacity-k0-mtp-off.json`. The MTP-armed
+  opt_in mode additionally cannot reach readiness: its startup scratch-probe
+  engine-service child hangs at width 2 (`STARTUP_SCRATCH_PROBE ... engine
+  service command timed out`) — same subsystem as the enabled KeyError. The
+  K0->K resident delta and the opt_in K0 state are blocked by that MTP-serving
+  warmup bug — owned by the MTP campaign; re-measure with the probe pair when
+  it serves.
 - [x] Deduplicate actual weight aliases and release conversion staging safely.
   Count resident payloads, not GGUF size, as the device-weight baseline.
   Done 2026-09-06: the planned residency census reports 851 logical tensors,
