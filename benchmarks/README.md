@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Q8 down row4 default-off model gate: five cases pass full logits/state/KV
+and four decode steps exactly; candidate runs only in prefill, final owners0.
+Clean12-case throughput A/B remains pending.
+[State evidence](results/2026-09-06-framework-qwen4exp-q8-down-row4-state.json).
+
 | Framework Q8 down row4 kernel candidate | Parent -> candidate | Gate |
 | --- | --- | --- |
 | Layer4 weights / layer4 code4096 counts | 47.805 -> 43.175ms (1.107x) | Exact |

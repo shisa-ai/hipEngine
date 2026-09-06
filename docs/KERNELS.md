@@ -829,6 +829,13 @@ registered unchanged defaults. Full-model engagement/logits/state/KV and
 12-case A/B block promotion.
 Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4.json`.
 
+Default-off runtime admission now selects row4 only within existing grouped
+Q8 down for rows>=512. Five category/shape cases pass full logits/four decode
+steps/state/full KV exactly, candidate calls4 or32 only in prefill, zero final
+allocations.31 CPU route/profile/harness tests pass. Clean12-case throughput
+A/B remains the promotion blocker; strict and production bind the selector0.
+Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4-state.json`.
+
 The raw Q8 coltile family has a separate T0
 `coltile8_rowbatch4_wave_scale_f32_f32_out` sibling. It makes the Q8 scale
 block index wave-uniform while preserving original F32 FMA and reduction

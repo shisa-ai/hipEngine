@@ -2,9 +2,13 @@
 
 ## Qwen4Exp Q8 down row4 candidate
 
-- `selected_grouped_row4_gemv_bf16_bf16_out` is a kernel-only candidate.
+- `selected_grouped_row4_gemv_bf16_bf16_out` is a default-off runtime candidate.
   Keep row1 and strict selected GEMV until invocation-checked model gates and
-  canonical12-case A/B establish retention. No new runtime flag yet.
+  canonical12-case A/B establish retention.
+- `HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL` selects row4 only inside the
+  existing grouped-Q8 path and for measured rows>=512. Both profile binders pin0 during
+  admission. After a passing full12-case gate, promote the production binder
+  and remove the experimental default-off status; keep row1 for rollback.
 - Remove the candidate if complete-model evidence loses; if it wins, promote
   only the measured grouped-prefill scope and retain the strict fallback.
 - Diagnostic `scripts/qwen4exp_q8_down_row4_screen.py` labels borrowed routing
