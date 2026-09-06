@@ -6,9 +6,9 @@
   No runtime env selector or model route exists yet. Positive wide-QKV/SSM
   actual-weight screen is insufficient to promote without resident sidecar
   ownership and invocation-verified full model gates.
-- CPU reference packer currently lives in the targeted test and is used by
-  the screen. Replace it with a tested in-tree loading/prepack API during
-  admission; do not import tests from runtime. Raw weights remain necessary
+- CPU reference packer lives only in the test/screen. The registered GPU
+  `weight_pack/gguf_q8_0/mmq_kmajor76` API is now byte-exact and available
+  for admission; do not import tests from runtime. Raw weights remain necessary
   for decode and risk repair, so account for the full additional sidecar.
 - After full model admission and one rollback window, remove temporary
   experiment selection; if model economics loses, remove the candidate and
