@@ -134,7 +134,11 @@ def test_gdn_output_boundary_is_selected_by_ssm_out_weight_plugin() -> None:
 
 
 def test_fp16_chain_journal_plan_selects_typed_state_and_snapshot_writers() -> None:
-    register_qwen35_linear_attn_gdn_kernels()
+    from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
+
+    # The registry fixture restores its collection-time snapshot per test.
+    # Import caching alone cannot restore this backend's lazy registrations.
+    register_gfx1151_kernels()
 
     strict = qgr._resolve_gguf_linear_attention_chain_journal_plan(
         "hip_gfx1151",
