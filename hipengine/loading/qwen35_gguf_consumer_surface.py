@@ -247,11 +247,11 @@ def validate_positive_geometry(value: int, name: str) -> None:
 
 def validate_gdn_geometry(num_k_heads: int, num_v_heads: int,
                           head_k_dim: int, head_v_dim: int, *,
-                          single_step: bool = False) -> None:
-    """Existing wrapper constraints, shared with cold invocation admission.
+                          prefill: bool = False) -> None:
+    """Native export constraints, shared with wrappers and cold admission.
 
-    The c1 lowp wrapper caps the value head at 128. Segmented and baseline
-    prefill wrappers do not; do not borrow stricter exact-chain constraints.
+    valid_gdn_shape caps scalar AND segmented recurrence at 128, including
+    FP16 state. Only baseline prefill uses uncapped valid_prefill_shape.
     Token/segment counts are checked by wrappers and admission's row domain.
     """
     validate_positive_geometry(num_k_heads, "num_k_heads")
@@ -260,7 +260,7 @@ def validate_gdn_geometry(num_k_heads: int, num_v_heads: int,
         raise ValueError("num_v_heads must be divisible by num_k_heads")
     validate_positive_geometry(head_k_dim, "head_k_dim")
     validate_positive_geometry(head_v_dim, "head_v_dim")
-    if single_step and head_v_dim > 128:
+    if not prefill and head_v_dim > 128:
         raise ValueError("head_v_dim must be <= 128")
 
 

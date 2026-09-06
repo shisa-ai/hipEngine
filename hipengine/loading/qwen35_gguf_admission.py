@@ -536,7 +536,7 @@ class Qwen35GGUFOperationCoverage:
             validate_gdn_geometry(
                 config.ssm_group_count, config.ssm_time_step_rank, config.ssm_state_size,
                 gdn_value_head_dim(config.ssm_inner_size, config.ssm_time_step_rank),
-                single_step=consumer.abi == "single_gdn",
+                prefill=consumer.abi == "prefill_gdn",
             )
         elif self.role_class == "recurrent_alpha_beta" and self.operation == QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS:
             consumer = native_alpha_beta_consumer_contract()
