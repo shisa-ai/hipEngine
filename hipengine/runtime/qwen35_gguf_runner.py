@@ -14675,9 +14675,17 @@ class Qwen35GGUFResidentSession:
     _native_spec_b1_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b3_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b4_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b5_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b6_target_graph: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b7_target_graph: object | None = field(default=None, init=False, repr=False)
     _native_spec_b1_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b2_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_b3_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b4_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b5_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b6_target_graph_n2: object | None = field(default=None, init=False, repr=False)
+    _native_spec_b7_target_graph_n2: object | None = field(default=None, init=False, repr=False)
     _native_spec_selected_hidden_bf16: object | None = field(default=None, init=False, repr=False)
     _device_kv_pool: DeviceChunkedKVPool | GlobalDeviceKVPool | None = field(
         default=None, init=False, repr=False
@@ -27341,7 +27349,7 @@ class Qwen35GGUFResidentSession:
 
         tokens = tuple(int(token) for token in input_token_ids)
         budget = len(tokens) - 1
-        if budget not in {1, 2, 3}:
+        if budget not in {1, 2, 3, 4, 5, 6, 7}:
             return False
         cache_name = f"_native_spec_b{budget}_target_graph_n2"
         existing = getattr(self, cache_name, None)

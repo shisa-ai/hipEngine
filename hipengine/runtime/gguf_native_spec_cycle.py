@@ -1479,9 +1479,17 @@ class Qwen35GGUFNativeB2TargetGraph:
             "_native_spec_b1_target_graph",
             "_native_spec_b2_target_graph",
             "_native_spec_b3_target_graph",
+            "_native_spec_b4_target_graph",
+            "_native_spec_b5_target_graph",
+            "_native_spec_b6_target_graph",
+            "_native_spec_b7_target_graph",
             "_native_spec_b1_target_graph_n2",
             "_native_spec_b2_target_graph_n2",
             "_native_spec_b3_target_graph_n2",
+            "_native_spec_b4_target_graph_n2",
+            "_native_spec_b5_target_graph_n2",
+            "_native_spec_b6_target_graph_n2",
+            "_native_spec_b7_target_graph_n2",
         ):
             if getattr(self.session, cache_name, None) is self:
                 setattr(self.session, cache_name, None)
