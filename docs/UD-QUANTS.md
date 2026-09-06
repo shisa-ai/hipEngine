@@ -800,7 +800,7 @@ has an immutable worklog entry and its own commit on `ud-quants`:
 | F2 | HIGH | The moe_experts whitelist omitted rank-3 IQ3_XXS although the materializer keeps it raw and `gguf_iq_gemv` registers selected-expert consumers. | Raw-only IQ3_XXS moe_experts coverage records with rank/shape/backend/dtype contract; rank-2 dense still refused (`cd73d1cef`) |
 | F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates and misaligned plans (e.g. Q6_K head N=257 T16) passed preflight and failed only mid-materialization, after earlier allocations. | Backend keys restricted to the registered metadata surface; per-slot allocation-accounting check aggregates all planner refusals before any allocation; zero-malloc sentinel test (`d665c01eb`) |
 | F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`). Third-round repair: the contract now binds the actual planned residents and coverage always requires the intended plan (see the round-3 subsection below). Fourth-round repair: intended-operation defaults and complete qualification accounting — refused reports can no longer supply authorizing contracts (see the round-4 subsection below) |
-| F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`) |
+| F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`). Fifth-round repair: the actual stamp-only policy callers (runner FP16 recurrent-state default, graph submission transport, private-c1 arena admissions) now bind the artifact qualification too (see the round-5 subsection below) |
 | F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
 
 These repairs closed the round-1 findings: `tests/test_gguf_ud_admission.py`
@@ -942,6 +942,69 @@ A fourth review found two HIGH scope holes in the round-3 certificate work
 Re-review status after round 4: F6, F2, and the Q5-planar regression repair
 accepted; F4 repaired here (the two round-4 points above) and awaiting
 re-review together with F1, F3 (concrete consumer), and F5. U1 remains open.
+
+#### U1 review repair round 5 (2026-09-07): F5 stamp-only policy callers
+
+A fifth review round accepted the F4 round-4 repair and confirmed the
+remaining F5 hole unchanged since round 1: the sentinel and the 3-tuple
+policy identity existed, but actual production callers still passed only the
+header stamp (or ``(geometry, stamp)``) into artifact-qualified policy
+selection, so an unknown non-pinned manifest sharing a qualified control's
+stamp silently inherited plain-certified policy. All stamp-only callers of
+artifact-qualified tables were inventoried and repaired on CPU with
+RED-then-GREEN tests (worklog entry `ud-u1-f5-policy-callers`):
+
+- **Runner FP16 recurrent-state default**
+  (`Qwen35GGUFFullStackRunner` initialization →
+  `_gguf_fp16_recurrent_state_enabled`): the initializer now passes the
+  loader-resolved `artifact_preset_key` of the actual resident weights. Only
+  a qualified plain control (`artifact_preset_key=None` from admission) may
+  inherit the stamp-certified backend default
+  (`GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES`); UD-preset and
+  unknown-manifest artifacts resolve the generic strict FP32 storage default.
+  The `HIPENGINE_GGUF_FP16_RECURRENT_STATE` environment value remains the
+  documented developer opt-out for every identity — it is an explicit
+  override, not a certified default, and no supported arithmetic claims were
+  widened.
+- **Decode-graph submission transport**
+  (`_resolve_gguf_decode_graph_submission_transport` and its two production
+callers, single-slot and packed capture): the policy row lookup is now
+identity-keyed exactly like the F6 packed-floor fix — plain identities keep
+the historical ``(geometry, stamp)`` rows; preset-bound and unknown
+identities resolve only an exact preset-keyed row (none ship today) and
+otherwise the generic hipgraph fallback. No tuple truncation or identity
+stripping; explicit `submission_transport` requests still override for any
+identity.
+- **Private-c1 arena admissions** (same bypass class, found by the caller
+inventory): `_resolve_gguf_private_c1_small_weight_arena`,
+  `_resolve_gguf_private_c1_decode_scratch_arena`, and
+  `_resolve_gguf_private_c1_weight_arena_max_allocation_bytes` are
+  identity-keyed the same way, and `Qwen35GGUFResidentSession`
+  initialization derives the artifact qualification from the actual manifest
+  (header-only tensor map + structural NextN map, exactly like the
+  materializer) before materialization instead of trusting the header stamp.
+  Lazy startup isolation is preserved: the manifest derivation happens only
+  when a backend actually ships arena policy rows.
+- **Caller inventory outcome**: every other stamp/policy-table consumer in
+  the runner already resolves through the full `_gguf_policy_identity`
+  3-tuple (dense-pair/norm-residual/dual-WMMA/rocblas/chunk/scratch tables,
+  whose 3-tuple keys miss plain 2-tuple rows by construction); the packaged
+  hot-vocabulary and NextN materializer paths were already bound by the F5
+  round-1 repair; the remaining stamp consumers are generic type-family
+  policies deliberately left untouched (GDN quant+head-shape recurrence
+  modes, host-token-embedding GGML type gates, shape-keyed rowtile/QK
+  postprocess tables, and default-off env-gated probes) — no blanket
+  disabling and no artifact renaming.
+- **Audit parity**: `gguf_fp16_recurrent_state_default` (the shared pure
+  policy mirror) carries the same artifact binding, and the quant-route
+  audit reports `artifact_preset_key` and an artifact-qualified
+  `fp16_recurrent_state_default_on`, still resolving capabilities from
+  backend sources without importing a backend package.
+
+Re-review status after round 5: F2, F6, the Q5-planar regression repair, and
+F4 accepted; F5 repaired here and awaiting re-review; F1 (native-row
+execution dependencies) and F3 (concrete backend/dtype consumer substance)
+remain pending. U1 remains open.
 
 ### U2. Independent Codec Oracles
 
