@@ -69,19 +69,30 @@ All numbers marked ✓ were measured directly against the checked-out source in 
 
 ## Multi-GPU Strategy
 
-Our kernel layer is single-GPU by design. Multi-GPU support is a **host concern** that does not require kernel rewrites. Here's the strategy:
+Our compute kernels operate on local device tensors. The host plan owns
+multi-GPU sharding, communication, and state. Local-shape tuning or fused
+communication consumers may require registered kernel variants.
+
+The concrete dense TP2 implementation plan is
+[`QWEN38-27B-GFX1100-TP2.md`](QWEN38-27B-GFX1100-TP2.md): one W7900 plus one
+RX 7900 XTX on the same PCIe host, prioritizing single-request latency and
+separately qualified MTP gains. This is planned work, not implemented support.
+It requires measured communication break-even, hybrid attention/state sharding,
+and execution-profile qualification before default promotion.
 
 ### Tensor Parallelism (TP) — Default Path
 
 | Aspect | Approach | Rationale |
 |--------|----------|-----------|
 | Sharding | Column-parallel for QKV/gate_up, row-parallel for o_proj/down | Standard TP, minimizes communication |
-| Communication | `rccl` (ROCm NCCL) via `ctypes` on `librccl.so`, or MPI via `mpi4py` | Torch-free. `[distributed]` extra wires in `torch.distributed` for users who want it |
-| KV cache | Replicated per GPU | Simpler than sharded KV; memory scales with GPUs |
-| All-reduce points | After o_proj, after down_proj, after shared expert | Minimal: 2-3 all-reduces per layer |
-| Process model | Single-process multi-GPU preferred; multiprocessing fallback | PyTorch `cuda:0`, `cuda:1` in one process if possible |
+| Communication | RCCL via `ctypes` on `librccl.so`; measure peer-copy/local-sum alternatives | Torch-free runtime; no `torch.distributed` on the generate path |
+| KV cache | Local head shards, with necessary KV-head replication | Preserve grouped-query mapping and `KVLiveSpans`; recurrent layers shard complete state groups |
+| All-reduce points | Inside each layer after attention output and MLP down; shared-expert reduction where applicable | Complete each sum before its dependent residual/next operation |
+| Process model | Single-process multi-GPU preferred; multiprocessing fallback | Explicit HIP devices/streams and grouped collective launches |
 
-**Kernel impact: None.** Kernels see their local shard. The host stitches results.
+Reuse local compute kernels where shapes/layouts permit. Validate packed quant
+boundaries and row-split arithmetic; sharding is not automatically bit-exact to
+the single-GPU reference.
 
 ### Pipeline Parallelism (PP) — For Very Large Models
 
@@ -114,80 +125,27 @@ Our kernel layer is single-GPU by design. Multi-GPU support is a **host concern*
 | **NVLink-optimized collectives** | No NVLink on consumer AMD; PCIe is the bottleneck |
 | **pynccl custom communicators** | mini-sglang uses this; hipEngine uses `rccl` via ctypes (torch-free). Adding pynccl would require torch as a hard dep |
 
-### Minimal Viable Multi-GPU
+### Implementation sequence and scope
 
-The smallest useful multi-GPU path for hipEngine:
+1. Measure topology, peer transfers, small-message reductions, and same-host
+   single-GPU AR/MTP baselines before predicting a speedup.
+2. Establish explicit device ownership and safe grouped collective launches.
+3. Build byte-preserving GGUF shard manifests and independent reconstruction
+   tests; integrate MLP, full-attention, and recurrent-state sharding in order.
+4. Qualify end-to-end AR before graph/transport/local-shape optimization.
+5. Add a rank-owned MTP draft and TP2 multi-row target verification with exact
+   distributed commit/rollback; measure against true TP2 AR and TP1 MTP.
+6. Gate public support on profile, lifecycle, and matched performance evidence.
 
-```python
-# hipengine/distributed/tp.py
-class TensorParallelConfig:
-    world_size: int = 2
-    rank: int = 0
-    # Column-parallel shards
-    qkv_shard: int   # total_heads // world_size
-    gate_up_shard: int  # intermediate // world_size
-    # Row-parallel input
-    o_proj_shard: int   # hidden // world_size
-    down_shard: int     # intermediate // world_size
+See the campaign for packet exit criteria and the benchmark matrix. The former
+~150–200-line/~2-day TP sketch omitted device ownership, hybrid state, quantized
+layouts, and numerical qualification; it is not a validated implementation
+budget. Estimate effort after the topology and shard inventory packets. Later
+phase budget rows are historical planning placeholders, not an estimate for
+this campaign.
 
-class TensorParallelEngine:
-    def __init__(self, model_spec, tp_config):
-        self.models = []
-        for rank in range(tp_config.world_size):
-            core.device.set_device(rank)
-            model = build_sharded_model(model_spec, rank, tp_config)
-            self.models.append(model)
-        
-    def forward(self, batch):
-        # Run each shard
-        outputs = []
-        for rank, model in enumerate(self.models):
-            core.device.set_device(rank)
-            out = model.forward(batch)
-            outputs.append(out)
-        
-        # All-reduce at row-parallel boundaries
-        for reduce_point in ["o_proj", "down_proj", "shared_expert"]:
-            tensor = gather_outputs(outputs, reduce_point)
-            _rccl.all_reduce(tensor)  # via librccl.so ctypes binding
-            scatter_outputs(outputs, tensor)
-        
-        return outputs[0]  # rank 0 has final result
-```
-
-**Implementation effort: ~200 lines of host code.** No kernel changes. No new communication library. Just PyTorch `distributed`.
-
-### Roadmap
-
-| Phase | Multi-GPU Feature | Effort |
-|-------|-------------------|--------|
-| Phase 3 (Week 4) | Basic TP-2 for dense models | ~2 days |
-| Phase 5 (Ongoing) | TP-2/4 for MoE models | ~3 days |
-| Phase 5 (Ongoing) | PP for models exceeding single-GPU memory | ~1 week |
-| Phase 5 (Ongoing) | EP for MoE models with many experts | ~1 week |
-| Future | Sequence parallelism for 256K+ contexts | Research |
-
-### Key Insight
-
-**Multi-GPU is a host scheduling problem, not a kernel problem.** Our kernels are already efficient on single GPU. The host just needs to:
-1. Shard weights at load time
-2. Launch kernels on the right GPU
-3. Insert `all_reduce` at the right boundaries
-4. Replicate or partition KV cache
-
-This is why we can defer multi-GPU without architectural risk. The kernel layer doesn't need to know about it.
-
-### Multi-GPU Roadmap (LoC)
-
-| Feature | New LoC | What It Does |
-|---------|---------|--------------|
-| **TP-2 dense** | ~150 | Single-process 2-GPU, `rccl` all-reduce, weight sharding |
-| **TP-2/4 MoE** | +150 | Expert sharding awareness, replicated router |
-| **Pipeline Parallelism** | ~200 | Layer-range assignment, P2P tensor transfer |
-| **Expert Parallelism** | ~250 | All-to-all for expert outputs across GPUs |
-| **Sequence Parallelism** | ~400 | Context sharding for 256K+ (research) |
-
-**Key invariant:** Zero kernel changes. All multi-GPU is host weight sharding + communication.
+MoE TP2/TP4, pipeline parallelism, expert parallelism, and sequence parallelism
+remain separate future work. Do not expand the dense TP2 campaign into them.
 
 ## Tiered Memory & Offloading
 
