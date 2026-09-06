@@ -289,12 +289,26 @@ def test_role_manifest_fingerprint_distinguishes_same_stamp_different_maps():
     # Neither synthetic manifest is a pinned UD artifact, so neither resolves
     # to a UD preset -- and they are never conflated with each other.
     assert stamp_a is None and stamp_b is None
-    assert certificate_covers_artifact(
-        preflight_qwen35_gguf_artifact(
-            plain_map, backend="hip_gfx1100", file_type_stamp="MOSTLY_Q4_K_M"
-        ).certificate(),
-        manifest_fingerprint=ud_like.fingerprint,
-    ) is False
+    plain_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", file_type_stamp="MOSTLY_Q4_K_M"
+    )
+    assert (
+        certificate_covers_artifact(
+            plain_report.certificate(),
+            manifest_fingerprint=ud_like.fingerprint,
+            plan_contract=plain_report.plan_contract,
+        )
+        is False
+    )
+    # Same intended plan on the matching manifest: covered.
+    assert (
+        certificate_covers_artifact(
+            plain_report.certificate(),
+            manifest_fingerprint=plain_report.manifest_fingerprint,
+            plan_contract=plain_report.plan_contract,
+        )
+        is True
+    )
 
 
 def test_role_manifest_fingerprint_distinguishes_swapped_recurrent_ffn_types():
@@ -320,12 +334,15 @@ def test_role_manifest_fingerprint_distinguishes_swapped_recurrent_ffn_types():
     assert histogram(manifest_a.records) == histogram(manifest_b.records)
     assert manifest_a.fingerprint != manifest_b.fingerprint
 
-    certificate_a = preflight_qwen35_gguf_artifact(
+    certificate_report = preflight_qwen35_gguf_artifact(
         recurrent_q8, backend="hip_gfx1100", file_type_stamp="MOSTLY_Q4_K_M"
-    ).certificate()
+    )
+    certificate_a = certificate_report.certificate()
     assert (
         certificate_covers_artifact(
-            certificate_a, manifest_fingerprint=manifest_b.fingerprint
+            certificate_a,
+            manifest_fingerprint=manifest_b.fingerprint,
+            plan_contract=certificate_report.plan_contract,
         )
         is False
     )
@@ -557,7 +574,9 @@ def test_plain_controls_pass_preflight_with_expected_coverage():
             certificate = report.certificate()
             assert certificate.preset_key is None
             assert certificate_covers_artifact(
-                certificate, manifest_fingerprint=report.manifest_fingerprint
+                certificate,
+                manifest_fingerprint=report.manifest_fingerprint,
+                plan_contract=report.plan_contract,
             )
 
 
@@ -1816,24 +1835,32 @@ def test_partial_preflight_certificate_does_not_cover_full_artifact():
     assert report.covered_slots == 1
     certificate = report.certificate()
     assert certificate.slot_filter == ("root.output_norm",)
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    full_report = preflight_qwen35_gguf_artifact(plain_map, backend="hip_gfx1100")
 
     # Same manifest identity, but the caller now intends the FULL artifact:
-    # the one-slot certificate does not cover it.
-    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    # the one-slot certificate does not cover it (the intended plan here is
+    # the full artifact's own contract).
     assert (
         certificate_covers_artifact(
             certificate,
             manifest_fingerprint=manifest.fingerprint,
             slot_filter=None,
+            plan_contract=full_report.plan_contract,
         )
         is False
     )
-    # A different partial use is not covered either.
+    # A different partial use is not covered either (intended contract built
+    # by a real preflight over that other subset).
+    other_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=("root.lm_head",)
+    )
     assert (
         certificate_covers_artifact(
             certificate,
             manifest_fingerprint=manifest.fingerprint,
             slot_filter=("root.lm_head",),
+            plan_contract=other_report.plan_contract,
         )
         is False
     )
@@ -1843,20 +1870,21 @@ def test_partial_preflight_certificate_does_not_cover_full_artifact():
             certificate,
             manifest_fingerprint=manifest.fingerprint,
             slot_filter=("root.output_norm",),
+            plan_contract=report.plan_contract,
         )
         is True
     )
 
-    # Conversely, a full-artifact certificate covers a one-slot debug load.
-    full_certificate = preflight_qwen35_gguf_artifact(
-        plain_map, backend="hip_gfx1100"
-    ).certificate()
+    # Conversely, a full-artifact certificate covers a one-slot debug load:
+    # the intended subset contract's records verify per slot.
+    full_certificate = full_report.certificate()
     assert full_certificate.slot_filter is None
     assert (
         certificate_covers_artifact(
             full_certificate,
             manifest_fingerprint=manifest.fingerprint,
             slot_filter=("root.output_norm",),
+            plan_contract=report.plan_contract,
         )
         is True
     )
@@ -1877,14 +1905,21 @@ def test_empty_slot_filter_certificate_covers_only_the_empty_use():
             certificate,
             manifest_fingerprint=manifest.fingerprint,
             slot_filter=(),
+            plan_contract=report.plan_contract,
         )
         is True
+    )
+    # A real one-slot use (with its own preflight contract) is not covered by
+    # the empty certificate.
+    one_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=("root.output_norm",)
     )
     assert (
         certificate_covers_artifact(
             certificate,
             manifest_fingerprint=manifest.fingerprint,
             slot_filter=("root.output_norm",),
+            plan_contract=one_report.plan_contract,
         )
         is False
     )
@@ -1983,6 +2018,469 @@ def test_plan_contract_records_effective_operations_and_slot_scope():
     exported = certificate.as_dict()
     assert exported["slot_filter"] == ["layers.0.attn_qkv", "root.lm_head"]
     assert exported["plan_contract"]["contract_f32_linear"] in (True, False)
+
+
+# ---------------------------------------------------------------------------
+# U1 review repair round 3 (F4): certificates bind the ACTUAL planned resident
+# contract (canonical per-slot records + digest), not caller kwargs or
+# env-name lists; coverage approval requires the intended plan contract.
+# ---------------------------------------------------------------------------
+
+
+def _q4_k_moe_map():
+    return _synthetic_moe_model_map(expert_type=GGMLQuantizationType.Q4_K)
+
+
+def test_certificate_coverage_requires_the_intended_plan_contract():
+    """RED (F4-a): operation coverage must REQUIRE the intended plan
+    contract; a legacy/hand-built certificate without plan metadata fails
+    closed, and the source-identity-only check is distinct and can never
+    authorize operations."""
+
+    from dataclasses import replace as dataclass_replace
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        certificate_matches_artifact_identity,
+    )
+
+    plain_map = _synthetic_model_map()
+    report = preflight_qwen35_gguf_artifact(plain_map, backend="hip_gfx1100")
+    certificate = report.certificate()
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+
+    # Omitting the intended plan cannot authorize operations.
+    with pytest.raises(TypeError):
+        certificate_covers_artifact(
+            certificate, manifest_fingerprint=manifest.fingerprint
+        )
+
+    # A certificate without recorded plan metadata fails closed even when an
+    # intended contract is supplied.
+    legacy = dataclass_replace(certificate, plan_contract=None)
+    assert (
+        certificate_covers_artifact(
+            legacy,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=report.plan_contract,
+        )
+        is False
+    )
+
+    # The identity helper binds the source but is NOT operation approval: it
+    # returns True for a certificate that covers no verifiable plan.
+    assert (
+        certificate_matches_artifact_identity(
+            legacy, manifest_fingerprint=manifest.fingerprint
+        )
+        is True
+    )
+    assert (
+        certificate_matches_artifact_identity(
+            legacy, manifest_fingerprint="0" * 64
+        )
+        is False
+    )
+
+
+def test_env_selected_gate_up_x8_changes_the_recorded_resident_contract(monkeypatch):
+    """RED (F4-b): with decode_repack on, HIPENGINE_GGUF_SELECTED_GATE_UP_X8
+    flips the actual rank-3 Q4_K gate/up residents between T16 and X8 while
+    the source shape/type/hash stay identical. The recorded contract must
+    follow the ACTUAL planned residents (records + digest differ), and a
+    certificate minted under one env must refuse the other env's intended
+    plan."""
+
+    from hipengine.loading.qwen35_gguf_materialize import (
+        HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV,
+        LAYOUT_GGUF_Q4_K_X8,
+    )
+
+    moe_map = _q4_k_moe_map()
+    manifest = build_qwen35_gguf_role_manifest(moe_map)
+    monkeypatch.delenv(HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV, raising=False)
+    off_report = preflight_qwen35_gguf_artifact(
+        moe_map, backend="hip_gfx1100", decode_repack=True
+    )
+    monkeypatch.setenv(HIPENGINE_GGUF_SELECTED_GATE_UP_X8_ENV, "1")
+    on_report = preflight_qwen35_gguf_artifact(
+        moe_map, backend="hip_gfx1100", decode_repack=True
+    )
+    assert off_report.supported, off_report.render_refusals()
+    assert on_report.supported, on_report.render_refusals()
+
+    # The actual planned residents switched: expert gate/up layouts differ.
+    def _expert_layouts(report):
+        return {
+            record.resident_layout
+            for record in report.qualified_records
+            if record.role_class == "moe_experts"
+        }
+
+    assert LAYOUT_GGUF_Q4_K_X8 not in _expert_layouts(off_report)
+    assert LAYOUT_GGUF_Q4_K_X8 in _expert_layouts(on_report)
+
+    # The recorded contracts are NOT equal: the canonical resident records
+    # and digest capture the env-resolved layout the kwargs never named.
+    assert off_report.plan_contract != on_report.plan_contract
+    assert (
+        off_report.plan_contract.resident_plan_records
+        != on_report.plan_contract.resident_plan_records
+    )
+    assert (
+        off_report.plan_contract.resident_plan_digest
+        != on_report.plan_contract.resident_plan_digest
+    )
+
+    # Cross-env coverage is refused in BOTH directions; same-env matches.
+    off_certificate = off_report.certificate()
+    on_certificate = on_report.certificate()
+    assert (
+        certificate_covers_artifact(
+            off_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=on_report.plan_contract,
+        )
+        is False
+    )
+    assert (
+        certificate_covers_artifact(
+            on_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=off_report.plan_contract,
+        )
+        is False
+    )
+    assert (
+        certificate_covers_artifact(
+            off_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=off_report.plan_contract,
+        )
+        is True
+    )
+    assert (
+        certificate_covers_artifact(
+            on_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=on_report.plan_contract,
+        )
+        is True
+    )
+
+
+def test_explicit_plan_overrides_change_the_recorded_resident_contract():
+    """An explicit planner override that moves a resident must move the
+    canonical records and digest with it; cross-plan coverage is refused."""
+
+    planar_map = _q5_planar_ssm_out_map()
+    manifest = build_qwen35_gguf_role_manifest(planar_map)
+    off = preflight_qwen35_gguf_artifact(
+        planar_map,
+        backend="hip_gfx1100",
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q5_raw_mmq_ssm_out=True,
+    )
+    on = preflight_qwen35_gguf_artifact(
+        planar_map,
+        backend="hip_gfx1100",
+        decode_repack=True,
+        dense_q5_t16_ssm_out=True,
+        dense_q5_raw_mmq_ssm_out=True,
+        dense_q5_qmicro_planar_ssm_out=True,
+    )
+    assert off.supported, off.render_refusals()
+    assert on.supported, on.render_refusals()
+    assert off.plan_contract != on.plan_contract
+    assert (
+        off.plan_contract.resident_plan_records
+        != on.plan_contract.resident_plan_records
+    )
+    assert (
+        off.plan_contract.resident_plan_digest
+        != on.plan_contract.resident_plan_digest
+    )
+    # Records name the sidecar allocation on the planar variant only.
+    assert any(
+        "qmicro_planar" in record for record in on.plan_contract.resident_plan_records
+    )
+    assert not any(
+        "qmicro_planar" in record for record in off.plan_contract.resident_plan_records
+    )
+    assert (
+        certificate_covers_artifact(
+            off.certificate(),
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=on.plan_contract,
+        )
+        is False
+    )
+
+
+def test_identical_effective_plans_compare_stably_across_input_spelling(monkeypatch):
+    """Same effective plan, different input spelling/order: identical
+    contracts, identical stable digests, mutually covering certificates."""
+
+    plain_map = _synthetic_model_map()
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    monkeypatch.delenv("HIPENGINE_GGUF_DECODE_REPACK", raising=False)
+    monkeypatch.delenv("HIPENGINE_GGUF_SELECTED_GATE_UP_X8", raising=False)
+
+    env_default = preflight_qwen35_gguf_artifact(plain_map, backend="hip_gfx1100")
+    explicit = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", decode_repack=True, repack_veto=False
+    )
+    assert env_default.plan_contract == explicit.plan_contract
+    assert (
+        env_default.plan_contract.resident_plan_digest
+        == explicit.plan_contract.resident_plan_digest
+    )
+    assert len(env_default.plan_contract.resident_plan_digest) == 64
+    assert env_default.plan_contract.resident_plan_digest.isalnum()
+    assert (
+        certificate_covers_artifact(
+            env_default.certificate(),
+            manifest_fingerprint=manifest.fingerprint,
+            plan_contract=explicit.plan_contract,
+        )
+        is True
+    )
+
+    shuffled = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        slot_filter=("layers.0.attn_qkv", "root.output_norm"),
+    )
+    ordered = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        slot_filter=("root.output_norm", "layers.0.attn_qkv"),
+    )
+    assert shuffled.plan_contract == ordered.plan_contract
+    assert (
+        shuffled.plan_contract.resident_plan_records
+        == ordered.plan_contract.resident_plan_records
+    )
+    assert (
+        certificate_covers_artifact(
+            shuffled.certificate(),
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("root.output_norm", "layers.0.attn_qkv"),
+            plan_contract=ordered.plan_contract,
+        )
+        is True
+    )
+
+
+def test_subset_narrowing_verifies_each_recorded_resident_slot():
+    """Full-artifact certificates cover narrowed uses only when the intended
+    contract's per-slot records verify against the certified plan;
+    enlargement and partial contracts fail closed."""
+
+    from dataclasses import replace as dataclass_replace
+
+    plain_map = _synthetic_model_map()
+    manifest = build_qwen35_gguf_role_manifest(plain_map)
+    full_report = preflight_qwen35_gguf_artifact(plain_map, backend="hip_gfx1100")
+    full_certificate = full_report.certificate()
+    subset = ("root.output_norm", "layers.0.attn_qkv")
+    subset_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=subset
+    )
+
+    # Narrowed use against the full certificate: the intended contract's
+    # records are verified slot-by-slot against the certified plan.
+    assert (
+        certificate_covers_artifact(
+            full_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=subset,
+            plan_contract=subset_report.plan_contract,
+        )
+        is True
+    )
+
+    # Enlargement beyond a certified subset is refused.
+    one_report = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=("root.output_norm",)
+    )
+    assert (
+        certificate_covers_artifact(
+            one_report.certificate(),
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=subset,
+            plan_contract=subset_report.plan_contract,
+        )
+        is False
+    )
+
+    # A partial intended contract (claims a slot it never recorded) fails
+    # closed even against the full certificate.
+    partial = dataclass_replace(one_report.plan_contract, slot_filter=subset)
+    assert (
+        certificate_covers_artifact(
+            full_certificate,
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=subset,
+            plan_contract=partial,
+        )
+        is False
+    )
+
+    # A narrowed contract whose resident plan differs inside the certified
+    # subset is refused: the contraction moves the alpha resident record.
+    contracted_full = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", contract_f32_linear=True
+    )
+    plain_alpha = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=("layers.0.ssm_alpha",)
+    )
+    assert (
+        certificate_covers_artifact(
+            contracted_full.certificate(),
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("layers.0.ssm_alpha",),
+            plan_contract=plain_alpha.plan_contract,
+        )
+        is False
+    )
+    # ...while the matching contracted subset record verifies.
+    contracted_alpha = preflight_qwen35_gguf_artifact(
+        plain_map,
+        backend="hip_gfx1100",
+        contract_f32_linear=True,
+        slot_filter=("layers.0.ssm_alpha",),
+    )
+    assert (
+        certificate_covers_artifact(
+            contracted_full.certificate(),
+            manifest_fingerprint=manifest.fingerprint,
+            slot_filter=("layers.0.ssm_alpha",),
+            plan_contract=contracted_alpha.plan_contract,
+        )
+        is True
+    )
+
+
+def test_plan_contract_records_cover_exactly_the_claimed_slot_scope():
+    """The canonical records cover exactly the contract's slot scope (full
+    scope: every checked slot; filtered scope: exactly the filter), and the
+    digest is always derived from the stored records."""
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        qwen35_gguf_planned_weight_digest,
+    )
+
+    plain_map = _synthetic_model_map()
+    full_contract = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100"
+    ).plan_contract
+    assert full_contract.slot_filter is None
+    assert full_contract.resident_plan_records
+    slots = [
+        record.split("\t", 1)[0][len("slot=") :]
+        for record in full_contract.resident_plan_records
+    ]
+    assert len(set(slots)) == len(slots)
+    assert slots == sorted(slots)
+    assert full_contract.resident_plan_digest == qwen35_gguf_planned_weight_digest(
+        full_contract.resident_plan_records
+    )
+    # Records pin layout, quant key, allocation names, planned bytes, and
+    # source identity per slot.
+    alpha_record = next(
+        record for record in full_contract.resident_plan_records if "ssm_alpha" in record
+    )
+    assert "layout=dense_f32" in alpha_record
+    assert "quant_key=f32" in alpha_record
+    assert "allocations=raw" in alpha_record
+    assert "planned_nbytes=raw:" in alpha_record
+    assert "source_type=F32" in alpha_record
+
+    subset_contract = preflight_qwen35_gguf_artifact(
+        plain_map, backend="hip_gfx1100", slot_filter=("root.output_norm",)
+    ).plan_contract
+    subset_slots = [
+        record.split("\t", 1)[0][len("slot=") :]
+        for record in subset_contract.resident_plan_records
+    ]
+    assert subset_slots == ["root.output_norm"]
+    assert subset_contract.resident_plan_digest != full_contract.resident_plan_digest
+
+
+@pytest.mark.skipif(not SMALL_Q8_0.exists(), reason=f"pinned artifact missing: {SMALL_Q8_0}")
+def test_loader_reverifies_a_supplied_admission_certificate(monkeypatch, tmp_path):
+    """The loader is a real certificate consumer: a caller-supplied
+    certificate must cover the plan THIS load would materialize (env-resolved
+    layouts included) before any allocation; the minted certificate rides on
+    the resident for downstream re-verification."""
+
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.loading.qwen35_gguf import build_qwen35_gguf_tensor_map
+    from hipengine.loading.qwen35_gguf_materialize import (
+        HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV,
+        HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV,
+    )
+    from tests._qwen35_gguf_fixture import (
+        default_fixture_tensors,
+        fixture_metadata,
+        write_qwen35_gguf,
+    )
+
+    path = tmp_path / "cert-consumer.gguf"
+    write_qwen35_gguf(path, default_fixture_tensors(1), fixture_metadata(1))
+
+    def _mint():
+        report = preflight_qwen35_gguf_artifact(
+            build_qwen35_gguf_tensor_map(GGUFReader(str(path)).info),
+            backend="hip_gfx1100",
+            file_type_stamp="MOSTLY_Q4_K_M",
+            **_dense_flags("hip_gfx1100", "MOSTLY_Q4_K_M"),
+        )
+        assert report.supported, report.render_refusals()
+        return report.certificate()
+
+    # Same plan: the certificate is honored and the load completes on CPU.
+    monkeypatch.delenv(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, raising=False)
+    monkeypatch.delenv(HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV, raising=False)
+    matching = _mint()
+    resident = _materialize_fixture_on_cpu(
+        path, monkeypatch, admission_certificate=matching
+    )
+    assert resident.admission_certificate is not None
+    assert resident.admission_certificate == matching
+
+    # Env-resolved plan drift (Q8_0 raw sidecar on T16 residents): the stale
+    # certificate is refused BEFORE allocation, source identity unchanged.
+    monkeypatch.setenv(HIPENGINE_GGUF_Q8_0_RAW_SIDECAR_ENV, "1")
+    monkeypatch.setenv(HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL_ENV, "1")
+    sentinel = _AllocationSentinel("allocation before certificate reverification")
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(Qwen35GGUFAdmissionError, match="certificate"):
+        materialize_qwen35_gguf_weights(
+            str(path), backend="hip_gfx1100", admission_certificate=matching
+        )
+    assert sentinel.calls == []
+
+    # A certificate minted under the current env covers the load.
+    fresh = _mint()
+    resident_fresh = _materialize_fixture_on_cpu(
+        path, monkeypatch, admission_certificate=fresh
+    )
+    assert resident_fresh.admission_certificate == fresh
+    assert (
+        certificate_covers_artifact(
+            resident_fresh.admission_certificate,
+            manifest_fingerprint=(
+                resident_fresh.admission_certificate.manifest_fingerprint
+            ),
+            plan_contract=resident_fresh.admission_certificate.plan_contract,
+        )
+        is True
+    )
 
 
 def test_packed_decode_graph_min_replay_steps_survives_preset_bound_identity(

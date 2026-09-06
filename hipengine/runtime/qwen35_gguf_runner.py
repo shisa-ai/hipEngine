@@ -2838,6 +2838,7 @@ class Qwen35GGUFFullStackRunner:
                 allocation_mode=resident.allocation_mode,
                 allocation_arena_reason=resident.allocation_arena_reason,
                 artifact_preset_key=resident.artifact_preset_key,
+                admission_certificate=resident.admission_certificate,
             )
             self.token_embedding_placement = "device"
             return materialized

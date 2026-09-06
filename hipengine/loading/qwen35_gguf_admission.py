@@ -29,7 +29,15 @@ binds to the actual role manifest instead:
   cold-path coverage records below, which name the existing four-axis
   ``(backend, layer, quant, variant)`` consumer families;
 - the preflight plans every slot, aggregates *every* unsupported slot/mode,
-  and fails before the loader performs any device allocation.
+  and fails before the loader performs any device allocation;
+- a positive certificate binds to the ACTUAL planned residents — a canonical
+  per-slot record (logical slot, source identity, resident layout, quant
+  key, allocation names, planned allocation bytes, sidecars) and its digest
+  recorded in :class:`Qwen35GGUFPlanContract` — so an env-resolved layout
+  switch (for example the selected gate/up X8 repack) changes the contract
+  even when every caller kwarg matches, and operation-coverage approval
+  requires verifying the intended plan contract, never source identity
+  alone.
 
 UD dense consumers for Q3_K / IQ4_NL / IQ3_S / IQ3_XXS / IQ2_S and raw dense
 IQ4_XS do not exist until UD-U2..U5, so both published UD artifacts are
@@ -109,8 +117,11 @@ __all__ = [
     "Qwen35GGUFUnsupportedOperation",
     "build_qwen35_gguf_role_manifest",
     "certificate_covers_artifact",
+    "certificate_matches_artifact_identity",
     "preflight_qwen35_gguf_artifact",
     "qwen35_gguf_native_row_binding_errors",
+    "qwen35_gguf_planned_weight_digest",
+    "qwen35_gguf_planned_weight_record",
     "resolve_qwen35_gguf_artifact_preset",
 ]
 
@@ -834,6 +845,103 @@ _KNOWN_HARDWARE_BACKEND_KEYS: frozenset[str] = frozenset(
 
 
 # ---------------------------------------------------------------------------
+# Canonical planned-resident identity (records + digest)
+# ---------------------------------------------------------------------------
+
+# Digest tag: a change to the canonical record format invalidates every
+# previously recorded contract (fail closed), never silently compares.
+_RESIDENT_PLAN_DIGEST_TAG = "qwen35-gguf-resident-plan-v1"
+_RECORD_SLOT_PREFIX = "slot="
+
+
+def qwen35_gguf_planned_weight_record(spec: Qwen35GGUFWeightSpec) -> str:
+    """Canonical single-line identity of one planned resident weight spec.
+
+    The line is a pure function of the planned spec and names everything the
+    actual consumers bind to: the logical slot path, the source tensor
+    identity (name, logical shape, GGML storage type), the resident layout,
+    the per-tensor kernel quant key, the allocation names, the planned
+    per-allocation byte counts (the exact metadata formula the loader
+    allocates with, which also pins resident element sizing), and the
+    sidecar layouts. It deliberately contains no environment-variable names,
+    no caller kwargs, no reprs, no pointers, and no timestamps: two plans
+    with identical residents produce identical lines regardless of how the
+    options were spelled or ordered.
+    """
+
+    source = spec.source
+    planned_nbytes = planned_qwen35_gguf_weight_allocation_nbytes(spec)
+    fields = (
+        f"slot={spec.slot_path}",
+        f"source={source.name}",
+        f"shape={','.join(str(int(dim)) for dim in source.shape)}",
+        f"source_type={source.ggml_type_name}",
+        f"layout={spec.layout}",
+        f"quant_key={spec.quant_key}",
+        f"allocations={','.join(spec.allocation_names)}",
+        f"planned_nbytes={','.join(f'{name}:{int(nbytes)}' for name, nbytes in planned_nbytes)}",
+        f"sidecars={','.join(spec.sidecar_layouts)}",
+    )
+    return "\t".join(fields)
+
+
+def qwen35_gguf_planned_weight_digest(records: Iterable[str]) -> str:
+    """Deterministic sha256 over a canonical planned-resident record set.
+
+    Records are deduplicated and sorted before hashing, and the record count
+    is length-prefixed, so the digest is stable across processes and input
+    ordering and cannot collide across different-sized record sets.
+    """
+
+    ordered = tuple(sorted(dict.fromkeys(str(record) for record in records)))
+    digest = hashlib.sha256()
+    digest.update(_RESIDENT_PLAN_DIGEST_TAG.encode("utf-8"))
+    digest.update(b"\x00")
+    digest.update(str(len(ordered)).encode("ascii"))
+    digest.update(b"\x00")
+    for record in ordered:
+        digest.update(record.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _planned_weight_record_slot(record: str) -> str:
+    """Logical slot path of one canonical record; empty for malformed lines."""
+
+    if not record.startswith(_RECORD_SLOT_PREFIX):
+        return ""
+    return record[len(_RECORD_SLOT_PREFIX) :].split("\t", 1)[0]
+
+
+def _plan_contract_is_self_consistent(contract: Qwen35GGUFPlanContract) -> bool:
+    """Whether a contract actually records the scope it claims.
+
+    A verifiable contract has well-formed records with unique slot paths, a
+    digest derived from its own records, and records covering EXACTLY its
+    slot scope: the full-artifact scope (``slot_filter=None``) must have
+    verified residents, and a filtered scope must have one record per claimed
+    slot. Partial or hollow contracts verify nothing and fail closed.
+    """
+
+    slots = tuple(
+        _planned_weight_record_slot(record)
+        for record in contract.resident_plan_records
+    )
+    if any(not slot for slot in slots):
+        return False
+    if len(set(slots)) != len(slots):
+        return False
+    if (
+        contract.resident_plan_digest
+        != qwen35_gguf_planned_weight_digest(contract.resident_plan_records)
+    ):
+        return False
+    if contract.slot_filter is None:
+        return bool(slots)
+    return set(slots) == {str(slot) for slot in contract.slot_filter}
+
+
+# ---------------------------------------------------------------------------
 # Preflight report
 # ---------------------------------------------------------------------------
 
@@ -868,10 +976,18 @@ class Qwen35GGUFPlanContract:
 
     This is the certificate's scope statement: which operations, which slots,
     and which effective plan flags (after environment/veto resolution and
-    contraction inference) the admission verdict was computed under.  Two
-    contracts are interchangeable only when they are equal — a
-    contraction-enabled certificate is not reusable on an uncontracted plan
-    and a repack-vetoed plan is not the certified plan.
+    contraction inference) the admission verdict was computed under. Beyond
+    the flags, the contract binds the ACTUAL planned residents: a canonical
+    sorted record per checked slot (logical slot, source identity, resident
+    layout, quant key, allocation names, planned per-allocation byte counts,
+    sidecar layouts) plus a deterministic digest over those records. The
+    digest is always re-derived from the stored records, so a contract can
+    never carry a digest that disagrees with its own record set, and two
+    plans whose env-resolved layouts differ can never compare equal even
+    when every caller kwarg matches. Two contracts are interchangeable only
+    when their recorded plans are equal — a contraction-enabled certificate
+    is not reusable on an uncontracted plan, a repack-vetoed plan is not the
+    certified plan, and an X8-env certificate is not reusable on a T16 plan.
     """
 
     operations: tuple[str, ...]
@@ -890,6 +1006,28 @@ class Qwen35GGUFPlanContract:
     dense_q5_t16_h5120: bool
     dense_q6_qmicro_planar: bool
     dense_q6_qmicro_planar_excluded_slots: tuple[str, ...]
+    resident_plan_records: tuple[str, ...] = ()
+    resident_plan_digest: str = ""
+
+    def __post_init__(self) -> None:
+        # Canonicalize: deduplicate + sort records; the digest is always
+        # derived from the stored records (never caller-asserted).
+        records = tuple(sorted(dict.fromkeys(self.resident_plan_records)))
+        object.__setattr__(self, "resident_plan_records", records)
+        object.__setattr__(
+            self,
+            "resident_plan_digest",
+            qwen35_gguf_planned_weight_digest(records),
+        )
+
+    @property
+    def resident_plan_slots(self) -> tuple[str, ...]:
+        """Logical slot paths of the recorded residents, in record order."""
+
+        return tuple(
+            _planned_weight_record_slot(record)
+            for record in self.resident_plan_records
+        )
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -911,6 +1049,8 @@ class Qwen35GGUFPlanContract:
             "dense_q6_qmicro_planar_excluded_slots": list(
                 self.dense_q6_qmicro_planar_excluded_slots
             ),
+            "resident_plan_digest": self.resident_plan_digest,
+            "resident_plan_record_count": len(self.resident_plan_records),
         }
 
 
@@ -946,61 +1086,126 @@ class Qwen35GGUFAdmissionCertificate:
         }
 
 
-def certificate_covers_artifact(
+def certificate_matches_artifact_identity(
     certificate: Qwen35GGUFAdmissionCertificate,
     *,
     manifest_fingerprint: str,
     backend: str | None = None,
-    operations: Iterable[str] | None = None,
-    slot_filter: Iterable[str] | None = None,
-    plan_contract: Qwen35GGUFPlanContract | None = None,
 ) -> bool:
-    """Return whether a certificate still binds to the given artifact identity.
+    """Source-identity-only binding check. This does NOT authorize operations.
 
-    A plain-artifact certificate never covers a UD manifest (different
-    fingerprint) and vice versa, even when the file-type stamps match.
-
-    ``slot_filter`` names the slots the caller intends to use now; the
-    default ``None`` means the full artifact is intended.  A full-artifact
-    certificate (``slot_filter=None`` recorded at preflight time) covers any
-    subset; a certificate produced under a slot filter only covers uses
-    within that exact checked subset — a one-slot debug certificate never
-    reads as full-artifact coverage, including under an unspecified check.
-
-    ``plan_contract`` is the caller's intended effective plan contract; when
-    provided it must equal the certificate's recorded contract exactly, so a
-    contraction-enabled certificate cannot be reused on an uncontracted plan
-    (or vice versa).  A certificate without contract metadata (legacy or
-    hand-built) cannot verify a plan contract and fails closed.
+    True when the certificate was minted for exactly this role-manifest
+    fingerprint (and backend, when given). This says "the certificate and the
+    artifact are the same source identity" and nothing more: it deliberately
+    inspects no resident plan, no requested operations, and no slot scope, so
+    a True result can never be read as permission to run anything. Operation
+    approval must go through :func:`certificate_covers_artifact`, which
+    verifies the intended plan contract against the certified plan.
     """
 
     if certificate.manifest_fingerprint != str(manifest_fingerprint):
         return False
     if backend is not None and certificate.backend != str(backend):
         return False
-    if operations is not None:
-        requested = tuple(str(operation) for operation in operations)
+    return True
+
+
+def certificate_covers_artifact(
+    certificate: Qwen35GGUFAdmissionCertificate,
+    *,
+    manifest_fingerprint: str,
+    plan_contract: Qwen35GGUFPlanContract,
+    backend: str | None = None,
+    operations: Iterable[str] | None = None,
+    slot_filter: Iterable[str] | None = None,
+) -> bool:
+    """Return whether a certificate authorizes the intended use of the artifact.
+
+    ``plan_contract`` is REQUIRED: the caller's intended effective plan
+    contract, taken from a fresh :func:`preflight_qwen35_gguf_artifact` call
+    over the artifact/plan about to run. Coverage approval always verifies
+    that intended contract against the certificate's recorded plan — an
+    override-specific certificate is never accepted on the strength of source
+    identity alone. A certificate whose own plan metadata is missing (legacy
+    or hand-built) fails closed, as does an intended contract that does not
+    actually record the scope it claims (absent, unknown, or partial).
+
+    A plain-artifact certificate never covers a UD manifest (different
+    fingerprint) and vice versa, even when the file-type stamps match.
+
+    ``slot_filter`` names the slots the caller intends to use now; the
+    default ``None`` means the full artifact is intended. It must agree with
+    the intended contract's own recorded scope, or the request fails closed.
+    A full-artifact certificate (``slot_filter=None`` recorded at preflight
+    time) covers any subset whose per-slot resident records verify against
+    the certified plan; a certificate produced under a slot filter only
+    covers uses within that exact checked subset — a one-slot debug
+    certificate never reads as full-artifact coverage, including under an
+    unspecified check. Narrowing is preserved; enlargement beyond the
+    certified subset is refused.
+
+    When ``operations`` is given, every requested operation must be in the
+    certificate's certified operation set AND in the intended contract's own
+    checked set — an operation neither side verified is refused.
+    """
+
+    if not certificate_matches_artifact_identity(
+        certificate,
+        manifest_fingerprint=manifest_fingerprint,
+        backend=backend,
+    ):
+        return False
+    recorded = certificate.plan_contract
+    if recorded is None:
+        # A certificate without resident-plan identity cannot verify any
+        # intended plan: fail closed instead of authorizing operations.
+        return False
+    if not _plan_contract_is_self_consistent(plan_contract):
+        return False
+    if not _plan_contract_is_self_consistent(recorded):
+        return False
+    requested = (
+        None if operations is None else tuple(dict.fromkeys(str(op) for op in operations))
+    )
+    if requested is not None:
         if any(operation not in certificate.operations for operation in requested):
             return False
-    certified = certificate.slot_filter
-    intended = (
+        if any(operation not in plan_contract.operations for operation in requested):
+            return False
+    intended = plan_contract
+    requested_slots = (
         None if slot_filter is None else tuple(sorted({str(slot) for slot in slot_filter}))
     )
-    if certified is None:
-        # Full-artifact certificate: covers any subset of slots.
-        pass
-    elif intended is None:
-        # No explicit subset: the full artifact is intended, which a filtered
-        # certificate never covers.
+    if requested_slots != intended.slot_filter:
+        # The call's slot scope and the intended contract's recorded scope
+        # disagree: refuse instead of guessing which one was meant.
         return False
-    else:
-        certified_set = set(certified)
-        if any(slot not in certified_set for slot in intended):
+    intended_slots = intended.slot_filter
+    certified_slots = recorded.slot_filter
+    if intended_slots is None:
+        # The full artifact is intended: a slot-filtered certificate never
+        # covers it, and every resident the intended contract verified must
+        # have been verified identically by the certificate's plan.
+        if certified_slots is not None:
             return False
-    if plan_contract is not None:
-        if certificate.plan_contract is None:
+        if not intended.resident_plan_records:
             return False
-        if certificate.plan_contract != plan_contract:
+        certified_records = set(recorded.resident_plan_records)
+        return all(
+            record in certified_records for record in intended.resident_plan_records
+        )
+    intended_slot_set = set(intended_slots)
+    if certified_slots is not None and not intended_slot_set <= set(certified_slots):
+        # Enlargement beyond the certified subset is never covered.
+        return False
+    certified_by_slot = {
+        _planned_weight_record_slot(record): record
+        for record in recorded.resident_plan_records
+    }
+    for record in intended.resident_plan_records:
+        slot = _planned_weight_record_slot(record)
+        if certified_by_slot.get(slot) != record:
+            # The intended resident for this slot is not the certified one.
             return False
     return True
 
@@ -1156,6 +1361,10 @@ def preflight_qwen35_gguf_artifact(
         tuple[str, str, str, str], Qwen35GGUFOperationCoverage
     ] = {}
     covered_slots = 0
+    # Canonical records of the ACTUAL planned residents for every checked and
+    # qualified slot. This — not the caller's kwargs or env names — is what
+    # the plan contract (and therefore the certificate) binds to.
+    resident_plan_records: list[str] = []
 
     # Scope gate: MTP draft operations require an explicitly certified MTP
     # scope.  No preset (plain lane) or an AR-only UD preset refuses the whole
@@ -1350,6 +1559,7 @@ def preflight_qwen35_gguf_artifact(
             ] = record
         if slot_supported:
             covered_slots += 1
+            resident_plan_records.append(qwen35_gguf_planned_weight_record(spec))
 
     return Qwen35GGUFAdmissionReport(
         backend=str(backend),
@@ -1380,6 +1590,7 @@ def preflight_qwen35_gguf_artifact(
             dense_q6_qmicro_planar_excluded_slots=tuple(
                 str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
             ),
+            resident_plan_records=tuple(resident_plan_records),
         ),
     )
 

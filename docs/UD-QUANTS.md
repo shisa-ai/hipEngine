@@ -799,12 +799,12 @@ has an immutable worklog entry and its own commit on `ud-quants`:
 | F1 | HIGH | `ar_decode_native_rows` was never requested by the materializer nor checked at native execution entry; raw-Q8/sole-T16/dense-F32 alpha/beta could reach the BF16-pointer owner. | Load-time binding + entry checks in `step_rows_native`/`capture_native_rows_graph` (`6a9712ee7`) |
 | F2 | HIGH | The moe_experts whitelist omitted rank-3 IQ3_XXS although the materializer keeps it raw and `gguf_iq_gemv` registers selected-expert consumers. | Raw-only IQ3_XXS moe_experts coverage records with rank/shape/backend/dtype contract; rank-2 dense still refused (`cd73d1cef`) |
 | F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates and misaligned plans (e.g. Q6_K head N=257 T16) passed preflight and failed only mid-materialization, after earlier allocations. | Backend keys restricted to the registered metadata surface; per-slot allocation-accounting check aggregates all planner refusals before any allocation; zero-malloc sentinel test (`d665c01eb`) |
-| F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`) |
+| F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`). Third-round repair: the contract now binds the actual planned residents and coverage always requires the intended plan (see the round-3 subsection below) |
 | F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`) |
 | F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
 
-U1 is complete after these repairs: `tests/test_gguf_ud_admission.py` is green
-on CPU (real-artifact tests skip without the pinned files), admission binds to
+These repairs closed the round-1 findings: `tests/test_gguf_ud_admission.py`
+is green on CPU (real-artifact tests skip without the pinned files), admission binds to
 actual role/shape/type manifests rather than stamps or histograms, the loader
 preflights backend/materializability/scope before any allocation, both
 K_M/K_S identity callers constrain UD, unknown manifests fall back generically
@@ -812,7 +812,8 @@ instead of inheriting plain-certified behavior, certificates carry their exact
 slot/plan scope, and the native-row BF16-pointer owner contract is enforced at
 the real execution entries. UD artifacts remain refused for execution until
 U2-U5 deliver the missing dense consumers; the refusal lists are the honest
-per-slot inventory for those units.
+per-slot inventory for those units. Later review rounds (below) found further
+defects, so U1 remains not accepted until every pending finding passes review.
 
 #### U1 review repair regressions (2026-09-07, second review round)
 
@@ -851,8 +852,54 @@ until the pending findings pass review.
   refused. The route audit now reports the sidecar formula-sized instead of
   formula-unavailable.
 
-Re-review status: F6 accepted; F1, F3 (concrete consumer), F4, F5 pending;
-this regression round is subject to the same review.
+Re-review status: F6 accepted; F1, F3 (concrete consumer), F5 pending;
+F4 was re-opened by round 3 and repaired there; this regression round is
+subject to the same review.
+
+#### U1 review repair round 3 (2026-09-07): F4 resident-plan binding
+
+A third review accepted the F2/Q5-planar regression repairs and found F4
+still open on two points, both now repaired on CPU with RED-then-GREEN tests
+(`worklog` entry `ud-u1-f4-resident-plan-certificate`):
+
+- **Coverage approval could skip plan verification.**
+  `certificate_covers_artifact` compared the effective plan contract only
+  when the caller volunteered one; omitting it still accepted an
+  override-specific certificate as operation coverage. The intended
+  `plan_contract` is now a required argument and is always verified; a
+  certificate without recorded plan metadata fails closed; the pure
+  source-identity check moved to a distinct
+  `certificate_matches_artifact_identity` whose contract states it can never
+  authorize operations.
+- **The recorded contract missed env-resolved layout selectors.**
+  `Qwen35GGUFPlanContract` recorded caller kwargs and env-resolved booleans,
+  but the layout selectors read inside the planner
+  (`HIPENGINE_GGUF_SELECTED_GATE_UP_X8`, `..._GATE_UP_RAW`,
+  `..._SELECTED_X8_REPACK`, `..._SELECTED_DOWN_RAW`,
+  `HIPENGINE_GGUF_Q8_0_RAW_SIDECAR`, `HIPENGINE_GGUF_DENSE_Q8_DP4A_ALL`,
+  `HIPENGINE_GGUF_LM_HEAD_Q6_X8_SIDECAR`) changed actual residents without
+  changing any recorded field: a rank-3 Q4_K MoE preflight with
+  `decode_repack=True` records identical contracts with the gate/up X8 env
+  off (T16 residents) and on (X8 residents). The contract now carries a
+  canonical sorted record per checked slot — logical slot path, source
+  identity (name/shape/GGML type), resident layout, per-tensor quant key,
+  allocation names, planned per-allocation byte counts, sidecar layouts —
+  plus a deterministic sha256 digest that is always re-derived from the
+  records. Coverage verifies the intended contract per slot: full-artifact
+  intent requires a full-artifact certificate whose records subsume the
+  intended records; subset intent requires slot-scope nesting plus exact
+  per-slot record equality (narrowing preserved, enlargement refused);
+  contracts whose records do not cover their claimed slot scope fail closed.
+  The loader (`materialize_qwen35_gguf_weights`) is a real certificate
+  consumer: an `admission_certificate` argument is re-verified against the
+  fresh admission report before any allocation, and residents carry the
+  minted certificate for downstream re-verification. Identical effective
+  plans compare stably regardless of input spelling/order; the pinned UD
+  refusal inventories (18 K_M planner-refused slots / 41 K_S) are unchanged.
+
+Re-review status after round 3: F6, F2, and the Q5-planar regression repair
+accepted; F4 repaired here (two round-3 points above) and F1, F3 (concrete
+consumer), F5 still pending re-review. U1 remains open.
 
 ### U2. Independent Codec Oracles
 
