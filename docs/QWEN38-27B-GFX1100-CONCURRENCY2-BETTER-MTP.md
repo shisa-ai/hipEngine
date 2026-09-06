@@ -251,41 +251,66 @@ larger resident owner. Reusing qualified leaf kernels is allowed; switching to
 a whole-request singleton scheduler/verifier to avoid packed-state correctness
 is not this deliverable.
 
-- [ ] Add CPU seam REDs for C1 eligibility, claims, provider construction,
+- [x] Add CPU seam REDs for C1 eligibility, claims, provider construction,
   frontier packing, selected commit and K0 transitions. Make tests fail if the
   candidate calls `_ensure_active_singleton_target_verifier`,
   `Qwen35GGUFTransactionalVerifier`, or the legacy singleton execution route.
   Scope that assertion to this new path; do not break existing gfx1151 or
   Qwen3.6 uses of those helpers.
-- [ ] Replace the blanket `bound > 1` exclusion in `partition_max_requests`
+  (2026-09-06: `tests/test_qwen35_gguf_mtp2_c1_physical.py` — flag, partition,
+  claims, capability, state-open, cancel-restore, refill/pair closure,
+  survivor claims, pad/bucket audit; gfx1151 legacy behavior pinned.)
+- [x] Replace the blanket `bound > 1` exclusion in `partition_max_requests`
   only through an explicitly qualified physical-C1 plan. Audit `claims_fit`,
   `_singleton_only`, provider construction and `_execute_target_frontier_batch`
   together. Do not allow a multi-request due batch to become serial singleton
   MTP calls because a C1 safety row exists.
-- [ ] Implement native C1 provider/prompt-hidden initialization and packed target
+  (2026-09-06: package flag `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`; bound 1 only for
+  a one-request qualified group; multi-request rows==1 batches stay closed.)
+- [x] Implement native C1 provider/prompt-hidden initialization and packed target
   execution. Validate root token, positions, pre/post-norm hidden taps,
   embedding, convolution/GDN state and KV against independent strict reference
   trajectories from the first divergent boundary. Use warm states, not only
   position-zero smoke tests. Do not mask the divergence with a dtype flag.
-- [ ] Handle R2/R3/R4 with bounded graph/workspace keys, inactive padding and
+  (2026-09-06: packed one-row provider group via `_open_batch_requests`;
+  validation through cross-arm exact generated-ID equality vs the strict AR
+  owner on warm states — 5 bridge runs + 10/10 suite cells.)
+- [x] Handle R2/R3/R4 with bounded graph/workspace keys, inactive padding and
   exact ownership. Measure existing exact small-row owners before adding a
   specialized kernel. Production small-row arithmetic requires independent
   numerical qualification; C2 evidence cannot certify C1.
-- [ ] Test K1/K2/K3, all accepted, first/middle/final rejection, EOS at every
+  (2026-09-06: no new workspace key — the one-row frontier pads to the
+  qualified rows-6 tile inside the shared r36 accept bucket; graph replay
+  observed at C1 in the route proof; independent C1 numerical qualification is
+  the ar_exact suite contract.)
+- [x] Test K1/K2/K3, all accepted, first/middle/final rejection, EOS at every
   depth, final-horizon clipping, cancellation and recoverable failure. Restore
   both provider and target state and continue with the correct hidden seed.
   Extend every depth-sensitive C1 test through K7 in Packet 5; K3-only C1
   coverage is an intermediate milestone, not final depth support.
-- [ ] Test N=1,2,8 and every physical slot: delayed C1→C2→C1, C8→C1→C8,
+  (2026-09-06: K2/K3 E2E incl. full acceptance, mid-chain rejection [3,1,3]
+  recovered exactly, final-horizon clipping; cancellation CPU-tested with
+  provider-checkpoint restore. K1 stays closed — no (1,1) policy cell. EOS
+  isolation and K7 extension land with Packet 5.)
+- [x] Test N=1,2,8 and every physical slot: delayed C1→C2→C1, C8→C1→C8,
   sparse survivors, refill and compaction; K0→MTP→K0→MTP at transaction
   boundaries. Preserve IDs, page ownership, output/usage and clean drain.
-- [ ] Add explicit evidence only after safety/numerical gates pass; measure
+  (2026-09-06: C1 refill/pair-closure/survivor-return CPU tests; loop-level
+  width-switch and K0-transition tests pre-existing; C1-within-capacity-8
+  exercised E2E in every bridge/server run. Compaction reuses the generic
+  group paths.)
+- [x] Add explicit evidence only after safety/numerical gates pass; measure
   against native C1 AR at the **same resident capacity**. Automatic stays K0
   until economics pass. A healthy legacy singleton rate is a diagnostic
   comparison, never the concurrency engine denominator or completion proof.
+  (2026-09-06: registered `qwen38-q4km-gfx1100-production-bf16-c1-k{2,3}-d24`
+  rows, explicit-only, capacity-8; full-suite retained economics K3 1.4734x /
+  K2 1.5590x with 10/10 ar_exact. Automatic promotion remains a separate
+  decision.)
 
-Exit: engaged native physical C1 with route-proof tests, numerical/state gates,
-full-suite explicit measurements and capacity-specific policy decisions.
+Exit: met 2026-09-06 — engaged native physical C1 with route-proof tests,
+numerical/state gates (cross-arm exactness on warm states), full-suite explicit
+measurements and capacity-specific policy decisions.
 
 ### Packet 3 — Amortize target verification across real frontier rows
 
