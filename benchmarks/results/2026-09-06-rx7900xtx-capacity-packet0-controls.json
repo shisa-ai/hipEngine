@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-09-06",
+  "kind": "rx7900xtx_qwen38_capacity_packet0_controls",
+  "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+  "status": "controls_recorded_historical_status_split",
+  "performance_claim": false,
+  "worktree": "campaign/gfx1100-24gb-capacity",
+  "purpose": "Packet 0 of the XTX 24 GB capacity campaign: record device/model/software identity, verify model continuity with the historical qualification, recover historical controls, and freeze the measurement protocol for later packets.",
+  "hardware": {
+    "physical_host": "epyc",
+    "os_kernel": "CachyOS, driver 7.1.3-2-cachyos",
+    "gpus": [
+      {
+        "role": "measurement target (this campaign)",
+        "rocm_smi_index": 1,
+        "drm_card": "card0",
+        "pci_id": "0000:10:00.0",
+        "unique_id": "0xcc4d02090dc9c3ff",
+        "name": "AMD Radeon RX 7900 XTX (Navi 31, 1002:744c rev c8)",
+        "arch": "gfx1100",
+        "vram_total_bytes": 25753026560,
+        "vram_total_gib": 23.984375,
+        "idle_used_bytes_rocm_smi": 28012544,
+        "display": "card0 exposes DP-5/DP-6/DP-7/HDMI-A-1 connectors; no Xorg/Wayland display manager was running at capture time; idle usage is driver overhead only"
+      },
+      {
+        "role": "peer W7900, GPU 0, not used by this campaign",
+        "rocm_smi_index": 0,
+        "drm_card": "card1",
+        "pci_id": "0000:0D:00.0",
+        "unique_id": "0xe282895b62c2b295",
+        "name": "AMD Radeon Pro W7900 (Navi 31, 1002:7448)",
+        "arch": "gfx1100",
+        "vram_total_bytes": 48301604864,
+        "idle_used_bytes_rocm_smi": 27959296
+      }
+    ],
+    "card_index_note": "rocm-smi GPU[1] == drm card0 == PCI 0000:10:00.0 == the RX 7900 XTX. This matches the historical 2026-08-15 soak artifact, which sampled /sys/class/drm/card0/device/mem_info_vram_used on this same card, so the historical sampler path still targets the XTX today. Ordinals alone are not trusted: capacity probes must resolve the card by pci_id 0000:10:00.0 via hipengine.util.amdgpu_vram.select_card and record unique_id."
+  },
+  "software": {
+    "rocm_userspace": "7.2.4 (/opt/rocm/.info/version)",
+    "hip_compiler": "HIP version: 7.2.53211-3d9ef42, AMD clang version 22.0.0git (/srcdest/rocm-llvm f58b06dce1f9c15707c5f808fd002e18c2accf7e)",
+    "historical_compiler_match": "The historical soak artifact records compiler_version_first_line 'HIP version: 7.2.53211-3d9ef42', identical to the current compiler.",
+    "device_selection_env": {
+      "HIP_VISIBLE_DEVICES": null,
+      "ROCR_VISIBLE_DEVICES": null,
+      "ROCM_PATH": "/opt/rocm",
+      "HIP_PATH": "/opt/rocm",
+      "note": "Neither visibility variable is inherited from the login shell; capacity probes set HIP_VISIBLE_DEVICES explicitly and record the resolved server-side selection."
+    }
+  },
+  "model_identity": {
+    "Q4_K_M": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+      "size_bytes": 17106773984,
+      "sampled_fingerprint_sha256": "9fb7bd4ac04dd0be6946550474299cba8808e11b30e4d94b5a3911c1727b49b1",
+      "tensor_inventory_sha256": "0f4915bdd5a7e465ce03e6a3cf76d5dddf35ae28dbd1fa75f5af2c909b8461f3",
+      "architecture": "qwen35",
+      "tensor_count": 866,
+      "total_tensor_nbytes": 17095778304,
+      "historical_continuity": "Both the sampled fingerprint and the tensor inventory hash match benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json exactly (soak_sampled_fingerprint_sha256 and tensor_inventory_sha256). The file measured in this campaign is byte-continuous with the file behind the historical 112K/126K XTX rows."
+    },
+    "Q4_K_S": {
+      "path": "/models/gguf/Qwen3.8-27B-Q4_K_S.gguf",
+      "size_bytes": 16121359328,
+      "sampled_fingerprint_sha256": "f2866afd80ea3d8bc65e45e445ce89ee2611f84bf26e635e73b988647c3800c3",
+      "tensor_inventory_sha256": "1c1cab0957893419",
+      "architecture": "qwen35",
+      "tensor_count": 866,
+      "total_tensor_nbytes": 16110362624,
+      "historical_continuity": "No prior XTX qualification of this file exists; Packet 3 owns its first qualification."
+    }
+  },
+  "historical_controls": {
+    "soak_112k_int8_natural": {
+      "status": "RECOVERED",
+      "artifact": "benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json",
+      "command": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens 114688 --concurrency 1 --cycles 4 --turns 1 --max-tokens 4 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir /tmp/qwen38-qual-c1-112k-natural4-r1 --output /tmp/qwen38-qual-c1-112k-natural4-r1.json",
+      "result": "four exact natural 114,688-token requests, 23.322876 GiB peak, 0.661499 GiB headroom",
+      "route": "int8_per_token_head KV with FP32 per-token/head scales, prefix cache off, MTP off, AR, temperature 0, ignore_eos true",
+      "harness_commit": "fa416711caceb00d2049a742ac631c8e01759420",
+      "measured_commit": "557d08a2d2876ec5cca22f3c64a4b965842d4af4",
+      "harness_present_in_tree": "scripts/qwen38_int8_server_context_soak.py exists on this branch"
+    },
+    "guard_free_page_aligned_probes_126k": {
+      "status": "RECOVERED",
+      "command_pattern": ".venv/bin/python3 scripts/qwen38_int8_server_context_soak.py --context-tokens <tokens> --concurrency 1 --cycles 1 --turns 1 --max-tokens 4 --startup-min-free-mib 0 --compiler-version-file /tmp/hipengine-qwen36-27b-int8-attn-hipcc-version.txt --work-dir <dir> --output <json>",
+      "result": "129,024 total tokens (504 pages) completed at 23.962624 GiB peak / 0.021751 GiB headroom; 129,280 stalled raw warmup >600 s; 130,048 returned HIP OOM"
+    },
+    "bf16_32k_graph_row": {
+      "status": "PARTIALLY RECOVERED (result, not full command)",
+      "source": "docs/KVCACHE.md row 5: 'On the RX 7900 XTX at 32K capacity, matched BF16 graph is 979.118/31.701 tok/s prefill/decode' versus bounded INT8 eager 978.626/33.761; exact invocation not recorded in the artifacts recovered so far"
+    },
+    "anchor_18_618_gib_128_24": {
+      "status": "UNRECOVERABLE",
+      "evidence": "Repository-wide search over docs/, benchmarks/results/, benchmarks/README.md, benchmarks/HISTORY.md and worklog/entries/ finds 18.618 only in docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md itself and the worklog that created it. No artifact, command, owner or metric backs it. The 2026-09-06 aggregate artifact's own limitations already say the anchor was not recovered. Any comparison against it stays unmatched; the historical 32K/112K/126K soak rows are the matched controls instead."
+    },
+    "startup_probe_points_2026_09_06": {
+      "status": "VALUES RECORDED, LOGS UNRECOVERABLE",
+      "artifact": "benchmarks/results/2026-09-06-rx7900xtx-qwen38-c1-context-ceiling.json",
+      "evidence": "The probe writes per-point server logs next to each point JSON; no such logs or per-point commands were committed, and no /tmp probe logs survive. The seven sampled values stay as recorded; per-point reproduction is not claimed."
+    }
+  },
+  "frozen_protocol": {
+    "target_card": "pci_id 0000:10:00.0 (drm card0), resolved via hipengine.util.amdgpu_vram.select_card; record unique_id 0xcc4d02090dc9c3ff per run",
+    "sampler": "/sys/class/drm/card0/device/mem_info_vram_used (vram domain), continuous polling at 20 ms through startup, warmup, prefill and decode, as in the historical soak",
+    "idle_gate": "baseline <= 128 MiB before any server start (maximum_baseline_mib, matching the historical protocol)",
+    "service_owner_route": "scripts/qwen38_int8_server_context_soak.py (OpenAI-compatible chat completions, barrier-released concurrency, exact token accounting, zero-final-owner teardown check) — unchanged protocol from the historical qualification",
+    "direct_route": "scripts/gguf_context_ceiling_probe.py, pending the Packet 1 repairs; until repaired its output is diagnostic only and not comparable to the soak route",
+    "mtp_residency": "server starts record effective MTP state (unloaded vs cached K0 vs engaged K); AR claims require MTP off and no NextN residency",
+    "kv_routes": "bf16 and int8_per_token_head recorded as requested AND effective (scales, mirrors, pool plan) — requested alone is insufficient",
+    "jit": "profiled or timed server runs use a precomputed compiler-version file and a warm JIT cache; the profiled process must not spawn hipcc"
+  },
+  "packet0_checklist": {
+    "model_hashes_tensor_census": "done — both quants recorded; Q4_K_M matches historical on both hashes",
+    "xtx_uuid_pci_identity": "done — GPU[1]/card0/0000:10:00.0/0xcc4d02090dc9c3ff/25,753,026,560 B",
+    "driver_compiler": "done — kernel driver 7.1.3-2-cachyos; ROCm 7.2.4; HIP 7.2.53211-3d9ef42 (matches historical)",
+    "profile_variants_environment": "profile/variants are resolved at runtime by each server start and recorded per point artifact (frozen protocol); shell env recorded here",
+    "display_other_usage": "done — no display manager running; idle 28.0 MiB on the XTX; peer W7900 idle 27.96 MiB on GPU 0 and excluded",
+    "recover_18_618_anchor": "done — marked UNRECOVERABLE with search evidence",
+    "recover_32k_112k_commands": "done — soak commands/protocol recovered; 32K BF16 graph row result recovered, its full command is not and is labelled so",
+    "recover_original_probe_logs": "done — marked unrecoverable; sample values retained unchanged",
+    "freeze_controls": "done — frozen_protocol section",
+    "verify_device_selection_at_runtime": "deferred to the first capacity run of Packet 1 (device identity is verified per server start there); this artifact fixes which card is the target and how it is resolved"
+  },
+  "next": "Packet 1: repair scripts/gguf_context_ceiling_probe.py (token counting/usage validation, continuous sampling, verified device identity, OOM classification, N-sweep attribution), then rerun the startup-boundary points with the repaired harness before any capacity table is updated."
+}
