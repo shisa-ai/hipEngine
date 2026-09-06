@@ -94,13 +94,21 @@ C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
 production/BF16 C2/K2 at resident capacity 2, context 4-95, and D24. Every
 other scope miss remains K0. Evidence links are in the model sections below.
 
-**Qwen3.8-27B `Q4_K_M` no longer uses speculative decoding on this backend.** A
-full depth sweep on 2026-09-06 measured 20 cells across C2-C8 and K1-K3, each
-against an AR arm in the same process: every cell ran below its own AR, the
-closest being C8/K3 at 0.9902x. Both Qwen3.8 rows are therefore no longer
-automatic and the route selects AR at every width; explicit opt-in still works.
-Earlier published C2/K2 and C8/K3 speedups are withdrawn
-([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
+**Qwen3.8-27B `Q4_K_M` no longer uses automatic speculative decoding on this
+backend.** A full depth sweep on 2026-09-06 measured 20 cells across C2-C8 and
+K1-K3, each against an AR arm in the same process: every multi-request cell ran
+below its own AR, the closest being C8/K3 at 0.9902x. Both Qwen3.8 rows are
+therefore no longer automatic and the route selects AR at every width;
+explicit opt-in still works. Earlier published C2/K2 and C8/K3 speedups are
+withdrawn ([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
+
+Explicit single-request (C1) speculative decoding is newly qualified on this
+backend through the packed physical route: **C1/K3 reaches 34.965 tok/s vs
+23.731 AR (1.4734x) and C1/K2 reaches 37.140 vs 23.823 (1.5590x)** on the
+canonical 10-prompt suite, all cells token-exact against their own AR arm.
+These cells are explicit opt-in only (automatic stays K0) and scoped to
+resident capacity 8, context 4-95, D24 greedy.
+([artifact](results/2026-09-06-w7900-q4km-mtp-packet2-c1-retained-economics.json)).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 

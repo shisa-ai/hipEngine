@@ -1,0 +1,240 @@
+{
+ "kind": "mtp-packet2-c1-retained-economics",
+ "created": "2026-09-06",
+ "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+ "model": "Qwen3.8-27B Q4_K_M GGUF",
+ "protocol": "gguf_mtp_c1c8_server_bench full suite (mtpbench-code-general-ja.jsonl, 10 prompts across code/general_en/general_ja/mixed_ja_en, 3 heldout IDs), explicit width-1 requests at resident capacity 8 resolved through the registered qwen38-q4km-gfx1100-production-bf16-c1-k{2,3}-d24 evidence rows (no diagnostic resolver), D24 greedy outputs, correctness contract ar_exact, in-run native AR arm as the true no-MTP baseline",
+ "commands": [
+  "bash campaign-artifacts/packet2/run_p2_retained.sh"
+ ],
+ "raw_runs": "/tmp/he-bettermtp-raw/packet2/c1k{2,3}-suite-retained.json (outside repo)",
+ "runs": [
+  {
+   "evidence_path": "registered serving evidence (no diagnostic resolver)",
+   "candidate_budget": 3,
+   "ar_tok_s": 23.731,
+   "mtp_tok_s": 34.965,
+   "mtp_over_ar_speedup": 1.4734,
+   "cells": 10,
+   "exact_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "per_prompt": [
+    {
+     "prompt_id": "code_merge_intervals",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.339,
+     "mtp_tok_s": 36.799,
+     "ratio": 1.5119,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "code_topological_sort",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.155,
+     "mtp_tok_s": 34.727,
+     "ratio": 1.4376,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "code_lru_cache",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.165,
+     "mtp_tok_s": 39.472,
+     "ratio": 1.6334,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "code_markdown_table",
+     "category": "code",
+     "heldout": true,
+     "ar_tok_s": 24.076,
+     "mtp_tok_s": 42.466,
+     "ratio": 1.7639,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_en_plan",
+     "category": "general_en",
+     "heldout": false,
+     "ar_tok_s": 21.801,
+     "mtp_tok_s": 34.958,
+     "ratio": 1.6035,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_en_explain",
+     "category": "general_en",
+     "heldout": true,
+     "ar_tok_s": 23.88,
+     "mtp_tok_s": 39.087,
+     "ratio": 1.6368,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_ja_plan",
+     "category": "general_ja",
+     "heldout": false,
+     "ar_tok_s": 24.074,
+     "mtp_tok_s": 31.578,
+     "ratio": 1.3117,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_ja_explain",
+     "category": "general_ja",
+     "heldout": true,
+     "ar_tok_s": 24.146,
+     "mtp_tok_s": 36.974,
+     "ratio": 1.5313,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_translate",
+     "category": "mixed_ja_en",
+     "heldout": false,
+     "ar_tok_s": 23.74,
+     "mtp_tok_s": 30.436,
+     "ratio": 1.2821,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_review",
+     "category": "mixed_ja_en",
+     "heldout": true,
+     "ar_tok_s": 23.166,
+     "mtp_tok_s": 28.261,
+     "ratio": 1.22,
+     "exact": true,
+     "engaged": true
+    }
+   ]
+  },
+  {
+   "evidence_path": "registered serving evidence (no diagnostic resolver)",
+   "candidate_budget": 2,
+   "ar_tok_s": 23.823,
+   "mtp_tok_s": 37.14,
+   "mtp_over_ar_speedup": 1.559,
+   "cells": 10,
+   "exact_cells": 10,
+   "engaged_cells": 10,
+   "budget_conformed_cells": 10,
+   "per_prompt": [
+    {
+     "prompt_id": "code_merge_intervals",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.105,
+     "mtp_tok_s": 40.153,
+     "ratio": 1.6658,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "code_topological_sort",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.015,
+     "mtp_tok_s": 33.806,
+     "ratio": 1.4077,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "code_lru_cache",
+     "category": "code",
+     "heldout": false,
+     "ar_tok_s": 24.014,
+     "mtp_tok_s": 38.354,
+     "ratio": 1.5972,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "code_markdown_table",
+     "category": "code",
+     "heldout": true,
+     "ar_tok_s": 23.955,
+     "mtp_tok_s": 37.869,
+     "ratio": 1.5808,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_en_plan",
+     "category": "general_en",
+     "heldout": false,
+     "ar_tok_s": 24.023,
+     "mtp_tok_s": 37.597,
+     "ratio": 1.565,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_en_explain",
+     "category": "general_en",
+     "heldout": true,
+     "ar_tok_s": 23.961,
+     "mtp_tok_s": 35.636,
+     "ratio": 1.4873,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_ja_plan",
+     "category": "general_ja",
+     "heldout": false,
+     "ar_tok_s": 23.824,
+     "mtp_tok_s": 35.586,
+     "ratio": 1.4937,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "general_ja_explain",
+     "category": "general_ja",
+     "heldout": true,
+     "ar_tok_s": 23.88,
+     "mtp_tok_s": 39.721,
+     "ratio": 1.6634,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_translate",
+     "category": "mixed_ja_en",
+     "heldout": false,
+     "ar_tok_s": 23.537,
+     "mtp_tok_s": 36.625,
+     "ratio": 1.5561,
+     "exact": true,
+     "engaged": true
+    },
+    {
+     "prompt_id": "mixed_ja_en_review",
+     "category": "mixed_ja_en",
+     "heldout": true,
+     "ar_tok_s": 22.966,
+     "mtp_tok_s": 36.973,
+     "ratio": 1.6099,
+     "exact": true,
+     "engaged": true
+    }
+   ]
+  }
+ ],
+ "evidence_rows": "hipengine/models/qwen35.py: qwen38-q4km-gfx1100-production-bf16-c1-k3-d24, qwen38-q4km-gfx1100-production-bf16-c1-k2-d24 (explicit-only, capacity-8)"
+}
