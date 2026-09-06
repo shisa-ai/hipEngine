@@ -29,7 +29,8 @@ from hipengine.loading.qwen35_gguf import (
 )
 from hipengine.loading.qwen35_gguf_policy import (
     resolve_gguf_dense_flags,
-    gguf_ar_raw_iq_contract,
+    gguf_ar_f32_linear_contraction,
+    gguf_ar_decode_repack_veto,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, dequantize_gguf_data
 from hipengine.quant.gguf_q4_k import (
@@ -268,6 +269,8 @@ def plan_qwen35_gguf_materialization(
     model_map: Qwen35GGUFModelMap,
     *,
     decode_repack: bool | None = None,
+    repack_veto: bool | None = None,
+    contract_f32_linear: bool | None = None,
     dense_q4_t16: bool = False,
     dense_q4_qmicro_t16_gate_up: bool = False,
     dense_q4_t16_attn_q_08b: bool = False,
@@ -284,18 +287,37 @@ def plan_qwen35_gguf_materialization(
     q6_planar_excluded = frozenset(
         str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
     )
-    # Shared pure policy predicate (hipengine.loading.qwen35_gguf_policy):
-    # raw-IQ AR layers veto decode repack and contract the model's F32
-    # alpha/beta/router linear slots to BF16.
-    contract_q3_f32_linear = gguf_ar_raw_iq_contract(
+    # Shared pure policy predicates (hipengine.loading.qwen35_gguf_policy).
+    # UD-U1: the per-tensor decode-repack veto and the model-wide F32 linear
+    # contraction are separate knobs; both default to the same raw-IQ
+    # predicate so unchanged manifests plan identically, but granting
+    # per-tensor repack eligibility can no longer silently move the F32
+    # alpha/beta/router contraction, and disabling the contraction can no
+    # longer silently grant repack.
+    ar_layer_types = (
         tensor.ggml_type
         for layer in model_map.layers
         for tensor in layer.tensors.values()
     )
+    ar_repack_veto = (
+        gguf_ar_decode_repack_veto(ar_layer_types)
+        if repack_veto is None
+        else bool(repack_veto)
+    )
+    ar_layer_types = (
+        tensor.ggml_type
+        for layer in model_map.layers
+        for tensor in layer.tensors.values()
+    )
+    contract_q3_f32_linear = (
+        gguf_ar_f32_linear_contraction(ar_layer_types)
+        if contract_f32_linear is None
+        else bool(contract_f32_linear)
+    )
     # Raw-IQ models' selected kernels consume compressed rank-3 GGUF layouts.
     # Keep one compatible resident plan instead of silently mixing it with the
     # Q4-oriented T16 decode residents.
-    use_decode_repack = requested_decode_repack and not contract_q3_f32_linear
+    use_decode_repack = requested_decode_repack and not ar_repack_veto
     root_specs = {
         slot: _spec_for_tensor(
             f"root.{slot}",
