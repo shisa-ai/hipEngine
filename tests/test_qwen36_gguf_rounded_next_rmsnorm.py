@@ -163,8 +163,8 @@ def test_rounded_add_rmsnorm_wrapper_rejects_unqualified_boundaries() -> None:
     candidate = _candidate()
     assert callable(candidate), "rounded add+RMSNorm wrapper must be admitted"
     pointers = (1,) * 5
-    for rows in (1, 5):
-        with pytest.raises(ValueError, match="rows must be 2, 3, or 4"):
+    for rows in (1, 9):
+        with pytest.raises(ValueError, match="rows must be between 2 and 8"):
             candidate(*pointers, rows, 5_120, _EPS)
     with pytest.raises(ValueError, match="threads must be exactly 256"):
         candidate(*pointers, 4, 5_120, _EPS, threads=128)
@@ -178,7 +178,7 @@ def test_rounded_add_rmsnorm_wrapper_rejects_unqualified_boundaries() -> None:
 
 
 @pytest.mark.skipif(not _hip_available(), reason="HIP runtime is not available")
-@pytest.mark.parametrize("rows", (2, 3, 4))
+@pytest.mark.parametrize("rows", (2, 3, 4, 5, 6, 7, 8))
 def test_rounded_add_rmsnorm_is_bit_exact_to_add_then_rmsnorm(rows: int) -> None:
     from hipengine.core.hip import get_hip_runtime
 

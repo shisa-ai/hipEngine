@@ -421,8 +421,8 @@ def gguf_rounded_add_rmsnorm_bf16_f32_weight(
 ) -> None:
     """Add BF16 inputs, round, then normalize that rounded residual."""
 
-    if rows not in (2, 3, 4):
-        raise ValueError("rows must be 2, 3, or 4")
+    if not 2 <= int(rows) <= 8:
+        raise ValueError("rows must be between 2 and 8")
     _check_positive(hidden_size, "hidden_size")
     if threads != 256:
         raise ValueError("threads must be exactly 256")
