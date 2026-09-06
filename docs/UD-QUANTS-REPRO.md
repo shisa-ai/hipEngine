@@ -160,7 +160,7 @@ print(json.dumps(report, indent=2))
 - This review's snapshot output is [UD-QUANTS-REVIEW.json](UD-QUANTS-REVIEW.json).
   No full tensor-payload hashes were read during this CPU-only analysis.
 
-## Schema-v2 Snapshot (UD-U0 repair, 2026-09-07)
+## Schema-v2 Snapshot (UD-U0 repair, 2026-09-07; refreshed at the UD-U1 F5 repair)
 
 The repaired audit supersedes the inline script above for reporting. Its
 schema-v2 output is [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json)
@@ -168,11 +168,25 @@ schema-v2 output is [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json)
 allocation accounting from `planned_qwen35_gguf_weight_allocation_nbytes` with
 sidecar reasons and both hypothetical refusal treatments, shared-policy
 capability resolution with per-capability status, and `f32_contracted_slots`).
-The artifact is the exact CLI output below, so a byte-identical regeneration
-on the same pinned files is the reproduction test:
+Since the UD-U1 F5 repair each backend lane also carries `artifact_preset_key`
+(the admission identity: `null` for a pinned qualified plain control, the UD
+preset key, or the unqualified-manifest sentinel), and
+`fp16_recurrent_state_default_on` reports the **artifact-qualified** default —
+the same value the runtime runner would freeze for that artifact — not the
+stamp-lane capability alone. The schema version stays 2: the change is one
+additive field plus the policy-identity semantics of one existing field, with
+the historical snapshot below preserved for comparison.
+
+The current artifact is the exact CLI output below, so a byte-identical
+regeneration on the same pinned files is the reproduction test. Its producing
+source revision is `c5b9588b85efd94b9d3206e9e1d8751d0275d83d` (the UD-U1 F5
+repair commit; the docs commit that carries this refreshed artifact changes no
+producing code — the output is determined by `scripts/gguf_quant_route_audit.py`
+plus the pure `hipengine.loading` policy/admission/planner modules, all
+unchanged since that revision):
 
 ```bash
-cd /home/lhl/hipEngine-ud-quants && git checkout <commit>
+cd /home/lhl/hipEngine-ud-quants && git checkout c5b9588b85efd94b9d3206e9e1d8751d0275d83d
 env -u HIPENGINE_GGUF_DECODE_REPACK -u HIPENGINE_GGUF_C8_Q5_RAW_MMQ \
   -u HIPENGINE_C8_Q5_PLANAR_DP4A \
   .venv/bin/python scripts/gguf_quant_route_audit.py \
@@ -182,6 +196,15 @@ env -u HIPENGINE_GGUF_DECODE_REPACK -u HIPENGINE_GGUF_C8_Q5_RAW_MMQ \
   --json /tmp/ud-u0-v2-full.json
 ```
 
+Cross-checks bound to this snapshot (all verified 2026-09-07): the plain
+Q4_K_M control reports `artifact_preset_key: null` with the FP16 recurrent
+-state default off on both backends (qualified plain behavior unchanged); the
+UD files report `gguf_ud_q4_k_m` / `gguf_ud_q4_k_s` with the default off on
+both backends — including the exact-UD K_S file on gfx1151, whose stamp shares
+the `GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES` membership but whose
+admission identity is not a qualified plain control, so the artifact-qualified
+default is `false`.
+
 Artifact identity (upstream revisions, payload checksum provenance, local
 sizes, header hashes) is pinned in
 [UD-QUANTS-U0-IDENTITY.json](UD-QUANTS-U0-IDENTITY.json). The allocation
@@ -190,3 +213,22 @@ totals of this snapshot reproduce the section-3/4 tables of
 counts/bytes, and NextN draft scopes are additional detail the older snapshot
 did not carry. Everything remains metadata-only: no payload bytes beyond the
 header region are read, and no section is model admission.
+
+### Snapshot history
+
+- [UD-QUANTS-REVIEW.json](UD-QUANTS-REVIEW.json) — v1 (implicit schema), the
+  inline script's output; historical, kept for the section-3/4 record.
+- [UD-QUANTS-REVIEW-v2-pre-f5.json](UD-QUANTS-REVIEW-v2-pre-f5.json) — the
+  schema-v2 snapshot as produced at `51e224890` (UD-U0 identity pinning),
+  byte-frozen. Its backend lanes predate the F5 repair: no
+  `artifact_preset_key` field, and `fp16_recurrent_state_default_on` was the
+  stamp-lane value — `true` for the exact-UD K_S file on gfx1151. That `true`
+  reflected the stamp sharing the gfx1151 `mostly_q4_k_s` capability
+  membership, **not** an admission-qualified FP16 default; it is superseded by
+  the current snapshot's `false` and must not be cited as current policy
+  evidence. Kept byte-frozen for comparison: every allocation, route, refusal,
+  and capability field is identical to the current snapshot except the added
+  `artifact_preset_key` field and that one value.
+- [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) — current schema-v2
+  snapshot, produced at `c5b9588b85efd94b9d3206e9e1d8751d0275d83d` (see the
+  command above).
