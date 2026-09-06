@@ -701,10 +701,48 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
 
 CERTIFIED_OPERATION_COVERAGE: tuple[Qwen35GGUFOperationCoverage, ...] = _certified_coverage()
 
-_COVERAGE_INDEX: Mapping[tuple[str, str, str], Qwen35GGUFOperationCoverage] = {
-    (record.operation, record.role_class, record.resident_layout): record
-    for record in CERTIFIED_OPERATION_COVERAGE
-}
+
+def _build_coverage_index(
+    records: Iterable[Qwen35GGUFOperationCoverage],
+) -> Mapping[tuple[str, str, str, str], Qwen35GGUFOperationCoverage]:
+    """Index coverage records per concrete GGML source type.
+
+    Two records may share ``(operation, role_class, resident_layout)`` when
+    they certify different source formats with different registered consumers
+    (for example raw rank-3 MoE experts: the ``gguf_q*_k`` raw family for
+    Q3_K/Q4_K/Q5_K/Q6_K/IQ2_XS/IQ4_XS versus the ``gguf_iq3_xxs`` family for
+    IQ3_XXS).  The lookup key therefore includes the source type; two
+    DIFFERENT records claiming the same source type for the same
+    (operation, role_class, layout) would be an ambiguous certification and
+    are rejected here instead of silently last-write-wins.
+    """
+
+    index: dict[tuple[str, str, str, str], Qwen35GGUFOperationCoverage] = {}
+    for record in records:
+        for source_type in sorted(record.source_ggml_types):
+            key = (
+                record.operation,
+                record.role_class,
+                record.resident_layout,
+                source_type,
+            )
+            existing = index.get(key)
+            if existing is not None:
+                if existing != record:
+                    raise ValueError(
+                        "ambiguous certified coverage records for "
+                        f"(operation={key[0]!r}, role_class={key[1]!r}, "
+                        f"resident_layout={key[2]!r}, source={key[3]!r}): "
+                        f"{existing!r} conflicts with {record!r}"
+                    )
+                continue
+            index[key] = record
+    return index
+
+
+_COVERAGE_INDEX: Mapping[tuple[str, str, str, str], Qwen35GGUFOperationCoverage] = (
+    _build_coverage_index(CERTIFIED_OPERATION_COVERAGE)
+)
 
 # Slot-suffix -> role class.  Root slots keep their names; layer slots are
 # matched by suffix so AR and NextN block slots share classification.
@@ -778,9 +816,12 @@ _OPERATION_ROLE_CLASSES: Mapping[str, frozenset[str]] = {
 
 
 def _coverage_for(
-    operation: str, role_class: str, layout: str
+    operation: str,
+    role_class: str,
+    layout: str,
+    source_type: str,
 ) -> Qwen35GGUFOperationCoverage | None:
-    return _COVERAGE_INDEX.get((operation, role_class, layout))
+    return _COVERAGE_INDEX.get((operation, role_class, layout, source_type))
 
 
 # Concrete hardware backend keys that own GGUF consumer metadata. This is the
@@ -1111,7 +1152,9 @@ def preflight_qwen35_gguf_artifact(
         file_type_stamp=file_type_stamp,
     )
     unsupported: list[Qwen35GGUFUnsupportedOperation] = []
-    qualified: dict[tuple[str, str, str], Qwen35GGUFOperationCoverage] = {}
+    qualified: dict[
+        tuple[str, str, str, str], Qwen35GGUFOperationCoverage
+    ] = {}
     covered_slots = 0
 
     # Scope gate: MTP draft operations require an explicitly certified MTP
@@ -1259,8 +1302,14 @@ def preflight_qwen35_gguf_artifact(
             continue
         slot_supported = True
         for operation in applicable_ops:
-            record = _coverage_for(operation, role_class, spec.layout)
-            if record is None or tensor.ggml_type_name not in record.source_ggml_types:
+            # Source-type-aware lookup: different expert/projection formats on
+            # the same resident layout certify different registered consumers,
+            # so the certified record must match this slot's concrete GGML
+            # storage type, not whichever record was written last.
+            record = _coverage_for(
+                operation, role_class, spec.layout, tensor.ggml_type_name
+            )
+            if record is None:
                 slot_supported = False
                 if role_class == "token_embedding" and spec.layout == LAYOUT_DENSE_BF16:
                     reason = (
@@ -1296,7 +1345,9 @@ def preflight_qwen35_gguf_artifact(
                     )
                 )
                 continue
-            qualified[(operation, role_class, spec.layout)] = record
+            qualified[
+                (operation, role_class, spec.layout, tensor.ggml_type_name)
+            ] = record
         if slot_supported:
             covered_slots += 1
 
@@ -1308,7 +1359,7 @@ def preflight_qwen35_gguf_artifact(
         requested_operations=requested,
         unsupported=tuple(unsupported),
         covered_slots=covered_slots,
-        qualified_records=tuple(qualified.values()),
+        qualified_records=tuple(dict.fromkeys(qualified.values())),
         slot_filter=effective_slot_filter,
         plan_contract=Qwen35GGUFPlanContract(
             operations=requested,

@@ -49,14 +49,22 @@ from hipengine.loading.qwen35_gguf_admission import (
 from hipengine.loading.qwen35_gguf_materialize import (
     LAYOUT_DENSE_BF16,
     LAYOUT_DENSE_F32,
+    LAYOUT_GGUF_Q4_K_QMICRO_T16,
+    LAYOUT_GGUF_Q4_K_T16,
+    LAYOUT_GGUF_Q5_K_QMICRO_T16,
     LAYOUT_GGUF_Q8_0_T16,
     LAYOUT_Q4_K_PACK8,
     LAYOUT_RAW_GGUF,
     Qwen35GGUFResidentWeights,
+    Qwen35GGUFWeightSpec,
     materialize_qwen35_gguf_weights,
     plan_qwen35_gguf_weight_spec,
 )
 from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf_t16 import (
+    GGUF_Q8_0_BLOCK_BYTES,
+    GGUF_Q8_0_T16_BLOCK_BYTES,
+)
 
 UD_Q4_K_M = Path("/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf")
 UD_Q4_K_S = Path("/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf")
@@ -2200,3 +2208,202 @@ def test_loader_binds_the_unqualified_manifest_sentinel_for_unknown_manifests(
     )
 
     assert resident.artifact_preset_key == GGUF_UNQUALIFIED_MANIFEST_PRESET
+
+
+# ---------------------------------------------------------------------------
+# U1 repair round 2 (F2): raw moe_experts coverage must be source-type aware.
+# The repair-2 IQ3_XXS records reused the earlier raw records' (operation,
+# role_class, layout) index key, so the last-write-wins index silently
+# displaced Q3_K/Q4_K/Q5_K/Q6_K/IQ2_XS/IQ4_XS raw experts.
+# ---------------------------------------------------------------------------
+
+_RAW_MOE_EXPERT_TYPE_NAMES = (
+    "Q3_K",
+    "Q4_K",
+    "Q5_K",
+    "Q6_K",
+    "IQ2_XS",
+    "IQ4_XS",
+    "IQ3_XXS",
+)
+
+
+@pytest.mark.parametrize("expert_type_name", _RAW_MOE_EXPERT_TYPE_NAMES)
+def test_rank3_raw_expert_coverage_is_type_aware_per_format(expert_type_name):
+    """Every already-supported raw expert type keeps its certified selected
+    MoE consumers on the raw layout with repacking off (decode_repack=False
+    keeps rank-3 experts raw). RED: all types except IQ3_XXS were silently
+    displaced by the repair-2 IQ3_XXS records sharing one index key."""
+
+    expert_type = GGMLQuantizationType[expert_type_name]
+    report = preflight_qwen35_gguf_artifact(
+        _synthetic_moe_model_map(expert_type=expert_type),
+        backend="hip_gfx1100",
+        decode_repack=False,
+    )
+    assert report.unsupported == (), report.render_refusals()
+    assert report.supported
+    raw_records = [
+        record
+        for record in report.qualified_records
+        if record.role_class == "moe_experts"
+        and record.resident_layout == LAYOUT_RAW_GGUF
+        and expert_type_name in record.source_ggml_types
+    ]
+    assert raw_records, f"no raw coverage record claims {expert_type_name}"
+    # Per-format concrete consumer metadata: IQ3_XXS is owned by the
+    # registered gguf_iq3_xxs selected consumers; every other raw expert type
+    # keeps the gguf_q*_k raw selected-expert family. Different formats keep
+    # different records — never one merged blob with a wrong kernel key.
+    if expert_type_name == "IQ3_XXS":
+        assert all("gguf_iq3_xxs" in (record.strict_fallback or "") for record in raw_records)
+    else:
+        assert all("gguf_q*_k raw" in (record.strict_fallback or "") for record in raw_records)
+    for record in raw_records:
+        assert record.kernel_layer == "moe_selected"
+        assert record.input_dtype == "bf16" and record.output_dtype == "bf16"
+        assert record.rows_scope in ("rows_1_8_row_local", "prefill_rows")
+
+
+def test_mixed_expert_type_map_keeps_every_formats_consumer():
+    """Real MoE manifests mix expert formats across expert slots; each slot's
+    source type must resolve ITS own certified consumer, not the last one
+    written into a shared (operation, role, layout) index bucket."""
+
+    from types import MappingProxyType
+
+    mixed_types = {
+        "ffn_gate_exps": GGMLQuantizationType.IQ2_XS,
+        "ffn_up_exps": GGMLQuantizationType.Q4_K,
+        "ffn_down_exps": GGMLQuantizationType.IQ4_XS,
+    }
+    tensors = _moe_layer_tensors(0, expert_type=GGMLQuantizationType.Q4_K)
+    for slot, expert_type in mixed_types.items():
+        tensors[slot] = _tensor(
+            f"blk.0.{slot}.weight", (4, 256, 256), expert_type
+        )
+    mixed_map = Qwen35GGUFModelMap(
+        config=_config((LINEAR_ATTENTION,)),
+        root_tensors=MappingProxyType(
+            {
+                "token_embedding": _tensor(
+                    "token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0
+                ),
+                "output_norm": _tensor("output_norm.weight", (256,)),
+                "lm_head": _tensor(
+                    "token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0
+                ),
+            }
+        ),
+        layers=(
+            Qwen35GGUFLayerMap(
+                layer_id=0,
+                layer_type=LINEAR_ATTENTION,
+                tensors=MappingProxyType(tensors),
+            ),
+        ),
+        validation=None,
+    )
+    report = preflight_qwen35_gguf_artifact(
+        mixed_map, backend="hip_gfx1100", decode_repack=False
+    )
+    assert report.unsupported == (), report.render_refusals()
+    assert report.supported
+    qualified = {
+        (record.operation, record.role_class, record.resident_layout)
+        for record in report.qualified_records
+        if record.role_class == "moe_experts"
+    }
+    for operation in (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL):
+        assert (operation, "moe_experts", LAYOUT_RAW_GGUF) in qualified
+
+
+def test_iq3_xxs_moe_contract_stays_raw_only_and_repacked_contracts_unchanged():
+    """Per-format layout requirements: IQ3_XXS is claimed ONLY on the raw
+    layout (no T16/X8 repack exists), the six pre-existing raw types are
+    still claimed, and repacked expert layouts never claim IQ3_XXS or Q3_K."""
+
+    records_by_key: dict[tuple[str, str], list] = {}
+    for record in CERTIFIED_OPERATION_COVERAGE:
+        if record.role_class != "moe_experts":
+            continue
+        records_by_key.setdefault(
+            (record.operation, record.resident_layout), []
+        ).append(record)
+    for operation in (QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL):
+        raw = records_by_key[(operation, LAYOUT_RAW_GGUF)]
+        claimed_raw_types = frozenset().union(
+            *(record.source_ggml_types for record in raw)
+        )
+        assert set(_RAW_MOE_EXPERT_TYPE_NAMES) <= claimed_raw_types
+        iq3_raw = [r for r in raw if "IQ3_XXS" in r.source_ggml_types]
+        assert iq3_raw and all(r.source_ggml_types == frozenset({"IQ3_XXS"}) for r in iq3_raw)
+        for layout in (LAYOUT_GGUF_Q4_K_T16, LAYOUT_GGUF_Q4_K_QMICRO_T16, LAYOUT_GGUF_Q5_K_QMICRO_T16):
+            repacked = records_by_key[(operation, layout)]
+            claimed = frozenset().union(*(r.source_ggml_types for r in repacked))
+            # No IQ3_XXS repack exists, so repacked records must never claim it.
+            assert "IQ3_XXS" not in claimed
+
+
+def test_coverage_index_is_unambiguous_per_source_type():
+    """Invariant: two DIFFERENT coverage records must never claim the same
+    (operation, role_class, resident_layout, source_ggml_type) index key. The
+    type-aware index rejects that conflict at construction instead of the old
+    last-write-wins displacement."""
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        Qwen35GGUFOperationCoverage,
+        _build_coverage_index,
+    )
+
+    index = _build_coverage_index(CERTIFIED_OPERATION_COVERAGE)
+    for record in CERTIFIED_OPERATION_COVERAGE:
+        for source_type in sorted(record.source_ggml_types):
+            key = (
+                record.operation,
+                record.role_class,
+                record.resident_layout,
+                source_type,
+            )
+            assert index[key] is record
+
+    raw_experts = next(
+        record
+        for record in CERTIFIED_OPERATION_COVERAGE
+        if record.role_class == "moe_experts"
+        and record.resident_layout == LAYOUT_RAW_GGUF
+        and "Q4_K" in record.source_ggml_types
+    )
+    impostor = Qwen35GGUFOperationCoverage(
+        operation=raw_experts.operation,
+        role_class=raw_experts.role_class,
+        resident_layout=raw_experts.resident_layout,
+        source_ggml_types=frozenset({"Q4_K"}),
+        rows_scope=raw_experts.rows_scope,
+        input_dtype="bf16",
+        output_dtype="bf16",
+        kernel_layer="moe_selected",
+        note="impostor record re-claiming an indexed source type",
+    )
+    with pytest.raises(ValueError, match="Q4_K"):
+        _build_coverage_index((*CERTIFIED_OPERATION_COVERAGE, impostor))
+
+
+def test_repacked_moe_experts_still_qualify_with_decode_repack():
+    """Guard against overcorrection: the repacked expert families keep their
+    own (operation, role, layout) coverage with repacking enabled."""
+
+    report = preflight_qwen35_gguf_artifact(
+        _synthetic_moe_model_map(expert_type=GGMLQuantizationType.Q4_K),
+        backend="hip_gfx1100",
+        decode_repack=True,
+    )
+    assert report.unsupported == (), report.render_refusals()
+    repacked = {
+        record.resident_layout
+        for record in report.qualified_records
+        if record.role_class == "moe_experts"
+    }
+    assert LAYOUT_GGUF_Q4_K_T16 in repacked
+
+
