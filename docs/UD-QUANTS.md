@@ -1179,11 +1179,13 @@ caller. `ssm_norm` belongs to that composite. The row-local `ssm_out` handoff
 resolves actual F32 input where supported or records the executed BF16 cast.
 Native alpha/beta name the direct BF16 owner, not a rewritten prefill kernel.
 The P2 review follow-up validates GDN geometry through the same CPU-safe rules
-used by the actual wrappers: positive head counts/dimensions, value-head count
-divisible by key-head count, and the c1/row-local value-head limit of 128.
-Segmented/prefill wrappers keep their existing uncapped positive value-head
-contract. The runner and admission share exact inner-size/value-head division;
-conv channel/kernel positivity is shared too. Geometry refusals retain required
+used by the native exports and Python wrappers: positive head counts/dimensions,
+value-head count divisible by key-head count, and a value-head limit of 128
+for both c1/row-local and segmented recurrence (F32 or FP16 state). Only the
+baseline prefill export uses the uncapped positive value-head contract.
+Native-source predicate tests distinguish these boundaries independently of
+mocked launch returns. The runner and admission share exact inner-size/value-head
+division; conv channel/kernel positivity is shared too. Geometry refusals retain required
 slot/invocation accounting and cannot mint or transfer certificates. This
 follow-up is pending independent review, not F1/F5 closure.
 Native head input stays BF16; no F32 declaration was added to force admission.
