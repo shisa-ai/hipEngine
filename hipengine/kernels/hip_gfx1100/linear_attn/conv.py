@@ -1211,8 +1211,8 @@ def _launch_conv_prefill_segments_state_rows(
 
 
 def _check_conv_shape(channels: int, kernel_size: int) -> None:
-    _check_positive(channels, "channels")
-    _check_positive(kernel_size, "kernel_size")
+    from hipengine.loading.qwen35_gguf_consumer_surface import validate_conv_geometry
+    validate_conv_geometry(channels, kernel_size)
 
 
 def _check_positive(value: int, name: str) -> None:

@@ -5345,13 +5345,9 @@ def _check_prefill_shape(
     head_k_dim: int,
     head_v_dim: int,
 ) -> None:
+    from hipengine.loading.qwen35_gguf_consumer_surface import validate_gdn_geometry
     _check_positive(tokens, "tokens")
-    _check_positive(num_k_heads, "num_k_heads")
-    _check_positive(num_v_heads, "num_v_heads")
-    if num_v_heads % num_k_heads != 0:
-        raise ValueError("num_v_heads must be divisible by num_k_heads")
-    _check_positive(head_k_dim, "head_k_dim")
-    _check_positive(head_v_dim, "head_v_dim")
+    validate_gdn_geometry(num_k_heads, num_v_heads, head_k_dim, head_v_dim)
 
 
 def _check_exact_prefill_shape(
@@ -5388,14 +5384,9 @@ def _check_gdn_shape(
     head_k_dim: int,
     head_v_dim: int,
 ) -> None:
-    _check_positive(num_k_heads, "num_k_heads")
-    _check_positive(num_v_heads, "num_v_heads")
-    if num_v_heads % num_k_heads != 0:
-        raise ValueError("num_v_heads must be divisible by num_k_heads")
-    _check_positive(head_k_dim, "head_k_dim")
-    _check_positive(head_v_dim, "head_v_dim")
-    if head_v_dim > 128:
-        raise ValueError("head_v_dim must be <= 128")
+    from hipengine.loading.qwen35_gguf_consumer_surface import validate_gdn_geometry
+    validate_gdn_geometry(num_k_heads, num_v_heads, head_k_dim, head_v_dim,
+                          single_step=True)
 
 
 def _check_positive(value: int, name: str) -> None:
