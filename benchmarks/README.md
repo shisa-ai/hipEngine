@@ -91,7 +91,8 @@ two concurrent requests on the W7900.
 
 W7900 automatic MTP is deliberately narrow. Qwen3.6 enables only its qualified
 C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
-production/BF16 C2/K2 at resident capacity 2, context 4-95, and D24. Every
+production/BF16 C2/K3 (selected over C2/K2 by the 2026-09-06 depth grid) at
+resident capacity 2, context 4-95, and D24. Every
 other scope miss remains K0. Evidence links are in the model sections below.
 
 **Qwen3.8-27B `Q4_K_M` no longer uses automatic speculative decoding on this
@@ -118,6 +119,16 @@ own AR arms. The gains come from moving the staged verify-frontier FFN-down
 cooperative siblings that are 1.22-2.64x faster than the one-wave owners they
 replace; every screened row on both shapes was bit-exact before landing.
 ([artifact](results/2026-09-06-w7900-q4km-mtp-attention-v-band-retained.json)).
+
+A 2026-09-06 depth grid over all 56 K1-K7 x C1-C8 cells (canonical 10-prompt
+suite, AR arm in the same process, every cell token-exact and budget-conformed)
+selects K3 at every width where MTP is retained: C1 1.665x, C2 1.069x, C8
+1.067x diagnostic; widths 3-7 measure below AR at every depth and stay
+diagnostic-only. The C2 selection re-qualified on the retained protocol in the
+same session block: **C2/K3 1.067x (44.69 tok/s) vs C2/K2 1.005x (42.41 tok/s)**,
+10/10 token-exact each, so the C2 product cell selects K3 (K2 stays admissible
+for explicit opt-in). Automatic scope remains K0 at every width.
+([artifact](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json)).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
