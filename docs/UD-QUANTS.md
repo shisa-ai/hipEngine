@@ -703,26 +703,83 @@ Files: `hipengine/loading/qwen35_gguf_materialize.py`,
 `hipengine/loading/qwen35_gguf_nextn.py`, backend policy/capabilities,
 profile binders; proposed `tests/test_gguf_ud_admission.py`.
 
-- [ ] Define cold-path operation coverage records with role/shape/type/layout/
+- [x] Define cold-path operation coverage records with role/shape/type/layout/
   input-output dtype/rows/fallback, using existing registry conventions.
-- [ ] Preserve the existing planned artifact preset `gguf_ud_q4_k_m` for
+  `hipengine/loading/qwen35_gguf_admission.py` ships `CERTIFIED_OPERATION_COVERAGE`:
+  per `(operation, role class, resident layout)` records naming rows scope,
+  input/output dtype, the four-axis `(layer, quant, variant)` consumer family,
+  and a strict fallback; `test_coverage_records_use_existing_registry_layer_names`
+  pins registry conformance. Certified consumers mirror the plain-lane dispatch
+  tables, so unknown layouts/types/roles fail closed.
+- [x] Preserve the existing planned artifact preset `gguf_ud_q4_k_m` for
   model/session admission and concrete per-tensor kernel quant keys; choose an
   equally explicit K_S preset identity. This is not a fifth registry axis.
-- [ ] RED: same stamp/different maps; same histogram/types swapped between
+  Both presets resolve only through pinned role-manifest fingerprints (UD K_M
+  `5535c5bd…`, UD K_S `91130e16…`; distinct from both plain controls despite
+  identical stamps), carry explicit `("ar",)` scopes, and never enter the
+  kernel registry: per-tensor quant keys stay `gguf_*`
+  (`test_preset_keys_are_session_identities_not_registry_axes`,
+  `test_pinned_ud_q4_k_s_has_an_equally_explicit_preset_identity`).
+- [x] RED: same stamp/different maps; same histogram/types swapped between
   recurrent and FFN roles. No unqualified arithmetic or automatic MTP inheritance.
-- [ ] Inventory and constrain all K_M/K_S identity callers while preserving
-  qualified plain controls and rollback.
-- [ ] Separate per-tensor repack from global F32 contraction; retain existing
-  MoE semantics for unchanged manifests.
-- [ ] Preflight all requested operations before allocating; report every
-  unsupported slot, not just first exception.
-- [ ] RED: raw-Q8 and sole-T16 alpha/beta cannot enter a BF16-pointer native-row
+  Manifest fingerprints differ for same-stamp/different-map and
+  histogram-equal swapped-role fixtures, and a certificate bound to one
+  manifest never covers the other
+  (`test_role_manifest_fingerprint_distinguishes_same_stamp_different_maps`,
+  `…_swapped_recurrent_ffn_types`); UD preset keys resolve to no execution
+  profile and no MTP inheritance
+  (`test_ud_quant_key_does_not_inherit_execution_profiles`,
+  `test_mtp_scope_requires_an_explicitly_certified_preset`).
+- [x] Inventory and constrain all K_M/K_S identity callers while preserving
+  qualified plain controls and rollback. Identity callers: the runner policy
+  identity (`_gguf_policy_identity`, all call sites) now appends the resident
+  `artifact_preset_key` so same-stamp UD artifacts miss plain-certified policy
+  tables while plain controls keep the historical key; the packaged
+  hot-vocabulary selection appends the preset key to its identity; MTP serving
+  evidence already binds `artifact.sha256`; execution profiles fail closed for
+  unregistered quants. Plain K_M/K_S/0.8B/MoE-35B controls pass preflight and
+  reach allocation unchanged (allocation-sentinel tests).
+- [x] Separate per-tensor repack from global F32 contraction; retain existing
+  MoE semantics for unchanged manifests. `gguf_ar_decode_repack_veto` and
+  `gguf_ar_f32_linear_contraction` are independent predicates over the shared
+  raw-IQ contract (rank-3 MoE exemptions preserved in both);
+  `plan_qwen35_gguf_materialization` takes `repack_veto`/`contract_f32_linear`
+  overrides and derives the previous combined behavior when unset. RED tests
+  in `tests/test_loading_qwen35_gguf_policy.py` and
+  `tests/test_qwen35_gguf_materialize_helpers.py`.
+- [x] Preflight all requested operations before allocating; report every
+  unsupported slot, not just first exception. `materialize_qwen35_gguf_weights`
+  runs `preflight_qwen35_gguf_artifact` over the full plan (NextN-aware
+  fingerprint) before `plan_qwen35_gguf_materialization` and any `malloc`, and
+  raises one aggregated `Qwen35GGUFAdmissionError` naming every refused
+  slot/mode. Measured: UD K_M refuses with exactly its 18 pinned unsupported
+  AR slots, UD K_S with 41 (40 projections + Q3_K embedding), with zero
+  allocator invocations before the refusal.
+- [x] RED: raw-Q8 and sole-T16 alpha/beta cannot enter a BF16-pointer native-row
   owner; unsupported multirow BF16 embedding cannot silently use a singleton.
-- [ ] Keep AR-only and AR+MTP capabilities distinct.
+  `ar_decode_native_rows` is a distinct operation: only a dense-BF16 resident
+  qualifies as the `dense_gemv_out_bf16` BF16-pointer owner; raw Q8_0 (UD),
+  sole-T16 with no raw allocation, and dense-F32 (plain) alpha/beta are all
+  refused; dense-BF16 embeddings have deliberately no certified record (the
+  consumer drops rows), so a multirow gather is refused instead of silently
+  resolving a singleton.
+- [x] Keep AR-only and AR+MTP capabilities distinct. Both UD presets carry
+  `("ar",)` scopes; `mtp_nextn_draft` is scope-refused for them and for
+  unresolved plain artifacts, and `materialize_qwen35_gguf_nextn_weights`
+  refuses non-MTP-certified presets before draft validation, planning, or
+  allocation.
 
 Run after creating the file:
 `.venv/bin/python -m pytest tests/test_gguf_ud_admission.py -q`.
 Exit: unknown layouts fail closed, no plain-artifact certificate reuse for UD.
+U1 is complete: `tests/test_gguf_ud_admission.py` is green on CPU (real-artifact
+tests skip without the pinned files), admission binds to actual
+role/shape/type manifests rather than stamps or histograms, the loader
+preflights before allocation, both K_M/K_S identity callers constrain UD, and
+the native-XL NextN exception recomputes its output-type manifest from the
+actual tensors (claim == reality == certified pin). UD artifacts remain
+refused for execution until U2-U5 deliver the missing dense consumers; the
+refusal lists are the honest per-slot inventory for those units.
 
 ### U2. Independent Codec Oracles
 
