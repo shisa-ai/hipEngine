@@ -460,3 +460,68 @@ def test_physical_c1_survivor_of_larger_group_claims_one_row_plan() -> None:
             candidate_counts=(3,),
         )
     ) is True
+
+
+def test_physical_c1_refill_keeps_pair_closed_until_wide_evidence() -> None:
+    """A newcomer may join the group's provider, but the pair stays K0."""
+
+    adapter = _adapter(
+        backend="hip_gfx1100",
+        capacity=8,
+        rid=7,
+        eligibility=_c1_eligibility(7),
+    )
+    adapter._intents[8] = 3
+    adapter._static_eligibility_by_request[8] = _c1_eligibility(8)
+    adapter._prompt_hidden_rows[8] = object()
+
+    # Refill: the C1-qualified newcomer opens its own one-row physical group
+    # (independent C1 route lifecycle); the resident survivor keeps its group.
+    adapter._states[7] = _MTP2RequestState(
+        request_id=7,
+        provider=SimpleNamespace(executor=SimpleNamespace(max_requests=8)),
+        provider_pool_key=None,
+        provider_group_key=(7,),
+        verifier=None,
+        root_hidden_buffer=SimpleNamespace(ptr=7),
+    )
+    adapter._open_batch_requests = lambda ids: adapter._states.update(
+        {
+            rid: _MTP2RequestState(
+                request_id=rid,
+                provider=SimpleNamespace(executor=SimpleNamespace(max_requests=8)),
+                provider_pool_key=None,
+                provider_group_key=(rid,),
+                verifier=None,
+                root_hidden_buffer=SimpleNamespace(ptr=rid),
+            )
+            for rid in ids
+        }
+    )
+    adapter._ensure_request_states((7, 8))
+
+    assert adapter._states[8].verifier is None
+    assert adapter._states[8].provider_group_key == (8,)
+    assert adapter._states[7].verifier is None
+
+    # Cycle level: the two rows==1 requests never compose an MTP batch and
+    # never chain serial C1 cycles.
+    assert adapter.partition_max_requests((7, 8)) == 0
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=(7, 8),
+            speculative_request_ids=(7, 8),
+            candidate_counts=(3, 3),
+        )
+    ) is False
+
+    # Once the newcomer drains, the survivor returns to its C1 route.
+    adapter._states.pop(8)
+    assert adapter.partition_max_requests((7,)) == 1
+    assert adapter.claims_fit(
+        SimpleNamespace(
+            request_ids=(7,),
+            speculative_request_ids=(7,),
+            candidate_counts=(3,),
+        )
+    ) is True
