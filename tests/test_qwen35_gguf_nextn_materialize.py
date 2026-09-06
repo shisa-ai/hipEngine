@@ -20,7 +20,9 @@ from hipengine.loading.qwen35_gguf_nextn_materialize import (
     plan_qwen35_gguf_nextn_materialization,
 )
 from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
-from hipengine.quant.gguf import GGMLQuantizationType
+from hipengine.quant.gguf import (
+    GGMLQuantizationType, nbytes_for_shape, quant_shape_to_byte_shape,
+)
 
 
 class _FakeWeight:
@@ -34,7 +36,8 @@ class _FakeWeight:
         self.free_calls += 1
 
 
-def _tensor(name: str, qtype: GGMLQuantizationType, shape: tuple[int, ...] = (2, 3)) -> GGUFTensorInfo:
+def _tensor(name: str, qtype: GGMLQuantizationType, shape: tuple[int, ...] = (16, 256)) -> GGUFTensorInfo:
+    """Block-truthful metadata, including for ownership-only fake residents."""
     elements = 1
     for value in shape:
         elements *= value
@@ -45,10 +48,10 @@ def _tensor(name: str, qtype: GGMLQuantizationType, shape: tuple[int, ...] = (2,
         ggml_type=int(qtype),
         ggml_type_name=qtype.name,
         n_elements=elements,
-        nbytes=max(elements, 1),
+        nbytes=nbytes_for_shape(shape, qtype),
         offset=0,
         data_offset=0,
-        byte_shape=shape,
+        byte_shape=quant_shape_to_byte_shape(shape, qtype),
     )
 
 
