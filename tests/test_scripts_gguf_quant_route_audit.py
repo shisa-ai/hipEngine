@@ -45,6 +45,7 @@ import importlib.util
 import hashlib
 import json
 import pathlib
+import subprocess
 import sys
 from dataclasses import replace
 from struct import pack
@@ -1594,6 +1595,124 @@ def test_capability_path_adds_no_backend_package_imports():
     )
     loaded = sorted(set(_sys.modules) - before)
     assert [name for name in loaded if name.startswith("hipengine.kernels.hip_")] == []
+
+
+# --- Startup isolation: a fresh process must run the audit with no GPU backend
+# --- package loaded at all -----------------------------------------------------
+#
+# The in-process delta guard above cannot see startup: by the time this test
+# module has imported ``audit``, the engine root package already ran. The
+# binding requirement for the CPU metadata audit is absolute -- a fresh
+# interpreter that rejects ``hipengine.kernels.hip_*`` / ``cuda_*`` (and torch)
+# before any import must still load the script and run the full CLI. This test
+# drives that in a real subprocess; it caught the eager
+# ``hipengine/__init__ -> hipengine.llm -> speculative -> mtp_native ->
+# hipengine.kernels.hip_gfx1100`` startup chain that module-delta guards miss.
+
+_GUARD_DRIVER = """\
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(sys.argv[1])
+SCRIPT = Path(sys.argv[2])
+GGUF_PATH = Path(sys.argv[3])
+JSON_OUT = Path(sys.argv[4])
+
+BLOCKED_PREFIXES = ("hipengine.kernels.hip_", "hipengine.kernels.cuda_", "torch")
+
+trips = []
+
+
+class BackendImportGuard:
+    \"\"\"Meta-path finder that forbids GPU backend packages, fail-fast.\"\"\"
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.startswith(BLOCKED_PREFIXES):
+            trips.append(fullname)
+            raise ImportError(
+                f"GPU backend import forbidden in the CPU metadata audit: {fullname}"
+            )
+        return None
+
+
+# The guard is installed BEFORE any hipengine import: it sees every import the
+# script's module-level code (and the CLI run below) ever attempts.
+sys.meta_path.insert(0, BackendImportGuard())
+sys.path.insert(0, str(REPO_ROOT))
+
+spec = importlib.util.spec_from_file_location("gguf_quant_route_audit_guarded", SCRIPT)
+audit = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = audit
+spec.loader.exec_module(audit)
+
+# Exercise the actual CLI: the argparse --help path, then a full audit run with
+# a JSON report over the deterministic fixture built by the parent process.
+try:
+    audit.main(["--help"])
+except SystemExit as help_exit:
+    assert help_exit.code in (0, None), help_exit.code
+
+assert audit.main([str(GGUF_PATH), "--json", str(JSON_OUT)]) == 0
+report = json.loads(JSON_OUT.read_text())
+entry = report["files"][0]
+assert report["schema_version"] == 2
+assert entry["parser_validation"]["format_valid"] is True
+assert entry["backends"], "audit produced no backend sections"
+assert all("backend" in section for section in entry["backends"])
+
+backend_modules = sorted(m for m in sys.modules if m.startswith(BLOCKED_PREFIXES))
+summary = {
+    "guard_trips": trips,
+    "backend_modules": backend_modules,
+    "hipengine_llm_imported": "hipengine.llm" in sys.modules,
+    "speculative_imported": "hipengine.speculative" in sys.modules,
+    "format_valid": entry["parser_validation"]["format_valid"],
+}
+print("GUARD-SUMMARY:" + json.dumps(summary))
+assert not trips, f"import guard tripped during audit startup/run: {trips}"
+assert not backend_modules, f"backend modules loaded: {backend_modules}"
+"""
+
+
+def test_fresh_process_audit_never_imports_gpu_backend_packages(tmp_path):
+    """Startup guard: guarded fresh process imports and runs the audit CLI.
+
+    RED contract for the U0 review blocker: importing the audit script (and
+    running ``main`` over a complete fixture with ``--help`` first) in a fresh
+    interpreter whose meta path rejects GPU backend packages and torch before
+    any import must succeed with none of those modules loaded. The audit is a
+    CPU metadata tool; its startup chain must not silently depend on the
+    engine root eagerly importing the LLM surface and GPU kernels.
+    """
+
+    driver = tmp_path / "guard_driver.py"
+    driver.write_text(_GUARD_DRIVER)
+    fixture = _complete_file(tmp_path, name="ok.gguf")
+    json_out = tmp_path / "report.json"
+
+    result = subprocess.run(
+        [sys.executable, str(driver), str(ROOT), str(SCRIPT), str(fixture), str(json_out)],
+        capture_output=True,
+        text=True,
+        timeout=300,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, (
+        f"guarded fresh-process audit failed\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    summary_lines = [line for line in result.stdout.splitlines() if line.startswith("GUARD-SUMMARY:")]
+    assert summary_lines, f"driver produced no guard summary\nstdout:\n{result.stdout}"
+    summary = json.loads(summary_lines[-1].removeprefix("GUARD-SUMMARY:"))
+    assert summary["guard_trips"] == []
+    assert summary["backend_modules"] == []
+    # The isolation boundary itself: not even the pure-in-spirit llm module may
+    # be loaded by audit startup, because hipengine.llm transitively loads the
+    # speculative package and GPU kernels.
+    assert summary["hipengine_llm_imported"] is False
+    assert summary["speculative_imported"] is False
+    assert summary["format_valid"] is True
 
 
 def test_check_constants_gate_fails_when_a_name_vanishes(tmp_path, capsys):
