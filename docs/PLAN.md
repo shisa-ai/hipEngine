@@ -535,16 +535,18 @@ supported/default.
 #### Qwen3.8-27B capacity on the 24 GB RX 7900 XTX
 
 [`QWEN38-27B-GFX1100-24GB-CAPACITY.md`](QWEN38-27B-GFX1100-24GB-CAPACITY.md)
-plans actual-XTX capacity measurements for `Q4_K_M`/`Q4_K_S`, BF16/compact
-INT8 KV, AR-only versus optional/active MTP, and separate C1-long-context and
-C=N serving limits. It requires unique-allocation/stage-peak accounting,
-output/lookahead reservation, explicit mirror/serial-route labels, and measured
-operational headroom rather than W7900 allocation extrapolation. The campaign
-prioritizes optional MTP loading, shared/lifetime-bounded workspaces, smaller
-weights and genuinely compact KV with their applicable quality/latency gates.
-Native INT8 and native C1/K4-K7 MTP integration remain coordinated with their
-existing campaigns; this capacity plan does not create another scheduler or
-claim unsupported combinations fit.
+plans actual-XTX measurements for `Q4_K_M`/`Q4_K_S`, BF16/compact INT8 KV,
+FastDMS, AR-only versus optional/active MTP, and separate C1/context and
+concurrent limits. Account once for the existing shared pool backing and its
+workspace leases; report occupied/free capacity separately from whole-card
+residency. Initial declared-context startup probes do not yet establish live
+context ceilings or a regression against unmatched historical configurations.
+Priorities are optional MTP loading, bounded shared workspaces, smaller weights
+and compact KV. FastDMS targets roughly half of eligible history, not half of
+model VRAM; protected windows, prefill peaks and pool reuse determine realized
+savings. XTX sidecar/quality/lifecycle qualification and DMS+INT8/MTP composition
+remain required. Coordinate native INT8, native C1/K4-K7 MTP and DMS integration
+with their existing campaigns; do not create another scheduler.
 
 #### Current status
 
