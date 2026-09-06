@@ -147,6 +147,17 @@ def _sysfs_used_bytes(card: Any) -> int:
     return int(card.vram_used_path.read_text().strip())
 
 
+def _kv_layout_audits(runner: Any) -> list[dict[str, Any]]:
+    """Per-session persistent KV ownership audits (shadow-byte evidence)."""
+
+    audits: list[dict[str, Any]] = []
+    for session in runner._resident_sessions():
+        audit_fn = getattr(session, "device_kv_layout_audit", None)
+        if callable(audit_fn):
+            audits.append(audit_fn())
+    return audits
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     model_path = Path(args.model).resolve()
     card = select_card(pci_id=args.pci_id)
@@ -296,6 +307,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     request_sysfs_peak = sampler.result().peak_bytes
     after_snapshot = _snapshot(runner)
     after_sysfs = _sysfs_used_bytes(card)
+    kv_layout_audits = _kv_layout_audits(runner)
 
     return {
         "schema": 1,
@@ -334,6 +346,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "after_request": after_snapshot,
             "after_request_sysfs_used_bytes": after_sysfs,
             "request_sysfs_peak_bytes": request_sysfs_peak,
+            "kv_layout_audits": kv_layout_audits,
         },
         "mtp_warmup": mtp_warmup_info,
         "request": request_info,
