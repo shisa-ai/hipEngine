@@ -183,6 +183,72 @@ def _heartbeat(deadline_s: float, stop: threading.Event) -> None:
         )
 
 
+def _run_direct_probe(args: argparse.Namespace) -> int:
+    """Call the engine's speculative MTP runner directly at the probe cell.
+
+    Bypasses the server batcher so a K4 failure surfaces as either a raw
+    traceback (runner raises) or a generation-path hang caught by the
+    watchdog with the blocking thread's exact frames.
+    """
+
+    import json as _json
+
+    from hipengine.llm import LLM, SamplingParams
+
+    os.environ["HIPENGINE_GGUF_MTP_CANDIDATE_BUDGET"] = str(int(args.budget))
+    llm = LLM(
+        str(args.model),
+        backend="hip_gfx1100",
+        execution_profile="production",
+        max_active_requests=int(args.width),
+        max_sequence_length=int(args.max_sequence_length),
+        speculative_candidate_budget=int(args.budget),
+    )
+    llm.prepare(max_sequence_length=int(args.max_sequence_length))
+    lines = args.prompts.read_text(encoding="utf-8").splitlines()
+    prompt_payloads = [
+        "\n".join(
+            message["content"]
+            for message in _json.loads(line)["messages"]
+            if isinstance(message.get("content"), str)
+        )
+        for line in lines
+    ]
+    sampling = SamplingParams(max_tokens=int(args.max_tokens), temperature=0.0, top_p=1.0)
+
+    result: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            outputs = llm.generate_speculative_mtp_detailed(prompt_payloads, sampling)
+            result["outputs"] = [str(getattr(o, "text", o))[:80] for o in outputs]
+            result["status"] = "complete"
+        except BaseException as exc:  # noqa: BLE001 - probe records and re-raises
+            import traceback as _tb
+
+            result["status"] = "raised"
+            result["exception"] = f"{type(exc).__name__}: {exc}"
+            result["traceback"] = "".join(
+                _tb.format_exception(type(exc), exc, exc.__traceback__)
+            )
+
+    worker = threading.Thread(target=_run, daemon=True)
+    worker.start()
+    worker.join(timeout=args.timeout)
+    if worker.is_alive():
+        result["status"] = "hung"
+        result["note"] = (
+            "runner still running at watchdog timeout; thread stacks in the"
+            " faulthandler file pinpoint the blocked frame"
+        )
+    summary_path = args.output_dir / f"k4-w{args.width}-b{args.budget}-direct-summary.json"
+    summary_path.write_text(_json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(f"[probe-direct] status={result.get('status')} -> {summary_path}", flush=True)
+    if result.get("traceback"):
+        print(result["traceback"], flush=True)
+    return 0 if result.get("status") == "complete" else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, required=True)
@@ -196,10 +262,26 @@ def main() -> int:
     parser.add_argument("--prompt-count", type=int, default=0,
                         help="0 keeps the canonical suite (required by the bench gate)")
     parser.add_argument("--max-sequence-length", type=int, default=1024)
+    parser.add_argument(
+        "--direct",
+        action="store_true",
+        help="bypass the server batcher and call the engine runner directly",
+    )
     args = parser.parse_args()
 
     out_dir = args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    if args.direct:
+        faulthandler.enable()
+        faulthandler.dump_traceback_later(
+            args.timeout,
+            repeat=False,
+            exit=True,
+            file=open(
+                out_dir / f"k4-w{args.width}-b{args.budget}-watchdog-stacks.txt", "w"
+            ),
+        )
+        return _run_direct_probe(args)
     bench_output = out_dir / f"k4-w{args.width}-b{args.budget}-probe.json"
     watchdog_file = out_dir / f"k4-w{args.width}-b{args.budget}-watchdog-stacks.txt"
     prompts_file = _slice_prompts(
