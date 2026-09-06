@@ -435,7 +435,13 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   withdrawn "four to five" estimate, which predated the repaired probe and
   the workspace right-size. N=3 not separately measured (monotone between
   N=2 and N=4). Wider per-request budgets are bounded by the C1 3,840/4,864
-  boundaries. Artifact:
+  boundaries. At the D=512 budget (512-token prompts, page-aligned 1,280
+  context) the solid last pass drops to **N=3** (22.692 GiB): N=4 is marginal
+  at the card edge (one run served the horizon but failed the 128 MiB
+  idle-reclaim gate at 159 MiB; a repeat failed warmup OOM at 23.947 GiB),
+  N=5-7 fail warmup OOM — per-session prefill scratch scales with
+  max_positions. Artifact:
+  `results/2026-09-06-rx7900xtx-capacity-concurrency-d512.json`. Artifact:
   `results/2026-09-06-rx7900xtx-capacity-concurrency-512-128.json`.
 - [ ] Measure K1-K3 where engaged; include K4-K7 as their owning campaign
   qualifies them. A functional blocker is not a memory ceiling. Record R/P and
