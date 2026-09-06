@@ -1040,8 +1040,30 @@ GGUF_DENSE_PREFILL_SCRATCH_LIVENESS_POLICIES = {
 # architecture-local full-state and wall gate rejected automatic promotion.
 GGUF_LINEAR_ATTN_CONV_PREFILL_AUTO_MODE = "baseline"
 
+# Concrete GGUF consumer layers this backend registers (UD-U1 F3 admission
+# metadata).  A known target-arch name alone never qualifies an artifact: the
+# cold-path admission preflight reads this declaration (bounded AST literal
+# reader, no package import) and refuses any GGUF operation whose concrete
+# consumer layer is not declared.  Parity-tested against the actual
+# registration surface in tests/test_qwen35_gguf_consumer_surface_parity.py:
+# every certified consumer key is registered under one of these layers on
+# this backend, and every declared layer has real gguf registrations.
+GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
+    {
+        "linear",  # layout-aware GGUF linear dispatch (raw/pack8/T16/qmicro)
+        "dense_gemv",  # dense bf16/f32 residents, native BF16-pointer owner
+        "embedding",  # raw GGUF token-embedding lookup
+        "rmsnorm",  # GGUF F32-weight RMSNorm
+        "router_logits",  # MoE router F32/BF16-weight logits
+        "gdn_recurrent_rmsnorm_gate",  # GDN chain (A_log/dt_bias F32 scalars)
+        "linear_attn_conv_decode",  # ssm_conv1d decode consumer
+        "linear_attn_conv_prefill",  # ssm_conv1d prefill consumer
+        "moe_linear",  # selected-expert GEMV (raw gguf_q*_k / IQ / T16 / X8)
+    }
+)
+
 __all__ = [
-    "LAGUNA_ACTIVATION_PACK_REUSE",
+    "GGUF_CONSUMER_LAYERS",
     "LAGUNA_GLOBAL_SPLIT_MIN_LIVE",
     "LAGUNA_HEAD_KV_FUSION",
     "LAGUNA_GROUPED_GATE_UP_ROLE_VARIANTS",

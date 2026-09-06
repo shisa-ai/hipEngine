@@ -104,6 +104,25 @@ from hipengine.kernels.registry import (
 BACKEND = "hip_gfx1151"
 TARGET_ARCH = hip_target_arch_for_backend(BACKEND)
 
+# Concrete GGUF consumer layers this backend registers (UD-U1 F3 admission
+# metadata; see the hip_gfx1100 declaration for the contract).  The gfx1151
+# alias registrar covers the full certified consumer surface (its exclusion
+# list removes only non-admission tuning variants), verified by the parity
+# test that checks every certified consumer key is registered here too.
+GGUF_CONSUMER_LAYERS: frozenset[str] = frozenset(
+    {
+        "linear",
+        "dense_gemv",
+        "embedding",
+        "rmsnorm",
+        "router_logits",
+        "gdn_recurrent_rmsnorm_gate",
+        "linear_attn_conv_decode",
+        "linear_attn_conv_prefill",
+        "moe_linear",
+    }
+)
+
 
 def _qwen35_08b_q4_pack8_dual_silu_t128(*args, **kwargs):
     """Bind the qualified 0.8B fused gate/up schedule to 128 threads."""
@@ -3681,6 +3700,7 @@ __all__ = [
     "PARO_FULL_ATTN_NATIVE_EXACT_WIDTHS",
     "PARO_NATIVE_BATCH_DECODE_DEFAULT",
     "PARO_RETAINED_BATCH_DEFAULTS",
+    "GGUF_CONSUMER_LAYERS",
     "TARGET_ARCH",
     "register_backend_kernels",
     "register_gfx1151_kernels",

@@ -809,7 +809,7 @@ has an immutable worklog entry and its own commit on `ud-quants`:
 | --- | --- | --- | --- |
 | F1 | HIGH | `ar_decode_native_rows` was never requested by the materializer nor checked at native execution entry; raw-Q8/sole-T16/dense-F32 alpha/beta could reach the BF16-pointer owner. | Load-time binding + entry checks in `step_rows_native`/`capture_native_rows_graph` (`6a9712ee7`) |
 | F2 | HIGH | The moe_experts whitelist omitted rank-3 IQ3_XXS although the materializer keeps it raw and `gguf_iq_gemv` registers selected-expert consumers. | Raw-only IQ3_XXS moe_experts coverage records with rank/shape/backend/dtype contract; rank-2 dense still refused (`cd73d1cef`) |
-| F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates and misaligned plans (e.g. Q6_K head N=257 T16) passed preflight and failed only mid-materialization, after earlier allocations. | Backend keys restricted to the registered metadata surface; per-slot allocation-accounting check aggregates all planner refusals before any allocation; zero-malloc sentinel test (`d665c01eb`) |
+| F3 | HIGH | Coverage qualified op/role/layout/source only: unknown backends earned certificates, `cuda_sm120a` (no GGUF consumers) was positively certified, records carried placeholder consumer keys, the dense-F32 lm-head was certified with a convenient F32 input the default caller never supplies, and shapes were checked only via allocation bytes. | Round-1: backend keys restricted to the registered metadata surface; per-slot allocation-accounting aggregates planner refusals before allocation (`d665c01eb`). Round-6 closure: concrete per-backend `GGUF_CONSUMER_LAYERS` declarations (AST-read, parity-tested), every record bound to a concrete four-axis consumer via the parity-tested dispatch-surface mirror, cuda_sm120a refused, dense-F32 lm-head refused under the actual BF16 caller dtype with the declared-F32-input route preserved (see the round-6 subsection) |
 | F4 | HIGH | Certificates ignored slot filters and the effective plan contract: a one-slot preflight certified the full artifact, and contraction-enabled certificates were reusable on uncontracted plans. | `Qwen35GGUFPlanContract` + slot-scope recorded on every certificate; `certificate_covers_artifact` verifies both, legacy certificates fail closed (`39a7d40ae`). Third-round repair: the contract now binds the actual planned residents and coverage always requires the intended plan (see the round-3 subsection below). Fourth-round repair: intended-operation defaults and complete qualification accounting — refused reports can no longer supply authorizing contracts (see the round-4 subsection below) |
 | F5 | HIGH | Unknown manifests (preset=None) inherited the plain stamp-based policy identity and the packaged hot-vocabulary selection. | `GGUF_UNQUALIFIED_MANIFEST_PRESET` sentinel + seven pinned plain-control fingerprints; loader and NextN materializer bind the qualification (`95f9fa2fd`). Fifth-round repair: the actual stamp-only policy callers (runner FP16 recurrent-state default, graph submission transport, private-c1 arena admissions) now bind the artifact qualification too (see the round-5 subsection below) |
 | F6 | MEDIUM | `packed_decode_graph_min_replay_steps` destructively unpacked a 2-tuple identity that now optionally carries a preset key → `ValueError` for preset-bound residents. | Arity-safe unpack; preset-bound identities resolve only preset-keyed rows, never plain rows (`e2bb6d5e2`) |
@@ -1028,6 +1028,73 @@ mismatch repaired as the follow-up above (current snapshot regenerated at the
 F5 source revision; pre-F5 snapshot frozen); F1 (native-row execution
 dependencies) and F3 (concrete backend/dtype consumer substance) remain
 pending. U1 remains open.
+
+#### U1 review repair round 6 (2026-09-07): F3 concrete consumer qualification
+
+Round 6 closes F3's three named gaps on CPU with RED-then-GREEN tests
+(worklog entry `ud-u1-f3-concrete-consumers`; no GPU, no new kernels, no
+numerical change):
+
+- **Backend binding is now concrete registration, not a known arch name.**
+  Each hardware backend package declares its `GGUF_CONSUMER_LAYERS` as a
+  source literal (`hip_gfx1100`/`hip_gfx1151` declare the full certified
+  surface; `cuda_sm120a` explicitly declares none after a real inventory —
+  its scaffold registers moonshine/maple/PARO families but no `gguf_*`
+  linear/embedding/dense/router/GDN/selected-expert consumer). Admission
+  reads the declarations with a bounded AST literal reader (the audit
+  capability-reader convention: never an import, never evaluation;
+  annotated and plain assignments); a slot whose certified consumer layer
+  is not declared is refused with the missing layer named, aggregated
+  before any allocation. `tests/test_qwen35_gguf_consumer_surface_parity.py`
+  proves the declarations are neither lies nor stale: every concrete
+  consumer key named by every certified record (both row-mode variants) is
+  actually registered on every declaring backend — with no placeholder
+  skips — the cuda inventory holds, and both HIP declarations equal exactly
+  the certified consumer-layer set.
+- **Coverage now names concrete four-axis consumers bound to the actual
+  runtime dispatch surface.** `hipengine/loading/qwen35_gguf_consumer_surface.py`
+  mirrors `runtime/gguf_linear._DISPATCH_TABLE` row-for-row (layout,
+  activation, output, layer, quant token, variant, ABI, plus the
+  `_variant_for_rows` multirow rewrite including the Q4-T16 special case);
+  a parity test asserts exact equality, so coverage can never name a
+  variant the dispatcher would not resolve. Placeholder records (the
+  former `<from-weight>`/`None` quant/variant forms and the nonexistent
+  `moe_selected`/`gdn_chain` layers) are gone; the selected-expert records
+  name the real registered keys per format (`moe_linear` for Q3_K/IQ* and
+  the T16/X8 repack families, the `linear` raw selected keys for Q5_K/Q6_K),
+  with one documented exception: raw rank-3 Q4_K selected experts are
+  consumed through the direct `gguf_q4_k_gemv` module wrapper the runtime
+  actually calls, so that record names the module symbol (parity-checked)
+  and the registry-mediation gap is filed in `docs/REFACTOR.md`.
+- **The dtype repro is fixed at the actual caller contract.** The default
+  records now mirror what the production callers actually supply: BF16
+  activations without an input override. A dense-F32 lm-head therefore has
+  NO default `lm_head_f32_logits` record — the dispatch table has no
+  `(dense_f32, bf16, f32)` row — and the preflight refuses `root.lm_head`
+  with that reason before any allocation (the F32-head counterexample now
+  RED-fails on the old code and passes on the new). The registered
+  F32-activation route (`dense_gemv/f32/f32_hidden_f32_out`, the c1/verifier
+  F32-input route) stays certifiable when the caller declares
+  `f32_input_operations=(lm_head_f32_logits,)`; the declaration is
+  validated fail-closed, admits only layouts that actually have an
+  F32-activation row (pack8 stays on its BF16 record, exactly the runtime's
+  per-slot fallback), and is recorded on the plan contract so certificates
+  never transfer across activation contracts.
+- **Preserved exactly:** the pinned UD refusal inventories (18 K_M / 41 K_S
+  planner-refused slots), all qualified plain/MoE controls on both HIP
+  backends (real-artifact preflights), the Q6 head (257,256) T16 shape
+  refusal, the Q5 planar sidecar formula, the raw MoE 7-format index, the
+  F4 certificate completeness machinery (the contract gains only the
+  additive `f32_input_operations` field), and the audit schema-v2 snapshot
+  (regenerated identically; the audit does not consume admission records).
+  The loader forwards `f32_input_operations` to the preflight; wiring the
+  native head's F32-input dependency into loader/entry defaults remains the
+  open F1 unit and is NOT claimed here.
+
+Re-review status after round 6: F2, F3, F4, F5, F6 and both regression
+repairs closed; **F1 (native dependency enforcement wired into the loader/
+entry defaults) remains open** and is the next unit. U1 remains open pending
+F1's repair and re-review.
 
 ### U2. Independent Codec Oracles
 
