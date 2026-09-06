@@ -1,5 +1,13 @@
 # Qwen3.8-Flash-Next gfx1151 Performance Campaign
 
+**Owner priority, 2026-09-06:** pause further performance experiments for the
+[served context-capacity correctness detour](QWEN4EXP-CONTEXT-CAPACITY.md).
+Expose admission-aware native context through the public factory/prepare path,
+preserving the2051 model constant and exact sparse control. Short-capacity
+A/B is complete (48 exact trajectories; decode changes below0.1%, prefill
+cost explicit); plumbing and served sparse-context validation remain pending.
+MTP's independent1024 cap is not lifted by this work.
+
 ## Active execution contract (2026-09-05)
 
 **Owner decision, 2026-09-05:** retain the substantial measured exact prefill

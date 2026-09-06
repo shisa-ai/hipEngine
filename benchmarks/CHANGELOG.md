@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC Framework native-capacity gate] 2051->262144 capacity with shared weights: p512 PP159.150->157.977 (-0.737%), TG20.052->20.039 (-0.066%); p1024 PP158.140->157.764 (-0.238%), TG19.357->19.339 (-0.095%).48/48 exact, zero final owners,13m14.8s. Full KV reset cost preserved; public plumbing still pending. `benchmarks/results/2026-09-06-framework-qwen4exp-context-capacity-ab.json`.
+
 - [2026-09-06 UTC post-MMQ family refresh] Clean ef63870f9 twelve-phase capture: p4096 non-GR linear5.545->5.367s (-3.21% snapshot delta, not causal A/B), FFN14.433s, GR4.282s.100% coverage, matched decode roots, zero final ownership; pinned prior Vulkan explicitly reused. Generated starting/current and family-gap tables refreshed. `benchmarks/results/2026-09-06-framework-qwen4exp-post-mmq-family.json`.
 
 - [2026-09-06 UTC Framework Q8 MMQ prepack production] Full12-case A/B prefill156.707->157.748 (+0.664%),154.396->155.375 (+0.634%),143.903->144.736 (+0.579%) at512/1K/4K;72/72 exact, all prefill rows faster,11/12 request rows improve (mixed512-0.14%). Memory+1.67GiB, prep0.107s,33m15.6s elapsed; retained per prefill-first direction. `benchmarks/results/2026-09-06-framework-qwen4exp-mmq-prepack-production.json`.
