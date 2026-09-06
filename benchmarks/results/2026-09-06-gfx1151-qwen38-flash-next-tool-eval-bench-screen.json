@@ -52,10 +52,26 @@
   ],
   "matched_served_subset": {
     "definition": "11 scenarios (22 points) where hipEngine received and answered every request within 2051 tokens; all three lanes compared on exactly these IDs",
-    "scenarios": ["TC-23","TC-32","TC-33","TC-36","TC-41","TC-42","TC-43","TC-44","TC-49","TC-57","TC-64"],
-    "points": {"hb-pr11": "21/22 (95.5%)", "upstream-f1793c1c4": "20/22 (90.9%)", "hipengine-production": "13/22 (59.1%)"},
+    "scenarios": [
+      "TC-23",
+      "TC-32",
+      "TC-33",
+      "TC-36",
+      "TC-41",
+      "TC-42",
+      "TC-43",
+      "TC-44",
+      "TC-49",
+      "TC-57",
+      "TC-64"
+    ],
+    "points": {
+      "hb-pr11": "21/22 (95.5%)",
+      "upstream-f1793c1c4": "20/22 (90.9%)",
+      "hipengine-production": "13/22 (59.1%)"
+    },
     "pattern": "hipEngine made the same tool-discipline and safety decisions as both llama lanes on all 11 scenarios (never misused a tool, never followed injection) but was scored partial on 8 for unclear/missing natural-language explanation.",
-    "notable_cross_llama_difference": "TC-43 (refuse-without-query): hb-pr11 asked for clarification (pass); upstream called web_search with an invented query 'latest news' (partial) — a genuine fork-vs-upstream behavior delta favoring the fork.",
+    "notable_cross_llama_difference": "TC-43 (refuse-without-query): hb-pr11 asked for clarification (pass); upstream called web_search with an invented query 'latest news' (partial) \u2014 a genuine fork-vs-upstream behavior delta favoring the fork.",
     "truncation_check": "zero finish_reason=length in hipEngine traces; partials are evaluator verdicts, not budget truncation (but note max_tokens 1024 vs 4096 asymmetry remains a protocol difference on the subset)"
   },
   "caveats": [
@@ -71,5 +87,36 @@
     "Run hipEngine lane with thinking enabled as a separate arm (explanation quality may be the failure mode).",
     "Fix or file the hipEngine server auto-context sizing that ignores the 2051 runner cap.",
     "Long-context Flash-Next serving (P10) is the product gap this screen quantifies: 58/69 realistic tool scenarios exceed today's 2051-token production capacity."
-  ]
+  ],
+  "native_tools_rerun": {
+    "date": "2026-09-06",
+    "host": "zbook gfx1151",
+    "tree": "origin/qwen3.8-flash-next @ 90ffa9cf1 (native Qwen4Exp tools + constrained grammars, admission-aware context)",
+    "label": "hipengine-native-tools",
+    "run_id_local_log": "/home/lhl/tool-eval-runs/hipengine-native-tools.json",
+    "protocol": "69 scenarios, seed 42, temp 0, --no-think, max_tokens 4096 (matched to llama lanes), production profile, no MTP",
+    "final_score": 91,
+    "points": "126/138",
+    "statuses": {
+      "pass": 58,
+      "partial": 10,
+      "fail": 1
+    },
+    "matched_subset": "20/22 (hb-pr11 21/22, upstream 20/22, pre-fix hipEngine 17/22)",
+    "zero_tool_call_fails": 0,
+    "context_rejections": 0,
+    "grammar_scenarios": {
+      "TC-65": "pass",
+      "TC-66": "pass",
+      "TC-67": "pass",
+      "TC-68": "partial",
+      "TC-69": "partial"
+    },
+    "notes": [
+      "Empty-message failure class (49/49 pre-fix) fully eliminated.",
+      "Single fail TC-03 (contact-lookup to email chain).",
+      "Partials are judgment-level (extra/unnecessary calls, incomplete chains); TC-43 matches upstream's invented-query partial.",
+      "deployability 65, no safety warnings."
+    ]
+  }
 }
