@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "status": "rejected_removed",
+  "source": "22b8368db plus uncommitted candidate; runtime defaults unchanged",
+  "host": "gfx1151",
+  "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+  "hardware": "Framework Desktop Ryzen AI Max+395 Radeon 8060S gfx1151",
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "boundary": "Actual Q8_0 GR up projection + materialized sigmoid gate + ordered branch mean; synthetic F32 activations",
+  "arithmetic": "T0 exact F32 outputs, repeated control and arithmetic unchanged",
+  "mechanism": "Template existing composite ROW_BATCH/HIDDEN_TILE: true,4,2 parent vs true,2,4 candidate,32 accumulators each. Candidate doubles weight decoding but halves activation loads. Ceil hidden/HIDDEN_TILE launch, duplicate valid weight loads for masked hidden tails.",
+  "prior_and_environment": "Same impact prior and therock environment/clock/compiler as 2026-09-06-framework-qwen4exp-gr-row-reuse-rejected.json; no intervening runtime or host policy change.",
+  "command": ".venv/bin/python scripts/qwen4exp_q8_wave_scale_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --gr-composite --gr-col-reuse --rows 64 512 --output /tmp/qwen4exp-gr-col-reuse.json",
+  "pairs": 20,
+  "preconditioning": "none",
+  "cases": [
+    {"tensor": "blk.0.hc_attn_up.weight", "shape": [64,320,10240], "parent_ms": 0.4419339821, "candidate_ms": 0.4386280198, "speedup": 1.0075370523, "order_speedups": [1.1067509299,0.9576524137], "exact": true},
+    {"tensor": "blk.0.hc_attn_up.weight", "shape": [512,320,10240], "parent_ms": 3.2284684712, "candidate_ms": 3.2085014973, "speedup": 1.0062231462, "mean_speedup": 1.0048380082, "order_speedups": [1.0303128678,0.9795467424], "exact": true},
+    {"tensor": "blk.0.hc_ffn_up.weight", "shape": [64,320,10240], "parent_ms": 0.4314900143, "candidate_ms": 0.4289854551, "speedup": 1.0058383314, "order_speedups": [1.1047695994,0.9393236355], "exact": true},
+    {"tensor": "blk.0.hc_ffn_up.weight", "shape": [512,320,10240], "parent_ms": 3.2042829553, "candidate_ms": 3.2158505637, "speedup": 0.9964029397, "mean_speedup": 0.9979208077, "order_speedups": [1.0263095910,0.9824992964], "exact": true}
+  ],
+  "correctness": "13 GPU tests pass after registry RED, including H6/18 hidden tails, rows1/7/37/257/511/512, exact F32 gate/mixed repeats and reduced CPU dequantized oracle KL<=0.05/top1>=90%. All80 actual-weight pairs exact.",
+  "trace": {
+    "command_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-gr-col-reuse-trace --",
+    "screen_arguments": "same command with --rows 512 --pairs 1 --tensor blk.0.hc_attn_up.weight --output /tmp/qwen4exp-gr-col-reuse-trace.json",
+    "kernel": "q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32_kernel<true, ROW_BATCH, HIDDEN_TILE>",
+    "parent_ns": 3089344,
+    "candidate_ns": 3104012,
+    "both_vgpr": 72,
+    "both_lds_bytes": 512,
+    "both_scratch_bytes": 0
+  },
+  "raw": {
+    "/tmp/qwen4exp-gr-col-reuse.json": "2be0fc934dc6bacf40e2a38617e3b5003acc2a1d0459dbd822adb34fe4374132",
+    "/tmp/qwen4exp-gr-col-reuse-trace/gfx1151/3067560_kernel_trace.csv": "415866874915540ab54f4a22f2ec5cab66613203aa28009318a2d1f6ff61b31a"
+  },
+  "disposition": "No repeatably positive operation-complete result: FFN512 loses, all order strata reverse, and profiled attention kernel slightly loses. Remove candidate and flags. No full-model A/B or new throughput claim. Stop equal-accumulator GR retile work."
+}

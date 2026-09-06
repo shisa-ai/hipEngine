@@ -76,6 +76,13 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GR equal-accumulator column reuse also rejected (September6 UTC):**
+the opposite RB2/H4 trade is exact in13 tests/all80 real-weight pairs but
+near-flat:512-row attention1.006x, FFN0.996x, all order strata reverse.
+Cached trace slightly loses with unchanged72 VGPR/512B LDS/scratch0.
+Removed candidate; stop equal-accumulator GR retiling and return to FFN reuse.
+[Recipe/evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-col-reuse-rejected.json).
+
 **GR constant-accumulator row reuse rejected (September6 UTC):** rebalance
 the operation-complete up composite from four rows/two hidden columns to
 eight rows/one column, preserving32 accumulators and exact per-output math.
