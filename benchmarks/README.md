@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-05 UTC**
+Last updated: **2026-09-06 UTC**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -204,6 +204,9 @@ The completed same-host family alignment covers six prompts and both phases.
 It identifies FFN/linear/GR as the largest prefill gaps and QSA as the largest
 decode gap; HIP kernel sums and Vulkan query intervals remain diagnostic.
 [Generated family evidence](results/2026-09-05-framework-qwen4exp-family-alignment.json).
+The post-Q8 current-HE refresh keeps that ranking, with linear5.551s,
+GR4.362s and FFN14.445s at p4096; the Vulkan profile is explicitly reused,
+not remeasured. [Updated family packet](results/2026-09-05-framework-qwen4exp-post-q8-family.json).
 
 Latest retained Q8 wave-scale production A/B, normal model execution:
 
