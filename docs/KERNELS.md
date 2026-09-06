@@ -819,6 +819,16 @@ Weighted prefill improves0.34-0.44%. The registered
 parent and unfused projection/sigmoid/mean chain remain strict fallbacks.
 Evidence: `2026-09-06-framework-qwen4exp-gr-wave-production.json`.
 
+Grouped Q8 expert down has a kernel-only T0
+`selected_grouped_row4_gemv_bf16_bf16_out` candidate. Four independent rows
+reuse decoded weights with the original reduction order. Actual layer4
+weights/counts improve1.107x; layer30 weights with explicitly borrowed
+layer4 counts improve1.137x, not actual layer30 routing.19 GPU tests pass;
+trace remains24 VGPR/512B LDS/scratch0. Row1 and strict selected GEMV remain
+registered unchanged defaults. Full-model engagement/logits/state/KV and
+12-case A/B block promotion.
+Evidence: `2026-09-06-framework-qwen4exp-q8-down-row4.json`.
+
 The raw Q8 coltile family has a separate T0
 `coltile8_rowbatch4_wave_scale_f32_f32_out` sibling. It makes the Q8 scale
 block index wave-uniform while preserving original F32 FMA and reduction

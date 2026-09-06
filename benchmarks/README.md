@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-06 UTC**
 
+| Framework Q8 down row4 kernel candidate | Parent -> candidate | Gate |
+| --- | --- | --- |
+| Layer4 weights / layer4 code4096 counts | 47.805 -> 43.175ms (1.107x) | Exact |
+| Layer30 weights / borrowed layer4 mixed4096 counts | 47.254 -> 41.546ms (1.137x) | Exact; not layer30 routing |
+
+Kernel candidate only; full-model gates and production promotion pending.
+[Evidence](results/2026-09-06-framework-qwen4exp-q8-down-row4.json).
+
 Q4 fixed K2560/N640 screen: exact but near-flat1.003x/1.004x on real
 layer3/0 routing, with candidate-first order reversals. Removed, no promotion.
 [Evidence](results/2026-09-06-framework-qwen4exp-q4-shape-rejected.json).

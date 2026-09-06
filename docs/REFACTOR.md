@@ -1,5 +1,16 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 down row4 candidate
+
+- `selected_grouped_row4_gemv_bf16_bf16_out` is a kernel-only candidate.
+  Keep row1 and strict selected GEMV until invocation-checked model gates and
+  canonical12-case A/B establish retention. No new runtime flag yet.
+- Remove the candidate if complete-model evidence loses; if it wins, promote
+  only the measured grouped-prefill scope and retain the strict fallback.
+- Diagnostic `scripts/qwen4exp_q8_down_row4_screen.py` labels borrowed routing
+  counts separately from weight identity; replace with whole-model evidence
+  before claiming production gains.
+
 ## Qwen4Exp tool grammar host path
 
 - Model-owned embedded-template/XML parsing replaces the generic JSON tool
