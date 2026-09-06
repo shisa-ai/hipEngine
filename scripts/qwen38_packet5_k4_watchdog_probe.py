@@ -119,6 +119,34 @@ def _slice_prompts(source: Path, count: int, destination: Path) -> Path:
     return destination
 
 
+def _dump_asyncio_tasks(path: Path) -> None:
+    """Dump every asyncio task's stack across all loops in the process."""
+
+    import asyncio
+    import gc
+
+    lines: list[str] = []
+    loops = {
+        id(obj): obj
+        for obj in gc.get_objects()
+        if isinstance(obj, asyncio.AbstractEventLoop)
+    }
+    for loop in loops.values():
+        try:
+            tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        except RuntimeError:
+            continue
+        lines.append(f"loop {loop!r}: {len(tasks)} pending tasks")
+        for task in tasks:
+            lines.append(f"  task {task.get_name()!r} state={task._state}")
+            for frame in task.get_stack(limit=25):
+                lines.append(
+                    f"    {frame.f_code.co_filename}:{frame.f_lineno}"
+                    f" in {frame.f_code.co_name}"
+                )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _heartbeat(deadline_s: float, stop: threading.Event) -> None:
     start = time.monotonic()
     while not stop.wait(15.0):
@@ -168,6 +196,17 @@ def main() -> int:
     faulthandler.dump_traceback_later(
         args.timeout, repeat=False, exit=True, file=open(watchdog_file, "w")
     )
+
+    def _watchdog_asyncio_dump() -> None:
+        time.sleep(max(1.0, args.timeout - 5.0))
+        try:
+            _dump_asyncio_tasks(
+                watchdog_file.with_name(watchdog_file.stem + "-asyncio.txt")
+            )
+        except BaseException:
+            pass
+
+    threading.Thread(target=_watchdog_asyncio_dump, daemon=True).start()
     stop = threading.Event()
     beat = threading.Thread(
         target=_heartbeat, args=(args.timeout, stop), daemon=True
