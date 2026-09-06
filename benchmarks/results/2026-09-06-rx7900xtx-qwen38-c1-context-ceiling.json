@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "kind": "rx7900xtx_qwen38_c1_context_ceiling",
+  "created_at": "2026-09-06T08:15:31Z",
+  "status": "regression_found_published_context_rows_do_not_reproduce",
+  "passed": false,
+  "performance_claim": false,
+  "claim_scope": "Single-request context ceiling for Qwen3.8-27B Q4_K_M on a physical Radeon RX 7900 XTX (23.984 GiB), driven through `python -m hipengine.server` with --max-active-requests 1 and an explicit --kv-storage, one completion request per point. Peak is sampled from rocm-smi on that card while the server runs.",
+  "decision": "The published XTX context rows do not reproduce. A default single-request server tops out between 3072 and 4096 context tokens, and INT8 KV yields no memory saving over BF16 at any measured point.",
+  "hardware": {
+    "physical_host": "epyc",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "arch": "gfx1100",
+    "gpu_index": 1,
+    "vram_total_gib": 23.984,
+    "note": "The W7900 in the same host is GPU 0; this campaign's other results are from that card."
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "quant": "Q4_K_M",
+    "weights_gib": 15.932
+  },
+  "measurements": {
+    "bf16_2048": {
+      "status": "OK",
+      "peak_gib": 21.869
+    },
+    "bf16_3072": {
+      "status": "OK",
+      "peak_gib": 23.328
+    },
+    "bf16_4096": {
+      "status": "REQUEST_FAILED",
+      "peak_gib": 16.9
+    },
+    "bf16_8192": {
+      "status": "REQUEST_FAILED",
+      "peak_gib": 17.041
+    },
+    "int8_per_token_head_2048": {
+      "status": "OK",
+      "peak_gib": 21.869
+    },
+    "int8_per_token_head_3072": {
+      "status": "OK",
+      "peak_gib": 23.328
+    },
+    "int8_per_token_head_4096": {
+      "status": "REQUEST_FAILED",
+      "peak_gib": 18.269
+    }
+  },
+  "derived": {
+    "per_token_kv_mib": 1.459,
+    "fixed_overhead_gib": 18.951,
+    "fixed_runtime_above_weights_gib": 3.019,
+    "predicted_token_ceiling": 3532,
+    "method": "linear fit through the two BF16 successes (2048 -> 21.869 GiB, 3072 -> 23.328 GiB)"
+  },
+  "findings": {
+    "context_ceiling": "BF16 succeeds at 2048 and 3072 and fails at 4096 and 8192; INT8 succeeds at 2048 and 3072 and fails at 4096. Every failure is a HIP out-of-memory raised during eager server warmup, before any request is issued, so it is independent of the prompt used.",
+    "int8_saves_nothing": "int8_per_token_head and bf16 produce byte-identical peaks at both 2048 (21.869 GiB) and 3072 (23.328 GiB), and fail at the same context. Whatever dominates the footprint is not KV element width, so the INT8 KV option currently buys no capacity.",
+    "published_rows_contradicted": "benchmarks/README.md published 32K on BF16 and 112K/126K on pure INT8 for this card. Measured today the same card reaches roughly 3K on either. Notably the published BF16 figure of 21.869 GiB peak with 2.115 GiB headroom is reproduced exactly here at 2048 context, not at 32K, so the memory number survives while the context label does not."
+  },
+  "limitations": [
+    "Runs use a minimal default server invocation: model, backend, quant, kv-storage, max-context-tokens, max-active-requests 1. The published rows may have used additional flags (chunked prefill, prefix cache, or a growing rather than preallocated KV pool) that were not reconstructed here.",
+    "Peak is sampled at 5 s intervals, so failing points report the last value seen before the process died rather than a true peak.",
+    "Only Qwen3.8-27B Q4_K_M was tested; other models and quants may behave differently."
+  ],
+  "disposition": "published XTX context rows withdrawn; ~3K measured ceiling published in their place with the INT8 parity noted as an open defect"
+}
