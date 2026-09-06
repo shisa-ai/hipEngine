@@ -8,6 +8,7 @@ draft model so they can never be mistaken for an additional AR layer.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from types import MappingProxyType
 from typing import Mapping
 
@@ -261,11 +262,31 @@ def validate_qwen35_gguf_nextn_tensor_map(info: GGUFModelInfo) -> Qwen35GGUFNext
         manifest_sha256 = str(
             info.metadata.get("hipengine.quant.output_type_manifest_sha256", "") or ""
         )
-        if manifest_sha256 != QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256:
+        # UD-U1: the variant exception is bound to the ACTUAL artifact, not to
+        # the claim. Recompute the canonical output-type manifest from the
+        # file's own tensors (same canonical form as
+        # scripts/qwen38_mixed_quant_plan.py) and require the claim to match
+        # reality AND reality to match the certified native-XL manifest. A
+        # foreign artifact that merely stamps the variant metadata and the
+        # pinned digest (e.g. a UD file whose draft qtypes coincide with the
+        # expected map) is refused here.
+        actual_manifest = hashlib.sha256(
+            "\n".join(
+                f"{tensor.name}={tensor.ggml_type_name}"
+                for tensor in sorted(info.tensors, key=lambda tensor: tensor.name)
+            ).encode("utf-8")
+        ).hexdigest()
+        if manifest_sha256 != actual_manifest:
             dtype_errors.append(
-                "hipengine.quant.output_type_manifest_sha256: expected "
-                f"{QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, got "
-                f"{manifest_sha256 or '<missing>'}"
+                "hipengine.quant.output_type_manifest_sha256 does not match the "
+                f"actual tensor type manifest: recomputed {actual_manifest}, "
+                f"claimed {manifest_sha256 or '<missing>'}"
+            )
+        if actual_manifest != QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256:
+            dtype_errors.append(
+                "actual output-type manifest is not the certified native-XL "
+                f"manifest: expected {QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256}, "
+                f"recomputed {actual_manifest}"
             )
     for slot, expected in _expected_qtypes(
         config,

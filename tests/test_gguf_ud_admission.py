@@ -15,6 +15,7 @@ import pytest
 
 from hipengine.loading.gguf import GGUFTensorInfo
 from hipengine.loading.qwen35_gguf import (
+    FULL_ATTENTION,
     LINEAR_ATTENTION,
     Qwen35GGUFConfig,
     Qwen35GGUFLayerMap,
@@ -727,6 +728,197 @@ def test_unknown_requested_operations_fail_closed():
             backend="hip_gfx1100",
             operations=("totally_unknown_operation",),
         ).raise_for_errors()
+
+
+# ---------------------------------------------------------------------------
+# NextN draft admission: native-XL manifest binding + MTP scope gate
+# ---------------------------------------------------------------------------
+
+
+def _native_xl_spoof_info(metadata_extra: dict):
+    """Build a minimal info whose draft qtypes EXACTLY match the certified
+    native-XL expected map, while the claimed metadata carries the variant and
+    pinned digest. The tensor inventory differs from the certified artifact."""
+
+    from types import SimpleNamespace
+
+    from hipengine.loading.qwen35_gguf_nextn import _EXPECTED_QWEN38_NATIVE_XL_QTYPES
+
+    block_id = 4
+    config = _config((FULL_ATTENTION, FULL_ATTENTION, FULL_ATTENTION, FULL_ATTENTION))
+    tensors = []
+    # Draft block tensors typed exactly as the certified map expects.
+    suffix_types = {
+        "nextn.eh_proj.weight": "Q6_K",
+        "attn_q.weight": "Q6_K",
+        "attn_k.weight": "Q8_0",
+        "attn_v.weight": "Q8_0",
+        "attn_output.weight": "Q6_K",
+        "ffn_gate.weight": "Q6_K",
+        "ffn_up.weight": "Q6_K",
+        "ffn_down.weight": "Q6_K",
+        "attn_norm.weight": "F32",
+        "post_attention_norm.weight": "F32",
+        "nextn.enorm.weight": "F32",
+        "nextn.hnorm.weight": "F32",
+        "nextn.shared_head_norm.weight": "F32",
+    }
+    for slot_suffix, type_name in suffix_types.items():
+        qtype = GGMLQuantizationType[type_name]
+        tensors.append(
+            _tensor(f"blk.{block_id}.{slot_suffix}", (4, 2), qtype)
+        )
+    tensors.append(_tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q4_K))
+    tensors.append(_tensor("output_norm.weight", (8,)))
+    by_name = {tensor.name: tensor for tensor in tensors}
+    full_metadata = {
+        "general.architecture": "qwen35",
+        "qwen35.block_count": 5,
+        "qwen35.embedding_length": 8,
+        "qwen35.feed_forward_length": 5,
+        "qwen35.context_length": 64,
+        "qwen35.attention.head_count": 2,
+        "qwen35.attention.head_count_kv": 1,
+        "qwen35.attention.key_length": 4,
+        "qwen35.attention.value_length": 4,
+        "qwen35.rope.dimension_count": 4,
+        "qwen35.ssm.inner_size": 16,
+        "qwen35.ssm.group_count": 2,
+        "qwen35.ssm.state_size": 4,
+        "qwen35.ssm.conv_kernel": 2,
+        "qwen35.ssm.time_step_rank": 2,
+    }
+    full_metadata.update(metadata_extra)
+    return SimpleNamespace(
+        metadata=full_metadata,
+        file_type_name="MOSTLY_Q4_K_M",
+        tensors=tensors,
+        tensor=lambda name: by_name[name],
+    ), config
+
+
+def test_native_xl_variant_manifest_is_recomputed_from_actual_tensors():
+    """UD-U1 RED: a foreign artifact that stamps the native-XL variant AND the
+    pinned digest is refused because the recomputed manifest of its actual
+    tensors does not match — even when every draft qtype coincides with the
+    expected map."""
+
+    from hipengine.loading.qwen35_gguf_nextn import (
+        QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256,
+        QWEN38_NATIVE_XL_QUANT_VARIANT,
+        validate_qwen35_gguf_nextn_tensor_map,
+    )
+
+    info, _config_stub = _native_xl_spoof_info(
+        {
+            "hipengine.quant.variant": QWEN38_NATIVE_XL_QUANT_VARIANT,
+            "hipengine.quant.output_type_manifest_sha256": (
+                QWEN38_NATIVE_XL_OUTPUT_TYPE_MANIFEST_SHA256
+            ),
+        }
+    )
+    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    joined = "\n".join(validation.dtype_errors)
+    assert "does not match the actual tensor type manifest" in joined
+    assert "is not the certified native-XL manifest" in joined
+    from hipengine.loading.gguf import MissingGGUFTensorError
+
+    with pytest.raises(MissingGGUFTensorError, match="dtype"):
+        validation.raise_for_errors()
+
+    # A truthful claim about a foreign manifest is still refused, with the
+    # recomputed digest named.
+    import hashlib
+
+    actual = hashlib.sha256(
+        "\n".join(
+            f"{t.name}={t.ggml_type_name}"
+            for t in sorted(info.tensors, key=lambda t: t.name)
+        ).encode("utf-8")
+    ).hexdigest()
+    info2, _ = _native_xl_spoof_info(
+        {
+            "hipengine.quant.variant": QWEN38_NATIVE_XL_QUANT_VARIANT,
+            "hipengine.quant.output_type_manifest_sha256": actual,
+        }
+    )
+    validation2 = validate_qwen35_gguf_nextn_tensor_map(info2)
+    joined2 = "\n".join(validation2.dtype_errors)
+    assert "does not match the actual tensor type manifest" not in joined2
+    assert "is not the certified native-XL manifest" in joined2
+
+
+def test_non_native_xl_variant_validation_unchanged():
+    """Without the native-XL variant metadata, validation keeps its per-slot
+    dtype contract (no manifest recomputation gate)."""
+
+    from hipengine.loading.qwen35_gguf_nextn import validate_qwen35_gguf_nextn_tensor_map
+
+    info, _config_stub = _native_xl_spoof_info({})
+    validation = validate_qwen35_gguf_nextn_tensor_map(info)
+    assert not any(
+        "output_type_manifest" in error for error in validation.dtype_errors
+    )
+
+
+@pytest.mark.skipif(not UD_Q4_K_M.exists(), reason=f"pinned artifact missing: {UD_Q4_K_M}")
+def test_ud_artifact_nextn_draft_materialization_scope_refused(monkeypatch):
+    """The UD preset is AR-only: draft materialization is refused before any
+    planning or allocation, with the distinct-scope reason."""
+
+    from hipengine.loading.qwen35_gguf_nextn_materialize import (
+        materialize_qwen35_gguf_nextn_weights,
+    )
+    from hipengine.loading import qwen35_gguf_nextn_materialize as nextn_loader
+    from hipengine.loading import materialize as host_materialize
+
+    sentinel = _AllocationSentinel(
+        "allocator invoked before NextN draft scope refusal"
+    )
+    monkeypatch.setattr(nextn_loader, "load_host_array_to_device_as_dtype", sentinel)
+    monkeypatch.setattr(nextn_loader, "materialize_qwen35_gguf_weight_spec", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+        materialize_qwen35_gguf_nextn_weights(str(UD_Q4_K_M), backend="hip_gfx1100")
+    assert sentinel.calls == []
+    message = str(excinfo.value)
+    assert "gguf_ud_q4_k_m" in message
+    assert "AR-only" in message or "'ar'" in message
+    assert "MTP" in message
+
+
+def test_ud_scope_refusal_is_distinct_from_plain_nextn_path():
+    """A plain (unresolved-preset) artifact keeps the historical NextN path:
+    no scope refusal is raised by admission for it."""
+
+    from types import SimpleNamespace
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_PRESET_SCOPE_MTP,
+        preflight_qwen35_gguf_artifact,
+        resolve_qwen35_gguf_artifact_preset,
+    )
+
+    plain_map = _synthetic_model_map()
+    assert resolve_qwen35_gguf_artifact_preset(plain_map, file_type_stamp="MOSTLY_Q4_K_M") is None
+    # The synthetic UD-shaped manifest never matches a pinned fingerprint, so
+    # it stays on the plain lane too — the refusal binds to pinned manifests,
+    # not to "looks like UD".
+    ud_like_map = _synthetic_model_map(
+        attn_qkv_type=GGMLQuantizationType.IQ4_XS,
+        ffn_type=GGMLQuantizationType.Q3_K,
+    )
+    assert resolve_qwen35_gguf_artifact_preset(ud_like_map, file_type_stamp="MOSTLY_Q4_K_M") is None
+    report = preflight_qwen35_gguf_artifact(
+        ud_like_map,
+        backend="hip_gfx1100",
+        operations=(QWEN35_GGUF_OP_MTP_NEXTN_DRAFT,),
+        file_type_stamp="MOSTLY_Q4_K_M",
+    )
+    scope_refusals = [u for u in report.unsupported if u.stage == "scope_refused"]
+    assert scope_refusals and scope_refusals[0].operation == QWEN35_GGUF_OP_MTP_NEXTN_DRAFT
+    assert not report.preset
+    del GGUF_PRESET_SCOPE_MTP
 
 
 # ---------------------------------------------------------------------------
