@@ -11,6 +11,7 @@ from tests.test_qwen4_exp_pf3_moe_schedules import (
 PARENT="qwen4_exp_q5_1_selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out"
 CANDIDATE="qwen4_exp_q5_1_selected_grouped_prefill_pair2_bf16_bf16_out"
 FOLD="qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_bf16_bf16_out"
+FOLD_PAIR="qwen4_exp_q5_1_selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out"
 
 
 def hip_available():
@@ -31,16 +32,20 @@ def test_pair_registry_and_bounds():
     assert fn is getattr(q5,CANDIDATE)
     assert resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
         variant="selected_grouped_prefill_pair2_fold128_bf16_bf16_out") is getattr(q5,FOLD)
+    assert resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
+        variant="selected_grouped_prefill_pair2_fold128_pair_bf16_bf16_out") is getattr(q5,FOLD_PAIR)
     assert callable(resolve(backend="hip_gfx1151",layer="moe_linear",quant="gguf_q5_1",
         variant="selected_grouped_prefill_compact_rowbatch8_out8_expertgrid64_m1_bf16_bf16_out"))
     with pytest.raises(ValueError,match="4096"):
         fn(1,1,1,1,1,1,8192,1)
     with pytest.raises(ValueError,match="4096"):
         getattr(q5,FOLD)(1,1,1,1,1,1,8192,1)
+    with pytest.raises(ValueError,match="4096"):
+        getattr(q5,FOLD_PAIR)(1,1,1,1,1,1,8192,1)
 
 
 @pytest.mark.skipif(not hip_available(),reason="HIP unavailable")
-@pytest.mark.parametrize("variant", [CANDIDATE,FOLD])
+@pytest.mark.parametrize("variant", [CANDIDATE,FOLD,FOLD_PAIR])
 @pytest.mark.parametrize("rows,experts,k,n",[(17,8,96,7),(17,8,4096,7),(65,64,640,33),(5120,512,640,2560)])
 def test_pair_exact(rows,experts,k,n,variant):
     candidate=getattr(q5,variant)

@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-06 UTC**
 
+Folded Q5_1 pair-reduction candidate: captured code/mixed512 two-bank screens
+40.002->34.404ms (1.163x)/39.123->33.729ms (1.160x),exact.
+Small-row order regression excludes that scope;model gates pending.
+[Evidence](results/2026-09-06-framework-qwen4exp-q51-fold-pair.json).
+
 Post-Q8-bundle code4096 attribution confirms32 bundled calls/1.208s.
 FFN14.104s,linear5.360s,GR4.249s remain dominant; code-only diagnostic
 against reused Vulkan,not a new full-category or causal timing comparison.

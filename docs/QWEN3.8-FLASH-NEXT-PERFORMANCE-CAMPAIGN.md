@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Folded Q5_1 pair reduction candidate (September6 UTC):** combine both
+fold128 output reductions within the original unfolded pair2 LDS budget,
+not the rejected doubled unfolded arena. Captured code/mixed512-row screens
+improve1.163x/1.160x,all80 two-bank pairs exact.13 GPU tests pass;72 VGPR/
+scratch0 unchanged,dynamic LDS4576->8672B. Synthetic64 candidate-first0.936x:
+keep smaller chunks on fold128 and admit only rows>=512 to model testing.
+Full logits/state/KV and12-case A/B pending;no runtime default changed.
+[Evidence](../benchmarks/results/2026-09-06-framework-qwen4exp-q51-fold-pair.json).
+
 **Post-Q8-bundle code4096 refresh (September6 UTC):** clean `2c132e253`
 confirms32 bundled-Q8 calls/1207.650ms. FFN14.104s,non-GR linear5.360s,
 GR4.249s,QSA1.921s,GDN0.778s. Reused pinned Vulkan code-only gaps:

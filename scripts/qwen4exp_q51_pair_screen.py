@@ -30,6 +30,7 @@ def main():
     p.add_argument("--require-cached-build",action="store_true")
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--fold128",action="store_true")
+    p.add_argument("--fold-pair",action="store_true")
     p.add_argument("--routing-capture",type=Path)
     p.add_argument("--case-id",default="code-p4096")
     p.add_argument("--chunk",type=int,default=0)
@@ -38,6 +39,9 @@ def main():
     if a.fold128:
         from tests.test_qwen4exp_q51_pair import FOLD
         parent_name, candidate_name = CANDIDATE, FOLD
+    if a.fold_pair:
+        from tests.test_qwen4exp_q51_pair import FOLD, FOLD_PAIR
+        parent_name, candidate_name = FOLD, FOLD_PAIR
     capture = None
     if a.routing_capture:
         from scripts.qwen4exp_routing_capture import select_routing, validate_replay_identity
