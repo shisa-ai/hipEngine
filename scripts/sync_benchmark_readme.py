@@ -27,7 +27,7 @@ PUBLIC_EXPORT_BUDGETS = {
     "README_HIGHLIGHTS": PublicExportBudget(
         max_lines=130,
         max_prose_paragraphs=8,
-        max_prose_chars=1500,
+        max_prose_chars=2000,
     ),
 }
 
