@@ -103,22 +103,21 @@ explicit opt-in still works. Earlier published C2/K2 and C8/K3 speedups are
 withdrawn ([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
 
 Explicit single-request (C1) speculative decoding is qualified on this
-backend through the packed physical route: **C1/K3 reaches 39.240 tok/s vs
-24.070 AR (1.6301x) and C1/K2 reaches 38.440 vs 24.040 (1.5989x)** on the
+backend through the packed physical route: **C1/K3 reaches 40.460 tok/s vs
+24.440 AR (1.6552x) and C1/K2 reaches 39.040 vs 24.300 (1.6068x)** on the
 canonical 10-prompt suite, all cells token-exact against their own AR arm.
 These cells are explicit opt-in only (automatic stays K0) and scoped to
 resident capacity 8, context 4-95, D24 greedy.
-([artifact](results/2026-09-06-w7900-q4km-mtp-packet3-row64-band-retained.json)).
+([artifact](results/2026-09-06-w7900-q4km-mtp-attention-v-band-retained.json)).
 
-The same retained sweep re-qualified the explicit C2/K2 and C8/K3 product
-cells above parity for the first time (**C2/K2 1.0536x, C8/K3 1.0484x**, both
-10/10 token-exact) and improved the diagnostic C5/K3, C2/K1, and C7/K3
-screens to 0.8729x, 0.8333x, and 0.9361x of their own AR arms. The gain comes
-from moving the staged verify-frontier FFN-down projection (rows 4-32) onto a
-bit-exact cooperative sibling that is 1.60-1.89x faster than the one-wave
-owner it replaces; every row 1-36 on all three cycle shapes was screened
-bit-exact before landing.
-([artifact](results/2026-09-06-w7900-q4km-mtp-packet3-row64-band-retained.json)).
+The explicit C2/K2 and C8/K3 product cells are re-qualified above parity
+(**C2/K2 1.0400x, C8/K3 1.0522x**, both 10/10 token-exact) and the diagnostic
+C5/K3, C2/K1, and C7/K3 screens run at 0.8565x, 0.7991x, and 0.9407x of their
+own AR arms. The gains come from moving the staged verify-frontier FFN-down
+(rows 4-128) and full-attention V (rows 4-128) projections onto bit-exact
+cooperative siblings that are 1.22-2.64x faster than the one-wave owners they
+replace; every screened row on both shapes was bit-exact before landing.
+([artifact](results/2026-09-06-w7900-q4km-mtp-attention-v-band-retained.json)).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
