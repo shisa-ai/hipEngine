@@ -788,21 +788,27 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q5_1 exposes kernel-only
+Q5_1 exposes
 `selected_grouped_prefill_pair2_register_cache_bf16_bf16_out` for K640.
 It predecodes ten weights per thread across an output pair, reusing them
 without growing LDS. Captured code/mixed two-bank512 projections improve
 34.450->28.195ms /33.756->27.819ms (1.222x/1.213x), all40 pairs exact
 and both orders positive.17 GPU tests pass. Trace VGPR72->96 and
 private scratch0->36B, dynamic LDS8672B unchanged: not spill-free.
-Full-residency model gates remain; original folded-pair and M1 fallbacks
+Full-residency model gates subsequently passed; original folded-pair and M1 fallbacks
 stay registered. Evidence: `2026-09-06-framework-qwen4exp-q51-register-cache.json`.
 
-Default-off model admission passes five full-logit/state/KV cases with
+Earlier default-off model admission passed five full-logit/state/KV cases with
 four decode steps. Invocation0/25/0 at512 or0/200/0 at4096,zero decode/
-final allocations.18 CPU tests pass. Both binders0,only existing folded-pair
-rows>=512,K640. Canonical12-case A/B remains the promotion blocker.
+final allocations.18 CPU tests passed. Both binders0 at admission,only existing folded-pair
+rows>=512,K640.
 Evidence: `2026-09-06-framework-qwen4exp-q51-register-cache-state.json`.
+Clean67fdfccb4 full12-case A/B now passes72 exact trajectories and all
+prefill/request cases. Production binds register-cache1,strict0;manifest
+explicitly names rows>=512/K640 and original strict fallback. PP gains
+2.892%/2.936%/2.716%,total request1.01790x;no extra tracked allocation,
+private scratch36B remains. Evidence:
+`2026-09-06-framework-qwen4exp-q51-register-cache-production.json`.
 
 The Q5_1 folded-pair decoded-LDS weight-cache experiment is rejected and
 removed: captured actual two-bank projection34.449->58.987ms (0.584x),
