@@ -503,6 +503,13 @@ GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS = {
         (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
         (129, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
     ),
+    # Packet 4 screen (2026-09-06, real blk.3.attn_v tensors): shared4_row64
+    # is bit-exact to the one-wave parent at EVERY screened row 1-128 and
+    # faster at every row (1.22-2.64x; cycle frontier rows 4-36 run 1.22-2.0x).
+    # Rows >=129 stay on the parent pending a shared4 screen at this shape.
+    (5_120, 1_024): (
+        (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
+    ),
 }
 # Production-shape Q4 changed-arithmetic screen admits FFN-down plus
 # full-attention K/V/output. All win at M512/1K/4K; only FFN-down can consume its
