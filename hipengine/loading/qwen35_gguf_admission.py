@@ -97,6 +97,7 @@ __all__ = [
     "QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS",
     "QWEN35_GGUF_OP_MTP_NEXTN_DRAFT",
     "Qwen35GGUFAdmissionCertificate",
+    "Qwen35GGUFPlanContract",
     "Qwen35GGUFAdmissionError",
     "Qwen35GGUFAdmissionReport",
     "Qwen35GGUFArtifactPreset",
@@ -724,6 +725,58 @@ class Qwen35GGUFUnsupportedOperation:
 
 
 @dataclass(frozen=True)
+class Qwen35GGUFPlanContract:
+    """The exact effective plan/operation contract a preflight checked.
+
+    This is the certificate's scope statement: which operations, which slots,
+    and which effective plan flags (after environment/veto resolution and
+    contraction inference) the admission verdict was computed under.  Two
+    contracts are interchangeable only when they are equal — a
+    contraction-enabled certificate is not reusable on an uncontracted plan
+    and a repack-vetoed plan is not the certified plan.
+    """
+
+    operations: tuple[str, ...]
+    slot_filter: tuple[str, ...] | None
+    decode_repack: bool
+    repack_veto: bool
+    contract_f32_linear: bool
+    dense_q4_t16: bool
+    dense_q4_qmicro_t16_gate_up: bool
+    dense_q4_t16_attn_q_08b: bool
+    dense_q5_t16_ssm_out: bool
+    dense_q5_raw_mmq_ssm_out: bool
+    dense_q5_qmicro_planar_ssm_out: bool
+    dense_q5_t16_ssm_out_08b: bool
+    dense_q5_t16_qkv: bool
+    dense_q5_t16_h5120: bool
+    dense_q6_qmicro_planar: bool
+    dense_q6_qmicro_planar_excluded_slots: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "operations": list(self.operations),
+            "slot_filter": None if self.slot_filter is None else list(self.slot_filter),
+            "decode_repack": self.decode_repack,
+            "repack_veto": self.repack_veto,
+            "contract_f32_linear": self.contract_f32_linear,
+            "dense_q4_t16": self.dense_q4_t16,
+            "dense_q4_qmicro_t16_gate_up": self.dense_q4_qmicro_t16_gate_up,
+            "dense_q4_t16_attn_q_08b": self.dense_q4_t16_attn_q_08b,
+            "dense_q5_t16_ssm_out": self.dense_q5_t16_ssm_out,
+            "dense_q5_raw_mmq_ssm_out": self.dense_q5_raw_mmq_ssm_out,
+            "dense_q5_qmicro_planar_ssm_out": self.dense_q5_qmicro_planar_ssm_out,
+            "dense_q5_t16_ssm_out_08b": self.dense_q5_t16_ssm_out_08b,
+            "dense_q5_t16_qkv": self.dense_q5_t16_qkv,
+            "dense_q5_t16_h5120": self.dense_q5_t16_h5120,
+            "dense_q6_qmicro_planar": self.dense_q6_qmicro_planar,
+            "dense_q6_qmicro_planar_excluded_slots": list(
+                self.dense_q6_qmicro_planar_excluded_slots
+            ),
+        }
+
+
+@dataclass(frozen=True)
 class Qwen35GGUFAdmissionCertificate:
     """Immutable positive admission result for one artifact/operation set.
 
@@ -737,6 +790,8 @@ class Qwen35GGUFAdmissionCertificate:
     operations: tuple[str, ...]
     file_type_stamp: str | None
     covered_slots: int
+    slot_filter: tuple[str, ...] | None = None
+    plan_contract: Qwen35GGUFPlanContract | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -746,6 +801,10 @@ class Qwen35GGUFAdmissionCertificate:
             "operations": list(self.operations),
             "file_type_stamp": self.file_type_stamp,
             "covered_slots": self.covered_slots,
+            "slot_filter": None if self.slot_filter is None else list(self.slot_filter),
+            "plan_contract": (
+                None if self.plan_contract is None else self.plan_contract.as_dict()
+            ),
         }
 
 
@@ -755,11 +814,26 @@ def certificate_covers_artifact(
     manifest_fingerprint: str,
     backend: str | None = None,
     operations: Iterable[str] | None = None,
+    slot_filter: Iterable[str] | None = None,
+    plan_contract: Qwen35GGUFPlanContract | None = None,
 ) -> bool:
     """Return whether a certificate still binds to the given artifact identity.
 
     A plain-artifact certificate never covers a UD manifest (different
     fingerprint) and vice versa, even when the file-type stamps match.
+
+    ``slot_filter`` names the slots the caller intends to use now; the
+    default ``None`` means the full artifact is intended.  A full-artifact
+    certificate (``slot_filter=None`` recorded at preflight time) covers any
+    subset; a certificate produced under a slot filter only covers uses
+    within that exact checked subset — a one-slot debug certificate never
+    reads as full-artifact coverage, including under an unspecified check.
+
+    ``plan_contract`` is the caller's intended effective plan contract; when
+    provided it must equal the certificate's recorded contract exactly, so a
+    contraction-enabled certificate cannot be reused on an uncontracted plan
+    (or vice versa).  A certificate without contract metadata (legacy or
+    hand-built) cannot verify a plan contract and fails closed.
     """
 
     if certificate.manifest_fingerprint != str(manifest_fingerprint):
@@ -769,6 +843,26 @@ def certificate_covers_artifact(
     if operations is not None:
         requested = tuple(str(operation) for operation in operations)
         if any(operation not in certificate.operations for operation in requested):
+            return False
+    certified = certificate.slot_filter
+    intended = (
+        None if slot_filter is None else tuple(sorted({str(slot) for slot in slot_filter}))
+    )
+    if certified is None:
+        # Full-artifact certificate: covers any subset of slots.
+        pass
+    elif intended is None:
+        # No explicit subset: the full artifact is intended, which a filtered
+        # certificate never covers.
+        return False
+    else:
+        certified_set = set(certified)
+        if any(slot not in certified_set for slot in intended):
+            return False
+    if plan_contract is not None:
+        if certificate.plan_contract is None:
+            return False
+        if certificate.plan_contract != plan_contract:
             return False
     return True
 
@@ -785,6 +879,8 @@ class Qwen35GGUFAdmissionReport:
     unsupported: tuple[Qwen35GGUFUnsupportedOperation, ...]
     covered_slots: int
     qualified_records: tuple[Qwen35GGUFOperationCoverage, ...] = field(default=())
+    slot_filter: tuple[str, ...] | None = None
+    plan_contract: Qwen35GGUFPlanContract | None = None
 
     @property
     def supported(self) -> bool:
@@ -803,6 +899,8 @@ class Qwen35GGUFAdmissionReport:
             operations=self.requested_operations,
             file_type_stamp=self.file_type_stamp,
             covered_slots=self.covered_slots,
+            slot_filter=self.slot_filter,
+            plan_contract=self.plan_contract,
         )
 
     def raise_for_errors(self) -> None:
@@ -1009,6 +1107,9 @@ def preflight_qwen35_gguf_artifact(
 
     checked_ops = tuple(op for op in requested if op != QWEN35_GGUF_OP_MTP_NEXTN_DRAFT)
     allowed_slots = None if slot_filter is None else {str(slot) for slot in slot_filter}
+    effective_slot_filter = (
+        None if allowed_slots is None else tuple(sorted(allowed_slots))
+    )
     for slot_path, tensor in slot_tensors:
         if allowed_slots is not None and str(slot_path) not in allowed_slots:
             continue
@@ -1111,6 +1212,27 @@ def preflight_qwen35_gguf_artifact(
         unsupported=tuple(unsupported),
         covered_slots=covered_slots,
         qualified_records=tuple(qualified.values()),
+        slot_filter=effective_slot_filter,
+        plan_contract=Qwen35GGUFPlanContract(
+            operations=requested,
+            slot_filter=effective_slot_filter,
+            decode_repack=bool(plan_flags["decode_repack"]),
+            repack_veto=bool(repack_veto) if repack_veto is not None else False,
+            contract_f32_linear=bool(contraction),
+            dense_q4_t16=bool(dense_q4_t16),
+            dense_q4_qmicro_t16_gate_up=bool(dense_q4_qmicro_t16_gate_up),
+            dense_q4_t16_attn_q_08b=bool(dense_q4_t16_attn_q_08b),
+            dense_q5_t16_ssm_out=bool(dense_q5_t16_ssm_out),
+            dense_q5_raw_mmq_ssm_out=bool(dense_q5_raw_mmq_ssm_out),
+            dense_q5_qmicro_planar_ssm_out=bool(dense_q5_qmicro_planar_ssm_out),
+            dense_q5_t16_ssm_out_08b=bool(dense_q5_t16_ssm_out_08b),
+            dense_q5_t16_qkv=bool(dense_q5_t16_qkv),
+            dense_q5_t16_h5120=bool(dense_q5_t16_h5120),
+            dense_q6_qmicro_planar=bool(dense_q6_qmicro_planar),
+            dense_q6_qmicro_planar_excluded_slots=tuple(
+                str(slot) for slot in dense_q6_qmicro_planar_excluded_slots
+            ),
+        ),
     )
 
 
