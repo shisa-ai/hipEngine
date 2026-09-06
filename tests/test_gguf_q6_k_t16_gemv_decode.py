@@ -408,6 +408,12 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
     monkeypatch.setattr(t16_mod, "_Q6_PLANAR_EXACT_PREFILL_RESOLVED", None)
 
     for rows, shape in (
+        (3, (17_408, 5_120)),
+        (4, (17_408, 5_120)),
+        (6, (17_408, 5_120)),
+        (20, (17_408, 5_120)),
+        (24, (17_408, 5_120)),
+        (28, (17_408, 5_120)),
         (32, (17_408, 5_120)),
         (33, (17_408, 5_120)),
         (64, (17_408, 5_120)),
@@ -417,8 +423,6 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
         (511, (17_408, 5_120)),
         (512, (17_408, 5_120)),
         (35, (5_120, 10_240)),
-        (20, (17_408, 5_120)),
-        (28, (17_408, 5_120)),
     ):
         t16_mod.gguf_q6_k_t16_qmicro_planar_wmma_prefill_gfx1100_bf16_bf16_out(
             1, 2, 3, rows, *shape
@@ -429,10 +433,14 @@ def test_q6_planar_exact_prefill_selects_measured_gfx1100_bands(monkeypatch) -> 
         "row64",
         "row64",
         "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
+        "row64",
         "shared256",
         "shared256",
-        "parent",
-        "parent",
         "parent",
         "parent",
     ]
