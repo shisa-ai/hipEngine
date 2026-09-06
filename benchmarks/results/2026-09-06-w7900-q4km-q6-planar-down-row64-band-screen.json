@@ -1,0 +1,296 @@
+{
+  "kind": "kernel-row-screen",
+  "date": "2026-09-06",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+  "model": "Qwen3.8-27B-Q4_K_M (real GGUF tensors: blk.0.ffn_down, blk.0.attn_qkv, blk.3.attn_v)",
+  "execution_profile": "screen (L1 leaf); retained-economics re-run pending under benchmarks/results packet3",
+  "question": "Does the exact cooperative shared4_row64 planar-Q6 WMMA prefill sibling beat the one-wave parent at the staged verify-frontier rows (4-32) that the prior band (33-128) excluded?",
+  "method": "scripts/qwen38_packet3_q6_planar_wmma_row_leaf.py; both owners launched on identical planar tiles + BF16 activations; event-timed medians of 3 bursts of 16 after 4 warmups; outputs compared bit-exactly per rows x shape",
+  "decision": "shared4_row64 is bit-exact (0 mismatched elements in all 24 rows x shape combinations) and 1.02-2.02x faster at every screened row 4-48 on all three planar-Q6 cycle shapes; ffn_down (the cycle-dominant shape) is 1.63-1.88x at rows 4-32. Band floor extended 33 -> 4 in GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS (commit 502b8c282); rows<=3 and >=512 keep prior owners; one-wave parent remains the registered strict fallback.",
+  "roofline_frame": "one stream of the 73.1 MB planar-Q6 down tensor = 84.6 us at 864 GB/s; measured one-wave parent ~0.8-1.5 ms/call = 9-11x floor (one-wave underfill: 107 blocks x 32 threads); sibling ~0.77-0.82 ms at the screen clocks",
+  "measurements": {
+    "kind": "packet3-q6-planar-wmma-prefill-row-screen",
+    "timestamp_utc": "2026-09-06T11:23:06.722681+00:00",
+    "device": "AMD Radeon Pro W7900",
+    "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "burst": 16,
+    "warmups": 4,
+    "repetitions": 3,
+    "cases": [
+      {
+        "role": "ffn_down",
+        "tensor": "blk.0.ffn_down.weight",
+        "in_features": 17408,
+        "out_features": 5120,
+        "rows": [
+          {
+            "rows": 4,
+            "plain_ms": 1.2671,
+            "shared4_row64_ms": 0.7764,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.6321
+          },
+          {
+            "rows": 6,
+            "plain_ms": 1.2464,
+            "shared4_row64_ms": 0.7668,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.6254
+          },
+          {
+            "rows": 12,
+            "plain_ms": 1.2593,
+            "shared4_row64_ms": 0.7681,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.6396
+          },
+          {
+            "rows": 16,
+            "plain_ms": 1.271,
+            "shared4_row64_ms": 0.7647,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.6621
+          },
+          {
+            "rows": 24,
+            "plain_ms": 1.4086,
+            "shared4_row64_ms": 0.7771,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.8127
+          },
+          {
+            "rows": 32,
+            "plain_ms": 1.4252,
+            "shared4_row64_ms": 0.7781,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.8317
+          },
+          {
+            "rows": 33,
+            "plain_ms": 1.5172,
+            "shared4_row64_ms": 0.8067,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.8808
+          },
+          {
+            "rows": 48,
+            "plain_ms": 1.5315,
+            "shared4_row64_ms": 0.8174,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.8737
+          }
+        ]
+      },
+      {
+        "role": "recurrent_qkv",
+        "tensor": "blk.0.attn_qkv.weight",
+        "in_features": 5120,
+        "out_features": 10240,
+        "rows": [
+          {
+            "rows": 4,
+            "plain_ms": 0.3986,
+            "shared4_row64_ms": 0.3904,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.0212
+          },
+          {
+            "rows": 6,
+            "plain_ms": 0.4161,
+            "shared4_row64_ms": 0.3865,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.0766
+          },
+          {
+            "rows": 12,
+            "plain_ms": 0.4059,
+            "shared4_row64_ms": 0.3786,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.0721
+          },
+          {
+            "rows": 16,
+            "plain_ms": 0.3986,
+            "shared4_row64_ms": 0.3708,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.0749
+          },
+          {
+            "rows": 24,
+            "plain_ms": 0.442,
+            "shared4_row64_ms": 0.3638,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.2149
+          },
+          {
+            "rows": 32,
+            "plain_ms": 0.4436,
+            "shared4_row64_ms": 0.3606,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.2303
+          },
+          {
+            "rows": 33,
+            "plain_ms": 0.4762,
+            "shared4_row64_ms": 0.3743,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.2724
+          },
+          {
+            "rows": 48,
+            "plain_ms": 0.4824,
+            "shared4_row64_ms": 0.3778,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.2771
+          }
+        ]
+      },
+      {
+        "role": "attention_v",
+        "tensor": "blk.3.attn_v.weight",
+        "in_features": 5120,
+        "out_features": 1024,
+        "rows": [
+          {
+            "rows": 4,
+            "plain_ms": 0.2806,
+            "shared4_row64_ms": 0.1926,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.4572
+          },
+          {
+            "rows": 6,
+            "plain_ms": 0.2811,
+            "shared4_row64_ms": 0.1925,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.4603
+          },
+          {
+            "rows": 12,
+            "plain_ms": 0.282,
+            "shared4_row64_ms": 0.1941,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.4527
+          },
+          {
+            "rows": 16,
+            "plain_ms": 0.2824,
+            "shared4_row64_ms": 0.1658,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.7029
+          },
+          {
+            "rows": 24,
+            "plain_ms": 0.3025,
+            "shared4_row64_ms": 0.1544,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.9595
+          },
+          {
+            "rows": 32,
+            "plain_ms": 0.2956,
+            "shared4_row64_ms": 0.1901,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 1.5548
+          },
+          {
+            "rows": 33,
+            "plain_ms": 0.3203,
+            "shared4_row64_ms": 0.1596,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 2.0066
+          },
+          {
+            "rows": 48,
+            "plain_ms": 0.2681,
+            "shared4_row64_ms": 0.133,
+            "shared4_ms": null,
+            "bit_equal": true,
+            "mismatched_elements": 0,
+            "max_abs_delta": 0.0,
+            "row64_vs_plain": 2.0167
+          }
+        ]
+      }
+    ]
+  },
+  "links": {
+    "worklog": "worklog/entries/20260906T111955.185948Z-lhl-gfx1100-better-mtp-packet3-6986a2.md",
+    "dispatch_commit": "502b8c282",
+    "packet1_attribution": "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet1-attribution.json"
+  },
+  "limitations": [
+    "Standalone kernel A/B at idle-to-warm clocks; absolute times are ~1.5x the in-cycle trace times; only the same-conditions A/B ratio is used for the decision.",
+    "Recurrent_qkv and attention_v shapes keep parent ownership in the current verify path (fused pair/dual kernels own them in cycles); their screen rows justify future pair-path work only.",
+    "Retained-cell e2e re-measurement (7 MTP cells + K0 controls) launched as packet3/run_p3_retained.sh; this screen alone is not a serving-rate claim."
+  ]
+}
