@@ -1,0 +1,63 @@
+{
+ "schema": 1,
+ "date": "2026-09-06",
+ "kind": "rx7900xtx_qwen38_ar_only_mtp_omission",
+ "campaign": "docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md",
+ "packet": "Packet 2: AR-only omits NextN; MTP-capable K0 vs active MTP",
+ "performance_claim": false,
+ "diagnostic": true,
+ "model": {
+  "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "gguf_q4_k_m",
+  "sampled_fingerprint_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+ },
+ "device": {
+  "gpu_index_requested": 1,
+  "pci_id": "0000:10:00.0",
+  "drm_card": "card0",
+  "vram_total_bytes": 25753026560,
+  "hip_visible_devices": "1"
+ },
+ "ar_only_proof": {
+  "configuration": "LLM/server default with speculative MTP serving off (the retained AR-only configuration)",
+  "gguf_nextn_tensor_count": 4,
+  "gguf_nextn_source_bytes": 55767040,
+  "resident_planned_tensor_count": 851,
+  "resident_planned_bytes": 17170958336,
+  "resident_nextn_bytes": 0,
+  "mechanism": "The materialization plan omits the NextN tensors when MTP serving is off, and the dense NextN draft provider is acquired lazily only when a request engages the route (pooled after engagement, never load/unloaded per decode cycle). The resident census therefore contains no NextN weights: AR-only is the default, not a separate configuration to build.",
+  "ledger_tracked_after_load_gib": 17.581
+ },
+ "k0_to_k_delta": {
+  "status": "blocked_by_mtp_serving_functional_bug",
+  "evidence": [
+   {
+    "vehicle": "server startup scratch probe with --speculative-mtp-serving enabled (N=2, ctx 3072)",
+    "failure": "STARTUP_SCRATCH_PROBE: failed at probe_prompt_tokens=3071: KeyError 'blk.40.attn_q_norm.weight'",
+    "note": "the NextN block resolver is correct for this model (block 64, all 17 required tensors present, has_mtp=True verified against the GGUF), so the stale blk.40 comes from a serving-path constant, not the model"
+   },
+   {
+    "vehicle": "in-process LLM generate_speculative_mtp_detailed at N=1 (c=1 retained hot loop)",
+    "failure": "ValueError: token id 2147483647 is outside vocabulary size 248320",
+    "note": "the packed-kernel invalid-token sentinel reached the output ids"
+   },
+   {
+    "vehicle": "packed MTP warmup width gate",
+    "failure": "packed_mtp_prefill_skipped=True reason=batch_width_le_1_or_disabled at max_active_requests=1",
+    "note": "widths (2,4,...) engage only at N>=2; the server startup warmup is the intended engagement vehicle"
+   }
+  ],
+  "ownership": "MTP serving campaign owns the route fix; this campaign records the blocker and re-measures K0->K when the route serves"
+ },
+ "probe_n2_reference": {
+  "mtp_off_ctx3072_n2": {
+   "status": "ok",
+   "sampled_peak_gib": 22.111454010009766
+  },
+  "mtp_enabled_ctx3072_n2": "startup probe failed (see k0_to_k_delta); no memory point"
+ },
+ "commands": [
+  "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 uv run python scripts/qwen38_xtx_allocation_ledger.py --context 3072 --max-active-requests 1 --gpu-index 1 --json <OUT> [--speculative-mtp-serving enabled]",
+  "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 uv run python scripts/gguf_context_ceiling_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 --quant gguf_q4_k_m --kv-storage bf16 --context 3072 --max-tokens 16 --max-active-requests 2 --speculative-mtp-serving {off,enabled} --gpu-index 1 --json <OUT>"
+ ]
+}
