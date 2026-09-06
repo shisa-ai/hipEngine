@@ -27,7 +27,6 @@
         {
           "backend": "hip_gfx1100",
           "file_type_name": "MOSTLY_Q4_K_M",
-          "artifact_preset_key": null,
           "scope": "ar_map_plus_nextn_map",
           "map_validation_passed": true,
           "planner_mode": "production_planner",
@@ -246,7 +245,6 @@
         {
           "backend": "hip_gfx1151",
           "file_type_name": "MOSTLY_Q4_K_M",
-          "artifact_preset_key": null,
           "scope": "ar_map_plus_nextn_map",
           "map_validation_passed": true,
           "planner_mode": "production_planner",
@@ -639,7 +637,6 @@
         {
           "backend": "hip_gfx1100",
           "file_type_name": "MOSTLY_Q4_K_M",
-          "artifact_preset_key": "gguf_ud_q4_k_m",
           "scope": "ar_map_plus_nextn_map",
           "map_validation_passed": true,
           "planner_mode": "per_slot_fallback",
@@ -873,7 +870,6 @@
         {
           "backend": "hip_gfx1151",
           "file_type_name": "MOSTLY_Q4_K_M",
-          "artifact_preset_key": "gguf_ud_q4_k_m",
           "scope": "ar_map_plus_nextn_map",
           "map_validation_passed": true,
           "planner_mode": "per_slot_fallback",
@@ -1293,7 +1289,6 @@
         {
           "backend": "hip_gfx1100",
           "file_type_name": "MOSTLY_Q4_K_S",
-          "artifact_preset_key": "gguf_ud_q4_k_s",
           "scope": "ar_map_plus_nextn_map",
           "map_validation_passed": true,
           "planner_mode": "per_slot_fallback",
@@ -1553,7 +1548,6 @@
         {
           "backend": "hip_gfx1151",
           "file_type_name": "MOSTLY_Q4_K_S",
-          "artifact_preset_key": "gguf_ud_q4_k_s",
           "scope": "ar_map_plus_nextn_map",
           "map_validation_passed": true,
           "planner_mode": "per_slot_fallback",
@@ -1589,7 +1583,7 @@
             "GGUF_DENSE_Q6_T16_QMICRO_PLANAR_EXCLUDED_SLOTS": "literal",
             "GGUF_FP16_RECURRENT_STATE_DEFAULT_FILE_TYPES": "literal"
           },
-          "fp16_recurrent_state_default_on": false,
+          "fp16_recurrent_state_default_on": true,
           "ar_consumer_slots": 851,
           "ar_unique_sources": 851,
           "routes": {
