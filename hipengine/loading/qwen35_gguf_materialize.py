@@ -685,6 +685,7 @@ def materialize_qwen35_gguf_weights(
     from hipengine.loading.qwen35_gguf_admission import (
         DEFAULT_AR_OPERATIONS,
         preflight_qwen35_gguf_artifact,
+        qwen35_gguf_artifact_preset_key_for_report,
     )
 
     operations = (
@@ -835,10 +836,8 @@ def materialize_qwen35_gguf_weights(
         allocation_arena=allocation_arena,
         allocation_mode=allocation_mode,
         allocation_arena_reason=allocation_arena_reason,
-        artifact_preset_key=(
-            None
-            if admission_report.preset is None
-            else admission_report.preset.preset_key
+        artifact_preset_key=qwen35_gguf_artifact_preset_key_for_report(
+            admission_report
         ),
     )
 

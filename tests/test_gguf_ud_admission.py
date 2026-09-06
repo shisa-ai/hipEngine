@@ -63,6 +63,10 @@ UD_Q4_K_S = Path("/models/gguf/Qwen3.8-27B-UD-Q4_K_S.gguf")
 PLAIN_Q4_K_M = Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf")
 PLAIN_Q4_K_S = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
 SMALL_Q8_0 = Path("/models/gguf/Qwen3.5-0.8B-Q8_0.gguf")
+SMALL_Q4_K_M = Path("/models/gguf/Qwen3.5-0.8B-Q4_K_M.gguf")
+QWEN36_27B_Q4_K_M = Path("/models/gguf/Qwen3.6-27B-Q4_K_M.gguf")
+QWEN36_35B_A3B_Q4_K_M = Path("/models/gguf/Qwen3.6-35B-A3B-UD-Q4_K_M.gguf")
+ORNITH_35B_A3B_Q4_K_M = Path("/models/gguf/Ornith-1.5-35B-A3B-Q4_K_M.gguf")
 
 # The 18 unsupported AR tensors of the pinned UD K_M artifact (docs/UD-QUANTS.md
 # section 3 / the K_M campaign's exact unsupported tensor map).
@@ -2034,3 +2038,165 @@ def test_packed_decode_graph_min_replay_steps_survives_preset_bound_identity(
         artifact_preset_key=None,
     )
     assert session_with(unknown_weights)(24) == 1
+
+
+def _real_map_and_nextn(path: Path):
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
+
+    reader = GGUFReader(path)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+    nextn_map = None
+    if model_map.config.ignored_block_ids:
+        nextn_map = build_qwen35_gguf_nextn_tensor_map(reader.info, strict=False)
+    return model_map, nextn_map, (
+        None if reader.info.file_type_name is None else str(reader.info.file_type_name)
+    )
+
+
+@pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
+def test_qualified_plain_controls_keep_plain_identity_and_exact_ud_binds_preset():
+    """U1 repair 5: established plain controls must keep the historical
+    (geometry, stamp) plain policy identity; exact-UD manifests keep their
+    bound preset key; everything else is an unknown manifest."""
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        qwen35_gguf_artifact_preset_key,
+    )
+
+    for path in (
+        PLAIN_Q4_K_M,
+        PLAIN_Q4_K_S,
+        SMALL_Q8_0,
+        SMALL_Q4_K_M,
+        QWEN36_27B_Q4_K_M,
+        QWEN36_35B_A3B_Q4_K_M,
+        ORNITH_35B_A3B_Q4_K_M,
+    ):
+        if not path.exists():
+            continue
+        model_map, nextn_map, stamp = _real_map_and_nextn(path)
+        assert (
+            qwen35_gguf_artifact_preset_key(
+                model_map, nextn_map=nextn_map, file_type_stamp=stamp
+            )
+            is None
+        ), f"qualified plain control lost its plain identity: {path.name}"
+
+    model_map, nextn_map, stamp = _real_map_and_nextn(UD_Q4_K_M)
+    assert qwen35_gguf_artifact_preset_key(
+        model_map, nextn_map=nextn_map, file_type_stamp=stamp
+    ) == GGUF_UD_Q4_K_M_PRESET
+    model_map, nextn_map, stamp = _real_map_and_nextn(UD_Q4_K_S)
+    assert qwen35_gguf_artifact_preset_key(
+        model_map, nextn_map=nextn_map, file_type_stamp=stamp
+    ) == GGUF_UD_Q4_K_S_PRESET
+
+
+@pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
+def test_mutated_plain_manifest_with_same_histogram_is_an_unknown_manifest():
+    """U1 repair 5: a mutated plain K_M whose quant histogram is unchanged
+    (ffn_up/ffn_down types swapped) has a different role-manifest fingerprint,
+    so it must not inherit the plain-certified policy identity, the packaged
+    hot-vocabulary selection, or the plain 2-part policy-table key."""
+
+    import dataclasses
+    from types import MappingProxyType, SimpleNamespace
+
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+        build_qwen35_gguf_role_manifest,
+        qwen35_gguf_artifact_preset_key,
+    )
+    from hipengine.kernels.policy import GGUFModelGeometry
+    from hipengine.runtime.qwen35_gguf_runner import _gguf_policy_identity
+
+    model_map, nextn_map, stamp = _real_map_and_nextn(PLAIN_Q4_K_M)
+    base_fingerprint = build_qwen35_gguf_role_manifest(
+        model_map, nextn_map=nextn_map
+    ).fingerprint
+
+    def swapped(map_like):
+        layers = []
+        for layer in map_like.layers:
+            tensors = dict(layer.tensors)
+            up = tensors["ffn_up"]
+            down = tensors["ffn_down"]
+            tensors["ffn_up"] = dataclasses.replace(up, ggml_type=down.ggml_type, ggml_type_name=down.ggml_type_name)
+            tensors["ffn_down"] = dataclasses.replace(down, ggml_type=up.ggml_type, ggml_type_name=up.ggml_type_name)
+            layers.append(dataclasses.replace(layer, tensors=MappingProxyType(tensors)))
+        return dataclasses.replace(map_like, layers=tuple(layers))
+
+    mutated_map = swapped(model_map)
+    mutated_manifest = build_qwen35_gguf_role_manifest(mutated_map, nextn_map=nextn_map)
+    mutated_histogram = sorted(record[3] for record in mutated_manifest.records)
+    base_histogram = sorted(record[3] for record in
+                            build_qwen35_gguf_role_manifest(model_map, nextn_map=nextn_map).records)
+    assert mutated_histogram == base_histogram
+    assert mutated_manifest.fingerprint != base_fingerprint
+
+    # Unknown manifest: not a qualified plain control, not a UD preset.
+    assert qwen35_gguf_artifact_preset_key(
+        mutated_map, nextn_map=nextn_map, file_type_stamp=stamp
+    ) == GGUF_UNQUALIFIED_MANIFEST_PRESET
+
+    geometry = GGUFModelGeometry.try_from_config(mutated_map.config)
+    assert geometry is not None
+    sentinel_resident = SimpleNamespace(
+        geometry=geometry,
+        file_type_name=stamp,
+        artifact_preset_key=GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+    identity = _gguf_policy_identity(sentinel_resident)
+    assert identity == (geometry, stamp, GGUF_UNQUALIFIED_MANIFEST_PRESET)
+    # The sentinel identity misses plain 2-part policy-table keys by
+    # construction (3-tuple != (geometry, stamp)).
+
+
+@pytest.mark.skipif(not PLAIN_Q4_K_M.exists(), reason=f"pinned artifact missing: {PLAIN_Q4_K_M}")
+def test_unknown_manifest_cannot_reuse_the_packaged_hot_vocabulary():
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.loading.gguf_mtp_hot_vocab import default_gguf_hot_vocab_path
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+    info = GGUFReader(PLAIN_Q4_K_M).info
+    # The qualified plain control resolves the packaged selection...
+    assert default_gguf_hot_vocab_path(info) is not None
+    # ...an unknown manifest with the same metadata never does.
+    assert (
+        default_gguf_hot_vocab_path(
+            info, artifact_preset_key=GGUF_UNQUALIFIED_MANIFEST_PRESET
+        )
+        is None
+    )
+
+
+def test_loader_binds_the_unqualified_manifest_sentinel_for_unknown_manifests(
+    monkeypatch, tmp_path
+):
+    """The real loader path derives the artifact preset key from the admission
+    report: a fixture manifest (not a pinned control) gets the sentinel."""
+
+    from tests._qwen35_gguf_fixture import (
+        fixture_metadata,
+        linear_attention_layer_slots,
+        write_qwen35_gguf,
+    )
+    from hipengine.quant.gguf import GGMLQuantizationType
+
+    tensors = [
+        ("token_embd.weight", (64, 256), GGMLQuantizationType.Q8_0),
+        ("output_norm.weight", (256,), GGMLQuantizationType.F32),
+    ]
+    tensors.extend(linear_attention_layer_slots(0, projection_type=GGMLQuantizationType.Q8_0))
+    path = tmp_path / "unknown-manifest.gguf"
+    write_qwen35_gguf(path, tensors, fixture_metadata(1))
+
+    resident = _materialize_fixture_on_cpu(path, monkeypatch)
+    from hipengine.loading.qwen35_gguf_admission import (
+        GGUF_UNQUALIFIED_MANIFEST_PRESET,
+    )
+
+    assert resident.artifact_preset_key == GGUF_UNQUALIFIED_MANIFEST_PRESET
