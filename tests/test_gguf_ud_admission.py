@@ -117,9 +117,28 @@ def _tensor(
     shape: tuple[int, ...],
     qtype: GGMLQuantizationType = GGMLQuantizationType.F32,
 ) -> GGUFTensorInfo:
+    """A block-truthful tensor-info fixture.
+
+    ``byte_shape``/``nbytes`` come from the real GGUF quant layout so the
+    synthetic metadata has the same geometry a real ``scan_gguf`` would
+    produce; block-quant shapes must therefore be realizable (K a block
+    multiple), exactly like a real file.
+    """
+
+    from hipengine.quant.gguf import nbytes_for_shape, quant_shape_to_byte_shape
+
     n_elements = 1
     for dim in shape:
         n_elements *= int(dim)
+    if qtype == GGMLQuantizationType.F32:
+        byte_shape = tuple(int(dim) for dim in shape)
+        nbytes = n_elements * 4
+    elif qtype in (GGMLQuantizationType.F16, GGMLQuantizationType.BF16):
+        byte_shape = tuple(int(dim) for dim in shape)
+        nbytes = n_elements * 2
+    else:
+        byte_shape = quant_shape_to_byte_shape(shape, qtype)
+        nbytes = nbytes_for_shape(shape, qtype)
     return GGUFTensorInfo(
         name=name,
         shape=shape,
@@ -127,20 +146,23 @@ def _tensor(
         ggml_type=int(qtype),
         ggml_type_name=qtype.name,
         n_elements=n_elements,
-        nbytes=n_elements * (4 if qtype == GGMLQuantizationType.F32 else 2),
+        nbytes=nbytes,
         offset=0,
         data_offset=0,
-        byte_shape=shape,
+        byte_shape=byte_shape,
     )
 
 
 def _config(layer_types: tuple[str, ...]) -> Qwen35GGUFConfig:
+    # Geometry is block-truthful: hidden/ffn/ssm-inner are Q4_K/Q8_0 block
+    # multiples, the time-step rank is T16-aligned, and the vocabulary is
+    # pack8/T16-aligned, so every planned resident is materializable.
     return Qwen35GGUFConfig(
         architecture="qwen35",
         block_count=len(layer_types),
-        hidden_size=8,
-        vocab_size=11,
-        feed_forward_length=5,
+        hidden_size=256,
+        vocab_size=32,
+        feed_forward_length=256,
         context_length=64,
         head_count=2,
         head_count_kv=1,
@@ -152,11 +174,11 @@ def _config(layer_types: tuple[str, ...]) -> Qwen35GGUFConfig:
         rope_dimension_count=4,
         rope_dimension_sections=(),
         rope_freq_base=10000.0,
-        ssm_inner_size=16,
+        ssm_inner_size=256,
         ssm_group_count=2,
         ssm_state_size=4,
         ssm_conv_kernel=2,
-        ssm_time_step_rank=2,
+        ssm_time_step_rank=16,
         lm_head_tensor_name="token_embd.weight",
     )
 
@@ -171,20 +193,20 @@ def _linear_layer_tensors(
 ) -> dict:
     prefix = f"blk.{layer_id}"
     return {
-        "attn_norm": _tensor(f"{prefix}.attn_norm.weight", (8,)),
-        "post_attention_norm": _tensor(f"{prefix}.post_attention_norm.weight", (8,)),
-        "attn_gate": _tensor(f"{prefix}.attn_gate.weight", (16, 8), gate_type),
-        "attn_qkv": _tensor(f"{prefix}.attn_qkv.weight", (28, 8), attn_qkv_type),
-        "ssm_a": _tensor(f"{prefix}.ssm_a", (2,)),
-        "ssm_alpha": _tensor(f"{prefix}.ssm_alpha.weight", (2, 8), alpha_beta_type),
-        "ssm_beta": _tensor(f"{prefix}.ssm_beta.weight", (2, 8), alpha_beta_type),
-        "ssm_conv1d": _tensor(f"{prefix}.ssm_conv1d.weight", (28, 2)),
-        "ssm_dt_bias": _tensor(f"{prefix}.ssm_dt.bias", (2,)),
-        "ssm_norm": _tensor(f"{prefix}.ssm_norm.weight", (3,)),
-        "ssm_out": _tensor(f"{prefix}.ssm_out.weight", (8, 16), gate_type),
-        "ffn_gate": _tensor(f"{prefix}.ffn_gate.weight", (5, 8), ffn_type),
-        "ffn_up": _tensor(f"{prefix}.ffn_up.weight", (5, 8), ffn_type),
-        "ffn_down": _tensor(f"{prefix}.ffn_down.weight", (8, 5), ffn_type),
+        "attn_norm": _tensor(f"{prefix}.attn_norm.weight", (256,)),
+        "post_attention_norm": _tensor(f"{prefix}.post_attention_norm.weight", (256,)),
+        "attn_gate": _tensor(f"{prefix}.attn_gate.weight", (256, 256), gate_type),
+        "attn_qkv": _tensor(f"{prefix}.attn_qkv.weight", (272, 256), attn_qkv_type),
+        "ssm_a": _tensor(f"{prefix}.ssm_a", (16,)),
+        "ssm_alpha": _tensor(f"{prefix}.ssm_alpha.weight", (16, 256), alpha_beta_type),
+        "ssm_beta": _tensor(f"{prefix}.ssm_beta.weight", (16, 256), alpha_beta_type),
+        "ssm_conv1d": _tensor(f"{prefix}.ssm_conv1d.weight", (272, 2)),
+        "ssm_dt_bias": _tensor(f"{prefix}.ssm_dt.bias", (16,)),
+        "ssm_norm": _tensor(f"{prefix}.ssm_norm.weight", (4,)),
+        "ssm_out": _tensor(f"{prefix}.ssm_out.weight", (256, 256), gate_type),
+        "ffn_gate": _tensor(f"{prefix}.ffn_gate.weight", (256, 256), ffn_type),
+        "ffn_up": _tensor(f"{prefix}.ffn_up.weight", (256, 256), ffn_type),
+        "ffn_down": _tensor(f"{prefix}.ffn_down.weight", (256, 256), ffn_type),
     }
 
 
@@ -201,9 +223,9 @@ def _synthetic_model_map(
     from types import MappingProxyType
 
     root = {
-        "token_embedding": _tensor("token_embd.weight", (11, 8), embedding_type),
-        "output_norm": _tensor("output_norm.weight", (8,)),
-        "lm_head": _tensor("token_embd.weight", (11, 8), lm_head_type),
+        "token_embedding": _tensor("token_embd.weight", (32, 256), embedding_type),
+        "output_norm": _tensor("output_norm.weight", (256,)),
+        "lm_head": _tensor("token_embd.weight", (32, 256), lm_head_type),
     }
     layers = tuple(
         Qwen35GGUFLayerMap(
@@ -335,13 +357,13 @@ def test_fingerprint_covers_nextn_block_and_fallback_binding():
         block_id=8,
         layer_tensors={
             "attn_norm": _tensor("blk.8.attn_norm.weight", (8,)),
-            "attn_q": _tensor("blk.8.attn_q.weight", (16, 8), GGMLQuantizationType.Q4_K),
+            "attn_q": _tensor("blk.8.attn_q.weight", (256, 256), GGMLQuantizationType.Q4_K),
         },
         nextn_tensors={
-            "eh_proj": _tensor("blk.8.nextn.eh_proj.weight", (8, 16), GGMLQuantizationType.Q8_0),
-            "enorm": _tensor("blk.8.nextn.enorm.weight", (8,)),
-            "hnorm": _tensor("blk.8.nextn.hnorm.weight", (8,)),
-            "shared_head_norm": _tensor("blk.8.nextn.shared_head_norm.weight", (8,)),
+            "eh_proj": _tensor("blk.8.nextn.eh_proj.weight", (256, 256), GGMLQuantizationType.Q8_0),
+            "enorm": _tensor("blk.8.nextn.enorm.weight", (256,)),
+            "hnorm": _tensor("blk.8.nextn.hnorm.weight", (256,)),
+            "shared_head_norm": _tensor("blk.8.nextn.shared_head_norm.weight", (256,)),
         },
         fallback_tensors={
             "token_embedding": base.root_tensors["token_embedding"],
@@ -770,10 +792,10 @@ def _native_xl_spoof_info(metadata_extra: dict):
     for slot_suffix, type_name in suffix_types.items():
         qtype = GGMLQuantizationType[type_name]
         tensors.append(
-            _tensor(f"blk.{block_id}.{slot_suffix}", (4, 2), qtype)
+            _tensor(f"blk.{block_id}.{slot_suffix}", (256, 256), qtype)
         )
-    tensors.append(_tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q4_K))
-    tensors.append(_tensor("output_norm.weight", (8,)))
+    tensors.append(_tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q4_K))
+    tensors.append(_tensor("output_norm.weight", (256,)))
     by_name = {tensor.name: tensor for tensor in tensors}
     full_metadata = {
         "general.architecture": "qwen35",
@@ -1474,14 +1496,14 @@ def _moe_layer_tensors(layer_id: int, *, expert_type: GGMLQuantizationType) -> d
     tensors.pop("ffn_down")
     tensors.update(
         {
-            "ffn_gate_inp": _tensor(f"{prefix}.ffn_gate_inp.weight", (4, 8)),
-            "ffn_gate_inp_shexp": _tensor(f"{prefix}.ffn_gate_inp_shexp.weight", (5, 8)),
-            "ffn_gate_exps": _tensor(f"{prefix}.ffn_gate_exps.weight", (4, 5, 8), expert_type),
-            "ffn_up_exps": _tensor(f"{prefix}.ffn_up_exps.weight", (4, 5, 8), expert_type),
-            "ffn_down_exps": _tensor(f"{prefix}.ffn_down_exps.weight", (4, 8, 5), expert_type),
-            "ffn_gate_shexp": _tensor(f"{prefix}.ffn_gate_shexp.weight", (5, 8), GGMLQuantizationType.Q8_0),
-            "ffn_up_shexp": _tensor(f"{prefix}.ffn_up_shexp.weight", (5, 8), GGMLQuantizationType.Q8_0),
-            "ffn_down_shexp": _tensor(f"{prefix}.ffn_down_shexp.weight", (8, 5), GGMLQuantizationType.Q8_0),
+            "ffn_gate_inp": _tensor(f"{prefix}.ffn_gate_inp.weight", (4, 256)),
+            "ffn_gate_inp_shexp": _tensor(f"{prefix}.ffn_gate_inp_shexp.weight", (256, 256)),
+            "ffn_gate_exps": _tensor(f"{prefix}.ffn_gate_exps.weight", (4, 256, 256), expert_type),
+            "ffn_up_exps": _tensor(f"{prefix}.ffn_up_exps.weight", (4, 256, 256), expert_type),
+            "ffn_down_exps": _tensor(f"{prefix}.ffn_down_exps.weight", (4, 256, 256), expert_type),
+            "ffn_gate_shexp": _tensor(f"{prefix}.ffn_gate_shexp.weight", (256, 256), GGMLQuantizationType.Q8_0),
+            "ffn_up_shexp": _tensor(f"{prefix}.ffn_up_shexp.weight", (256, 256), GGMLQuantizationType.Q8_0),
+            "ffn_down_shexp": _tensor(f"{prefix}.ffn_down_shexp.weight", (256, 256), GGMLQuantizationType.Q8_0),
         }
     )
     return tensors
@@ -1496,9 +1518,9 @@ def _synthetic_moe_model_map(
     config = _config((LINEAR_ATTENTION,))
     object.__setattr__(config, "architecture", "qwen35moe")
     root = {
-        "token_embedding": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
-        "output_norm": _tensor("output_norm.weight", (8,)),
-        "lm_head": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
+        "token_embedding": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
+        "output_norm": _tensor("output_norm.weight", (256,)),
+        "lm_head": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
     }
     layers = tuple(
         Qwen35GGUFLayerMap(
@@ -1555,13 +1577,13 @@ def test_rank2_dense_iq3_xxs_is_refused_not_silently_supported():
 
     config = _config((LINEAR_ATTENTION,))
     root = {
-        "token_embedding": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
-        "output_norm": _tensor("output_norm.weight", (8,)),
-        "lm_head": _tensor("token_embd.weight", (11, 8), GGMLQuantizationType.Q8_0),
+        "token_embedding": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
+        "output_norm": _tensor("output_norm.weight", (256,)),
+        "lm_head": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
     }
     tensors = dict(_linear_layer_tensors(0))
     tensors["ffn_gate"] = _tensor(
-        "blk.0.ffn_gate.weight", (5, 8), GGMLQuantizationType.IQ3_XXS
+        "blk.0.ffn_gate.weight", (256, 256), GGMLQuantizationType.IQ3_XXS
     )
     dense_iq3_map = Qwen35GGUFModelMap(
         config=config,
@@ -1582,3 +1604,187 @@ def test_rank2_dense_iq3_xxs_is_refused_not_silently_supported():
     assert "rank-3" in refusals[0].reason
     with pytest.raises(Qwen35GGUFAdmissionError):
         report.raise_for_errors()
+
+
+# ---------------------------------------------------------------------------
+# U1 review repair 3: admission binds the concrete backend and shape/repack
+# materializability prerequisites; all failures aggregate before allocation
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_backend_gets_no_certificate():
+    """A syntactically free-form backend string is not registration evidence:
+    admission only certifies concrete registered hardware backend keys."""
+
+    report_or_error = None
+    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+        report_or_error = preflight_qwen35_gguf_artifact(
+            _synthetic_model_map(), backend="nonexistent"
+        )
+    assert report_or_error is None
+    assert "nonexistent" in str(excinfo.value)
+    assert "backend" in str(excinfo.value).lower()
+    # The cpu_reference package is not a GGUF device materialization backend.
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        preflight_qwen35_gguf_artifact(_synthetic_model_map(), backend="cpu_reference")
+
+
+def test_registered_backend_keys_are_the_concrete_admission_surface():
+    from hipengine.kernels.backends import CUDA_BACKEND_TARGET_ARCH, HIP_BACKEND_TARGET_ARCH
+
+    for backend in ("hip_gfx1100", "hip_gfx1151", "cuda_sm120a"):
+        report = preflight_qwen35_gguf_artifact(
+            _synthetic_model_map(),
+            backend=backend,
+            operations=(QWEN35_GGUF_OP_AR_DECODE_C1,),
+        )
+        assert report.backend == backend
+        assert report.supported, report.render_refusals()
+
+
+def test_unmaterializable_q6_head_shape_is_refused_before_allocation(monkeypatch, tmp_path):
+    """A Q6_K head of shape (257, 256) with decode_repack=True plans a T16
+    resident that repack_gguf_q6_k_tile16 rejects (N % 16 != 0). The preflight
+    must aggregate that refusal BEFORE the loader allocates anything."""
+
+    from tests._qwen35_gguf_fixture import (
+        fixture_metadata,
+        linear_attention_layer_slots,
+        write_qwen35_gguf,
+    )
+    from hipengine.loading import materialize as host_materialize
+    from hipengine.loading import qwen35_gguf_materialize as loader
+    from hipengine.loading.gguf import GGUFReader
+    from hipengine.quant.gguf import GGMLQuantizationType
+
+    tensors = [
+        ("token_embd.weight", (257, 256), GGMLQuantizationType.Q6_K),
+        ("output_norm.weight", (256,), GGMLQuantizationType.F32),
+    ]
+    tensors.extend(linear_attention_layer_slots(0, projection_type=GGMLQuantizationType.Q4_K))
+    path = tmp_path / "q6-head-257.gguf"
+    write_qwen35_gguf(path, tensors, fixture_metadata(1))
+
+    reader = GGUFReader(path)
+    model_map = build_qwen35_gguf_tensor_map(reader.info)
+    report = preflight_qwen35_gguf_artifact(
+        model_map,
+        backend="hip_gfx1100",
+        file_type_stamp=reader.info.file_type_name,
+        decode_repack=True,
+    )
+    assert report.supported is False
+    refusals = [u for u in report.unsupported if u.slot_path == "root.lm_head"]
+    assert refusals, "misaligned T16 head plan was not refused"
+    assert all(u.stage == "planner_refused" for u in refusals)
+    assert "tile-aligned" in refusals[0].reason
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        report.raise_for_errors()
+
+    # Loader-level: the refusal happens before ANY device allocation (the old
+    # behavior failed inside repack after earlier root allocations).
+    sentinel = _AllocationSentinel("allocator invoked before T16 alignment refusal")
+    monkeypatch.setattr(loader, "malloc", sentinel)
+    monkeypatch.setattr(host_materialize, "malloc", sentinel)
+    with pytest.raises(Qwen35GGUFAdmissionError) as excinfo:
+        materialize_qwen35_gguf_weights(str(path), backend="hip_gfx1100", decode_repack=True)
+    assert sentinel.calls == []
+    assert "root.lm_head" in str(excinfo.value)
+
+
+def test_misaligned_pack8_projection_is_refused_before_allocation():
+    """Same aggregate-before-allocation contract for the Q4 pack8 tile check:
+    a hand-built map whose ffn_up output width breaks pack8 alignment is
+    refused by the allocation-accounting planner inside the preflight."""
+
+    from types import MappingProxyType
+
+    config = _config((LINEAR_ATTENTION,))
+    root = {
+        "token_embedding": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
+        "output_norm": _tensor("output_norm.weight", (256,)),
+        "lm_head": _tensor("token_embd.weight", (32, 256), GGMLQuantizationType.Q8_0),
+    }
+    tensors = dict(_linear_layer_tensors(0))
+    # out=300 breaks pack8 tile alignment (out % 8 != 0); the payload bytes are
+    # irrelevant because the refusal fires in the metadata accounting stage.
+    tensors["ffn_up"] = _tensor(
+        "blk.0.ffn_up.weight", (300, 256), GGMLQuantizationType.Q4_K
+    )
+    misaligned_map = Qwen35GGUFModelMap(
+        config=config,
+        root_tensors=MappingProxyType(root),
+        layers=(
+            Qwen35GGUFLayerMap(
+                layer_id=0,
+                layer_type=LINEAR_ATTENTION,
+                tensors=MappingProxyType(tensors),
+            ),
+        ),
+        validation=None,
+    )
+    report = preflight_qwen35_gguf_artifact(
+        misaligned_map,
+        backend="hip_gfx1100",
+        decode_repack=False,
+    )
+    assert report.supported is False
+    refusals = [u for u in report.unsupported if u.slot_path == "layers.0.ffn_up"]
+    assert refusals and all(u.stage == "planner_refused" for u in refusals)
+    assert "tile-aligned" in refusals[0].reason
+    with pytest.raises(Qwen35GGUFAdmissionError):
+        report.raise_for_errors()
+
+
+def test_coverage_families_are_registered_consumers_not_just_valid_keys():
+    """Syntactically valid four-axis keys are not registration evidence: the
+    consumer families named by the certified coverage records must be
+    registrable through the production registrars (the same functions the
+    backend package and the runtime dispatcher call), and land in the
+    registry under the exact four-axis keys the records name."""
+
+    iq_gemv = pytest.importorskip(
+        "hipengine.kernels.hip_gfx1100.quant.gguf_iq_gemv",
+        reason="hip_gfx1100 IQ GEMV package not importable on this host",
+    )
+    dense_gemv = pytest.importorskip(
+        "hipengine.kernels.hip_gfx1100.linear.dense_gemv",
+        reason="hip_gfx1100 dense GEMV package not importable on this host",
+    )
+    # Test isolation restores the collection-time registry baseline after each
+    # test, so re-run the production registrars (idempotently: skip keys that
+    # are already registered) exactly as the backend package / runtime
+    # dispatcher would.
+    from hipengine.kernels.registry import DuplicateKernelError
+
+    for registrar in (
+        iq_gemv.register_gguf_iq_gemv_kernels,
+        dense_gemv.register_dense_gemv_kernels,
+    ):
+        try:
+            registrar(replace=False)
+        except DuplicateKernelError:
+            pass
+    from hipengine.kernels.registry import KernelKey, registered_keys
+
+    registered = set(registered_keys())
+    for record in CERTIFIED_OPERATION_COVERAGE:
+        if record.kernel_quant is None or record.kernel_variant is None:
+            # Resolved from the resident/row count by the runtime dispatcher.
+            continue
+        key = KernelKey(
+            "hip_gfx1100",
+            record.kernel_layer,
+            record.kernel_quant,
+            record.kernel_variant,
+        )
+        assert key in registered, (
+            f"coverage record names an unregistered consumer: {key} "
+            f"(operation={record.operation} role={record.role_class})"
+        )
+    # And the IQ3_XXS selected-expert family named by repair 2 is genuinely
+    # registered under moe_linear.
+    assert any(
+        key.layer == "moe_linear" and key.quant == "gguf_iq3_xxs"
+        for key in registered
+    )

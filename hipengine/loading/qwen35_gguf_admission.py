@@ -69,6 +69,11 @@ from hipengine.loading.qwen35_gguf_materialize import (
     Qwen35GGUFWeightSpec,
     gguf_decode_repack_enabled,
     plan_qwen35_gguf_weight_spec,
+    planned_qwen35_gguf_weight_allocation_nbytes,
+)
+from hipengine.kernels.backends import (
+    CUDA_BACKEND_TARGET_ARCH,
+    HIP_BACKEND_TARGET_ARCH,
 )
 from hipengine.loading.qwen35_gguf_nextn import Qwen35GGUFNextNMap
 from hipengine.loading.qwen35_gguf_policy import (
@@ -680,6 +685,15 @@ def _coverage_for(
     return _COVERAGE_INDEX.get((operation, role_class, layout))
 
 
+# Concrete hardware backend keys that own GGUF consumer metadata. This is the
+# same registry surface ``backend_package_capability`` /
+# ``load_backend_kernel_package`` reject unknown backends against; checking it
+# here is pure metadata (no backend-package import, no device query).
+_KNOWN_HARDWARE_BACKEND_KEYS: frozenset[str] = frozenset(
+    (*HIP_BACKEND_TARGET_ARCH, *CUDA_BACKEND_TARGET_ARCH)
+)
+
+
 # ---------------------------------------------------------------------------
 # Preflight report
 # ---------------------------------------------------------------------------
@@ -875,6 +889,19 @@ def preflight_qwen35_gguf_artifact(
     else:
         decode_repack = bool(decode_repack)
 
+    backend_key = str(backend)
+    if backend_key not in _KNOWN_HARDWARE_BACKEND_KEYS:
+        # A syntactically valid request is not registration evidence: only
+        # concrete registered hardware backend keys own GGUF consumer
+        # metadata, so an unknown backend can never yield a positive
+        # certificate. Fail closed before any per-slot planning.
+        raise Qwen35GGUFAdmissionError(
+            "unknown GGUF admission backend "
+            f"{backend_key!r}; expected one of: "
+            f"{', '.join(sorted(_KNOWN_HARDWARE_BACKEND_KEYS))}. No certified "
+            "consumer metadata exists for unregistered backends."
+        )
+
     requested = tuple(dict.fromkeys(str(operation) for operation in operations))
     unknown_ops = tuple(op for op in requested if op not in _KNOWN_OPERATIONS)
     if unknown_ops:
@@ -1011,6 +1038,13 @@ def preflight_qwen35_gguf_artifact(
                 contract_f32_linear=contraction,
                 **plan_flags,
             )
+            # Shape/dtype/repack prerequisites: the planned resident must have
+            # computable, tile-aligned device allocations (the same contracts
+            # the actual repack and allocation-accounting routines enforce),
+            # so a misaligned plan (e.g. a Q6_K T16 head whose N is not a
+            # multiple of 16) is refused HERE instead of after earlier root
+            # allocations during materialization.
+            planned_qwen35_gguf_weight_allocation_nbytes(spec)
         except ValueError as error:
             for operation in applicable_ops:
                 unsupported.append(
