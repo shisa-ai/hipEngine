@@ -26,8 +26,9 @@ class GGUFEmbeddingDispatch:
     abi: str
 
 
-_RAW_EMBEDDING_QUANTS = frozenset(
-    {"gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0"}
+from hipengine.loading.qwen35_gguf_consumer_surface import (
+    RAW_EMBEDDING_QUANTS as _RAW_EMBEDDING_QUANTS,
+    resolve_embedding_consumer_contract,
 )
 
 
@@ -38,22 +39,8 @@ def resolve_gguf_embedding_dispatch(
     backend: str | None = None,
 ) -> GGUFEmbeddingDispatch:
     resolved_backend = backend or getattr(weight, "backend", "hip_gfx1100")
-    if output_dtype != GGUF_EMBEDDING_OUTPUT_BF16:
-        raise ValueError(f"unsupported GGUF embedding output dtype {output_dtype!r}")
-    if weight.spec.layout == LAYOUT_RAW_GGUF and weight.spec.quant_key in _RAW_EMBEDDING_QUANTS:
-        return GGUFEmbeddingDispatch(
-            KernelKey(resolved_backend, "embedding", weight.spec.quant_key, "lookup_bf16_out"),
-            "raw",
-        )
-    if weight.spec.layout == LAYOUT_DENSE_BF16:
-        return GGUFEmbeddingDispatch(
-            KernelKey(resolved_backend, "embedding", "bf16", "lookup_bf16_out"),
-            "dense_bf16",
-        )
-    raise ValueError(
-        "unsupported GGUF embedding dispatch: "
-        f"layout={weight.spec.layout!r}, quant={weight.spec.quant_key!r}, output={output_dtype!r}"
-    )
+    contract = resolve_embedding_consumer_contract(weight.spec.layout, weight.spec.quant_key, output_dtype)
+    return GGUFEmbeddingDispatch(contract.key(resolved_backend), contract.abi)
 
 
 def launch_gguf_embedding(
