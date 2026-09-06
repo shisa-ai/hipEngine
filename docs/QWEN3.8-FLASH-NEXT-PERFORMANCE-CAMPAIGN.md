@@ -53,6 +53,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-GR refresh (2026-09-06 UTC):** twelve phase captures at clean
+`9efbf6d23` pass100% coverage, repeated decode/state/lifecycle and matched
+Vulkan decode-root checks. Four-category p4096 prefill costs are FFN14.407s,
+non-GR linear5.545s, complete GR4.267s, QSA1.923s and GDN0.786s.
+Against the explicitly reused pinned Vulkan profile, the first three gaps
+are3.295x/5.440x/2.499x. Their ranking is unchanged; QSA remains the leading
+decode gap at16.969ms versus3.161ms. These are diagnostic device costs,
+not a new throughput comparison or a causal before/after speedup.
+[Generated tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
+and [packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json).
+
 **GR up wave-scale production (2026-09-06 UTC):** full12-case A/B at
 clean `d692f8f50` preserves all72 trajectories and improves weighted prefill
 156.017->156.711 /153.748->154.285 /143.419->143.908 tok/s
@@ -61,7 +72,7 @@ complete-request wall; elapsed2002.339s (33m22s). Decode remains effectively
 flat; no intrinsic decode win is claimed. Production binds the existing
 rows>256/four-branch exact composite; strict retains the parent.
 [Promotion packet](../benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json).
-The post-Q8 family snapshot below is explicitly **pre-GR promotion** pending refresh.
+The post-Q8 family snapshot below is historical; the post-GR refresh above supersedes it.
 
 **GR up wave-scale kernel screen (2026-09-06 UTC):** reuse the exact Q8
 wave-uniform scale-address helper inside the operation-complete GR
@@ -78,9 +89,8 @@ above covers only existing rows>256 composite use.
 lifecycle. Reuse the pinned Vulkan profile explicitly, not as newly measured
 throughput. Four-category p4096 non-FFN/non-GR linear is now5.551s;
 FFN14.445s and GR4.362s remain the other large prefill owners. Decode QSA
-is16.982ms. Rank is unchanged; next screen is exact wave-uniform scale
-addressing in the GR up+sigmoid+mean composite, preserving both gate and
-mixed outputs before model admission. No new tiling or numerical widening.
+is16.982ms. Its proposed GR wave-scale screen has since passed and been
+promoted, followed by the post-GR refresh above. No numerical widening.
 [Updated generated table](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots)
 and [source packet](../benchmarks/results/2026-09-05-framework-qwen4exp-post-q8-family.json).
 

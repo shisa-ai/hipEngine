@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-06 UTC post-GR family refresh] Current-HE12-phase capture at9efbf6d23 passes100% coverage, matched decode roots and zero final ownership; p4096 complete GR4.362->4.267s (-2.18% snapshot delta, not causal A/B), FFN14.407s, non-GR linear5.545s. Prior pinned Vulkan profile explicitly reused; generated starting/current and gap tables refreshed. `benchmarks/results/2026-09-06-framework-qwen4exp-post-gr-family.json`.
+
 - [2026-09-06 UTC Framework GR wave-scale production] Exact normal-model12-case A/B prefill156.017->156.711 (+0.445%),153.748->154.285 (+0.350%),143.419->143.908 (+0.341%) at512/1K/4K;72/72 exact, every request wall improves,33m22s elapsed. Existing rows>256 composite promoted, strict fallback retained; no intrinsic decode claim. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-production.json`.
 
 - [2026-09-06 UTC Framework GR wave-scale screen] Actual layer0 rows512 attention/FFN up+sigmoid+mean3.338->3.234ms (1.032x) /3.331->3.207ms (1.039x); independent layer4 confirms1.036/1.032x. Exact gate/mixed bits,20 tests,72 VGPR/zero scratch, both orders positive at512; small-row reversals disclosed, model admission pending. `benchmarks/results/2026-09-06-framework-qwen4exp-gr-wave-scale.json`.
