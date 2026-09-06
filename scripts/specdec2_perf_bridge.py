@@ -46,6 +46,10 @@ from hipengine.benchmark.provenance import (  # noqa: E402
 )
 from hipengine.core.memory import memory_stats  # noqa: E402
 from hipengine.generation.registry import GenerationRequest  # noqa: E402
+from hipengine.speculative.serving import (  # noqa: E402
+    SpeculativeMTPStaticEligibility,
+    SpeculativeMTPStaticState,
+)
 from hipengine.kernels.backends import HIP_BACKEND_TARGET_ARCH  # noqa: E402
 
 DEFAULT_MODEL = Path("/models/gguf/Qwen3.8-27B-Q4_K_S.gguf")
@@ -604,13 +608,46 @@ def _telemetry_payload(output: Any) -> dict[str, Any]:
     }
 
 
-def _request(prompt: str, max_tokens: int) -> GenerationRequest:
+def _diagnostic_static_eligibility(budget: int, *, max_realized_group_rows: int = 8) -> SpeculativeMTPStaticEligibility:
+    """Screening-only eligibility mirroring the c1c8 bench diagnostic.
+
+    Explicitly unqualified (never automatic), bounded to the requested
+    candidate budget and the diagnostic max width. This is the only mechanism
+    the better-MTP campaign uses to measure sub-capacity cells (C3/K3, C5/K3)
+    through the bridge; it is not production admission.
+    """
+
+    key = {
+        "candidate_budget": int(budget),
+        "max_realized_group_rows": int(max_realized_group_rows),
+    }
+    digest = hashlib.sha256(
+        json.dumps(key, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    return SpeculativeMTPStaticEligibility(
+        state=SpeculativeMTPStaticState.SPECULATIVE_CAPABLE,
+        reason="diagnostic_physical_gguf_mtp",
+        max_candidate_count=int(budget),
+        max_realized_group_rows=int(max_realized_group_rows),
+        automatic_eligible=False,
+        strict_fallback_key="gguf_target_ar",
+        evidence_key=f"gguf-c1-c{max_realized_group_rows}-generation2-diagnostic",
+        evidence_fingerprint=f"sha256:{digest}",
+    )
+
+
+def _request(
+    prompt: str,
+    max_tokens: int,
+    eligibility: SpeculativeMTPStaticEligibility | None = None,
+) -> GenerationRequest:
     return GenerationRequest(
         prompts=(str(prompt),),
         max_tokens=int(max_tokens),
         temperature=0.0,
         top_p=1.0,
         ignore_eos=False,
+        speculative_mtp_static_eligibility=eligibility,
     )
 
 
@@ -1002,90 +1039,6 @@ def _summarize(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 @contextmanager
-def _install_diagnostic_plan(llm: Any, *, max_realized_group_rows: int = 8) -> None:
-    """Screening-only plan resolver mirroring the c1c8 server bench diagnostic.
-
-    Admits only greedy/D24/context<=95 groups at width <= the diagnostic max,
-    marks reason ``diagnostic_physical_gguf_mtp``, and never sets
-    ``automatic_eligible``. This is the explicitly unqualified test-candidate
-    path the better-MTP campaign uses to profile sub-capacity cells; it is not
-    production admission.
-    """
-
-    import hashlib
-    import json as _json
-    from types import MethodType
-
-    width = max(1, int(max_realized_group_rows))
-
-    def resolve(self: Any, **kwargs: Any) -> dict[str, Any]:
-        kwargs.setdefault(
-            "candidate_budget",
-            int(getattr(self, "speculative_candidate_budget", 2)),
-        )
-        kwargs.setdefault("max_realized_group_rows", width)
-        rows = int(kwargs["realized_group_rows"])
-        budget = int(kwargs.get("candidate_budget", 2))
-        admitted = bool(
-            1 <= rows <= width
-            and budget in {1, 2, 3}
-            and kwargs["sampling_mode"] == "greedy_fast"
-            and int(kwargs["context_tokens"]) <= 95
-            and int(kwargs["output_horizon_tokens"]) == 24
-            and kwargs["memory_fit"]
-        )
-        key = {
-            "realized_group_rows": rows,
-            "context_tokens": int(kwargs["context_tokens"]),
-            "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
-            "candidate_budget": budget,
-        }
-        digest = hashlib.sha256(
-            _json.dumps(key, sort_keys=True).encode("utf-8")
-        ).hexdigest()
-        reason = "diagnostic_physical_gguf_mtp" if admitted else "diagnostic_scope_miss"
-        static_key = {
-            "candidate_budget": budget,
-            "sampling_mode": str(kwargs["sampling_mode"]),
-            "context_tokens": int(kwargs["context_tokens"]),
-            "output_horizon_tokens": int(kwargs["output_horizon_tokens"]),
-            "memory_fit": bool(kwargs["memory_fit"]),
-            "max_realized_group_rows": width,
-        }
-        static_digest = hashlib.sha256(
-            _json.dumps(static_key, sort_keys=True).encode("utf-8")
-        ).hexdigest()
-        return {
-            "schema_version": 1,
-            "plan_fingerprint": f"sha256:{digest}",
-            "key": key,
-            "admitted": admitted,
-            "selected_route": "speculative_mtp" if admitted else "default",
-            "selected_candidate_count": budget if admitted else 0,
-            "reason": reason,
-            "strict_fallback_key": "gguf_target_ar",
-            "evidence_key": f"gguf-c1-c{width}-generation2-diagnostic",
-            "evidence_fingerprint": f"sha256:{static_digest}",
-            "evidence_artifacts": [],
-            "automatic_eligible": False,
-            "static_eligibility": {
-                "state": "speculative_capable" if admitted else "permanent_ar",
-                "eligible": admitted,
-                "reason": reason,
-                "max_candidate_count": budget if admitted else 0,
-                "max_realized_group_rows": width if admitted else 0,
-                "automatic_eligible": False,
-                "strict_fallback_key": "gguf_target_ar",
-                "evidence_key": f"gguf-c1-c{width}-generation2-diagnostic",
-                "evidence_fingerprint": f"sha256:{static_digest}",
-                "evidence_artifacts": [],
-            },
-        }
-
-    llm.resolve_speculative_mtp_serving_plan = MethodType(resolve, llm)
-
-
-@contextmanager
 def _temporary_environment(updates: Mapping[str, str | None]) -> Iterator[None]:
     previous = {key: os.environ.get(key) for key in updates}
     try:
@@ -1364,8 +1317,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     max_sequence_length=int(args.max_sequence_length),
                     speculative_candidate_budget=int(budget),
                 )
-                if args.diagnostic_plan:
-                    _install_diagnostic_plan(llm)
+                diag_eligibility = (
+                    _diagnostic_static_eligibility(int(budget))
+                    if args.diagnostic_plan
+                    else None
+                )
                 ledger: _StageLedger | None = None
                 load_row: dict[str, Any] | None = None
                 try:
@@ -1411,6 +1367,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         warm_request = _request(
                             warm_prompt,
                             min(int(args.max_tokens), 5),
+                            diag_eligibility,
                         )
                         for concurrency in args.concurrency:
                             for arm in ARMS:
@@ -1459,6 +1416,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                             request = _request(
                                 str(prompt["rendered_prompt"]),
                                 int(args.max_tokens),
+                                diag_eligibility,
                             )
                             prompt_tokens = tuple(
                                 int(token)
