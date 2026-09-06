@@ -62,7 +62,12 @@ def _patch_depth_bound(depth: int) -> list[str]:
 
 
 def _inject_k4_evidence_row(width: int, budget: int) -> str:
-    """Append a diagnostic K4 clone of the registered C8/K3 evidence row."""
+    """Append a diagnostic K4 clone of the registered C8/K3 evidence row.
+
+    The model plugin is a frozen dataclass instance registered at import
+    time, so the patch must land on that instance (object.__setattr__); a
+    class-attribute write is invisible to the registry's resolver.
+    """
 
     import hipengine.models.qwen35 as models_mod
 
@@ -87,8 +92,11 @@ def _inject_k4_evidence_row(width: int, budget: int) -> str:
         ),
         automatic_eligible=False,
     )
-    models_mod.Qwen35GGUFModel.speculative_mtp_serving_evidence = (
-        models_mod.Qwen35GGUFModel.speculative_mtp_serving_evidence + (row,)
+    plugin = models_mod.QWEN35_GGUF
+    object.__setattr__(
+        plugin,
+        "speculative_mtp_serving_evidence",
+        plugin.speculative_mtp_serving_evidence + (row,),
     )
     return row.evidence_key
 
