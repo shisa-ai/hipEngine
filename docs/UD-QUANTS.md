@@ -41,7 +41,11 @@ Existing multi-engine evidence:
 Reproduction: [executable analysis appendix](UD-QUANTS-REPRO.md),
 [metadata/accounting snapshot](UD-QUANTS-REVIEW.json) (historical, schema
 implicit v1), [versioned audit snapshot](UD-QUANTS-REVIEW-v2.json) (schema
-v2, reproducible from the documented CLI command), and
+v2, current: artifact-qualified policy identity, reproducible from the
+documented CLI command),
+[pre-F5 audit snapshot](UD-QUANTS-REVIEW-v2-pre-f5.json) (byte-frozen
+historical v2, stamp-only policy semantics; see
+[UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md) "Snapshot history"), and
 [artifact identity pins](UD-QUANTS-U0-IDENTITY.json).
 
 ## 1. Decisions And Findings
@@ -675,8 +679,15 @@ loader scanner/model-map modules are references, not automatic edits.
   `tests/test_qwen35_gguf_policy_capability_parity.py`.
 - [x] Reproduce this snapshot and version the repaired report schema.
   `docs/UD-QUANTS-REVIEW-v2.json` (`schema_version` 2) is the exact CLI output
-  over the three real files; regeneration commands are in
-  [UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md).
+  over the three real files; regeneration commands and the snapshot's
+  producing source revision are in
+  [UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md). The snapshot was refreshed at the
+  UD-U1 F5 repair so `fp16_recurrent_state_default_on` reports the
+  artifact-qualified policy identity (each backend lane carries
+  `artifact_preset_key`); the earlier stamp-only snapshot is preserved
+  byte-frozen as [UD-QUANTS-REVIEW-v2-pre-f5.json](UD-QUANTS-REVIEW-v2-pre-f5.json).
+  Allocation accounting is identical between the two (the refresh changed no
+  planned byte or route).
 
 Run: `.venv/bin/python -m pytest tests/test_scripts_gguf_quant_route_audit.py
 tests/test_loading_qwen35_gguf_policy.py -q`.
@@ -999,12 +1010,24 @@ inventory): `_resolve_gguf_private_c1_small_weight_arena`,
   policy mirror) carries the same artifact binding, and the quant-route
   audit reports `artifact_preset_key` and an artifact-qualified
   `fp16_recurrent_state_default_on`, still resolving capabilities from
-  backend sources without importing a backend package.
+  backend sources without importing a backend package. Evidence follow-up
+  (accepted in the round-5 static review as the sole remaining item): the
+  schema-v2 snapshot [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) was
+  regenerated at the F5 source revision so the stored evidence matches the
+  repaired audit — the exact-UD K_S file on gfx1151 now reports the FP16
+  default `false` with `artifact_preset_key: gguf_ud_q4_k_s`, the plain K_M
+  control keeps `null`/`false`; the pre-F5 snapshot is preserved byte-frozen
+  as [UD-QUANTS-REVIEW-v2-pre-f5.json](UD-QUANTS-REVIEW-v2-pre-f5.json)
+  (snapshot history and producing revisions in
+  [UD-QUANTS-REPRO.md](UD-QUANTS-REPRO.md)).
 
 Re-review status after round 5: F2, F6, the Q5-planar regression repair, and
-F4 accepted; F5 repaired here and awaiting re-review; F1 (native-row
-execution dependencies) and F3 (concrete backend/dtype consumer substance)
-remain pending. U1 remains open.
+F4 accepted; F5's named stamp-only bypass closure was accepted in static
+review at `c5b9588b8` (172 focused tests pass), with the snapshot-evidence
+mismatch repaired as the follow-up above (current snapshot regenerated at the
+F5 source revision; pre-F5 snapshot frozen); F1 (native-row execution
+dependencies) and F3 (concrete backend/dtype consumer substance) remain
+pending. U1 remains open.
 
 ### U2. Independent Codec Oracles
 
