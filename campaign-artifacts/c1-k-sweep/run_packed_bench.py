@@ -15,8 +15,11 @@ Everything after the injection is the unmodified canonical bench protocol.
 """
 from __future__ import annotations
 
+import faulthandler
 import runpy
 import sys
+import threading
+import traceback
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -58,6 +61,22 @@ def main() -> None:
 
     import atexit
 
+    def _dump_stackshook(exc_type, exc, tb):
+        traceback.print_exception(exc_type, exc, tb)
+        # The close-hang diagnosis: when llm.close() times out waiting for the
+        # engine service shutdown command, capture every live thread's stack so
+        # the stuck frame is visible in the log.
+        if "command timed out" in str(exc):
+            print("[packed-harness] close timeout: dumping all thread stacks", flush=True)
+            for tid, frame in sys._current_frames().items():
+                name = next(
+                    (t.name for t in threading.enumerate() if t.ident == tid),
+                    f"tid-{tid}",
+                )
+                print(f"--- thread {name} (ident={tid})", flush=True)
+                traceback.print_stack(frame, file=sys.stdout)
+
+    sys.excepthook = _dump_stackshook
     atexit.register(
         lambda: print(
             f"[packed-harness] packed_target_calls={len(calls)}", flush=True
