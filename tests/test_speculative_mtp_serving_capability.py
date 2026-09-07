@@ -58,7 +58,10 @@ def _key(**changes) -> SpeculativeMTPServingKey:
 
 
 def _evidence() -> SpeculativeMTPServingEvidence:
-    return Qwen35GGUFModel().speculative_mtp_serving_evidence[0]
+    return next(
+        row for row in Qwen35GGUFModel().speculative_mtp_serving_evidence
+        if row.evidence_key == "qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0"
+    )
 
 
 def test_qwen38_q4km_strict_c1_b3_capacity4_realized_singleton_is_automatic() -> None:
@@ -292,7 +295,15 @@ def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> No
         "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
     )
 
-    for realized_rows in range(1, 8):
+    singleton = resolve_speculative_mtp_serving_plan(
+        evidence, key=replace(key, realized_group_rows=1),
+    )
+    assert singleton.admitted is True
+    assert singleton.automatic_eligible is False
+    assert singleton.evidence_key == "qwen38-q4km-gfx1100-production-bf16-c1-k3-d24"
+
+    # C1 has separate capacity-8 evidence; widths 2-7 do not.
+    for realized_rows in range(2, 8):
         rejected = resolve_speculative_mtp_serving_plan(
             evidence,
             key=replace(key, realized_group_rows=realized_rows),

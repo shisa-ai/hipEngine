@@ -10,6 +10,7 @@ without touching those uses.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -104,6 +105,34 @@ def _adapter(*, backend: str, capacity: int, rid: int, eligibility) -> Qwen35GGU
     adapter._disabled_requests = set()
     adapter._active_claims = None
     return adapter
+
+
+@pytest.mark.parametrize("screening", [False, True])
+@pytest.mark.parametrize("invalid", ["missing", "singleton", "depth"])
+def test_claims_recheck_each_requests_safety_envelope(monkeypatch, screening, invalid) -> None:
+    if screening:
+        monkeypatch.setenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", "1")
+    else:
+        monkeypatch.delenv("HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS", raising=False)
+    adapter = _adapter(
+        backend="hip_gfx1100", capacity=8, rid=7,
+        eligibility=_wide_eligibility(7, rows=2),
+    )
+    adapter._static_eligibility_by_request[8] = _wide_eligibility(8, rows=2)
+    plan = SimpleNamespace(
+        request_ids=(7, 8), speculative_request_ids=(7, 8), candidate_counts=(3, 3),
+    )
+    assert adapter.claims_fit(plan) is True
+    if invalid == "missing":
+        del adapter._static_eligibility_by_request[8]
+    elif invalid == "singleton":
+        adapter._static_eligibility_by_request[8] = _c1_eligibility(8)
+    else:
+        adapter._static_eligibility_by_request[8] = replace(
+            _wide_eligibility(8, rows=2), max_candidate_count=2,
+        )
+    assert adapter.claims_fit(plan) is False
+    assert adapter._states == {}
 
 
 def test_physical_c1_route_flag_is_package_owned() -> None:

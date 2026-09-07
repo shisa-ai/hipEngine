@@ -1928,6 +1928,17 @@ class Qwen35GGUFMTP2Adapter:
             if int(value) > 0
         )
         realized_depth = max(candidate_counts, default=self.candidate_budget)
+        counts = candidate_counts or (self.candidate_budget,) * len(request_ids)
+        # A listed performance cell does not widen any request's safety row.
+        # Recheck at the final claims boundary, including screening requests.
+        if len(counts) != len(request_ids) or any(
+            (row := self._static_eligibility(rid)) is None
+            or not row.eligible
+            or len(request_ids) > int(row.max_realized_group_rows)
+            or count > min(self.candidate_budget, int(row.max_candidate_count))
+            for rid, count in zip(request_ids, counts)
+        ):
+            return False
         physical_singleton = bool(
             len(request_ids) == 1
             and (eligibility := self._static_eligibility(request_ids[0])) is not None
