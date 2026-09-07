@@ -66,7 +66,8 @@ binds to the actual role manifest instead:
   has no default F32-logits row for a supplied BF16 activation; an explicit
   F32 declaration must describe a real F32 input, not permission to fall back
   to BF16. Availability/ABI certificates do not grant profile authorization;
-  complete runtime-entry consumption and profile binding remain F1/F5.
+  native runtime-entry consumption is implemented in F1; integrated numerical
+  profile authorization remains the separate open F5 unit.
 
 UD dense consumers for Q3_K / IQ4_NL / IQ3_S / IQ3_XXS / IQ2_S and raw dense
 IQ4_XS do not exist until UD-U2..U5, so both published UD artifacts are
@@ -77,7 +78,7 @@ U6 resolves the draft operation set.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 import hashlib
 from typing import Iterable, Mapping
 
@@ -129,6 +130,7 @@ from hipengine.loading.qwen35_gguf_consumer_surface import (
     backend_gguf_consumer_layers,
     source_linear_dispatch_row,
 )
+from hipengine.loading.qwen35_gguf_execution import NATIVE_EXECUTION_ROLE_CLASSES
 from hipengine.loading.gguf_selected_contract import (
     RAW_SELECTED_CONSUMERS as _RAW_SELECTED_CONSUMERS,
     REPACKED_SELECTED_CONSUMERS as _REPACKED_SELECTED_CONSUMERS,
@@ -547,7 +549,8 @@ class Qwen35GGUFOperationCoverage:
                 config.ssm_conv_kernel,
             )
         elif self.role_class == "token_embedding":
-            consumer = resolve_embedding_consumer_contract(spec.layout, spec.quant_key)
+            consumer = resolve_embedding_consumer_contract(
+                spec.layout, spec.quant_key, rows=OPERATION_ROW_LIMITS[self.operation][0])
         elif self.role_class == "moe_router":
             consumer = resolve_router_consumer_contract(spec.layout, spec.quant_key, self.input_dtype)
         else:
@@ -922,6 +925,15 @@ def _certified_coverage() -> tuple[Qwen35GGUFOperationCoverage, ...]:
                 strict_fallback="linear F32-output dispatch rows",
             )
         )
+    # Native enqueue uses the same embedding, BF16-input full-logit head,
+    # and selected/router boundaries. Bind them under the native operation,
+    # with native row limits; do not borrow a caller-declared F32 head.
+    records.extend(replace(record, operation=QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS,
+                           rows_scope="rows_2_8_native")
+                   for record in tuple(records)
+                   if record.operation in {QWEN35_GGUF_OP_EMBEDDING_LOOKUP, QWEN35_GGUF_OP_LM_HEAD_F32_LOGITS}
+                   or (record.operation == QWEN35_GGUF_OP_AR_DECODE_ROWS
+                       and record.role_class in {"moe_router", "moe_experts"}))
     return tuple(records)
 
 
@@ -1080,9 +1092,7 @@ _OPERATION_ROLE_CLASSES: Mapping[str, frozenset[str]] = {
     QWEN35_GGUF_OP_AR_DECODE_ROWS: frozenset(
         {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
     ),
-    QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS: frozenset(
-        {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d"}
-    ),
+    QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS: NATIVE_EXECUTION_ROLE_CLASSES,
     QWEN35_GGUF_OP_AR_PREFILL: frozenset(
         {"projection", "recurrent_alpha_beta", "norm", "gdn_norm", "gdn_scalar", "conv1d", "moe_router", "moe_experts"}
     ),
@@ -2165,7 +2175,7 @@ def preflight_qwen35_gguf_artifact(
             except ValueError:
                 all_expert_quants[path] = "unqualified"
         lanes = int(model_map.config.expert_used_count)
-        if all_expert_quants and any(op in {QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL} for op in checked_ops) and lanes <= 0:
+        if all_expert_quants and any(op in {QWEN35_GGUF_OP_AR_DECODE_C1, QWEN35_GGUF_OP_AR_DECODE_ROWS, QWEN35_GGUF_OP_AR_PREFILL, QWEN35_GGUF_OP_AR_DECODE_NATIVE_ROWS} for op in checked_ops) and lanes <= 0:
             operation_scope_refusals.extend(checked_ops)
             unsupported.append(Qwen35GGUFUnsupportedOperation(
                 "model", "moe_experts", checked_ops[0], "-", None, "scope_refused",
@@ -2252,11 +2262,11 @@ def qwen35_gguf_native_row_binding_errors(resident_weights: object) -> tuple[str
     bytes (raw Q8_0), sole-T16 residents without any raw allocation, and
     dense-F32 residents (uncontracted plain alpha/beta) would be read as the
     wrong byte stream.  This check is pure host metadata over the actual
-    resident records - no device work - so the runner can enforce the actual
-    binding at native execution entry, before any state mutation or device
-    call.  Admission-side, callers that know they will run the native route
-    bind it before allocation via
-    ``materialize_qwen35_gguf_weights(requested_operations=...)``.
+    resident records, with no device work. This legacy diagnostic is NOT
+    execution authorization: native entries consume the complete F4 contract
+    through ``authorize_native_execution``, including embedding/head/MoE and
+    actual physical ownership. Known native routes are requested before
+    allocation through the session's ``execution_routes``.
     """
 
     config = getattr(resident_weights, "config", None)

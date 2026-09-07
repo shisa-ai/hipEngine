@@ -401,7 +401,9 @@ def resolve_linear_consumer_contract(
 RAW_EMBEDDING_QUANTS = frozenset({"gguf_q4_k", "gguf_q5_k", "gguf_q6_k", "gguf_q8_0"})
 
 
-def resolve_embedding_consumer_contract(layout: str, quant: str, output: str = "bf16") -> ConsumerContract:
+def resolve_embedding_consumer_contract(layout: str, quant: str, output: str = "bf16", *, rows: int = 1) -> ConsumerContract:
+    if int(rows) <= 0 or (layout == LAYOUT_DENSE_BF16 and int(rows) != 1):
+        raise ValueError("embedding rows unsupported by the registered lookup ABI (dense BF16 requires rows=1)")
     if output != "bf16":
         raise ValueError(f"unsupported GGUF embedding output dtype {output!r}")
     if layout == LAYOUT_RAW_GGUF and quant in RAW_EMBEDDING_QUANTS:

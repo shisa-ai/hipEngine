@@ -4,9 +4,10 @@ Last updated: 2026-09-07.
 Status: verified analysis and coder handoff; **U0 audit/identity/pinning
 complete** (CPU-only, including the startup-isolation review fix:
 `import hipengine` loads no GPU backend package), **U1 not accepted**:
-resident/repack prerequisites repaired pending independent review; invocation
-ABIs, certificate binding, execution closure, and profile authorization remain
-open. All work here is CPU-only; **no GPU validation**.
+resident/repack/NextN prerequisites and integrated F3/F4 invocation/certificate
+binding accepted after GDN geometry closure; F1 execution closure and native
+entry authorization implemented pending independent review; F5 integrated
+profile authorization remains OPEN. All work here is CPU-only; **no GPU validation**.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
 U0 audit/identity repair landed on the `ud-quants` branch (see
 [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
@@ -1129,14 +1130,14 @@ The real tiny-GGUF loader negative covers both full and filtered loads with
 zero payload reads or allocator calls. Exact test outcomes and the full review
 handoff are in the `ud-u1-resident-prerequisites` worklog entry.
 
-**Current status (resident/NextN prerequisites accepted; invocation repair pending independent review):**
+**Current status (resident/NextN prerequisites and integrated F3/F4 accepted after GDN geometry closure; F1 pending independent review):**
 
 | Finding | Status and remaining work |
 | --- | --- |
-| F1 | OPEN: loader/session operation dependency closure; native entry guards check alpha/beta, not embedding/head/MoE dependencies. |
+| F1 | Implemented pending review: additive native execution dependency closure, real session/engine → loader requests, F4 consumption at native eager/capture/replay/direct-layer entries, exact row/state/physical-owner gates. CPU structural evidence only; see the F1 section below. |
 | F2 | Bounded repair accepted: preserve the seven raw expert formats and rank-2 IQ3_XXS refusal. |
-| F3 | Shared production invocation owners and explicit selected-call intents implemented; pending review. C1/indexed/prefill auxiliary ABIs, GDN handoffs, native alpha/beta and ordered selected partners are represented without changing kernels or numerical defaults. |
-| F4 | Backend plus resolved invocation/partner identity now binds alongside actual residents; pending review. Independent required slots/calls and scope refusals prevent partial/filter/operation narrowing from promoting incomplete plans. |
+| F3 | Accepted after GDN geometry closure: shared production invocation owners and explicit selected-call intents. C1/indexed/prefill auxiliary ABIs, GDN handoffs, native alpha/beta and ordered selected partners are represented without changing kernels or numerical defaults. |
+| F4 | Accepted: backend plus resolved invocation/partner identity binds alongside actual residents. Independent required slots/calls and scope refusals prevent partial/filter/operation narrowing from promoting incomplete plans. |
 | F5 | Bounded identity-aware policy callers repaired; profile authorization OPEN. Actual LLM auto quant resolution can select the plain production profile for an unknown manifest; its binder sets FP16 state through the environment, bypassing the qualified default without a user FP16 override. |
 | F6 | Bounded repair accepted: retain preset-qualified identity in packed replay policy calls. |
 
@@ -1212,6 +1213,53 @@ units after review. No new entry guards, profile authorization, codec, kernel,
 math or performance result is claimed here. U2+ and published dense UD execution
 are not implemented; the pinned 18 K_M / 41 K_S planner-refusal inventories
 remain the expected default result.
+
+#### F1 execution closure and native-entry consumption — pending review
+
+`loading/qwen35_gguf_execution.py` declares the full native weight-consuming
+route, using the accepted linear/embedding/auxiliary and selected-call owners.
+Native operations now include embedding, general projections, recurrent
+auxiliaries, the BF16-input/F32-output head, router and ordered selected
+gate/up/down partners where present. A native-only materializer request adds
+to `DEFAULT_AR_OPERATIONS`; it cannot erase the ordinary required calls.
+`execution_routes=("native_rows",)` or `("native_graph",)` on the resident
+session is passed through the actual full-stack runner to the materializer.
+The generator's selected native batch path passes both routes explicitly.
+Default `("eager",)` preserves the separate existing c1/row-local/prefill scope.
+A later native request on eager-only residents refuses, rather than replanning
+after allocation.
+
+Before payload reads or device allocation, the loader qualifies every intended
+call and records its certificate. Publication also snapshots the actual resident
+views/aliases. This snapshot is not independent authority: native entries must
+consume the complete F4 certificate, rebind actual existing specs and caller
+operands without invoking the planner, and verify backend, qualified artifact
+identity, geometry, row domain, ordered selected partners and state storage.
+`step_rows_native`, `capture_native_rows_graph`, direct enqueue/native-layer
+entries and graph replay refuse missing, partial or stale contracts. Session
+entry checks occur before position publication, scratch preparation or device
+calls. Scratch extents, state non-overlap, row capacity and captured physical
+owners are binding. Graph replay cannot change rows, span role, context bound,
+resident contract or physical ownership behind a cached certificate.
+
+Unsupported combinations stay explicit: dense-BF16 multirow embedding (the
+registered leaf is singleton-only), native dense-F32 head with BF16 scratch,
+non-BF16 native alpha/beta, rows outside 2–8, non-BF16 native KV,
+unrepresented host/deferred or
+expert-sidecar adapters, and the accepted F4 selected-adapter/state restrictions.
+Known session-level misses refuse before loading; unanticipated later entry
+requests refuse before mutation/device work. The embedding runtime itself now
+uses the shared row predicate before registry resolution and refuses multirow
+BF16 before the singleton leaf; no row loop, numerical adapter or kernel was
+invented. Raw embedding still forwards rows.
+
+The new tests use real tiny GGUF files and mocked allocations/calls. They prove
+structural control/ABI properties, **not numerical or GPU certification**.
+F2/F6, repacks, NextN ordering, GDN geometry and F4 transfer gates are preserved
+by the affected CPU bundle. F5's integrated LLM profile-binder hole remains
+**OPEN**; this unit does not grant named-profile permission or change a profile,
+math, environment flag or numerical default. Exact validation and scope limits
+are recorded in the `ud-u1-f1-execution` worklog entry.
 
 ### U2. Independent Codec Oracles
 

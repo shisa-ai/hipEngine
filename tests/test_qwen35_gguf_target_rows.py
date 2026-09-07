@@ -260,7 +260,7 @@ def test_ud_q3_k_m_c2_native_rows_match_independent_c1_boundaries_and_logits(
     """Native indexed-state/attention/MoE rows must be full-logit exact."""
 
     with Qwen35GGUFResidentSession(
-        _MODEL,
+        _MODEL, execution_routes=("native_rows",),
         max_sequence_length=64,
         max_batch_size=2,
     ) as batch:
@@ -342,7 +342,7 @@ def test_ud_q3_k_m_c2_slot_prefill_then_native_decode_matches_c1(
 
     prompts = ((9707, 11, 220, 264), (11, 220, 264, 9707))
     with Qwen35GGUFResidentSession(
-        _MODEL,
+        _MODEL, execution_routes=("native_rows",),
         max_sequence_length=64,
         max_batch_size=2,
     ) as batch:
@@ -403,6 +403,7 @@ def test_ud_q3_k_m_c2_split_attention_after_prefill_matches_c1_full_logits(
         _MODEL,
         max_sequence_length=1280,
         max_batch_size=2,
+        execution_routes=("native_rows",),
     ) as batch:
         batch.select_prefill_quant("gguf_ud_q3_k_m")
         assert batch.runner is not None
@@ -453,6 +454,7 @@ def test_ud_q3_k_m_native_rows_c4_c8_match_independent_c1_full_logits(
         _MODEL,
         max_sequence_length=64,
         max_batch_size=rows,
+        execution_routes=("native_rows",),
     ) as batch:
         batch.select_prefill_quant("gguf_ud_q3_k_m")
         assert batch.runner is not None
@@ -496,6 +498,7 @@ def test_ud_q3_k_m_variable_short_slot_prefill_matches_independent_c1(
         _MODEL,
         max_sequence_length=256,
         max_batch_size=4,
+        execution_routes=("native_rows",),
     ) as batch:
         batch.select_prefill_quant("gguf_ud_q3_k_m")
         first_tokens = tuple(
@@ -539,6 +542,7 @@ def test_ud_q3_k_m_reclaim_compact_and_readmit_matches_c1_full_logits(
         _MODEL,
         max_sequence_length=64,
         max_batch_size=2,
+        execution_routes=("native_rows",),
     ) as batch:
         batch.select_prefill_quant("gguf_ud_q3_k_m")
         assert batch.runner is not None

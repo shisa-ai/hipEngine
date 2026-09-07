@@ -18,6 +18,23 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
+## 2026-09-07 GGUF native execution authorization — bounded cleanup
+
+- F1 native session entries, enqueue and standalone native-layer entries all
+  consume the complete F4 contract. Direct-layer guards deliberately repeat
+  whole-model metadata checks so bypass calls cannot borrow session authority.
+  Removal trigger for redundant checks: a scoped per-entry receipt that binds
+  the same resident/backend/rows/state/scratch owners, with bypass and stale
+  graph regressions preserved. Do not replace checks with an unkeyed cache.
+  No timing claim or new environment flag accompanies this correctness unit.
+- `qwen35_gguf_native_row_binding_errors` is now a legacy alpha/beta diagnostic,
+  not the execution guard. Remove its export when diagnostic callers/tests
+  migrate to full execution-contract reports; never restore it as authority.
+- Host/deferred embedding and optional expert-sidecar native adapters have no
+  complete pre-allocation contract. Keep those route refusals until the actual
+  registered/executed adapter and every resident/physical owner are represented
+  in the shared call plan. Eager/c1 placement behavior is separate and unchanged.
+
 ## 2026-09-06 GGUF file-type stamp switches — open
 
 - The initial audit found two gfx1151 switches that choose behavior from the header

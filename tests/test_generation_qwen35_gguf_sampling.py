@@ -6504,7 +6504,9 @@ def test_gguf_generate_detailed_uses_native_compact_rows_for_greedy_prompts(
 
     assert [output.text for output in outputs] == ["BC", "BC"]
     assert calls == [
-        ("init", {"max_sequence_length": 256, "max_batch_size": 2}),
+        ("init", {"max_sequence_length": 256, "max_batch_size": 2,
+                  "backend": "hip_gfx1100",
+                  "execution_routes": ("eager", "native_rows", "native_graph")}),
         ("prefill_slot", (10, 11), 0, False),
         ("prefill_slot", (20,), 1, False),
         ("step_rows_native", (1, 1), False),
@@ -6656,7 +6658,9 @@ def test_gguf_native_scheduler_reclaims_compacts_and_readmits(monkeypatch) -> No
 
     assert [output.text for output in outputs] == ["B<eos>", "BCD}", "B<eos>", "BCD}"]
     assert calls == [
-        ("init", {"max_sequence_length": 256, "max_batch_size": 2}),
+        ("init", {"max_sequence_length": 256, "max_batch_size": 2,
+                  "backend": "hip_gfx1100",
+                  "execution_routes": ("eager", "native_rows", "native_graph")}),
         ("prefill_slot", (10, 11), 0, False),
         ("prefill_slot", (20,), 1, False),
         ("step_rows_native", (1, 1), False),

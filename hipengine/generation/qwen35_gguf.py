@@ -1396,7 +1396,11 @@ class Qwen35GGUFBringupGenerator:
         with lock:
             runner = getattr(self, "_shared_runner", None)
             if runner is None:
-                runner = Qwen35GGUFFullStackRunner(self.model_path, backend=self.backend)
+                runner = Qwen35GGUFFullStackRunner(
+                    self.model_path, backend=self.backend,
+                    execution_routes=(("eager", "native_rows", "native_graph")
+                                      if getattr(self, "native_batch_decode", False) else ("eager",)),
+                )
                 self._shared_runner = runner
             return runner
 
@@ -1925,6 +1929,8 @@ class Qwen35GGUFBringupGenerator:
                 self.model_path,
                 max_sequence_length=max_sequence_length,
                 max_batch_size=native_capacity,
+                backend=self.backend,
+                execution_routes=("eager", "native_rows", "native_graph"),
             ) as session:
                 self._configure_session(session)
                 native_run = self._generate_greedy_batch(

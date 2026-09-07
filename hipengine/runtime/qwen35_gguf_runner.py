@@ -324,7 +324,6 @@ from hipengine.loading.qwen35_gguf_materialize import (
 )
 from hipengine.loading.qwen35_gguf_admission import (
     qwen35_gguf_artifact_preset_key,
-    qwen35_gguf_native_row_binding_errors,
 )
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
@@ -2593,6 +2592,7 @@ class Qwen35GGUFFullStackRunner:
     require_cached_build: bool = False
     backend: str = "auto"
     resident_weights: Qwen35GGUFResidentWeights | None = field(default=None, repr=False)
+    execution_routes: tuple[str, ...] = ("eager",)
     owns_resident_weights: bool = False
     token_embedding_placement: str = "device"
     use_selective_weight_arena: bool = False
@@ -2638,10 +2638,19 @@ class Qwen35GGUFFullStackRunner:
         self.token_embedding_placement = placement
         self.weights = self.resident_weights
         if self.weights is None:
+            from hipengine.loading.qwen35_gguf_execution import execution_operations
             materialize_kwargs = {
                 "runtime": self.runtime,
                 "backend": self.backend,
+                "requested_operations": execution_operations(self.execution_routes),
             }
+            if "ar_decode_native_rows" in materialize_kwargs["requested_operations"]:
+                info = GGUFReader(self.model_path).info
+                native_fp16 = _gguf_fp16_recurrent_state_enabled(
+                    backend=self.backend, file_type_name=info.file_type_name,
+                    artifact_preset_key=_gguf_model_info_artifact_preset_key(info),
+                )
+                materialize_kwargs["recurrent_state_dtype"] = "fp16" if native_fp16 else "f32"
             if placement == "host":
                 materialize_kwargs["deferred_device_slots"] = ("root.token_embedding",)
             if self.use_selective_weight_arena:
@@ -6756,6 +6765,11 @@ class Qwen35GGUFFullStackRunner:
     ) -> str:
         """Run independent decode rows through the Q3 indexed-state contract."""
 
+        from hipengine.loading.qwen35_gguf_execution import authorize_native_execution, native_scratch_identity
+        authorize_native_execution(self.weights, backend=self.backend, rows=rows,
+                                   recurrent_state_dtype="fp16" if self.fp16_recurrent_state else "f32")
+        native_scratch_identity(scratch, self.weights.config, rows=rows,
+                                recurrent_state_dtype="fp16" if self.fp16_recurrent_state else "f32")
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native linear-attention batch requires rows > 1")
@@ -6897,6 +6911,11 @@ class Qwen35GGUFFullStackRunner:
     ) -> str:
         """Run one compact row-batched full-attention decode layer."""
 
+        from hipengine.loading.qwen35_gguf_execution import authorize_native_execution, native_scratch_identity
+        authorize_native_execution(self.weights, backend=self.backend, rows=rows,
+                                   recurrent_state_dtype="fp16" if self.fp16_recurrent_state else "f32")
+        native_scratch_identity(scratch, self.weights.config, rows=rows,
+                                recurrent_state_dtype="fp16" if self.fp16_recurrent_state else "f32")
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native full-attention batch requires rows > 1")
@@ -14401,6 +14420,7 @@ class Qwen35GGUFResidentSession:
     require_cached_build: bool = False
     backend: str = "auto"
     shared_runner: Qwen35GGUFFullStackRunner | None = None
+    execution_routes: tuple[str, ...] = ("eager",)
     max_sequence_length: int | None = None
     max_batch_size: int = 1
     use_expert_sidecar: bool = False
@@ -14691,6 +14711,14 @@ class Qwen35GGUFResidentSession:
     _dms_decode_seen: set[int] = field(default_factory=set, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        from hipengine.loading.qwen35_gguf_execution import execution_operations
+        if "ar_decode_native_rows" in execution_operations(self.execution_routes):
+            if not 2 <= int(self.max_batch_size) <= 8:
+                raise ValueError("ar_decode_native_rows capacity must be within [2, 8] before allocation")
+            if self.use_expert_sidecar or self.token_embedding_placement == "host":
+                raise ValueError("ar_decode_native_rows has no pre-certified host/sidecar adapter")
+            if self.kv_policy is not None and DType.parse(self.kv_policy.storage_dtype) != DType.BF16:
+                raise ValueError("ar_decode_native_rows requires BF16 KV before allocation")
         self.dms_decision_mode = _normalize_external_dms_decision_mode(
             self.dms_decision_mode
         )
@@ -14813,6 +14841,7 @@ class Qwen35GGUFResidentSession:
                 require_cached_build=self.require_cached_build,
                 backend=resolved_backend,
                 token_embedding_placement=embedding_placement,
+                execution_routes=self.execution_routes,
                 use_selective_weight_arena=self.small_weight_arena_enabled,
                 selective_weight_max_allocation_bytes=(
                     self.small_weight_arena_max_allocation_bytes
@@ -14835,6 +14864,12 @@ class Qwen35GGUFResidentSession:
         )
         if self.runner.weights is None:
             raise RuntimeError("GGUF full-stack runner did not materialize weights")
+        from hipengine.loading.qwen35_gguf_execution import execution_operations, authorize_native_execution
+        if "ar_decode_native_rows" in execution_operations(self.execution_routes):
+            authorize_native_execution(
+                self.runner.weights, backend=self.backend, rows=int(self.max_batch_size),
+                recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32",
+            )
         if self.small_weight_arena_enabled:
             resident = self.runner.weights
             arena = resident.allocation_arena
@@ -20519,6 +20554,40 @@ class Qwen35GGUFResidentSession:
             decode_spans=decode_spans,
         )
 
+    def _authorize_native_rows(self, rows: int):
+        from hipengine.loading.qwen35_gguf_execution import authorize_native_execution, native_scratch_identity
+        if self.runner is None or self.runner.weights is None:
+            raise ValueError("ar_decode_native_rows requires a certified resident")
+        if self.backend != self.runner.backend:
+            raise ValueError("ar_decode_native_rows session/runner backend mismatch")
+        if getattr(self.runner, "fp16_recurrent_state", None) not in (True, False):
+            raise ValueError("ar_decode_native_rows requires an explicit state-storage owner")
+        if self.use_expert_sidecar or self.host_token_embedding_enabled:
+            raise ValueError("ar_decode_native_rows has no pre-certified host/sidecar adapter")
+        if (FULL_ATTENTION in self.runner.weights.config.layer_types
+                and getattr(self._target_scratch_owner, "kv_storage_dtype", None) != DType.BF16):
+            raise ValueError("ar_decode_native_rows requires a BF16 KV owner")
+        identity = authorize_native_execution(
+            self.runner.weights, backend=self.runner.backend, rows=rows,
+            recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32",
+        )
+        scratch_identity = native_scratch_identity(
+            self._target_scratch_owner, self.runner.weights.config, rows=rows,
+            recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32")
+        buffers = []
+        for name, size in (("_token_buf", rows * 8),
+                           ("_hidden_a", rows * self.runner.hidden_size * 2),
+                           ("_hidden_b", rows * self.runner.hidden_size * 2),
+                           ("_logits_buf", rows * self.runner.vocab_size * 4),
+                           ("_native_cu_seqlens_buf", (rows + 1) * 4),
+                           ("_native_state_indices_buf", rows * 8)):
+            buf = getattr(self, name, None)
+            if buf is None or int(getattr(buf, "ptr", 0)) <= 0 or int(getattr(buf, "nbytes", 0)) < size:
+                raise ValueError(f"ar_decode_native_rows {name}: missing/undersized operand")
+            buffers.append((name, int(buf.ptr), int(buf.nbytes)))
+        return (identity, scratch_identity, int(self.max_batch_size), tuple(buffers),
+                id(self.runtime), self.use_gemv_decode, self.use_expert_sidecar)
+
     def _enqueue_native_rows_model(
         self,
         scratch,
@@ -20530,6 +20599,15 @@ class Qwen35GGUFResidentSession:
     ) -> tuple[dict[str, str], dict[int, np.ndarray]]:
         """Enqueue one compact native model step without host token/state updates."""
 
+        self._authorize_native_rows(rows)
+        from hipengine.loading.qwen35_gguf_execution import native_scratch_identity
+        state_dtype = "fp16" if self.runner.fp16_recurrent_state else "f32"
+        supplied = native_scratch_identity(scratch, self.runner.weights.config,
+                                           rows=rows, recurrent_state_dtype=state_dtype)
+        owned = native_scratch_identity(self._target_scratch_owner, self.runner.weights.config,
+                                        rows=rows, recurrent_state_dtype=state_dtype)
+        if supplied[1:] != owned[1:]:
+            raise ValueError("ar_decode_native_rows scratch/state owners differ from the resident session")
         if (
             self.runner is None
             or self.runner.weights is None
@@ -20668,22 +20746,9 @@ class Qwen35GGUFResidentSession:
             or self._native_token_ids_host is None
         ):
             raise RuntimeError("GGUF resident native-row buffers are closed")
-        # The native multirow route owns the alpha/beta BF16-pointer contract
-        # (dense_gemv_out_bf16 reads allocation('raw') as uint16_t weights).
-        # Enforce the actual resident binding here, before any state mutation
-        # or device call; the load-time admission equivalent is requesting
-        # ar_decode_native_rows via materialize_qwen35_gguf_weights.
-        native_binding_errors = qwen35_gguf_native_row_binding_errors(self.runner.weights)
-        if native_binding_errors:
-            raise ValueError(
-                "GGUF native-row execution refused before state mutation: the resident "
-                "does not satisfy the ar_decode_native_rows alpha/beta BF16-pointer "
-                f"owner contract ({'; '.join(native_binding_errors)}). Load with "
-                "materialize_qwen35_gguf_weights(requested_operations=...) including "
-                "ar_decode_native_rows to refuse this artifact before allocation."
-            )
         tokens = tuple(int(token) for token in token_ids)
         rows = len(tokens)
+        self._authorize_native_rows(rows)
         if rows <= 1:
             raise ValueError("native GGUF target execution requires at least two rows")
         if rows > int(self.max_batch_size):
@@ -20781,21 +20846,7 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
-        # Same alpha/beta BF16-pointer owner contract as step_rows_native:
-        # enforce the actual resident binding before any device call or state
-        # mutation (the captured graph replays the same native model route).
-        native_binding_errors = qwen35_gguf_native_row_binding_errors(self.runner.weights)
-        if native_binding_errors:
-            raise ValueError(
-                "GGUF native-row graph capture refused before state mutation: the "
-                "resident does not satisfy the ar_decode_native_rows alpha/beta "
-                f"BF16-pointer owner contract ({'; '.join(native_binding_errors)}). "
-                "Load with materialize_qwen35_gguf_weights(requested_operations=...) "
-                "including ar_decode_native_rows to refuse this artifact before "
-                "allocation."
-            )
-        if self.host_token_embedding_enabled:
-            self._device_token_embedding_weight(reason="native_rows_graph")
+        execution_identity = self._authorize_native_rows(int(rows))
         rows = int(rows)
         if rows <= 1 or rows > int(self.max_batch_size):
             raise ValueError("native row graph rows must be within [2, max_batch_size]")
@@ -20849,6 +20900,7 @@ class Qwen35GGUFResidentSession:
             max_context_len=int(max_context_len),
             span_role=span_role,
             execution_paths={**execution_paths, "sampler": "argmax_rows_i32_graph"},
+            execution_identity=(execution_identity, span_role, int(max_context_len)),
         )
 
     def step_rows(
@@ -33774,11 +33826,16 @@ class Qwen35GGUFNativeRowsGraph:
     max_context_len: int
     span_role: str
     execution_paths: dict[str, str]
+    execution_identity: object | None = None
     closed: bool = False
 
     def step(self, token_ids: tuple[int, ...] | list[int]) -> Qwen35GGUFTargetRowsResult:
         if self.closed:
             raise RuntimeError("GGUF native row graph is closed")
+        if (self.execution_identity is None
+                or self.execution_identity != (self.session._authorize_native_rows(self.rows),
+                                               self.span_role, int(self.max_context_len))):
+            raise ValueError("ar_decode_native_rows graph contract changed since capture")
         if self.session._token_buf is None or self.session._native_token_ids_host is None:
             raise RuntimeError("GGUF resident native-row buffers are closed")
         tokens = tuple(int(token) for token in token_ids)
