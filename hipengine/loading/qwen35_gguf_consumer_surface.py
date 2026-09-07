@@ -71,11 +71,24 @@ FROM_WEIGHT_QUANT_TOKEN = "<from-weight>"
 
 # Source types whose rank-2 linear slots plan to the raw layout, with the
 # concrete per-type quant key the dispatcher resolves from the weight
-# (planner truth: rank-2 Q6_K/Q8_0 stay raw; rank-2 Q4_K goes pack8 and
-# rank-2 Q5_K expands dense-BF16, so they are deliberately absent).
+# (planner truth: Q6_K/Q8_0 and dense layer IQ4_XS/IQ4_NL/IQ3_S/Q3_K
+# have raw routes; rank-2 Q4_K goes pack8 and Q5_K expands dense-BF16,
+# so those source types are deliberately absent).
 RAW_LINEAR_SOURCE_QUANT_KEYS: Mapping[str, str] = MappingProxyType({
     "Q6_K": "gguf_q6_k",
     "Q8_0": "gguf_q8_0",
+    "IQ4_XS": "gguf_iq4_xs",
+    "IQ4_NL": "gguf_iq4_nl",
+    "IQ3_S": "gguf_iq3_s",
+    "Q3_K": "gguf_q3_k",
+})
+_RAW_LINEAR_OUTPUTS = MappingProxyType({
+    "Q6_K": frozenset({"bf16", "fp16", "f32"}),
+    "Q8_0": frozenset({"bf16", "fp16", "f32"}),
+    "IQ4_XS": frozenset({"bf16", "f32"}),
+    "IQ4_NL": frozenset({"bf16", "f32"}),
+    "IQ3_S": frozenset({"bf16", "f32"}),
+    "Q3_K": frozenset({"bf16", "f32"}),
 })
 
 
@@ -557,7 +570,7 @@ def source_linear_dispatch_row(
     if row.quant != FROM_WEIGHT_QUANT_TOKEN:
         return row
     quant = RAW_LINEAR_SOURCE_QUANT_KEYS.get(str(source_ggml_type))
-    if quant is None:
+    if quant is None or output not in _RAW_LINEAR_OUTPUTS.get(str(source_ggml_type), ()):
         return None
     return GgufLinearDispatchSurfaceRow(
         layout=row.layout,

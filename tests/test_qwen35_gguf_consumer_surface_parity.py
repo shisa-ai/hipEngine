@@ -109,7 +109,9 @@ def production_registry():
         registered_keys,
     )
 
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
     for registrar in (
+        register_gguf_iq_dense_kernels,
         register_gguf_k_gemv_kernels,
         register_gguf_q4_k_gemv_kernels,
         register_gguf_q3_k_gemv_kernels,

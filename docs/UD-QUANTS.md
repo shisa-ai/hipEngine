@@ -3,9 +3,11 @@
 Last updated: 2026-09-07.
 Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
 added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K dense GPU leaves pass bounded gfx1151
-checks.** Loader integration is next. Shared resident prerequisites and invocation
-contracts have CPU coverage. K_M/K_S still have 18/41 refused slots.
-**No full UD generation or gfx1100 numerical validation is claimed.** General certificate
+checks. Published K_M eager c1 inference runs on gfx1151.** The eight-token
+smoke returns finite logits and coherent text; teacher-logit quality and broader
+serving are not qualified. Loader preflight has zero K_M refusals and seven
+remaining K_S refusals. Q5/Q6 expansion still needs compact resident integration.
+**No gfx1100 numerical validation is claimed.** General certificate
 cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
 transactions and per-call native authorization scans have been removed.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
@@ -52,9 +54,11 @@ historical v2, stamp-only policy semantics; see
 
 ## 1. Decisions And Findings
 
-1. **The 18/41 refusal counts are real.** Published UD K_M requires Q3_K,
-   IQ4_NL and IQ3_S; K_S additionally requires IQ3_XXS and IQ2_S. IQ4_XS
-   and IQ2_XS currently expand to BF16 on this dense route.
+1. **The baseline had 18/41 refusals.** Published UD K_M requires Q3_K,
+   IQ4_NL and IQ3_S; K_S additionally requires IQ3_XXS and IQ2_S. Raw dense
+   IQ4_XS/Q3_K/IQ4_NL/IQ3_S integration removes all K_M refusals and leaves
+   seven K_S refusals. IQ2_XS still expands to BF16; historical audit tables
+   below describe the pre-integration planner.
 2. **Do not reduce this campaign to a different two-format model.** That is a
    useful optional integration fixture, but it does not support the requested
    published UD files. Deliver K_M first, then the additional K_S surface.
@@ -1410,14 +1414,21 @@ proposed `tests/test_gguf_ud_km.py`.
 
 - [ ] Add dense Q3_K from existing math and explicit dtype contracts.
   Raw BF16-input BF16/F32-output leaf passes exact real-row gates on gfx1151;
-  gfx1100 numerical validation and materializer integration remain open.
+  Raw dense layer materialization is integrated; gfx1100 numerical validation
+  remains open.
 - [ ] Add standalone IQ4_NL and IQ3_S strict consumers and independent leaf gates.
   The same bounded gfx1151 leaf evidence exists for both IQ types and IQ4_XS.
   Combined codec/dense suite: 102 passed; cache-only trace: 72 passed with all
   eight expected instantiations. See the `ud-dense-iq-leaves` and `ud-q3-dense`
   worklog entries. This is not model or full-shape qualification.
 - [ ] Cover all 18 refused AR slots and all other incomplete dense operations.
+  Preflight now accepts all K_M AR slots on both backend declarations. Only
+  gfx1151 eager c1 execution has model evidence; other modes remain unqualified.
 - [ ] Validate c1 AR, teacher logits and compact memory before broader modes.
+  gfx1151 published-file smoke generates eight tokens with finite full logits
+  from `The capital of France is`: ` Paris.\nThe capital of Germany is`.
+  This is a smoke, not a teacher-quality gate or compact-memory claim. See
+  `worklog/entries/20260907T035440.022336Z-lhl-ud-km-c1-integration-c5bbd6.md`.
 - [ ] Reject unsupported requested modes in preflight; c1 is not full serving.
 
 Run: `.venv/bin/python -m pytest tests/test_gguf_ud_km.py -q`.
