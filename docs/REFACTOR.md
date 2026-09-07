@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp raw-vector square64: removed
+
+- Framework vector-staging64x64 loses to promoted128x64 on actual Q
+  projections at512/1024 rows (0.959-0.985x). VGPR160/scratch0 both.
+- Candidate removed;not the historical zbook scalar-staging comparison.
+  Do not repeat this current-host combination unchanged.
+
 ## Qwen4Exp prepacked MMQ token64: removed
 
 - Independent prepacked qkv/SSM screen loses0.931-0.969x despite

@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Raw-vector64x64 MMQ tested against current128x64 on Framework:
+actual Q layers3/7 at512/1024 rows0.959-0.985x,80 pairs exact,
+27 tests pass. VGPR160/scratch0 both,threads256->128,
+dynamic LDS48384->28928B. Candidate removed;production128x64 stays.
+Evidence: `2026-09-07-framework-qwen4exp-mmq-square64-rejected.json`.
+
 Prepacked token64 MMQ specialization tested and removed:actual qkv/SSM
 at512/1024 rows0.931-0.969x,80 pairs exact,27 tests pass.
 VGPR144->112,scratch0,dynamic LDS57856->48384B. Prepacked128 and

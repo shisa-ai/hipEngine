@@ -76,6 +76,15 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Framework raw-vector square64 rejected (September7 UTC):** distinct
+from historical zbook scalar-staging retile. Compared to promoted128x64,
+64x64 on actual Q layers3/7 at512/1024 rows yields0.984/0.985x and
+0.959/0.980x.80 pairs exact,27 tests pass. Threads256->128,dynamic
+LDS48384->28928B,VGPR160/scratch0 unchanged. Smaller residency footprint
+does not improve operation-complete time;candidate removed,raw-Q128x64
+retained. Do not repeat this same-host/staging combination unchanged.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-square64-rejected.json).
+
 **Same-residency staged screening (September7 UTC):**
 `--staged-screen` now runs one measured pair for all12 cases,then either
 stops diagnostically or completes the remaining two pairs without reload
