@@ -549,12 +549,59 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   integrated long/quality harnesses additionally require a `--data-manifest`
   built from the training-time source manifest, which is not on this host;
   `scripts/dms_backend_gate.py` (fixture device/lifecycle) runs without it.
-- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Measure dense BF16, compact no-evict and trained DMS BF16 through the same
+  Binding CLEARED 2026-09-07 without the 17.1 GiB download (campaign-lead
+  directive): the 1,024-byte difference was proven container-level — both
+  GGUF v3 files have byte-identical 866-tensor tables (names/shapes/qtypes/
+  offsets) and the only metadata difference is `tokenizer.chat_template`
+  (+1,048 bytes); 14×256 KiB tensor-body range samples spanning the full file
+  all match byte-for-byte (artifact:
+  `results/2026-09-07-qwen38-gguf-build-equivalence-samples.json`). A derived
+  local package `/models/dms/qwen38-27b-q4km-dms-w8192-local/` (copy of the
+  sidecar + metadata with the local sha `7b2aec3b…` and full
+  `artifact_binding_extension` provenance; original HF snapshot untouched)
+  passes the gfx1100 backend gate on all widths 1–32
+  (`accepted_host_backend`, artifact:
+  `results/2026-09-07-rx7900xtx-dms-backend-gate.json`). One dispatch
+  enablement was required: `GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES`
+  on gfx1100 for the qualified (1, 24, 4, 256) shape — the same exact
+  registered kernel already default on gfx1151, bit-identical to the unfused
+  GPU control chain and CPU-reference gated
+  (tests/test_qwen38_full_attn_qk_postprocess.py; focused decode/dispatch
+  bundle 100 passed).
+- [x] Measure dense BF16, compact no-evict and trained DMS BF16 through the same
   owner. Record logical tokens, per-layer/head survivors, allocated extents,
   free capacity, fragmentation and all transient/metadata/predictor bytes.
-- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Trace streaming compact prefill and direct compact decode. Eliminate a
+  Measured 2026-09-07 on the XTX through one shared runner (dense teacher +
+  `no_evict` + `sidecar`), XTX-local deterministic manifest (8×32,768 tokens,
+  4 categories, sha `9b8dacd9…`, NOT train-disjoint — recorded caveat; KL/
+  top-1 vs the dense teacher are indicative same-owner checks, authoritative
+  heldout quality remains the gfx1151 qualification). At 768 tokens (inside
+  the 8,192 protected window) the sidecar evicts nothing and matches
+  no-evict exactly. At 16,384 tokens the sidecar compresses to 1.333×
+  (787,008 of 1,048,832 logical token rows; window-protected arithmetic
+  exact) with top-1 agreement 1.0 in all four categories and max KL ≤ 0.0084
+  (gate 0.05); no-evict matches the dense teacher at max KL ≤ 0.0004.
+  Integrated 16,384-token smoke: streaming compact prefill + direct compact
+  decode, payload 805,634,048 B across 16 layers, extent pool 786,816 slots
+  with zero free ranges/allocation failures (no fragmentation), dense BF16
+  prefill owner peaks at 18,006.2 MiB allocated and releases 251.8 MiB after
+  direct compact pack, zero allocations after close. Artifacts:
+  `results/2026-09-07-rx7900xtx-dms-capacity-comparison.json` (+ per-run
+  JSONs). Diagnostic capacity evidence (`performance_claim: false` in every
+  source artifact).
+- [x] Trace streaming compact prefill and direct compact decode. Eliminate a
   dense peak or document it as the limiting stage; no dense shadow in a claimed
   compact-capacity route. Verify shared-pool credits recover after eviction.
+  Traced 2026-09-07 at 16,384 tokens on the XTX: `dms_compact` topology with
+  `no_dense_shadow: true`, `streaming_pack_calls: 1` (exact-budget prefill
+  selection), `decode_appends: 4` through direct compact attention; the dense
+  BF16 prefill owner is documented as the prefill-stage limiting peak
+  (18,006.2 MiB) and is released after pack — decode carries no dense shadow.
+  Credit recovery verified as measured: extent-pool free ranges empty and
+  zero allocations after close (prefill exact-budget eviction only;
+  decode-time eviction was not exercised by these runs — recorded, not
+  inferred). Artifacts: `results/2026-09-07-rx7900xtx-dms-long-16384.json`,
+  `results/2026-09-07-rx7900xtx-dms-capacity-comparison.json`.
 - [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Run native C1 then C2/C4/C8 where supported, heterogeneous lengths,
   protected-window boundaries, cancellation, pressure and refill. DMS prefix
   sharing remains off until snapshot/overlay semantics qualify; sharing pool
