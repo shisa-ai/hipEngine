@@ -7,6 +7,14 @@ margin before reserve. This is allocation evidence,not native-length inference;
 chunk default promotion is tracked in the performance campaign.
 [Packet](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
 
+The qualified gfx1151 UD-Q4_K_XL production factory now defaults to chunk1024.
+Public c2 preparation confirms both runners use1024 at262144 capacity;
+an8192-token retrieval and over-limit rejection pass with zero final owners.
+Implicit strict execution remains512 within the factory's larger allocation.
+Direct constructors and other quant defaults are unchanged;no native-length
+inference claim is added.
+[Public gate](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-public-serving.json).
+
 Status: public native-context plumbing, real c2 completions/chat startup and
 8K retrieval, native-capacity boundary gates complete on Framework gfx1151
 (2026-09-06). Section4c records the short

@@ -2,16 +2,22 @@
 
 Last updated: **2026-09-07 UTC**
 
+Qualified gfx1151 UD-Q4_K_XL production now defaults to chunk1024:
+full-suite long prefill+7.87%/+8.18%,72 exact trajectories and full
+state/KV/native-c2/public8K gates pass. p4096 decode-1.72% and short-work
+fluctuations retained explicitly;no new external comparator row.
+[Promotion evidence](results/2026-09-07-framework-qwen4exp-chunk1024-promotion.json).
+
 Chunk1024 native-context/c2 allocation passes:two262144-context runners,
 106.87GB tracked,1.46GB scratch margin before reserve,zero final owners.
-Allocation only,not native-length inference;default selection still pending.
+Allocation only,not native-length inference;scoped promotion recorded above.
 [Evidence](results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
 
 Full-category chunk512->1024 screen:PP1024176.71->190.61 (+7.87%),
 PP4096162.80->176.11 (+8.18%);p512-0.053% neutral-work control.
 72 exact trajectories;all long requests faster,but p4096 decode-1.72%
-and small p512 request losses remain explicit. Default unchanged;
-native/c2 memory qualification pending.
+and small p512 request losses remain explicit. Subsequent scoped promotion
+and native/c2 qualification are recorded above.
 [Evidence](results/2026-09-07-framework-qwen4exp-chunk1024-full.json).
 
 Chunk1024 state gate:all12 cases exact for full logits/four decode steps/

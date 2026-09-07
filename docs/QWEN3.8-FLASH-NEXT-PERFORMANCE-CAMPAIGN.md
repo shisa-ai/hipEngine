@@ -76,6 +76,23 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Chunk1024 scoped production promotion (September7 UTC):** retain the
+full-category +7.87%/+8.18% p1024/p4096 prefill gains and faster long
+requests under prefill-first direction. p512-0.053% is a same-work
+control;three short request cases fluctuate slightly negative (worst-0.144%).
+Aggregate p4096 decode-1.72%,worst Japanese-3.14%,explicitly retained.
+All72 trajectories/full12-case logits/state/KV are exact;native/c2
+allocation fits existing scratch allowance. Public registered factory
+gate now confirms two1024-chunk runners,262144 capacity,8K retrieval,
+over-limit400 and zero final owners.21 focused tests pass.
+Only gfx1151 UD-Q4_K_XL factory defaults to1024;implicit strict execution
+uses512 within the larger allocation. Explicit factory/constructor chunk
+arguments remain overrides;Q4_K_M and generic direct constructors stay512.
+Historical direct benchmark defaults remain512:current-default captures
+must pass `--prefill-chunk-size 1024` and name that protocol.
+No refreshed Vulkan parity claim.
+[Promotion](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-promotion.json).
+
 **Chunk1024 native/c2 allocation gate (September7 UTC):** clean `856b03b81`
 allocates two262144-context runners with shared model weights and
 1024-capacity prefill scratch. Tracked allocation106,866,880,936B versus
@@ -84,8 +101,8 @@ scratch margin1,462,550,456B before the separate4GiB reserve.
 Both runners prepared and teardown returns0 allocations/bytes. No
 native-length inference or c2 throughput claim. Existing admission
 allowance fits this measured configuration without a policy increase.
-All chunk candidate gates are now recorded;the default remains512 until
-the scoped production selection is updated with explicit tradeoffs.
+The subsequent scoped promotion above uses these allocation gates and
+keeps the measured throughput tradeoffs explicit.
 [Memory evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json).
 
 **Chunk1024 full-category screen (September7 UTC):** clean `e5afb7b41`,

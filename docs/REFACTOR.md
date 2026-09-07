@@ -1,5 +1,18 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp chunk allocation before profile binding
+
+- The qualified UD-Q4_K_XL gfx1151 factory allocates1024-capacity scratch
+  before the profile binder runs. Its implicit strict profile executes512;
+  explicit chunk arguments bypass this default selection. Other quant/
+  direct constructors keep512. No runtime growth after allocation.
+- `_implicit_profile_chunk_size` is temporary factory/profile coordination.
+  Replace it when runtime profile plans can convey allocation defaults
+  before construction. Preserve explicit overrides and strict512 behavior.
+- Benchmark512/1024 arms intentionally share larger scratch;do not call
+  that allocation-size neutrality. Future current-default captures must
+  explicitly select1024 until benchmark defaults are separately revised.
+
 ## Qwen4Exp mapped Q8 down rollback
 
 - Production `HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN` reuses the existing
