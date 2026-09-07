@@ -322,6 +322,7 @@ class Qwen35GGUFResidentWeights:
     allocation_arena_reason: str | None = None
     artifact_preset_key: str | None = None
     admission_certificate: Qwen35GGUFAdmissionCertificate | None = None
+    execution_binding: object | None = None
 
     def root(self, slot: str) -> Qwen35GGUFDeviceWeight:
         return self.root_weights[slot]
@@ -789,8 +790,10 @@ def materialize_qwen35_gguf_weights(
     preflight: an artifact that cannot support a requested mode is refused
     with the aggregated refusal list before the first device allocation. The
     default is ``DEFAULT_AR_OPERATIONS`` (the historical c1/rows/prefill/
-    embedding/logits set); the native multirow route additionally enforces its
-    alpha/beta BF16-pointer owner binding at its own execution entry.
+    embedding/logits set). Native requests add to this default scope and bind
+    embedding, BF16-input head, selected MoE partners/router and recurrent
+    auxiliaries under their actual native row contract. Partial debug loads
+    cannot authorize a native model execution entry.
     ``admission_certificate`` is an optional previously minted
     :class:`Qwen35GGUFAdmissionCertificate` the caller asks this load to
     honor. It is re-verified against the FRESH admission report (fingerprint,
@@ -814,6 +817,7 @@ def materialize_qwen35_gguf_weights(
     model_map = build_qwen35_gguf_tensor_map(reader.info)
     file_type_name = getattr(reader.info, "file_type_name", None)
     selected = None if selected_slots is None else set(selected_slots)
+    deferred_device_slots = tuple(deferred_device_slots or ())
     # The trailing NextN block participates in the artifact manifest
     # fingerprint (structural records only; draft admission is gated
     # separately by the NextN materializer).
@@ -852,6 +856,15 @@ def materialize_qwen35_gguf_weights(
         if requested_operations is None
         else tuple(str(operation) for operation in requested_operations)
     )
+    # Native execution is additive, never a diagnostic replacement for the
+    # resident's default calls (embedding/head and selected partners included).
+    if "ar_decode_native_rows" in operations:
+        from hipengine.loading.qwen35_gguf_execution import execution_operations
+        operations = tuple(dict.fromkeys((*execution_operations(("native_rows",)), *operations)))
+        if deferred_device_slots:
+            raise Qwen35GGUFAdmissionError(
+                "ar_decode_native_rows requires resident device operands before execution; "
+                "deferred device slots are not a certified native adapter")
     admission_report = preflight_qwen35_gguf_artifact(
         model_map,
         backend=backend,
@@ -1007,7 +1020,7 @@ def materialize_qwen35_gguf_weights(
     model_name = None
     if isinstance(metadata, Mapping) and metadata.get("general.name") is not None:
         model_name = str(metadata["general.name"])
-    return Qwen35GGUFResidentWeights(
+    resident = Qwen35GGUFResidentWeights(
         config=plan.config,
         root_weights=MappingProxyType(root_weights),
         layers=layers,
@@ -1023,6 +1036,9 @@ def materialize_qwen35_gguf_weights(
         ),
         admission_certificate=admission_report.certificate(),
     )
+    from dataclasses import replace
+    from hipengine.loading.qwen35_gguf_execution import bind_resident_execution
+    return replace(resident, execution_binding=bind_resident_execution(resident))
 
 
 def _plan_layer(

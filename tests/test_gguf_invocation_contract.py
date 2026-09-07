@@ -144,7 +144,7 @@ def test_aux_operand_elements_match_native_c_signatures():
             assert (access == "read") == bool(const)
 
 
-def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch):
+def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch, tmp_path):
     from types import SimpleNamespace as NS
     import hipengine.runtime.qwen35_gguf_runner as runner
     from hipengine.loading.qwen35_gguf_consumer_surface import CONV_DECODE, GDN_SEGMENTS
@@ -154,17 +154,26 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
     assert report.supported
     dtypes = {}
     def buffer(dtype):
-        ptr = len(dtypes) + 1
+        ptr = (len(dtypes) + 1) * 0x1000000
         dtypes[ptr] = dtype
-        return NS(ptr=ptr)
+        return NS(ptr=ptr, nbytes=0x100000)
     buffers = {name: buffer(dtype) for name, dtype in (
         ("norm", "bf16"), ("linear_qkv", "bf16"), ("linear_z", "bf16"),
         ("linear_alpha", "bf16"), ("linear_beta", "bf16"), ("conv_out", "f32"),
         ("recurrent_out", "f32"), ("recurrent_bf16", "bf16"), ("attn_out", "bf16"))}
-    scratch = NS(**buffers, layer_conv_states=[buffer("f32")], layer_recurrent_states=[buffer("f32")])
-    weights = {name: NS(allocation=lambda *a, b=buffer("bf16" if name in {"ssm_alpha", "ssm_beta"} else "f32"): NS(tensor=b))
-               for name in model.layers[0].tensors}
-    layer = NS(weight=lambda name: weights[name])
+    import numpy as np
+    scratch = NS(**buffers, post_norm=buffer("bf16"), slot_count=2,
+                 recurrent_zero=np.zeros(1, dtype=np.float32),
+                 layer_conv_states=[buffer("f32")], layer_recurrent_states=[buffer("f32")])
+    from tests.test_gguf_execution_authorization import native_resident
+    from hipengine.core.dtype import DType
+    resident = native_resident(monkeypatch, tmp_path)
+    model = NS(config=resident.config)
+    layer = resident.layer(0)
+    weights = layer.weights
+    for weight in resident.weights:
+        for allocation in weight.allocations.values():
+            dtypes[allocation.tensor.ptr] = {DType.BF16: "bf16", DType.FP32: "f32"}.get(allocation.tensor.dtype, "packed")
     calls = []
     def capture(abi):
         def call(*args, **kwargs):
@@ -186,9 +195,9 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
         assert dtypes[x] == kw.get("activation_dtype", "bf16") == "bf16"
         assert calls[-1] == "cast"
     monkeypatch.setattr(runner, "launch_gguf_linear", linear)
-    session = NS(weights=NS(config=model.config, layer=lambda i: layer), runtime=object(),
-                 fp16_recurrent_state=False, hidden_size=256, linear_qkv_width=256,
-                 ssm_value_dim=128, _cast_library=lambda: object(),
+    session = NS(weights=resident, runtime=object(), backend="hip_gfx1100",
+                 fp16_recurrent_state=False, hidden_size=256, linear_qkv_width=192,
+                 ssm_value_dim=32, _cast_library=lambda: object(),
                  _run_post_attention_ffn_rows=lambda *a, **kw: None)
     result = runner.Qwen35GGUFFullStackRunner._run_linear_attention_decode_rows_native(
         session, 0, 1001, 1002, scratch, rows=2,
