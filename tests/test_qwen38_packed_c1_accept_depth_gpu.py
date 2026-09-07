@@ -17,15 +17,18 @@ def runtime():
     return rt
 
 
+@pytest.mark.parametrize('padding', [0, 3])
 @pytest.mark.parametrize('depth', range(1, 8))
-def test_native_c1_all_rejections_horizons_and_eos(runtime, depth):
+def test_native_c1_all_rejections_horizons_and_eos(runtime, depth, padding):
     from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host
     from hipengine.kernels.hip_gfx1100.speculative import dflash_accept_chain_i32_packed
     from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
-    from hipengine.speculative.streaming import trim_speculative_output
-    rows = depth + 1
+    from hipengine.generation.engine_service import EngineService
+    from hipengine.generation.registry import GenerationOutput, FinishDetails
+    rows = depth + 1 + padding
     # Distinct synthetic IDs are fixtures, never benchmark candidate reranks.
     tokens = np.arange(100, 100 + rows, dtype=np.int32)
+    tokens[depth + 1:] = 900  # Would falsely extend full acceptance if padding were active.
     buffers = []
     def upload(values, dtype=np.int32):
         host = np.asarray(values, dtype=dtype)
@@ -36,9 +39,9 @@ def test_native_c1_all_rejections_horizons_and_eos(runtime, depth):
     try:
         token = upload(tokens)
         position = upload(np.arange(73, 73 + rows))
-        parent = upload(np.arange(-1, depth))
+        parent = upload(np.arange(-1, rows - 1))
         depths = upload(np.arange(rows))
-        mask = upload(np.ones(rows), np.uint8)
+        mask = upload([1] * (depth + 1) + [0] * padding, np.uint8)
         top = upload(np.zeros(rows))
         remaining = upload([0])
         outputs = [upload([0]) for _ in range(5)]
@@ -62,6 +65,9 @@ def test_native_c1_all_rejections_horizons_and_eos(runtime, depth):
                 copy_device_to_host(status.ctypes.data, payload, runtime=runtime)
                 assert status.tolist() == [accepted, accepted, int(tokens[accepted]),
                     73 + accepted, int(expected_top[accepted]), int(accepted == depth), accepted + 1]
+                raw_ids = np.empty(rows, dtype=np.int32)
+                copy_device_to_host(raw_ids.ctypes.data, committed, runtime=runtime)
+                assert raw_ids.tolist() == tokens[:accepted + 1].tolist() + [-1] * (rows - accepted - 1)
                 pending = NS(request_count=1, output_stride=rows, payload=payload,
                     buffers=NS(committed_output_ids=committed, transaction_id=19),
                     batch=NS(candidate_counts=(depth,), request_ids=(41,), draft_depth=depth,
@@ -71,10 +77,17 @@ def test_native_c1_all_rejections_horizons_and_eos(runtime, depth):
                 assert summary.next_tokens == (int(expected_top[accepted]),)
                 visible = summary.accepted_tokens[0] + summary.next_tokens
                 for eos_index, eos in enumerate(visible):
-                    tail = trim_speculative_output(visible, max_tokens=horizon, min_tokens=0,
-                        eos_token_id=eos, stop_token_ids=(), stop_token_sequences=(), ignore_eos=False)
-                    assert tail.token_ids == visible[:eos_index + 1]
-                    assert tail.finish_reason == 'eos'
+                    state = NS(request=NS(max_tokens=horizon, min_tokens=0,
+                        eos_token_id=eos, stop_token_ids=(), stop_token_sequences=(), ignore_eos=False))
+                    service = NS(_driver=NS(detokenize=lambda ids: str(tuple(ids))))
+                    output = GenerationOutput(text=str(visible), generated_token_ids=visible,
+                        token_logprobs=tuple(-float(i + 1) for i in range(len(visible))),
+                        finish_details=FinishDetails(reason='length'))
+                    tail = EngineService._normalize_speculative_output(service, state, output)
+                    assert tail.generated_token_ids == visible[:eos_index + 1]
+                    assert tail.finish_details.reason == 'eos'
+                    assert tail.token_logprobs == output.token_logprobs[:eos_index + 1]
+                    assert tail.text == str(visible[:eos_index + 1])
     finally:
         for buf in reversed(buffers):
             free(buf, runtime=runtime)
