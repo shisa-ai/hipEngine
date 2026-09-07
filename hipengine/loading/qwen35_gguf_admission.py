@@ -775,6 +775,7 @@ def _embedding_records(
 ) -> list[Qwen35GGUFOperationCoverage]:
     records = []
     for source_type, quant in (
+        ("Q3_K", "gguf_q3_k"),
         ("Q4_K", "gguf_q4_k"),
         ("Q5_K", "gguf_q5_k"),
         ("Q6_K", "gguf_q6_k"),
@@ -793,7 +794,7 @@ def _embedding_records(
                 kernel_quant=quant,
                 kernel_variant="lookup_bf16_out",
                 strict_fallback=None,
-                note="Raw Q4_K/Q5_K/Q6_K/Q8_0 lookup forwards rows to the kernel.",
+                note="Raw Q3_K/Q4_K/Q5_K/Q6_K/Q8_0 lookup forwards rows to the kernel.",
             )
         )
     return records

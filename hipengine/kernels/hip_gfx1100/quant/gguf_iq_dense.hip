@@ -601,6 +601,16 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
         return mag * ((b[74+g*4+j/8] & (1 << (j&7))) ? -1.0f : 1.0f);
     }
 }
+__global__ void gguf_q3_k_embedding_kernel(const int64_t* ids,
+    const uint8_t* w, uint16_t* out, int64_t K, int64_t vocab) {
+    int64_t row = blockIdx.y, k = int64_t(blockIdx.x)*blockDim.x + threadIdx.x;
+    int64_t token = ids[row];
+    if (k >= K || token < 0 || token >= vocab) return;
+    float value = weight<3>(w + (token*(K/256)+k/256)*110, k%256);
+    uint32_t bits = __float_as_uint(value);
+    out[row*K+k] = uint16_t((bits+0x7fff+((bits>>16)&1))>>16);
+}
+
 template<int Q, bool BF16> __global__ void gguf_iq_dense_strict_kernel(
     const uint16_t* x, const uint8_t* w, void* out, int64_t K, int64_t N) {
     constexpr int B = Q == 1 ? 32 : 256;
@@ -629,6 +639,15 @@ template<int Q> void run(const void* x, const void* w, void* out,
         static_cast<const uint16_t*>(x),static_cast<const uint8_t*>(w),out,K,N);
 }
 }
+extern "C" int hipengine_gguf_q3_k_embedding(const void* ids, const void* w,
+    void* out, int64_t rows, int64_t K, int64_t vocab, void* stream) {
+    if (!ids || !w || !out || rows<=0 || rows>65535 || K<=0 || K%256 || vocab<=0)
+        return int(hipErrorInvalidValue);
+    gguf_q3_k_embedding_kernel<<<dim3((K+255)/256,rows),256,0,(hipStream_t)stream>>>(
+        (const int64_t*)ids,(const uint8_t*)w,(uint16_t*)out,K,vocab);
+    return int(hipGetLastError());
+}
+
 extern "C" int hipengine_gguf_iq_dense(const void* x,const void* w,void* out,
     int64_t rows,int64_t K,int64_t N,int quant,int output,void* stream) {
     switch(quant) {
