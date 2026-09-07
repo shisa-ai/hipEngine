@@ -1454,7 +1454,13 @@ proposed `tests/test_gguf_ud_dense.py`.
 - [ ] Supply correct row-batched and bounded prefill execution. A bring-up
   row loop is explicitly a fallback, not a native-batch speed claim.
 - [ ] Keep mixed-pair strict chains, dtypes, graph safety and root behavior
-  while selecting residents per tensor.
+  while selecting residents per tensor. A 120-case CPU runner test covers six
+  mixed raw IQ/Q3 FFN type combinations at rows 1/2/4/7/8/16/32/511/512/513
+  on both backend declarations. Actual pair/singleton dispatch reaches the
+  unfused norm, gate/up, SiLU, down and residual chain with exact pointer and
+  call-order checks. Numerical leaves are captured; this does not qualify
+  GPU math, other mixed residents or graph execution. See
+  `tests/test_gguf_ud_ffn_callers.py` and the `ud-ffn-caller-abi` worklog entry.
 - [ ] Verify no duplicate dense resident; account planned/measured bytes,
   transient load peak and scratch owners.
 - [ ] Register strict fallbacks; qualify gfx1100 and gfx1151 independently.
