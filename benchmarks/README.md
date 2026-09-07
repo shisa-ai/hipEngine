@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Expanded F32 Q8 cache rejected on Framework gfx1151:
+UD-Q4_K_XL actual attention-gate1024 projection11.079->69.026ms
+(+523.0%),60MiB extra weight storage/~14.8ms setup;80 exact
+gate/shared-down pairs. Candidate removed,production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-q8-f32-cache-rejected.json).
+
 Q8 early wave publication rejected on Framework gfx1151:
 UD-Q4_K_XL actual attention-gate512/1024 projection5.200->5.953ms
 and11.019->12.114ms (+14.5%/+9.94%);all80 gate/shared-down pairs exact.

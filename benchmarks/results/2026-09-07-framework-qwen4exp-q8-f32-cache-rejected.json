@@ -1,0 +1,335 @@
+{
+  "schema": 1,
+  "disposition": "rejected_and_removed",
+  "production_changed": false,
+  "recipe": {
+    "base_commit": "777b8cd61",
+    "file": "hipengine/kernels/hip_gfx1100/quant/gguf_k_gemv.hip",
+    "kernel": "gguf_k_prefill_out_coltile_rowbatch_kernel",
+    "change": "Add F32_CACHE template bool after WAVE_SCALE. If true, row_bytes=in_features*sizeof(float) and weights[col]=reinterpret_cast<const float*>(weight_rows[col])[k]. Keep all traversal, FMA order, reduction, geometry and output unchanged.",
+    "export": "gguf_q8_0_gemv_coltile8_rowbatch4_f32_cache_f32_f32_out",
+    "instantiation": "float,float,8,8,4,true,true",
+    "setup": "dequantize_gguf_data(raw, GGMLQuantizationType.Q8_0), contiguous F32, upload once outside timed projection loop; record dequantization/upload time and extra allocation bytes.",
+    "screen_change": "--f32-cache selects wave-scale parent with raw pointer versus cache export with expanded pointer; projection-only, not GR.",
+    "tests": "Registry RED then GREEN; exact F32 bits twice at (rows,K,N)=(1,32,8),(7,96,24),(17,2560,32),(1024,2560,6144). Small shapes compare CPU matmul with KL<=0.05/top1>=0.9. Combined with wave-scale suite, 11 passed."
+  },
+  "profile": {
+    "path": "/tmp/qwen4exp-q8-f32-cache-trace/gfx1151/277365_kernel_trace.csv",
+    "require_cached_build": true,
+    "vgpr_both": 72,
+    "lds_bytes_both": 512,
+    "scratch_bytes_both": 0,
+    "parent_timed_duration_ns": [10981503, 10969874],
+    "candidate_timed_duration_ns": [68867941, 69264018],
+    "command": "rocprofv3 --kernel-trace --output-format csv --output-directory /tmp/qwen4exp-q8-f32-cache-trace -- .venv/bin/python scripts/qwen4exp_q8_wave_scale_screen.py --model-root /models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL --compiler-version-file /tmp/hipengine-hipcc-version.txt --f32-cache --rows 1024 --pairs 2 --tensor blk.0.attn_gate.weight --output /tmp/qwen4exp-q8-f32-cache-trace.json"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "777b8cd61bc187d71dc179271656d4211518ff07",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "command": [
+    "scripts/qwen4exp_q8_wave_scale_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--f32-cache",
+    "--rows",
+    "512",
+    "1024",
+    "--pairs",
+    "20",
+    "--output",
+    "/tmp/qwen4exp-q8-f32-cache.json"
+  ],
+  "cases": [
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "shape": [
+        512,
+        2560,
+        6144
+      ],
+      "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+      "parent_ms": 5.632706452161074,
+      "candidate_ms": 34.87915697041899,
+      "speedup": 0.1614920468673647,
+      "mean_speedup": 0.15828516531904385,
+      "speedup_by_order": {
+        "parent_first": 0.16359987547639104,
+        "candidate_first": 0.15349256821805632
+      },
+      "samples_ms": [
+        [
+          5.612398963421583,
+          5.635781912133098,
+          5.669886013492942,
+          5.590828135609627,
+          5.666930926963687,
+          5.586601095274091,
+          5.6717300321906805,
+          5.674975924193859,
+          5.745628150179982,
+          5.598532035946846,
+          5.6553189642727375,
+          5.579927936196327,
+          5.680747097358108,
+          5.560270976275206,
+          5.6418441236019135,
+          5.62963099218905,
+          5.641623167321086,
+          5.570960929617286,
+          5.610985914245248,
+          5.603151163086295
+        ],
+        [
+          34.55343097448349,
+          34.68277305364609,
+          34.574279095977545,
+          36.77854407578707,
+          34.59955705329776,
+          36.395846866071224,
+          34.63527397252619,
+          36.303282948210835,
+          34.5941970590502,
+          36.35981888510287,
+          34.60740204900503,
+          36.50253708474338,
+          35.05136491730809,
+          36.678597098216414,
+          34.55067612230778,
+          37.84498479217291,
+          34.70694902352989,
+          37.5498419161886,
+          34.62420403957367,
+          35.95609194599092
+        ]
+      ],
+      "exact": true,
+      "extra_cache_bytes": 62914560,
+      "cache_dequant_upload_ms": 14.823287026956677
+    },
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "shape": [
+        1024,
+        2560,
+        6144
+      ],
+      "weight_sha256": "07d0602265cac070edf0fea0c188a3a06ed5f6bdecd4860d78b0a9fcaf7eff95",
+      "parent_ms": 11.079299030825496,
+      "candidate_ms": 69.02643048670143,
+      "speedup": 0.1605080684703814,
+      "mean_speedup": 0.15858041304229872,
+      "speedup_by_order": {
+        "parent_first": 0.16136346293443754,
+        "candidate_first": 0.15564355687584314
+      },
+      "samples_ms": [
+        [
+          11.016626143828034,
+          11.036775074899197,
+          11.115501867607236,
+          11.054937960579991,
+          11.127284960821271,
+          11.07400399632752,
+          11.093120090663433,
+          11.01616583764553,
+          11.122324969619513,
+          11.043105972930789,
+          11.146269971504807,
+          11.060449061915278,
+          11.130269849672914,
+          11.084594065323472,
+          11.18617388419807,
+          11.033958988264203,
+          11.191224912181497,
+          10.963717941194773,
+          11.118838097900152,
+          11.045200051739812
+        ],
+        [
+          68.87379405088723,
+          69.05049597844481,
+          68.92487895675004,
+          70.88096905499697,
+          69.00236499495804,
+          72.05235701985657,
+          68.86578910052776,
+          71.31630601361394,
+          68.96052695810795,
+          70.55890513584018,
+          68.89952206984162,
+          71.54779997654259,
+          68.89413204044104,
+          71.03499886579812,
+          68.99331789463758,
+          71.13235094584525,
+          68.96643806248903,
+          70.27335907332599,
+          68.96017584949732,
+          70.59160596691072
+        ]
+      ],
+      "exact": true,
+      "extra_cache_bytes": 62914560,
+      "cache_dequant_upload_ms": 14.79125814512372
+    },
+    {
+      "tensor": "blk.0.ffn_down_shexp.weight",
+      "shape": [
+        512,
+        640,
+        2560
+      ],
+      "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+      "parent_ms": 0.8258039597421885,
+      "candidate_ms": 1.0492535075172782,
+      "speedup": 0.7870395036335771,
+      "mean_speedup": 0.7988110435783311,
+      "speedup_by_order": {
+        "parent_first": 0.8379657625718696,
+        "candidate_first": 0.7692953535384499
+      },
+      "samples_ms": [
+        [
+          0.8123039733618498,
+          0.8044189307838678,
+          0.8646619971841574,
+          0.8109910413622856,
+          0.8687300141900778,
+          0.8178038988262415,
+          0.8635299745947123,
+          0.8126848842948675,
+          0.8666059002280235,
+          0.8193070534616709,
+          0.8705731015652418,
+          0.8190658409148455,
+          0.8705430664122105,
+          0.8257690351456404,
+          0.8693200070410967,
+          0.8149391505867243,
+          0.8985048625618219,
+          0.8182651363313198,
+          0.8770348504185677,
+          0.8258388843387365
+        ],
+        [
+          1.0355920530855656,
+          1.0641671251505613,
+          1.0451199486851692,
+          1.0472037829458714,
+          1.0219779796898365,
+          1.0615319479256868,
+          1.0348418727517128,
+          1.1060249526053667,
+          1.047244993969798,
+          1.091737998649478,
+          1.038538059219718,
+          1.0528559796512127,
+          1.0263349395245314,
+          1.0625440627336502,
+          1.0507619008421898,
+          1.0703178122639656,
+          1.025262987241149,
+          1.054238062351942,
+          1.0477451141923666,
+          1.0858869645744562
+        ]
+      ],
+      "exact": true,
+      "extra_cache_bytes": 6553600,
+      "cache_dequant_upload_ms": 1.6578901559114456
+    },
+    {
+      "tensor": "blk.0.ffn_down_shexp.weight",
+      "shape": [
+        1024,
+        640,
+        2560
+      ],
+      "weight_sha256": "fbceb852995394a22008c15d36f6ae0adaad88e26bf5a892120e271edd14d296",
+      "parent_ms": 1.6115779289975762,
+      "candidate_ms": 2.06195842474699,
+      "speedup": 0.7815763449233089,
+      "mean_speedup": 0.8333856015358826,
+      "speedup_by_order": {
+        "parent_first": 0.8985622804105375,
+        "candidate_first": 0.7789186707362085
+      },
+      "samples_ms": [
+        [
+          1.5911748632788658,
+          1.6079859342426062,
+          1.9384771585464478,
+          1.608717953786254,
+          1.8384689465165138,
+          1.6123340465128422,
+          1.8422859720885754,
+          1.592807937413454,
+          1.83759699575603,
+          1.6068040858954191,
+          1.849569845944643,
+          1.6076460015028715,
+          1.8478869460523129,
+          1.6007930971682072,
+          1.8392200581729412,
+          1.589922932907939,
+          1.844980986788869,
+          1.598999835550785,
+          1.8423970323055983,
+          1.6108218114823103
+        ],
+        [
+          2.0223830360919237,
+          2.093065995723009,
+          2.0440949592739344,
+          2.0615679677575827,
+          2.067830180749297,
+          2.0600149873644114,
+          2.0623488817363977,
+          2.059242920950055,
+          1.9646261353045702,
+          2.071075141429901,
+          2.0565479062497616,
+          2.062919083982706,
+          2.06040614284575,
+          2.0667468197643757,
+          2.0345759112387896,
+          2.0636310800909996,
+          2.023395849391818,
+          2.0631798543035984,
+          2.068410161882639,
+          2.162025775760412
+        ]
+      ],
+      "exact": true,
+      "extra_cache_bytes": 6553600,
+      "cache_dequant_upload_ms": 3.1004271004348993
+    }
+  ],
+  "model": "Qwen3.8-Flash-Next UD-Q4_K_XL",
+  "contract": "T0 F32 output bits",
+  "default_changed": false,
+  "library_prebound": true,
+  "order_balanced": true,
+  "device_fill_precondition_mib": 0,
+  "boundary": "Q8 projection",
+  "parent_variant": "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out",
+  "candidate_variant": "gguf_q8_0_gemv_coltile8_rowbatch4_f32_cache_f32_f32_out"
+}
