@@ -86,11 +86,13 @@ def _read_device(ptr: int, shape: tuple[int, ...], dtype, runtime) -> np.ndarray
 class PackedC1Capture:
     """Instrument the real adapter and its target; never replace its execution."""
 
-    def __init__(self, directory: Path, *, check_state: bool = False, check_commit: bool = False):
+    def __init__(self, directory: Path, *, check_state: bool = False, check_commit: bool = False,
+                 slot: int | None = None):
         directory.mkdir(parents=True, exist_ok=False)
         self.directory = directory
         self.check_state = check_state or check_commit
         self.check_commit = check_commit
+        self.slot = slot
         self.current = ContextVar("packed_c1_capture", default=None)
         self.records: list[dict[str, Any]] = []
         self.prompt: dict[str, Any] | None = None
@@ -104,6 +106,12 @@ class PackedC1Capture:
         from scripts import gguf_mtp_c1c8_server_bench as bench
         from hipengine.generation.qwen35_gguf_mtp2 import Qwen35GGUFMTP2Adapter
         from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
+
+        if self.slot is not None:
+            from hipengine.generation.qwen35_gguf import Qwen35GGUFResidentModelRunner
+            from scripts.qwen38_packed_c1_slots import acquire_slot
+            self._patch(Qwen35GGUFResidentModelRunner, "_acquire_lease",
+                        lambda owner: acquire_slot(owner, self.slot))
 
         suite = bench.load_prompt_suite(ROOT / "benchmarks/prompts/mtpbench-code-general-ja.jsonl")
         prompts = {r["rendered_prompt"]: r for r in suite}
@@ -144,6 +152,10 @@ class PackedC1Capture:
                 "profile": str(adapter.generator.execution_profile),
                 "manifest_sha256": str(adapter.generator.execution_profile_manifest_sha256),
             }
+            if self.slot is not None:
+                context["resident_session_slot"] = int(getattr(row.slot.session, "_resident_slot_index", 0) or 0)
+                if context["resident_session_slot"] != self.slot:
+                    raise ValueError("packed target did not use requested diagnostic resident session slot")
             if self.check_commit:
                 context["remaining_decode"] = int(row.request.max_tokens) - len(generated)
             token = self.current.set(context)
@@ -297,7 +309,8 @@ class PackedC1Capture:
 
 
 def capture(args) -> None:
-    recorder = PackedC1Capture(args.directory, check_state=args.check_state, check_commit=args.check_commit)
+    recorder = PackedC1Capture(args.directory, check_state=args.check_state, check_commit=args.check_commit,
+                               slot=args.slot)
     success = False
     previous = sys.argv
     try:
@@ -446,6 +459,7 @@ def main() -> None:
     parser.add_argument("--repeat-directory", type=Path, action="append", default=[],
                         help="Additional independent capture; repeat for each run in compare mode")
     parser.add_argument("--capacity", type=int, choices=(1, 2, 8), default=1)
+    parser.add_argument("--slot", type=int, help="Diagnostic free-lease selection; capture only, not a concurrency gate")
     parser.add_argument("--budget", type=int, choices=range(1, 8), default=3)
     parser.add_argument("--output", type=Path, default=Path("/tmp/packed-c1-conditional-numerics.json"))
     args = parser.parse_args()
