@@ -8,9 +8,11 @@ The cancelled prefix comes from its terminal collector, not a public response.
 pair, and checks request ownership and resident leases after all children finish.
 --wide-refill tests eight initial children and seven refills at capacity eight,
 with a real native C1 survivor between the two packed width-eight groups.
+--precommit-failure injects after native C1 packed verification and checks unchanged
+canonical target state, provider checkpoint/cursor restoration and AR recovery.
 The original HTTP mode cannot batch unequal horizons and reproduces that failure.
-No lease swap, HTTP lifecycle, provisional-transaction rollback, EOS, full numerical
-qualification, or promotion claim.
+No lease swap, HTTP lifecycle, postcommit recovery, provider live-KV rollback, EOS,
+full numerical qualification, or promotion claim.
 """
 from __future__ import annotations
 
@@ -190,7 +192,12 @@ def main() -> None:
                         help='Admit a new D8 child after the D24 child becomes a native C1 survivor')
     parser.add_argument('--wide-refill', action='store_true',
                         help='Test eight initial children, their C1 survivor, then seven new peers')
+    parser.add_argument('--precommit-failure', action='store_true',
+                        help='Inject one native C1 failure after packed verification, before acceptance')
     args = parser.parse_args()
+    if args.precommit_failure and (not args.engine_boundary or args.wide_refill
+                                  or args.cancel_peer or args.refill_peer):
+        parser.error('--precommit-failure requires engine boundary and no other scenario')
     if args.wide_refill and (not args.engine_boundary or args.capacity != 8
                             or args.cancel_peer or args.refill_peer):
         parser.error('--wide-refill requires --engine-boundary --capacity 8 and no other scenario')
@@ -212,6 +219,29 @@ def main() -> None:
     execute = mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch
     verify = Qwen35GGUFResidentSession.verify_target_blocks_batch
     legacy = mtp2.Qwen35GGUFTransactionalVerifier
+    from hipengine.runtime.qwen35_gguf_nextn import Qwen35GGUFNextNExecutor
+    from scripts.qwen38_packed_c1_recovery import PrecommitProbe, InjectedPrecommitFailure
+    restore_checkpoint = Qwen35GGUFNextNExecutor.restore_request_checkpoint
+    recover_failure = mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure
+    recovery = None
+
+    def restored(executor, checkpoint):
+        if recovery is not None and recovery.evidence['injected']:
+            recovery.evidence.setdefault('restore_request_ids', []).append(int(checkpoint.request_id))
+        if (recovery is not None and recovery.evidence['injected']
+                and checkpoint.request_id == recovery.evidence['request_id']):
+            return recovery.restore(restore_checkpoint, executor, checkpoint)
+        return restore_checkpoint(executor, checkpoint)
+
+    def recovered(adapter, plan, error):
+        if recovery is not None and type(error) is InjectedPrecommitFailure:
+            if list(plan.speculative_request_ids) != [recovery.evidence['request_id']]:
+                raise ValueError('recovery changed request identity')
+            recovery.assert_target()
+            result = recover_failure(adapter, plan, error)
+            recovery.evidence['recovered'] = bool(result)
+            return result
+        return recover_failure(adapter, plan, error)
 
     def target(adapter, plan, *positional, **kwargs):
         ids = list(plan.speculative_request_ids)
@@ -251,6 +281,11 @@ def main() -> None:
 
     def packed(owner, jobs, **kwargs):
         context = current.get()
+        inject = (recovery is not None and not recovery.evidence['injected']
+                  and context is not None and context[0]['native_c1']
+                  and context[0]['active_request_ids'] == context[0]['request_ids'])
+        if inject:
+            recovery.prepare(context[1][0], context[0]['request_ids'][0])
         result = verify(owner, jobs, **kwargs)
         if context is not None:
             record, sessions = context
@@ -260,6 +295,8 @@ def main() -> None:
                 if len(matches) != 1:
                     raise ValueError('packed job does not own a traced request session')
                 record['packed_request_ids'].append(record['request_ids'][matches[0]])
+        if inject:
+            recovery.inject()
         return result
 
     def forbidden(*positional, **kwargs):
@@ -268,6 +305,9 @@ def main() -> None:
     mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch = target
     Qwen35GGUFResidentSession.verify_target_blocks_batch = packed
     mtp2.Qwen35GGUFTransactionalVerifier = forbidden
+    if args.precommit_failure:
+        Qwen35GGUFNextNExecutor.restore_request_checkpoint = restored
+        mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure = recovered
     cells = []
     llm = None
     passed = False
@@ -291,6 +331,7 @@ def main() -> None:
                             max_tokens=n, mtp=False, barrier=threading.Barrier(1))
                             for n in horizons]
                 start = len(traces)
+                recovery = PrecommitProbe() if args.precommit_failure else None
                 paired_ready = threading.Event() if args.cancel_peer else None
                 cancellation = {} if args.cancel_peer else None
                 singleton_ready = threading.Event() if args.refill_peer or args.wide_refill else None
@@ -324,9 +365,12 @@ def main() -> None:
                     from scripts.qwen38_packed_c1_wide_refill import validate_wide_refill
                     transition = validate_wide_refill(trace, refill['initial_request_ids'],
                                                       refill['refill_request_ids'])
+                elif args.precommit_failure:
+                    from scripts.qwen38_packed_c1_recovery import validate_recovery
+                    transition = validate_recovery(trace, recovery.evidence)
                 else:
                     transition = validate_transition(trace)
-                if args.refill_peer or args.wide_refill:
+                if args.refill_peer or args.wide_refill or args.precommit_failure:
                     from scripts.qwen38_packed_c1_drain import validate_request_drain
                     if args.refill_peer:
                         from scripts.qwen38_packed_c1_refill import validate_refill_transition
@@ -353,6 +397,7 @@ def main() -> None:
                             engaged=engaged, transition=transition, trace=trace,
                             intent_sources=intent_sources, cancellation=cancellation,
                             refill=refill, request_drain=drain,
+                            recovery=None if recovery is None else recovery.evidence,
                             responses=[{k: r[k] for k in ('generated_ids', 'usage', 'route', 'mtp')}
                                        for r in actual],
                             oracle_responses=[{k: r[k] for k in ('generated_ids', 'usage')}
@@ -368,13 +413,16 @@ def main() -> None:
                 diagnostic_only=True, performance_claim=False, full_profile_qualification=False,
                 passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
                 cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
-                wide_refill_requested=args.wide_refill,
+                wide_refill_requested=args.wide_refill, precommit_failure_requested=args.precommit_failure,
+                last_recovery=None if recovery is None else recovery.evidence,
                 boundary='engine_service' if args.engine_boundary else 'http',
                 cells=cells, all_target_traces=traces))
         finally:
             mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch = execute
             Qwen35GGUFResidentSession.verify_target_blocks_batch = verify
             mtp2.Qwen35GGUFTransactionalVerifier = legacy
+            Qwen35GGUFNextNExecutor.restore_request_checkpoint = restore_checkpoint
+            mtp2.Qwen35GGUFMTP2Adapter.recover_cycle_failure = recover_failure
             faulthandler.cancel_dump_traceback_later()
 
 

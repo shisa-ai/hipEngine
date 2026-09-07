@@ -1,0 +1,538 @@
+{
+  "schema": 1,
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model_path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "quant": "Q4_K_M",
+  "execution_profile": "production",
+  "kv": "bf16",
+  "candidate_budget": 3,
+  "boundary": "EngineService.submit_speculative_children",
+  "kind": "packed_c1_precommit_ar_recovery_diagnostic",
+  "base_commit": "cafde1ec6",
+  "horizons": [
+    8,
+    24
+  ],
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "http_usage_qualified": false,
+  "runs": [
+    {
+      "capacity": 8,
+      "source": "/tmp/packed-c1-precommit-recovery-v3-n8.json",
+      "sha256": "f1927a0e41f2e89a29fdddef5b7c32304118309f463112478795337e5b0e2332",
+      "passed": true,
+      "clean_teardown": true,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 3,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 3,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              3
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "9ea91c17976fc5883f5f463c4fb38f223ac48d094d6070bb0ba198ded1093397",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 7,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 7,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              7
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "a1ab32b5ffce1d6b45e5eced4698e952e64ed68e53c44ddc0728ebd7c9c6f957",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 11,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 11,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              11
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "d1f5f530315c45fc5f2fa4e8f4a962b06804f889185acb77343b095b42644451",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 15,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 15,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              15
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "acbed2ad57890f8af9e888383c9674d2e92ea65f1ec2a9e922ba3b1da29e6cd0",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 19,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 19,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              19
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "68a1a7be128c7204ae6e5affe29ac08a69a7ca6842d5aa36f5db5746530aa0cc",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 23,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 23,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              23
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "2b97db9c5690158dfad4d39ef498420e8cf36d5760e989ed2ed8f6fb101311fa",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 27,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 27,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              27
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "2be0468f71f7b11e6d3823a4de0daffef0c3d51abe94ac1e45fd601873eb0f07",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 31,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 31,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              31
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "b2d5c9300ada08e5a955190d0115a8e1664d03b21aa444d26ccac0ed474696ea",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 35,
+            "resident_slot": 6,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 35,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              35
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "1795c61bd1230a7a48c3e1d5afac7c378c52ab086c1779697ea4bf743017db92",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 39,
+            "resident_slot": 7,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 39,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              39
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "115cf0f1280eb3416eed808026122ac27c556734860676840ad3057933c7b0e7",
+          "request_drain_passed": true
+        }
+      ],
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --precommit-failure --capacity 8 --output /tmp/packed-c1-precommit-recovery-v3-n8.json"
+    },
+    {
+      "capacity": 2,
+      "source": "/tmp/packed-c1-precommit-recovery-v3-n2.json",
+      "sha256": "38fc0c551a69274ecd159246d39a228dd4759d32d36e99fea216c146106364d5",
+      "passed": true,
+      "clean_teardown": true,
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 3,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 3,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              3
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "9ea91c17976fc5883f5f463c4fb38f223ac48d094d6070bb0ba198ded1093397",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 7,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 7,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              7
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "a1ab32b5ffce1d6b45e5eced4698e952e64ed68e53c44ddc0728ebd7c9c6f957",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 11,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 11,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              11
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "d1f5f530315c45fc5f2fa4e8f4a962b06804f889185acb77343b095b42644451",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "transition": {
+            "survivor_request_id": 15,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 15,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              15
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "acbed2ad57890f8af9e888383c9674d2e92ea65f1ec2a9e922ba3b1da29e6cd0",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 19,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 19,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              19
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "68a1a7be128c7204ae6e5affe29ac08a69a7ca6842d5aa36f5db5746530aa0cc",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "transition": {
+            "survivor_request_id": 23,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 23,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              23
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "2b97db9c5690158dfad4d39ef498420e8cf36d5760e989ed2ed8f6fb101311fa",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 27,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 27,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              27
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "2be0468f71f7b11e6d3823a4de0daffef0c3d51abe94ac1e45fd601873eb0f07",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "transition": {
+            "survivor_request_id": 31,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 31,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              31
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "b2d5c9300ada08e5a955190d0115a8e1664d03b21aa444d26ccac0ed474696ea",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 35,
+            "resident_slot": 0,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 35,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              35
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "1795c61bd1230a7a48c3e1d5afac7c378c52ab086c1779697ea4bf743017db92",
+          "request_drain_passed": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "transition": {
+            "survivor_request_id": 39,
+            "resident_slot": 1,
+            "scheduler_slot": 1
+          },
+          "recovery": {
+            "request_id": 39,
+            "injected": true,
+            "provider_restores": 1,
+            "target_unchanged": true,
+            "recovered": true,
+            "target_buffers_checked": 131,
+            "restore_request_ids": [
+              39
+            ],
+            "provider_buffers_checked": 0
+          },
+          "exact_outputs": true,
+          "output_ids_sha256": "115cf0f1280eb3416eed808026122ac27c556734860676840ad3057933c7b0e7",
+          "request_drain_passed": true
+        }
+      ],
+      "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --precommit-failure --capacity 2 --output /tmp/packed-c1-precommit-recovery-v3-n2.json"
+    }
+  ],
+  "validation": [
+    "214 broader packed-C1 CPU tests before inventory repair;42 focused repair tests;24 expanded recovery tests;CLI help and invalid-scenario guards.",
+    "All20 prompts independently inspected for both exact AR output IDs, expected native C1 fault,131 canonical target buffers unchanged,one request-matched provider restoration and serialized request drain."
+  ],
+  "limitations": [
+    "Provider inventory has zero Conv/GDN checkpoint buffers; host/logical/device cursor restoration is verified, not provider live-KV rollback.",
+    "Precommit failure falls back to AR; does not qualify same-request MTP resumption, postcommit rebuild, EOS or all failure points.",
+    "Diagnostic admission only; no public safety, numerical or performance promotion."
+  ]
+}
