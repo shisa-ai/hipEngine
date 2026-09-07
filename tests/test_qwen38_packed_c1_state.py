@@ -19,6 +19,61 @@ def _session():
                          position_buf=buf(60, 8), context_buf=buf(70, 8)))
 
 
+@pytest.fixture(autouse=True)
+def mock_kv_hash(monkeypatch):
+    from scripts import qwen38_packed_c1_kv as kv
+    monkeypatch.setattr(kv, '_device_hash', lambda session, buffer: str((buffer.ptr, buffer.nbytes)))
+
+
+@pytest.mark.parametrize('layout', ['slot', 'pages'])
+def test_snapshot_tracks_physical_live_kv_and_page_ownership(monkeypatch, layout):
+    from scripts import qwen38_packed_c1_state as module
+    monkeypatch.setattr(module, '_device_hash', lambda *a, **kw: 'hash')
+    s = _session()
+    for b in (s.scratch.full_key_caches[1], s.scratch.full_value_caches[1]):
+        b.nbytes = 4096
+    if layout == 'slot':
+        s._resident_slot_index = 2
+        s._resident_batch_owner = NS(_target_scratch_owner=NS(max_positions=256))
+        rows = (512, 513)
+    else:
+        s.position = 257
+        s._device_kv_allocation = NS(block_ids=(12, 10), chunk_start_block_id=10)
+        rows = tuple(range(512, 768)) + (0,)
+    before = module.snapshot_committed_state(s)
+    assert before['buffers']['key:1']['physical_rows'] == rows
+    assert before['buffers']['key:1']['checked_nbytes'] == len(rows) * 4
+    if layout == 'slot':
+        s._resident_slot_index = 1
+    else:
+        s._device_kv_allocation.block_ids = (10, 12)
+    with pytest.raises(ValueError, match='buffers'):
+        module.assert_committed_state_unchanged(before, module.snapshot_committed_state(s))
+
+
+@pytest.mark.parametrize('row,changed', [(512, True), (513, True), (514, False), (0, False)])
+def test_snapshot_detects_live_slot_bytes_only(monkeypatch, row, changed):
+    from scripts import qwen38_packed_c1_state as module
+    from scripts import qwen38_packed_c1_kv as kv
+    monkeypatch.setattr(module, '_device_hash', lambda *a, **kw: 'hash')
+    s = _session()
+    s._resident_slot_index = 2
+    s._resident_batch_owner = NS(_target_scratch_owner=NS(max_positions=256))
+    for b in (s.scratch.full_key_caches[1], s.scratch.full_value_caches[1]):
+        b.nbytes = 4096
+    memory = {}
+    monkeypatch.setattr(kv, '_device_hash', lambda session, b:
+                        tuple(memory.get(i, 0) for i in range(b.ptr, b.ptr + b.nbytes)))
+    before = module.snapshot_committed_state(s)
+    memory[30 + row * 4] = 1
+    after = module.snapshot_committed_state(s)
+    if changed:
+        with pytest.raises(ValueError, match='buffers'):
+            module.assert_committed_state_unchanged(before, after)
+    else:
+        module.assert_committed_state_unchanged(before, after)
+
+
 def test_snapshot_checks_all_committed_surfaces_and_only_live_kv(monkeypatch):
     from scripts import qwen38_packed_c1_state as module
     calls = []
@@ -28,8 +83,9 @@ def test_snapshot_checks_all_committed_surfaces_and_only_live_kv(monkeypatch):
     monkeypatch.setattr(module, "_device_hash", digest)
     result = module.snapshot_committed_state(_session())
     assert result["position"] == 2
-    assert calls == [(10, None), (20, None), (30, 8), (40, 8),
-                     (50, None), (60, None), (70, None)]
+    assert calls == [(10, None), (20, None), (50, None), (60, None), (70, None)]
+    assert result['buffers']['key:1']['blake2b_128'] == ('(30, 8)',)
+    assert result['buffers']['value:1']['blake2b_128'] == ('(40, 8)',)
     assert len(result["buffers"]) == 7
 
 

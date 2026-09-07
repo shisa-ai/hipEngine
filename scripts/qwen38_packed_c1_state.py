@@ -43,14 +43,24 @@ def snapshot_committed_state(session: Any) -> dict[str, Any]:
             continue
         capture(f"conv:{layer}", conv)
         capture(f"recurrent:{layer}", recurrent)
-    live_nbytes = position * int(cfg.head_count_kv) * int(cfg.key_length) * 2
+    from scripts.qwen38_packed_c1_kv import resident_rows, hash_rows
+    rows = resident_rows(session, 0, position)
+    row_bytes = int(cfg.head_count_kv) * int(cfg.key_length) * 2
+
+    def capture_kv(name, buffer):
+        hashes = hash_rows(session, buffer, rows, row_bytes)
+        buffers[name] = {
+            "ptr": int(buffer.ptr), "allocation_nbytes": int(buffer.nbytes),
+            "checked_nbytes": len(rows) * row_bytes,
+            "physical_rows": rows, "blake2b_128": hashes,
+        }
     for layer, (key, value) in enumerate(zip(
         scratch.full_key_caches, scratch.full_value_caches, strict=True,
     )):
         if key is None and value is None:
             continue
-        capture(f"key:{layer}", key, live_nbytes)
-        capture(f"value:{layer}", value, live_nbytes)
+        capture_kv(f"key:{layer}", key)
+        capture_kv(f"value:{layer}", value)
     capture("hidden_seed", scratch.hidden_seed_fp32)
     capture("position_device", scratch.position_buf)
     capture("context_device", scratch.context_buf)
