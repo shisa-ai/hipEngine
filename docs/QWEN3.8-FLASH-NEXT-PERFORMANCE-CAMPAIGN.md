@@ -76,6 +76,28 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**One-pair empirical calibration (September7 UTC):** committed
+`scripts/qwen4exp_screen_calibration.py` validates same Framework/model/
+chunk1024,72 samples,12 cases,canonical order and exact trajectories.
+Training packets:Q8-register promotion and Q8-prefetch2 rejection;
+held-out packets:Q5_1 row-publication promotion and GDN nearzero model run.
+Maximum absolute log(first-pair ratio / full-three-pair ratio) corresponds
+to multiplicative factors1.03520 prefill /1.03398 request. Neither
+held-out packet exceeds this envelope or yields a wrong-sign decisive row,
+but10/24 Q5_1 metric rows and24/24 GDN rows remain uncertain.
+Neither packet supports all-case early promotion under this conservative
+rule. This selected four-packet study is NOT a confidence guarantee;
+three-pair averages also contain noise. No promotion policy changed.
+Same-residency continuation and a broader prospective calibration remain
+required before adaptive early promotion. No GPU time spent.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-screen-calibration.json).
+
+**Shared-input preparation audit:** current code-p4096 profile attributes
+223.675ms/1256 launches to all Q8 D4x3 activation quantization combined.
+Explicit-pair reuse can save only a subset of that, not the multi-second
+linear gap. Do not add a pointer-only reuse cache across layers; any future
+reuse must have explicit input/workspace lifetime and alias guarantees.
+
 **Q5_1 row16 after spill removal rejected (September7 UTC):**
 larger row group on the current per-row-publication kernel preserves
 arithmetic but loses0.428561x/0.411661x at512/1024 synthetic-routing
