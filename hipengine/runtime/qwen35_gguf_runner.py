@@ -6759,14 +6759,8 @@ class Qwen35GGUFFullStackRunner:
         cu_seqlens_ptr: int,
         state_indices_ptr: int,
         stream: int = 0,
-        invocation_context=None,
     ) -> str:
-        """Run independent decode rows through the Q3 indexed-state contract."""
-
-        from hipengine.loading.qwen35_gguf_native_operands import require_native_layer_context
-        require_native_layer_context(invocation_context, self, layer_id, scratch, rows,
-                                     hidden_ptr, out_ptr, layer_type=LINEAR_ATTENTION,
-                                     cu_seqlens_ptr=cu_seqlens_ptr, state_indices_ptr=state_indices_ptr)
+        """Run session-owned rows through the Q3 indexed-state contract."""
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native linear-attention batch requires rows > 1")
@@ -6905,13 +6899,8 @@ class Qwen35GGUFFullStackRunner:
         *,
         rows: int,
         stream: int = 0,
-        invocation_context=None,
     ) -> str:
-        """Run one compact row-batched full-attention decode layer."""
-
-        from hipengine.loading.qwen35_gguf_native_operands import require_native_layer_context
-        require_native_layer_context(invocation_context, self, layer_id, scratch, rows,
-                                     hidden_ptr, out_ptr, layer_type=FULL_ATTENTION)
+        """Run one session-owned row-batched full-attention decode layer."""
         assert self.weights is not None
         if rows <= 1:
             raise ValueError("native full-attention batch requires rows > 1")
@@ -14444,7 +14433,7 @@ class Qwen35GGUFResidentSession:
     _logits_buf: object | None = field(default=None, init=False)
     _native_cu_seqlens_buf: object | None = field(default=None, init=False)
     _native_state_indices_buf: object | None = field(default=None, init=False)
-    _native_index_binding: object | None = field(default=None, init=False, repr=False)
+    _native_rows_ready: bool = field(default=False, init=False, repr=False)
     _native_token_ids_host: np.ndarray | None = field(default=None, init=False)
     _lm_block_values: object | None = field(default=None, init=False)
     _lm_block_indices: object | None = field(default=None, init=False)
@@ -14856,6 +14845,7 @@ class Qwen35GGUFResidentSession:
                 self.runner.weights, backend=self.backend, rows=int(self.max_batch_size),
                 recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32",
             )
+            self._native_rows_ready = True
         if self.small_weight_arena_enabled:
             resident = self.runner.weights
             arena = resident.allocation_arena
@@ -15096,10 +15086,6 @@ class Qwen35GGUFResidentSession:
             native_state_indices.nbytes,
             runtime=runtime,
         )
-        from hipengine.loading.qwen35_gguf_native_operands import NativeIndexBinding
-        self._native_index_binding = NativeIndexBinding.after_upload(
-            self._native_cu_seqlens_buf, self._native_state_indices_buf,
-            native_cu, native_state_indices)
         self._native_token_ids_host = np.empty((self.max_batch_size,), dtype=np.int32)
         self._lm_head_threads = 128
         self._lm_head_stage1_blocks = lm_head_argmax_stage1_blocks(self.runner.vocab_size, threads=self._lm_head_threads)
@@ -20544,40 +20530,19 @@ class Qwen35GGUFResidentSession:
             decode_spans=decode_spans,
         )
 
-    def _authorize_native_rows(self, rows: int):
-        from hipengine.loading.qwen35_gguf_execution import authorize_native_execution, native_scratch_identity
-        if self.runner is None or self.runner.weights is None:
-            raise ValueError("ar_decode_native_rows requires a certified resident")
-        if self.backend != self.runner.backend:
-            raise ValueError("ar_decode_native_rows session/runner backend mismatch")
-        if getattr(self.runner, "runtime", None) is not self.runtime:
-            raise ValueError("ar_decode_native_rows session/runner runtime owner mismatch")
-        if getattr(self.runner, "fp16_recurrent_state", None) not in (True, False):
-            raise ValueError("ar_decode_native_rows requires an explicit state-storage owner")
-        if self.use_expert_sidecar or self.host_token_embedding_enabled:
-            raise ValueError("ar_decode_native_rows has no pre-certified host/sidecar adapter")
-        if (FULL_ATTENTION in self.runner.weights.config.layer_types
-                and getattr(self._target_scratch_owner, "kv_storage_dtype", None) != DType.BF16):
-            raise ValueError("ar_decode_native_rows requires a BF16 KV owner")
-        identity = authorize_native_execution(
-            self.runner.weights, backend=self.runner.backend, rows=rows,
-            recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32",
-        )
-        scratch_identity = native_scratch_identity(
-            self._target_scratch_owner, self.runner.weights.config, rows=rows,
-            recurrent_state_dtype="fp16" if self.runner.fp16_recurrent_state else "f32")
-        from hipengine.loading.qwen35_gguf_native_operands import NativeRowsOperands, physical_operand_inventory
-        if self._lm_head_stage1_blocks != lm_head_argmax_stage1_blocks(
-                self.runner.vocab_size, threads=self._lm_head_threads):
-            raise ValueError("native sampler geometry differs from its allocation owner")
-        operands = NativeRowsOperands.bind(self, rows)
-        return (identity, scratch_identity, int(self.max_batch_size), physical_operand_inventory(operands),
-                self._native_index_binding, self._lm_head_threads, self._lm_head_stage1_blocks,
-                id(self.runtime), self.use_gemv_decode, self.use_expert_sidecar)
+    def _require_native_rows(self, rows: int) -> None:
+        """Check the load-time route choice, not a fresh ownership inventory.
 
-    def _native_invocation_context(self, rows, scratch):
-        from hipengine.loading.qwen35_gguf_native_operands import NativeInvocationContext
-        return NativeInvocationContext.issue(self, rows, scratch)
+        Resident weights and scratch are private session-owned allocations.
+        Replacing their views or geometry while this session is live is not a
+        supported API. Graphs share that lifetime contract.
+        """
+        if not self._native_rows_ready:
+            raise ValueError("ar_decode_native_rows must be requested at session construction")
+        if self.use_expert_sidecar or self.host_token_embedding_enabled:
+            raise ValueError("ar_decode_native_rows does not support host embedding or expert sidecars")
+        if not 2 <= int(rows) <= min(8, int(self.max_batch_size)):
+            raise ValueError("ar_decode_native_rows rows must be within [2, min(8, max_batch_size)]")
 
     def _enqueue_native_rows_model(
         self,
@@ -20587,30 +20552,38 @@ class Qwen35GGUFResidentSession:
         stream: int,
         embedding_ready: bool,
         capture_ids: tuple[int, ...] = (),
-        invocation_context=None,
     ) -> tuple[dict[str, str], dict[int, np.ndarray]]:
         """Enqueue one compact native model step without host token/state updates."""
 
-        from hipengine.loading.qwen35_gguf_native_operands import NativeInvocationContext
-        context = invocation_context if invocation_context is not None else self._native_invocation_context(rows, scratch)
-        if not isinstance(context, NativeInvocationContext):
-            raise ValueError("native enqueue requires an owner-bound invocation context")
-        context.validate(self, rows, scratch)
-        operands = context.operands
+        if (
+            self.runner is None
+            or self.runner.weights is None
+            or self._token_buf is None
+            or self._hidden_a is None
+            or self._hidden_b is None
+            or self._logits_buf is None
+            or self._native_cu_seqlens_buf is None
+            or self._native_state_indices_buf is None
+            or self._lm_block_values is None
+            or self._lm_block_indices is None
+            or self._lm_out_index is None
+            or self._lm_out_value is None
+        ):
+            raise RuntimeError("GGUF resident native-row buffers are closed")
         runtime = self.runtime or get_hip_runtime()
         if not embedding_ready:
             launch_gguf_embedding(
                 self._device_token_embedding_weight(reason="native_rows"),
-                operands._token_buf.ptr,
-                operands._hidden_a.ptr,
+                self._token_buf.ptr,
+                self._hidden_a.ptr,
                 rows=rows,
                 hidden_size=self.runner.hidden_size,
                 vocab_size=self.runner.vocab_size,
                 stream=stream,
                 runtime=runtime,
             )
-        src = operands._hidden_a
-        dst = operands._hidden_b
+        src = self._hidden_a
+        dst = self._hidden_b
         captures: dict[int, np.ndarray] = {}
         execution_paths: dict[str, str] = {
             "linear_attention": "not_applicable",
@@ -20631,10 +20604,9 @@ class Qwen35GGUFResidentSession:
                         dst.ptr,
                         scratch,
                         rows=rows,
-                        cu_seqlens_ptr=operands._native_cu_seqlens_buf.ptr,
-                        state_indices_ptr=operands._native_state_indices_buf.ptr,
+                        cu_seqlens_ptr=self._native_cu_seqlens_buf.ptr,
+                        state_indices_ptr=self._native_state_indices_buf.ptr,
                         stream=stream,
-                        invocation_context=context,
                     )
                 elif layer_type == FULL_ATTENTION:
                     execution_paths["full_attention"] = self.runner._run_full_attention_decode_rows_native(
@@ -20644,7 +20616,6 @@ class Qwen35GGUFResidentSession:
                         scratch,
                         rows=rows,
                         stream=stream,
-                        invocation_context=context,
                     )
                 else:
                     raise ValueError(f"unsupported GGUF layer type {layer_type!r}")
@@ -20674,7 +20645,7 @@ class Qwen35GGUFResidentSession:
             launch_gguf_linear(
                 self.runner.weights.root("lm_head"),
                 scratch.norm.ptr,
-                operands._logits_buf.ptr,
+                self._logits_buf.ptr,
                 rows=rows,
                 in_features=self.runner.hidden_size,
                 out_features=self.runner.vocab_size,
@@ -20683,11 +20654,11 @@ class Qwen35GGUFResidentSession:
                 runtime=runtime,
             )
             argmax_f32_rows_i32(
-                operands._logits_buf.ptr,
-                operands._lm_block_values.ptr,
-                operands._lm_block_indices.ptr,
-                operands._lm_out_index.ptr,
-                operands._lm_out_value.ptr,
+                self._logits_buf.ptr,
+                self._lm_block_values.ptr,
+                self._lm_block_indices.ptr,
+                self._lm_out_index.ptr,
+                self._lm_out_value.ptr,
                 rows,
                 self.runner.vocab_size,
                 threads=self._lm_head_threads,
@@ -20724,7 +20695,7 @@ class Qwen35GGUFResidentSession:
             raise RuntimeError("GGUF resident native-row buffers are closed")
         tokens = tuple(int(token) for token in token_ids)
         rows = len(tokens)
-        self._authorize_native_rows(rows)
+        self._require_native_rows(rows)
         if rows <= 1:
             raise ValueError("native GGUF target execution requires at least two rows")
         if rows > int(self.max_batch_size):
@@ -20745,8 +20716,6 @@ class Qwen35GGUFResidentSession:
         owner = self._target_scratch_owner
         owner.set_full_attention_positions(tuple(current_positions), self.runtime or get_hip_runtime())
         scratch = self._native_compact_scratch(rows, span_role=span_role)
-        context = self._native_invocation_context(rows, scratch)
-        operands = context.operands
         capture_ids = tuple(sorted({int(layer_id) for layer_id in capture_layer_ids}))
         layer_count = len(self.runner.weights.config.layer_types)
         if any(layer_id < 0 or layer_id >= layer_count for layer_id in capture_ids):
@@ -20755,9 +20724,9 @@ class Qwen35GGUFResidentSession:
         runtime = self.runtime or get_hip_runtime()
         self._copy_token_embeddings_to_device(
             np.asarray(tokens, dtype=np.int64),
-            operands._hidden_a.ptr,
+            self._hidden_a.ptr,
             rows=rows,
-            token_ids_device_ptr=operands._token_buf.ptr,
+            token_ids_device_ptr=self._token_buf.ptr,
             stream=stream,
         )
         execution_paths, captures = self._enqueue_native_rows_model(
@@ -20766,7 +20735,6 @@ class Qwen35GGUFResidentSession:
             stream=stream,
             embedding_ready=True,
             capture_ids=capture_ids,
-            invocation_context=context,
         )
 
         if return_logits:
@@ -20777,7 +20745,7 @@ class Qwen35GGUFResidentSession:
             logits = np.empty((rows, self.runner.vocab_size), dtype=np.float32)
             copy_device_to_host(
                 host_array_ptr(logits),
-                DeviceBuffer(operands._logits_buf.ptr, logits.nbytes),
+                DeviceBuffer(self._logits_buf.ptr, logits.nbytes),
                 logits.nbytes,
                 runtime=runtime,
             )
@@ -20791,12 +20759,12 @@ class Qwen35GGUFResidentSession:
             else:
                 runtime.device_synchronize()
             copy_device_to_host(
-                host_array_ptr(operands._native_token_ids_host),
-                DeviceBuffer(operands._lm_out_index.ptr, rows * DType.INT32.itemsize),
+                host_array_ptr(self._native_token_ids_host),
+                DeviceBuffer(self._lm_out_index.ptr, rows * DType.INT32.itemsize),
                 rows * DType.INT32.itemsize,
                 runtime=runtime,
             )
-            next_tokens = tuple(int(token) for token in operands._native_token_ids_host[:rows])
+            next_tokens = tuple(int(token) for token in self._native_token_ids_host[:rows])
             logits = np.empty((rows, 0), dtype=np.float32)
             execution_paths["sampler"] = "argmax_rows_i32"
 
@@ -20825,7 +20793,7 @@ class Qwen35GGUFResidentSession:
 
         if self.runner is None or self.runner.weights is None or self._target_scratch_owner is None:
             raise RuntimeError("GGUF resident session is closed")
-        execution_identity = self._authorize_native_rows(int(rows))
+        self._require_native_rows(int(rows))
         rows = int(rows)
         if rows <= 1 or rows > int(self.max_batch_size):
             raise ValueError("native row graph rows must be within [2, max_batch_size]")
@@ -20843,7 +20811,6 @@ class Qwen35GGUFResidentSession:
             span_role=span_role,
             max_context_len=int(max_context_len),
         )
-        context = self._native_invocation_context(rows, scratch)
         graph = 0
         stream = runtime.stream_create()
         try:
@@ -20854,7 +20821,6 @@ class Qwen35GGUFResidentSession:
                     rows=rows,
                     stream=stream,
                     embedding_ready=False,
-                    invocation_context=context,
                 )
             except Exception:
                 try:
@@ -20881,8 +20847,6 @@ class Qwen35GGUFResidentSession:
             max_context_len=int(max_context_len),
             span_role=span_role,
             execution_paths={**execution_paths, "sampler": "argmax_rows_i32_graph"},
-            execution_identity=(execution_identity, span_role, int(max_context_len)),
-            invocation_context=context,
         )
 
     def step_rows(
@@ -27948,7 +27912,7 @@ class Qwen35GGUFResidentSession:
         self._logits_buf = None
         self._native_cu_seqlens_buf = None
         self._native_state_indices_buf = None
-        self._native_index_binding = None
+        self._native_rows_ready = False
         self._native_token_ids_host = None
         self._lm_block_values = None
         self._lm_block_indices = None
@@ -33809,24 +33773,14 @@ class Qwen35GGUFNativeRowsGraph:
     max_context_len: int
     span_role: str
     execution_paths: dict[str, str]
-    execution_identity: object | None = None
-    invocation_context: object | None = None
     closed: bool = False
 
     def step(self, token_ids: tuple[int, ...] | list[int]) -> Qwen35GGUFTargetRowsResult:
         if self.closed:
             raise RuntimeError("GGUF native row graph is closed")
-        if (self.execution_identity is None
-                or self.execution_identity != (self.session._authorize_native_rows(self.rows),
-                                               self.span_role, int(self.max_context_len))):
-            raise ValueError("ar_decode_native_rows graph contract changed since capture")
-        from hipengine.loading.qwen35_gguf_native_operands import NativeInvocationContext
-        if not isinstance(self.invocation_context, NativeInvocationContext):
-            raise ValueError("native graph has no owner-bound captured invocation")
-        scratch = self.session._native_compact_scratch(
-            self.rows, span_role=self.span_role, max_context_len=int(self.max_context_len))
-        self.invocation_context.validate(self.session, self.rows, scratch)
-        operands = self.invocation_context.operands
+        if self.session._token_buf is None or self.session._native_token_ids_host is None:
+            raise RuntimeError("GGUF resident native-row buffers are closed")
+        self.session._require_native_rows(self.rows)
         tokens = tuple(int(token) for token in token_ids)
         if len(tokens) != int(self.rows):
             raise ValueError("native row graph token count must match captured rows")
@@ -33842,7 +33796,7 @@ class Qwen35GGUFNativeRowsGraph:
         runtime = self.session.runtime or get_hip_runtime()
         token_host = np.asarray(tokens, dtype=np.int64)
         copy_host_to_device(
-            operands._token_buf,
+            self.session._token_buf,
             host_array_ptr(token_host),
             token_host.nbytes,
             runtime=runtime,
@@ -33856,16 +33810,16 @@ class Qwen35GGUFNativeRowsGraph:
         runtime.graph_launch(self.graph_exec, self.stream)
         runtime.stream_synchronize(self.stream)
         copy_device_to_host(
-            host_array_ptr(operands._native_token_ids_host),
+            host_array_ptr(self.session._native_token_ids_host),
             DeviceBuffer(
-                operands._lm_out_index.ptr,
+                self.session._lm_out_index.ptr,
                 self.rows * DType.INT32.itemsize,
             ),
             self.rows * DType.INT32.itemsize,
             runtime=runtime,
         )
         next_tokens = tuple(
-            int(token) for token in operands._native_token_ids_host[: self.rows]
+            int(token) for token in self.session._native_token_ids_host[: self.rows]
         )
         for row in range(self.rows):
             current_positions[row] += 1

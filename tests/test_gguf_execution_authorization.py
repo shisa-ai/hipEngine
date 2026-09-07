@@ -63,54 +63,6 @@ def test_real_loader_native_closure_and_positive_rows(monkeypatch, tmp_path):
         authorize_native_execution(resident, backend="hip_gfx1100", rows=9)
 
 
-@pytest.mark.parametrize("entry", ["eager", "capture", "enqueue"])
-@pytest.mark.parametrize("damage", ["missing", "backend", "rows", "partial", "stale", "operands", "state", "scratch_rows", "norm_extent", "state_alias", "weight_alias"])
-def test_native_entries_refuse_before_mutation(monkeypatch, tmp_path, entry, damage):
-    from dataclasses import replace
-    from tests.test_gguf_ud_admission import _native_entry_session, _PositionOwnerSentinel
-    resident = native_resident(monkeypatch, tmp_path)
-    rows = 2
-    if damage == "missing":
-        resident = replace(resident, admission_certificate=None)
-    elif damage == "backend":
-        resident = replace(resident, backend="hip_gfx1151")
-    elif damage == "rows":
-        rows = 9
-    elif damage in {"partial", "operands"}:
-        cert = resident.admission_certificate
-        if damage == "partial":
-            cert = replace(cert, slot_filter=("root.lm_head",))
-        else:
-            invocations = list(cert.plan_contract.invocations)
-            index = next(i for i, call in enumerate(invocations) if call.operation == NATIVE)
-            invocations[index] = replace(invocations[index], shape=(999,))
-            cert = replace(cert, plan_contract=replace(cert.plan_contract, invocations=tuple(invocations)))
-        resident = replace(resident, admission_certificate=cert,
-                           execution_binding=replace(resident.execution_binding, certificate=cert))
-    elif damage == "stale":
-        resident = replace(resident, config=replace(resident.config, ssm_state_size=129))
-    elif damage == "weight_alias":
-        roots = dict(resident.root_weights)
-        roots["output_norm"] = replace(roots["output_norm"], allocations=roots["token_embedding"].allocations)
-        resident = replace(resident, root_weights=roots)
-    owner = _PositionOwnerSentinel()
-    session = _native_entry_session(resident, scratch_owner=owner)
-    session.runner.fp16_recurrent_state = damage == "state"
-    if damage == "scratch_rows":
-        owner.slot_count = 1
-    elif damage == "norm_extent":
-        owner.norm.nbytes = 2
-    elif damage == "state_alias":
-        owner.layer_recurrent_states[0].ptr = owner.layer_conv_states[0].ptr
-    if entry == "eager":
-        call = lambda: session.step_rows_native(tuple(range(rows)))
-    elif entry == "capture":
-        call = lambda: session.capture_native_rows_graph(rows=rows, max_context_len=64)
-    else:
-        call = lambda: session._enqueue_native_rows_model(None, rows=rows, stream=0, embedding_ready=False)
-    with pytest.raises(ValueError, match="ar_decode_native_rows"):
-        call()
-    assert owner.calls == []
 
 
 @pytest.mark.parametrize("routes,native", [(("eager",), False), (("native_rows", "native_graph"), True)])
@@ -222,29 +174,3 @@ def test_native_moe_full_closure_and_gate_only_certificate_refusal(monkeypatch, 
     assert partial.admission_certificate.plan_contract.is_complete()
     with pytest.raises(ValueError, match="partial certificate"):
         authorize_native_execution(partial, backend="hip_gfx1100", rows=2)
-
-
-@pytest.mark.parametrize("layer", ["linear_attention", "full_attention"])
-def test_direct_native_layer_entry_has_no_legacy_authority(layer):
-    from types import SimpleNamespace
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFFullStackRunner
-    runner = SimpleNamespace(weights=None, backend="hip_gfx1100", fp16_recurrent_state=False)
-    method = getattr(Qwen35GGUFFullStackRunner, f"_run_{layer}_decode_rows_native")
-    extra = {"cu_seqlens_ptr": 1, "state_indices_ptr": 2} if layer == "linear_attention" else {}
-    with pytest.raises(ValueError, match="pre-certified"):
-        method(runner, 0, 3, 4, None, rows=2, **extra)
-
-
-def test_graph_replay_does_not_widen_captured_rows(monkeypatch, tmp_path):
-    from tests.test_gguf_ud_admission import _native_entry_session, _PositionOwnerSentinel
-    from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFNativeRowsGraph
-    resident = native_resident(monkeypatch, tmp_path)
-    owner = _PositionOwnerSentinel()
-    session = _native_entry_session(resident, scratch_owner=owner)
-    session.runner.fp16_recurrent_state = False
-    graph = Qwen35GGUFNativeRowsGraph(session, 1, 2, 3, 2, 64, "decode", {},
-                                    execution_identity=(session._authorize_native_rows(2), "decode", 64))
-    graph.rows = 4
-    with pytest.raises(ValueError, match="contract changed"):
-        graph.step((1, 2, 3, 4))
-    assert owner.calls == []

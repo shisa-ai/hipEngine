@@ -972,18 +972,14 @@ diagnostics must name their own intent. Certificates bind resolved operands,
 adapters, state storage, geometry/row domains and backend alongside actual
 planned residents, with independent completeness accounting before narrowing.
 This is invocation/residency qualification, not numerical-profile permission.
-U1 F1 adds `loading/qwen35_gguf_execution.py`: session/engine-selected native
-routes add their complete dependencies to the loader's default scope before
-payload reads/allocation. Native eager, capture, replay and direct native-layer
-entries consume the pre-certified F4 contract against actual residents, caller
-operands, rows and state/scratch ownership; they never replan allocated weights
-or turn a filtered diagnostic certificate into full-model permission. Graphs
-pin the invocation and physical ownership identity. The F1 physical-operand
-correction adds `loading/qwen35_gguf_native_operands.py`: a shared launch/readback
-plan, recursive named scratch-view inventory, canonical index-publication owner,
-and owner-issued contexts required at direct native layers. A buffer-allocation
-list alone is not a captured operand plan. Contexts validate the actual BF16
-row-prefix input/output and index pointers, not just weights and scratch.
+`loading/qwen35_gguf_execution.py` adds the selected native route's complete
+load dependencies before payload reads/allocation and checks shared residents
+once during session construction. Native execution checks route availability,
+row bounds and unsupported adapters without rebuilding admission contracts or
+scanning allocation graphs. Private layer calls consume session-owned pointers;
+weights, buffer views and graph geometry must not be replaced during a session.
+Reconfiguration requires a new session. Graphs retain the existing closed-owner,
+token and context-bound checks.
 The UD campaign is simplifying its admission infrastructure before codec
 bring-up. Generic factory qualification, environment transactions and file-race
 defenses are not part of the profile API. Existing process-scoped profile
