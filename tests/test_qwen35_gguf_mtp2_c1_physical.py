@@ -92,6 +92,42 @@ def _wide_eligibility(rid: int, *, rows: int) -> SpeculativeMTPStaticEligibility
     )
 
 
+@pytest.mark.parametrize('capacity', [2, 8])
+def test_explicit_c1_ownership_survives_wider_admission(monkeypatch, capacity):
+    # Separate C1 ownership permission must not narrow the request's C2 bound.
+    monkeypatch.setenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', '1')
+    eligibility = replace(_wide_eligibility(7, rows=2), packed_c1_target=True)
+    adapter = _adapter(backend='hip_gfx1100', capacity=capacity, rid=7,
+                       eligibility=eligibility)
+    assert adapter._physical_c1_request(7)
+    assert not adapter._singleton_only(7)
+    assert adapter._static_eligibility(7) is eligibility
+    assert eligibility.max_realized_group_rows == 2
+
+
+def test_wider_c1_permission_does_not_bypass_backend_capability(monkeypatch):
+    monkeypatch.setenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', '1')
+    eligibility = replace(_wide_eligibility(7, rows=2), packed_c1_target=True)
+    adapter = _adapter(backend='hip_gfx1151', capacity=8, rid=7, eligibility=eligibility)
+    assert not adapter._physical_c1_request(7)
+
+
+def test_wider_c1_permission_does_not_bypass_width_depth_policy(monkeypatch):
+    monkeypatch.delenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', raising=False)
+    eligibility = replace(_wide_eligibility(7, rows=2), packed_c1_target=True)
+    adapter = _adapter(backend='hip_gfx1100', capacity=8, rid=7, eligibility=eligibility)
+    adapter.physical_width_depths = ((2, 3),)
+    assert not adapter._physical_c1_request(7)
+
+
+@pytest.mark.parametrize('backend', ['hip_gfx1100', 'hip_gfx1151'])
+def test_wider_admission_alone_does_not_qualify_native_c1(monkeypatch, backend):
+    monkeypatch.setenv('HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS', '1')
+    adapter = _adapter(backend=backend, capacity=8, rid=7,
+                       eligibility=_wide_eligibility(7, rows=2))
+    assert not adapter._physical_c1_request(7)
+
+
 def _adapter(*, backend: str, capacity: int, rid: int, eligibility) -> Qwen35GGUFMTP2Adapter:
     adapter = Qwen35GGUFMTP2Adapter(
         _owner(backend=backend, capacity=capacity),
@@ -204,8 +240,10 @@ def test_packed_c1_evidence_roundtrip_and_legacy_default(monkeypatch) -> None:
     assert SpeculativeMTPStaticEligibility.from_mapping(mapping) == legacy
     with pytest.raises(ValueError, match="one-row"):
         replace(row, max_realized_group_rows=2, resident_capacity=2)
-    with pytest.raises(ValueError, match="one-row"):
-        replace(eligibility, max_realized_group_rows=2)
+    wider = replace(eligibility, max_realized_group_rows=2)
+    assert wider.packed_c1_target
+    assert SpeculativeMTPStaticEligibility.from_mapping(wider.as_dict()) == wider
+    assert wider.fingerprint != eligibility.fingerprint
 
 
 @pytest.mark.parametrize("capacity", [1, 2, 8])
@@ -573,14 +611,16 @@ def test_physical_c1_cancelled_cycle_restores_provider_and_fails_closed() -> Non
     assert adapter._states[7].proposal_checkpoint is None
 
 
-def test_physical_c1_survivor_of_larger_group_claims_one_row_plan() -> None:
-    """A lone C1-qualified survivor of a wider owner keeps the packed route."""
+@pytest.mark.parametrize('admission_rows', [1, 2, 8])
+def test_physical_c1_survivor_of_larger_group_claims_one_row_plan(admission_rows) -> None:
+    """An explicitly C1-qualified survivor retains its wider admission and group."""
 
+    eligibility = replace(_c1_eligibility(3), max_realized_group_rows=admission_rows)
     adapter = _adapter(
         backend="hip_gfx1100",
         capacity=8,
         rid=3,
-        eligibility=_c1_eligibility(3),
+        eligibility=eligibility,
     )
     provider = SimpleNamespace(executor=SimpleNamespace(max_requests=8))
     adapter._states[3] = _MTP2RequestState(
@@ -597,8 +637,10 @@ def test_physical_c1_survivor_of_larger_group_claims_one_row_plan() -> None:
         request_ids={3},
     )
 
-    # The survivor keeps its physical group membership (verifier stays None)
-    # and a one-row cycle claim fits the listed (1, K) cell.
+    # Run real preparation: no legacy verifier may replace the packed owner.
+    adapter.prepare_requests(_c1_plan(3), ())
+    assert adapter._static_eligibility(3) is eligibility
+    assert adapter._states[3].provider_group_key == (1, 2, 3, 4, 5, 6, 7, 8)
     assert adapter._states[3].verifier is None
     assert adapter._physical_c1_request(3) is True
     assert adapter.claims_fit(

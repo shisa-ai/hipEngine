@@ -298,9 +298,9 @@ class SpeculativeMTPStaticEligibility:
         candidates = int(self.max_candidate_count)
         rows = int(self.max_realized_group_rows)
         if self.packed_c1_target and (
-            state is not SpeculativeMTPStaticState.SPECULATIVE_CAPABLE or rows != 1
+            state is not SpeculativeMTPStaticState.SPECULATIVE_CAPABLE or rows < 1
         ):
-            raise ValueError("packed_c1_target requires speculative one-row eligibility")
+            raise ValueError("packed_c1_target requires speculative eligibility with a positive row bound")
         if min(candidates, rows) < 0:
             raise ValueError("static eligibility bounds must be non-negative")
         if state is SpeculativeMTPStaticState.SPECULATIVE_CAPABLE:

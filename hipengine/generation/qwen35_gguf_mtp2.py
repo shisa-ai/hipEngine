@@ -962,9 +962,9 @@ class Qwen35GGUFMTP2Adapter:
     def _physical_c1_request(self, request_id: int) -> bool:
         """True when this request runs the packed one-row physical route.
 
-        Requires rows==1 static evidence, a listed (1, K) policy cell or an
-        explicit-only screening cell, and the package-owned physical-C1 flag.
-        Target ownership must be explicitly qualified in static evidence.
+        Requires explicit C1 target ownership in static evidence, a listed
+        (1, K) policy cell or an explicit-only screening cell, and the package
+        capability. Wider request bounds are preserved when a peer retires.
         Existing Qwen3.6 and gfx1151 evidence retains the legacy singleton.
         """
 
@@ -973,7 +973,7 @@ class Qwen35GGUFMTP2Adapter:
         eligibility = self._static_eligibility(request_id)
         if eligibility is None or not eligibility.eligible:
             return False
-        if int(eligibility.max_realized_group_rows) != 1:
+        if int(eligibility.max_realized_group_rows) < 1:
             return False
         if not eligibility.packed_c1_target:
             return False
