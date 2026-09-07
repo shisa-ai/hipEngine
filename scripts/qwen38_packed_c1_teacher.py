@@ -79,6 +79,24 @@ def load_teacher_prompts():
     return rows
 
 
+def strict_runtime_provenance(llm, generator, session):
+    """Record the validated manifest and actual BF16 KV storage at capture time."""
+    from hipengine.core import DType
+    from hipengine.execution_profiles import manifest_sha256, validate_variant_manifest
+    if str(generator.execution_profile) != 'strict':
+        raise ValueError('teacher runtime must select strict profile')
+    manifest = validate_variant_manifest(llm.execution_profile_manifest)
+    digest = manifest_sha256(manifest)
+    if (manifest['execution_profile'] != 'strict'
+            or digest != llm.execution_profile_manifest_sha256
+            or digest != generator.execution_profile_manifest_sha256):
+        raise ValueError('teacher runtime manifest identity differs from strict resolution')
+    if session.kv_storage_dtype != DType.BF16:
+        raise ValueError('teacher runtime requires BF16 KV storage')
+    return dict(runtime_manifest=manifest, runtime_manifest_sha256=digest,
+                kv_storage_dtype=str(session.kv_storage_dtype))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', type=Path, default=Path('/models/gguf/Qwen3.8-27B-Q4_K_M.gguf'))
@@ -110,6 +128,7 @@ def main():
         manifest['model_sha256'] = artifact.sha256
         with generator._resident_session_scope(shared_runner=generator._get_shared_runner(),
                 pool_name='packed_c1_strict_teacher') as (session, _reused):
+            manifest.update(strict_runtime_provenance(llm, generator, session))
             for row in prompts:
                 ids = tokenizer.encode(row['rendered_prompt'])
                 record = capture_teacher(session, ids, steps=args.steps)
