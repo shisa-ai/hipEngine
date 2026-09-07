@@ -318,7 +318,7 @@ def _apply_mode(
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
         return
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -332,7 +332,7 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"
         if route_package == "mmq-token64":
             flag = "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"
-        if route_package == "qsa-head-pair":
+        if route_package in {"qsa-head-pair","qsa-head-quad"}:
             flag = "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"
         if route_package == "q4-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL"
@@ -363,6 +363,8 @@ def _apply_mode(
         if route_package == "q51-row-publish":
             flag = "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"
         environment[flag] = "1" if mode == "after" else "0"
+        if route_package=="qsa-head-quad" and mode=="after":
+            environment[flag]="quad"
         if route_package == "qsa-h256-page256" and mode == "after":
             environment[flag] = "page256"
         return
@@ -404,7 +406,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="One full-suite pair, then stop for multiple clear losses or finish remaining pairs in-residency")
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -555,7 +557,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     row4_calls = [0]
     register_mapped_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register", "q51-row-publish", "gdn-wave-norm", "mmq-token64", "qsa-head-pair", "qsa-head-quad"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -635,6 +637,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.route_package=="qsa-head-pair":
             row4_key=KernelKey("hip_gfx1151","qsa_sparse_attention","bf16_kv",
                               "strict_h256_head_pair_rows_spans")
+        if args.route_package=="qsa-head-quad":
+            row4_key=KernelKey("hip_gfx1151","qsa_sparse_attention","bf16_kv",
+                              "strict_h256_head_quad_rows_spans")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
@@ -738,6 +743,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             "after":{"q8_down":"selected_grouped_row4_register_gemv_bf16_bf16_out"}}
     artifact["diagnostic_subset"] = bool(args.case_id)
     artifact["screen_only"] = args.screen_only
+    if args.route_package=="qsa-head-quad":
+        artifact["arms"]={
+            "before":{"sparse_attention":"strict_h256_page256_wave_rows_spans"},
+            "after":{"sparse_attention":"strict_h256_head_quad_rows_spans"}}
     if args.route_package=="qsa-head-pair":
         artifact["arms"]={
             "before":{"sparse_attention":"strict_h256_page256_wave_rows_spans"},
@@ -823,7 +832,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     int(case["prompt_tokens"]), args.prefill_chunk_size) if mode == "after" else 0
                 if calls != expected_calls:
                     raise AssertionError(f"Q51 folded pair calls {calls} != {expected_calls}")
-            elif args.route_package.startswith("qsa-h256-") or args.route_package=="qsa-head-pair":
+            elif args.route_package.startswith("qsa-h256-") or args.route_package in {"qsa-head-pair","qsa-head-quad"}:
                 validate_qsa_h256_engagement(mode, calls, int(case["prompt_tokens"]))
             else:
                 validate_row4_engagement(mode, calls)

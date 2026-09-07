@@ -795,6 +795,10 @@ divisible by4. Synthetic selected2051 attention512/1024 ratios
 including extreme query scales and poisoned unused KV pass.
 VGPR72->112,no LDS/scratch. No runtime/default or CPU-recovery claim.
 Evidence: `2026-09-07-framework-qwen4exp-qsa-head-quad.json`.
+Default-off `HEAD_PAIR=quad` model admission passes six full-logit/state/
+KV cases including all four p4096 categories,24 sparse calls each,
+zero dense/decode calls. Page256-parent Hq24/Hkv2 only;profile binders0.
+Admission: `2026-09-07-framework-qwen4exp-qsa-head-quad-state.json`.
 
 H256 QSA exposes kernel-only `strict_h256_head_pair_rows_spans`,
 page256 with even GQA ratio;two adjacent query heads share each K/V
