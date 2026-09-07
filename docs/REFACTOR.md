@@ -6,8 +6,12 @@
   page256/even GQA ratio,shared K/V loads with exact independent states.
 - Synthetic selected2051 attention at512/1024 rows wins2.544x/2.610x;
   VGPR40->72,no LDS/scratch. No runtime flag.
-- Require model state/KV and complete QSA/throughput gate before promotion;
-  remove route if rejected. Do not assume all QSA cost shrinks by this ratio.
+- Default-off `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1` replaces only
+  page256 Hq24/Hkv2 prefill parent;dense/decode unchanged.
+  Eight full-logit/state/KV cases pass,including all four p4096 categories,
+  24 sparse calls each and zero decode. Both binders0.
+- Staged throughput qualification pending;remove route if rejected.
+  Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed
 

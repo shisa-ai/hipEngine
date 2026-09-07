@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Paired-head QSA model admission (September7 UTC):** default-off
+page256-parent Hq24/Hkv2 selector;existing D256/rows>=16 route guard
+stays. Dense shortcuts and decode untouched. Eight full-logit/state/KV
+off/on/off cases pass at chunk1024,including all four p4096 categories.
+Each p4096 enabled arm runs24 sparse attention calls;short cases0,
+decode0,clean tracked teardown.13 focused route/profile tests pass.
+Both binders0;next staged full12-case throughput qualification. Do not
+replace selection/publication or infer complete-QSA speedup from leaf timing.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-state.json).
+
 **Paired-head H256 QSA candidate (September7 UTC):** two adjacent heads
 per wave share selected K/V reads,with independent exact score tree and
 online-softmax accumulators. Page256/even GQA only;binding Hq24/Hkv2/D256

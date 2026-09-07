@@ -2446,6 +2446,15 @@ def run_qwen4_exp_dense_qsa_token_mixer(
     return scratch.output
 
 
+def _qwen4_exp_qsa_head_pair_key(key: KernelKey, *, query_heads: int, kv_heads: int) -> KernelKey:
+    if (key.variant!="strict_h256_page256_wave_rows_spans"
+            or query_heads!=24 or kv_heads!=2
+            or os.environ.get("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","0")!="1"):
+        return key
+    candidate=KernelKey(key.backend,key.layer,key.quant,"strict_h256_head_pair_rows_spans")
+    return candidate if is_registered(candidate) else key
+
+
 def qwen4_exp_qsa_h256_wave_prefill_variant() -> str:
     return (
         "strict_h256_page256_wave_rows_spans"
@@ -2765,9 +2774,13 @@ def run_qwen4_exp_qsa_prefill_token_mixer(
             head_dim=head_dim, rows=sparse_rows, backend=backend,
             block_size=attention_state.block_size,
         ):
+            sparse_key=_qwen4_exp_qsa_head_pair_key(
+                KernelKey(backend,"qsa_sparse_attention","bf16_kv",
+                          qwen4_exp_qsa_h256_wave_prefill_variant()),
+                query_heads=query_heads,kv_heads=kv_heads)
             sparse_attention_rows = resolve(
-                backend=backend, layer="qsa_sparse_attention", quant="bf16_kv",
-                variant=qwen4_exp_qsa_h256_wave_prefill_variant())
+                backend=sparse_key.backend,layer=sparse_key.layer,
+                quant=sparse_key.quant,variant=sparse_key.variant)
         elif (
             head_dim == 128
             and os.environ.get("HIPENGINE_QWEN4_EXP_QSA_WAVE32", "1")

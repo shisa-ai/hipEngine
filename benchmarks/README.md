@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Paired-head QSA admission:eight full-logit/state/KV cases exact,
+all four p4096 categories,24 sparse calls each,zero decode/short calls.
+Both binders0;no production change,staged throughput gate pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-head-pair-state.json).
+
 H256 QSA paired-head kernel candidate:synthetic2051-selected attention
 512/1024 rows2.544x/2.610x,30 pairs exact,23 tests. VGPR40->72,
 no scratch/LDS. No runtime/default change or whole-model speedup claim.

@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA head-pair admission] Eight full-logit/state/KV cases exact atchunk1024,all four p4096 categories,24 sparse calls each,zero decode/final owners;13 route/profile tests. Both binders0,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-state.json`.
+
 - [2026-09-07 UTC QSA head pair] Exact two-head/wave selected attention512/1024 rows2.544x/2.610x vs page256 parent,30 exact pairs,23 tests;VGPR40->72,no scratch/LDS. Kernel-only,model gates pending;initial FMA mismatch fixed. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair.json`.
 
 - [2026-09-07 UTC raw-vector square64 rejected] Actual Q layers3/7 at512/1024 rows0.959-0.985x vs promoted128x64;80 exact pairs,27 tests,VGPR160/scratch0 both. Candidate removed;separate from historical zbook scalar staging. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-square64-rejected.json`.
