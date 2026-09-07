@@ -2,6 +2,17 @@
 from dataclasses import replace
 
 
+def select_survivor_eos_index(oracle_ids, *, budget):
+    if not 1 <= budget <= 7:
+        raise ValueError('invalid survivor EOS budget')
+    # A deeper paired cycle can carry the survivor past the D8 peer's end.
+    index = next((i for i in range(max(12, 8 + budget), len(oracle_ids) - 1)
+                  if oracle_ids[i] not in oracle_ids[:i]), None)
+    if index is None:
+        raise ValueError('no first-occurrence EOS marker after the paired phase')
+    return index
+
+
 def configure_eos_request(request, oracle_ids, *, index):
     if not 0 <= index < len(oracle_ids) < request.max_tokens + 1:
         raise ValueError('invalid EOS oracle boundary')

@@ -34,21 +34,24 @@ def test_teardown_failure_cannot_publish_pass(tmp_path, close_fails):
     assert saved['teardown_error'] == ('RuntimeError: drain failed' if close_fails else None)
 
 
+@pytest.mark.parametrize('budget', range(1,8))
 @pytest.mark.parametrize('capacity,widths', [(2, (1, 2)), (8, (1, 2)), (8, tuple(range(1, 9)))])
-def test_lifecycle_scope_extension_is_diagnostic_only(monkeypatch, capacity, widths):
+def test_lifecycle_scope_extension_is_diagnostic_only(monkeypatch, capacity, widths, budget):
     from types import SimpleNamespace
     from hipengine.models import qwen35
     from scripts.qwen38_packed_c1_lifecycle import install_lifecycle_evidence
     original = qwen35.QWEN35_GGUF.speculative_mtp_serving_evidence
     plugin = SimpleNamespace(speculative_mtp_serving_evidence=original)
     monkeypatch.setattr(qwen35, 'QWEN35_GGUF', plugin)
-    install_lifecycle_evidence(capacity, widths)
+    install_lifecycle_evidence(capacity, widths, budget=budget)
     rows = plugin.speculative_mtp_serving_evidence
     assert rows[:-len(widths)] == original
     for width, row in zip(widths, rows[-len(widths):], strict=True):
         assert row.min_output_horizon_tokens == 8
         assert row.max_output_horizon_tokens == 24
         assert row.resident_capacity == capacity
+        assert row.candidate_budget == budget
+        assert f'-k{budget}-diagnostic' in row.evidence_key
         assert row.realized_group_rows == width
         assert row.packed_c1_target is (width == 1)
         assert not row.automatic_eligible
@@ -62,6 +65,19 @@ def engine_intent():
         state='speculative_capable', reason='test', max_candidate_count=3,
         max_realized_group_rows=2, automatic_eligible=False,
         strict_fallback_key='gguf_target_ar', packed_c1_target=True)
+
+
+@pytest.mark.parametrize('budget', [1,2,4,5,6,7])
+def test_engine_intent_requires_requested_depth(budget):
+    from dataclasses import replace
+    from scripts.qwen38_packed_c1_lifecycle import combine_engine_intent
+    single = replace(engine_intent(), max_realized_group_rows=1, max_candidate_count=budget)
+    wide = replace(engine_intent(), packed_c1_target=False, max_candidate_count=budget)
+    result = combine_engine_intent(single, wide, budget=budget)
+    assert result.max_candidate_count == budget and not result.automatic_eligible
+    if budget > 1:
+        with pytest.raises(ValueError):
+            combine_engine_intent(single, replace(wide,max_candidate_count=budget-1), budget=budget)
 
 
 def test_engine_intent_requires_separate_c1_permission():
