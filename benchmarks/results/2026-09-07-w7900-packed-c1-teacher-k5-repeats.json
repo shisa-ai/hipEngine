@@ -1,0 +1,65 @@
+{
+  "kind": "packed_c1_fixed_teacher_repeat_diagnostic",
+  "host": "epyc",
+  "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
+  "gpu_unique_id": "0xe282895b62c2b295",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "quant": "Q4_K_M",
+  "kv": "BF16",
+  "execution_profile": "production",
+  "candidate_manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960",
+  "teacher_runtime_manifest_sha256": "52a3d5b8b02c4dc8230c8c9dc8e43b01135db7ae1b44b027fc8915d66bedcdbb",
+  "teacher_manifest_sha256": "1f2f6c18a94bcb46a952f64a4f299480e7649d803d15f88152731fe548e113cf",
+  "capacity": 1,
+  "budget": 5,
+  "decode_steps": 24,
+  "repeats": 3,
+  "prompts": 18,
+  "decode_rows_per_repeat": 432,
+  "prefill_rows_per_repeat": 18,
+  "bit_identical": true,
+  "numerical_envelope_passed": false,
+  "calibrated_numerical_envelope_passed": true,
+  "full_profile_qualification": false,
+  "performance_claim": false,
+  "automatic_selection": "K0",
+  "decode": {
+    "mean_kl": 0.00005994959788959028,
+    "p95_kl": 0.00034824716056890343,
+    "p99_kl": 0.0010956058452060813,
+    "max_kl": 0.0016013557709642578,
+    "top1_agreement": 0.9976851851851852,
+    "top1_equal_rows": 431,
+    "review_rows": [],
+    "calibrated_scopes_passed": 15,
+    "conservative_failed_scopes": [
+      "category:mixed_ja_en",
+      "suite:category_heldout/category:mixed_ja_en"
+    ],
+    "mixed_top1_equal_rows": [95, 96],
+    "heldout_mixed_top1_equal_rows": [47, 48],
+    "mismatch": {"prompt_id": "heldout_mixed_review", "decode_row_zero_based": 23}
+  },
+  "prefill": {
+    "top1_agreement": 1.0,
+    "max_kl": 1.1346031157665693e-7,
+    "calibrated_scopes_passed": 15,
+    "conservative_scopes_passed": 15
+  },
+  "captures": [
+    {"directory": "/tmp/packed-c1-teacher-n1k5-repeat1", "manifest_sha256": "7f0e5064806da28c5109cc2eaba1d0adee94fbbf613afcb38922b9224d1342ce"},
+    {"directory": "/tmp/packed-c1-teacher-n1k5-repeat2", "manifest_sha256": "8d6747b0834cd4d3ed94c0676ebac872a1be58e152487c645513db2137156c99"},
+    {"directory": "/tmp/packed-c1-teacher-n1k5-repeat3-retry-final", "manifest_sha256": "7429b0fc108bf4259f3b638958a836335417e8f1ca1cca48803c7fbb6d01d9a6"}
+  ],
+  "retry_source_revision": "a1064501f62b26a3feee08409ff7d253a9ad171a",
+  "retry_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_teacher_run.py --teacher /tmp/packed-c1-strict-teacher-provenance-d24 --budget 5 --directory /tmp/packed-c1-teacher-n1k5-repeat3-retry-final",
+  "audit_command": ".venv/bin/python scripts/qwen38_packed_c1_teacher_repeat.py --teacher /tmp/packed-c1-strict-teacher-provenance-d24 --capture /tmp/packed-c1-teacher-n1k5-repeat1 --capture /tmp/packed-c1-teacher-n1k5-repeat2 --capture /tmp/packed-c1-teacher-n1k5-repeat3-retry-final --output /tmp/packed-c1-k5-dual-verdict-audit.json",
+  "audit_exit_code": 1,
+  "audit_sha256": "e7cf4fbc3babae9822c26f81b19724be5f84ea8d607776fcfd7bc7b74bb36c3b",
+  "limitations": [
+    "Target-only teacher windows with host-selected commits; not native provider, task, lifecycle or service qualification.",
+    "The unchanged conservative screen requires 99% in every scope; production requires 99% overall and 97% per declared scope, with all KL and review gates unchanged.",
+    "The interrupted original repeat3 directory is not counted. Repeats 1 and 2 were audited, not recaptured."
+  ]
+}

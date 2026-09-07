@@ -140,7 +140,9 @@ def main():
                               reference=b if kind == 'decode' else b[None, :]))
         scopes[kind] = summarize_teacher_scopes(pairs)
     passed = all(s['numerical_envelope_passed'] for s in scopes.values())
+    calibrated = all(s['calibrated_numerical_envelope_passed'] for s in scopes.values())
     report = dict(verification=repeat, scopes=scopes, numerical_envelope_passed=passed,
+                  calibrated_numerical_envelope_passed=calibrated,
                   full_profile_qualification=False, teacher_manifest_sha256=teacher_hash,
                   model_sha256=model_hash, capacity=runs[0]['capacity'], budget=runs[0]['budget'],
                   captures=[dict(directory=str(p), manifest_sha256=hashlib.sha256(
@@ -148,7 +150,8 @@ def main():
                   limitation='Target-only fixed schedules; no provider, lifecycle or service qualification.')
     with args.output.open('x') as output:
         output.write(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(dict(repeat, numerical_envelope_passed=passed)))
+    print(json.dumps(dict(repeat, numerical_envelope_passed=passed,
+                          calibrated_numerical_envelope_passed=calibrated)))
     if not passed:
         raise SystemExit(1)
 

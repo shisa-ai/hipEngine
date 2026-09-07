@@ -98,6 +98,43 @@ def test_audit_cli_requires_three_captures():
     assert 'at least three captures' in result.stderr
 
 
+@pytest.mark.parametrize('calibrated', [False, True])
+def test_audit_cli_reports_both_verdicts_without_changing_exit(
+        tmp_path, monkeypatch, capsys, calibrated):
+    import json
+    import sys
+    from scripts import qwen38_packed_c1_teacher_repeat as module
+    from scripts import qwen38_packed_c1_teacher_fixture as fixture_module
+    from scripts import qwen38_packed_c1_teacher_scopes as scopes_module
+
+    teacher = tmp_path / 'teacher'
+    teacher.mkdir()
+    (teacher / 'teacher.json').write_text(json.dumps({'model_sha256': 'model'}))
+    captures = [tmp_path / str(i) for i in range(3)]
+    for path in captures:
+        path.mkdir()
+        (path / 'candidate.json').write_text('{}')
+    data = runs()[0]
+    monkeypatch.setattr(fixture_module, 'load_teacher_fixture', lambda *a, **k: data)
+    monkeypatch.setattr(module, 'load_candidate_capture', lambda *a, **k: deepcopy(data))
+    monkeypatch.setattr(scopes_module, 'summarize_teacher_scopes', lambda records: dict(
+        numerical_envelope_passed=False,
+        calibrated_numerical_envelope_passed=calibrated,
+        full_profile_qualification=False))
+    output = tmp_path / 'audit.json'
+    argv = ['audit', '--teacher', str(teacher), '--output', str(output)]
+    for path in captures:
+        argv.extend(['--capture', str(path)])
+    monkeypatch.setattr(sys, 'argv', argv)
+    with pytest.raises(SystemExit) as error:
+        module.main()
+    assert error.value.code == 1
+    for report in (json.loads(output.read_text()), json.loads(capsys.readouterr().out)):
+        assert report['numerical_envelope_passed'] is False
+        assert report['calibrated_numerical_envelope_passed'] is calibrated
+        assert report['full_profile_qualification'] is False
+
+
 def test_three_bit_identical_runs():
     assert assert_teacher_repeats(runs()) == dict(repeats=3, prompts=1, decode_rows=2,
         prefill_rows=1, bit_identical=True, full_profile_qualification=False)
