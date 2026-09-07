@@ -5665,6 +5665,16 @@ def _launch_raw_mmq_d4x3(fn, weight, x_ptr, out_ptr, rows, in_features, out_feat
     )
 
 
+def _q8_mmq_token64_key(key: KernelKey, *, rows: int, hidden: int, outputs: int) -> KernelKey:
+    if (rows<512 or (hidden,outputs)!=(2560,12288)
+            or key.variant!="mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out"
+            or os.environ.get("HIPENGINE_QWEN4_EXP_MMQ_TOKEN64","0")!="1"):
+        return key
+    candidate=KernelKey(key.backend,key.layer,key.quant,
+                       "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out")
+    return candidate if is_registered(candidate) else key
+
+
 def _q8_mmq_raw_vector_key(key: KernelKey, *, rows: int) -> KernelKey:
     if (rows < 64 or key.variant != "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out"
             or os.environ.get("HIPENGINE_QWEN4_EXP_Q8_MMQ_RAW_VECTOR","0") != "1"):
@@ -5751,6 +5761,7 @@ def _launch_raw_mmq_d4x3_f32(fn, weight, x_ptr, out_ptr, rows, in_features, out_
         key = KernelKey(weight.backend,"linear",weight.spec.quant_key,
                         "mmq128_prefill_q8_1_d4x3_guarded_f32_f32_out")
         candidate = _q8_mmq_raw_vector_key(key,rows=rows)
+        candidate = _q8_mmq_token64_key(candidate,rows=rows,hidden=in_features,outputs=out_features)
         if candidate != key:
             fn = resolve(backend=candidate.backend,layer=candidate.layer,
                          quant=candidate.quant,variant=candidate.variant)

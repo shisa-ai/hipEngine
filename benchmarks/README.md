@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Raw-Q token64 admission:five chunk1024 full-logit/state/KV cases exact,
+12/48 calls,zero decode/final owners. Prepacked/GR unchanged,both
+binders0;no production change,throughput gate pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64-state.json).
+
 Raw MMQ token64 candidate:large Q1024 layer3/7 operation-complete
 screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
 Mixed short-Q/long-GR results retained;no runtime/default change.

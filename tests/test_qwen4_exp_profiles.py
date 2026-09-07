@@ -71,6 +71,7 @@ def _isolate(monkeypatch: pytest.MonkeyPatch):
         "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL",
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM",
+        "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64",
         "HIPENGINE_EXECUTION_PROFILE_MANIFEST_SHA256",
     )
     for name in environment_names:
@@ -273,6 +274,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "1"
+    assert os.environ["HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"] == "0"
     gdn = _selection_map(production)[(
         "gdn_recurrence_norm_gate", "prefill_rows_ge2_serial_gdn_hk16_hv48_d128")]
     assert gdn["selected_variant"] == "qwen4exp_sigmoid_wave_norm_prefill"
@@ -388,6 +390,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_PAIR_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL"] == "0"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q5_1_MMQ_LAYERS"] == ""
