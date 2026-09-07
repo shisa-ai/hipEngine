@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp router shuffle-tail candidate
+
+- Kernel-only `f32_hidden_token_tile4_shuffle_exact` removes shared
+  reduction barriers while preserving exact F32 logits. No model flag yet.
+- Require full-model logits/routing/state/KV and canonical A/B before
+  promotion;remove candidate if rejected. Existing shared-tree tile4
+  remains strict fallback. Router owner ceiling is limited;no inflated
+  whole-model forecast from its isolated13% time reduction.
+
 ## Qwen4Exp chunk allocation before profile binding
 
 - The qualified UD-Q4_K_XL gfx1151 factory allocates1024-capacity scratch

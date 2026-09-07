@@ -788,6 +788,15 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+F32 router exposes kernel-only `f32_hidden_token_tile4_shuffle_exact`.
+Per-thread dense accumulation and shared128/64 reduction stay unchanged;
+wave0 handles32..1 with the same tree,saving six block barriers.
+Actual layer0/27 router1024 rows improve3.043->2.635ms /
+3.051->2.648ms,exact.16 tests pass,80 timed pairs exact,both orders
+positive;32 VGPR/scratch0/dynamic LDS4096B unchanged. Existing tile4
+shared-tree owner remains strict fallback;model gates pending.
+Evidence: `2026-09-07-framework-qwen4exp-router-shuffle.json`.
+
 Existing Q8 `selected_grouped_row4_bundle_gemv_bf16_bf16_out` supports
 non-null sorted-lane-to-original-row maps,not just compact buffers. Actual
 layer2 weights with borrowed layer0 counts screen2.126x/2.153x over

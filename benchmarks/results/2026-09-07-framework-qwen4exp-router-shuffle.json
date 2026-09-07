@@ -1,0 +1,334 @@
+{
+  "schema": 1,
+  "status": "retained_kernel_only_model_gates_pending",
+  "promotion_blocker": "Full-model logits/routing/state/KV and canonical A/B required. Router is about0.618s of code4096;no proportional whole-model gain assumed.",
+  "mechanism": "Keep exact per-thread accumulation and shared strides128/64;combine stride32 in registers then wave0 shuffle16/8/4/2/1. Six reduction barriers removed versus shared strides128..1;initial staging barrier retained.",
+  "validation": {
+    "red": "Missing registry candidate before implementation",
+    "gpu_tests": "16 passed: new exact shuffle tests plus existing router plan/regression",
+    "floor": "Exact parent F32 bits,three repeated runs,routing-logit CPU matmul max KL<=0.05/top1>=90% on fixture rows",
+    "timed_pairs": 80,
+    "trace_prefix": "HIPENGINE_REQUIRE_CACHED_BUILD=1 rocprofv3 --kernel-trace --output-format csv -d /tmp/qwen4exp-router-shuffle-trace --",
+    "trace_arguments": "Same screen script/model/compiler flags, --rows 1024 --layers 0 --pairs 2 --output /tmp/qwen4exp-router-shuffle-trace.json",
+    "trace_path": "/tmp/qwen4exp-router-shuffle-trace/gfx1151/3736201_kernel_trace.csv",
+    "trace_symbols": "qwen35_router_logits_f32_token_tile_dense_exact_kernel<4,false>/<4,true>",
+    "vgpr_both": 32,
+    "private_scratch_bytes_both": 0,
+    "dynamic_lds_requested_bytes_both": 4096,
+    "lds_note": "CSV static LDS0 excludes the dynamic launch allocation",
+    "runtime_default_changed": false
+  },
+  "environment": {
+    "PATH_prefix": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/bin",
+    "LD_LIBRARY_PATH": "/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_devel/lib:/home/lhl/miniforge3/envs/therock/lib/python3.12/site-packages/_rocm_sdk_core/lib",
+    "HIPENGINE_HIP_ARCH": "gfx1151",
+    "HIPENGINE_COMPILER_VERSION_FILE": "/tmp/hipengine-hipcc-version.txt",
+    "clock_policy": "unchanged high/requested2900MHz"
+  },
+  "source": {
+    "path": "/home/lhl/hipEngine",
+    "head": "fa4cf3a0222a1ae61ae189a6916fe27ea1e4a809",
+    "tracked_clean": false
+  },
+  "host": {
+    "hostname": "gfx1151",
+    "machine_id": "55ea6c509d0b49eea8de7094a1023668",
+    "kernel": "7.1.6-1-cachyos",
+    "tuned_active": "Current active profile: accelerator-performance",
+    "cpu_governors": {
+      "performance": 32
+    },
+    "gpu_clock_policies": {
+      "/sys/class/drm/card1/device/power_dpm_force_performance_level": "high"
+    },
+    "rocm_platform": null,
+    "hipcc_version": "HIP version: 7.15.26333-0000000\nAMD clang version 23.0.0git (https://github.com/ROCm/llvm-project.git 8f497e0992fb7513f7f78a6f6b6f1056c375e961)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /home/lhl/miniforge3/envs/therock10-staging-20260828/lib/python3.12/site-packages/_rocm_sdk_devel/lib/llvm/bin"
+  },
+  "model_identity": {
+    "path": "/home/lhl/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "revision": "8bdc666649440e9bdc97e16f3f75782c98478ff5",
+    "fingerprint": {
+      "algorithm": "sha256-directory-manifest-v1",
+      "value": "fb1f2fbf73d588c9ac27f24bade5663bd3da8ac1862f62ee5bf457578a88ec53",
+      "size_bytes": 111334654784,
+      "sampled_bytes": 12582912,
+      "file_count": 4,
+      "exists": true,
+      "path_type": "directory"
+    }
+  },
+  "command": [
+    "scripts/qwen4exp_router_shuffle_screen.py",
+    "--model-root",
+    "/models/gguf/unsloth-Qwen3.8-Flash-Next-UD-Q4_K_XL/UD-Q4_K_XL",
+    "--compiler-version-file",
+    "/tmp/hipengine-hipcc-version.txt",
+    "--output",
+    "/tmp/qwen4exp-router-shuffle.json"
+  ],
+  "default_changed": false,
+  "boundary": "F32 router logits + synchronize;D2H excluded,selection not included",
+  "arithmetic": "T0 parent F32 bits",
+  "cases": [
+    {
+      "tensor": "blk.0.ffn_gate_inp.weight",
+      "shape": [
+        512,
+        2560,
+        512
+      ],
+      "weight_sha256": "c367d894cf8ce1f3681d71f4b6fbb4c419cbae8c41fb2593232b40bd49bd7455",
+      "ms": [
+        [
+          1.568975,
+          1.548476,
+          1.57098,
+          1.516076,
+          1.590345,
+          1.578483,
+          1.571951,
+          1.535122,
+          1.560069,
+          1.537295,
+          1.58719,
+          1.516697,
+          1.568204,
+          1.527057,
+          1.577131,
+          1.519823,
+          1.540391,
+          1.526205,
+          1.547796,
+          1.551623
+        ],
+        [
+          1.356446,
+          1.424384,
+          1.345586,
+          1.375753,
+          1.323675,
+          1.354904,
+          1.342069,
+          1.371765,
+          1.338713,
+          1.362978,
+          1.324978,
+          1.361096,
+          1.313616,
+          1.366766,
+          1.329176,
+          1.382295,
+          1.323905,
+          1.360183,
+          1.337211,
+          1.361847
+        ]
+      ],
+      "all_pairs_exact": true,
+      "mean_ms": [
+        1.55199445,
+        1.3528673
+      ],
+      "mean_speedup": 1.1471889741144605,
+      "order_speedups": [
+        1.1760473177544688,
+        1.1191436711242138
+      ]
+    },
+    {
+      "tensor": "blk.0.ffn_gate_inp.weight",
+      "shape": [
+        1024,
+        2560,
+        512
+      ],
+      "weight_sha256": "c367d894cf8ce1f3681d71f4b6fbb4c419cbae8c41fb2593232b40bd49bd7455",
+      "ms": [
+        [
+          3.010422,
+          3.02564,
+          3.065164,
+          3.036611,
+          3.113956,
+          3.037131,
+          3.075113,
+          3.007425,
+          3.053913,
+          3.008407,
+          3.047631,
+          2.997457,
+          3.051399,
+          3.014769,
+          3.097946,
+          3.050356,
+          3.050636,
+          3.015071,
+          3.071686,
+          3.031712
+        ],
+        [
+          2.610902,
+          2.665875,
+          2.60462,
+          2.651538,
+          2.615671,
+          2.636059,
+          2.619457,
+          2.659162,
+          2.611242,
+          2.634335,
+          2.633905,
+          2.639605,
+          2.616702,
+          2.653131,
+          2.624086,
+          2.658891,
+          2.630558,
+          2.662228,
+          2.612484,
+          2.657288
+        ]
+      ],
+      "all_pairs_exact": true,
+      "mean_ms": [
+        3.04312225,
+        2.63488695
+      ],
+      "mean_speedup": 1.1549346547866126,
+      "order_speedups": [
+        1.17029421389388,
+        1.1397711496203047
+      ]
+    },
+    {
+      "tensor": "blk.27.ffn_gate_inp.weight",
+      "shape": [
+        512,
+        2560,
+        512
+      ],
+      "weight_sha256": "eabc0ea858ee7d48a8705a93ddeb6881a252c73a7f7a0c4178c8cb8337926def",
+      "ms": [
+        [
+          1.509414,
+          1.522197,
+          1.563415,
+          1.506839,
+          1.549459,
+          1.524542,
+          1.590756,
+          1.511147,
+          1.554709,
+          1.538819,
+          1.566661,
+          1.527678,
+          1.555841,
+          1.513591,
+          1.546263,
+          1.550972,
+          1.545481,
+          1.522598,
+          1.544509,
+          1.531204
+        ],
+        [
+          1.324787,
+          1.360805,
+          1.329306,
+          1.358571,
+          1.327722,
+          1.350545,
+          1.328645,
+          1.361346,
+          1.328584,
+          1.361767,
+          1.328895,
+          1.349223,
+          1.324486,
+          1.361346,
+          1.32609,
+          1.417361,
+          1.318355,
+          1.359783,
+          1.330448,
+          1.354864
+        ]
+      ],
+      "all_pairs_exact": true,
+      "mean_ms": [
+        1.53880475,
+        1.34514645
+      ],
+      "mean_speedup": 1.1439681902293983,
+      "order_speedups": [
+        1.1702823434246468,
+        1.1183647729463682
+      ]
+    },
+    {
+      "tensor": "blk.27.ffn_gate_inp.weight",
+      "shape": [
+        1024,
+        2560,
+        512
+      ],
+      "weight_sha256": "eabc0ea858ee7d48a8705a93ddeb6881a252c73a7f7a0c4178c8cb8337926def",
+      "ms": [
+        [
+          3.034557,
+          3.039316,
+          3.08926,
+          3.021713,
+          3.045207,
+          3.027784,
+          3.079672,
+          3.034567,
+          3.062078,
+          3.02574,
+          3.076365,
+          3.064162,
+          3.064232,
+          3.023987,
+          3.038524,
+          3.056508,
+          3.063521,
+          3.050656,
+          3.061567,
+          3.057299
+        ],
+        [
+          2.622763,
+          2.675112,
+          2.63118,
+          2.655876,
+          2.624557,
+          2.670844,
+          2.636069,
+          2.666065,
+          2.62645,
+          2.665053,
+          2.63163,
+          2.662759,
+          2.633915,
+          2.665925,
+          2.635327,
+          2.661105,
+          2.638083,
+          2.669681,
+          2.632933,
+          2.657309
+        ]
+      ],
+      "all_pairs_exact": true,
+      "mean_ms": [
+        3.05083575,
+        2.6481318
+      ],
+      "mean_speedup": 1.1520709618758402,
+      "order_speedups": [
+        1.1634967964581033,
+        1.1407895367341259
+      ]
+    }
+  ]
+}
