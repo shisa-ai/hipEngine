@@ -1480,6 +1480,13 @@ proposed `tests/test_gguf_ud_km.py`.
   `worklog/entries/20260907T035440.022336Z-lhl-ud-km-c1-integration-c5bbd6.md`.
   Public `LLM.generate()` matches this completion in a fresh process without
   importing torch; see the `ud-km-public-smoke` worklog entry.
+  A subsequent zbook/gfx1151 comparison covers all 18 category/heldout prompts
+  at 39–71 input tokens and nine forced positions each. Both files match
+  llama.cpp on 161/162 top-1 choices; default mean/max KL is 0.000873/0.014724
+  (K_M) and 0.000593/0.013256 (K_S). The Q5/Q6 compact candidate is not promoted:
+  K_M p95 KL exceeds 0.005 and K_S prefill top-1 is 17/18 in both arms. Repeat,
+  task, long-context and serving gates remain open. See
+  `benchmarks/results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json`.
   K_S public generation also returns this completion without torch after raw
   IQ3_XXS/IQ2_S and Q3_K embedding integration; see
   `worklog/entries/20260907T041214.806691Z-lhl-ud-ks-integration-e0d117.md`.
