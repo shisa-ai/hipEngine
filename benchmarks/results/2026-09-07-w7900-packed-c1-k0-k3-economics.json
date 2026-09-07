@@ -1,5 +1,6 @@
 {
   "kind": "native_packed_c1_k0_k3_economics",
+  "review_status": "INVALID as native packed-target evidence: the serving evidence override carries packed_c1_target=false, so the engaged C1/K1-K3 arms ran the legacy singleton target verifier (spied at 731bde019: legacy verifier constructed, packed frontier never called). The deferral static-intent repair (555fc7ef3) and the balanced-pair methodology stand; the depth rates do not describe the packed route. Superseded by the packed-route re-measurement; the K0 control, K4-K7 refusal analysis, and route-closure diagnosis remain valid.",
   "date": "2026-09-07",
   "host": "epyc",
   "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
