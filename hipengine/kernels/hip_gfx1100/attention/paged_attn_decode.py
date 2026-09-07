@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 
 from hipengine.core.build import BuildArtifact, ProfileName, build_hip, plan_hip_build
@@ -79,6 +80,9 @@ _SYMBOL_SPLIT_GQA_INT8_HADAMARD_GROUP32_CONTEXT_FP16 = "hipengine_qwen35_paged_f
 _SYMBOL_SPLIT_GQA_INT8_KEY_BF16_VALUE_CONTEXT_F32 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_f32_spans"
 _SYMBOL_SPLIT_GQA_INT8_KEY_BF16_VALUE_CONTEXT_FP16 = "hipengine_qwen35_paged_full_attn_decode_split_k_gqa_context_int8_key_bf16_value_scale_fp16_spans"
 _SYMBOL_PREFILL_GQA_GATE_BF16 = "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans"
+_SYMBOL_PREFILL_GQA_GATE_BF16_GLOBAL_SCORES = (
+    "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_global_scores_spans"
+)
 _SYMBOL_PREFILL_GQA_GATE_BF16_DECODE_ORDER = (
     "hipengine_qwen35_paged_full_attn_prefill_gqa_gate_bf16_decode_order_spans"
 )
@@ -3271,16 +3275,47 @@ def qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans(
     stream: int = 0,
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
+    global_score_workspace: bool = False,
 ) -> None:
-    """Run native append-then-attend causal GQA prefill with BF16 gate/output."""
+    """Run native causal prefill, bounding score LDS with owned global scratch."""
 
-    _ = (
-        split_partial_out_ptr,
-        split_partial_m_ptr,
-        split_partial_l_ptr,
-        split_batch_rows,
-        split_count,
+    _check_prefill_gqa_shape(
+        spans, rows, max_context_len, block_size, num_q_heads, num_kv_heads, head_dim,
     )
+    threads = 32 if max_context_len <= 1024 else 64
+    use_global_scores = global_score_workspace or (max_context_len + threads + head_dim) * 4 > 65536
+    if use_global_scores:
+        # The existing split partial-output arena is dead during this leaf.
+        # Its capacity is [split_batch_rows, Q heads, split_count, head_dim]
+        # FP32 elements. Reuse it, without allocations or context-sized LDS.
+        if split_partial_out_ptr <= 0 or split_batch_rows <= 0 or split_count <= 0:
+            raise ValueError("global-score prefill requires an owned nonzero workspace")
+        workspace_rows = min(
+            int(split_batch_rows),
+            int(split_batch_rows) * int(split_count) * int(head_dim) // int(max_context_len),
+        )
+        if workspace_rows <= 0:
+            raise ValueError("global-score prefill workspace cannot hold one query row")
+        q_row_bytes = num_q_heads * head_dim * DType.FP32.itemsize
+        lowp_row_bytes = num_q_heads * head_dim * DType.BF16.itemsize
+        gate_row_bytes = num_q_heads * gate_stride1 * DType.BF16.itemsize
+        for start in range(0, int(rows), workspace_rows):
+            batch_rows = min(workspace_rows, int(rows) - start)
+            _launch_prefill_gqa_gate(
+                _SYMBOL_PREFILL_GQA_GATE_BF16_GLOBAL_SCORES,
+                query_ptr + start * q_row_bytes,
+                key_cache_ptr,
+                value_cache_ptr,
+                gate_ptr + start * gate_row_bytes,
+                out_ptr + start * lowp_row_bytes,
+                _slice_uniform_spans(spans, start, batch_rows),
+                batch_rows, max_context_len, block_size, num_q_heads, num_kv_heads,
+                head_dim, gate_stride1, gate_stride2, scale,
+                stream=stream, library=library, runtime=runtime,
+                score_workspace_ptr=split_partial_out_ptr,
+                score_stride=max_context_len,
+            )
+        return
     _launch_prefill_gqa_gate(
         _SYMBOL_PREFILL_GQA_GATE_BF16,
         query_ptr,
@@ -3494,7 +3529,7 @@ def _slice_uniform_spans(spans: KVLiveSpans, row_start: int, rows: int) -> KVLiv
         if tensor is None:
             return None
         ptr = tensor.ptr + row_start * elements_per_row * tensor.dtype.itemsize
-        shape = (rows, elements_per_row) if elements_per_row != 1 else (rows,)
+        shape = (rows, elements_per_row) if tensor.ndim == 2 else (rows,)
         return Tensor.from_handle(ptr, shape, tensor.dtype, tensor.device)
 
     return replace(
@@ -3527,6 +3562,8 @@ def _launch_prefill_gqa_gate(
     stream: int,
     library: ctypes.CDLL | None,
     runtime: HipRuntime | None,
+    score_workspace_ptr: int = 0,
+    score_stride: int = 0,
 ) -> None:
     block_table_len = _check_prefill_gqa_shape(
         spans,
@@ -3542,27 +3579,17 @@ def _launch_prefill_gqa_gate(
     library = library or build_qwen35_paged_attn_decode(load=True)
     runtime = runtime or get_hip_runtime()
     fn = getattr(library, symbol)
-    fn.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_int64,
-        ctypes.c_float,
-        ctypes.c_void_p,
-    ]
+    fn.argtypes = (
+        [ctypes.c_void_p] * 8
+        + [ctypes.c_int64] * 9
+        + [ctypes.c_float, ctypes.c_void_p]
+    )
+    extra_args = ()
+    if symbol == _SYMBOL_PREFILL_GQA_GATE_BF16_GLOBAL_SCORES:
+        if score_workspace_ptr <= 0 or score_stride < max_context_len:
+            raise ValueError("global-score prefill workspace pointer/stride is invalid")
+        fn.argtypes += [ctypes.c_void_p, ctypes.c_int64]
+        extra_args = (ctypes.c_void_p(score_workspace_ptr), ctypes.c_int64(score_stride))
     fn.restype = ctypes.c_int
     row_positions_ptr = 0 if spans.row_positions is None else spans.row_positions.ptr
     err = fn(
@@ -3585,6 +3612,7 @@ def _launch_prefill_gqa_gate(
         ctypes.c_int64(gate_stride2),
         ctypes.c_float(scale),
         ctypes.c_void_p(stream),
+        *extra_args,
     )
     _check_launch(runtime, err)
 
@@ -4582,6 +4610,11 @@ def register_qwen35_paged_attn_decode_kernels(*, replace: bool = True) -> None:
     register(
         KernelKey("hip_gfx1100", "full_attn_prefill", "gguf_qwen35", "causal_gqa_gate_bf16"),
         qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans,
+        replace=replace,
+    )
+    register(
+        KernelKey("hip_gfx1100", "full_attn_prefill", "gguf_qwen35", "causal_gqa_gate_bf16_global_scores"),
+        partial(qwen35_paged_full_attn_prefill_gqa_gate_bf16_spans, global_score_workspace=True),
         replace=replace,
     )
     register(
