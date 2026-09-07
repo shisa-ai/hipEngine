@@ -247,8 +247,19 @@ class PackedC1Capture:
                         raise ValueError(f"device acceptance differs from CPU oracle: {name}")
                 expected_state = selected_state_sources(owner, sessions[0], selected_row=int(result.row_start) + accepted)
                 expected_aux = selected_aux_sources(sessions[0], result, accepted=accepted)
+                from scripts.qwen38_packed_c1_kv import selected_kv_sources, assert_kv_commit
+                try:
+                    expected_kv = selected_kv_sources(sessions[0], result, accepted=accepted)
+                except Exception as error:
+                    record['kv_error'] = f'{type(error).__name__}: {error}'
+                    raise
                 output = commit(owner, results, sessions, accept_buffers=accept_buffers, **kwargs)
                 assert_aux_commit(sessions[0], expected_aux)
+                try:
+                    assert_kv_commit(sessions[0], expected_kv)
+                except Exception as error:
+                    record['kv_error'] = f'{type(error).__name__}: {error}'
+                    raise
                 after = snapshot_committed_state(sessions[0])
                 for name, expected in expected_state.items():
                     actual = after["buffers"][name]
@@ -256,6 +267,7 @@ class PackedC1Capture:
                         raise ValueError(f"selected commit state mismatch: {name}")
                 record["selected_commit"] = dict(passed=True, accepted=accepted, checked_buffers=len(expected_state))
                 record["aux_commit"] = dict(passed=True, checked_buffers=len(expected_aux))
+                record["kv_commit"] = dict(passed=True, checked_buffers=len(expected_kv['buffers']))
                 return output
 
             self._patch(Qwen35GGUFResidentSession, "_commit_deferred_packed_verify_states_batch_device", checked_commit)
