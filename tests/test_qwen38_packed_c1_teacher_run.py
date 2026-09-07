@@ -54,6 +54,33 @@ def test_contexts_use_resolved_adapter_flags_and_unwind(monkeypatch, fail):
     assert exited == list(reversed(names))
 
 
+@pytest.mark.parametrize('fault', [None, 'hash', 'backend', 'quant', 'model', 'kv_policy', 'profile'])
+def test_candidate_provenance_matches_teacher_scope(fault):
+    from types import SimpleNamespace as NS
+    from hipengine.execution_profiles import build_variant_manifest, manifest_sha256
+    from scripts.qwen38_packed_c1_teacher_run import candidate_provenance
+    teacher = build_variant_manifest(profile='strict', backend='hip_gfx1100',
+        model='example', quant='gguf', kv_policy='paged_bf16', graph_policy='eager',
+        selections=[dict(layer='linear', scope='all', selected_variant='strict',
+                         strict_fallback_variant='strict')])
+    manifest = dict(teacher, execution_profile='production')
+    if fault in ('backend', 'quant', 'model', 'kv_policy'):
+        manifest[fault] = 'other'
+    if fault == 'profile':
+        manifest['execution_profile'] = 'strict'
+    digest = manifest_sha256(manifest)
+    llm = NS(execution_profile_manifest=manifest, execution_profile_manifest_sha256=digest)
+    generator = NS(execution_profile_manifest_sha256='0' * 64 if fault == 'hash' else digest)
+    fixture = dict(runtime_manifest=teacher, runtime_manifest_sha256=manifest_sha256(teacher))
+    if fault:
+        with pytest.raises(ValueError, match='provenance'):
+            candidate_provenance(llm, generator, fixture)
+    else:
+        result = candidate_provenance(llm, generator, fixture)
+        assert result['candidate_manifest'] == manifest
+        assert result['teacher_runtime_manifest_sha256'] == fixture['runtime_manifest_sha256']
+
+
 def test_help():
     result = subprocess.run([sys.executable, str(SCRIPT), '--help'], capture_output=True, text=True)
     assert result.returncode == 0
