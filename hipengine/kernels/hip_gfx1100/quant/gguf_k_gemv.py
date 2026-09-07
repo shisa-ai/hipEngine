@@ -393,7 +393,7 @@ gguf_q8_0_exact_prefill_tile16x4_bf16_bf16_out = _make_pack8_wrapper(
 gguf_q8_0_selected_gemv_bf16_bf16_out = _make_selected_wrapper("gguf_q8_0", _symbol("gguf_q8_0", "selected_gemv_bf16_bf16_out"))
 
 
-def _make_selected_grouped_wrapper(quant: str, symbol: str):
+def _make_selected_grouped_wrapper(quant: str, symbol: str, *, required_geometry=None):
     def wrapper(
         x_ptr: int,
         expert_start_ptr: int,
@@ -411,6 +411,8 @@ def _make_selected_grouped_wrapper(quant: str, symbol: str):
         library: ctypes.CDLL | None = None,
         runtime: "HipRuntime | None" = None,
     ) -> None:
+        if required_geometry is not None and (in_features,threads) != required_geometry:
+            raise ValueError(f"grouped kernel requires K/threads={required_geometry}")
         _launch_selected_grouped(
             quant,
             symbol,
@@ -502,6 +504,10 @@ gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrap
 )
 gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
     "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_bundle_gemv_bf16_bf16_out")
+)
+gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
+    "gguf_q8_0", _symbol("gguf_q8_0", "selected_grouped_row4_register_gemv_bf16_bf16_out"),
+    required_geometry=(640,128),
 )
 gguf_q5_k_selected_grouped_row4_gemv_bf16_bf16_out = _make_selected_grouped_wrapper(
     "gguf_q5_k", _symbol("gguf_q5_k", "selected_grouped_row4_gemv_bf16_bf16_out")
@@ -1565,6 +1571,7 @@ _WRAPPERS = {
         "selected_grouped_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_gemv_bf16_bf16_out,
         "selected_grouped_row4_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,
         "selected_grouped_row4_bundle_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out,
+        "selected_grouped_row4_register_gemv_bf16_bf16_out": gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out,
         "selected_pack8_gemv_bf16_bf16_out": gguf_q8_0_selected_pack8_gemv_bf16_bf16_out,
         "prefill_f32_f32_out": gguf_q8_0_prefill_f32_f32_out,
         "prefill_f32_fp16_out": gguf_q8_0_prefill_f32_fp16_out,
@@ -1683,6 +1690,7 @@ __all__ = [
     "gguf_q8_0_selected_grouped_gemv_bf16_bf16_out",
     "gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out",
     "gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+    "gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out",
     "gguf_q8_0_gemv_rowbatch4_f32_f32_out",
     "gguf_q8_0_gemv_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_rowbatch16_f32_f32_out",

@@ -1164,7 +1164,7 @@ __global__ void gguf_k_selected_prefill_out_kernel(
 // lane_to_row maps each sorted group position to the x/out row it serves.
 // When the caller's x and out buffers are already in sorted-lane order (the
 // qwen4-exp grouped-prefill scratch layout), pass nullptr and row = lane.
-template <typename scalar_t, typename out_t, int ROW_BATCH = 1, bool BUNDLE = false>
+template <typename scalar_t, typename out_t, int ROW_BATCH = 1, bool BUNDLE = false, bool REGISTER_WEIGHTS = false>
 __launch_bounds__(256, 2)
 __global__ void gguf_k_selected_grouped_prefill_out_kernel(
     const scalar_t* __restrict__ x,
@@ -1190,6 +1190,12 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
       qweight + static_cast<int64_t>(expert_id) * expert_bytes +
       static_cast<int64_t>(out_col) * row_bytes;
 
+  float cached[REGISTER_WEIGHTS ? 5 : 1];
+  if constexpr (REGISTER_WEIGHTS) {
+#pragma unroll
+    for (int step=0; step<5; ++step)
+      cached[step] = q8_0_weight(weight_row,threadIdx.x+step*128);
+  }
   for (int base = lane_begin; base < lane_end; base += ROW_BATCH) {
     int row[ROW_BATCH];
     int x_row[ROW_BATCH];
@@ -1201,6 +1207,17 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
       x_row[r] = (x_rows == 1) ? 0 : (row[r] / lanes_per_x_row);
     }
     float acc[ROW_BATCH] = {};
+    if constexpr (REGISTER_WEIGHTS) {
+#pragma unroll
+      for (int step=0; step<5; ++step) {
+        const int k=threadIdx.x+step*128;
+#pragma unroll
+        for (int r=0; r<ROW_BATCH; ++r)
+          if (base+r<lane_end)
+            acc[r] += scalar_to_float<scalar_t>(
+                x[static_cast<int64_t>(x_row[r])*in_features+k])*cached[step];
+      }
+    } else {
     for (int k = threadIdx.x; k < in_features; k += blockDim.x) {
       const float wv = q8_0_weight(weight_row, k);
 #pragma unroll
@@ -1211,6 +1228,7 @@ __global__ void gguf_k_selected_grouped_prefill_out_kernel(
           acc[r] += xv * wv;
         }
       }
+    }
     }
     if constexpr (BUNDLE) {
       __shared__ float sums[ROW_BATCH][8];
@@ -4490,7 +4508,7 @@ int launch_gguf_k_selected_gemv_out(
   return static_cast<int>(hipGetLastError());
 }
 
-template <typename scalar_t, typename out_t, int ROW_BATCH = 1, bool BUNDLE = false>
+template <typename scalar_t, typename out_t, int ROW_BATCH = 1, bool BUNDLE = false, bool REGISTER_WEIGHTS = false>
 int launch_gguf_k_selected_grouped_gemv_out(
     const scalar_t* x,
     const int64_t* expert_start,
@@ -4509,14 +4527,15 @@ int launch_gguf_k_selected_grouped_gemv_out(
       out == nullptr || x_rows <= 0 ||
       rows <= 0 || (rows % x_rows) != 0 || num_experts <= 0 ||
       in_features <= 0 || out_features <= 0 || !valid_shape ||
-      (threads != 64 && threads != 128 && threads != 256)) {
+      (threads != 64 && threads != 128 && threads != 256) ||
+      (REGISTER_WEIGHTS && (threads != 128 || in_features != 640))) {
     return static_cast<int>(hipErrorInvalidValue);
   }
   const dim3 block(static_cast<unsigned int>(threads));
   const dim3 grid(
       static_cast<unsigned int>(out_features),
       static_cast<unsigned int>(num_experts));
-  gguf_k_selected_grouped_prefill_out_kernel<scalar_t, out_t, ROW_BATCH, BUNDLE><<<grid, block, 0, stream>>>(
+  gguf_k_selected_grouped_prefill_out_kernel<scalar_t, out_t, ROW_BATCH, BUNDLE, REGISTER_WEIGHTS><<<grid, block, 0, stream>>>(
       x,
       expert_start,
       lane_to_row,
@@ -4741,6 +4760,14 @@ extern "C" int hipengine_gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_o
   return launch_gguf_k_selected_grouped_gemv_out<uint16_t, uint16_t, 4, true>(
       x, expert_start, lane_to_row, qweight, out, x_rows, rows, num_experts,
       in_features, out_features, threads, stream);
+}
+
+extern "C" int hipengine_gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out(
+    const uint16_t* x,const int64_t* starts,const int64_t* map,const uint8_t* w,
+    uint16_t* out,int64_t xr,int64_t rows,int64_t experts,int64_t k,int64_t n,
+    int64_t threads,hipStream_t stream) {
+  return launch_gguf_k_selected_grouped_gemv_out<uint16_t,uint16_t,4,true,true>(
+      x,starts,map,w,out,xr,rows,experts,k,n,threads,stream);
 }
 
 #define HIPENGINE_GGUF_K_ROWBATCH_EXPORTS(NAME, QTYPE, ROW_BATCH) \

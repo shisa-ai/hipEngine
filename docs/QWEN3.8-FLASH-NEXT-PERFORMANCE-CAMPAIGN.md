@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 down register-weight candidate (September7 UTC):** cache five K640
+weights/thread before expert row loop,128 threads only,unchanged exact
+row4 bundled arithmetic. Actual layer4 compact/counts37.373->32.127ms
+(1.163x);layer2 mapped with explicitly borrowed layer0 counts37.228->
+30.808ms (1.208x).40 pairs exact,both orders positive;18 tests pass.
+Trace VGPR24->32,LDS512B/scratch0 unchanged. These512-token projection
+screens are not current1024 whole-model results;model state/KV/map and
+canonical A/B are next. No runtime default change.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register.json).
+
 **Router shuffle rejected and removed (September7 UTC):** full12-case
 chunk1024 A/B at clean `db929145c` preserves72 exact trajectories but
 only marginal aggregate PP+0.357%/+0.168%/+0.253%;one prefill case and
