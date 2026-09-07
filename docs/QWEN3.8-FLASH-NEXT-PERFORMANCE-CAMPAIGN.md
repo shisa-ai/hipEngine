@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Current chunk1024 owner refresh (September7 UTC):** clean `fc947658a`,
+six cases/twelve phases,explicit1024 child/join metadata. All100%
+attribution,matched decode roots,restored state/output and zero owners.
+Four-category p4096 FFN11.356s,linear4.517s,GR3.404s,QSA2.070s,
+GDN0.820s;reused-Vulkan ratios2.597x/4.432x/1.994x/3.207x/0.590x.
+Prior full snapshot predates mapped-Q8 and chunk1024;FFN/GR improve
+while QSA/GDN rise. This is not single-change causal attribution.
+Device mean22.281s,code wall22.574s. Decode QSA16.945vs3.161ms remains.
+Generated halo-box tables updated. Next prioritize substantial remaining
+FFN and non-GR linear;do not repeat rejected Q4 staging/cache schemes.
+[Packet](../benchmarks/results/2026-09-07-framework-qwen4exp-post-chunk1024-family.json).
+
 **Family capture chunk provenance (September7 UTC):** collector accepts
 explicit `--prefill-chunk-size`,passes it to both prefill/decode children
 and emits `hipengine_prefill_chunk_size` in joined evidence. Join rejects

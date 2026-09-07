@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Chunk1024 full family refresh at `fc947658a`:p4096 FFN12.698->11.356s,
+GR3.755->3.404s;QSA1.922->2.070s. Snapshot includes mapped-Q8 and
+chunk promotions,not single-change attribution. All12 phases pass
+coverage/state/lifecycle;Vulkan profile explicitly reused.
+[Family evidence](results/2026-09-07-framework-qwen4exp-post-chunk1024-family.json).
+
 Qualified gfx1151 UD-Q4_K_XL production now defaults to chunk1024:
 full-suite long prefill+7.87%/+8.18%,72 exact trajectories and full
 state/KV/native-c2/public8K gates pass. p4096 decode-1.72% and short-work
