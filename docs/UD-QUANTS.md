@@ -1512,8 +1512,9 @@ proposed `tests/test_gguf_ud_ks.py`.
 
 - [ ] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
   row output ownership and vocabulary bounds. The real embedding fixture
-  passes 32 boundary/ownership and host-validation checks on gfx1151
-  (`b6f403fa0`); full-vocabulary addressing and public callers remain open.
+  passes 35 boundary/ownership and host-validation checks on gfx1151,
+  including first/last rows at their actual full-vocabulary addresses and row6.
+  See the `ud-q3-vocabulary` worklog entry. Public callers remain open.
 - [ ] Dense IQ3_XXS and IQ2_XS from existing math. Both raw leaves have
   bounded gfx1151 numerical evidence. IQ2_XS passes exact BF16/F32 real-row
   projection gates and synthetic one-hot decode coverage; model residency still
