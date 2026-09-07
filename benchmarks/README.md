@@ -2,6 +2,15 @@
 
 Last updated: **2026-09-07 UTC**
 
+Exact iu8-risk+repair MoE gate/up admitted default-off on Framework gfx1151:
+five-case off/on/off state gate at chunk1024 is bit-identical to the
+production pair2 route (full logits, decode steps, state, full KV);
+actual-weight screens span 32 cases at 1.50-2.00x with the risk
+criterion multiplier floor between 0.5 and 1 (default 4).
+Canonical 12-case A/B pending.
+[State](results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json)
+[Screen](results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json).
+
 Exact iu8-risk+repair MoE gate/up candidate retained (kernel-only):
 actual-weight screens on layers 0/3/10/26 are bit-identical to the exact
 pair2 parent in all 32 cases at multiplier 1-8, with 1.50-2.00x

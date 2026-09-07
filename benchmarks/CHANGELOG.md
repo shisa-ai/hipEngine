@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC iu8-risk exact route state gate] Five-case off/on/off at chunk1024,multiplier4:full logits/4 decode steps/state/full KV bit-identical to production pair2;26/104 candidate calls at p512/p4096,zero decode,zero final owners. Route default-off `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT`. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json`.
+
 - [2026-09-07 UTC iu8-risk exact MoE candidate] Actual-weight layer0/3/10/26 gate/up,uniform/skewed,512/1024 rows:candidate iu8-WMMA+Kahan-risk+sparse pair2-exact repair is bit-identical to the exact pair2 parent in all32 screen cases;1.50-2.00x operation-complete (m=1..8),floor m<1 misses. No runtime route yet. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json`.
 
 - [2026-09-07 UTC iu8-vs-pair2 flip probe] Actual layer0 gate/up:production iu8 kernel is2.24x/2.43x faster than exact pair2 at512/1024 rows;BF16 flip fraction0.030%/0.029%,94% +-1ulp,large outliers are extreme-cancellation outputs. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json`.
