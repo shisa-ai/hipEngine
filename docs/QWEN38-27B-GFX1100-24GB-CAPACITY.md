@@ -602,10 +602,21 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   decode-time eviction was not exercised by these runs — recorded, not
   inferred). Artifacts: `results/2026-09-07-rx7900xtx-dms-long-16384.json`,
   `results/2026-09-07-rx7900xtx-dms-capacity-comparison.json`.
-- [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Run native C1 then C2/C4/C8 where supported, heterogeneous lengths,
-  protected-window boundaries, cancellation, pressure and refill. DMS prefix
+- [ ] **PARTIAL — native C1 measured; C2/C4/C8, heterogeneous lengths, cancellation, pressure/refill still open.** DMS prefix
   sharing remains off until snapshot/overlay semantics qualify; sharing pool
   capacity does not authorize sharing divergent evicted histories.
+  Native C1 measured 2026-09-07 on the XTX (trained DMS BF16, cold session
+  per run, XTX manifest): last pass **73,728** declared tokens (dense prefill
+  owner peak 21,709.1 MiB, compact payload 2,560.3 MiB, ratio 1.7999, zero
+  extent failures, 0.0 MiB after close; repeat-stable across three runs);
+  first OOM **74,752** — the binding constraint is dense-owner +
+  compact-backend coexistence at pack time (the sum, not either alone);
+  73,984 additionally hit the pre-existing HIP error 1 prefill blocker class
+  (width-adjacent, non-monotone). Window edge covered at 8,192 (ratio 1.0,
+  no eviction); ratio climbs toward the 2.0 target with context (1.778 at
+  65,536). Artifact: `results/2026-09-07-rx7900xtx-dms-c1-ladder.json`.
+  Not yet measured: C2/C4/C8 concurrency, heterogeneous lengths, cancellation,
+  pressure/refill.
 - [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
