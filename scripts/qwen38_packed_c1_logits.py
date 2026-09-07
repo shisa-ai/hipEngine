@@ -228,7 +228,10 @@ class PackedC1Capture:
                 context = self.current.get()
                 if context is None:
                     return commit(owner, results, sessions, accept_buffers=accept_buffers, **kwargs)
-                from scripts.qwen38_packed_c1_state import selected_prefix, selected_state_sources, snapshot_committed_state
+                from scripts.qwen38_packed_c1_state import (
+                    selected_prefix, selected_state_sources, snapshot_committed_state,
+                    selected_aux_sources, assert_aux_commit,
+                )
                 if len(results) != 1 or len(sessions) != 1:
                     raise ValueError("selected commit requires physical C1")
                 record = self.records[context["record_index"]]
@@ -243,13 +246,16 @@ class PackedC1Capture:
                     if int(actual[0]) != expected:
                         raise ValueError(f"device acceptance differs from CPU oracle: {name}")
                 expected_state = selected_state_sources(owner, sessions[0], selected_row=int(result.row_start) + accepted)
+                expected_aux = selected_aux_sources(sessions[0], result, accepted=accepted)
                 output = commit(owner, results, sessions, accept_buffers=accept_buffers, **kwargs)
+                assert_aux_commit(sessions[0], expected_aux)
                 after = snapshot_committed_state(sessions[0])
                 for name, expected in expected_state.items():
                     actual = after["buffers"][name]
                     if (actual["ptr"], actual["allocation_nbytes"], actual["blake2b_128"]) != (expected["ptr"], expected["nbytes"], expected["hash"]):
                         raise ValueError(f"selected commit state mismatch: {name}")
                 record["selected_commit"] = dict(passed=True, accepted=accepted, checked_buffers=len(expected_state))
+                record["aux_commit"] = dict(passed=True, checked_buffers=len(expected_aux))
                 return output
 
             self._patch(Qwen35GGUFResidentSession, "_commit_deferred_packed_verify_states_batch_device", checked_commit)

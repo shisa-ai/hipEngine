@@ -54,6 +54,9 @@ def test_real_commit_hook_checks_metadata_and_destination(monkeypatch, tmp_path,
         assert selected_row == 4  # absolute row_start 3 plus accepted prefix 1
         return {'conv:0': dict(ptr=10, nbytes=8, hash='selected')}
     monkeypatch.setattr(state, 'selected_state_sources', sources)
+    aux_calls = []
+    monkeypatch.setattr(state, 'selected_aux_sources', lambda *args, **kwargs: {'aux': 'expected'})
+    monkeypatch.setattr(state, 'assert_aux_commit', lambda *args: aux_calls.append(args[1]))
     actual = dict(ptr=10, allocation_nbytes=8, blake2b_128='selected')
     if fault in actual:
         actual[fault] = 'wrong'
@@ -78,6 +81,7 @@ def test_real_commit_hook_checks_metadata_and_destination(monkeypatch, tmp_path,
             assert run() == 'executed'
             assert recorder.records[0]['selected_commit'] == dict(passed=True, accepted=1, checked_buffers=1)
         assert bool(calls) is (fault not in {'accepted_counts', 'commit_positions'})
+        assert aux_calls == ([{'aux': 'expected'}] if calls else [])
     finally:
         recorder.close(success=fault is None)
     assert Session._commit_deferred_packed_verify_states_batch_device is commit
