@@ -12,7 +12,7 @@ from hipengine.quant.gguf import bf16_to_float32
 
 FIXTURE = Path(__file__).parent / 'fixtures/gguf_ud'
 ENTRIES = json.loads((FIXTURE / 'real_rows.json').read_text())['entries']
-CASES = [e for e in ENTRIES if e['type'] in ('IQ4_XS', 'IQ4_NL', 'IQ3_S', 'Q3_K', 'IQ3_XXS', 'IQ2_S')]
+CASES = ENTRIES
 
 
 def bf16(x):
@@ -70,6 +70,31 @@ def reference(x, w):
     return out
 
 
+def test_iq2_xs_synthetic_decoder_on_device(library):
+    """One-hot activations expose every independently generated packed value."""
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import launch
+    with np.load(FIXTURE / 'synthetic.npz') as fixture:
+        raw = fixture['IQ2_XS_raw']
+        weights = fixture['IQ2_XS_f32']
+    x = bf16(np.eye(256, dtype=np.float32))
+    out = np.full((256, len(raw)), np.nan, dtype=np.float32)
+    buffers = []
+    try:
+        for array in (x, raw, out):
+            buf = malloc(array.nbytes)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
+        launch(*(buf.ptr for buf in buffers), 256, 256, len(raw),
+               quant='gguf_iq2_xs', output='f32', library=library)
+        copy_device_to_host(host_array_ptr(out), buffers[2], out.nbytes)
+        # The reduction normalizes negative zero; codec signed-zero parity is
+        # separately tested before projection in the CPU oracle suite.
+        np.testing.assert_array_equal(out, weights.T)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+
 @pytest.fixture(scope='module')
 def library():
     try:
@@ -92,7 +117,7 @@ def test_dense_registry_strict_keys(backend):
     register_gguf_iq_dense_kernels()
     load_backend_kernel_package(backend)
     assert is_registered(KernelKey(backend, 'embedding', 'gguf_q3_k', 'lookup_bf16_out'))
-    for quant in ('gguf_iq4_xs', 'gguf_iq4_nl', 'gguf_iq3_s', 'gguf_q3_k', 'gguf_iq3_xxs', 'gguf_iq2_s'):
+    for quant in ('gguf_iq4_xs', 'gguf_iq4_nl', 'gguf_iq3_s', 'gguf_q3_k', 'gguf_iq3_xxs', 'gguf_iq2_s', 'gguf_iq2_xs'):
         for output in ('bf16', 'f32'):
             for prefix in ('gemv', 'prefill'):
                 assert is_registered(KernelKey(backend, 'linear', quant, f'{prefix}_bf16_{output}_out'))
