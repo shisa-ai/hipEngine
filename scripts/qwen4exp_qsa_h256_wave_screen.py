@@ -29,7 +29,10 @@ def main():
     parser.add_argument("--page256", action="store_true")
     parser.add_argument("--compare-generic", action="store_true")
     parser.add_argument("--head-pair", action="store_true")
+    parser.add_argument("--head-quad", action="store_true")
     args = parser.parse_args()
+    if args.head_quad:
+        args.head_pair=True
     if args.head_pair and args.pairs%2:
         parser.error("head-pair screening requires even pairs")
     if args.head_pair:
@@ -52,10 +55,13 @@ def main():
         "fixture": "seed506 random Q/BF16 KV, per-row page permutations and sorted unique selected positions",
         "cases": [],
         "page256": args.page256,
-        "baseline": "page256_h256_wave" if args.head_pair else
+        "baseline": "paired_head_h256_wave" if args.head_quad else "page256_h256_wave" if args.head_pair else
                     "generic_h256_wave" if args.compare_generic else "strict_rows",
         "head_pair":args.head_pair,
-        "warmup_note":"Head-pair timing retains its cold first sample; parent and strict reference pre-run" if args.head_pair else None,
+        "head_quad":args.head_quad,
+        "warmup_note":("Head-quad comparison retains cold first pair/quad samples; single-head and strict reference pre-run"
+                       if args.head_quad else "Head-pair timing retains its cold first sample; parent and strict reference pre-run"
+                       if args.head_pair else None),
     }
     for rows in args.rows:
         f = Fixture(rows, args.selected, page256=args.page256)
@@ -70,7 +76,11 @@ def main():
                         f.page256 = candidate
                     start = time.perf_counter()
                     if args.head_pair:
-                        if candidate:
+                        if args.head_quad:
+                            from tests.test_qwen4exp_qsa_head_pair import run_pair
+                            from tests.test_qwen4exp_qsa_head_quad import run_quad
+                            (run_quad if candidate else run_pair)(f)
+                        elif candidate:
                             from tests.test_qwen4exp_qsa_head_pair import run_pair
                             run_pair(f)
                         else:

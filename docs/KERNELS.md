@@ -788,6 +788,14 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+H256 QSA exposes kernel-only `strict_h256_head_quad_rows_spans`,
+four-head specialization of exact K/V-sharing body,page256 and GQA
+divisible by4. Synthetic selected2051 attention512/1024 ratios
+1.033x/1.063x versus two-head candidate,20 pairs exact.23 tests
+including extreme query scales and poisoned unused KV pass.
+VGPR72->112,no LDS/scratch. No runtime/default or CPU-recovery claim.
+Evidence: `2026-09-07-framework-qwen4exp-qsa-head-quad.json`.
+
 H256 QSA exposes kernel-only `strict_h256_head_pair_rows_spans`,
 page256 with even GQA ratio;two adjacent query heads share each K/V
 load but retain independent score/online-softmax state. Explicit

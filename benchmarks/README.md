@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Four-head QSA leaf candidate:1.033x/1.063x versus two-head candidate at
+512/1024 rows,20 exact pairs,23 tests. VGPR72->112,no scratch/LDS.
+No runtime/default or whole-request change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-head-quad.json).
+
 Advancing GDN full-layer graphs:code/mixed4096 tokens/state exact across
 all36 captured layers. Warm16-step graph~1.049s versus eager~1.046-1.047s,
 setup228-232ms charged in first graph arm. No warm AR speedup established;
