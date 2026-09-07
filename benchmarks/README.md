@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+GDN paired layer-graph candidate:layers0/24/46 restored-state medians
+1.405->1.021ms /1.464->1.034ms /1.534->1.098ms,60 pairs exact.
+Setup8.4-9.3ms/layer;production MoE baseline engaged. Not full-step AR
+or a production speedup.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-layer-graph-paired.json).
+
 GDN layer-graph feasibility:layer0 after p4096,production MoE cache
 baseline verified1 capture/19 replays,exact state/output. Exploratory
 0.938->0.904ms medians;not counterbalanced/full-step/setup-inclusive.
