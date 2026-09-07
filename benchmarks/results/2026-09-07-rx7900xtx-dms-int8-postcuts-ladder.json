@@ -1,0 +1,141 @@
+{
+  "boundary": {
+    "capacity_increase_percent": 55.56,
+    "highest_observed_passing_prompt_tokens": 114688,
+    "intermediate_sizes_unqualified": true,
+    "note": "118,784 failed 79.7 s into the run during early dense allocation (HIP error 2), before prefill completed; intermediate sizes between 114,688 and 118,784 are untested.",
+    "passing_point_sampled_headroom_mib": 38.805,
+    "passing_point_sampled_whole_card_peak_gib": 23.920403,
+    "passing_point_tracked_peak_gib": 23.662563,
+    "prior_highest_observed_passing_prompt_tokens": 73728,
+    "proven_maximum": false,
+    "smallest_observed_oom_prompt_tokens": 118784
+  },
+  "date": "2026-09-07",
+  "date_timezone": "UTC",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "RX 7900 XTX",
+    "host": "epyc",
+    "other_workloads": "GPU0 not used; GPU1 idle baseline verified per run",
+    "pci": "0000:10:00.0",
+    "physical_gpu_index": 1,
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "historical_comparison": {
+    "note": "The pre-cut DMS route passed 73,728 and OOMed at 75,776. The August no-mirror INT8 singleton route passed 114,688 (repeated) and 129,024 (single) on the same model file; today's post-cut DMS route again reaches the historical 114,688 repeated-context size.",
+    "sources": [
+      "benchmarks/results/2026-09-07-rx7900xtx-dms-int8-requested-backoff.json",
+      "benchmarks/results/2026-08-15-qwen38-27b-dedicated-xtx-context-soak.json"
+    ]
+  },
+  "limitations": [
+    "Capacity/finiteness/ownership evidence only; no throughput, task or serving qualification.",
+    "Whole-card peaks are 20 ms samples; the OOM point's pre-failure peak is not a capacity result.",
+    "DMS discards history; fitting longer prompts does not establish full-context quality.",
+    "Decode horizons remain eight steps; long-output stability is unqualified."
+  ],
+  "memory_cut_commits": [
+    "6b46dcfdb private-C1 runner wiring in the DMS concurrency probe",
+    "c85aaeeb3 demand-driven split-K partials and DMS prefill workspace release",
+    "9862407d2 layerwise DMS compact pack with per-layer dense release"
+  ],
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "points": [
+    {
+      "decode_logits_sha256_first": "cf10c274cc80315924d3b3228c096cb48077562e6cbdad1ac332fc73d3998650",
+      "elapsed_seconds": 363.9,
+      "log_sha256": "973dc08b8a6796d65663db955210e2497711a15c15b9ff3c0f8b0ae54b7c8c4e",
+      "max_sample_gap_seconds": 0.02672,
+      "monitor_sha256": "56edf46c8209d3fa5183f910e4eb397af15ce3b740c61b4acb0f84bc33d9a9ca",
+      "prompt_tokens": 98304,
+      "raw_sha256": "12d2c5f1699136449fb6299b2d91447266d418c71099739a4b316d37a4537915",
+      "sampled_headroom_mib": 992.996,
+      "sampled_whole_card_peak_gib": 22.988575,
+      "source_commit": "9862407d2ed4318b83d0dd2cf251658f91683118",
+      "status": "execution_fit",
+      "tracked_peak_gib": 22.646671
+    },
+    {
+      "decode_logits_sha256_first": "b74cb728c8ef2f6b7c0427525bf0c18bcb884598f11beb87e6d9f300d6cb7e3c",
+      "elapsed_seconds": 384.4,
+      "log_sha256": "32519bf22273eb05f58a1d4e2cbea47f7f6809d2c8d3985b613f3db5e6f5c02f",
+      "max_sample_gap_seconds": 0.021,
+      "monitor_sha256": "e5f9526a3394dd24c337d6ebd13ddbfd90b15b82df98809f60d7901b9bdebba3",
+      "prompt_tokens": 102400,
+      "raw_sha256": "ff0cce2ddfc7ae50f8f559ee374332f568d0d9cebea738f532ef028a6e4a17e7",
+      "sampled_headroom_mib": 733.0,
+      "sampled_whole_card_peak_gib": 23.242477,
+      "source_commit": "9862407d2ed4318b83d0dd2cf251658f91683118",
+      "status": "execution_fit",
+      "tracked_peak_gib": 22.900644
+    },
+    {
+      "decode_logits_sha256_first": "ce5f0c47648d2ff962b12962b8822c20dfc5700db14414f1890c488f30ead94d",
+      "elapsed_seconds": 402.1,
+      "log_sha256": "328b228e4cc9c751e1c866d56058d28e37902f78cdc37df50b4b5f12287d9905",
+      "max_sample_gap_seconds": 0.0266,
+      "monitor_sha256": "14d83a22c2ffb516efa7fedbc447e77742261ec5047495dd30b6ac6a0bf05661",
+      "prompt_tokens": 106496,
+      "raw_sha256": "d4e8b07fe99199a93b97e40d220317877cf90d362abf1d8d7e32c0f400b36e18",
+      "sampled_headroom_mib": 472.969,
+      "sampled_whole_card_peak_gib": 23.496414,
+      "source_commit": "9862407d2ed4318b83d0dd2cf251658f91683118",
+      "status": "execution_fit",
+      "tracked_peak_gib": 23.154617
+    },
+    {
+      "decode_logits_sha256_first": "2603b4a887287037e6c743e3302827d2c25bffaaa1346262435a9a56072acef4",
+      "elapsed_seconds": 424.3,
+      "log_sha256": "84afa3473c19d406f6204f9222148cc0f491e9ef34ea97273caeba9bdc4e937e",
+      "max_sample_gap_seconds": 0.0264,
+      "monitor_sha256": "6078883997d08114977b3e0ac9dd27fedb6305530a78f79cb8ee7cf1db88acc9",
+      "prompt_tokens": 110592,
+      "raw_sha256": "67e93787d988ad3b3d8ab57225361c375510fd8d14f06b9d7073767895a281ea",
+      "sampled_headroom_mib": 210.973,
+      "sampled_whole_card_peak_gib": 23.75227,
+      "source_commit": "9862407d2ed4318b83d0dd2cf251658f91683118",
+      "status": "execution_fit",
+      "tracked_peak_gib": 23.40859
+    },
+    {
+      "decode_logits_sha256_first": "005434fdba694ac4db05cb917f324ec93f4d5647d3b746ea4a05f0ac57ae8de3",
+      "elapsed_seconds": 447.4,
+      "log_sha256": "2a1a37930b1d64a2fe3c6c0f7ebb664520ef52a6f3cfc4109c2547ba48e421da",
+      "max_sample_gap_seconds": 0.02687,
+      "monitor_sha256": "23c65058e78b42406ee2dae1687c21f7c92cbe3fd5151a8a506d9ca81f914c17",
+      "prompt_tokens": 114688,
+      "raw_sha256": "9996f1e2b756eca896d81a389d3ee0711da013b6374e141c595bacc28804f31f",
+      "sampled_headroom_mib": 38.805,
+      "sampled_whole_card_peak_gib": 23.920403,
+      "source_commit": "9862407d2ed4318b83d0dd2cf251658f91683118",
+      "status": "execution_fit",
+      "tracked_peak_gib": 23.662563
+    },
+    {
+      "elapsed_seconds": 79.7,
+      "log_sha256": "155895b9ea568737a3bc6b7e391be6bbb897e8ea9bacc71747b7566d6234cc2a",
+      "max_sample_gap_seconds": 0.02093,
+      "monitor_sha256": "445d5bb3833757d7a3bb4791744fcbbbe5aae5525b53ae9b31f0c2468eb0a71e",
+      "prompt_tokens": 118784,
+      "raw_sha256": null,
+      "sampled_headroom_mib": 4321.707,
+      "sampled_whole_card_peak_gib": 19.737881,
+      "source_commit": "9862407d2ed4318b83d0dd2cf251658f91683118",
+      "status": "oom",
+      "tracked_peak_gib": null
+    }
+  ],
+  "provenance": "9862407d2ed4318b83d0dd2cf251658f91683118",
+  "purpose": "Capacity ladder after the 2026-09-07 memory-reduction cuts (private-C1 placement, demand-driven split-K partials, bulk prefill workspace release at DMS finalize, layerwise compact pack with per-layer dense release). Same C1 INT8 DMS probe protocol as the requested-backoff ladder: fresh process per point, eight decode steps, 20 ms whole-card sampling, 600 s bound, GPU1 idle baseline verified per attempt.",
+  "route": "offline eager C1, compact DMS INT8 K/V, FP32 per-token/head scales, W8192, MTP/prefix reuse off",
+  "schema": "hipengine_dms_int8_postcuts_ladder_v1",
+  "serving_qualification": false,
+  "status": "boundary_moved",
+  "throughput_claim": false
+}
