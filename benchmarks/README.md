@@ -193,6 +193,16 @@ screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
 Mixed short-Q/long-GR results retained;no runtime/default change.
 [Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64.json).
 
+Post-promotion combined-default dbb33a527/chunk1024 (iu8-risk route active) versus pinned halo-box b212548e0:
+HE PP205.95/221.15/210.42,TG19.53/18.88/13.87;
+Vulkan PP347.14/396.31/421.93,TG25.77/25.34/24.46.
+PP lead narrows to 1.687/1.791/2.006x; p4096 TG is variance-heavy
+(first-two reps 14.4, third-rep sag to 12.0-13.2, max TG CV10.12%
+vs the paired A/B's decode-neutral result - unattributed packet drift).
+108 trajectories repeat within engines;sequential screen,not statistical
+closure. Serial stage33m.
+[Evidence](results/2026-09-08-framework-qwen4exp-current-default-baselines-post.json).
+
 Fresh combined-default95df2c3a9/chunk1024 versus pinned halo-box b212548e0:
 HE PP190.94/201.82/186.03,TG19.79/19.34/14.93;
 Vulkan PP342.90/393.68/420.95,TG25.60/25.38/24.55.

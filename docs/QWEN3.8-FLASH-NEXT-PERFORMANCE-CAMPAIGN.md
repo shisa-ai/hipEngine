@@ -76,6 +76,29 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Combined-default refresh after the iu8-risk+repair promotion (September8
+UTC):** clean dbb33a527, hipEngine chunk1024, UD-Q4_K_XL/BF16 KV, full
+12-case logger-off protocol, first default screen with the exact
+iu8-risk+repair MoE gate/up route active. HE PP/TG512:205.95/19.53,
+1024:221.15/18.88,4096:210.42/13.87 (prior 95df2c3a9 packet
+190.94/19.79,201.82/19.34,186.03/14.93: PP +7.9/+9.6/+13.1% cross-packet,
+matching the paired A/B direction and magnitude). Pinned Vulkan b212548e0:
+347.14/25.77,396.31/25.34,421.93/24.46 - within1.2% of the prior packet,
+so the Vulkan prefill lead narrows to 1.687/1.791/2.006x (from
+1.796/1.951/2.263x); TG lead 1.320/1.342/1.764x. Decode moved down in this
+packet (-1.4/-2.4/-7.1%): at p4096 the first-two repetitions hold steady
+at14.4 (vs15.05 prior,-4.3% cross-packet) while third repetitions sag to
+12.0-13.2 on non-code cases, driving the weighted mean to13.87 and max
+decode CV to10.12%; the promotion's paired A/B measured decode neutral
+(-0.06%), so the sag is unattributed packet-level drift requiring a paired
+re-check, and the HIP diagnostic stage itself moved -10.7% at p4096
+(386.51->344.98) outside the promotion's touch. Max PP/TG CV: HE
+3.21/10.12%,Vulkan0.57/0.25%,HIP11.46/2.59%. All108 trajectories repeat
+within each engine, HE ownership0, servers exit0. Total serial stage
+33m00s; sequential screening, not statistical closure and not the current
+7baf0a98c fork measurement.
+[Evidence](../benchmarks/results/2026-09-08-framework-qwen4exp-current-default-baselines-post.json).
+
 **Non-GR linear structural floor measured (September7 UTC):** a
 discriminator probe on actual blk.0.attn_gate weights (Q8_0, K2560->N6144,
 F32 in/out, rows512/1024) closes the linear-family half of the FFN/linear
