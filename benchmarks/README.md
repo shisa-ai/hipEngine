@@ -193,6 +193,12 @@ screens1.109x/1.138x,200 pairs exact,23 tests. VGPR184->160,no scratch.
 Mixed short-Q/long-GR results retained;no runtime/default change.
 [Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64.json).
 
+Exact ordered-v2 QSA decode promoted:production three-pass 1.154ms/layer
+(scores401/coeff177/values533us) -> v2 0.179ms/layer (32/14/110us), 6.45x
+bit-exact; p4096 A/B TG +7.1..+24.8% per case (aggregate+16.5%), 72 exact,
+state/full-KV gate passes, short contexts and prefill neutral.
+[Evidence](results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json).
+
 Post-promotion combined-default dbb33a527/chunk1024 (iu8-risk route active) versus pinned halo-box b212548e0:
 HE PP205.95/221.15/210.42,TG19.53/18.88/13.87;
 Vulkan PP347.14/396.31/421.93,TG25.77/25.34/24.46.

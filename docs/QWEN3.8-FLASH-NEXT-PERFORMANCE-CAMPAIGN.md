@@ -76,6 +76,31 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Exact ordered-v2 QSA sparse decode promoted (September8 UTC):** the
+largest decode owner (fixed-live4097 QSA,16.955ms versus Vulkan3.161ms,
+5.365x and75% of the total decode device gap) is rewritten while preserving
+the exact ordered arithmetic and parent operand order. Leaf probe at c1
+geometry (24q/2kv/D256,selected2051 of4097): production route1.154ms/layer
+= scores401us + coefficients177us + values533us (rocprof). The v2 route:
+warp-tree scores (validated eight-coordinates-per-lane tree,32us), exact
+fmaxf block-scan coefficients with pointwise expf off the critical path and
+a prefetched serial denominator (14us), and staged-tile values with
+clamped unconditional loads (110us) - total0.179ms/layer,6.45x,
+bit-exact. A load-isolation experiment identified the per-load
+`token<0?0.0f:load` select as defeating all memory-level parallelism
+(406 versus122us); the fix is clamped loads plus a post-load select.
+Qualification:14 focused tests (selected1..4096,invalid positions,tails,
+extreme scales), six-case off/on/off state gate at chunk1024 with full
+logits/4 decode steps/state/full KV bit-identical and exact call accounting
+(48 sparse decode calls per enabled p4096 arm,zero prefill/short-context),
+full12-case chunk1024 A/B at clean f4e60b712:72 exact trajectories,p4096
+decode per-case+7.1/+11.0/+11.4/+24.8% (aggregate+16.5%,request wall
+-4.5%),prefill and p512/p1024 decode neutral. Promoted: production binds
+HIPENGINE_QWEN4_EXP_QSA_ORDERED_DECODE_V2=1,strict0.
+[Leaf](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-leaf.json),
+[state](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-state.json),
+[A/B](../benchmarks/results/2026-09-08-framework-qwen4exp-qsa-ordered-v2-production.json).
+
 **Combined-default refresh after the iu8-risk+repair promotion (September8
 UTC):** clean dbb33a527, hipEngine chunk1024, UD-Q4_K_XL/BF16 KV, full
 12-case logger-off protocol, first default screen with the exact
