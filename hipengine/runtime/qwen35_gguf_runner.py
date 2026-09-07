@@ -21078,6 +21078,7 @@ class Qwen35GGUFResidentSession:
         )
         gpu_stage_recorder.start()
         try:
+            self._refresh_dms_decode_owner_marker()
             with gemv_decode_session(self.use_gemv_decode):
                 hidden_ptr = self._run_token_to_final_hidden(
                     int(token_id),
@@ -21107,6 +21108,7 @@ class Qwen35GGUFResidentSession:
 
         if position is not None and int(position) != self._position:
             raise ValueError(f"position {position} does not match session cursor {self._position}")
+        self._refresh_dms_decode_owner_marker()
         with gemv_decode_session(self.use_gemv_decode):
             hidden_ptr = self._run_token_to_final_hidden(
                 int(token_id),
@@ -21120,6 +21122,28 @@ class Qwen35GGUFResidentSession:
         """Read the token produced by ``step_async_top1`` after stream sync."""
 
         return self._read_sample(return_logits=False)
+
+    def _refresh_dms_decode_owner_marker(self) -> None:
+        """Claim (or clear) the shared runner's DMS decode-owner marker.
+
+        External DMS decode dispatch resolves the owning session from a single
+        runner-level marker set at prefill finalize. With multiple resident
+        sessions sharing one runner, the last-prefilled session would
+        otherwise keep ownership and every other session's decode would route
+        through its DMS backend/state. Decode steps execute sequentially on
+        the shared runner, so refreshing the marker at each decode entry
+        gives each interleaved step its own session's DMS context; a session
+        without a DMS backend clears a foreign marker so dense decode never
+        inherits DMS routing.
+        """
+
+        runner = self.runner
+        if runner is None:
+            return
+        if self._dms_backend is not None:
+            runner.__dict__["_dms_decode_owner"] = self
+            return
+        runner.__dict__.pop("_dms_decode_owner", None)
 
     def _resident_ar_kv_layout_for_sessions(
         self,
