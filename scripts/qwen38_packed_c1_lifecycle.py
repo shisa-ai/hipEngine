@@ -1,9 +1,12 @@
 """Diagnostic concurrent C2-to-C1 service transition; no performance claim.
 
-With --engine-boundary, submits two independent unequal-horizon service children
-atomically and checks them against independent HTTP AR output. The original HTTP
-mode cannot batch unequal horizons and is retained only to reproduce that failure.
-No lease swap, HTTP lifecycle, cancellation, EOS, quality, or promotion claim.
+With --engine-boundary, submits two independent service children atomically and
+checks them against independent HTTP AR output. Default horizons are D8/D24;
+--cancel-peer uses two D24 children and cancels one after paired target execution.
+The cancelled prefix comes from its terminal collector, not a public response.
+The original HTTP mode cannot batch unequal horizons and reproduces that failure.
+No lease swap, HTTP lifecycle, provisional-transaction rollback, EOS, full numerical
+qualification, or promotion claim.
 """
 from __future__ import annotations
 
@@ -109,9 +112,9 @@ def combine_engine_intent(c1, c2):
                    evidence_artifacts=tuple(dict.fromkeys(c1.evidence_artifacts + c2.evidence_artifacts)))
 
 
-def resolve_engine_intents(llm, prompt: str):
+def resolve_engine_intents(llm, prompt: str, horizons=(8, 24)):
     intents, sources = [], []
-    for horizon in (8, 24):
+    for horizon in horizons:
         decisions = [llm.resolve_speculative_mtp_serving_plan(
             realized_group_rows=width, sampling_mode='greedy_fast',
             context_tokens=llm.count_tokens(prompt), output_horizon_tokens=horizon)
@@ -125,7 +128,8 @@ def resolve_engine_intents(llm, prompt: str):
     return tuple(intents), sources
 
 
-def submit_engine_pair(service, prompt: str, intents) -> list[dict]:
+def submit_engine_pair(service, prompt: str, intents, *, horizons=(8, 24),
+                       paired_ready=None, cancellation=None) -> list[dict]:
     """Admit both real children before polling either; no HTTP usage claim."""
     from hipengine.generation.registry import GenerationRequest
     if len(intents) != 2 or any(not i.eligible or not i.packed_c1_target for i in intents):
@@ -133,11 +137,16 @@ def submit_engine_pair(service, prompt: str, intents) -> list[dict]:
     requests = tuple(GenerationRequest(prompts=(prompt,), max_tokens=n, temperature=0.0,
                                        top_p=1.0, ignore_eos=False,
                                        speculative_mtp_static_eligibility=intent)
-                     for n, intent in zip((8, 24), intents, strict=True))
+                     for n, intent in zip(horizons, intents, strict=True))
     handles = service.submit_speculative_children(requests)
     if len(handles) != 2:
         raise ValueError('engine did not return two independent handles')
-    outputs = [handle.result() for handle in handles]
+    if paired_ready is None:
+        outputs = [handle.result() for handle in handles]
+    else:
+        from scripts.qwen38_packed_c1_cancel import collect_cancelled_pair
+        outputs, evidence = collect_cancelled_pair(handles, paired_ready)
+        cancellation.update(evidence)
     if any(output.generated_token_ids is None for output in outputs):
         raise ValueError('engine omitted authoritative generated IDs')
     return [dict(generated_ids=list(output.generated_token_ids), usage=None,
@@ -166,7 +175,12 @@ def main() -> None:
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--engine-boundary', action='store_true',
                         help='Submit unequal-horizon children atomically below HTTP batching')
+    parser.add_argument('--cancel-peer', action='store_true',
+                        help='Cancel one D24 engine child after a successful paired target')
     args = parser.parse_args()
+    if args.cancel_peer and not args.engine_boundary:
+        parser.error('--cancel-peer requires --engine-boundary')
+    horizons = (24, 24) if args.cancel_peer else (8, 24)
     from scripts import gguf_mtp_c1c8_server_bench as bench
     from hipengine.generation import qwen35_gguf_mtp2 as mtp2
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
@@ -174,6 +188,7 @@ def main() -> None:
     os.environ['HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS'] = '1'
     install_lifecycle_evidence(args.capacity)
     traces = []
+    paired_ready = None
     current = ContextVar('lifecycle_target', default=None)
     execute = mtp2.Qwen35GGUFMTP2Adapter._execute_target_frontier_batch
     verify = Qwen35GGUFResidentSession.verify_target_blocks_batch
@@ -190,7 +205,13 @@ def main() -> None:
         traces.append(record)
         token = current.set((record, sessions))
         try:
-            return execute(adapter, plan, *positional, **kwargs)
+            result = execute(adapter, plan, *positional, **kwargs)
+            if (paired_ready is not None and len(ids) == 2
+                    and record['active_request_ids'] == ids
+                    and record['packed_request_ids'] == ids
+                    and record['packed_group_sizes'] == [2]):
+                paired_ready.set()
+            return result
         except Exception as error:
             record['error'] = f'{type(error).__name__}: {error}'
             raise
@@ -237,12 +258,16 @@ def main() -> None:
                 # Independent non-MTP requests are the output oracle.
                 expected = [bench._request(client, model='lifecycle', prompt=prompt['rendered_prompt'],
                             max_tokens=n, mtp=False, barrier=threading.Barrier(1))
-                            for n in (8, 24)]
+                            for n in horizons]
                 start = len(traces)
+                paired_ready = threading.Event() if args.cancel_peer else None
+                cancellation = {} if args.cancel_peer else None
                 intent_sources = None
                 if args.engine_boundary:
-                    intents, intent_sources = resolve_engine_intents(llm, prompt['rendered_prompt'])
-                    actual = submit_engine_pair(llm._get_text_generator(), prompt['rendered_prompt'], intents)
+                    intents, intent_sources = resolve_engine_intents(llm, prompt['rendered_prompt'], horizons)
+                    actual = submit_engine_pair(llm._get_text_generator(), prompt['rendered_prompt'], intents,
+                                                horizons=horizons, paired_ready=paired_ready,
+                                                cancellation=cancellation)
                 else:
                     barrier = threading.Barrier(3)
                     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -253,7 +278,12 @@ def main() -> None:
                         actual = [future.result() for future in futures]
                 trace = traces[start:]
                 transition = validate_transition(trace)
-                exact = all(a['generated_ids'] == b['generated_ids'] for a, b in zip(expected, actual, strict=True))
+                if args.cancel_peer:
+                    from scripts.qwen38_packed_c1_cancel import validate_cancel_outputs
+                    validate_cancel_outputs(expected, actual, cancellation, transition)
+                    exact = True  # Cancelled child is an exact prefix; peer is full exact.
+                else:
+                    exact = all(a['generated_ids'] == b['generated_ids'] for a, b in zip(expected, actual, strict=True))
                 engaged = (True if args.engine_boundary else
                            all(bench._mtp_engaged(r['route'], r['mtp']) for r in actual))
                 if not args.engine_boundary:
@@ -262,7 +292,7 @@ def main() -> None:
                 cell = dict(prompt_id=prompt['id'], category=prompt['category'], exact=exact,
                             usage_exact=None if args.engine_boundary else True,
                             engaged=engaged, transition=transition, trace=trace,
-                            intent_sources=intent_sources,
+                            intent_sources=intent_sources, cancellation=cancellation,
                             responses=[{k: r[k] for k in ('generated_ids', 'usage', 'route', 'mtp')}
                                        for r in actual],
                             oracle_responses=[{k: r[k] for k in ('generated_ids', 'usage')}
@@ -276,7 +306,8 @@ def main() -> None:
         try:
             close_and_report(llm, args.output, dict(
                 diagnostic_only=True, performance_claim=False, full_profile_qualification=False,
-                passed=passed, capacity=args.capacity, budget=3, horizons=[8, 24],
+                passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
+                cancellation_requested=args.cancel_peer,
                 boundary='engine_service' if args.engine_boundary else 'http',
                 cells=cells, all_target_traces=traces))
         finally:
