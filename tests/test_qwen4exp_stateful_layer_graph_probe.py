@@ -30,6 +30,10 @@ def test_parser_accepts_named_production_fixture_arm(tmp_path):
  args=_load().build_parser().parse_args(['--model-root',str(tmp_path),'--fixture',str(tmp_path/'fixture.json'),'--case-id','code-p512','--profile','production','--named-production-baseline','--timing-order','graph-first','--output',str(tmp_path/'result.json')])
  assert args.profile=='production';assert args.named_production_baseline is True;assert args.timing_order=='graph-first';assert args.prompt_file is None
 
+def test_parser_accepts_gdn_moe_baseline(tmp_path):
+ args=_load().build_parser().parse_args(['--model-root',str(tmp_path),'--prompt-file',str(tmp_path/'p'),'--output',str(tmp_path/'o'),'--gdn-moe-baseline'])
+ assert args.gdn_moe_baseline
+
 @pytest.mark.parametrize(('prepared','expected'),((False,[7]),(True,[])))
 def test_qsa_position_prepared_skips_legacy_stream_upload(monkeypatch,prepared,expected):
  import hipengine.runtime.qwen4_exp_runner as module

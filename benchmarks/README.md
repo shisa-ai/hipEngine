@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+GDN layer-graph feasibility:layer0 after p4096,production MoE cache
+baseline verified1 capture/19 replays,exact state/output. Exploratory
+0.938->0.904ms medians;not counterbalanced/full-step/setup-inclusive.
+No production change.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-layer-graph-current.json).
+
 CPU-active transition workaround rejected:100ms activity reduces
 decode-only8.948->8.861s,but charged total is8.961s and request
 29.922->29.939s. Exact state;no production warm-up or policy change.

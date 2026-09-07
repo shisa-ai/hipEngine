@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC GDN graph feasibility] Layer0 graph vs eager with production MoE cache:0.938->0.904ms exploratory medians,exact state,1 capture/19 MoE replays verified. Cold/setup/order limits explicit;no qualified speedup or production change. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-layer-graph-current.json`.
+
 - [2026-09-07 UTC charged CPU activity] Candidate-prefill tg128 decode8.948->8.861s with100ms busy interval,but charged total8.948->8.961s/request29.922->29.939s. No gain retained;exact state,no production warm-up. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-active-transition.json`.
 
 - [2026-09-07 UTC QSA requested floor] Policy17 minimum2->4GHz readback accepted,early parent/candidate decode1.169/1.589s persists;feedback below request. Original2GHz/affinity restored,exact state,no production override. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-cpu-floor.json`.
