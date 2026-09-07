@@ -7,13 +7,9 @@ sliced from the same manifest validation stream, prefills sequentially
 (each prefill's dense owner coexists with the other sessions' live compact
 owners), then decodes round-robin so all N sessions are interleaved.
 
-KNOWN BLOCKER (recorded 2026-09-07): the shared runner routes external DMS
-decode through a single ``_dms_decode_owner`` slot
-(``Qwen35GGUFResidentSession`` setup overwrites it; only the owner itself
-pops it on close). With two simultaneous DMS sessions the first session's
-decode is routed through the second session's DMS backend and fails with
-"DMS direct append device/host live-count mismatch". This probe reproduces
-that blocker for evidence; DMS C>1 requires per-session owner routing.
+The shared runner binds the active session's DMS owner at each decode step.
+Optional C1 verification compares every interleaved logit byte with an
+independent single-session replay. INT8 mode is offline evaluation only.
 """
 
 from __future__ import annotations
@@ -103,6 +99,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="repeat the open/prefill/decode/close cycle this many times, requiring 0.0 MiB allocated between cycles (pressure/refill)",
     )
     parser.add_argument("--decode-steps", type=int, default=4)
+    parser.add_argument("--codec", choices=("bf16", "int8_evaluation"), default="bf16")
+    parser.add_argument("--verify-c1", action="store_true",
+                        help="Require byte-exact logits against independent single-session replays.")
     parser.add_argument("--backend", default="hip_gfx1100")
     parser.add_argument("--output", type=Path, required=True)
     return parser
@@ -162,6 +161,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "host": socket.gethostname(),
         "backend": str(args.backend),
         "sessions": n,
+        "codec": getattr(args, "codec", "bf16"),
+        "verify_c1": getattr(args, "verify_c1", False),
         "heterogeneous_widths": widths,
         "cancel_after_steps": args.cancel_after_steps,
         "refill_cycles": int(args.refill_cycles),
@@ -192,6 +193,9 @@ def _run_cycle(
     prompt_sha: str,
     cycle_errors: list[str],
 ) -> dict[str, Any]:
+    from hipengine.kvcache.dms import create_dms_bf16_backend, create_dms_int8_evaluation_backend
+    backend_factory = {"bf16": create_dms_bf16_backend,
+                       "int8_evaluation": create_dms_int8_evaluation_backend}[getattr(args, "codec", "bf16")]
     n = len(prompts)
     before = memory_stats()
     started = time.perf_counter()
@@ -219,6 +223,7 @@ def _run_cycle(
                 shared_runner=runner,
                 max_sequence_length=len(prompt) + steps,
                 dms_metadata_path=args.metadata,
+                dms_backend_factory=backend_factory,
                 dms_max_new_tokens=steps + 1,
                 use_wmma_prefill=True,
                 use_gemv_decode=True,
@@ -263,6 +268,7 @@ def _run_cycle(
                         "session": index,
                         "output_token": int(result_step.token_id),
                         "finite_logits": bool(np.isfinite(result_step.logits).all()),
+                        "logits_sha256": hashlib.sha256(result_step.logits.tobytes()).hexdigest(),
                         "seconds": round(time.perf_counter() - step_started, 4),
                     }
                 )
@@ -292,6 +298,27 @@ def _run_cycle(
         for session in sessions:
             if session is not None:
                 snapshots.append(session._dms_backend.observability_snapshot())
+        if getattr(args, "verify_c1", False):
+            for session in sessions:
+                if session is not None:
+                    session.__exit__(None, None, None)
+            sessions.clear()
+            for index, prompt in enumerate(prompts):
+                expected = [row for row in decode_rows if row["session"] == index]
+                with Qwen35GGUFResidentSession(
+                    args.model, backend=str(args.backend), shared_runner=runner,
+                    max_sequence_length=len(prompt) + steps,
+                    dms_metadata_path=args.metadata, dms_backend_factory=backend_factory,
+                    dms_max_new_tokens=steps + 1, use_wmma_prefill=True, use_gemv_decode=True,
+                ) as reference:
+                    reference.prefill(prompt, use_bulk=True, bulk_attention_mode="bulk", return_logits=False)
+                    current = int(prompt[-1])
+                    for row in expected:
+                        replay = reference.step(current, return_logits=True)
+                        current = int(replay.token_id)
+                        row["c1_logits_exact"] = hashlib.sha256(replay.logits.tobytes()).hexdigest() == row["logits_sha256"]
+                        if not row["c1_logits_exact"]:
+                            raise AssertionError(f"DMS C1 logit mismatch at session {index}, step {row['step']}")
     finally:
         close_started = time.perf_counter()
         errors = []
