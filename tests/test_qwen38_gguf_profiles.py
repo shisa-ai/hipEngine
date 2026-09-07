@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
+from tests._gguf_profile_fixture import profile_context
 
 import pytest
 
@@ -42,6 +44,7 @@ def _resolve(profile: ExecutionProfile):
         backend=QWEN38_GGUF_BACKEND,
         quant=QWEN38_GGUF_QUANT,
         profile=profile,
+        qualification_context=profile_context(),
     )
 
 
@@ -58,7 +61,7 @@ def test_qwen38_strict_profile_resolves_and_disables_fp16_state() -> None:
     assert qwen38_gguf_gfx1151_plans_registered()
 
     resolved = _resolve(ExecutionProfile.STRICT)
-    generator = object.__new__(type("Generator", (), {}))
+    generator = SimpleNamespace(**profile_context())
     assert resolved.binder is not None
     resolved.binder(generator, resolved)
 
@@ -89,7 +92,7 @@ def test_qwen38_production_profile_resolves_fp16_state_with_strict_fallbacks() -
     register_gfx1151_kernels(replace=True)
     register_qwen38_gguf_gfx1151_profiles()
     resolved = _resolve(ExecutionProfile.PRODUCTION)
-    generator = object.__new__(type("Generator", (), {}))
+    generator = SimpleNamespace(**profile_context())
     assert resolved.binder is not None
     resolved.binder(generator, resolved)
 

@@ -66,8 +66,9 @@ binds to the actual role manifest instead:
   has no default F32-logits row for a supplied BF16 activation; an explicit
   F32 declaration must describe a real F32 input, not permission to fall back
   to BF16. Availability/ABI certificates do not grant profile authorization;
-  native runtime-entry consumption is implemented in F1; integrated numerical
-  profile authorization remains the separate open F5 unit.
+  native runtime-entry consumption is implemented in F1. F5 profile plans use
+  the header identity adapter here through their own qualifier; that repair
+  awaits independent review and does not confer new numerical certification.
 
 UD dense consumers for Q3_K / IQ4_NL / IQ3_S / IQ3_XXS / IQ2_S and raw dense
 IQ4_XS do not exist until UD-U2..U5, so both published UD artifacts are
@@ -165,6 +166,7 @@ __all__ = [
     "Qwen35GGUFAdmissionError",
     "Qwen35GGUFAdmissionReport",
     "qwen35_gguf_artifact_preset_key",
+    "qwen35_gguf_artifact_identity_from_info",
     "qwen35_gguf_artifact_preset_key_for_report",
     "Qwen35GGUFArtifactPreset",
     "Qwen35GGUFOperationCoverage",
@@ -332,6 +334,26 @@ def qwen35_gguf_artifact_preset_key(
     return GGUF_UNQUALIFIED_MANIFEST_PRESET
 
 
+def qwen35_gguf_artifact_identity_from_info(model_info) -> tuple[str, str | None]:
+    """Header-only identity shared by profile and runtime policy callers.
+
+    The structural NextN map participates exactly as in loader admission.
+    ``None`` is returned only for an actually pinned plain manifest, never
+    because qualification context was absent.
+    """
+    model_map = build_qwen35_gguf_tensor_map(model_info)
+    nextn_map = None
+    if model_map.config.ignored_block_ids:
+        from hipengine.loading.qwen35_gguf_nextn import build_qwen35_gguf_nextn_tensor_map
+
+        nextn_map = build_qwen35_gguf_nextn_tensor_map(model_info, strict=False)
+    manifest = build_qwen35_gguf_role_manifest(model_map, nextn_map=nextn_map)
+    return manifest.fingerprint, qwen35_gguf_artifact_preset_key(
+        model_map, nextn_map=nextn_map,
+        file_type_stamp=getattr(model_info, "file_type_name", None),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Role manifest and fingerprint
 # ---------------------------------------------------------------------------
@@ -427,9 +449,10 @@ def resolve_qwen35_gguf_artifact_preset(
 ) -> Qwen35GGUFArtifactPreset | None:
     """Resolve the artifact preset from the actual manifest, or ``None``.
 
-    ``None`` means "no pinned UD manifest": the caller stays on the plain
-    stamp-based lane with unchanged behavior.  A matching fingerprint yields
-    the explicit UD preset identity; the stamp is telemetry only.
+    ``None`` means only "no pinned UD manifest", not qualified plain. Callers
+    use ``qwen35_gguf_artifact_preset_key`` to distinguish pinned plain controls
+    from unknown manifests. A matching fingerprint yields the explicit UD
+    preset identity; the stamp is telemetry only.
     """
 
     manifest = build_qwen35_gguf_role_manifest(model_map, nextn_map=nextn_map)

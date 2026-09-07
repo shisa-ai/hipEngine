@@ -322,9 +322,6 @@ from hipengine.loading.qwen35_gguf_materialize import (
     materialize_qwen35_gguf_weight_spec,
     materialize_qwen35_gguf_weights,
 )
-from hipengine.loading.qwen35_gguf_admission import (
-    qwen35_gguf_artifact_preset_key,
-)
 from hipengine.quant.gguf import GGMLQuantizationType, bf16_to_float32, dequantize_gguf_data
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_mmq_prefill import (
     build_gguf_k_mmq_prefill,
@@ -11786,22 +11783,11 @@ def _gguf_model_info_artifact_preset_key(model_info: object) -> str | None:
     admissions bind the actual manifest, not the header stamp alone.
     """
 
-    model_map = build_qwen35_gguf_tensor_map(model_info)
-    nextn_map = None
-    if model_map.config.ignored_block_ids:
-        from hipengine.loading.qwen35_gguf_nextn import (
-            build_qwen35_gguf_nextn_tensor_map,
-        )
-
-        nextn_map = build_qwen35_gguf_nextn_tensor_map(model_info, strict=False)
-    file_type_name = getattr(model_info, "file_type_name", None)
-    return qwen35_gguf_artifact_preset_key(
-        model_map,
-        nextn_map=nextn_map,
-        file_type_stamp=(
-            None if file_type_name is None else str(file_type_name)
-        ),
+    from hipengine.loading.qwen35_gguf_admission import (
+        qwen35_gguf_artifact_identity_from_info,
     )
+
+    return qwen35_gguf_artifact_identity_from_info(model_info)[1]
 
 
 def _resolve_gguf_private_c1_small_weight_arena(

@@ -5,9 +5,10 @@ Status: verified analysis and coder handoff; **U0 audit/identity/pinning
 complete** (CPU-only, including the startup-isolation review fix:
 `import hipengine` loads no GPU backend package), **U1 not accepted**:
 resident/repack/NextN prerequisites and integrated F3/F4 invocation/certificate
-binding accepted after GDN geometry closure; F1 execution closure and native
-entry authorization implemented pending independent review; F5 integrated
-profile authorization remains OPEN. All work here is CPU-only; **no GPU validation**.
+binding accepted after GDN geometry closure; bounded F1 load/execution/physical
+operands accepted in parent review; F5 integrated profile authorization
+implemented pending independent review. U1 still requires an integrated audit.
+All work here is CPU-only; **no GPU validation**.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
 U0 audit/identity repair landed on the `ud-quants` branch (see
 [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
@@ -1298,6 +1299,46 @@ real layer entries, real enqueue forwarding, legal prefix views, changed named
 operands with unchanged owning lists, and changing contents with stable owners.
 F1 still awaits independent review; F5 remains **OPEN**. No GPU, kernel, math,
 profile, default-route, or U2 work is included in this correction.
+
+#### F5 named-profile authorization repair — pending review
+
+The final known integrated-review bypass was profile-generated permission:
+`LLM` auto or explicit plain quant lookup selected a plain production plan for
+an unknown same-stamp manifest; its binder set FP16 state through the environment
+although the artifact-qualified runner default was false. That internal write
+was not an explicit user override.
+
+`RuntimeProfilePlan.qualifier` now owns the plugin's cold qualification gate.
+`LLM` forwards actual header metadata; resolution checks it before variant
+package loading or factory invocation. `ResolvedRuntimeProfile` binds the
+artifact identity separately from its unchanged variant-manifest hash and
+rechecks construction inputs, custom-generator metadata, and direct public
+binder calls. Missing context fails closed. Generator metadata conflicts and
+invalid artifacts refuse before any binder environment write; failed binder
+application restores the previous environment.
+
+`loading.qwen35_gguf_admission.qwen35_gguf_artifact_identity_from_info` is the
+shared header identity adapter used by both runtime policy and profile callers.
+It includes the same structural NextN map as loader admission and preserves
+pinned plain `None`, unknown sentinel, and exact UD preset identities. Existing
+dense-27B/MoE-35B Q4_K_M profile scopes remain supported. Small-model and Q4_K_S
+controls keep their independent admission/policy identities but do not acquire
+numerical certification of these verifier-shaped plans. Unknown/UD artifacts
+clearly refuse these named profiles (strict, production, and batch-invariant);
+there is no registered qualified generic strict profile to substitute. Generic
+AR admission, native physical qualification and MTP scope remain separate.
+UD K_M/K_S still have their 18/41 missing-consumer refusals.
+
+CPU tests cover actual public LLM auto/explicit selectors, truthful tiny GGUF
+metadata, same-stamp role swaps preserving histograms, exact UD artifacts,
+known plain dense/MoE controls, custom factories, missing/stale context, direct
+resolved binders, strict fallback, environment failure/restore behavior, and
+explicit developer overrides. No synthetic manifest is declared numerically
+certified. Real-header positive tests skip when local control files are absent;
+unknown-header negatives are portable. No GPU, new kernel, math, performance,
+or U2 work is included. Successful binders retain their existing process-scoped
+lifecycle; explicit overrides are not a qualification bypass. **F5 awaits
+independent review; U1 is not complete until its integrated audit.**
 
 ### U2. Independent Codec Oracles
 

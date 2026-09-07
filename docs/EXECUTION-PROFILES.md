@@ -484,6 +484,36 @@ batch-invariant plans may override only a subset of strict scopes; absent scopes
 are written into the manifest as strict selections. Captures bind to the
 resulting immutable manifest hash.
 
+Artifact-scoped plans additionally supply a CPU-only `qualifier`. Public
+`resolve_runtime_profile(..., qualification_context={"weight_index": info})`
+requires actual loaded header metadata for such plans; missing context does
+not mean a qualified plain artifact. `LLM` supplies its actual metadata for
+both auto and explicit quant selectors. Resolution validates before backend
+variant loading; `construct_generator` revalidates factory inputs before
+invocation and the returned generator before binding. Custom generators must
+retain `weight_index` (and a consistent `model_path` when supplied). The public
+resolved `binder` checks the same identity even when called directly. The
+artifact identity is separate from the stable variant-manifest hash.
+
+GGUF plain plans use admission's canonical AR plus structural NextN role
+manifest: pinned plain `None`, unknown sentinel, and exact UD preset keys are
+not interchangeable. Only the existing dense-27B/MoE-35B Q4_K_M profile scopes
+are covered. Small-model and Q4_K_S control admission does not qualify these
+verifier-shaped plans. Unknown/UD artifacts refuse all these named profiles,
+including strict and batch-invariant fallback, because no artifact-qualified
+generic strict profile plan is registered. A successful generic AR availability
+check is not numerical qualification; C1/native/MTP operation gates still run
+independently. Qualified plain batch-invariant requests use the existing strict
+fallback when no batch-invariant plan exists.
+
+Profile-generated environment values are application of the qualified plan,
+not explicit user consent. Explicit documented developer overrides remain
+separate diagnostic/rollback seams and cannot qualify a named profile.
+Qualification and generator metadata validation precede binder environment
+writes; failed binder application restores the prior environment. Successful
+legacy binders retain their process-scoped lifecycle and existing caller restore
+contexts, not a new concurrent per-generator environment-isolation guarantee.
+
 During migration, omitting the selector bypasses the profile-plan registry and
 preserves the incumbent package behavior. An explicit selector never falls back
 to that unclassified route: without a registered strict plan it errors, and

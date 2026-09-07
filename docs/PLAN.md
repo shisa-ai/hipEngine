@@ -349,7 +349,11 @@ routing, acceptance, or sampling remain explicit product/experiment choices.
 Profile resolution produces an immutable variant manifest over the existing
 `(backend, layer, quant, variant)` registry; it is not a fifth plugin axis and
 must not add `if profile` branches to engine/model hot paths. Missing or
-uncertified production variants fall back to registered strict variants.
+uncertified production variants fall back to registered strict variants only
+within an actually qualified artifact/operation scope, otherwise they refuse.
+Artifact-scoped plans own a CPU-only qualifier over actual factory metadata.
+Resolution, construction and the public resolved binder validate that identity
+before applying profile environment/arithmetic; a quant key is not a certificate.
 
 The exact control-plane, determinism, numerical calibration, evaluator, and
 migration/default rules are normative in
@@ -981,9 +985,15 @@ plan, recursive named scratch-view inventory, canonical index-publication owner,
 and owner-issued contexts required at direct native layers. A buffer-allocation
 list alone is not a captured operand plan. Contexts validate the actual BF16
 row-prefix input/output and index pointers, not just weights and scratch.
-F1 is pending independent review; integrated profile-binder authorization (F5)
-remains OPEN. Availability
-and ABI checks still confer no numerical-profile permission; see
+Bounded F1 load/execution/physical-operand work is accepted in parent review.
+F5 profile-binder authorization is implemented pending independent review:
+`RuntimeProfilePlan.qualifier` consumes actual header metadata through the
+shared admission identity owner before resolution, construction or public
+binder application. Pinned plain identities remain distinct from unknown
+sentinels and exact UD presets; the existing plain named profiles refuse the
+latter rather than inventing generic strict numerical certification. Availability
+and ABI checks still confer no numerical-profile permission; U1 awaits its
+integrated completion audit. See
 [`UD-QUANTS.md`](UD-QUANTS.md).
 
 Public APIs and server entry points default to `backend="auto"`. Auto is a selector
