@@ -19,7 +19,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     raw = json.loads(args.input.read_text())
-    if raw["status"] != "completed" or raw["diagnostic_subset"]:
+    if raw["status"] != "completed" or raw["diagnostic_subset"] or raw.get("screen_only",False):
         raise ValueError("requires completed full-suite A/B")
     summary = summarize_campaign_ab(raw["samples"], repetitions_per_mode=3)
     if len(raw["samples"]) != 72 or len(summary["by_case"]) != 12:
