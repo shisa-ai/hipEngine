@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_perf",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop form factor; gross numbers, sustained-load clock variability applies)",
+  "backend": "hip_gfx1151",
+  "change": "gguf_iq_dense strict kernel restructured to a T=8 column tile with cooperative per-quant-block header preloading (RB=4 blocks per barrier round) and __launch_bounds__(128,16). Per-column arithmetic is bit-identical to the declared strict contract (128 strided accumulators, wave32 shuffle tree, four serial wave sums); the 84-case exact-parity gate and the CPU oracle suites pass unchanged.",
+  "command": "PYTHONPATH=. HIPENGINE_COMPILER_VERSION_FILE=/tmp/ud-hipcc-version.txt .venv/bin/python /tmp/ud-gemv-bandwidth.py",
+  "script_sha256": "ad7062e244f8c1d98e24c36810217d6b941e7ed2752a12b5274439042889e50b",
+  "leaf_bandwidth_before_after": {
+    "before": {
+      "IQ4_XS": 36.5,
+      "IQ3_S": 27.1,
+      "IQ3_XXS": 28.3,
+      "IQ2_S": 28.6,
+      "IQ2_XS": 22.8,
+      "Q3_K": 31.3
+    },
+    "after": {
+      "IQ4_XS": 83.8,
+      "IQ3_S": 60.4,
+      "IQ3_XXS": 70.4,
+      "IQ2_S": 56.6,
+      "IQ2_XS": 41.8,
+      "Q3_K": 74.2
+    },
+    "note": "GB/s effective on the largest rank-2 tensor per family, rows=1, f32-out, same session as the before row (benchmarks/results/2026-09-07-zbook-ud-gemv-leaf-bandwidth-survey.json). Q4_K/Q5_K/Q6_K families unchanged (separate kernels; the earlier Q4_K 33 GB/s reading was a microbench registry-order artifact - the production Q4_K route measures ~120-137 GB/s and was verified via rocprofv3 kernel census)."
+  },
+  "e2e_gross": {
+    "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "command": "public LLM path, 121-token prompt, 64 decode tokens, greedy, ignore_eos",
+    "before": {
+      "decode_tok_s": 3.85,
+      "prefill_tok_s": 6.0
+    },
+    "after": {
+      "decode_tok_s": 5.52,
+      "prefill_tok_s": 9.2
+    },
+    "delta": "decode +43%, prefill +53%",
+    "k_s_after": {
+      "decode_tok_s": 5.8,
+      "prefill_tok_s": 7.7
+    }
+  },
+  "correctness": {
+    "exact_parity": "tests/test_gguf_ud_dense.py 84/84 (bit-exact vs the 128-strided-accumulator reference)",
+    "suites": "test_gguf_iq_dequant.py, test_gguf_iq_dequant_oracle.py, test_gguf_ud_km.py, test_gguf_ud_ks.py, test_gguf_ud_codecs.py, test_gguf_ud_admission.py, test_gguf_iq_gemv.py (837) + iq2_xs gemv/mmq/selected prefill suites (339) + test_gguf_e2e_acceptance.py (6) all green",
+    "profiling": "rocprofv3 kernel census on the public path shows the new gguf_iq_dense_strict_kernel<Q,*,8> as the top production kernel (7488 calls in a 4-generation profile), i.e. the optimized path is the production route."
+  },
+  "limitations": [
+    "Laptop power/clock variability: gross numbers only; deltas below ~20% would not be resolvable on this host.",
+    "IQ2_XS remains at ~42 GB/s (worst family); headroom vs Q5_K/Q6_K (~125-145 GB/s) still ~2-3x for the LUT-heavy small-bit families.",
+    "lm_head Q6_K gemv at N=vocab measures ~65 GB/s (5.6ms/call) - separate future target, ~2% of step time today."
+  ]
+}

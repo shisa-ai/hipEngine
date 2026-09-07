@@ -621,31 +621,166 @@ __global__ void gguf_q3_k_embedding_kernel(const int64_t* ids,
     out[row*K+k] = uint16_t((bits+0x7fff+((bits>>16)&1))>>16);
 }
 
-template<int Q, bool BF16> __global__ void gguf_iq_dense_strict_kernel(
+// Strict T-column tile with per-quant-block header preloading. Each
+// 128-thread block owns T consecutive output columns and walks the 256-element
+// quant blocks in lockstep: phase A hoists each column's (d * scale) header
+// products into shared memory cooperatively (128 threads cover at most
+// T*16 header slots), phase B decodes the two payload elements this thread
+// owns per contract. Per-column arithmetic is bit-identical to the declared
+// single-column contract (128 strided accumulators over k = tid + 128*i in
+// increasing i, wave32 shuffle tree, four serial wave sums): phase A
+// evaluates exactly the first multiplication of each weight expression and
+// phase B evaluates the remainder, so the FP sequence per element is
+// unchanged while the global-load count per element drops to the payload
+// byte(s) only. IQ4_NL (Q=1, 32-element blocks) keeps the plain per-element
+// decode path inside the same tile.
+template<int Q, bool BF16, int T> __launch_bounds__(128, 16) __global__ void gguf_iq_dense_strict_kernel(
     const uint16_t* x, const uint8_t* w, void* out, int64_t K, int64_t N) {
     constexpr int B = Q == 1 ? 32 : 256;
     constexpr int S = Q == 0 ? 136 : (Q == 1 ? 18 : (Q == 4 ? 98 : (Q == 5 ? 82 : (Q == 6 ? 74 : 110))));
-    int64_t n = blockIdx.x, row = blockIdx.y;
-    const uint8_t* wr = w + n * (K/B) * S;
-    float acc = 0.0f;
-    for (int64_t k = threadIdx.x; k < K; k += 128)
-        acc += bf16_load(x[row*K+k]) * weight<Q>(wr + (k/B)*S, k%B);
-    for (int delta=16; delta; delta>>=1) acc += __shfl_down(acc, delta);
-    __shared__ float sums[4];
-    if ((threadIdx.x & 31)==0) sums[threadIdx.x>>5] = acc;
+    constexpr int GPB = Q == 3 ? 16 : 8;   // 32-element groups per 256-block
+    constexpr int HDR = Q == 3 ? T*16 : T*8; // header slots filled by phase A
+    int64_t n0 = int64_t(blockIdx.x)*T, row = blockIdx.y;
+    const int tid = threadIdx.x;
+    const int64_t col_bytes = (K/B) * S;
+    const uint8_t* wcol[T];
+    #pragma unroll
+    for (int t=0;t<T;++t) wcol[t] = w + (n0+t)*col_bytes;
+    float acc[T];
+    #pragma unroll
+    for (int t=0;t<T;++t) acc[t] = 0.0f;
+    constexpr int RB = 4;                        // quant blocks per barrier round
+    __shared__ float s_d[RB][T*16];               // d or d*scale per (column, group)
+    __shared__ uint32_t s_aux[RB][T*8];           // IQ3_XXS per-group sign/khigh word
+    __shared__ uint8_t s_qs[RB][T*8];             // IQ2_S per-group index high bits
+    if constexpr (Q == 1) {
+        for (int64_t k = tid; k < K; k += 128) {
+            float xv = bf16_load(x[row*K+k]);
+            #pragma unroll
+            for (int t=0;t<T;++t)
+                if (n0+t < N) acc[t] += xv * weight<Q>(wcol[t] + (k/B)*S, k%B);
+        }
+    } else {
+        const int64_t nblk = K / 256;
+        for (int64_t rbase = 0; rbase < nblk; rbase += RB) {
+            const int nb = int(nblk - rbase < RB ? nblk - rbase : RB);
+            // Phase A: header preload for all T columns of nb quant blocks.
+            for (int slot = tid; slot < nb*HDR; slot += 128) {
+                const int bi = slot / HDR, hslot = slot % HDR;
+                const int t = hslot / GPB, g = hslot % GPB;
+                if (n0+t < N) {
+                const uint8_t* b = wcol[t] + (rbase+bi)*S;
+                if constexpr (Q == 0) {
+                    int hi = int(b[2]) | (int(b[3]) << 8);
+                    int scale = (((b[4+g/2] >> (4*(g&1))) & 15) | (((hi >> (2*g)) & 3) << 4)) - 32;
+                    s_d[bi][t*16+g] = half_load(b) * float(scale);
+                } else if constexpr (Q == 4) {
+                    const uint8_t* p = b+66+4*g;
+                    uint32_t aux = uint32_t(p[0]) | (uint32_t(p[1])<<8)
+                                 | (uint32_t(p[2])<<16) | (uint32_t(p[3])<<24);
+                    s_aux[bi][t*8+g] = aux;
+                    s_d[bi][t*16+g] = (half_load(b) * (0.5f+float(aux>>28))) * 0.5f;
+                } else if constexpr (Q == 6) {
+                    // j<16 reads the low nibble (shift 0), j>=16 the high one.
+                    int scale = b[66+g] & 15;
+                    s_d[bi][t*16+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                    scale = (b[66+g] >> 4) & 15;
+                    s_d[bi][t*16+8+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                } else if constexpr (Q == 5) {
+                    s_qs[bi][t*8+g] = b[66+g];
+                    int scale = b[74+g] & 15;
+                    s_d[bi][t*16+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                    scale = (b[74+g] >> 4) & 15;
+                    s_d[bi][t*16+8+g] = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+                } else if constexpr (Q == 2) {
+                    int scale = 1+2*((b[106+g/2] >> (4*(g&1))) & 15);
+                    s_d[bi][t*16+g] = half_load(b) * float(scale);
+                } else if constexpr (Q == 3) {
+                    int scale = ((b[96+(g&7)] >> (4*(g>>3))) & 15)
+                              | (((b[104+(g&3)] >> (2*(g>>2))) & 3) << 4);
+                    s_d[bi][t*16+g] = half_load(b+108) * float(scale-32);
+                }
+                }
+            }
+            __syncthreads();
+            // Phase B: this thread's two contract elements per quant block.
+            for (int bi=0; bi<nb; ++bi) {
+            #pragma unroll
+            for (int h=0;h<2;++h) {
+                const int k = int(rbase+bi)*256 + h*128 + tid;
+                const float xv = bf16_load(x[row*K+k]);
+                #pragma unroll
+                for (int t=0;t<T;++t) {
+                    if (n0+t < N) {
+                        const uint8_t* b = wcol[t] + (rbase+bi)*S;
+                        const int j = k & 31;          // element within its 32-group
+                        const int g = (k & 255) >> 5;  // group within the quant block
+                        float wv;
+                        if constexpr (Q == 0) {
+                            int code = (b[8+g*16+(j&15)] >> (4*(j>>4))) & 15;
+                            wv = s_d[bi][t*16+g] * float(iq4_values[code]);
+                        } else if constexpr (Q == 4) {
+                            const uint32_t aux = s_aux[bi][t*8+g];
+                            int index = b[2+g*8+j/4];
+                            int signs = iq_signs[(aux >> (7*(j/8))) & 127];
+                            float mag = s_d[bi][t*16+g] * float(iq3_xxs_grid[index*4+(j&3)]);
+                            wv = mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else if constexpr (Q == 6) {
+                            const int slot = j >> 3;
+                            const uint8_t* p = b + 2 + 2*(g*4+slot);
+                            int word = int(p[0]) | (int(p[1]) << 8);
+                            int code = (IQ2_XS_GRID_PACKED[word & 511] >> (2*(j&7))) & 3;
+                            float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * float(code == 0 ? 8 : (code == 1 ? 25 : 43));
+                            wv = mag * ((iq_signs[word >> 9] & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else if constexpr (Q == 5) {
+                            const int slot = j >> 3;
+                            int index = b[2+g*4+slot] | (((s_qs[bi][t*8+g] >> (2*slot)) & 3) << 8);
+                            float mag = s_d[bi][t*16+((j>>4)?8:0)+g] * float(iq2_s_grid[index*8+(j&7)]);
+                            wv = mag * ((b[34+g*4+slot] & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else if constexpr (Q == 2) {
+                            const int grid_slot = j >> 2;
+                            int index = b[2+g*8+grid_slot] | (((b[66+g] >> grid_slot)&1) << 8);
+                            float mag = s_d[bi][t*16+g] * float(iq3_grid[index*4+(j&3)]);
+                            wv = mag * ((b[74+g*4+j/8] & (1<<(j&7))) ? -1.0f : 1.0f);
+                        } else { // Q == 3: payload indexing is block-local.
+                            const int kk = k & 255;
+                            int q = (b[32+(kk>>7)*32+(kk&31)] >> (2*((kk&127)>>5))) & 3;
+                            q -= (b[kk&31] & (1 << (kk>>5))) ? 0 : 4;
+                            wv = s_d[bi][t*16+(kk>>4)] * float(q);
+                        }
+                        acc[t] += xv * wv;
+                    }
+                }
+            }
+            }
+            __syncthreads();
+        }
+    }
+    #pragma unroll
+    for (int t=0;t<T;++t)
+        for (int delta=16; delta; delta>>=1) acc[t] += __shfl_down(acc[t], delta);
+    __shared__ float sums[4][T];
+    if ((threadIdx.x & 31)==0)
+        #pragma unroll
+        for (int t=0;t<T;++t) sums[threadIdx.x>>5][t] = acc[t];
     __syncthreads();
     if (threadIdx.x==0) {
-        float total=0;
-        for (int i=0;i<4;++i) total += sums[i];
-        if constexpr (BF16) static_cast<uint16_t*>(out)[row*N+n] = bf16_store(total);
-        else static_cast<float*>(out)[row*N+n] = total;
+        #pragma unroll
+        for (int t=0;t<T;++t) if (n0+t < N) {
+            float total=0;
+            for (int i=0;i<4;++i) total += sums[i][t];
+            if constexpr (BF16) static_cast<uint16_t*>(out)[row*N+n0+t] = bf16_store(total);
+            else static_cast<float*>(out)[row*N+n0+t] = total;
+        }
     }
 }
 template<int Q> void run(const void* x, const void* w, void* out,
     int64_t rows, int64_t K, int64_t N, int output, hipStream_t stream) {
-    if (output) hipLaunchKernelGGL((gguf_iq_dense_strict_kernel<Q,true>),dim3(N,rows),dim3(128),0,stream,
+    constexpr int T = 8;
+    dim3 grid((unsigned)((N+T-1)/T), (unsigned)rows);
+    if (output) hipLaunchKernelGGL((gguf_iq_dense_strict_kernel<Q,true,T>),grid,dim3(128),0,stream,
         static_cast<const uint16_t*>(x),static_cast<const uint8_t*>(w),out,K,N);
-    else hipLaunchKernelGGL((gguf_iq_dense_strict_kernel<Q,false>),dim3(N,rows),dim3(128),0,stream,
+    else hipLaunchKernelGGL((gguf_iq_dense_strict_kernel<Q,false,T>),grid,dim3(128),0,stream,
         static_cast<const uint16_t*>(x),static_cast<const uint8_t*>(w),out,K,N);
 }
 }
