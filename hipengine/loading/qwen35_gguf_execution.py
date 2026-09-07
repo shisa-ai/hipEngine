@@ -107,11 +107,12 @@ def native_scratch_identity(scratch, config, *, rows, recurrent_state_dtype):
             if any(extent[0] < end and start < extent[1] for start, end in states):
                 fail("recurrent/conv state owners overlap")
             states.append(extent)
-    # Graphs retain every physical scratch buffer, not only the sampled ABI
-    # operands above. Contents such as positions are intentionally not hashed.
-    for index, buf in enumerate(getattr(scratch, "buffers", ())):
-        signature.append((f"buffer.{index}", int(buf.ptr), int(buf.nbytes)))
-    return (id(scratch), int(scratch.slot_count), tuple(signature))
+    # Owning allocations are not the launch plan: named KV/position/rotary
+    # views may change while scratch.buffers remains identical. Traverse ALL
+    # named physical views, including nested span metadata and host readbacks.
+    from hipengine.loading.qwen35_gguf_native_operands import physical_operand_inventory
+    return (id(scratch), int(scratch.slot_count), tuple(signature),
+            physical_operand_inventory(scratch))
 
 
 def authorize_native_execution(weights, *, backend, rows, recurrent_state_dtype="f32"):
