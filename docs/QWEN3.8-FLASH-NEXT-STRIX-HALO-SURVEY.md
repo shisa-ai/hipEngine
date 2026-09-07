@@ -1,7 +1,7 @@
 # Qwen3.8-Flash-Next Strix Halo engine survey
 
 Status: **Framework Desktop combined-default halo-box screen refreshed
-2026-09-06 UTC on Ryzen AI Max+ 395 / Radeon 8060S (`gfx1151`)**.
+2026-09-07 UTC on Ryzen AI Max+ 395 / Radeon 8060S (`gfx1151`)**.
 Upstream llama.cpp rows retain their September5 source and measurement identity.
 
 ## 1. Active comparator set
@@ -27,25 +27,29 @@ separate pinned-PR lane is deliberately added.
 
 ## 2. Active speed and reliability topline
 
-**Current combined-default refresh, September6 UTC:** clean hipEngine
-`5104604e1` versus pinned halo-box `b212548e0`, UD-Q4_K_XL/BF16 KV,
+**Current combined-default refresh, September7 UTC:** clean hipEngine
+`95df2c3a9` at chunk1024 versus pinned halo-box `b212548e0`, UD-Q4_K_XL/BF16 KV,
 all12 canonical cases, one warmup/three measured repetitions, tg128.
+This does not benchmark the new Strix fork7baf0a98c.
 
 | Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG | Max PP / TG CV |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine production | 168.58 / 19.64 | 166.86 / 19.01 | 155.89 / 14.89 | 2.78% / 4.62% |
-| halo-box Vulkan | 346.78 / 26.12 | 397.38 / 25.69 | 421.63 / 24.83 | 0.17% / 0.09% |
-| halo-box HIP | 307.38 / 21.45 | 393.31 / 20.95 | 355.00 / 19.18 | 10.93% / 2.70% |
+| hipEngine production | 190.94 / 19.79 | 201.82 / 19.34 | 186.03 / 14.93 | 2.55% / 4.47% |
+| halo-box Vulkan | 342.90 / 25.60 | 393.68 / 25.38 | 420.95 / 24.55 | 3.08% / 2.83% |
+| halo-box HIP | 305.87 / 21.59 | 405.98 / 21.26 | 386.51 / 19.44 | 13.71% / 2.87% |
 
 All108 trajectories repeat within their engine; hipEngine closes to zero
-allocations, both servers exit0. Vulkan leads prefill2.057x/2.382x/2.705x
-and decode1.330x/1.352x/1.668x. Sequential same-host screening, not an
+allocations, both servers exit0. Vulkan leads prefill1.796x/1.951x/2.263x
+and decode1.293x/1.312x/1.645x. Sequential same-host screening, not an
 inter-engine counterbalanced significance test. Per-case sample SD/CV/range
 and repetition drift are retained; do not pool differing workloads or infer
 stable tails from n=3.
-[Current rates and variance](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
-Current family costs at `1e89361d5` are FFN13.442s,non-GR linear4.770s,
-GR4.268s,QSA1.920s,GDN0.781s at p4096; that separate diagnostic reuses
+[Current rates and variance](../benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json).
+The [September6 chunk512 packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json)
+remains historical; do not assign cross-packet changes to one promotion.
+Latest complete family costs at `e7024541b` are FFN10.281s,non-GR linear4.523s,
+GR3.414s,QSA2.068s,GDN0.826s at p4096; that separate diagnostic precedes
+GDN wave normalization and reuses
 the earlier pinned Vulkan profile.
 [Generated family tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots).
 
