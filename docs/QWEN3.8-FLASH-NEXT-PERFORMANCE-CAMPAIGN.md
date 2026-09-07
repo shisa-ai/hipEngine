@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Current-default three-engine refresh (September7 UTC):** clean95df2c3a9,
+hipEngine chunk1024,UD-Q4_K_XL/BF16 KV,full12-case logger-off protocol.
+HE PP/TG512:190.94/19.79,1024:201.82/19.34,4096:186.03/14.93.
+Pinned Vulkan b212548e0:342.90/25.60,393.68/25.38,420.95/24.55;
+HIP diagnostic305.87/21.59,405.98/21.26,386.51/19.44.
+All108 measured trajectories repeat within each engine,HE ownership0,
+servers exit0. Vulkan lead1.796/1.951/2.263x PP and1.293/1.312/1.645x TG.
+Max PP/TG CV:HE2.55/4.47%,Vulkan3.08/2.83%,HIP13.71/2.87%.
+Sequential screening,not statistical closure or current7baf0a98c fork
+measurement. Total serial stage33m10s; no source/clock changes during run.
+Standalone combined-default decode staleness is resolved at this named
+revision. The remaining gap remains substantial,especially long prefill.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json).
+
 **Current-default baseline plumbing (September7 UTC):**
 `qwen4exp_framework_family_refresh.py baselines --prefill-chunk-size 1024`
 now explicitly selects the current hipEngine chunk. Historical default512

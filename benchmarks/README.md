@@ -2,6 +2,13 @@
 
 Last updated: **2026-09-07 UTC**
 
+Fresh combined-default95df2c3a9/chunk1024 versus pinned halo-box b212548e0:
+HE PP190.94/201.82/186.03,TG19.79/19.34/14.93;
+Vulkan PP342.90/393.68/420.95,TG25.60/25.38/24.55.
+108 trajectories repeat within engines;sequential screen,not statistical
+closure. All engines have cases above2% CV;HIP max PP CV13.71%.
+[Evidence](results/2026-09-07-framework-qwen4exp-current-default-baselines.json).
+
 MMQ bank-first loop rejected:nearflat512/small positive1024 medians,
 but mixed arm-order evidence.80 pairs exact,22 tests;VGPR184->192.
 Candidate removed,production unchanged.

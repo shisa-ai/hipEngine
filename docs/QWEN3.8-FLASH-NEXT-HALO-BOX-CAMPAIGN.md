@@ -8,9 +8,10 @@ all `b212548e0` timing rows remain historical, not measurements of this
 checkout. See the [source-pinned follow-up queue](QWEN3.8-FLASH-NEXT-PERFORMANCE-CAMPAIGN.md#current-strix-fork-follow-ups-september-7-2026).
 No new comparator benchmark or BF16-KV policy change is implied.
 
-Status: **Current Framework Desktop comparator screen completed 2026-09-05 at
-hipEngine `c0cfdc3ef`, upstream llama.cpp `4d9176092`, and halo-box master
-`b212548e0`.** Section 0 is the current c=1 overview. The original HB/PF
+Status: **Current Framework Desktop combined-default screen completed
+2026-09-07 at hipEngine `95df2c3a9`/chunk1024 and halo-box `b212548e0`.**
+Upstream llama.cpp `4d9176092` retains its September5 measurement.
+Section 0 is the current c=1 overview. The original HB/PF
 campaign evidence below remains tied to the power- and heat-limited `zbook` and
 its pinned historical revisions; do not rewrite it as a cross-host delta. The
 retained PF-1/PF-3/PF-5 T0 package is production. PF-0 is complete; D1 remains
@@ -112,8 +113,8 @@ The generated family table has been refreshed for hipEngine `1e89361d5`,
 while explicitly reusing the pinned prior Vulkan profile; it is not a new
 simultaneous throughput comparison.
 
-**Frozen three-engine refresh (2026-09-06 UTC):** controller/runtime
-`5104604e1`, halo-box `b212548e0`, Framework machine
+**Frozen three-engine refresh (2026-09-07 UTC):** controller/runtime
+`95df2c3a9` with explicit hipEngine chunk1024, halo-box `b212548e0`, Framework machine
 `55ea6c509d0b49eea8de7094a1023668`, UD-Q4_K_XL/BF16 KV, identical12-case
 canonical fixture, one warmup plus three measured tg128 requests per case.
 All108 measured trajectories repeat within their engine, hipEngine closes
@@ -121,21 +122,21 @@ to zero allocations, and both external servers exit0. Logger/profiler off.
 
 | Engine | p512 PP / TG | p1024 PP / TG | p4096 PP / TG | Max per-case PP / TG CV |
 | --- | ---: | ---: | ---: | ---: |
-| hipEngine combined production | 168.58 / 19.64 | 166.86 / 19.01 | 155.89 / 14.89 | 2.78% / 4.62% |
-| halo-box Vulkan target | 346.78 / 26.12 | 397.38 / 25.69 | 421.63 / 24.83 | 0.17% / 0.09% |
-| halo-box HIP diagnostic | 307.38 / 21.45 | 393.31 / 20.95 | 355.00 / 19.18 | 10.93% / 2.70% |
+| hipEngine combined production | 190.94 / 19.79 | 201.82 / 19.34 | 186.03 / 14.93 | 2.55% / 4.47% |
+| halo-box Vulkan target | 342.90 / 25.60 | 393.68 / 25.38 | 420.95 / 24.55 | 3.08% / 2.83% |
+| halo-box HIP diagnostic | 305.87 / 21.59 | 405.98 / 21.26 | 386.51 / 19.44 | 13.71% / 2.87% |
 
 Rates are weighted tok/s. The corresponding Vulkan/hipEngine target factors
-are **2.057/2.382/2.705x prefill** and **1.330/1.352/1.668x decode**.
+are **1.796/1.951/2.263x prefill** and **1.293/1.312/1.645x decode**.
 These are sequential same-host screening ratios, not inter-engine
-counterbalanced confidence bounds. hipEngine and HIP exceed the2% stability
-criterion on some cases; Vulkan is stable in this run. No statistical
-match/beat claim follows. Serial stage time34m56s
-(hipEngine16m19s, Vulkan8m33s, HIP10m04s).
-[Current baseline/variance packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json).
+counterbalanced confidence bounds. All three exceed the2% stability
+criterion on some cases. No statistical match/beat claim follows.
+Serial stage time33m10s (hipEngine14m49s,Vulkan8m35s,HIP9m47s).
+[Current baseline/variance packet](../benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json).
+The [September6 chunk512 packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json)
+remains historical; current1024 includes multiple promotions,not a single-change comparison.
 The [September5 packet](../benchmarks/results/2026-09-05-framework-qwen4exp-refreshed-baselines.json)
-remains historical. hipEngine PP rises9.50%/9.56%/9.76% between these
-same-protocol snapshots; do not attribute that whole delta to the last promotion.
+remains historical. Do not attribute cross-packet changes to the last promotion.
 This closes the missing standalone combined-default decode measurement.
 The shared-family matrix is now generated in section5.2.1 from matching
 Framework captures; the overall optimization campaign remains open.
