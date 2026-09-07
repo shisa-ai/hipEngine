@@ -1561,7 +1561,8 @@ def _spec_for_tensor(
     if (
         qtype in (GGMLQuantizationType.IQ4_XS, GGMLQuantizationType.IQ4_NL,
                   GGMLQuantizationType.IQ3_S, GGMLQuantizationType.Q3_K,
-                  GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ2_S)
+                  GGMLQuantizationType.IQ3_XXS, GGMLQuantizationType.IQ2_S,
+                  GGMLQuantizationType.IQ2_XS)
         and slot_path.startswith("layers.") and len(tensor.shape) == 2
     ):
         # Dense leaves consume the original compressed rows. Root lookup and
@@ -1579,7 +1580,7 @@ def _spec_for_tensor(
         and _is_selected_expert_tensor(slot_path, tensor)
     ):
         # Native selected GEMV keeps routed rank-3 IQ2/IQ3/IQ4 experts raw.
-        # IQ2_XS and root IQ4_XS keep the dense-BF16 fallback below;
+        # Non-expert IQ2_XS/IQ4_XS keep the dense-BF16 fallback below;
         # other non-expert IQ3_XXS/Q3_K slots remain unsupported.
         if not _is_selected_expert_tensor(slot_path, tensor):
             raise ValueError(

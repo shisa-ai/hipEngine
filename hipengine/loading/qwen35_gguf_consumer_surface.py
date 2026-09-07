@@ -71,7 +71,7 @@ FROM_WEIGHT_QUANT_TOKEN = "<from-weight>"
 
 # Source types whose rank-2 linear slots plan to the raw layout, with the
 # concrete per-type quant key the dispatcher resolves from the weight
-# (planner truth: Q6_K/Q8_0 and dense layer IQ4_XS/IQ4_NL/IQ3_S/Q3_K
+# (planner truth: Q6_K/Q8_0 and dense layer IQ4_XS/IQ4_NL/IQ3_S/Q3_K/IQ2_XS
 # have raw routes; rank-2 Q4_K goes pack8 and Q5_K expands dense-BF16,
 # so those source types are deliberately absent).
 RAW_LINEAR_SOURCE_QUANT_KEYS: Mapping[str, str] = MappingProxyType({
@@ -82,6 +82,7 @@ RAW_LINEAR_SOURCE_QUANT_KEYS: Mapping[str, str] = MappingProxyType({
     "IQ3_S": "gguf_iq3_s",
     "IQ3_XXS": "gguf_iq3_xxs",
     "IQ2_S": "gguf_iq2_s",
+    "IQ2_XS": "gguf_iq2_xs",
     "Q3_K": "gguf_q3_k",
 })
 _RAW_LINEAR_OUTPUTS = MappingProxyType({
@@ -92,6 +93,7 @@ _RAW_LINEAR_OUTPUTS = MappingProxyType({
     "IQ3_S": frozenset({"bf16", "f32"}),
     "IQ3_XXS": frozenset({"bf16", "f32"}),
     "IQ2_S": frozenset({"bf16", "f32"}),
+    "IQ2_XS": frozenset({"bf16", "f32"}),
     "Q3_K": frozenset({"bf16", "f32"}),
 })
 
