@@ -1,0 +1,1735 @@
+{
+  "schema": 1,
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "public_serving_qualified": false,
+  "kind": "native_c1_shifted_eos_diagnostic",
+  "base_commit": "b0d6530c509d55f736655f3eadf94243fbddcbef",
+  "prior_evidence": "benchmarks/results/2026-09-07-w7900-packed-c1-eos-depths.json",
+  "runs": [
+    {
+      "budget": 4,
+      "capacity": 8,
+      "offset": 1,
+      "source": "/tmp/packed-c1-eos-offset1-n8k4.json",
+      "sha256": "e6b1995d23526fd4384ce36882c5a15fdfb10ec101d65c34037210ecb72fcceb",
+      "passed": true,
+      "clean_teardown": true,
+      "checked_cycles": 16,
+      "terminal_accepted_counts": {
+        "0": 4,
+        "2": 3,
+        "3": 3
+      },
+      "combined_missing_terminal_accepted_counts": [],
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 3,
+            "service_request_id": 3,
+            "eos_token_id": 26126,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 46,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 7,
+            "service_request_id": 7,
+            "eos_token_id": 25,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 54,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 58,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 11,
+            "service_request_id": 11,
+            "eos_token_id": 7,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 53,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 15,
+            "service_request_id": 15,
+            "eos_token_id": 55588,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 3,
+              "terminal": true,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 19,
+            "service_request_id": 19,
+            "eos_token_id": 27258,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 42,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 45,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 23,
+            "service_request_id": 23,
+            "eos_token_id": 4779,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 43,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 27,
+            "service_request_id": 27,
+            "eos_token_id": 153059,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 3,
+              "terminal": true,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 31,
+            "service_request_id": 31,
+            "eos_token_id": 264,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 51,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 35,
+            "service_request_id": 35,
+            "eos_token_id": 537,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 70,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 13,
+            "backend_request_id": 39,
+            "service_request_id": 39,
+            "eos_token_id": 30246,
+            "eos_index": 13,
+            "visible_tokens": 14,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 4,
+              "precommit_buffers": 131,
+              "accepted": 3,
+              "terminal": true,
+              "start_position": 76,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        }
+      ]
+    },
+    {
+      "budget": 5,
+      "capacity": 8,
+      "offset": 1,
+      "source": "/tmp/packed-c1-eos-offset1-n8k5.json",
+      "sha256": "e1fa1f92b104a3f7b403d841130269e191035302278e4dea4b3252294f5de60f",
+      "passed": true,
+      "clean_teardown": true,
+      "checked_cycles": 22,
+      "terminal_accepted_counts": {
+        "0": 3,
+        "1": 2,
+        "2": 2,
+        "3": 1,
+        "4": 2
+      },
+      "combined_missing_terminal_accepted_counts": [],
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 3,
+            "service_request_id": 3,
+            "eos_token_id": 11,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 43,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 7,
+            "service_request_id": 7,
+            "eos_token_id": 16,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 53,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 54,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 58,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 11,
+            "service_request_id": 11,
+            "eos_token_id": 16,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 54,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 15,
+            "service_request_id": 15,
+            "eos_token_id": 1083,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 55,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": true,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 19,
+            "service_request_id": 19,
+            "eos_token_id": 878,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 42,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 3,
+              "terminal": true,
+              "start_position": 45,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 23,
+            "service_request_id": 23,
+            "eos_token_id": 65393,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 5,
+              "terminal": false,
+              "start_position": 43,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 49,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 27,
+            "service_request_id": 27,
+            "eos_token_id": 247864,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 49,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 52,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 31,
+            "service_request_id": 31,
+            "eos_token_id": 10597,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 46,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 51,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 35,
+            "service_request_id": 35,
+            "eos_token_id": 264,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 5,
+              "terminal": false,
+              "start_position": 67,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 73,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 14,
+            "backend_request_id": 39,
+            "service_request_id": 39,
+            "eos_token_id": 13,
+            "eos_index": 14,
+            "visible_tokens": 15,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 74,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 5,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": true,
+              "start_position": 76,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        }
+      ]
+    },
+    {
+      "budget": 6,
+      "capacity": 8,
+      "offset": 1,
+      "source": "/tmp/packed-c1-eos-offset1-n8k6.json",
+      "sha256": "b21b76742f8fda036d1dd2893ba961e092e831fcc7324336663185cd33980e10",
+      "passed": true,
+      "clean_teardown": true,
+      "checked_cycles": 26,
+      "terminal_accepted_counts": {
+        "0": 5,
+        "1": 2,
+        "2": 2,
+        "4": 1
+      },
+      "combined_missing_terminal_accepted_counts": [
+        5
+      ],
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 3,
+            "service_request_id": 3,
+            "eos_token_id": 5346,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 43,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 50,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 7,
+            "service_request_id": 7,
+            "eos_token_id": 16,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 53,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 54,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 58,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 11,
+            "service_request_id": 11,
+            "eos_token_id": 8,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 55,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 15,
+            "service_request_id": 15,
+            "eos_token_id": 31038,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 55,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 62,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 19,
+            "service_request_id": 19,
+            "eos_token_id": 494,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 42,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": true,
+              "start_position": 45,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 23,
+            "service_request_id": 23,
+            "eos_token_id": 2998,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 6,
+              "terminal": false,
+              "start_position": 43,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 50,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 27,
+            "service_request_id": 27,
+            "eos_token_id": 192949,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 50,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 52,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 31,
+            "service_request_id": 31,
+            "eos_token_id": 321,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 46,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 51,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 53,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 35,
+            "service_request_id": 35,
+            "eos_token_id": 10452,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 6,
+              "terminal": false,
+              "start_position": 67,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 74,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 15,
+            "backend_request_id": 39,
+            "service_request_id": 39,
+            "eos_token_id": 2302,
+            "eos_index": 15,
+            "visible_tokens": 16,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 74,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 76,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 6,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": true,
+              "start_position": 81,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        }
+      ]
+    },
+    {
+      "budget": 7,
+      "capacity": 8,
+      "offset": 1,
+      "source": "/tmp/packed-c1-eos-offset1-n8k7.json",
+      "sha256": "0a1a5a9d05c040ed1ce850734aec613ab987d2d9d2e1e11c468e9ccc51feed2b",
+      "passed": true,
+      "clean_teardown": true,
+      "checked_cycles": 25,
+      "terminal_accepted_counts": {
+        "1": 6,
+        "2": 1,
+        "3": 2,
+        "5": 1
+      },
+      "combined_missing_terminal_accepted_counts": [
+        6,
+        7
+      ],
+      "cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "category": "code",
+          "eos": {
+            "index": 17,
+            "backend_request_id": 3,
+            "service_request_id": 3,
+            "eos_token_id": 16338,
+            "eos_index": 17,
+            "visible_tokens": 18,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 5,
+              "terminal": false,
+              "start_position": 44,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 50,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 51,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "category": "code",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 7,
+            "service_request_id": 7,
+            "eos_token_id": 13,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 53,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 54,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 3,
+              "terminal": true,
+              "start_position": 58,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "category": "code",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 11,
+            "service_request_id": 11,
+            "eos_token_id": 615,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": true,
+              "start_position": 56,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "category": "code",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 15,
+            "service_request_id": 15,
+            "eos_token_id": 31038,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 55,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 57,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 62,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "category": "general_en",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 19,
+            "service_request_id": 19,
+            "eos_token_id": 27413,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 42,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 5,
+              "terminal": true,
+              "start_position": 45,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "category": "general_en",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 23,
+            "service_request_id": 23,
+            "eos_token_id": 6973,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 6,
+              "terminal": false,
+              "start_position": 43,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 50,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "category": "general_ja",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 27,
+            "service_request_id": 27,
+            "eos_token_id": 247503,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 3,
+              "terminal": true,
+              "start_position": 51,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "category": "general_ja",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 31,
+            "service_request_id": 31,
+            "eos_token_id": 3050,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 46,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 2,
+              "terminal": false,
+              "start_position": 48,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": false,
+              "start_position": 51,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 53,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 35,
+            "service_request_id": 35,
+            "eos_token_id": 5020,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 6,
+              "terminal": false,
+              "start_position": 67,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 74,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "category": "mixed_ja_en",
+          "eos": {
+            "index": 16,
+            "backend_request_id": 39,
+            "service_request_id": 39,
+            "eos_token_id": 1318,
+            "eos_index": 16,
+            "visible_tokens": 17,
+            "collector_exact": true
+          },
+          "states": [
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 0,
+              "terminal": false,
+              "start_position": 75,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 4,
+              "terminal": false,
+              "start_position": 76,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            },
+            {
+              "logical_depth": 7,
+              "precommit_buffers": 131,
+              "accepted": 1,
+              "terminal": true,
+              "start_position": 81,
+              "passed": true,
+              "state_buffers": 97,
+              "aux_buffers": 4,
+              "kv_planes": 32
+            }
+          ],
+          "exact_output_identity_transition_and_drain_independently_checked": true
+        }
+      ]
+    }
+  ],
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_lifecycle.py --engine-boundary --eos-survivor --eos-state --capacity 8 --budget K --eos-marker-offset 1 --output /tmp/packed-c1-eos-offset1-n8kK.json",
+  "limitations": [
+    "Correctness-only diagnostic EOS marker; no proposal or runtime changes.",
+    "K6 count 5 and K7 counts 6/7 remain unobserved.",
+    "Coverage is pooled across prompts, not every position on every prompt.",
+    "N8 only; no independent numerical or public-serving qualification."
+  ]
+}

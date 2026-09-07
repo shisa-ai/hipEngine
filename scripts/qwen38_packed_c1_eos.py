@@ -2,11 +2,11 @@
 from dataclasses import replace
 
 
-def select_survivor_eos_index(oracle_ids, *, budget):
-    if not 1 <= budget <= 7:
-        raise ValueError('invalid survivor EOS budget')
+def select_survivor_eos_index(oracle_ids, *, budget, offset=0):
+    if not 1 <= budget <= 7 or offset < 0:
+        raise ValueError('invalid survivor EOS budget or marker offset')
     # A deeper paired cycle can carry the survivor past the D8 peer's end.
-    index = next((i for i in range(max(12, 8 + budget), len(oracle_ids) - 1)
+    index = next((i for i in range(max(12, 8 + budget) + offset, len(oracle_ids) - 1)
                   if oracle_ids[i] not in oracle_ids[:i]), None)
     if index is None:
         raise ValueError('no first-occurrence EOS marker after the paired phase')
