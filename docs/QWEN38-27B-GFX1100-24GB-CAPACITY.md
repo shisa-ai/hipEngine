@@ -617,6 +617,17 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   65,536). Artifact: `results/2026-09-07-rx7900xtx-dms-c1-ladder.json`.
   Not yet measured: C2/C4/C8 concurrency, heterogeneous lengths, cancellation,
   pressure/refill.
+  C2/C4/C8 BLOCKED structurally, discovered 2026-09-07: the shared runner
+  routes external DMS decode through a single `_dms_decode_owner` slot
+  (`Qwen35GGUFResidentSession` DMS setup overwrites it at prefill finalize;
+  only the owner itself pops it on close), so with two simultaneous DMS
+  resident sessions the first session's decode routes through the second
+  session's DMS backend/state and fails deterministically with "DMS direct
+  append device/host live-count mismatch" on the first decode step (repro:
+  `scripts/qwen38_dms_concurrency_probe.py`, sessions=2, prompt 16,384 each,
+  0 decode rows survive; prefills succeed — the blocker is routing, not
+  memory). DMS C>1 requires per-session owner routing through the decode
+  dispatch; recorded as a capability blocker, not a memory ceiling.
 - [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
