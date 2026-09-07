@@ -1111,7 +1111,10 @@ def test_q4_t16_dense_small_row_pair_silu_uses_canonical_tiles() -> None:
 @pytest.mark.parametrize(
     ("rows", "expected_variant"),
     (
-        (33, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
+        (33, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (36, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (48, "dense_dual_wmma_prefill_row48_bf16_bf16_out"),
+        (49, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
         (64, "dense_dual_wmma_prefill_row64_bf16_bf16_out"),
         (65, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
         (128, "dense_dual_wmma_prefill_row128_bf16_bf16_out"),
@@ -1138,6 +1141,7 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     weight_b = _weight(0x2000, in_features=5_120, out_features=17_408)
     variants = (
         "dense_dual_wmma_prefill_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
         "dense_dual_wmma_prefill_row64_bf16_bf16_out",
         "dense_dual_wmma_prefill_row128_bf16_bf16_out",
     )
@@ -1192,6 +1196,26 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     assert calls == [
         (expected_variant, (0x3000, 0x1000, 0x2000, 0x4000, rows, 5_120, 17_408))
     ]
+
+
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("rows", [33, 48, 49])
+def test_bulk_row48_promotion_is_backend_qualified(monkeypatch, backend, rows) -> None:
+    from types import SimpleNamespace
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.runtime import gguf_linear as module
+
+    load_backend_kernel_package(backend)
+    monkeypatch.setattr(module, "_q4_t16_physical_dual_silu_variant", lambda *a, **kw: None)
+    monkeypatch.setattr(module, "_q4_t16_dual_silu_retile_enabled", lambda: True)
+    dispatch = SimpleNamespace(
+        key=KernelKey(backend, "linear", "gguf_q4_k_t16_v1", "default"), abi="t16",
+    )
+    key = module._q4_t16_dual_wmma_silu_dispatch(
+        dispatch, dispatch, rows=rows, in_features=5120, out_features=17408,
+    )
+    tile = 48 if backend == "hip_gfx1100" and rows <= 48 else 64
+    assert key.variant == f"dense_dual_wmma_prefill_row{tile}_bf16_bf16_out"
 
 
 def test_q4_t16_physical_r32_pair_silu_selects_two_wave_fused_owner(
@@ -1373,10 +1397,13 @@ def test_q4_t16_physical_r36_pair_silu_defaults_row48_with_rollback(monkeypatch)
         gguf_linear_module._rowtile_variant_policy_env_cache.clear()
         clear_gguf_linear_dispatch_cache()
 
+    # The packet4 measured band owns rows 33-48 outright (bit-exact row screen,
+    # 1.9x over row64): disabling the exact-row policy env no longer rolls the
+    # owner back at row 36, and neither does leaving the physical session.
     assert calls == [
         "dense_dual_wmma_prefill_row48_bf16_bf16_out",
-        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
-        "dense_dual_wmma_prefill_row64_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
+        "dense_dual_wmma_prefill_row48_bf16_bf16_out",
     ]
 
 

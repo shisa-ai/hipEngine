@@ -1,6 +1,35 @@
 # Qwen3.8-27B gfx1100: faster MTP on the concurrency engine
 
-Status: follow-up implementation plan; no new performance result claimed.
+Status (2026-09-07 review): partial implementation ready for integration;
+**campaign completion and automatic promotion remain open**.
+
+### Review outcome
+
+- C2/K3 and C8/K3 explicit routes and the qualified W7900 kernel improvements
+  are kept. Qwen3.8 automatic selection remains K0.
+- The original C1 measurements used a physical provider but a **legacy
+  singleton target verifier**, installed by `prepare_requests()`. They are
+  invalid as native packed-target evidence. Review fixes that substitution and
+  adds a preparation-to-target regression test. The repaired C1/K3 path passes
+  a ten-prompt exact/engagement diagnostic with 65 packed-target calls and the
+  legacy verifier forbidden; this is not a numerical or performance gate.
+  The two C1 serving-evidence rows are withdrawn until the actual packed target
+  passes independent numerical, lifecycle and repeated-economics qualification.
+- The 56-cell screen used N=2 only at C2 and N=8 at all other widths.
+  It is neither a complete fixed-N=8 curve nor N=1/2 C1 qualification.
+  Its seven C1 cells cannot certify packed-target K1-K7 execution. K4-K7
+  remain diagnostic-only, not publicly safety-qualified depths.
+- Still required: native N=1 ownership, N=2 C1 and missing fixed-N=8 controls;
+  packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
+  latency/queueing gates; sustained horizons/contexts; three balanced pairs
+  before promotion. Token equality is not a replacement for these gates.
+- Review also repairs per-request claims safety, order-dependent capability
+  fixtures, and a row48 dispatch change that leaked into gfx1151. CPU policy
+  regressions pass; gfx1151 hardware was not tested on this W7900 host.
+
+Packet notes below record intermediate work, not a completion certificate.
+See the [review artifact](../benchmarks/results/2026-09-07-w7900-mtp-merge-review.json)
+for validation and corrections to the earlier evidence.
 
 ## 1. Objective and scope
 
@@ -175,14 +204,46 @@ its own qualification data.
 
 ### Packet 1 — Attribute complete cycle cost and select candidates
 
+Status (2026-09-06): first attribution pass complete for C8/K3, C2/K2, C5/K3,
+C3/K3 via the specdec2 bridge under rocprofv3 (stage marker ranges, cycle-scoped
+kernel families, profiled-vs-unprofiled reconciliation within 2–4%).
+Artifact: `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet1-attribution.json`;
+worklog entry `20260906T103748.579086Z-lhl-gfx1100-better-mtp-packet1-b20cef`.
+Dominant-cost hypothesis selected: the width-5 verify-GEMV tile shape
+(`q4_k_t16_dense_rowtile16_w2_grouped_gemv`, ~58 ms/cycle at width 5 vs
+~33 ms/cycle at width 3 and ~30 ms/cycle at width 8; ~31% of the C5/K3 cycle).
+Expected maximum saving ≈ 25–45 ms/cycle at width 5 (cycle 0.187 → ~0.14 s),
+with the CPU-reference KL/top-1 gate plus cross-arm exact generated-ID equality
+as the correctness oracle. Width-5 cycles also pay width-8 prices
+(capacity-padded frontier), and C8 leaves a 0.217 s straggler AR tail.
+
+Packet 2 review (2026-09-07): the physical provider was reached, but request
+preparation substituted the legacy target verifier. The Packet-2 route and
+suite artifacts are historical measurements of that hybrid path, not native
+packed-target qualification. C1 public evidence is withdrawn. The repaired
+packed target has a ten-prompt diagnostic only; the review outcome above lists
+its remaining gates.
+
+Protocol note: these 12-token attribution runs are not comparable to the
+retained Packet-0 suite ratios (C8/K3 0.987–0.989, C2/K2 0.917–0.926,
+C5/K3 0.800–0.803 on the server protocol). The attribution window carries the
+one-time prompt prefill + NextN prime in every arm (≈0.45 s of the 1.03 s C5/K3
+MTP window), so short-horizon ratios read worse than suite economics; the
+per-cycle structure above is the point of this artifact.
+
+Remaining below stays open (per-depth MTP telemetry splits, K4–K7 curves,
+full row-cost sweep, ragged tails).
+
 - [ ] Extend existing MTP telemetry/profiler harnesses with proposal per depth,
   target projection/attention/GDN/head, accept, selected state commit, rollback,
   provider repair, and host synchronization boundaries. Separate prefill/priming,
   first cycle, steady cycles, final clipped cycle, and ordinary AR fallback.
-- [ ] Profile C8/K3, C2/K2, C3/K3 and C5/K3; add C1/K1-K3 after Packet 2.
+- [x] Profile C8/K3, C2/K2, C3/K3 and C5/K3; add C1/K1-K3 after Packet 2.
   Add K4-K7 row/cycle curves as Packet 5 enables them, including C8/K7.
   Record kernel interval union as well as family sums. A blocking API's duration
   may be waiting for queued GPU work, not evidence of expensive copying.
+  (First pass done 2026-09-06 via the bridge + ROCTX markers; per-depth splits
+  and K4–K7 remain.)
 - [ ] Audit fast AR versus MTP owners by role/shape: quant payload/layout,
   activation dtype, row tile, graph capture, GDN schedule, head chunking, and
   scratch. Identify which AR improvements are missing from MTP **and are
@@ -191,9 +252,11 @@ its own qualification data.
   recurrent/KV snapshots. Sweep R2-R4 and the real active/padded boundaries up
   through C8/K3. Include ragged tails. Record launches, bytes read/written,
   registers/local scratch, and active versus padded computation.
-- [ ] Reconcile cycle accounting to unprofiled wall; report instrumentation
+- [x] Reconcile cycle accounting to unprofiled wall; report instrumentation
   overhead. Use the measured component fractions to set millisecond budgets
   for break-even/1.10x/1.20x. Select one dominant-cost hypothesis per unit.
+  (2026-09-06: profiled walls within 2–4% of unprofiled; dominant hypothesis =
+  width-5 verify-GEMV tile shape; see the artifact above.)
 
 Exit: an artifact that names the next operation, its caller and kernel, its
 fraction of wall, expected maximum saving, and a correctness oracle. If target
@@ -214,50 +277,94 @@ is not this deliverable.
   `Qwen35GGUFTransactionalVerifier`, or the legacy singleton execution route.
   Scope that assertion to this new path; do not break existing gfx1151 or
   Qwen3.6 uses of those helpers.
-- [ ] Replace the blanket `bound > 1` exclusion in `partition_max_requests`
+  (2026-09-06: `tests/test_qwen35_gguf_mtp2_c1_physical.py` — flag, partition,
+  claims, capability, state-open, cancel-restore, refill/pair closure,
+  survivor claims, pad/bucket audit; gfx1151 legacy behavior pinned.)
+- [x] Replace the blanket `bound > 1` exclusion in `partition_max_requests`
   only through an explicitly qualified physical-C1 plan. Audit `claims_fit`,
   `_singleton_only`, provider construction and `_execute_target_frontier_batch`
   together. Do not allow a multi-request due batch to become serial singleton
   MTP calls because a C1 safety row exists.
+  (2026-09-06: package flag `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`; bound 1 only for
+  a one-request qualified group; multi-request rows==1 batches stay closed.)
 - [ ] Implement native C1 provider/prompt-hidden initialization and packed target
   execution. Validate root token, positions, pre/post-norm hidden taps,
   embedding, convolution/GDN state and KV against independent strict reference
   trajectories from the first divergent boundary. Use warm states, not only
   position-zero smoke tests. Do not mask the divergence with a dtype flag.
+  (2026-09-06: packed one-row provider group via `_open_batch_requests`;
+  validation through cross-arm exact generated-ID equality vs the strict AR
+  owner on warm states — 5 bridge runs + 10/10 suite cells.)
 - [ ] Handle R2/R3/R4 with bounded graph/workspace keys, inactive padding and
   exact ownership. Measure existing exact small-row owners before adding a
   specialized kernel. Production small-row arithmetic requires independent
   numerical qualification; C2 evidence cannot certify C1.
+  (2026-09-06: no new workspace key — the one-row frontier pads to the
+  qualified rows-6 tile inside the shared r36 accept bucket; graph replay
+  observed at C1 in the route proof; independent C1 numerical qualification is
+  the ar_exact suite contract.)
 - [ ] Test K1/K2/K3, all accepted, first/middle/final rejection, EOS at every
   depth, final-horizon clipping, cancellation and recoverable failure. Restore
   both provider and target state and continue with the correct hidden seed.
   Extend every depth-sensitive C1 test through K7 in Packet 5; K3-only C1
   coverage is an intermediate milestone, not final depth support.
+  (2026-09-06: K2/K3 E2E incl. full acceptance, mid-chain rejection [3,1,3]
+  recovered exactly, final-horizon clipping; cancellation CPU-tested with
+  provider-checkpoint restore. K1 stays closed — no (1,1) policy cell. EOS
+  isolation and K7 extension land with Packet 5.)
 - [ ] Test N=1,2,8 and every physical slot: delayed C1→C2→C1, C8→C1→C8,
   sparse survivors, refill and compaction; K0→MTP→K0→MTP at transaction
   boundaries. Preserve IDs, page ownership, output/usage and clean drain.
+  (2026-09-06: C1 refill/pair-closure/survivor-return CPU tests; loop-level
+  width-switch and K0-transition tests pre-existing; C1-within-capacity-8
+  exercised E2E in every bridge/server run. Compaction reuses the generic
+  group paths.)
 - [ ] Add explicit evidence only after safety/numerical gates pass; measure
   against native C1 AR at the **same resident capacity**. Automatic stays K0
   until economics pass. A healthy legacy singleton rate is a diagnostic
   comparison, never the concurrency engine denominator or completion proof.
+  (2026-09-06: registered `qwen38-q4km-gfx1100-production-bf16-c1-k{2,3}-d24`
+  rows, explicit-only, capacity-8; full-suite retained economics K3 1.4734x /
+  K2 1.5590x with 10/10 ar_exact. Automatic promotion remains a separate
+  decision.)
 
-Exit: engaged native physical C1 with route-proof tests, numerical/state gates,
-full-suite explicit measurements and capacity-specific policy decisions.
+Exit: **not met**. The 2026-09-07 review found the legacy target substitution.
+Intermediate checkmarks and measurements in this packet do not certify the
+repaired packed target; its public evidence is withdrawn pending the review
+outcome's numerical, capacity and lifecycle gates.
 
 ### Packet 3 — Amortize target verification across real frontier rows
 
-- [ ] Prioritize C8/K3 and C2/K2 using Packet 1, then include middle-width controls.
+- [x] Prioritize C8/K3 and C2/K2 using Packet 1, then include middle-width controls.
   Compare actual R/P dispatch, not only C/K labels. Eliminate unnecessary
   padding only if the replacement keeps or improves the complete fused owner.
+  Done: Packet 1 named the width-flat q6-planar verify-GEMV tile gap (~58 ms
+  at width 5 vs ~33 at width 3) as the dominant cost; this packet's lever
+  attacked it directly (see below).
 - [ ] Audit Q4 gate/up and QKV pairs, Q5 state-output projection, Q6 recurrent
   QKV/full-attention V/down projections, and target output head. First enable an
   already-qualified better owner if missing; otherwise develop one in-tree
   row-reuse/tile candidate with a registered strict fallback.
-- [ ] Avoid one weight stream per verifier row. Compare current grouped/vector,
+  Partially done: the Q6 FFN-down projection is re-owned (below). The Q6
+  attention_v shape measured bit-exact and 1.22-2.64x standalone for the same
+  sibling at every row 1-128 and is now band-admitted (rows 4-128 ->
+  `shared4_row64`, packet4 L2); recurrent_qkv measured flat (0.92-1.09x at
+  cycle rows) and stays on the parent. Attention_v rows >=129 await a shared4
+  screen at that shape before any further admission.
+- [x] Avoid one weight stream per verifier row. Compare current grouped/vector,
   row-amortized and matrix-tile implementations at actual layouts. Price the
   benefit against register pressure, scratch spills and extra reduction work.
   Do not reopen old small-row or unfused rejections without a changed shape,
   caller, implementation, or measured bottleneck documented first.
+  Done: the cooperative `shared4_row64` sibling is bit-exact to the one-wave
+  parent at EVERY row 1-36 on all three planar shapes (108/108 standalone
+  combos, 1.60-1.89x on ffn_down) and moved the staged verify frontier
+  (rows 4-32) off the underfilled one-wave owner. Band (33,128) -> (4,128);
+  one-wave parent stays the registered strict fallback. An intermediate
+  landing was reverted after an unreproduced GPU-hang observation in a
+  screening run whose MTP arms never engaged (harness config: missing
+  `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` opt-in); the re-land carries the
+  full row-coverage evidence the revert demanded.
 - [ ] Separate independent per-row projections from causal GDN recurrence.
   Batch/reuse projections across chain positions, then evolve each request's
   recurrent state in order. Optimize recurrence setup/state traffic only with
@@ -269,9 +376,19 @@ full-suite explicit measurements and capacity-specific policy decisions.
   recapturing every token or reusing stale inputs. Measure replay versus eager
   without collecting full logits in the timed product path. Keep valid inactive
   tokens/masks and causal row mapping.
-- [ ] Retain measured exact or fully quality-gated production gains with
+- [x] Retain measured exact or fully quality-gated production gains with
   non-regressive complete affected cycles and current AR controls. A sub-window
   gain remains useful even before automatic MTP becomes profitable.
+  Done: fresh nine-cell sweep with the band ON — all seven MTP cells above
+  their retained floors (product C1/K3 1.6301x, C1/K2 1.5989x, C2/K2 1.0536x,
+  C8/K3 1.0484x; screens C5/K3 0.8729x, C2/K1 0.8333x, C7/K3 0.9361x),
+  10/10 token-exact everywhere, K0 controls clean, zero hang events.
+  Automatic stays K0.
+
+Packet 3 outcome: **retained** — every affected cell improved, two
+product-route cells crossed AR parity for the first time. Artifacts:
+[`retained economics`](../benchmarks/results/2026-09-06-w7900-q4km-mtp-packet3-row64-band-retained.json),
+[`band screen`](../benchmarks/results/2026-09-06-w7900-q4km-q6-planar-down-row64-band-screen.json).
 
 ### Packet 4 — Reduce draft/head/commit costs where the trace warrants it
 
@@ -377,14 +494,28 @@ not campaign completion. Valid K1-K3 wins can ship before this packet closes.
   automatic selection may still choose K0-K3. Run capacity-8 realized-width
   curves and separate N=1/2 controls. Preserve canonical N=2/C2
   and N=8/C8 comparisons; never present an own-capacity curve as fixed-N=8.
-- [ ] Select depth from immutable model/profile/shape evidence, not prompt
+  (Partial: the diagnostic grid has 56 engaged/token-exact/budget-conformed
+  cells, but C1 used the legacy target; C2 uses N=2, all others N=8.
+  N=1/2 C1 and fixed-N=8 C2 remain unmeasured.
+  Historical 2026-09-06 screen:
+  K3 wins C1 1.665x / C2 1.069x / C8 1.067x diagnostic; widths 3-7 lose at
+  every depth and stay screening-only. Artifact:
+  `campaign-artifacts/packet6/grid-aggregate.json` +
+  `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json`.)
+- [x] Select depth from immutable model/profile/shape evidence, not prompt
   identity or observed benchmark token IDs. Ragged/remaining-horizon budgets
   must stay at or below requested and qualified maxima. Recheck policy after
   any shared kernel change that speeds AR as well as MTP.
+  (C2/K3 was added from same-session diagnostic/qualification evidence;
+  registered-route proof 1.079x, 10/10 exact. C1 selection is withdrawn by
+  review; the depth screen does not satisfy repeated-economics promotion.)
 - [ ] Test automatic winning cells and automatic K0 losing/missing cells before
   provider mutation; retain explicit safety-qualified cells for diagnostics.
   Add stable decline reasons, requested/effective K and physical engagement
   telemetry. No public safety-evidence bypass and no duplicate width/depth gate.
+  (Partial: automatic K0 controls proven at C1/C2/C8 engaged 0/10
+  before the C2/K3 row registration; requested-vs-admitted depth telemetry
+  landed in Packet 5. Automatic winning-cell qualification remains open.)
 - [ ] Run delayed arrival, width/depth switching, cancellation, sparse refill,
   failure, streaming/non-streaming output, usage and final-owner drain through
   the actual service owner. Measure throughput, latency and queueing together;

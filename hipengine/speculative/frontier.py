@@ -226,6 +226,7 @@ class SpecRequestPlan:
     context_bucket_size: int
     execution_route: str
     declared_logical_c: int = 0
+    requested_candidate_counts: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "operation_id", _required_text(self.operation_id, "operation_id"))
@@ -246,6 +247,16 @@ class SpecRequestPlan:
         counts = tuple(int(value) for value in self.candidate_counts)
         if len(counts) != len(request_ids) or any(value < 0 for value in counts):
             raise ValueError("candidate_counts must be non-negative and align with request_ids")
+        requested = (
+            counts
+            if not self.requested_candidate_counts
+            else tuple(int(value) for value in self.requested_candidate_counts)
+        )
+        if len(requested) != len(request_ids) or any(value < 0 for value in requested):
+            raise ValueError(
+                "requested_candidate_counts must be non-negative and align with request_ids"
+            )
+        object.__setattr__(self, "requested_candidate_counts", requested)
         reasons = tuple(SpecPlanReason(reason) for reason in self.reasons)
         if len(reasons) != len(request_ids):
             raise ValueError("reasons must align with request_ids")

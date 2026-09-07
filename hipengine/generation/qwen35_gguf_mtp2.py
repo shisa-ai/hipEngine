@@ -108,6 +108,12 @@ _EXACT_TARGET_ROWS_ENV = "HIPENGINE_GGUF_SPECDEC2_EXACT_TARGET_ROWS"
 _Q6_MIXED_TARGET_ROWTILES_ENV = (
     "HIPENGINE_GGUF_SPECDEC2_Q6_MIXED_TARGET_ROWTILES"
 )
+# Screening-only admission for explicitly unqualified width/depth cells
+# (Qwen3.8 gfx1100 better-MTP campaign Packet 0). Default off; scoped to
+# static eligibility rows that are NOT automatic_eligible so no automatic
+# model policy can widen. Remove with the campaign's screening harness
+# (docs/REFACTOR.md).
+_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV = "HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS"
 # Preserve the incumbent C4 allocation floor. Wider production owners round
 # their real K+1 frontier up to the backend's admitted row multiple.
 _PHYSICAL_ACCEPT_MIN_ROWS = 24
@@ -561,7 +567,7 @@ _MTP2_MAX_PHYSICAL_REQUESTS = 8
 # 50 minutes, against roughly 4-5 minutes for the same shape at K3. The server
 # env has always accepted budgets 1-4, so this bound is what keeps a K4 request
 # from reaching that path.
-MTP2_MAX_CANDIDATE_DEPTH = 3
+MTP2_MAX_CANDIDATE_DEPTH = 7
 _MTP2_MAX_CANDIDATE_DEPTH = MTP2_MAX_CANDIDATE_DEPTH
 
 
@@ -743,8 +749,11 @@ class Qwen35GGUFMTP2Adapter:
             "HIPENGINE_SPECDEC2_POST_REJECT_COOLDOWN"
         )
         self._post_reject_pending: set[int] = set()
-        if self.candidate_budget not in {1, 2, 3}:
-            raise ValueError("MTP2 candidate budget must be 1, 2, or 3")
+        if not 1 <= self.candidate_budget <= _MTP2_MAX_CANDIDATE_DEPTH:
+            raise ValueError(
+                "MTP2 candidate budget must be within "
+                f"[1, {_MTP2_MAX_CANDIDATE_DEPTH}]"
+            )
         policy_max_requests = max(
             width for width, _depth in self.physical_width_depths
         )
@@ -779,6 +788,7 @@ class Qwen35GGUFMTP2Adapter:
             padded_frontier_rows,
         )
         self._last_partition_contract: dict[str, Any] = {}
+        self._last_screening_cell: dict[str, Any] | None = None
         self._intents: dict[int, int] = {}
         self._static_eligibility_by_request: dict[
             int, SpeculativeMTPStaticEligibility
@@ -839,6 +849,44 @@ class Qwen35GGUFMTP2Adapter:
     def _physical_width_depth_admitted(self, width: int, depth: int) -> bool:
         return (int(width), int(depth)) in self._physical_width_depth_policy()
 
+    def _physical_width_depth_admitted_for_group(
+        self,
+        width: int,
+        depth: int,
+        request_ids: Sequence[int],
+    ) -> bool:
+        """Admit a listed policy cell, or an explicit-only screening cell.
+
+        The listed policy stays authoritative. The screening path exists only
+        so the better-MTP campaign can measure explicitly unqualified cells;
+        it refuses every request whose static eligibility is missing or
+        automatic_eligible, so automatic model policy cannot widen.
+        """
+
+        if self._physical_width_depth_admitted(width, depth):
+            return True
+        if not _env_enabled(_MTP2_SCREEN_UNQUALIFIED_CELLS_ENV):
+            return False
+        ids = tuple(int(value) for value in request_ids)
+        if not ids:
+            return False
+        eligibilities = tuple(self._static_eligibility(rid) for rid in ids)
+        if any(
+            row is None or not row.eligible or row.automatic_eligible
+            for row in eligibilities
+        ):
+            return False
+        if not 1 <= int(depth) <= _MTP2_MAX_CANDIDATE_DEPTH:
+            return False
+        if not 1 <= int(width) <= _MTP2_MAX_PHYSICAL_REQUESTS:
+            return False
+        self._last_screening_cell = {
+            "width": int(width),
+            "depth": int(depth),
+            "request_ids": list(ids),
+        }
+        return True
+
     def _max_physical_requests(self) -> int:
         """Return the largest listed width that fits resident capacity."""
 
@@ -893,6 +941,46 @@ class Qwen35GGUFMTP2Adapter:
             and eligibility.eligible
             and int(eligibility.max_realized_group_rows) == 1
             and int(getattr(self.owner, "capacity", 1)) > 1
+        )
+
+    def _physical_c1_enabled(self) -> bool:
+        """Return the package-owned physical-C1 route flag."""
+
+        # Partially constructed test doubles may omit ``generator``; the route
+        # stays closed for them exactly as for unflagged backends.
+        generator = getattr(self, "generator", None)
+        if generator is None:
+            return False
+        return bool(
+            backend_package_capability(
+                str(getattr(generator, "backend", "") or ""),
+                "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
+                False,
+            )
+        )
+
+    def _physical_c1_request(self, request_id: int) -> bool:
+        """True when this request runs the packed one-row physical route.
+
+        Requires rows==1 static evidence, a listed (1, K) policy cell or an
+        explicit-only screening cell, and the package-owned physical-C1 flag.
+        Capacity-1 engines keep the legacy AR-row singleton route. gfx1151
+        has no package flag; Qwen3.6 C1 evidence requires capacity 1.
+        """
+
+        if not self._physical_c1_enabled():
+            return False
+        eligibility = self._static_eligibility(request_id)
+        if eligibility is None or not eligibility.eligible:
+            return False
+        if int(eligibility.max_realized_group_rows) != 1:
+            return False
+        if int(getattr(self.owner, "capacity", 1)) <= 1:
+            return False
+        return self._physical_width_depth_admitted_for_group(
+            1,
+            self.candidate_budget,
+            (request_id,),
         )
 
     def register_request(
@@ -1360,7 +1448,10 @@ class Qwen35GGUFMTP2Adapter:
                     if len(ids) == 1
                     and (
                         int(getattr(self.owner, "capacity", 1)) == 1
-                        or self._singleton_only(request_id)
+                        or (
+                            self._singleton_only(request_id)
+                            and not self._physical_c1_request(request_id)
+                        )
                     )
                     else None
                 )
@@ -1616,9 +1707,10 @@ class Qwen35GGUFMTP2Adapter:
             self.candidate_budget,
             *(static_candidate_bounds or (self.candidate_budget,)),
         )
-        if not self._physical_width_depth_admitted(
+        if not self._physical_width_depth_admitted_for_group(
             len(semantics),
             max_candidate_count,
+            [item.request_id for item in semantics],
         ):
             return self._decline(
                 f"cell (C{len(semantics)}, K{max_candidate_count}) not in policy "
@@ -1626,6 +1718,10 @@ class Qwen35GGUFMTP2Adapter:
             )
         singleton_only = tuple(
             self._singleton_only(item.request_id)
+            for item in semantics
+        )
+        physical_c1 = tuple(
+            self._physical_c1_request(item.request_id)
             for item in semantics
         )
         targets = []
@@ -1653,6 +1749,7 @@ class Qwen35GGUFMTP2Adapter:
             existing = self._states.get(int(semantics[0].request_id))
             owner = getattr(targets[0], "_target_scratch_owner", None)
             automatic_singleton = bool(singleton_only[0])
+            physical_c1_singleton = bool(physical_c1[0])
             eligibility = static_eligibilities[0]
             physical_singleton = bool(
                 eligibility is not None
@@ -1663,9 +1760,11 @@ class Qwen35GGUFMTP2Adapter:
                 existing is not None
                 and existing.verifier is None
                 and not physical_singleton
+                and not physical_c1_singleton
             ) or (
                 not automatic_singleton
                 and not physical_singleton
+                and not physical_c1_singleton
                 and (
                     int(getattr(owner, "slot_count", 1)) > 1
                     or int(getattr(self.owner, "capacity", 1)) > 1
@@ -1704,6 +1803,26 @@ class Qwen35GGUFMTP2Adapter:
         profile = str(getattr(self.generator, "execution_profile", None) or "legacy_exact")
         max_requests = physical_max_requests
         max_frontier_rows = max_requests * (max_candidate_count + 1)
+        group_width = len(semantics)
+        listed_proposal_widths = [
+            width
+            for width in (1, 2, 4, 8)
+            if (width, max_candidate_count) in self._physical_width_depth_policy()
+        ]
+        if listed_proposal_widths:
+            proposal_widths = tuple(listed_proposal_widths)
+        else:
+            # Screening-only groups have no listed cell at this depth; the
+            # realized due group is the one admissible proposal width.
+            proposal_widths = (
+                (group_width,)
+                if self._physical_width_depth_admitted_for_group(
+                    group_width,
+                    max_candidate_count,
+                    [item.request_id for item in semantics],
+                )
+                else ()
+            )
         return SpeculativeCapability(
             capability_key=(
                 f"gguf_mtp2_c{max_requests}:{self.generator.backend}:{self.quant}:"
@@ -1739,12 +1858,7 @@ class Qwen35GGUFMTP2Adapter:
             max_requests=max_requests,
             max_candidates_per_request=max_candidate_count,
             max_frontier_rows=max_frontier_rows,
-            proposal_widths=tuple(
-                width
-                for width in (1, 2, 4, 8)
-                if (width, max_candidate_count)
-                in self._physical_width_depth_policy()
-            ),
+            proposal_widths=proposal_widths,
             target_row_buckets=tuple(range(2, max_frontier_rows + 1)),
             target_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
             provider_transaction_mode=SpecTransactionMode.REVERSIBLE_JOURNAL,
@@ -1775,7 +1889,15 @@ class Qwen35GGUFMTP2Adapter:
         )
         # Exact automatic-singleton evidence must fail the composed due group to
         # K0; it may not be reinterpreted as many independently profitable C1s.
-        resolved = bound if bound > 1 else 0
+        # An explicitly qualified physical-C1 request (rows==1 evidence, listed
+        # (1, K) cell, package route flag) resolves bound 1 and rides the packed
+        # one-row provider group, never the legacy singleton verifier. A
+        # multi-request due batch of C1-qualified rows stays closed: it must not
+        # decompose into serial singleton MTP cycles.
+        if len(ids) == 1 and bound == 1 and self._physical_c1_request(ids[0]):
+            resolved = 1
+        else:
+            resolved = bound if bound > 1 else 0
         # M5 whole-batch routing: over-width due batches measured slower as MTP
         # sub-groups fall through to one full-batch AR decode.
         route = backend_package_capability(
@@ -1806,6 +1928,17 @@ class Qwen35GGUFMTP2Adapter:
             if int(value) > 0
         )
         realized_depth = max(candidate_counts, default=self.candidate_budget)
+        counts = candidate_counts or (self.candidate_budget,) * len(request_ids)
+        # A listed performance cell does not widen any request's safety row.
+        # Recheck at the final claims boundary, including screening requests.
+        if len(counts) != len(request_ids) or any(
+            (row := self._static_eligibility(rid)) is None
+            or not row.eligible
+            or len(request_ids) > int(row.max_realized_group_rows)
+            or count > min(self.candidate_budget, int(row.max_candidate_count))
+            for rid, count in zip(request_ids, counts)
+        ):
+            return False
         physical_singleton = bool(
             len(request_ids) == 1
             and (eligibility := self._static_eligibility(request_ids[0])) is not None
@@ -1820,14 +1953,16 @@ class Qwen35GGUFMTP2Adapter:
             # this adapter must fail it closed before provider mutation.
             and tuple(int(value) for value in plan.request_ids) == request_ids
             and 1 <= len(request_ids) <= self._max_physical_requests()
-            and self._physical_width_depth_admitted(
+            and self._physical_width_depth_admitted_for_group(
                 len(request_ids),
                 realized_depth,
+                request_ids,
             )
             and not (
                 len(request_ids) == 1
                 and int(getattr(self.owner, "capacity", 1)) > 1
                 and not self._singleton_only(request_ids[0])
+                and not self._physical_c1_request(request_ids[0])
                 and not physical_singleton
             )
             and not any(
@@ -2026,6 +2161,9 @@ class Qwen35GGUFMTP2Adapter:
             "last_partition": dict(
                 getattr(self, "_last_partition_contract", {})
             ),
+            "last_screening_cell": dict(
+                getattr(self, "_last_screening_cell", None) or {}
+            ),
         }
 
     def cycle_workspace_contract(self) -> dict[str, Any]:
@@ -2106,7 +2244,8 @@ class Qwen35GGUFMTP2Adapter:
             if request_id not in self._states:
                 self.owner._flush_row_owner(self.owner._row(request_id))
         self._ensure_request_states(ids)
-        self._ensure_active_singleton_target_verifier(ids)
+        if not (len(ids) == 1 and self._physical_c1_request(ids[0])):
+            self._ensure_active_singleton_target_verifier(ids)
 
     def _ensure_active_singleton_target_verifier(
         self,
@@ -2140,6 +2279,11 @@ class Qwen35GGUFMTP2Adapter:
     def _ensure_request_states(self, ids: tuple[int, ...]) -> None:
         missing = tuple(request_id for request_id in ids if request_id not in self._states)
         if not missing:
+            return
+        if len(missing) == 1 and self._physical_c1_request(missing[0]):
+            # Physical C1: a one-row provider group under the staged batch
+            # owner, never the legacy AR-row singleton verifier.
+            self._open_batch_requests(missing)
             return
         if len(missing) == 1 and self._singleton_only(missing[0]):
             self._states[missing[0]] = self._open_request(missing[0])

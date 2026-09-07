@@ -498,15 +498,27 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# Bulk Q4 gate/up+SiLU row48 is qualified on this backend only.
+GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
-# avoid one-wave underfill on W7900. Rows33-128 use four waves over one 16-row
-# tile each; rows129-511 use the existing four-wave 256-row owner. Rows<=32 keep
-# verifier ownership unchanged, and rows>=512 retain the independently gated
-# source-F16 route. The one-wave parent remains a registered strict fallback.
+# avoid one-wave underfill on W7900. Rows4-128 use the four-wave row64 sibling
+# over one 16-row tile each (bit-exact to the parent at EVERY row 1-36 on all
+# three cycle shapes per the 2026-09-06 packet3 full-coverage screen, 108/108
+# combos, 1.60-1.89x faster on ffn_down); rows129-511 use the existing
+# four-wave 256-row owner. Rows<=3 keep the one-wave parent, and rows>=512
+# retain the independently gated source-F16 route. The one-wave parent remains
+# a registered strict fallback.
 GGUF_Q6_PLANAR_EXACT_PREFILL_VARIANTS = {
     (17_408, 5_120): (
-        (33, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
+        (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
         (129, 511, "t16_wmma_prefill_shared4_bf16_bf16_out"),
+    ),
+    # Packet 4 screen (2026-09-06, real blk.3.attn_v tensors): shared4_row64
+    # is bit-exact to the one-wave parent at EVERY screened row 1-128 and
+    # faster at every row (1.22-2.64x; cycle frontier rows 4-36 run 1.22-2.0x).
+    # Rows >=129 stay on the parent pending a shared4 screen at this shape.
+    (5_120, 1_024): (
+        (4, 128, "t16_wmma_prefill_shared4_row64_bf16_bf16_out"),
     ),
 }
 # Production-shape Q4 changed-arithmetic screen admits FFN-down plus
@@ -628,10 +640,15 @@ GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK = True
 # here remain in use and unmeasured by that sweep.
 GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
+# Physical C1 routes a rows==1-evidence request through the packed one-row
+# provider group + R2/R3/R4 frontier (Packet 2), never the legacy AR-row
+# singleton verifier. Public C1 evidence is withdrawn pending packed-target
+# qualification. gfx1151 has no flag; Qwen3.6 C1 evidence requires capacity 1.
+GGUF_SPECDEC2_MTP2_PHYSICAL_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
 ] = {
-    "production": ((1, 2), (1, 3), (2, 2), (8, 3)),
+    "production": ((1, 2), (1, 3), (2, 2), (2, 3), (8, 3)),
     "strict": ((2, 2),),
 }
 # Production prompt streaming follows the same model-local physical evidence.
@@ -1194,6 +1211,8 @@ __all__ = [
     "GGUF_PACKED_PREFILL_FINAL_OUTPUT_MASK",
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
+    "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
+    "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",

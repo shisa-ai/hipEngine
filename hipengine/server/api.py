@@ -3040,113 +3040,157 @@ class _GenerationBatcher:
                 first = self._queue.popleft()
                 if _queued_generation_cancelled(first):
                     continue
-                engine = self._engine_factory()
-                if first.stream_queue is not None:
-                    if _engine_supports_controlled_streaming(engine):
-                        active_limit = self._route_request_cap(first.route)
-                        if (
-                            active_limit is not None
-                            and self._active_requests >= active_limit
-                        ):
-                            self._queue.appendleft(first)
-                            active_streams = tuple(
-                                task for task in self._stream_tasks if not task.done()
-                            )
-                            if not active_streams:  # pragma: no cover - defensive invariant
-                                raise RuntimeError(
-                                    "controlled stream capacity is full without an active producer"
-                                )
-                            await asyncio.wait(
-                                active_streams,
-                                return_when=asyncio.FIRST_COMPLETED,
-                            )
-                            continue
-                        self._launch_controlled_stream(first, engine)
-                        continue
-                elif (
-                    str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
-                    and _engine_supports_independent_generation(engine)
-                ):
-                    active_limit = self._route_request_cap(first.route)
-                    child_rows = len(first.prompts)
-                    if active_limit is not None and child_rows > active_limit:
-                        _finish_queued_generation(
-                            first,
-                            exception=GenerationAdmissionRejected(
-                                "independent child group exceeds the resident request limit",
-                                resource="resident_child_limit",
-                                requested_units=child_rows,
-                                current_units=self._active_requests,
-                                capacity_units=active_limit,
-                            ),
-                        )
-                        continue
-                    if active_limit is not None and self._active_requests + child_rows > active_limit:
-                        self._queue.appendleft(first)
-                        active_tasks = tuple(
-                            task
-                            for task in (*self._stream_tasks, *self._independent_tasks)
-                            if not task.done()
-                        )
-                        if not active_tasks:  # pragma: no cover - defensive invariant
-                            raise RuntimeError(
-                                "independent generation capacity is full without an active producer"
-                            )
-                        await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
-                        continue
-                    submit_ready = getattr(
-                        engine,
-                        "submit_independent_batches_detailed",
-                        None,
-                    )
-                    if not callable(submit_ready) or not _env_flag(
-                        _DEFAULT_AR_READY_COHORT_ENV,
-                        default=True,
-                    ):
-                        self._launch_independent_generation(first)
-                        continue
-                    key = self._group_key(first)
-                    ready_group = [first]
-                    ready_rows = child_rows
-                    capacity = (
-                        None
-                        if active_limit is None
-                        else active_limit - self._active_requests
-                    )
-                    deferred: deque[_QueuedGeneration] = deque()
-                    while self._queue:
-                        item = self._queue.popleft()
-                        if _queued_generation_cancelled(item):
-                            continue
-                        item_rows = len(item.prompts)
-                        fits = capacity is None or ready_rows + item_rows <= capacity
-                        if self._group_key(item) == key and fits:
-                            ready_group.append(item)
-                            ready_rows += item_rows
-                        else:
-                            deferred.append(item)
-                    self._queue.extendleft(reversed(deferred))
-                    self._launch_independent_group(ready_group, engine)
-                    continue
-                key = self._group_key(first)
-                group = [first]
-                deferred: deque[_QueuedGeneration] = deque()
-                while self._queue:
-                    item = self._queue.popleft()
-                    if _queued_generation_cancelled(item):
-                        continue
-                    if self._group_key(item) == key and self._group_has_capacity(group):
-                        group.append(item)
-                    else:
-                        deferred.append(item)
-                self._queue.extendleft(reversed(deferred))
-                await self._run_group(group)
-                if self._queue and self._batch_window_seconds > 0.0:
-                    await asyncio.sleep(self._batch_window_seconds)
+                # Items popped but not yet re-queued or finished. If anything
+                # below raises (route-cap resolution, admission planning,
+                # dispatch), finish them with the exception before letting the
+                # worker die, or their futures never resolve and requests hang
+                # for the full client timeout (observed as the K4 1200 s/3000 s
+                # hangs: a ValueError from lazy adapter construction escaped
+                # here and orphaned the queued items).
+                in_flight: list[_QueuedGeneration] = [first]
+                try:
+                    await self._dispatch_queued_item(first, in_flight)
+                except BaseException as exc:
+                    for item in in_flight:
+                        self._release_independent_item(item)
+                        _finish_queued_generation(item, exception=exc)
+                    raise
+            else:
+                if self._batch_window_seconds > 0.0:
+                    await asyncio.sleep(0.0)
         finally:
             self._worker = None
             if self._queue:
                 self._worker = asyncio.create_task(self._run())
+
+    async def _dispatch_queued_item(
+        self,
+        first: _QueuedGeneration,
+        in_flight: list[_QueuedGeneration],
+    ) -> None:
+        """Dispatch one popped queue item; track popped-not-finished items.
+
+        ``in_flight`` is owned by the caller's exception handler: every item
+        left in it when this coroutine raises is finished with the exception
+        so no queued request can outlive the worker silently.
+        """
+
+        engine = self._engine_factory()
+        if first.stream_queue is not None:
+            if _engine_supports_controlled_streaming(engine):
+                active_limit = self._route_request_cap(first.route)
+                if (
+                    active_limit is not None
+                    and self._active_requests >= active_limit
+                ):
+                    self._queue.appendleft(first)
+                    in_flight.clear()
+                    active_streams = tuple(
+                        task for task in self._stream_tasks if not task.done()
+                    )
+                    if not active_streams:  # pragma: no cover - defensive invariant
+                        raise RuntimeError(
+                            "controlled stream capacity is full without an active producer"
+                        )
+                    await asyncio.wait(
+                        active_streams,
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    return
+                self._launch_controlled_stream(first, engine)
+                return
+        elif (
+            str(first.route) == _SPECULATIVE_MTP_DEFAULT_ROUTE
+            and _engine_supports_independent_generation(engine)
+        ):
+            active_limit = self._route_request_cap(first.route)
+            child_rows = len(first.prompts)
+            if active_limit is not None and child_rows > active_limit:
+                _finish_queued_generation(
+                    first,
+                    exception=GenerationAdmissionRejected(
+                        "independent child group exceeds the resident request limit",
+                        resource="resident_child_limit",
+                        requested_units=child_rows,
+                        current_units=self._active_requests,
+                        capacity_units=active_limit,
+                    ),
+                )
+                in_flight.clear()
+                return
+            if active_limit is not None and self._active_requests + child_rows > active_limit:
+                self._queue.appendleft(first)
+                in_flight.clear()
+                active_tasks = tuple(
+                    task
+                    for task in (*self._stream_tasks, *self._independent_tasks)
+                    if not task.done()
+                )
+                if not active_tasks:  # pragma: no cover - defensive invariant
+                    raise RuntimeError(
+                        "independent generation capacity is full without an active producer"
+                    )
+                await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
+                return
+            submit_ready = getattr(
+                engine,
+                "submit_independent_batches_detailed",
+                None,
+            )
+            if not callable(submit_ready) or not _env_flag(
+                _DEFAULT_AR_READY_COHORT_ENV,
+                default=True,
+            ):
+                self._launch_independent_generation(first)
+                return
+            key = self._group_key(first)
+            ready_group = [first]
+            ready_rows = child_rows
+            capacity = (
+                None
+                if active_limit is None
+                else active_limit - self._active_requests
+            )
+            deferred: deque[_QueuedGeneration] = deque()
+            while self._queue:
+                item = self._queue.popleft()
+                if _queued_generation_cancelled(item):
+                    continue
+                in_flight.append(item)
+                item_rows = len(item.prompts)
+                fits = capacity is None or ready_rows + item_rows <= capacity
+                if self._group_key(item) == key and fits:
+                    ready_group.append(item)
+                    ready_rows += item_rows
+                else:
+                    deferred.append(item)
+            self._queue.extendleft(reversed(deferred))
+            for item in deferred:
+                in_flight.remove(item)
+            in_flight.clear()
+            in_flight.extend(ready_group)
+            self._launch_independent_group(ready_group, engine)
+            return
+        key = self._group_key(first)
+        group = [first]
+        deferred: deque[_QueuedGeneration] = deque()
+        while self._queue:
+            item = self._queue.popleft()
+            if _queued_generation_cancelled(item):
+                continue
+            in_flight.append(item)
+            if self._group_key(item) == key and self._group_has_capacity(group):
+                group.append(item)
+            else:
+                deferred.append(item)
+        self._queue.extendleft(reversed(deferred))
+        for item in deferred:
+            in_flight.remove(item)
+        in_flight.clear()
+        in_flight.extend(group)
+        await self._run_group(group)
+        if self._queue and self._batch_window_seconds > 0.0:
+            await asyncio.sleep(self._batch_window_seconds)
 
     def _launch_controlled_stream(self, item: _QueuedGeneration, engine: Any) -> None:
         self._active_requests += 1

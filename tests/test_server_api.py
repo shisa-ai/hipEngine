@@ -3093,6 +3093,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         speculative_provider: str | None = None,
         draft_model: str | None = None,
         speculative_candidate_budget: int = 4,
+        kv_storage: str = "auto",
+        kv_scale_dtype: str = "fp16",
+        kv_scale_granularity: str = "per_token_head",
     ) -> FakeLLM:
         captured.update(
             {
@@ -3106,6 +3109,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
                 "speculative_provider": speculative_provider,
                 "draft_model": draft_model,
                 "speculative_candidate_budget": speculative_candidate_budget,
+                "kv_storage": kv_storage,
+                "kv_scale_dtype": kv_scale_dtype,
+                "kv_scale_granularity": kv_scale_granularity,
             }
         )
         return fake
@@ -3119,6 +3125,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
             max_active_requests=8,
             max_context_tokens=768,
             prefix_cache="radix",
+            kv_storage="int8_per_token_head",
+            kv_scale_dtype="fp32",
+            kv_scale_granularity="per_token_head",
         )
     )
     with TestClient(app) as client:
@@ -3139,6 +3148,9 @@ def test_lazy_server_passes_max_active_requests_to_llm(monkeypatch: pytest.Monke
         "speculative_provider": None,
         "draft_model": None,
         "speculative_candidate_budget": 4,
+        "kv_storage": "int8_per_token_head",
+        "kv_scale_dtype": "fp32",
+        "kv_scale_granularity": "per_token_head",
     }
 
 
@@ -22207,3 +22219,41 @@ def test_usage_exposes_reasoning_tokens() -> None:
     assert usage["reasoning_tokens"] == 9
     assert usage["completion_tokens_details"] == {"reasoning_tokens": 9}
     assert _finish_reasoning_token_total(details) == 9
+
+
+def test_generation_batcher_finishes_queued_items_when_worker_raises() -> None:
+    """A dispatch-loop exception must fail queued requests, not orphan them.
+
+    Regression guard for the K4 server hang: a ValueError escaping the
+    batcher's dispatch loop killed the worker while queued items waited on
+    futures that nothing would ever resolve. The handler now finishes every
+    in-flight item with the exception before the worker exits.
+    """
+
+    async def run() -> None:
+        fake = FakeLLM()
+        sampling = SamplingParams(max_tokens=2)
+        batcher = _GenerationBatcher(
+            engine_factory=lambda: fake,
+            batch_window_seconds=0.001,
+        )
+
+        def exploding_route_cap(route: str) -> None:
+            raise ValueError("route cap resolution failed")
+
+        batcher._route_request_cap = exploding_route_cap  # type: ignore[method-assign]
+
+        async def guarded_submit(*prompts: str):
+            return await asyncio.wait_for(
+                batcher.submit(prompts, sampling),
+                timeout=10.0,
+            )
+
+        results = await asyncio.gather(
+            guarded_submit("one"),
+            guarded_submit("two"),
+            return_exceptions=True,
+        )
+        assert all(isinstance(result, ValueError) for result in results), results
+
+    asyncio.run(run())

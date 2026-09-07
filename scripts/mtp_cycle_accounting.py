@@ -63,12 +63,14 @@ def _passes_for_tick(records: list[dict[str, Any]], t: int) -> list[tuple[int, f
             int(records[i]["specdec2_mtp2_candidate_counts"][t]) + 1
             for i in members
         )
-        if member_rows != rows:
+        if member_rows > rows:
             raise AssertionError(
-                f"tick {t} bucket rows={rows} ms={ms}: member rows sum {member_rows} "
-                "!= reported rows (impossible bucket: either telemetry drift or two "
-                "passes shared byte-identical samples)"
+                f"tick {t} bucket rows={rows} ms={ms}: member rows sum "
+                f"{member_rows} exceeds reported rows (impossible bucket: either "
+                "telemetry drift or two passes shared byte-identical samples)"
             )
+        # rows >= member_rows records frontier padding: inactive tail rows are
+        # owned by the last member, dispatched, and not committed.
         passes.append((rows, ms))
     return passes
 
@@ -131,11 +133,12 @@ def _target_windows_for_cell(cell: dict[str, Any]) -> list[dict[str, int]]:
                 int(record["specdec2_mtp2_candidate_counts"][tick]) + 1
                 for record in group
             )
-            if member_rows != rows:
+            if member_rows > rows:
                 raise AssertionError(
                     f"tick {tick} timestamp bucket rows={rows}: member rows sum "
-                    f"{member_rows} != reported rows"
+                    f"{member_rows} exceeds reported rows"
                 )
+            # rows >= member_rows records frontier padding (dispatched, inactive).
             windows.append({"rows": rows, "start_ns": start_ns, "end_ns": end_ns})
     return windows
 
@@ -194,8 +197,14 @@ def _analyze_cell(cell: dict[str, Any]) -> dict[str, Any]:
         rec_cycles = int(rec["specdec2_mtp2_cycles"])
         assert len(rec["specdec2_mtp2_candidate_counts"]) == rec_cycles
         # per-request committed = 1 bootstrap token + accepted + one visible
-        # token per cycle; final-cycle overshoot is truncated at max_tokens
-        expected_committed += 1 + acc + rec_cycles
+        # token per cycle + one token per K0 catch-up decode step between
+        # cycles; final-cycle overshoot is truncated at max_tokens
+        expected_committed += (
+            1
+            + acc
+            + rec_cycles
+            + int(rec.get("specdec2_mtp2_k0_catchups") or 0)
+        )
     residual = generated - expected_committed
     if abs(residual) > width:
         raise AssertionError(

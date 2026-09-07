@@ -128,7 +128,7 @@ def test_ineligible_cached_target_graph_never_launches_device_proposal() -> None
     assert calls == [("ready", 3, 4)]
 
 
-def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:
+def test_native_target_rows_follow_implementation_ladder_and_context_limit() -> None:
     assert mtp_module._effective_target_verify_mode("native", rows=4) == "native"
     assert (
         mtp_module._effective_target_verify_mode(
@@ -142,15 +142,20 @@ def test_b4_native_request_falls_back_to_serial_exact_target_rows() -> None:
         )
         == "serial_exact"
     )
-    assert mtp_module._effective_target_verify_mode("native", rows=5) == "serial_exact"
-    assert mtp_module._effective_target_verify_mode("serial_exact", rows=5) == "serial_exact"
+    for rows in range(2, 9):
+        assert mtp_module._effective_target_verify_mode("native", rows=rows) == "native"
+        assert mtp_module._effective_target_verify_mode("serial_exact", rows=rows) == "serial_exact"
+    assert mtp_module._effective_target_verify_mode("native", rows=9) == "serial_exact"
     assert mtp_module._initial_state_only_journal_applies(
         "native",
         max_candidate_budget=3,
     )
+    for budget in range(4, 8):
+        assert mtp_module._initial_state_only_journal_applies(
+            "native", max_candidate_budget=budget,
+        )
     assert not mtp_module._initial_state_only_journal_applies(
-        "native",
-        max_candidate_budget=4,
+        "native", max_candidate_budget=8,
     )
     assert not mtp_module._initial_state_only_journal_applies(
         "serial_exact",

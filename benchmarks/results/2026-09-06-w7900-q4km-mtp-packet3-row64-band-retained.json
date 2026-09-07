@@ -1,0 +1,127 @@
+{
+  "kind": "mtp-retained-economics",
+  "date": "2026-09-06",
+  "hardware": "AMD Radeon Pro W7900 (gfx1100)",
+  "model": "Qwen3.8-27B Q4_K_M",
+  "protocol": "gguf_mtp_c1c8_server_bench.py, 10-prompt canonical suite (mtpbench-code-general-ja), per-prompt AR/MTP arm alternation, D24 greedy, 20 ms batch window, ar_exact token contract, GPU_MAX_HW_QUEUES=1",
+  "change": "Planar-Q6 FFN-down prefill sibling band extended (33,128) -> (4,128): staged verify-frontier rows 4-32 move from the underfilled one-wave parent to the bit-exact cooperative shared4_row64 owner. Full-coverage screen: 108/108 rows x shapes bit-exact at rows 1-36, ffn_down 1.60-1.89x standalone.",
+  "decision": "All seven MTP cells above their retained floors with 10/10 token-exact arms; four product-route cells re-qualified and three diagnostic screens improved. Automatic K0 unchanged. One prior GPU-hang observation was confined to a no-env refused-arm run and did not reproduce in either full sweep (2x nine-cell, zero hang events).",
+  "measurements": {
+    "c1k3": {
+      "floor": 1.4734,
+      "mtp": 39.24,
+      "ar": 24.07,
+      "ratio": 1.6301,
+      "route": "explicit product (registered evidence row)",
+      "width": 1,
+      "budget": 3,
+      "delta_vs_floor": 0.1567,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": 1.6127
+    },
+    "c1k2": {
+      "floor": 1.559,
+      "mtp": 38.44,
+      "ar": 24.04,
+      "ratio": 1.5989,
+      "route": "explicit product (registered evidence row)",
+      "width": 1,
+      "budget": 2,
+      "delta_vs_floor": 0.0399,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": 1.5725
+    },
+    "c2k2": {
+      "floor": 0.917,
+      "mtp": 41.43,
+      "ar": 39.32,
+      "ratio": 1.0536,
+      "route": "explicit product (registered evidence row)",
+      "width": 2,
+      "budget": 2,
+      "delta_vs_floor": 0.1366,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": 0.9852
+    },
+    "c8k3": {
+      "floor": 0.987,
+      "mtp": 96.56,
+      "ar": 92.1,
+      "ratio": 1.0484,
+      "route": "explicit product (registered evidence row)",
+      "width": 8,
+      "budget": 3,
+      "delta_vs_floor": 0.0614,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": 1.0271
+    },
+    "c5k3": {
+      "floor": 0.8,
+      "mtp": 65.57,
+      "ar": 75.13,
+      "ratio": 0.8729,
+      "route": "generation2-diagnostic screen",
+      "width": 5,
+      "budget": 3,
+      "delta_vs_floor": 0.0729,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": null
+    },
+    "c2k1": {
+      "floor": 0.721,
+      "mtp": 32.38,
+      "ar": 38.86,
+      "ratio": 0.8333,
+      "route": "generation2-diagnostic screen",
+      "width": 2,
+      "budget": 1,
+      "delta_vs_floor": 0.1123,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": null
+    },
+    "c7k3": {
+      "floor": 0.882,
+      "mtp": 82.45,
+      "ar": 88.08,
+      "ratio": 0.9361,
+      "route": "generation2-diagnostic screen",
+      "width": 7,
+      "budget": 3,
+      "delta_vs_floor": 0.0541,
+      "tokens_exact": "10/10",
+      "engaged": "10/10",
+      "prior_run_same_change": null
+    }
+  },
+  "controls": {
+    "automatic_k0_c2": "engaged 0",
+    "automatic_k0_c8": "engaged 0"
+  },
+  "commands": [
+    "bash campaign-artifacts/packet3/run_p3_retained.sh  # nine cells, HIPENGINE_MTP_SCREEN_UNQUALIFIED_CELLS=1 for the three screening cells",
+    ".venv/bin/python scripts/qwen38_packet3_retained_rollup.py  # gate: floors + token-exactness + route expectations + K0"
+  ],
+  "links": {
+    "worklog": [
+      "worklog/entries/20260906T112529.271841Z-lhl-gfx1100-better-mtp-packet3-519dc6.md",
+      "worklog/entries/20260906T115610.194486Z-lhl-gfx1100-better-mtp-packet3-675de5.md"
+    ],
+    "screen_artifact": "benchmarks/results/2026-09-06-w7900-q4km-q6-planar-down-row64-band-screen.json",
+    "band_commits": [
+      "502b8c282",
+      "d84131aca (revert), re-land follows this artifact"
+    ],
+    "prior_c1_economics": "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-retained-economics.json"
+  },
+  "limitations": [
+    "Diagnostic-screen cells (C5/K3, C2/K1, C7/K3) run the generation2-diagnostic resolver; they are screening evidence, not registered serving rows.",
+    "AR arms move run-to-run (e.g., C8/K3 AR 92.10 vs 86.40 across the two band-ON sweeps); ratios against the same-run AR arm are the comparison basis.",
+    "The single GPU-hang observation was never reproduced (two subsequent full nine-cell sweeps, clean) and its mechanism is unexplained; the band never executed in that refused-arm cell."
+  ]
+}
