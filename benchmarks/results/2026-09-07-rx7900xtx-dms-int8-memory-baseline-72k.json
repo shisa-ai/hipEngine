@@ -1,0 +1,233 @@
+{
+  "data_manifest": {
+    "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+    "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+  },
+  "date": "2026-09-07",
+  "date_timezone": "UTC",
+  "hardware": {
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "RX 7900 XTX",
+    "host": "epyc",
+    "other_workloads": "GPU0 not used by this probe; GPU1 idle baseline verified before the run",
+    "pci": "0000:10:00.0",
+    "physical_gpu_index": 1,
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "limitations": [
+    "Sampled whole-card peaks are lower bounds on instantaneous peaks; headroom is not an operational reserve.",
+    "The failed-point peak is memory observed before allocation failure, not the memory needed to complete it.",
+    "No new exact replay or dense-teacher numerical gate at the near-limit point; eight finite transitions and clean teardown are the new gates.",
+    "Replay harness seeds decode with the last prompt token; not a natural-response task test.",
+    "Fresh-process OOM/backoff only; same-process allocation-failure recovery is not qualified.",
+    "DMS INT8 stays explicit offline evaluation; no production-serving promotion, throughput claim or change to dense boundaries.",
+    "This is a baseline anchor only. It does not claim a maximum, does not qualify throughput or serving behavior, and does not change any capacity boundary. Whole-card peaks are 20 ms samples; true instantaneous peaks between samples are unobserved."
+  ],
+  "metadata": {
+    "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+    "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+  },
+  "placement_and_arena_before": {
+    "embedding_ggml_type": "Q4_K",
+    "file_type_name": "MOSTLY_Q4_K_M",
+    "note": "DMS sessions force use_decode_scratch_arena=False in __post_init__ regardless of wiring",
+    "private_c1_wiring_reference": {
+      "decode_scratch_arena_if_not_dms": [
+        true,
+        "private_c1_geometry_policy"
+      ],
+      "small_weight_arena": [
+        true,
+        "private_c1_selective"
+      ],
+      "token_embedding": [
+        "host",
+        "mapped_host_private_c1_auto"
+      ]
+    },
+    "probe_wiring_shared_runner": {
+      "small_weight_arena": [
+        false,
+        "shared_runner_fallback"
+      ],
+      "token_embedding": [
+        "device",
+        "shared_runner_device_fallback"
+      ]
+    }
+  },
+  "point": {
+    "command": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 PYTHONUNBUFFERED=1 /home/lhl/gfx1100-24gb-capacity/.venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 73728 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-baseline-73728.json",
+    "decode": [
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "d9d7885b77cebf16de01dbd8c6452c102787757c6a248ca30eebe10c08aee750",
+        "output_token": 8998,
+        "session": 0,
+        "step": 0
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "17bdfbdcf8bf13e12d31558bc183975d17a0693f9b481ca88088cf22d096bc16",
+        "output_token": 150071,
+        "session": 0,
+        "step": 1
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "488dff9264272a671dde90fb60cc28fd64d6445ed2a78ee5771ad75ce74faddd",
+        "output_token": 151733,
+        "session": 0,
+        "step": 2
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "4c9d6fec37b37b53e3707d35b8beaf4de3db35416073dbcef63d210259befab1",
+        "output_token": 200076,
+        "session": 0,
+        "step": 3
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "e0aae772cd95b3ec7440061bf0fb23ec46c45662f8e3574a09b3655df64293c7",
+        "output_token": 34481,
+        "session": 0,
+        "step": 4
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "b1c07648d88bc5215a1ffff4c5918a31e501f86563771c9f79f6dbb1fbf49640",
+        "output_token": 15303,
+        "session": 0,
+        "step": 5
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "5c6148d84353bd120cd732eccebab361a8a42b954e01a5005b0793dfe91d68dc",
+        "output_token": 17,
+        "session": 0,
+        "step": 6
+      },
+      {
+        "cycle": 0,
+        "finite_logits": true,
+        "logits_sha256": "24e5ce6511ced123c92de5678ea4e4f9bdac1cc0c246cdd89c98b48dc0d91b88",
+        "output_token": 15,
+        "session": 0,
+        "step": 7
+      }
+    ],
+    "dms_snapshots": [
+      {
+        "capacity": {
+          "actual_compression_ratio": 1.7997998486660647,
+          "device_resident_bytes": 1397427344,
+          "live_token_rows": 2622016,
+          "logical_token_rows": 4719104,
+          "max_live_count": 40969,
+          "payload_bytes": 1342472192,
+          "scale_bytes": 20976128,
+          "target_compression_ratio": 2
+        },
+        "extent_pool": {
+          "allocation_failures": 0,
+          "capacity_slots": 2622080,
+          "free_slots": 0
+        },
+        "ledger_active_reservations": 1
+      }
+    ],
+    "elapsed_seconds": 268.4831007234752,
+    "log_sha256": "b011c6c022a350d482536d46e481e954782c53a3e3749ae32a7b15ee1a0bb86b",
+    "max_sample_gap_seconds": 0.020879533141851425,
+    "memory": {
+      "after_close": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 24895794136,
+        "peak_allocations": 1283,
+        "total_allocated_bytes": 24899781784,
+        "total_freed_bytes": 24899781784
+      },
+      "after_close_MiB": 0.0,
+      "before": {
+        "active_allocations": 0,
+        "current_allocated_bytes": 0,
+        "peak_allocated_bytes": 0,
+        "peak_allocations": 0,
+        "total_allocated_bytes": 0,
+        "total_freed_bytes": 0
+      },
+      "post_decode": {
+        "active_allocations": 1250,
+        "current_allocated_bytes": 20026917912,
+        "peak_allocated_bytes": 24895794136,
+        "peak_allocations": 1283,
+        "total_allocated_bytes": 24899781784,
+        "total_freed_bytes": 4872863872
+      },
+      "post_prefill_all_sessions": {
+        "active_allocations": 1247,
+        "current_allocated_bytes": 20022930264,
+        "peak_allocated_bytes": 24895794136,
+        "peak_allocations": 1283,
+        "total_allocated_bytes": 24895794136,
+        "total_freed_bytes": 4872863872
+      }
+    },
+    "monitor_path": "/tmp/xtx-capacity/dms-int8-baseline-73728.monitor.json",
+    "monitor_sha256": "e767795849a2766cbbef3901e20ba2bffe3ec612244dd55a4a6eca070836650c",
+    "prompt_identity": {
+      "disjoint_validation_slices": true,
+      "sha256": "ac49b52cc2dee14fe34bf45bcd164e60788163932d2d8573ec629a7f25bbc1ed"
+    },
+    "prompt_tokens": 73728,
+    "raw_output": "/tmp/xtx-capacity/dms-int8-baseline-73728.json",
+    "raw_sha256": "816b11858efc207c509212a914820140efef6f1048e464eff1ea468db2a0b796",
+    "returns_to_baseline": true,
+    "sample_interval_ms": 20,
+    "sampled_headroom_mib": 9.6484375,
+    "sampled_whole_card_peak_gib": 23.974952697753906,
+    "source_commit": "ce9320ba71ceb661fd08b8629a785e91791699a3",
+    "status": "execution_fit",
+    "tracked_peak_gib": 23.186015091836452,
+    "working_tree_clean": true,
+    "wrapper_command": ".venv/bin/python /tmp/xtx-capacity-baseline/run_dms_edge.py 73728",
+    "wrapper_command_note": "The executed wrapper is a copy of /tmp/xtx-capacity/run_dms_edge.py that differs only in output file naming (dms-int8-baseline-73728.*); the embedded wrapper_command label in the raw monitor.json retains the original path. wrapper_sha256 below is the hash of the executed file.",
+    "wrapper_sha256": "39ff4885bcb97a33b5f9be9586d3b66a15675573e62059464fb4404643445f7f"
+  },
+  "prior_passing_evidence": {
+    "prior_highest_observed_passing_prompt_tokens": 73728,
+    "prior_sampled_whole_card_peak_gib_at_73728": 23.938064575195312,
+    "sources": [
+      "benchmarks/results/2026-09-07-rx7900xtx-dms-int8-requested-backoff.json",
+      "benchmarks/results/2026-09-07-rx7900xtx-dms-int8-edge-capacity.json"
+    ]
+  },
+  "provenance": "ce9320ba71ceb661fd08b8629a785e91791699a3",
+  "purpose": "Re-measured whole-card peak for the unchanged C1 DMS INT8 probe at the requested-ladder passing point, as the before-anchor for the memory-reduction targets (shared/private-C1 placement, prefill scratch lifetime, layerwise BF16 pack/release). No code changes were made for this measurement.",
+  "quant": "Q4_K_M",
+  "route": "offline eager C1, compact DMS INT8 K/V, FP32 per-token/head scales, W8192, MTP/prefix reuse off",
+  "route_details": {
+    "codec": "int8_evaluation",
+    "decode_steps": 8,
+    "probe_sessions": 1
+  },
+  "schema": "hipengine_dms_int8_memory_reduction_baseline_v1",
+  "serving_qualification": false,
+  "status": "baseline_recorded",
+  "throughput_claim": false
+}
