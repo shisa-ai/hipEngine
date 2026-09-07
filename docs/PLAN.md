@@ -832,6 +832,13 @@ trajectories and improves every prefill/request wall; PP512/1024/4096 gains
 prefill-first policy. Existing rows>=512 scope and strict fallback unchanged.
 See `benchmarks/results/2026-09-06-framework-qwen4exp-q8-down-bundle-production.json`.
 
+At K640/rows>=512, compact and mapped Q8 down now reuse five decoded
+weights/thread across the expert row loop. Production binds the register
+variant; strict and unsupported shapes preserve fallbacks. Current chunk1024
+canonical72 trajectories exact, all12 prefill/request averages improve,
+PP+0.851%/+0.701%/+0.647%. No causal decode claim; weakest request gain is
+only0.004%. See `benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json`.
+
 Q5_1 folded pair reductions now run together for production chunks>=512,
 within the original unfolded pair2 LDS budget. Full12-case A/B preserves72
 trajectories and improves every prefill/request wall;PP512/1024/4096 gains
