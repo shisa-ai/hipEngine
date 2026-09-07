@@ -1,0 +1,1064 @@
+{
+  "schema": 1,
+  "kind": "native_c1_selected_state_depth_diagnostic",
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "capacity": 1,
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "runs": [
+    {
+      "budget": 1,
+      "source": "/tmp/packed-c1-n1k1-depth-commit",
+      "capture_sha256": "b1b9e5192da5bce3b90a4b6d189202c881bfa6f322960d42ae294add2c087360",
+      "route_sha256": "7614f0c67fb587e5b83976aef5c5fd6dfc3f5f655f1ec69230f73dca30993f37",
+      "base_commit": "609b72867",
+      "reused_prior_capture": false,
+      "coverage": {
+        "cycles": 115,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 5,
+          "1": 110
+        },
+        "outcomes": {
+          "full_accept": 110,
+          "rejection": 5
+        },
+        "logical_depths": {
+          "1": 115
+        },
+        "observed_rejections": {
+          "K1:candidate1": 5
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 11
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 12
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    },
+    {
+      "budget": 2,
+      "source": "/tmp/packed-c1-n1k2-depth-commit",
+      "capture_sha256": "1646d40022e2ace5807dfaf3a5dd4fc5547224a654b0de61a2f069a7e7dcba43",
+      "route_sha256": "8c949b03f60a21e8410f2bbbfd82d292ac4077b2c868e8710b478c30e29ca748",
+      "base_commit": "609b72867",
+      "reused_prior_capture": false,
+      "coverage": {
+        "cycles": 83,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 2,
+          "1": 17,
+          "2": 64
+        },
+        "outcomes": {
+          "full_accept": 69,
+          "rejection": 14
+        },
+        "logical_depths": {
+          "1": 5,
+          "2": 78
+        },
+        "observed_rejections": {
+          "K2:candidate1": 2,
+          "K2:candidate2": 12
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 9
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    },
+    {
+      "budget": 3,
+      "source": "/tmp/packed-c1-n1k3-kv-commit-v2",
+      "capture_sha256": "1ea2e29ae2b3f1e29b1e422e2127bcd91116fb5ce3d7e4ca3d1713226600e335",
+      "route_sha256": "ed0eed8693ee55efb32ac0ca30bf7f1234e4d89e774a919cfa017f8af6a4ba13",
+      "base_commit": "0074e3395b8961cc76b6217c8fd13f784bd7a008",
+      "reused_prior_capture": true,
+      "coverage": {
+        "cycles": 70,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 3,
+          "1": 15,
+          "2": 13,
+          "3": 39
+        },
+        "outcomes": {
+          "full_accept": 47,
+          "rejection": 23
+        },
+        "logical_depths": {
+          "1": 5,
+          "2": 3,
+          "3": 62
+        },
+        "observed_rejections": {
+          "K3:candidate1": 3,
+          "K3:candidate2": 10,
+          "K3:candidate3": 10
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    },
+    {
+      "budget": 4,
+      "source": "/tmp/packed-c1-n1k4-depth-commit",
+      "capture_sha256": "ac560cbbb9eaddb6105d242370c3ea6ecfad67609832f6da3467654d7576ba55",
+      "route_sha256": "8f5221602814a239190bdb038443c104c2882e8ff1b6c8ee034c210e4a3bb924",
+      "base_commit": "609b72867",
+      "reused_prior_capture": false,
+      "coverage": {
+        "cycles": 62,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 4,
+          "1": 13,
+          "2": 11,
+          "3": 8,
+          "4": 26
+        },
+        "outcomes": {
+          "full_accept": 30,
+          "rejection": 32
+        },
+        "logical_depths": {
+          "1": 2,
+          "2": 3,
+          "3": 2,
+          "4": 55
+        },
+        "observed_rejections": {
+          "K2:candidate1": 1,
+          "K3:candidate2": 1,
+          "K3:candidate3": 1,
+          "K4:candidate1": 3,
+          "K4:candidate2": 10,
+          "K4:candidate3": 8,
+          "K4:candidate4": 8
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    },
+    {
+      "budget": 5,
+      "source": "/tmp/packed-c1-n1k5-depth-commit",
+      "capture_sha256": "f6a39b337f9397163434c9e6a5059ba4e91f51420c5396d98ad55f4e182eefaa",
+      "route_sha256": "079ab63a0c8876165861a6741dff7809b2d3febb2be55815f6fef08309bc04e3",
+      "base_commit": "609b72867",
+      "reused_prior_capture": false,
+      "coverage": {
+        "cycles": 59,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 4,
+          "1": 13,
+          "2": 13,
+          "3": 3,
+          "4": 8,
+          "5": 18
+        },
+        "outcomes": {
+          "full_accept": 24,
+          "rejection": 35
+        },
+        "logical_depths": {
+          "1": 3,
+          "2": 3,
+          "3": 1,
+          "4": 2,
+          "5": 50
+        },
+        "observed_rejections": {
+          "K2:candidate1": 1,
+          "K3:candidate2": 1,
+          "K4:candidate4": 1,
+          "K5:candidate1": 3,
+          "K5:candidate2": 9,
+          "K5:candidate3": 11,
+          "K5:candidate4": 2,
+          "K5:candidate5": 7
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    },
+    {
+      "budget": 6,
+      "source": "/tmp/packed-c1-n1k6-depth-commit",
+      "capture_sha256": "af67d700595e3f2030342c0c1774fe0e6bb3bf9e096ead120c3d940514ec0da4",
+      "route_sha256": "3ab9b1e1a490e074664a2edd25a897158553fc3a3a207a954d63956699a401a7",
+      "base_commit": "609b72867",
+      "reused_prior_capture": false,
+      "coverage": {
+        "cycles": 56,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 3,
+          "1": 12,
+          "2": 13,
+          "3": 3,
+          "4": 7,
+          "5": 10,
+          "6": 8
+        },
+        "outcomes": {
+          "full_accept": 17,
+          "rejection": 39
+        },
+        "logical_depths": {
+          "1": 2,
+          "2": 3,
+          "4": 3,
+          "5": 5,
+          "6": 43
+        },
+        "observed_rejections": {
+          "K2:candidate1": 1,
+          "K4:candidate4": 1,
+          "K5:candidate3": 2,
+          "K6:candidate1": 2,
+          "K6:candidate2": 10,
+          "K6:candidate3": 9,
+          "K6:candidate4": 2,
+          "K6:candidate5": 5,
+          "K6:candidate6": 7
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 4
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 8
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 4
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    },
+    {
+      "budget": 7,
+      "source": "/tmp/packed-c1-n1k7-depth-commit",
+      "capture_sha256": "efc3cdc9899f5570f9ea46864d0d7ea6f84b40441fb97c7a2d1feb918c60d641",
+      "route_sha256": "7dd209ee67e71edee8a23d1aeb85799fb5efd873f339a4e2128efb8d45fa5045",
+      "base_commit": "609b72867",
+      "reused_prior_capture": false,
+      "coverage": {
+        "cycles": 54,
+        "prompts": [
+          "code_lru_cache",
+          "code_markdown_table",
+          "code_merge_intervals",
+          "code_topological_sort",
+          "general_en_explain",
+          "general_en_plan",
+          "general_ja_explain",
+          "general_ja_plan",
+          "mixed_ja_en_review",
+          "mixed_ja_en_translate"
+        ],
+        "accepted_counts": {
+          "0": 5,
+          "1": 9,
+          "2": 13,
+          "3": 3,
+          "4": 5,
+          "5": 9,
+          "6": 4,
+          "7": 6
+        },
+        "outcomes": {
+          "full_accept": 15,
+          "rejection": 39
+        },
+        "logical_depths": {
+          "1": 3,
+          "2": 3,
+          "4": 2,
+          "5": 5,
+          "7": 41
+        },
+        "observed_rejections": {
+          "K2:candidate1": 1,
+          "K4:candidate4": 1,
+          "K5:candidate3": 2,
+          "K7:candidate1": 4,
+          "K7:candidate2": 6,
+          "K7:candidate3": 9,
+          "K7:candidate4": 2,
+          "K7:candidate5": 4,
+          "K7:candidate6": 6,
+          "K7:candidate7": 4
+        },
+        "exhaustive_rejection_or_eos_qualification": false
+      },
+      "route_cells": [
+        {
+          "prompt_id": "code_merge_intervals",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "code_topological_sort",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "code_lru_cache",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 4
+        },
+        {
+          "prompt_id": "code_markdown_table",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        },
+        {
+          "prompt_id": "general_en_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_en_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_ja_plan",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 6
+        },
+        {
+          "prompt_id": "general_ja_explain",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 7
+        },
+        {
+          "prompt_id": "mixed_ja_en_translate",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 4
+        },
+        {
+          "prompt_id": "mixed_ja_en_review",
+          "exact": true,
+          "engaged": true,
+          "budget_conformed": true,
+          "packed_calls": 5
+        }
+      ],
+      "checks": {
+        "pre_accept_state_isolation": {
+          "all_pass": true,
+          "buffers_per_call": [
+            131
+          ]
+        },
+        "selected_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            97
+          ]
+        },
+        "aux_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            3
+          ]
+        },
+        "kv_commit": {
+          "all_pass": true,
+          "buffers_per_call": [
+            32
+          ]
+        }
+      },
+      "finite_logits_and_hashes_verified": true
+    }
+  ],
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --capacity 1 --budget K --check-commit --directory /tmp/packed-c1-n1kK-depth-commit (K=1,2,4,5,6,7)",
+  "prior_k3_artifact": "benchmarks/results/2026-09-07-w7900-packed-c1-kv-commit-diagnostic.json",
+  "limitations": [
+    "Natural rejection coverage, not forced exhaustive rejection/EOS or heldout qualification.",
+    "No independent strict-teacher state trajectory or task/numerical promotion.",
+    "N1 only in this depth sweep; larger-capacity lifecycle evidence is separate."
+  ]
+}
