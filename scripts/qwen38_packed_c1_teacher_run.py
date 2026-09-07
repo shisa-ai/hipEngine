@@ -45,6 +45,22 @@ def target_contexts(generator, budget):
                    active_slots=1, wide_q6_shared4=False)
 
 
+def candidate_provenance(llm, generator, fixture):
+    """Validate production manifest identity and same-model strict teacher scope."""
+    from hipengine.execution_profiles import manifest_sha256, validate_variant_manifest
+    manifest = validate_variant_manifest(llm.execution_profile_manifest)
+    digest = manifest_sha256(manifest)
+    teacher = fixture['runtime_manifest']
+    if (manifest['execution_profile'] != 'production'
+            or digest != llm.execution_profile_manifest_sha256
+            or digest != generator.execution_profile_manifest_sha256
+            or any(manifest[key] != teacher[key]
+                   for key in ('backend', 'model', 'quant', 'kv_policy'))):
+        raise ValueError('candidate provenance differs from resolved profile or teacher scope')
+    return dict(candidate_manifest=manifest, candidate_manifest_sha256=digest,
+                teacher_runtime_manifest_sha256=fixture['runtime_manifest_sha256'])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--model', type=Path, default=Path('/models/gguf/Qwen3.8-27B-Q4_K_M.gguf'))
@@ -69,7 +85,7 @@ def main():
                   source_revision=subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                   command=sys.argv, teacher_manifest_sha256=hashlib.sha256(
                       (args.teacher / 'teacher.json').read_bytes()).hexdigest(),
-                  limitation='Target only; host-selected commits; teacher runtime variant manifest absent')
+                  limitation='Target only; host-selected commits; no provider/service/task qualification')
     llm = None
     try:
         llm = LLM(str(args.model), backend='hip_gfx1100', execution_profile='production',
@@ -85,7 +101,9 @@ def main():
         report['candidate_manifest_sha256'] = generator.execution_profile_manifest_sha256
         if not report['candidate_manifest_sha256']:
             raise ValueError('candidate variant manifest is missing')
-        fixture = load_teacher_fixture(args.teacher, expected_model_sha256=artifact.sha256)
+        fixture = load_teacher_fixture(args.teacher, expected_model_sha256=artifact.sha256,
+                                       require_runtime_provenance=True)
+        report.update(candidate_provenance(llm, generator, fixture))
         tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
         prompts = {r['id']: r for r in load_teacher_prompts()}
         for row in fixture['records']:
@@ -98,6 +116,8 @@ def main():
         with generator._resident_session_scope(shared_runner=generator._get_shared_runner(),
                 pool_name='packed_c1_teacher_candidate') as (session, _reused):
             report['kv_storage_dtype'] = str(session.kv_storage_dtype)
+            if report['kv_storage_dtype'] != fixture['kv_storage_dtype']:
+                raise ValueError('candidate and teacher actual KV storage differ')
             for row in fixture['records']:
                 with target_contexts(generator, args.budget) as flags:
                     result = capture_teacher_candidate(session, session, row, budget=args.budget,
