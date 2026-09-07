@@ -76,6 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**HIP wait-policy isolation (September7 UTC):** disposable code4096
+phase probes with2 balanced pairs/128 decode steps,decode HEAD_PAIR flag0.
+Initial device flags already1 (spin);explicit spin1->1 is a no-op,
+not a mitigation. Parent/candidate decode8.496/8.925s. A separate
+yield process verifies flags1->2 before allocation and measures8.509/
+8.940s;early parent~1.5GHz/candidate~600MHz split persists.
+Exact tokens/state/layout,zero candidate decode calls and clean teardown
+pass in both processes. All prefill/transition time retained,clocks and
+affinity unchanged. Processes are not inter-policy counterbalanced;
+no claim that spin outperforms yield or that all HIP wait paths honor flags.
+Generic HIP scheduling flags do not resolve this transition in these runs.
+Next inspect the actual wait/submission path or controlled hardware-policy
+intervention;do not add an always-on heater thread or hide delay as warmup.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-wait-policy.json).
+
 **Calling-thread affinity isolation (September7 UTC):** pin CPU17
 after model initialization,restore original0..31 mask on exit. Same
 code4096 two-pair16-step phase probe still shows parent/candidate

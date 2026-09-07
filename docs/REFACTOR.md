@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## QSA transition HIP scheduling diagnostic
+
+- Initial HIP flags already spin1;explicit1->1 did not constitute a change.
+  Yield1->2 accepted before model allocation but transition penalty persists.
+- No production HIP flag override added. Diagnostic helper preserves
+  nonscheduling flags and fails readback mismatch;disposable process scope.
+- Paired-head QSA remains default-off pending transition decision;do not
+  repeat generic spin/yield as an assumed fix without new wait-path evidence.
+
 ## Qwen4Exp H256 QSA head-pair candidate
 
 - Kernel-only `strict_h256_head_pair_rows_spans`:two heads/wave,

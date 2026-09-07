@@ -75,6 +75,8 @@ def main():
                    help="Read CPUFreq feedback/reported frequency and CPU identity at step boundaries")
     p.add_argument("--pin-cpu",type=int,
                    help="Pin calling thread after model load; restore affinity at exit")
+    p.add_argument("--hip-wait",choices=("auto","spin","yield","blocking"),
+                   help="Disposable-process device scheduling flag before model allocation")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
@@ -96,6 +98,10 @@ def main():
     if not 1<=a.steps<=128:
         p.error("steps must be1..128")
     check_host()
+    wait_policy=None
+    if a.hip_wait:
+        from scripts.qwen4exp_hip_wait_policy import configure
+        wait_policy=configure(a.hip_wait)
     identity=model_identity(a.model_root)
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"]=str(a.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"]="1"
@@ -116,6 +122,7 @@ def main():
         calls[0]+=1
         return original(*args,**kwargs)
     report=dict(status="running",source=gate._git_metadata(ROOT),host=gate._host_metadata(),
+        hip_wait_policy=wait_policy,
         model_identity=identity,fixture_sha256=digest,command=sys.argv,cases=[],
         steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,trace_markers=a.trace_markers,
         cpu_accounting=a.cpu_accounting,thread_perf=a.thread_perf,cpu_frequency=a.cpu_frequency,
