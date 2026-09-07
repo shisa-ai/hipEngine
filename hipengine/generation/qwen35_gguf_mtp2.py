@@ -964,8 +964,8 @@ class Qwen35GGUFMTP2Adapter:
 
         Requires rows==1 static evidence, a listed (1, K) policy cell or an
         explicit-only screening cell, and the package-owned physical-C1 flag.
-        Capacity-1 engines keep the legacy AR-row singleton route;
-        gfx1151/Qwen3.6 never enable the flag.
+        Capacity-1 engines keep the legacy AR-row singleton route. gfx1151
+        has no package flag; Qwen3.6 C1 evidence requires capacity 1.
         """
 
         if not self._physical_c1_enabled():
@@ -2244,7 +2244,8 @@ class Qwen35GGUFMTP2Adapter:
             if request_id not in self._states:
                 self.owner._flush_row_owner(self.owner._row(request_id))
         self._ensure_request_states(ids)
-        self._ensure_active_singleton_target_verifier(ids)
+        if not (len(ids) == 1 and self._physical_c1_request(ids[0])):
+            self._ensure_active_singleton_target_verifier(ids)
 
     def _ensure_active_singleton_target_verifier(
         self,

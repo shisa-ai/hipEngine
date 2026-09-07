@@ -1,0 +1,76 @@
+{
+  "schema": 1,
+  "kind": "mtp_merge_review",
+  "date": "2026-09-07",
+  "status": "partial_implementation_reviewed",
+  "performance_claim": false,
+  "reviewed_branch_tip": "2347201a709bc53623de909c3e4d8e5e0a1f9ac3",
+  "origin_main_integrated": "85ed97b71",
+  "diagnostic_source": {
+    "base_commit": "b4a6c83573dde45c478a681f560acd11ec1fd168",
+    "dirty": true,
+    "changes": "Skip legacy target installation for physical-C1 preparation; withdraw C1 public rows; explicitly bound the diagnostic C1 evidence clone to one row; backend-qualify the bulk row48 dispatch. Final source is committed with this artifact."
+  },
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "findings": [
+    "C2/K3 policy admission exposed a claims_fit gap: two singleton-qualified requests passed claims despite partition rejection. Recheck each request's width/depth evidence, including screening.",
+    "The 19 capability-test failures were introduced earlier in this campaign, not inherited from main: a positional fixture selected a newly prepended W7900 row, and another expectation rejected newly admitted C1.",
+    "prepare_requests installed Qwen35GGUFTransactionalVerifier after opening the physical C1 provider. All pre-review C1 rates and the seven C1 grid cells are INVALID as native packed-target qualification. Counters are preserved as historical hybrid-route observations.",
+    "The unconditional bulk row48 dispatch also changed gfx1151. A gfx1100-owned capability now limits that promotion to its measured backend.",
+    "The 56-cell grid used N=2 at C2 and N=8 elsewhere, not a full fixed-N=8 curve. It has no N=1/2 C1 controls and only one run per cell."
+  ],
+  "decision": {
+    "c1_public_evidence": "withdrawn pending qualification of the repaired packed target",
+    "c1_implementation": "repaired; diagnostic-only",
+    "explicit_product_cells_kept": ["C2/K2 N2", "C2/K3 N2", "C8/K3 N8"],
+    "automatic_qwen38_gfx1100": "K0 at every width",
+    "deeper_depths": "implementation capacity through K7; diagnostic-only, no new public safety keys",
+    "campaign_complete": false
+  },
+  "packed_c1_diagnostic": {
+    "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --output /tmp/mtp-review-packed-c1.json",
+    "scope": "full ten-prompt category/heldout suite; C1/N8/K3; greedy D24; sequence limit 1024; 20 ms batch window; true no-MTP AR response oracle",
+    "injection": "explicitly unqualified one-row diagnostic evidence; legacy target constructor raises if called",
+    "exact_engaged_budget_conformed": "10/10",
+    "packed_target_calls": 70,
+    "per_prompt_packed_calls": {
+      "code_merge_intervals": 7, "code_topological_sort": 7,
+      "code_lru_cache": 7, "code_markdown_table": 6,
+      "general_en_plan": 6, "general_en_explain": 7,
+      "general_ja_plan": 8, "general_ja_explain": 8,
+      "mixed_ja_en_translate": 7, "mixed_ja_en_review": 7
+    },
+    "independent_diagnostic": "A preceding check using the then-registered C1 row also passed 10/10 with 65 packed calls. An initial helper-only telemetry assertion missed response engagement and was corrected; no performance result was retained.",
+    "passed": true,
+    "limitation": "Route and token-equality check only; not the independent production numerical/lifecycle/repeated-performance gate."
+  },
+  "validation": {
+    "final_regression_command": ".venv/bin/python -m pytest -o addopts='' -q tests/test_specdec2_*.py tests/test_qwen35_gguf_mtp*.py tests/test_speculative_mtp_serving_capability.py tests/test_server_api.py tests/test_qwen35_gguf_nextn_provider.py tests/test_benchmark_readme_sync.py",
+    "final_regressions": "1061 passed, 20 skipped; after adding the diagnostic-clone fixture, its file passed 20 tests",
+    "gpu_command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python -m pytest -o addopts='' -q tests/test_gguf_q4_k_pack8_gemv_row_guard.py tests/test_qwen36_gguf_rounded_next_rmsnorm.py tests/test_gguf_q4_k_t16_dense.py tests/test_gguf_q6_k_t16_gemv_decode.py",
+    "gpu_result": "239 passed in 167.06 seconds before the backend-scope repair; the 18 affected CPU dispatch cases pass after that repair, with W7900 selection unchanged",
+    "not_run": ["full repository pytest", "gfx1151 hardware", "production logit-distribution qualification", "full dynamic service-owner matrix", "repeated 56-cell performance sweep"]
+  },
+  "remaining": [
+    "Native N=1 ownership and N=2 C1 plus missing fixed-N=8 C2 controls",
+    "Packed-C1 K1-K7 numerical/state/task and slot/transition coverage",
+    "Delayed arrival, cancellation, sparse refill, streaming/drain, latency/queueing with actual service owner",
+    "Sustained horizons/contexts and at least three balanced pairs before automatic promotion"
+  ]
+}

@@ -490,6 +490,8 @@ GGUF_LINEAR_RESIDUAL_MAX_ROWS_BY_QUANT = {
 # top-1, and M64/M512 gates improve; peer backends and unmeasured shapes keep
 # legacy T16 until independently admitted.
 GGUF_DENSE_Q6_T16_QMICRO_PLANAR = True
+# Bulk Q4 gate/up+SiLU row48 is qualified on this backend only.
+GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS = 48
 # The wide planar-Q6 FFN-down prefill owner uses exact cooperative siblings to
 # avoid one-wave underfill on W7900. Rows4-128 use the four-wave row64 sibling
 # over one 16-row tile each (bit-exact to the parent at EVERY row 1-36 on all
@@ -632,7 +634,8 @@ GGUF_SPECDEC2_MTP2_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL = True
 # Physical C1 routes a rows==1-evidence request through the packed one-row
 # provider group + R2/R3/R4 frontier (Packet 2), never the legacy AR-row
-# singleton verifier. gfx1151/Qwen3.6 keep the legacy route (flag absent).
+# singleton verifier. Public C1 evidence is withdrawn pending packed-target
+# qualification. gfx1151 has no flag; Qwen3.6 C1 evidence requires capacity 1.
 GGUF_SPECDEC2_MTP2_PHYSICAL_C1 = True
 GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS: dict[
     str, tuple[tuple[int, int], ...]
@@ -1179,6 +1182,7 @@ __all__ = [
     "GGUF_SPECDEC2_MTP2_C1",
     "GGUF_SPECDEC2_MTP2_PHYSICAL",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_C1",
+    "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS",
     "GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS",
     "GGUF_SPECDEC2_PHYSICAL_PROMPT_STREAMING_POLICIES",
     "GGUF_SPECDEC2_NATIVE_TARGET_GRAPH_MAX_CONTEXT",

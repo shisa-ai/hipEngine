@@ -1,6 +1,35 @@
 # Qwen3.8-27B gfx1100: faster MTP on the concurrency engine
 
-Status: follow-up implementation plan; no new performance result claimed.
+Status (2026-09-07 review): partial implementation ready for integration;
+**campaign completion and automatic promotion remain open**.
+
+### Review outcome
+
+- C2/K3 and C8/K3 explicit routes and the qualified W7900 kernel improvements
+  are kept. Qwen3.8 automatic selection remains K0.
+- The original C1 measurements used a physical provider but a **legacy
+  singleton target verifier**, installed by `prepare_requests()`. They are
+  invalid as native packed-target evidence. Review fixes that substitution and
+  adds a preparation-to-target regression test. The repaired C1/K3 path passes
+  a ten-prompt exact/engagement diagnostic with 65 packed-target calls and the
+  legacy verifier forbidden; this is not a numerical or performance gate.
+  The two C1 serving-evidence rows are withdrawn until the actual packed target
+  passes independent numerical, lifecycle and repeated-economics qualification.
+- The 56-cell screen used N=2 only at C2 and N=8 at all other widths.
+  It is neither a complete fixed-N=8 curve nor N=1/2 C1 qualification.
+  Its seven C1 cells cannot certify packed-target K1-K7 execution. K4-K7
+  remain diagnostic-only, not publicly safety-qualified depths.
+- Still required: native N=1 ownership, N=2 C1 and missing fixed-N=8 controls;
+  packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
+  latency/queueing gates; sustained horizons/contexts; three balanced pairs
+  before promotion. Token equality is not a replacement for these gates.
+- Review also repairs per-request claims safety, order-dependent capability
+  fixtures, and a row48 dispatch change that leaked into gfx1151. CPU policy
+  regressions pass; gfx1151 hardware was not tested on this W7900 host.
+
+Packet notes below record intermediate work, not a completion certificate.
+See the [review artifact](../benchmarks/results/2026-09-07-w7900-mtp-merge-review.json)
+for validation and corrections to the earlier evidence.
 
 ## 1. Objective and scope
 
@@ -188,21 +217,12 @@ with the CPU-reference KL/top-1 gate plus cross-arm exact generated-ID equality
 as the correctness oracle. Width-5 cycles also pay width-8 prices
 (capacity-padded frontier), and C8 leaves a 0.217 s straggler AR tail.
 
-Packet 2 status (2026-09-06): physical C1 is routable, proven E2E, and
-RETAINED with registered evidence. Package flag `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`,
-adapter route helpers, partition bound 1 for qualified one-request groups,
-physical one-row provider-group open, GPU route proof (5 runs incl. a
-mid-chain rejection recovered exactly), and full-suite retained economics
-through the registered `qwen38-q4km-gfx1100-production-bf16-c1-k{2,3}-d24`
-rows: **C1/K3 1.4734x (23.731→34.965 tok/s), C1/K2 1.5590x (23.823→37.140)**,
-10/10 token-exact vs the in-run native AR arm, engaged and budget-conformed.
-Automatic stays K0; rows are explicit-only and capacity-8-specific.
-Artifacts: `benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-retained-economics.json`
-(+) `-c1-suite-economics.json`, `-c1-physical-route-proof.json`,
-`-packet1-attribution.json`; worklog
-`20260906T111334.382095Z-lhl-gfx1100-better-mtp-packet2-8e1921`.
-Remaining: resident-transition CPU matrix (C1→C2→C1, C8→C1→C8, sparse
-survivors, refill/compaction, K0↔MTP), then the automatic-promotion decision.
+Packet 2 review (2026-09-07): the physical provider was reached, but request
+preparation substituted the legacy target verifier. The Packet-2 route and
+suite artifacts are historical measurements of that hybrid path, not native
+packed-target qualification. C1 public evidence is withdrawn. The repaired
+packed target has a ten-prompt diagnostic only; the review outcome above lists
+its remaining gates.
 
 Protocol note: these 12-token attribution runs are not comparable to the
 retained Packet-0 suite ratios (C8/K3 0.987–0.989, C2/K2 0.917–0.926,
@@ -251,7 +271,7 @@ larger resident owner. Reusing qualified leaf kernels is allowed; switching to
 a whole-request singleton scheduler/verifier to avoid packed-state correctness
 is not this deliverable.
 
-- [x] Add CPU seam REDs for C1 eligibility, claims, provider construction,
+- [ ] Add CPU seam REDs for C1 eligibility, claims, provider construction,
   frontier packing, selected commit and K0 transitions. Make tests fail if the
   candidate calls `_ensure_active_singleton_target_verifier`,
   `Qwen35GGUFTransactionalVerifier`, or the legacy singleton execution route.
@@ -267,7 +287,7 @@ is not this deliverable.
   MTP calls because a C1 safety row exists.
   (2026-09-06: package flag `GGUF_SPECDEC2_MTP2_PHYSICAL_C1`; bound 1 only for
   a one-request qualified group; multi-request rows==1 batches stay closed.)
-- [x] Implement native C1 provider/prompt-hidden initialization and packed target
+- [ ] Implement native C1 provider/prompt-hidden initialization and packed target
   execution. Validate root token, positions, pre/post-norm hidden taps,
   embedding, convolution/GDN state and KV against independent strict reference
   trajectories from the first divergent boundary. Use warm states, not only
@@ -275,7 +295,7 @@ is not this deliverable.
   (2026-09-06: packed one-row provider group via `_open_batch_requests`;
   validation through cross-arm exact generated-ID equality vs the strict AR
   owner on warm states — 5 bridge runs + 10/10 suite cells.)
-- [x] Handle R2/R3/R4 with bounded graph/workspace keys, inactive padding and
+- [ ] Handle R2/R3/R4 with bounded graph/workspace keys, inactive padding and
   exact ownership. Measure existing exact small-row owners before adding a
   specialized kernel. Production small-row arithmetic requires independent
   numerical qualification; C2 evidence cannot certify C1.
@@ -283,7 +303,7 @@ is not this deliverable.
   qualified rows-6 tile inside the shared r36 accept bucket; graph replay
   observed at C1 in the route proof; independent C1 numerical qualification is
   the ar_exact suite contract.)
-- [x] Test K1/K2/K3, all accepted, first/middle/final rejection, EOS at every
+- [ ] Test K1/K2/K3, all accepted, first/middle/final rejection, EOS at every
   depth, final-horizon clipping, cancellation and recoverable failure. Restore
   both provider and target state and continue with the correct hidden seed.
   Extend every depth-sensitive C1 test through K7 in Packet 5; K3-only C1
@@ -292,14 +312,14 @@ is not this deliverable.
   recovered exactly, final-horizon clipping; cancellation CPU-tested with
   provider-checkpoint restore. K1 stays closed — no (1,1) policy cell. EOS
   isolation and K7 extension land with Packet 5.)
-- [x] Test N=1,2,8 and every physical slot: delayed C1→C2→C1, C8→C1→C8,
+- [ ] Test N=1,2,8 and every physical slot: delayed C1→C2→C1, C8→C1→C8,
   sparse survivors, refill and compaction; K0→MTP→K0→MTP at transaction
   boundaries. Preserve IDs, page ownership, output/usage and clean drain.
   (2026-09-06: C1 refill/pair-closure/survivor-return CPU tests; loop-level
   width-switch and K0-transition tests pre-existing; C1-within-capacity-8
   exercised E2E in every bridge/server run. Compaction reuses the generic
   group paths.)
-- [x] Add explicit evidence only after safety/numerical gates pass; measure
+- [ ] Add explicit evidence only after safety/numerical gates pass; measure
   against native C1 AR at the **same resident capacity**. Automatic stays K0
   until economics pass. A healthy legacy singleton rate is a diagnostic
   comparison, never the concurrency engine denominator or completion proof.
@@ -308,9 +328,10 @@ is not this deliverable.
   K2 1.5590x with 10/10 ar_exact. Automatic promotion remains a separate
   decision.)
 
-Exit: met 2026-09-06 — engaged native physical C1 with route-proof tests,
-numerical/state gates (cross-arm exactness on warm states), full-suite explicit
-measurements and capacity-specific policy decisions.
+Exit: **not met**. The 2026-09-07 review found the legacy target substitution.
+Intermediate checkmarks and measurements in this packet do not certify the
+repaired packed target; its public evidence is withdrawn pending the review
+outcome's numerical, capacity and lifecycle gates.
 
 ### Packet 3 — Amortize target verification across real frontier rows
 
@@ -468,12 +489,15 @@ not campaign completion. Valid K1-K3 wins can ship before this packet closes.
 
 ### Packet 6 — Re-sweep, select by width, and close the public path
 
-- [x] Evaluate K0-K7 at C1-C8, admitting deeper test cells as Packet 5 qualifies
+- [ ] Evaluate K0-K7 at C1-C8, admitting deeper test cells as Packet 5 qualifies
   them. Record all 56 positive-depth cells, including explicit losing depths;
   automatic selection may still choose K0-K3. Run capacity-8 realized-width
   curves and separate N=1/2 controls. Preserve canonical N=2/C2
   and N=8/C8 comparisons; never present an own-capacity curve as fixed-N=8.
-  (Done 2026-09-06: all 56 cells engaged/token-exact/budget-conformed 10/10;
+  (Partial: the diagnostic grid has 56 engaged/token-exact/budget-conformed
+  cells, but C1 used the legacy target; C2 uses N=2, all others N=8.
+  N=1/2 C1 and fixed-N=8 C2 remain unmeasured.
+  Historical 2026-09-06 screen:
   K3 wins C1 1.665x / C2 1.069x / C8 1.067x diagnostic; widths 3-7 lose at
   every depth and stay screening-only. Artifact:
   `campaign-artifacts/packet6/grid-aggregate.json` +
@@ -482,16 +506,16 @@ not campaign completion. Valid K1-K3 wins can ship before this packet closes.
   identity or observed benchmark token IDs. Ragged/remaining-horizon budgets
   must stay at or below requested and qualified maxima. Recheck policy after
   any shared kernel change that speeds AR as well as MTP.
-  (Done 2026-09-06: K3 selected at every retained width from the grid;
-  C2 moved K2→K3 on retained same-session evidence 1.067x vs 1.005x;
-  registered-route proof 1.079x 10/10 exact.)
-- [x] Test automatic winning cells and automatic K0 losing/missing cells before
+  (C2/K3 was added from same-session diagnostic/qualification evidence;
+  registered-route proof 1.079x, 10/10 exact. C1 selection is withdrawn by
+  review; the depth screen does not satisfy repeated-economics promotion.)
+- [ ] Test automatic winning cells and automatic K0 losing/missing cells before
   provider mutation; retain explicit safety-qualified cells for diagnostics.
   Add stable decline reasons, requested/effective K and physical engagement
   telemetry. No public safety-evidence bypass and no duplicate width/depth gate.
-  (Done 2026-09-06: automatic K0 controls re-proven at C1/C2/C8 engaged 0/10
+  (Partial: automatic K0 controls proven at C1/C2/C8 engaged 0/10
   before the C2/K3 row registration; requested-vs-admitted depth telemetry
-  landed in Packet 5; screening env remains the only unqualified-cell route.)
+  landed in Packet 5. Automatic winning-cell qualification remains open.)
 - [ ] Run delayed arrival, width/depth switching, cancellation, sparse refill,
   failure, streaming/non-streaming output, usage and final-owner drain through
   the actual service owner. Measure throughput, latency and queueing together;
