@@ -202,7 +202,7 @@ def test_qwen4_exp_strict_and_production_manifests_resolve() -> None:
     )
     q8_grouped = selections[("linear", "grouped_prefill_rows_lt512_q8_0_expert_down")]
     q8_row4 = selections[("linear", "grouped_prefill_rows_ge512_q8_0_expert_down")]
-    assert q8_row4["selected_variant"] == "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
+    assert q8_row4["selected_variant"] == "selected_grouped_row4_register_gemv_bf16_bf16_out"
     assert q8_row4["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
     assert q8_grouped["selected_variant"] == (
         "selected_grouped_gemv_bf16_bf16_out"
@@ -285,9 +285,9 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_ROW4_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"] == "1"
     mapped = _selection_map(production)[("linear","prefill_rows_ge512_token_major_mapped_q8_down")]
-    assert mapped["selected_variant"] == "selected_grouped_row4_bundle_gemv_bf16_bf16_out"
+    assert mapped["selected_variant"] == "selected_grouped_row4_register_gemv_bf16_bf16_out"
     assert mapped["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD128_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"] == "1"

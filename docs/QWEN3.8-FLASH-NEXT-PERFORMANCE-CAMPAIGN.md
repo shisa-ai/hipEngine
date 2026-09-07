@@ -76,7 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Q8 down register-weight candidate (September7 UTC):** cache five K640
+**Q8 down register promoted (September7 UTC):** clean58dcdbdb2 full12-case
+chunk1024 A/B,72 exact trajectories, all12 prefill/request averages improve.
+PP512/1024/4096:181.424->182.969 (+0.851%),
+191.973->193.319 (+0.701%),177.663->178.812 (+0.647%).
+Total request1.004743x; weakest request case mixed-p512 only1.000040x,
+so do not call request improvement robust. Max within-case PP CV1.181%,
+TG CV3.356%; TG aggregate -0.028%/+0.067%/+0.458% is incidental,
+not a decode-kernel win. Measured span28m19s excludes loading/initial
+warmup. Production binds1/strict0; K640/rows>=512 and map-ready guards stay.
+The family table below predates this promotion; current default family
+refresh and a combined-default external/decode refresh remain follow-ups.
+[Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-production.json).
+
+**Q8 down register-weight admission (historical, September7 UTC):** cache five K640
 weights/thread before expert row loop,128 threads only,unchanged exact
 row4 bundled arithmetic. Actual layer4 compact/counts37.373->32.127ms
 (1.163x);layer2 mapped with explicitly borrowed layer0 counts37.228->

@@ -2,12 +2,19 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q8 down register reuse promoted at chunk1024: full12-case PP512/1024/4096
+181.424->182.969 (+0.851%)/191.973->193.319 (+0.701%)/
+177.663->178.812 (+0.647%).72 exact trajectories, all12 prefill/request
+averages improve; total request1.004743x, weakest only1.000040x.
+Max PP/TG CV1.181%/3.356%; no causal decode claim.
+[Production evidence](results/2026-09-07-framework-qwen4exp-q8-down-register-production.json).
+
 Q8 down register-weight kernel candidate:compact37.373->32.127ms,
 mapped37.228->30.808ms,40 exact pairs/both orders positive.
 18 kernel tests pass,VGPR24->32/no scratch. Default-off admission also
 passes30 CPU tests and five chunk1024 full-logit/state/KV cases exactly;
 compact/mapped engagement verified, zero decode calls/final owners.
-Whole-model throughput A/B pending; no production change.
+Historical admission; subsequent production result above supersedes pending A/B.
 [State evidence](results/2026-09-07-framework-qwen4exp-q8-down-register-state.json).
 [Evidence](results/2026-09-07-framework-qwen4exp-q8-down-register.json).
 
