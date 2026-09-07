@@ -2,15 +2,21 @@
 
 Last updated: **2026-09-07 UTC**
 
-Q8 paired-load gate admission:five chunk1024 full-logit/state/full-KV
+Q8 paired-load candidate rejected and removed:full12-case PP
++0.433%/+1.664%/+1.865%, but one prefill/nine request cases regress;
+p4096 TG -14.822%,total request0.975227x.72 trajectories exact.
+Production unchanged; decode slowdown cause unproven.
+[Evidence](results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json).
+
+Historical Q8 paired-load gate admission:five chunk1024 full-logit/state/full-KV
 cases exact,36/144 prefill calls,zero decode calls/final owners.
-Both profile binders0; throughput A/B pending, no production change.
+Subsequent throughput rejection above supersedes this admission.
 [State evidence](results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json).
 
-Exact Q8 paired-load kernel candidate, actual layer0/4 gates at1024 rows:
+Historical exact Q8 paired-load kernel candidate, layer0/4 gates at1024 rows:
 10.909->7.992ms /10.893->7.998ms; independent layer20 pressure screen
 11.078->8.096ms. All180 pairs exact, VGPR72->80/no scratch.
-K640 shared-down loses and is excluded; full-model throughput gate pending.
+K640 shared-down loses; subsequent model gate rejects the candidate.
 [Evidence](results/2026-09-07-framework-qwen4exp-q8-prefetch2.json).
 
 Post-Q8-register chunk1024 family refresh at cleancc3d48a70:

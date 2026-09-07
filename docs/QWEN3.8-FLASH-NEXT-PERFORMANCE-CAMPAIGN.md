@@ -76,7 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Q8 gate paired-load admission (September7 UTC):** default-off route
+**Q8 paired loads rejected/removed (September7 UTC):** clean067a9bcc0
+full12-case chunk1024 A/B preserves72 exact trajectories, but code-p512
+prefill regresses1.052% and nine request-wall cases regress.
+Aggregate PP512/1024/4096 +0.433%/+1.664%/+1.865%; TG
+-1.068%/-2.207%/-14.822%. Total request speedup0.975227x.
+Max within-case PP CV3.200%,TG CV9.709%; all samples retained.
+Measured span29m02s excludes loading/initial warmup. Decode slowdown is
+observed, not diagnosed as thermal or a decode dispatch change.
+Remove candidate kernel/key/selector/flags/harness routes/tests; production
+wave-scale stays. Earlier kernel and state records below are historical.
+Do not rerun unchanged for a favorable verdict; reconsider only with a
+specific causal finding or materially different implementation.
+[Rejected evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json).
+
+**Historical Q8 gate paired-load admission (September7 UTC):** default-off route
 K2560/N6144,rows>=64,existing wave-scale parent only. Full chunk1024
 five-case off/on/off gate passes exact prefill/four decode logits,
 state/full KV; p512 calls0/36/0,p4096 calls0/144/0,zero decode calls
@@ -84,7 +98,7 @@ and final tracked owners. Both profile binders remain0. Shared-down
 and GR are untouched. Clean canonical12-case throughput A/B is next.
 [State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json).
 
-**Q8 gate paired-load kernel candidate (September7 UTC):** pipeline two
+**Historical Q8 gate paired-load kernel candidate (September7 UTC):** pipeline two
 K-lane weight/activation loads before consuming them, preserving exact
 FMA order and the current coltile8/rowbatch4 reduction. Actual layer0/4
 K2560/N6144 at1024 rows10.909->7.992ms /10.893->7.998ms (1.365x/1.362x);

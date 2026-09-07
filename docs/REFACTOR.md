@@ -1,17 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp Q8 coltile paired-load candidate
+## Qwen4Exp Q8 coltile paired-load candidate: removed
 
-- Default-off `HIPENGINE_QWEN4_EXP_Q8_GATE_PREFETCH2=1` selects
-  `coltile8_rowbatch4_prefetch2_f32_f32_out` through a context-local raw
-  variant; pipelines two K-lane steps, preserves exact FMA/reduction order.
-- Actual K2560/N6144 gates improve; K640 shared-down loses and must not
-  be admitted. Route requires K2560/N6144, rows>=64, existing wave-scale
-  parent and registered candidate. Both profile binders remain0.
-- Five chunk1024 full-logit/state/KV cases pass,36/144 prefill calls,
-  zero decode calls/final owners. Require canonical A/B before promotion.
-  Remove candidate if model gate rejects it; do not widen to GR without
-  operation-complete GR evidence.
+- Full12-case A/B retains72 exact trajectories but one prefill/nine
+  request cases regress; aggregate p4096 decode -14.822%.
+- Kernel/key/selector/flag/harness routes and candidate-only tests removed.
+  Existing wave-scale production stays. Reproduce at067a9bcc0; no unchanged
+  favorable rerun. Decode slowdown cause remains unproven, not labeled thermal.
 
 ## Qwen4Exp Q8 down register-weight production
 

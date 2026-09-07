@@ -788,19 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q8 exact coltile exposes default-off
-`coltile8_rowbatch4_prefetch2_f32_f32_out`: two-step weight/activation
-load pipelining, unchanged K/FMA/publication ownership. Actual K2560/N6144
-gate weights at1024 rows improve10.909->7.992ms and10.893->7.998ms;
-independent layer20 with64MiB fill11.078->8.096ms. All pairs exact,
-both orders positive. VGPR72->80,LDS512B/scratch0. K640 shared-down
-loses and is excluded from admission. No default/GR change.
-`HIPENGINE_QWEN4_EXP_Q8_GATE_PREFETCH2=1` selects only the existing
-wave-scale parent at rows>=64/K2560/N6144. Five chunk1024 full model
-logit/state/KV cases exact;36/144 prefill calls, zero decode calls.
-Both profile binders0 pending canonical throughput A/B.
-Evidence: `2026-09-07-framework-qwen4exp-q8-prefetch2.json`.
-Admission: `2026-09-07-framework-qwen4exp-q8-prefetch2-state.json`.
+Q8 coltile paired-load candidate is removed after full12-case model A/B:
+one prefill/nine request cases regress, aggregate p4096 decode -14.822%,
+despite72 exact trajectories and kernel-only gate wins. Wave-scale
+production stays. Kernel/state evidence at e23029b4c/067a9bcc0 is historical;
+no candidate registry key or runtime route remains.
+Evidence: `2026-09-07-framework-qwen4exp-q8-prefetch2-rejected.json`.
 
 Q8 down promotes `selected_grouped_row4_register_gemv_bf16_bf16_out`,
 restricted to K640/128 threads. Five decoded weights/thread are reused
