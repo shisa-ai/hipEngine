@@ -1214,7 +1214,7 @@ math or performance result is claimed here. U2+ and published dense UD execution
 are not implemented; the pinned 18 K_M / 41 K_S planner-refusal inventories
 remain the expected default result.
 
-#### F1 execution closure and native-entry consumption — pending review
+#### F1 native load dependencies — implemented; runtime authorization simplified
 
 `loading/qwen35_gguf_execution.py` declares the full native weight-consuming
 route, using the accepted linear/embedding/auxiliary and selected-call owners.
@@ -1229,18 +1229,13 @@ Default `("eager",)` preserves the separate existing c1/row-local/prefill scope.
 A later native request on eager-only residents refuses, rather than replanning
 after allocation.
 
-Before payload reads or device allocation, the loader qualifies every intended
-call and records its certificate. Publication also snapshots the actual resident
-views/aliases. This snapshot is not independent authority: native entries must
-consume the complete F4 certificate, rebind actual existing specs and caller
-operands without invoking the planner, and verify backend, qualified artifact
-identity, geometry, row domain, ordered selected partners and state storage.
-`step_rows_native`, `capture_native_rows_graph`, direct enqueue/native-layer
-entries and graph replay refuse missing, partial or stale contracts. Session
-entry checks occur before position publication, scratch preparation or device
-calls. Scratch extents, state non-overlap, row capacity and captured physical
-owners are binding. Graph replay cannot change rows, span role, context bound,
-resident contract or physical ownership behind a cached certificate.
+Before payload reads or device allocation, the loader checks the intended
+calls. Session construction also checks shared residents against the full native
+load contract. This check is not repeated during inference. Native entry points
+check the construction-time route choice, row bounds and unsupported adapters;
+graphs also check closed owners, token IDs and their context bound. Private
+resident pointers, scratch views and captured geometry are session-owned and
+must not be replaced while live. Reconfiguration requires a new session.
 
 Unsupported combinations stay explicit: dense-BF16 multirow embedding (the
 registered leaf is singleton-only), native dense-F32 head with BF16 scratch,
@@ -1261,7 +1256,14 @@ by the affected CPU bundle. F5's integrated LLM profile-binder hole remains
 math, environment flag or numerical default. Exact validation and scope limits
 are recorded in the `ud-u1-f1-execution` worklog entry.
 
-#### F1 physical-operand review correction — pending review
+#### F1 physical-operand authorization experiment — historical, removed
+
+The following records the experiment in `6fb94aae9`, not the current runtime.
+Direct cleanup removed its pointer inventories, index receipts, invocation
+contexts and repeated full-model authorization. The experiment tested arbitrary
+private-field mutation as though it were a supported reconfiguration API.
+Construction-time compatibility checks and existing buffer lifetime rules are
+the boundary used for UD bring-up. No GPU speed claim follows from this removal.
 
 Review of `1b3ee1417` accepted the load dependency closure but found two HIGH
 physical-binding gaps: sampler output replacement and named KV/position/rotary
@@ -1269,7 +1271,7 @@ view replacement could evade the graph key, and direct native layer methods
 did not validate their supplied hidden/output/index pointers. The earlier
 physical-ownership claim was therefore incomplete.
 
-`loading/qwen35_gguf_native_operands.py` now owns `NativeRowsOperands`, the
+The experiment's `loading/qwen35_gguf_native_operands.py` owned `NativeRowsOperands`, the
 actual native launch **and host-readback** plan: token IDs, BF16 ping-pong
 hidden rows, logits, segmented-index inputs, sampler block values/indices,
 sampler output IDs/values, and the persistent host token destination. Native
@@ -1296,8 +1298,8 @@ compact views and all sampler/readback operands, before H2D, position publicatio
 or graph launch. Missing legacy contexts fail closed. CPU tests exercise both
 real layer entries, real enqueue forwarding, legal prefix views, changed named
 operands with unchanged owning lists, and changing contents with stable owners.
-F1 still awaits independent review; F5 remains **OPEN**. No GPU, kernel, math,
-profile, default-route, or U2 work is included in this correction.
+That correction did not include GPU, kernel, math, profile, default-route or
+U2 work. Its mutation-defense tests are historical, not current acceptance gates.
 
 #### F5 named-profile authorization experiment — historical, removed
 

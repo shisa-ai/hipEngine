@@ -213,11 +213,10 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
     dtypes[scratch.layer_recurrent_states[0].ptr] = "f32"
     dtypes[owner_session._native_cu_seqlens_buf.ptr] = "i32"
     dtypes[owner_session._native_state_indices_buf.ptr] = "i64"
-    context = owner_session._native_invocation_context(2, scratch)
     result = runner.Qwen35GGUFFullStackRunner._run_linear_attention_decode_rows_native(
         session, 0, owner_session._hidden_a.ptr, owner_session._hidden_b.ptr, scratch, rows=2,
         cu_seqlens_ptr=owner_session._native_cu_seqlens_buf.ptr,
-        state_indices_ptr=owner_session._native_state_indices_buf.ptr, invocation_context=context)
+        state_indices_ptr=owner_session._native_state_indices_buf.ptr)
     assert result == "indexed_conv_gdn"
     assert calls == ["indexed_conv", "segmented_gdn", "cast"]
     ssm_norm = next(item for item in report.plan_contract.invocations if item.slot.endswith("ssm_norm"))

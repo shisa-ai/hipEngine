@@ -29,24 +29,22 @@ should be removed or collapsed.
   uses a fresh process without a named profile. If multiple model/profile owners
   must coexist, replace the needed settings with explicit owner fields at their
   actual consumers; do not wrap every method in implicit profile context.
-- Next: simplify reusable admission certificates and native physical-operand
-  authorization. Keep loader shape/dtype checks and shared dispatch contracts.
-  Prefer stable graph-owned buffers and explicit invalidation to rescanning the
-  model and scratch allocation graph on every decode/replay.
+- Removed per-call native physical-operand authorization and recursive scans.
+  Native routes qualify at construction and use session-owned fixed allocations.
+  Private pointer/geometry mutation is not a supported reconfiguration API.
+  Closed-owner, row, token and context bounds remain runtime checks.
+- Next: simplify reusable admission certificates. Keep loader shape/dtype checks
+  and shared dispatch contracts; do not replace them with a second framework.
 
 ## 2026-09-07 GGUF native execution authorization — bounded cleanup
 
-- F1 native session entries, enqueue and standalone native-layer entries all
-  consume the complete F4 contract. Direct-layer guards deliberately repeat
-  whole-model metadata checks so bypass calls cannot borrow session authority.
-  The physical-operand correction now supplies an owner-issued
-  `NativeInvocationContext`, including actual input/output/index pointers and
-  all named scratch/sampler/readback views. It deliberately revalidates live
-  ownership rather than treating the receipt as an unkeyed cache. Removal
-  trigger for redundant scans: proven stable owner lifetime across the entry,
-  with direct-bypass, named-view replacement and stale graph regressions
-  preserved. No scan/cache optimization is claimed by the correctness repair.
-  No timing claim or new environment flag accompanies this correctness unit.
+- The experimental `NativeInvocationContext`, index-publication receipts and
+  recursive physical inventories are removed. They defended against arbitrary
+  private-field mutation rather than a supported caller. Construction-time
+  resident checks and shared kernel ABI descriptions stay. Do not restore
+  per-layer full-model validation; add narrow invalidation at an actual public
+  reconfiguration API if one is introduced. No GPU timing claim accompanies
+  this host-only cleanup.
 - `qwen35_gguf_native_row_binding_errors` is now a legacy alpha/beta diagnostic,
   not the execution guard. Remove its export when diagnostic callers/tests
   migrate to full execution-contract reports; never restore it as authority.
