@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+CPU-active transition workaround rejected:100ms activity reduces
+decode-only8.948->8.861s,but charged total is8.961s and request
+29.922->29.939s. Exact state;no production warm-up or policy change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-active-transition.json).
+
 QSA CPU-floor diagnostic:policy17 minimum2->4GHz accepted but early
 decode1.169/1.589s and~1.5GHz/~600MHz feedback persist. Original
 minimum/affinity restored;no production policy change.

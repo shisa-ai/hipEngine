@@ -39,3 +39,16 @@ def test_wait_runtime_identity_records_env_without_claiming_activation(monkeypat
     assert result["environment"]["HSA_ENABLE_MWAITX"]=="1"
     assert result["libraries"]=={}
     assert "not wait-path engagement proof" in result["caveat"]
+
+
+def test_active_transition_charges_elapsed():
+    from scripts.qwen4exp_qsa_decode_flag_probe import active_transition
+    ticks=iter([10,10.03,10.06,10.11])
+    assert active_transition(100,lambda:next(ticks))==pytest.approx(.11)
+
+
+@pytest.mark.parametrize("value",[-1,501,float("nan"),float("inf")])
+def test_active_transition_rejects_invalid(value):
+    from scripts.qwen4exp_qsa_decode_flag_probe import active_transition
+    with pytest.raises(ValueError):
+        active_transition(value)
