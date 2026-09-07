@@ -302,16 +302,68 @@ def reference(args) -> None:
         llm.close()
 
 
+def compare_captures(directories: list[Path]) -> dict[str, Any]:
+    """Compare complete independent captures, checking arrays rather than hashes alone.
+
+    Distinct directories prevent accidental self-comparison, but process independence
+    still requires the recorded capture commands. This checks only captured surfaces.
+    """
+    paths = [Path(p).resolve() for p in directories]
+    if len(paths) < 3 or len(set(paths)) != len(paths):
+        raise ValueError("at least three distinct capture directories are required")
+    payloads = [json.loads((p / "capture.json").read_text()) for p in paths]
+    if any(not p.get("complete") or not p.get("records") for p in payloads):
+        raise ValueError("refusing partial/empty repeat captures")
+    records = payloads[0]["records"]
+    if any(len(p["records"]) != len(records) for p in payloads):
+        raise ValueError("repeat cycle counts differ")
+    rows = 0
+    for index, record in enumerate(records):
+        baseline = None
+        for path, payload in zip(paths, payloads):
+            other = payload["records"][index]
+            with np.load(path / other["logits_file"], allow_pickle=False) as raw:
+                values = raw["logits"]
+            if (values.ndim != 2 or values.shape[0] != other["logical_rows"]
+                    or values.shape[0] <= 0 or values.shape[1] <= 0
+                    or values.dtype != np.float32 or not np.isfinite(values).all()):
+                raise ValueError("invalid repeat full-logit array")
+            data = values.tobytes()
+            if hashlib.sha256(data).hexdigest() != other["logits_sha256"]:
+                raise ValueError("repeat logits digest mismatch")
+            if baseline is None:
+                baseline = (values.shape, data)
+            elif (values.shape, data) != baseline:
+                raise ValueError("repeat full-logit bytes differ")
+            if other != record:
+                raise ValueError("repeat capture metadata differs")
+        rows += record["logical_rows"]
+    return {
+        "runs": len(paths), "cycles_per_run": len(records), "active_rows_per_run": rows,
+        "prompts": len({r["prompt_id"] for r in records}), "metadata_exact": True,
+        "full_logit_bytes_exact": True, "finite": True, "digests_verified": True,
+        "full_profile_qualification": False, "directories": [str(p) for p in paths],
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=("capture", "reference"))
+    parser.add_argument("mode", choices=("capture", "reference", "compare"))
     parser.add_argument("--model", type=Path, default=Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"))
     parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--repeat-directory", type=Path, action="append", default=[],
+                        help="Additional independent capture; repeat for each run in compare mode")
     parser.add_argument("--capacity", type=int, choices=(1, 2, 8), default=1)
     parser.add_argument("--budget", type=int, choices=range(1, 8), default=3)
     parser.add_argument("--output", type=Path, default=Path("/tmp/packed-c1-conditional-numerics.json"))
     args = parser.parse_args()
-    (capture if args.mode == "capture" else reference)(args)
+    if args.mode == "compare":
+        result = compare_captures([args.directory, *args.repeat_directory])
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result, indent=2))
+    else:
+        (capture if args.mode == "capture" else reference)(args)
 
 
 if __name__ == "__main__":
