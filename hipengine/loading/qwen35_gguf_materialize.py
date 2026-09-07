@@ -1444,7 +1444,7 @@ def _spec_for_tensor(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q5_k",
-            layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
+            layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
@@ -1533,7 +1533,7 @@ def _spec_for_tensor(
             slot_path=slot_path,
             source=tensor,
             quant_key="gguf_q6_k",
-            layout=LAYOUT_RAW_GGUF if len(tensor.shape) != 2 else LAYOUT_DENSE_BF16,
+            layout=LAYOUT_RAW_GGUF,
             allocation_names=("raw",),
             sidecar_layouts=_sidecar_layouts_for_tensor(slot_path, tensor),
         )
