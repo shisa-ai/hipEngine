@@ -2,6 +2,16 @@
 
 Last updated: **2026-09-07 UTC**
 
+Exact iu8-risk+repair MoE gate/up PROMOTED on Framework gfx1151:
+clean full12-case chunk1024 A/B preserves all 72 trajectories exactly and
+improves every prefill case; PP512/1024/4096 +7.602%/+8.842%/+8.361%,
+per-case prefill +7.54% to +9.06%, total request 0.95674x. Production binds
+HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT=1 (strict 0), risk multiplier default 4.
+[Production](results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json)
+[State](results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json)
+[Screen](results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json)
+[Flip probe](results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json).
+
 Exact iu8-risk+repair MoE gate/up admitted default-off on Framework gfx1151:
 five-case off/on/off state gate at chunk1024 is bit-identical to the
 production pair2 route (full logits, decode steps, state, full KV);

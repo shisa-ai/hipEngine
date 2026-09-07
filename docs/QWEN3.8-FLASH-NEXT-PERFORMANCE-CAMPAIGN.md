@@ -76,27 +76,39 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
-**Exact iu8-risk+repair MoE gate/up admitted default-off (September7 UTC):**
-the early-layer exact grouped pair2 owner (3.397 s of code-p4096 device
-time) now has a bit-exact fast replacement: the production iu8-WMMA
-kernel (layers 35-47 owner) extended with a Kahan-compensation error
-probe, per-output BF16-boundary risk collection, and a sparse exact repair
-that reproduces the pair2 arithmetic and reduction tree. Actual-weight
-screens: 32 cases across layers 0/3/10/26, uniform/skewed routing, 512/
-1024-row chunks, multipliers 1-8 are all bit-identical to pair2 with
+**Exact iu8-risk+repair MoE gate/up promoted (September7 UTC):** clean
+73dc4acf2 full12-case chunk1024 A/B preserves all72 trajectories exactly
+and improves every prefill case: PP512/1024/4096 aggregate
+190.604/203.122/193.437 -> 205.093/221.083/209.609 tok/s
+(+7.602%/+8.842%/+8.361%); per-case prefill +7.54% to +9.06%. Decode
+aggregate -0.016%/+0.082%/+0.324% is incidental (worst case -0.604%
+Japanese p4096); total request wall 629.839 -> 602.595 s
+(0.95674x). Max within-case PP CV 1.048%/1.092%. Production binds
+HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT=1 (strict0) with multiplier default4;
+the strict fallback chain (pair2 -> expertgrid64) is unchanged. This
+replaces the early-layer exact grouped pair2 owner (3.397s of code-p4096
+device time) with a bit-identical chain: iu8-WMMA + Kahan-risk collection
++ sparse pair2-exact repair, projected ~1.5s off the p4096 FFN owner.
+[Production evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json)
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json)
+[Kernel screen](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json)
+[Flip probe](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json).
+
+**Earlier admission (default-off, September7 UTC):** the production
+iu8-WMMA kernel (layers 35-47 owner) extended with a Kahan-compensation
+error probe, per-output BF16-boundary risk collection, and a sparse exact
+repair that reproduces the pair2 arithmetic and reduction tree. Actual-
+weight screens: 32 cases across layers 0/3/10/26, uniform/skewed routing,
+512/1024-row chunks, multipliers 1-8 are all bit-identical to pair2 with
 1.50-2.00x operation-complete speedups; the multiplier floor is between
 0.5 and 1 (below it flips escape), so the default multiplier is 4 (>=4x
 margin, 1.50-1.82x). Full five-case off/on/off state gate at chunk1024
 passes with bit-identical full logits, four decode steps, state and full
 KV; engagement 26/104 calls at p512/p4096, zero decode, zero final
-allocations. Route `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT` default off;
-canonical 12-case A/B pending. This is the exact-trajectory route around
-the T2 KL blocks that stopped f16-WMMA/iu8 scope extension at layers
-27/35: no production-numerics packet is required because the output is
-bit-identical to the incumbent.
-[Kernel screen](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-screen.json)
-[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json)
-[Flip probe](../benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-flip-probe.json).
+allocations. This is the exact-trajectory route around the T2 KL blocks
+that stopped f16-WMMA/iu8 scope extension at layers 27/35: no
+production-numerics packet is required because the output is bit-identical
+to the incumbent.
 
 **Expanded F32 Q8 cache rejected (September7 UTC):** exact host
 dequantization plus resident F32 weights keeps the same coltile8/row4

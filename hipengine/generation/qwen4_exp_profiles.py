@@ -308,10 +308,10 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up",
-            "selected_dual_grouped_pair2_bf16_bf16_out",
+            "selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
             "selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out",
             "gguf_q4_k",
-            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-q4-pair-production.json",
+            evidence="benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json",
         ),
         _selection(
             "qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16",
@@ -477,6 +477,9 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_BUNDLE_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q4_PAIR_PREFILL": "1" if production else "0",
+        # Exact iu8-risk+repair gate/up: bit-identical to the pair2 owner
+        # (state gate + 72 exact trajectories); production-only binding.
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GR_WAVE_SCALE": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_Q8_MMQ_PREPACK": "1" if production else "0",
