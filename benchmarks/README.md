@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-06**
+Last updated: **2026-09-07**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -18,7 +18,7 @@ speculative decoding, which is enabled only where it is qualified for that
 model and shape. Rows use different models and protocols — compare within a
 row, not across them.
 
-### At a glance — one request
+### Performance
 
 #### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
@@ -46,21 +46,12 @@ row, not across them.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
-Blank cells are shapes we have not measured yet, not failures. Max context is
-published only where a dedicated ceiling run exists.
-
-- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` is tight.** Measured on a physical
-  RX 7900 XTX: one request starts and completes at **3,072 context tokens** and
-  fails to start at 4,096, on BF16 and INT8 alike; at 512-token prompts the same
-  budget allows four to five concurrent requests. **INT8 KV saves no memory
-  today** -- identical peaks to BF16 and the same failure point. Why the
-  footprint grows as steeply as it does is under investigation.
-
 ### Serving several requests at once
 
-This is where hipEngine pulls furthest ahead. Aggregate tokens per second
-across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900 under one server
-protocol; the peers use F16 KV where hipEngine uses BF16.
+hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).
+Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
+on the W7900 under one server protocol; the peers use F16 KV where hipEngine
+uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -78,7 +69,7 @@ generated tokens per request, showing what each added request costs in memory:
 | Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
 
 Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
-larger card; a 24 GB card runs the same model comfortably at one or two.
+larger card. What the same model tolerates on a 24 GB card is not qualified yet.
 
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
@@ -89,46 +80,31 @@ two concurrent requests on the W7900.
 
 ## Current default notes
 
-W7900 automatic MTP is deliberately narrow. Qwen3.6 enables only its qualified
-C1 and resident-capacity-2 C2 keys; all other scopes use K0. Qwen3.8 retains
-production/BF16 C2/K3 (selected over C2/K2 by the 2026-09-06 depth grid) at
-resident capacity 2, context 4-95, and D24. Every
-other scope miss remains K0. Evidence links are in the model sections below.
+W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
+capacity-2/two-request keys. **Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
+at every width.** Explicit MTP is available with production/BF16 KV, context
+4-95 and 24 generated tokens: one active request at resident capacity 8 with
+K2/K3, two at capacity 2 with K2/K3, or eight at capacity 8 with K3. K denotes
+maximum draft candidates per request; other keys fall back to AR.
 
-**Qwen3.8-27B `Q4_K_M` no longer uses automatic speculative decoding on this
-backend.** A full depth sweep on 2026-09-06 measured 20 cells across C2-C8 and
-K1-K3, each against an AR arm in the same process: every multi-request cell ran
-below its own AR, the closest being C8/K3 at 0.9902x. Both Qwen3.8 rows are
-therefore no longer automatic and the route selects AR at every width;
-explicit opt-in still works. Earlier published C2/K2 and C8/K3 speedups are
-withdrawn ([artifact](results/2026-09-06-gfx1100-qwen38-mtp-ck-matrix.json)).
+The 2026-09-06 server-protocol snapshots on physical host `epyc`/W7900 use the
+complete ten-prompt category/heldout suite, greedy sampling, a 20 ms batch
+window, and a true AR arm in the same process. All rows are token-exact and
+physically engaged on 10/10 prompts. These are individual suite runs, not
+three-pair confidence estimates or a serving-latency qualification.
 
-Explicit single-request (C1) speculative decoding is qualified on this
-backend through the packed physical route: **C1/K3 reaches 40.460 tok/s vs
-24.440 AR (1.6552x) and C1/K2 reaches 39.040 vs 24.300 (1.6068x)** on the
-canonical 10-prompt suite, all cells token-exact against their own AR arm.
-These cells are explicit opt-in only (automatic stays K0) and scoped to
-resident capacity 8, context 4-95, D24 greedy.
-([artifact](results/2026-09-06-w7900-q4km-mtp-attention-v-band-retained.json)).
+| Active requests / resident capacity | Requested depth | AR tok/s | MTP tok/s | MTP / AR |
+| --- | --- | ---: | ---: | ---: |
+| 1 / 8 | K3 | 24.44 | 40.40 | 1.653x |
+| 2 / 2 | K2 | 42.20 | 42.41 | 1.005x |
+| 8 / 8 | K3 | 92.67 | 97.35 | 1.051x |
 
-The explicit C2/K2 and C8/K3 product cells are re-qualified above parity
-(**C2/K2 1.0400x, C8/K3 1.0522x**, both 10/10 token-exact) and the diagnostic
-C5/K3, C2/K1, and C7/K3 screens run at 0.8565x, 0.7991x, and 0.9407x of their
-own AR arms. The gains come from moving the staged verify-frontier FFN-down
-(rows 4-128) and full-attention V (rows 4-128) projections onto bit-exact
-cooperative siblings that are 1.22-2.64x faster than the one-wave owners they
-replace; every screened row on both shapes was bit-exact before landing.
-([artifact](results/2026-09-06-w7900-q4km-mtp-attention-v-band-retained.json)).
-
-A 2026-09-06 depth grid over all 56 K1-K7 x C1-C8 cells (canonical 10-prompt
-suite, AR arm in the same process, every cell token-exact and budget-conformed)
-selects K3 at every width where MTP is retained: C1 1.665x, C2 1.069x, C8
-1.067x diagnostic; widths 3-7 measure below AR at every depth and stay
-diagnostic-only. The C2 selection re-qualified on the retained protocol in the
-same session block: **C2/K3 1.067x (44.69 tok/s) vs C2/K2 1.005x (42.41 tok/s)**,
-10/10 token-exact each, so the C2 product cell selects K3 (K2 stays admissible
-for explicit opt-in). Automatic scope remains K0 at every width.
-([artifact](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json)).
+A separate C2/K3 qualification run measured 44.69 versus 41.87 AR tok/s
+(1.067x); that key is now available by explicit request. The 56-cell depth
+screen is diagnostic, mixes resident capacities, and does not establish
+N=1 support. Automatic promotion awaits repeated performance, numerical and
+service-lifecycle gates. See the [measurements and exact commands](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json)
+and [remaining qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -203,6 +179,14 @@ Aggregate prefill drops from c1 to c2 and then stays flat because one request
 prefills its 512 rows in a single slab while wider groups split into slot-fair
 bounded rounds against the 256-row prefill scratch. Tracked peak grows about
 0.85 GiB per added request, so the c8 shape does not fit a 24 GB card.
+No long-context setting is qualified for a 24 GB RX 7900 XTX. The 2026-09-06
+startup probe served one request at 3,072 context tokens and failed to start at
+4,096, with no measured BF16-versus-INT8 difference, but it sampled memory
+outside the prefill and decode peaks and never checked the live context length,
+so those points are not a published ceiling. Rerun condition: a repaired
+[`gguf_context_ceiling_probe.py`](../scripts/gguf_context_ceiling_probe.py)
+([`capacity notes`](../docs/QWEN38-27B-GFX1100-24GB-CAPACITY.md),
+[`probe artifact`](results/2026-09-06-rx7900xtx-qwen38-c1-context-ceiling.json)).
 Evidence: [`direct c1-c8 sweep`](results/2026-09-06-gfx1100-qwen38-q4km-direct-c1c8-sweep.json).
 
 ### Agentic quality (quality-only; no speed claim)
@@ -473,7 +457,8 @@ CUDA resident batching and serving are not claimed by these c1 rows.
 
 Workloads use `prompt_tokens/decode_tokens`. Compare only matching timing,
 model/quant/KV, concurrency, and memory scopes; bold identifies the reported
-row, not a universal leader.
+row, not a universal leader. A blank cell is a shape not yet measured, not a
+failure, and Max context is published only where a dedicated ceiling run exists.
 
 ## Maintenance contract
 

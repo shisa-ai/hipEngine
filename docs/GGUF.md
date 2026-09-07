@@ -78,6 +78,27 @@ The intake implementation is now past scanner/GEMV bring-up for the local Q4_K_M
 
 Do not treat this document as a performance claim. It is an implementation plan. Any hipENGINE GGUF speedup must be measured in hipENGINE after the accelerated runtime pieces land.
 
+## Mixed-format (Unsloth Dynamic) files
+
+A "UD-" GGUF assigns a different quantization format to each weight tensor, so one
+file names many formats at once. Whether such a file loads is decided by whether
+its format mix happens to sit inside what the route implements, not by the format
+family named in its filename. The Qwen3.8-27B `UD-Q4_K_S` artifact refuses 41
+AR tensors and `UD-Q4_K_M` refuses 18; the plain `Q4_K_M` control refuses none.
+This is not a universal dense-UD prohibition: the earlier dense 0.8B
+UD-Q4_K_XL route uses supported types and bounded fallback coverage.
+
+Supporting these 27B files requires operation-complete dense consumers,
+role-aware admission, and missing IQ3_S/IQ2_S decoding. Several raw Q5/Q6 and
+selected-IQ kernels already exist. Metadata-only accounting of a hypothetical
+BF16 fallback for all refused AR tensors gives 42.620 GiB for K_S and
+39.726 GiB for K_M, before runtime allocations; these are not measured resident
+peaks or hardware-fit verdicts. See [`UD-QUANTS.md`](UD-QUANTS.md) for the
+verified claim audit, upstream review and staged campaign, and
+[`UD-QUANTS-REPRO.md`](UD-QUANTS-REPRO.md) for reproducible accounting.
+The original [`gguf_quant_route_audit.py`](../scripts/gguf_quant_route_audit.py)
+still has documented slot/policy/accounting limitations pending campaign U0.
+
 ## GGUF Q8 / INT8 KV cache status
 
 Last updated: 2026-08-13. Evidence artifacts:
