@@ -24,6 +24,12 @@ Status (2026-09-07 review): partial implementation ready for integration;
   packed-target calls and the legacy constructor forbidden. N=8 has the prior
   review diagnostic. No public evidence is added. See the
   [capacity diagnostic](../benchmarks/results/2026-09-07-w7900-native-n1-packed-c1-diagnostic.json).
+- C1 K1/K2 now pass the ten-prompt exact/engagement diagnostic at N=1/2/8
+  (115/83 packed calls per run). An actual-route N1/K3 conditional-logit
+  diagnostic also passes: 267 rows, 100% top-1 versus independent strict AR,
+  mean/max KL 4.56e-5/0.00160. It uses candidate trajectories, not the required
+  strict-teacher schedule or full state/task gate. See the
+  [depth and logit diagnostic](../benchmarks/results/2026-09-07-w7900-packed-c1-depth-and-logits-diagnostic.json).
 - Still required: slot/transition qualification and missing fixed-N=8 controls;
   packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
   latency/queueing gates; sustained horizons/contexts; three balanced pairs
