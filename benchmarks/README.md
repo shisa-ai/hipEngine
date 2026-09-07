@@ -132,14 +132,14 @@ or supply repeated-pair confidence estimates.
 
 A separate explicit C2/K3 run measured 44.69 versus 41.87 AR tok/s (1.067x).
 The 56-cell screen mixes capacities and does not establish N=1 support by
-itself. Single-request (C1) explicit MTP currently routes through the legacy
-singleton target verifier: the repaired packed target passes its diagnostic
-with the legacy constructor forbidden, but the serving evidence that would
-select the packed route on the product path is not registered, so the rates
-below describe the legacy route until re-registration. Deeper single-request
-depths (K4-K7) refuse before mutation: every retained evidence row for this
-model qualifies at most K3, so a requested K4-K7 falls back to AR by design.
-[Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
+itself. The single-request (C1) explicit route engages the legacy singleton
+target verifier today: the backend physical policy admits packed C1 only at
+K2/K3, and the measured packed route is far slower than the legacy route
+(below), so the legacy route remains the only viable single-request path and
+its rates are what a single-request user gets. Deeper single-request depths
+(K1, K4-K7) refuse before mutation on both routes: the physical policy lists
+no packed cell for them and every retained evidence row qualifies at most
+K3. [Measurements](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json);
 [qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
 
 **Single-request (C1) explicit MTP, legacy target route.** Three independent
@@ -155,9 +155,31 @@ token-exact gate against the AR output. Automatic selection stays AR.
 | K3 (legacy route) | 24.36 | 39.70 | 1.6329x [1.6296, 1.6334] |
 
 The K1 screening cell measured 1.3916x on the same legacy route
-([1.3911, 1.3928]). These rates do not describe the packed target route,
-whose serving evidence is not registered; a K7 refusal probe confirms a
-requested K7 runs AR (engaged 0/10).
+([1.3911, 1.3928]). These rates do not describe the packed target route
+(measured below); a K7 refusal probe confirms a requested K7 runs AR
+(engaged 0/10).
+
+**Single-request (C1) packed target route — measured, not viable.** Under the
+fail-closed diagnostic harness (injected one-request `packed_c1_target`
+evidence row, legacy verifier forbidden process-wide, packed frontier calls
+counted per run), the repaired packed target is exact but carries heavy
+per-cycle overhead at one active request: three balanced pairs per depth
+measured **K2 0.9908x** [0.9872, 0.9922] (a net loss against AR) and **K3
+1.1140x** [1.1120, 1.1174] against the same-run K0 control 0.9986x — versus
+1.5844x/1.6329x on the legacy route. The backend physical policy admits
+packed C1 only at K2/K3; K1 and K4-K7 have no packed cell. The packed
+single-request route also survives K0↔MTP switching: a 40-leg sequence
+(alternating explicit-MTP and automatic-K0 requests on one resident owner,
+both switch directions, 130 packed frontier calls, legacy verifier never
+invoked) kept every leg token-exact, engaged only the MTP legs, and exited
+cleanly
+([economics](results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json),
+[switch proof](results/2026-09-07-w7900-packed-route-c1-k0-mtp-switch-proof.json)).
+Closing the engine after a policy-refused K1 harness request still hangs the
+shutdown command (the campaign's previously unexplained hang, reproduced);
+that repair, plus reducing the packed one-row frontier overhead, gates any
+packed-route product registration. Until then the legacy route is the only
+measured single-request MTP path.
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.
 
@@ -185,10 +207,9 @@ standardized complete-wall server protocol.
 
 The C1 column of the K3 table and the single-request legacy-route
 re-measurement (three balanced pairs: K3 39.70 vs 24.36 AR tok/s,
-1.6329x median) both describe the legacy singleton target route; the packed
-target route is measured separately in its diagnostic harness
-([artifact](results/2026-09-07-w7900-packed-c1-k0-k3-economics.json), marked
-invalid as packed-target evidence). The C2-C8 columns are unaffected.
+1.6329x median) both describe the legacy singleton target route. The
+packed single-request target route is measured separately and is much
+slower (below); the C2-C8 columns are unaffected.
 
 **Prefill**
 
