@@ -32,7 +32,7 @@ def test_q3_embedding_rejects_invalid_args(kwargs, monkeypatch):
         dense.embedding(**args)
 
 
-@pytest.mark.parametrize('rows', (1, 2, 3, 4, 5, 7, 8, 9, 12, 16, 28, 32))
+@pytest.mark.parametrize('rows', (1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 16, 28, 32))
 @pytest.mark.parametrize('invalid_ids', (False, True))
 def test_q3_embedding_real_rows(library, rows, invalid_ids):
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import embedding
@@ -68,6 +68,54 @@ def test_q3_embedding_real_rows(library, rows, invalid_ids):
         for original, buffer in zip((ids, raw), buffers):
             actual = np.empty_like(original)
             copy_device_to_host(host_array_ptr(actual), buffer, actual.nbytes)
+            np.testing.assert_array_equal(actual, original)
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+
+def test_q3_embedding_full_vocabulary_addressing(library):
+    """Place independently decoded edge rows at their actual vocabulary IDs."""
+    from hipengine.core.memory import DeviceBuffer
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import embedding
+    entry = next(e for e in ENTRIES if e['tensor'] == 'token_embd.weight')
+    with np.load(FIXTURE / 'real_rows.npz') as fixture:
+        raw = np.ascontiguousarray(fixture[entry['key']+'_raw'])
+        weights = fixture[entry['key']+'_f32']
+    vocab, hidden = entry['shape']
+    assert entry['type'] == 'Q3_K' and entry['rows'] == [0, vocab-1]
+    ids = np.array([vocab-1, 0, vocab-1, -1, vocab, 0], dtype=np.int64)
+    host = np.full((len(ids)+2, hidden), 0x5a5a, dtype=np.uint16)
+    expected = host.copy()
+    for row, token in enumerate(ids):
+        if token in (0, vocab-1):
+            expected[row+1] = bf16(weights[int(token != 0)])
+    # Allocate the true address range without loading or duplicating a model.
+    # Only the first and last rows may be read; interior rows are not initialized.
+    buffers = []
+    try:
+        packed = malloc(vocab*raw[0].nbytes)
+        buffers.append(packed)
+        edges = []
+        for row, token in enumerate(entry['rows']):
+            view = DeviceBuffer(packed.ptr+token*raw[row].nbytes, raw[row].nbytes)
+            edges.append(view)
+            copy_host_to_device(view, host_array_ptr(raw[row]))
+        for array in (ids, host):
+            buf = malloc(array.nbytes)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(array))
+        for _ in range(3):
+            embedding(buffers[1].ptr, packed.ptr, buffers[2].ptr+host.strides[0],
+                      len(ids), hidden, vocab, library=library)
+            copy_device_to_host(host_array_ptr(host), buffers[2])
+            np.testing.assert_array_equal(host, expected)
+        copied_ids = np.empty_like(ids)
+        copy_device_to_host(host_array_ptr(copied_ids), buffers[1])
+        np.testing.assert_array_equal(copied_ids, ids)
+        for original, view in zip(raw, edges):
+            actual = np.empty_like(original)
+            copy_device_to_host(host_array_ptr(actual), view)
             np.testing.assert_array_equal(actual, original)
     finally:
         for buf in reversed(buffers):
