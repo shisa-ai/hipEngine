@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC raw-Q token64 admission] Five chunk1024 full-logit/state/KV cases exact,12/48 calls,zero decode/final owners;only raw-vector K2560/N12288 rows>=512. Both binders0,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-state.json`.
+
 - [2026-09-07 UTC raw MMQ token64] Exact128-output/64-token candidate:Q1024 layers3/7 1.109x/1.138x,200 exact screen pairs,23 tests,VGPR184->160/scratch0. Mixed short-Q/long-GR excluded;raw-Q model admission pending. `benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64.json`.
 
 - [2026-09-07 UTC combined-default baselines] HE current1024 PP190.94/201.82/186.03,TG19.79/19.34/14.93 vs Vulkan342.90/393.68/420.95,25.60/25.38/24.55;108 trajectories repeat. Prior chunk512 packet168.58/166.86/155.89 spans multiple promotions,not causal A/B. Sequential screen,variance explicit. `benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json`.

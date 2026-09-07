@@ -6,8 +6,10 @@
   token tile128->64;VGPR184->160,scratch0,exact output/repair set.
 - Large raw Q projection wins across two tensors;short Q and long-row GR
   have mixed order results. No blanket replacement or prepacked claim.
-- Admit only parent raw-vector K2560/N12288 rows>=512 after model
-  state/KV and throughput gates. Remove route if rejected; no runtime flag yet.
+- Default-off `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` admits only parent
+  raw-vector K2560/N12288 rows>=512. Five chunk1024 full-logit/state/KV
+  cases pass,12/48 calls,zero decode/final owners. Both binders0.
+- Throughput gate pending;remove route if rejected. Prepacked/GR unchanged.
 
 ## Qwen4Exp MMQ bank-first order: removed
 

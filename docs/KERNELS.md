@@ -797,6 +797,11 @@ VGPR184->160,dynamic LDS57856->48384B,scratch0. Short-Q/long-GR
 mixed order results excluded from proposed runtime scope;prepacked path
 unchanged. No production default change.
 Evidence: `2026-09-07-framework-qwen4exp-mmq-token64.json`.
+Default-off `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` model admission passes
+five chunk1024 full-logit/state/KV cases,12/48 calls,zero decode/final
+owners. Parent raw-vector K2560/N12288 rows>=512 only;prepacked unchanged.
+Both binders0 pending throughput qualification.
+Admission: `2026-09-07-framework-qwen4exp-mmq-token64-state.json`.
 
 Q8 MMQ bank-first compute experiment removed:actual qkv/Q512 medians
 1.000x/0.998x,1024 medians1.013x/1.020x but opposite-order means

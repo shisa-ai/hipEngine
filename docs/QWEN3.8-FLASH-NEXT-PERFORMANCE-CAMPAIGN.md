@@ -76,6 +76,14 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Raw-Q token64 admission (September7 UTC):** default-off
+`HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` replaces only existing raw-vector
+K2560/N12288 Q at rows>=512. Five full-logit/state/KV off/on/off cases
+at chunk1024 pass exactly;12 calls at512,48 at4096,zero decode calls
+and clean tracked teardown. Prepacked qkv,GR and short rows unchanged.
+Both binders0;full-model throughput qualification remains.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-state.json).
+
 **Raw-vector MMQ token64 candidate (September7 UTC):** distinct from
 earlier64-output/128-token GR rejection. Current candidate retains128
 outputs,halves token tile to64 with retained vector activation staging.
