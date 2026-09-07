@@ -328,6 +328,10 @@ class DMSDevicePayloadStore:
         }
         self._split_chunk = 256
         self._split_capacity = 0
+        # Last row_position uploaded into the shared staging buffer. The
+        # sixteen per-layer appends of one decode step share a single
+        # position, so the staging upload happens once per step, not per layer.
+        self._last_row_position = -1
         self._split_partial_out: DeviceBuffer | None = None
         self._split_partial_m: DeviceBuffer | None = None
         self._split_partial_l: DeviceBuffer | None = None
@@ -507,10 +511,11 @@ class DMSDevicePayloadStore:
             raise ValueError("DMS device append layer is out of range")
         if min(int(k_ptr), int(v_ptr), int(evict_ptr)) <= 0:
             raise ValueError("DMS direct device append requires non-null pointers")
-        self._upload(
-            "row_positions", np.asarray([int(row_position)], dtype=np.int32)
-        )
-        self._upload("status", np.zeros(self._heads, dtype=np.int32))
+        if int(row_position) != self._last_row_position:
+            self._upload(
+                "row_positions", np.asarray([int(row_position)], dtype=np.int32)
+            )
+            self._last_row_position = int(row_position)
         self._append_fn(
             int(k_ptr),
             int(v_ptr),
@@ -693,6 +698,10 @@ class DMSDevicePayloadStore:
         self._upload("append_k", k_new_bits)
         self._upload("append_v", v_new_bits)
         self._upload("append_evict", evict_new.astype(np.uint8))
+        # The kernel only writes ``status`` on overflow; zero it here (not in
+        # the device-direct path) so this path's tripwire read sees a clean
+        # baseline for its own append.
+        self._upload("status", np.zeros(self._heads, dtype=np.int32))
         self.configure_layer(layer, base=base, capacity=capacity, live=live)
         self.append_layer_device(
             layer,
