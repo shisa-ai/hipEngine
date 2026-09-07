@@ -18,6 +18,8 @@ import tempfile
 import numpy as np
 
 from gguf_q3km_dequant_oracle_fixture import _build_oracle
+from hipengine.loading.gguf import GGUFReader
+from hipengine.quant.gguf import GGMLQuantizationType
 
 PIN = "17252c769a63c1cb650ce98ae309cf4de0da7778"
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,10 +52,47 @@ def synthetic_blocks(name: str, size: int) -> np.ndarray:
     return raw
 
 
+def real_rows(lib: ctypes.CDLL, model_dir: Path, out: Path) -> None:
+    """Extract first/last rows after externally verifying the published hashes."""
+    pins = json.loads((ROOT / 'docs/UD-QUANTS-U0-IDENTITY.json').read_text())['files']
+    arrays, entries = {}, []
+    for pin in pins:
+        if '-UD-' not in pin['file']:
+            continue
+        reader = GGUFReader(model_dir / pin['file'])
+        for name in FORMATS:
+            tensors = [t for t in reader.info.tensors if t.ggml_type == GGMLQuantizationType[name]]
+            if not tensors:
+                continue
+            for tensor in {t.name: t for t in (tensors[0], tensors[-1])}.values():
+                data = reader.tensor_data(tensor.name)
+                rows = [0, data.shape[0] - 1]
+                raw = np.ascontiguousarray(data[rows])
+                expected = np.empty((2, tensor.shape[-1]), dtype='<f4')
+                symbol = 'dequantize_row_' + ('q3_K' if name == 'Q3_K' else name.lower())
+                fn = getattr(lib, symbol)
+                fn.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int64]
+                fn.restype = None
+                fn(raw.ctypes.data, expected.ctypes.data, expected.size)
+                key = f'row_{len(entries)}'
+                arrays[key + '_raw'], arrays[key + '_f32'] = raw, expected
+                entries.append({'key': key, 'model': pin['file'], 'published_sha256': pin['published_sha256'],
+                                'tensor': tensor.name, 'type': name, 'shape': tensor.shape, 'rows': rows})
+    out.mkdir(parents=True, exist_ok=True)
+    fixture = out / 'real_rows.npz'
+    np.savez_compressed(fixture, **arrays)
+    (out / 'real_rows.json').write_text(json.dumps({
+        'commit': PIN, 'fixture_sha256': hashlib.sha256(fixture.read_bytes()).hexdigest(),
+        'hash_requirement': 'Verify complete model SHA256 against docs/UD-QUANTS-U0-IDENTITY.json before generation.',
+        'entries': entries}, indent=2) + '\n')
+    print(f'Wrote {fixture}: {len(entries)} tensors, {fixture.stat().st_size} bytes')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--llamacpp', type=Path, default=Path('/home/lhl/llama.cpp/llama.cpp-hip'))
     parser.add_argument('--out', type=Path, default=ROOT / 'tests/fixtures/gguf_ud')
+    parser.add_argument('--real-model-dir', type=Path, help='Extract real rows; verify full model hashes against identity pins first')
     parser.add_argument('--codebooks', type=Path, help='Also write the runtime IQ2_S/IQ3_S codebook module')
     args = parser.parse_args()
     arrays = {}
@@ -62,6 +101,9 @@ def main() -> None:
         archive = subprocess.check_output(['git', '-C', str(args.llamacpp), 'archive', PIN, 'ggml', 'LICENSE'])
         subprocess.run(['tar', '-x', '-C', str(source)], input=archive, check=True)
         lib = _build_oracle(source, source)
+        if args.real_model_dir:
+            real_rows(lib, args.real_model_dir, args.out)
+            return
         hashes = {str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
                   for p in sorted((source / 'ggml').rglob('*')) if p.is_file() and p.suffix in ('.c', '.h')}
         license_text = (source / 'LICENSE').read_text()
