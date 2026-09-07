@@ -232,7 +232,6 @@ _RAW_K_PREFILL_VARIANTS = frozenset(
         "coltile",
         "coltile8",
         "coltile8_wave_scale",
-        "coltile8_wave_scale_prefetch2",
         "coltile8x8",
         "coltile16",
         "coltile16x4",
@@ -2187,17 +2186,6 @@ def _raw_k_wave_scale_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool) -
     return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
 
 
-def _raw_k_prefetch2_dispatch(dispatch: GGUFLinearDispatch, *, enabled: bool,
-                              rows: int, hidden: int, outputs: int) -> GGUFLinearDispatch:
-    if (not enabled or dispatch.abi != "raw" or rows < 64
-            or (hidden, outputs) != (2560, 6144)
-            or dispatch.key.variant != "coltile8_rowbatch4_wave_scale_f32_f32_out"):
-        return dispatch
-    key = KernelKey(dispatch.key.backend, dispatch.key.layer, dispatch.key.quant,
-                    "coltile8_rowbatch4_prefetch2_f32_f32_out")
-    return GGUFLinearDispatch(key, "raw") if is_registered(key) else dispatch
-
-
 def resolve_gguf_linear_dispatch(
     weight: GGUFDeviceWeight,
     *,
@@ -2639,13 +2627,10 @@ def launch_gguf_linear(
             in_features=in_features,
             out_features=out_features,
             row_batch=raw_k_rowbatch,
-            variant="coltile8" if raw_k_variant in {"coltile8_wave_scale", "coltile8_wave_scale_prefetch2"} else raw_k_variant,
+            variant="coltile8" if raw_k_variant == "coltile8_wave_scale" else raw_k_variant,
         )
         dispatch = _raw_k_wave_scale_dispatch(
-            dispatch, enabled=raw_k_variant in {"coltile8_wave_scale", "coltile8_wave_scale_prefetch2"})
-        dispatch = _raw_k_prefetch2_dispatch(
-            dispatch, enabled=raw_k_variant == "coltile8_wave_scale_prefetch2",
-            rows=rows, hidden=in_features, outputs=out_features)
+            dispatch, enabled=raw_k_variant == "coltile8_wave_scale")
         dispatch = _q4_pack8_wmma_dispatch(
             dispatch,
             rows=rows,
