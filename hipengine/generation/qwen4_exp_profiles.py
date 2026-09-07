@@ -495,6 +495,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
+        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",

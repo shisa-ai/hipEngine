@@ -797,6 +797,11 @@ poisoned unused KV and parent CPU-reference chain. Synthetic2051-selected
 attention512/1024 rows2.544x/2.610x,30 pairs exact.
 VGPR40->72,no scratch/LDS,half head blocks. No runtime default.
 Evidence: `2026-09-07-framework-qwen4exp-qsa-head-pair.json`.
+Default-off model admission via `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=1`
+passes eight full-logit/state/KV cases at chunk1024,all four p4096
+categories included.24 calls per sparse p4096 arm,zero decode,dense
+short paths unchanged. Hq24/Hkv2 page256 parent only;both binders0.
+Admission: `2026-09-07-framework-qwen4exp-qsa-head-pair-state.json`.
 
 Raw-vector64x64 MMQ tested against current128x64 on Framework:
 actual Q layers3/7 at512/1024 rows0.959-0.985x,80 pairs exact,
