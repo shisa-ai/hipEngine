@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Raw-Q token64 promoted:full12-case PP190.315->191.353 (+0.545%)/
+202.324->203.168 (+0.417%)/186.490->186.895 (+0.217%),72 exact.
+All PP and11 request means improve;Japanese4096 request loss0.183%
+explicitly retained under prefill-first policy. External rates unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-mmq-token64-production.json).
+
 Raw-Q token64 admission:five chunk1024 full-logit/state/KV cases exact,
 12/48 calls,zero decode/final owners. Prepacked/GR unchanged,both
 binders0;no production change,throughput gate pending.

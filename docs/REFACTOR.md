@@ -1,15 +1,17 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp raw MMQ token64 candidate
+## Qwen4Exp raw MMQ token64 production
 
-- Kernel-only `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces
+- `mmq128_token64_q8_1_d4x3_guarded_f32_f32_out` reduces
   token tile128->64;VGPR184->160,scratch0,exact output/repair set.
 - Large raw Q projection wins across two tensors;short Q and long-row GR
   have mixed order results. No blanket replacement or prepacked claim.
-- Default-off `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` admits only parent
+- Production-bound `HIPENGINE_QWEN4_EXP_MMQ_TOKEN64=1` admits only parent
   raw-vector K2560/N12288 rows>=512. Five chunk1024 full-logit/state/KV
-  cases pass,12/48 calls,zero decode/final owners. Both binders0.
-- Throughput gate pending;remove route if rejected. Prepacked/GR unchanged.
+  cases pass,12/48 calls,zero decode/final owners.72 trajectories exact.
+- All12 PP means improve;11 request means improve,Japanese4096 request
+  -0.183% retained under prefill-first policy. Strict binds0.
+  Keep opt-out for bisection;remove flag chain when profile plans own scope.
 
 ## Qwen4Exp MMQ bank-first order: removed
 

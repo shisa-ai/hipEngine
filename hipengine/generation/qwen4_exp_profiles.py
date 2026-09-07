@@ -101,6 +101,8 @@ def _selection(
 
 def _strict_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection("linear","prefill_rows_ge512_k2560_n12288_raw_q",
+                   "coltile8_rowbatch4_f32_f32_out","coltile8_rowbatch4_f32_f32_out","gguf_q8_0"),
         _selection(
             "linear","prefill_rows_ge512_token_major_mapped_q8_down",
             "selected_gemv_bf16_bf16_out","selected_gemv_bf16_bf16_out","gguf_q8_0",
@@ -261,6 +263,10 @@ def _strict_selections() -> tuple[VariantSelection, ...]:
 
 def _production_selections() -> tuple[VariantSelection, ...]:
     return (
+        _selection("linear","prefill_rows_ge512_k2560_n12288_raw_q",
+                   "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out",
+                   "coltile8_rowbatch4_f32_f32_out","gguf_q8_0",
+                   evidence="benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64-production.json"),
         _selection(
             "linear","prefill_rows_ge512_token_major_mapped_q8_down",
             "selected_grouped_row4_register_gemv_bf16_bf16_out",
@@ -487,7 +493,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1" if production else "0",
-        "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64": "0",
+        "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
