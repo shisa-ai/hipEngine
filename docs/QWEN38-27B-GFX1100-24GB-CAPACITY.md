@@ -3,6 +3,37 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Bounded correctness and capacity closeout — 2026-09-07
+
+The user narrowed closeout to implementation correctness and observed capacity,
+without exhaustive benchmarking or further dense boundary probes. On the clean
+merged source `f955ea2d8` (including main `ccf67ca6a`), GPU1 RX 7900 XTX:
+
+| DMS INT8 route | Workload | Result |
+| --- | --- | --- |
+| Eager resident C1 | 65,536 prompt tokens + eight decode appends | 8/8 independent replay steps byte-exact; finite logits; 24,200,876,888 bytes (22.54 GiB) tracked device peak |
+| Interleaved resident C2 | 8,192/16,384 prompts, four rounds, cancel first request after two | 6/6 executed steps byte-exact against C1 replay; survivor continues; no cycle errors |
+
+Both processes return to zero tracked allocations. The 64K point is an
+**execution fit**, not a proven maximum or a recommended operating reserve;
+65,544 logical tokens are present after the eight appends. The peak includes
+prefill and independent replay and is not a sampled whole-card peak. Existing
+dense BF16 40,960 and dense INT8 54,272 observed passes were not rerun.
+
+Affected GPU/CPU tests pass after repairing one stale lazy-server mock;
+572 server tests, 183 MTP interface tests and the benchmark documentation
+checks pass. Existing post-repair numerical and repeated-refill evidence below
+is reused. No throughput sweep or new performance ratio is claimed.
+
+This completes the user-requested bounded correctness/capacity check for merge.
+It does not close the broader serving-qualification requirements of task #20:
+DMS INT8 stays explicit offline evaluation, BF16 fallback stays available,
+and packed/larger-C execution, full-session MTP rollback, calibrated
+production-profile and train-disjoint task certification remain deferred.
+The replay harness uses identical valid token transitions, seeded from the
+last prompt token; it is not a natural-response quality test.
+[`Bounded merge evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-bounded-merge-gate.json).
+
 ## INT8 completion audit — 2026-09-07
 
 This audit updates the historical packet notes below. All INT8 work is assigned

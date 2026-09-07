@@ -1,0 +1,372 @@
+{
+  "capacity": {
+    "classification": "execution_fit",
+    "decode_appends": 8,
+    "first_failure": null,
+    "logical_context_after_decode": 65544,
+    "memory_scope": "hipengine tracked device allocations, includes independent replay; not sampled whole-card peak",
+    "observed_prompt_tokens": 65536,
+    "operational_reserve_recommendation": null,
+    "proven_maximum": false,
+    "tracked_after_decode_bytes": 19871096728,
+    "tracked_peak_allocated_bytes": 24200876888
+  },
+  "cwd": "/home/lhl/gfx1100-24gb-capacity",
+  "date": "2026-09-07",
+  "environment": "HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1",
+  "existing_correctness_evidence": "benchmarks/results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json",
+  "gates": {
+    "c1_64k": {
+      "cancel_after_rounds": null,
+      "cancellation": null,
+      "command": "timeout --signal=TERM --kill-after=30s 600s env HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 1 --prompt-tokens 65536 --decode-steps 8 --refill-cycles 1 --codec int8_evaluation --verify-c1 --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-merged-c1-65536-8.json",
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode": [
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "a5ab62482693f571d677f26830335ccac021358523d9a2ba6706f8fd33b0bd5c",
+          "output_token": 4526,
+          "session": 0,
+          "step": 0
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "e522ebfc34aaef4fa9ee346d59f4c9ac75d6065a27f28054ee1ed627bcb78634",
+          "output_token": 318,
+          "session": 0,
+          "step": 1
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "a23322def6d98a3da18abe7a1f8a41a2f4ad40712703fe07b4aca8501390be2a",
+          "output_token": 16,
+          "session": 0,
+          "step": 2
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "4864f781d42b3c1c2073b4c79e3a80eb10f78bb0a875417dd7ec9b5a16b8b7a9",
+          "output_token": 24,
+          "session": 0,
+          "step": 3
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "4c4ef0f5e6ba6184c8a3134ecd47379a4f3b840dcbe634131ce4689e8d7793e7",
+          "output_token": 15,
+          "session": 0,
+          "step": 4
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "ba9c8575310da2b6a303e1735b6de83ffa4c5dea9b2a4482b41c790bbe42e6eb",
+          "output_token": 22,
+          "session": 0,
+          "step": 5
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "256f41d7dd0a1a502baab0f3b383bc466e7ec18ecb1aae9ee56927b93958f904",
+          "output_token": 8,
+          "session": 0,
+          "step": 6
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "0feff6bd6f3729e9d90f4bfa3ad2d2fa0db3334837c6388d0951d610ffd42849",
+          "output_token": 539,
+          "session": 0,
+          "step": 7
+        }
+      ],
+      "decode_rounds": 8,
+      "dms_snapshots": [
+        {
+          "capacity": {
+            "actual_compression_ratio": 1.7775608168578634,
+            "device_resident_bytes": 1259405456,
+            "live_token_rows": 2359872,
+            "logical_token_rows": 4194816,
+            "max_live_count": 36873,
+            "payload_bytes": 1208254464,
+            "scale_bytes": 18878976,
+            "target_compression_ratio": 2
+          },
+          "extent_pool": {
+            "allocation_failures": 0,
+            "capacity_slots": 2359936,
+            "free_slots": 0
+          },
+          "ledger_active_reservations": 1
+        }
+      ],
+      "memory": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 24200876888,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 30249367600,
+          "total_freed_bytes": 30249367600
+        },
+        "after_close_MiB": 0.0,
+        "before": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "post_decode": {
+          "active_allocations": 1250,
+          "current_allocated_bytes": 19871096728,
+          "peak_allocated_bytes": 24200876888,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24204468248,
+          "total_freed_bytes": 4333371520
+        },
+        "post_prefill_all_sessions": {
+          "active_allocations": 1247,
+          "current_allocated_bytes": 19867505368,
+          "peak_allocated_bytes": 24200876888,
+          "peak_allocations": 1283,
+          "total_allocated_bytes": 24200876888,
+          "total_freed_bytes": 4333371520
+        }
+      },
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "prompt_tokens": [
+        65536
+      ],
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "997d89781b287aa47a6d54d18b7030f0b3260d476b62fedc139ee0978c123d40"
+      },
+      "provenance": {
+        "commit": "f955ea2d8cb6c0b400177fb27dbf1690406a1e91",
+        "working_tree_clean": true
+      },
+      "raw_sha256": "9b7386a5efe73eb36d6eabc4f260141a272323bf70667391940e9b6aeb5df59d",
+      "raw_source": "/tmp/xtx-capacity/dms-int8-merged-c1-65536-8.json",
+      "refill_cycles": 1,
+      "sessions": 1,
+      "status": "passed"
+    },
+    "c2_lifecycle": {
+      "cancel_after_rounds": 2,
+      "cancellation": {
+        "after_decode_step": 1,
+        "cancelled_session": 0,
+        "close_seconds": 0.014,
+        "memory_after_cancel_MiB": 18058.8,
+        "survivor_sessions": 1
+      },
+      "command": "timeout --signal=TERM --kill-after=30s 300s env HIP_VISIBLE_DEVICES=1 GPU_MAX_HW_QUEUES=1 OPENBLAS_NUM_THREADS=1 .venv/bin/python scripts/qwen38_dms_concurrency_probe.py --model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --metadata /models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json --data-manifest /models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json --sessions 2 --prompt-tokens 8192 --heterogeneous --decode-steps 4 --cancel-after-steps 2 --refill-cycles 1 --codec int8_evaluation --verify-c1 --backend hip_gfx1100 --output /tmp/xtx-capacity/dms-int8-merged-c2-lifecycle.json",
+      "data_manifest": {
+        "path": "/models/dms/xtx-manifests/qwen38-27b-q4km-xtx-capacity-manifest.json",
+        "sha256": "9b8dacd9111ddf5b44dc55a0cd199ca7c3cafed763a21bb13eae0a98cdfc72cc"
+      },
+      "decode": [
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "4d7f661f8f72bb080ced47ee01984e2e60d6b738794408afb3c5ea31ebdde52c",
+          "output_token": 504,
+          "session": 0,
+          "step": 0
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "d08c8df27cd77341ba38b9d041e83207b32ec22f4a10b418ed79ee1fb12a0138",
+          "output_token": 283,
+          "session": 1,
+          "step": 0
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "67779db4021808649ab1659fd08c03bc6112feaa4305305f393a99ca41000921",
+          "output_token": 198,
+          "session": 0,
+          "step": 1
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "19293ba31e03694a1b4375cba5190c8b0d2eb1ec12f4fc6d50d13fed7f47586f",
+          "output_token": 696,
+          "session": 1,
+          "step": 1
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "af0b617cc65b72cb15256299bc78b3ac6eabac2ec2f17e2d2b5e8f1a0c324265",
+          "output_token": 3081,
+          "session": 1,
+          "step": 2
+        },
+        {
+          "c1_logits_exact": true,
+          "cycle": 0,
+          "finite_logits": true,
+          "logits_sha256": "b812bf357be724a9e14ea9f57f2e231df0107acf8ff61776c50b3575cc0745bc",
+          "output_token": 8119,
+          "session": 1,
+          "step": 3
+        }
+      ],
+      "decode_rounds": 4,
+      "dms_snapshots": [
+        {
+          "capacity": {
+            "actual_compression_ratio": 1.333116407711706,
+            "device_resident_bytes": 431139728,
+            "live_token_rows": 786752,
+            "logical_token_rows": 1048832,
+            "max_live_count": 12293,
+            "payload_bytes": 402817024,
+            "scale_bytes": 6294016,
+            "target_compression_ratio": 2
+          },
+          "extent_pool": {
+            "allocation_failures": 0,
+            "capacity_slots": 786816,
+            "free_slots": 0
+          },
+          "ledger_active_reservations": 1
+        }
+      ],
+      "memory": {
+        "after_close": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 20651033200,
+          "peak_allocations": 1631,
+          "total_allocated_bytes": 24260409568,
+          "total_freed_bytes": 24260409568
+        },
+        "after_close_MiB": 0.0,
+        "before": {
+          "active_allocations": 0,
+          "current_allocated_bytes": 0,
+          "peak_allocated_bytes": 0,
+          "peak_allocations": 0,
+          "total_allocated_bytes": 0,
+          "total_freed_bytes": 0
+        },
+        "post_decode": {
+          "active_allocations": 1250,
+          "current_allocated_bytes": 18936035224,
+          "peak_allocated_bytes": 20651033200,
+          "peak_allocations": 1631,
+          "total_allocated_bytes": 21209989232,
+          "total_freed_bytes": 2273954008
+        },
+        "post_prefill_all_sessions": {
+          "active_allocations": 1595,
+          "current_allocated_bytes": 19554615792,
+          "peak_allocated_bytes": 20651033200,
+          "peak_allocations": 1631,
+          "total_allocated_bytes": 21207958256,
+          "total_freed_bytes": 1653342464
+        }
+      },
+      "metadata": {
+        "path": "/models/dms/qwen38-27b-q4km-dms-w8192-local/dms_metadata.json",
+        "sha256": "4c16f9e94d8c870194d37cc46f9e2ec5f6c05b8e97721f799b78d9d2b240ba0b"
+      },
+      "model": {
+        "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+        "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
+      },
+      "prompt_tokens": [
+        8192,
+        16384
+      ],
+      "prompts": {
+        "disjoint_validation_slices": true,
+        "sha256": "0ba2375aeaf74128a36d7ab40f6d85fb88aeedb586a06b1e1043d66a2b3bc46c"
+      },
+      "provenance": {
+        "commit": "f955ea2d8cb6c0b400177fb27dbf1690406a1e91",
+        "working_tree_clean": true
+      },
+      "raw_sha256": "09d380cfc71183db6b2c3bac70f2ad6dbd4ddd7b38ab288d7388c31f92dccb36",
+      "raw_source": "/tmp/xtx-capacity/dms-int8-merged-c2-lifecycle.json",
+      "refill_cycles": 1,
+      "sessions": 2,
+      "status": "passed"
+    }
+  },
+  "hardware": {
+    "arch": "gfx1100",
+    "backend": "hip_gfx1100",
+    "cpu": "AMD Ryzen 9 5950X",
+    "gpu": "AMD Radeon RX 7900 XTX",
+    "host": "epyc",
+    "identity_command": "rocm-smi --showproductname --showuniqueid --showbus --showmeminfo vram --showuse",
+    "other_workloads": "independent MTP work on GPU0 in another worktree; no throughput comparison",
+    "pci": "0000:10:00.0",
+    "physical_gpu_index": 1,
+    "unique_id": "cc4d02090dc9c3ff",
+    "vram_total_bytes": 25753026560
+  },
+  "limits": [
+    "Capacity probe is not a throughput benchmark, free-running task gate or calibrated production-profile certification.",
+    "The replay probe seeds decode from the last prompt token in both arms; it tests identical valid token transitions, not natural-response quality.",
+    "DMS INT8 is evaluation-only; no serving qualification/default promotion or fabricated DMSCodecQualification.",
+    "C2 is two resident sessions with serial interleaved C1 kernels, not packed multi-request execution.",
+    "C2 cancellation is checked once here; repeated refill and backend rollback evidence is in the linked post-fix audit.",
+    "Full-session speculative rollback, larger concurrency and train-disjoint quality remain outside this bounded merge gate.",
+    "Dense BF16 40960 and dense INT8 54272 are earlier observed passes, not rerun or proven maxima."
+  ],
+  "merged_source_test_evidence": "worklog/entries/20260907T134254.834056Z-lhl-xtx-main-integration-1d7c93.md",
+  "purpose": "user-requested expedient correctness/capacity confirmation before local main merge",
+  "route": "offline eager resident DMS INT8 with FP32 per-token/head scales and W8192; interleaved physical-C1 execution; MTP/prefix reuse off",
+  "schema": "hipengine_xtx_bounded_merge_gate_v1",
+  "serving_qualification": false,
+  "source": {
+    "merged_main_parent": "ccf67ca6a",
+    "provenance_scope": "raw commit/clean-state and physical identity; no reconstructed production-profile manifest",
+    "resolved_profile_variant_manifest": null,
+    "runtime_import_check": "/home/lhl/gfx1100-24gb-capacity/hipengine/runtime/qwen35_gguf_runner.py",
+    "tested_commit": "f955ea2d8cb6c0b400177fb27dbf1690406a1e91",
+    "working_tree_clean": true
+  },
+  "status": "passed_scoped_correctness_and_execution_fit",
+  "throughput_claim": false
+}
