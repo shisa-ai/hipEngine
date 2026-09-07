@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+CPU17 affinity isolation does not fix QSA transition:parent/candidate
+early decode1.167/1.573s,exact state,early~1.5GHz/~600MHz.
+Original affinity restored;no production pinning or clock changes.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-phase-affinity.json).
+
 QSA transition frequency sampling:after candidate prefill,early decode
 remains near600MHz versus parent~1.5GHz;both later~5.1GHz.
 Wall1.170->1.567s,sampling3.5-8ms. No clock changes;policy/firmware

@@ -76,6 +76,28 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Calling-thread affinity isolation (September7 UTC):** pin CPU17
+after model initialization,restore original0..31 mask on exit. Same
+code4096 two-pair16-step phase probe still shows parent/candidate
+wall1.167/1.573s. All samples remain on CPU17;candidate early CPUFreq
+~600MHz versus parent~1.5GHz. Tokens/state/layout exact,zero candidate
+decode calls,clean teardown and verified affinity restoration. Pinning
+alone does not fix the transition. No GPU threads or clock policy changed.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-affinity.json).
+
+**CPU-warmth source leads,not fixes:** local Strix HEAD remains
+7baf0a98c. `common/common.h:74` defaults worker polling50;
+`ggml-cpu.c:3208` polls before sleeping. These are CPU worker controls,
+not a proven HIP submission-thread frequency fix. `ggml-cuda.cu:367`
+sets ScheduleSpin for NVIDIA cc12.1 only,inside non-HIP code.
+Local HIP SDK `hip_runtime_api.h:2635` documents ScheduleSpin as
+active waiting with CPU/power cost;Auto is heuristic. Investigate HIP
+wait policy with explicit before/after flags and full-request timing.
+No always-on CPU warm thread or production pinning justified yet.
+Host CPU governor and EPP already read `performance`;requested minimum
+is2GHz while sampled feedback can be~600MHz,so a requested floor alone
+cannot be assumed effective. Keep all original unpinned results.
+
 **QSA transition frequency samples (September7 UTC):** code4096,
 2 balanced pairs/16 steps,CPU accounting+hardware counters+read-only
 CPUFreq snapshots. Parent/candidate wall1.170/1.567s. Candidate

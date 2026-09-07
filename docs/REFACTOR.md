@@ -29,6 +29,9 @@
   CPUFreq sampling now shows candidate near600MHz for initial decode
   versus parent~1.5GHz,then both~5.1GHz. Controlled policy/affinity
   isolation next;do not silently change host clocks or hide transition cost.
+  CPU17-only calling-thread isolation reproduces the penalty;affinity
+  restored. Pinning alone is not a mitigation. HIP wait-policy experiment
+  remains a source-informed lead,not a production default.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed
