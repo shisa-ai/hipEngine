@@ -42,8 +42,23 @@ Status: partial implementation integrated;
   and [K6/K7](../benchmarks/results/2026-09-07-w7900-packed-c1-teacher-k6-k7-repeats.json).
 - Still required: slot/transition qualification and missing fixed-N=8 controls;
   packed C1 K1-K7 gates; production numerical/task and dynamic service-owner
-  latency/queueing gates; sustained horizons/contexts; three balanced pairs
-  before promotion. Token equality is not a replacement for these gates.
+  latency/queueing gates; sustained horizons/contexts;
+  three balanced pairs before promotion. Token equality is not a replacement for these gates.
+- The realized width-miss deferral dropped the request-time static eligibility
+  override, which closed the explicit C1 route at every depth after the evidence
+  withdrawal (resident adapter refused the C1 singleton shape into K0). Repair
+  `555fc7ef3` propagates the evidence-backed static intent through the deferral;
+  the product route now engages C1 via the listed (1,2)/(1,3) cells and the
+  explicit-only screening opt-in for K1. Three balanced same-host pairs per
+  depth on the full canonical suite (D24, greedy, 20 ms window, ar_exact 10/10,
+  engaged 10/10) measure **K0 0.9995x / K1 1.3916x / K2 1.5844x / K3 1.6329x**
+  median MTP/AR; K3 is the fastest qualified depth. Requested K4-K7 refuses
+  pre-mutation to AR because every evidence row caps K3 (K7 refusal probe
+  engaged 0/10); their product-route economics await the depth-generic
+  execution and service qualification chain. Automatic stays K0; C1
+  evidence-row re-registration still awaits lifecycle, wider-capacity
+  isolation, sustained-context and service gates. See the
+  [economics artifact](../benchmarks/results/2026-09-07-w7900-packed-c1-k0-k3-economics.json).
 - Review also repairs per-request claims safety, order-dependent capability
   fixtures, and a row48 dispatch change that leaked into gfx1151. CPU policy
   regressions pass; gfx1151 hardware was not tested on this W7900 host.
