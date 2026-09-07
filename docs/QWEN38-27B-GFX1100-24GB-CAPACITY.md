@@ -3,6 +3,36 @@
 Status: measurement and optimization plan. Initial startup probes are recorded
 below; current operational context and concurrency limits are not qualified.
 
+## INT8 completion audit — 2026-09-07
+
+This audit updates the historical packet notes below. All INT8 work is assigned
+here; there is no external dense or DMS INT8 owner.
+
+- Dense native-prefill repair `8e0d8eae1` fixes the confirmed shared-memory
+  overflow. Cold-server INT8/FP32 C1 requests pass at 16,128 / 32,768 / 49,152 /
+  54,272 declared tokens, peaking at 20.357 / 21.919 / 23.484 / 23.972 GiB.
+  Each uses context minus 17 prompt tokens, 16 outputs and one reserved token,
+  MTP off, prefix cache off, and clean post-request ownership.
+- **54,272 is the highest demonstrated context, not a proven maximum.**
+  Sampled headroom is 12.7 MiB. The user stopped the adjacent 54,528 probe to
+  prioritize DMS INT8; it has no pass/fail verdict. Prior BF16 evidence on the
+  same card reaches 40,960, but no fresh matched quality comparison was run.
+- DMS INT8 device kernels/store are implemented in `e2ec238ab`: 44 focused
+  tests pass, including CPU codec bytes/scales, above-window eviction,
+  deterministic attention, overflow and exact snapshot restoration. Cached
+  profiling confirms the INT8 kernels ran on GPU1. These are device fixture
+  gates, not artifact-scoped model quality or integrated serving qualification.
+- **DMS INT8 remains incomplete:** backend codec/scale plumbing and resident
+  factory integration; a genuine qualification bootstrap and model harness;
+  full category/heldout numerical and task gates; integrated eviction,
+  concurrency, cancellation/refill and rollback; end-to-end memory benefit.
+  Dense detailed allocation attribution and further qualification are deferred
+  by the user's priority change, not completed by documenting the gaps.
+
+Commands, physical identity, pool/payload/scale accounting and raw-file hashes:
+[`INT8 evidence artifact`](../benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
+Publication is complete; the overall INT8 implementation/qualification is not.
+
 ## 1. Scope and required results
 
 Measure Qwen3.8-27B on one RX 7900 XTX (`gfx1100`) across:
@@ -650,10 +680,10 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   train-disjoint long manifests is absent from this host). MTP
   provisional-state/eviction rollback is DMS+MTP feature work owned by the
   MTP campaign; the C2 decode-owner routing fix does not touch MTP paths.
-- [ ] **BLOCKED (codec qualification artifact does not exist).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
+- [ ] **IN PROGRESS (device fixtures pass; serving integration and model qualification absent).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
   actual compression and quality; do not multiply nominal factors into a fit
   claim. Keep scope-specific failures linked to the DMS campaign.
-  Blocker made concrete 2026-09-07 on the XTX: the gfx1151 sidecar package
+  Historical blocker audit, before device implementation `e2ec238ab`: the gfx1151 sidecar package
   carries no INT8 codec qualification (its `qualification.json` has no codec
   section), none exists for the local artifact, and the in-tree quality
   harnesses compare only the BF16 compact backend

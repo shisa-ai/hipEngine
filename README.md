@@ -201,15 +201,13 @@ row, not across them.
 Blank cells are shapes we have not measured yet, not failures. Max context is
 published only where a dedicated ceiling run exists.
 
-- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` fits long contexts.** Measured on a
-  physical RX 7900 XTX with one active request: BF16 KV serves declared
-  contexts through **40,960 tokens** (32,768 peaks at 23.162 GiB; 45,056
-  first fails warmup). Compact INT8 KV (FP32 scales) serves
-  through **15,872 tokens**; larger contexts fail on a route defect, not
-  memory. Prefill scratch is bounded to fixed 1,024-row chunks, so session
-  memory follows the KV payload (64 KiB/token BF16, 32.5 KiB/token INT8)
-  rather than the declared context.
-  [`scratch row cap`](results/2026-09-06-rx7900xtx-capacity-scratch-row-cap.json)
+- **Qwen3.8-27B `Q4_K_M` fits long contexts on the RX 7900 XTX.** One-request
+  measurements reach **40,960 tokens with BF16 KV** and **54,272 with INT8 KV**
+  (FP32 scales, 54,255 prompt + 16 output tokens, **23.972 GiB peak**).
+  These are observed passes, not operational reserve recommendations.
+  Runs used the same card/protocol at different revisions, without a fresh
+  matched quality comparison or a proven INT8 maximum.
+  [Results and qualification scope](https://github.com/shisa-ai/hipEngine/blob/main/benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json)
 
 ### Serving several requests at once
 
