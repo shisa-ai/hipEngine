@@ -29,6 +29,25 @@ class PrecommitProbe:
                              target_unchanged=False, recovered=False)
         self.session = None
         self.before = None
+        self.provider_prefixes = {}
+
+    def capture(self, original, executor, request_id):
+        from scripts.qwen38_packed_c1_provider_kv import snapshot_provider_kv
+        checkpoint = original(executor, request_id)
+        snapshot = snapshot_provider_kv(executor, checkpoint)
+        self.provider_prefixes[request_id] = (executor, checkpoint, snapshot)
+        return checkpoint
+
+    def assert_provider_prefix(self):
+        from scripts.qwen38_packed_c1_provider_kv import snapshot_provider_kv
+        rid = self.evidence['request_id']
+        if rid not in self.provider_prefixes:
+            raise ValueError('no provider KV snapshot before proposal')
+        executor, checkpoint, before = self.provider_prefixes[rid]
+        if snapshot_provider_kv(executor, checkpoint) != before:
+            raise ValueError('provider committed KV prefix changed')
+        self.evidence['provider_kv_position'] = before['position']
+        self.evidence['provider_kv_planes'] = len(before['buffers'])
 
     def prepare(self, session, request_id):
         from scripts.qwen38_packed_c1_state import snapshot_committed_state
@@ -45,6 +64,7 @@ class PrecommitProbe:
 
     def inject(self):
         self.assert_target()
+        self.assert_provider_prefix()
         self.evidence['injected'] = True
         raise InjectedPrecommitFailure('diagnostic')
 
@@ -53,6 +73,8 @@ class PrecommitProbe:
             expected = provider_restore_expected(executor, checkpoint)
             result = original(executor, checkpoint)
             assert_provider_restored(executor, checkpoint, expected)
+            self.assert_provider_prefix()
+            self.evidence['provider_kv_restored'] = True
         except Exception as error:
             self.evidence['provider_restore_error'] = f'{type(error).__name__}: {error}'
             raise

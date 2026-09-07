@@ -29,6 +29,7 @@ def test_precommit_probe_checks_target_before_injecting(monkeypatch, dirty):
     monkeypatch.setattr(state, 'snapshot_committed_state', lambda session: next(values))
     probe = PrecommitProbe()
     probe.prepare(object(), 7)
+    monkeypatch.setattr(probe, 'assert_provider_prefix', lambda: None)
     with pytest.raises(ValueError if dirty else InjectedPrecommitFailure):
         probe.inject()
     assert probe.evidence['injected'] is (not dirty)
