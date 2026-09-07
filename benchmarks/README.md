@@ -97,13 +97,29 @@ two concurrent requests on the W7900.
 | Context 49,152 | 49,135 / 16 | 23.484 GiB |
 | Context 54,272 | 54,255 / 16 | 23.972 GiB |
 
-DMS INT8 device fixtures pass codec, eviction, attention and rollback checks,
-including 16,385 tokens with an 8,192-token protected window. An offline
-integrated INT8 model smoke at 768 prompt tokens / eight decode steps passes
-(maximum KL 0.00396, top-1 100% versus dense BF16); this is below the eviction
-window, not serving qualification. Category/heldout quality remains incomplete;
-no DMS INT8 capacity gain is claimed.
-[Integrated smoke evidence](results/2026-09-07-rx7900xtx-dms-int8-integrated-smoke.json). Commands, identity and accounting:
+DMS INT8 offline evaluation on the same RX 7900 XTX uses less device-store
+memory than BF16-DMS at matched 16,384 prompt / 32 decode tokens:
+
+| Qwen3.8-27B `Q4_K_M`, DMS W8192 | Device-store bytes, including workspaces |
+| --- | ---: |
+| BF16-DMS | 829,473,104 |
+| INT8-DMS, FP32 scales | 432,046,928 |
+| Reduction | 397,426,176 (47.9%) |
+
+Post-repair tests pass all four long-context categories (maximum KL 0.014937592,
+top-1 100%) and all ten canonical short prompts, including four category
+heldouts, against dense BF16 and BF16-DMS (64 decode steps; dense-relative
+top-1 649/650). Resident C1 and interleaved C2 independent replay are byte-exact;
+cancellation, refill and allocation drain pass.
+
+These are offline numerical/lifecycle checks, not calibrated production-profile
+or free-running task certification. Heldouts are not proven disjoint from
+sidecar training. Packed multi-request execution, larger concurrency and
+full-session speculative rollback are unqualified. BF16 fallback is preserved;
+no general-serving promotion, whole-process memory percentage, throughput gain
+or new DMS INT8 context capacity is claimed.
+[Post-repair evidence and scope](results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json).
+Dense context commands, identity and accounting:
 [INT8 evidence audit](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes
