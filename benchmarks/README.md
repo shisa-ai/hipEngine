@@ -2,9 +2,14 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q5_1 per-row publication admission:five chunk1024 full-logit/state/KV
+cases exact,25/100 prefill calls,zero decode/final owners;16 CPU tests.
+Both binders0; no production change, throughput A/B pending.
+[State evidence](results/2026-09-07-framework-qwen4exp-q51-row-publish-state.json).
+
 Q5_1 per-row publication kernel candidate:two-bank512/1024 screen
 1.413x/1.523x; captured mixed512 routing1.498x.60 pairs exact,
-22 tests pass,scratch36->0B. No runtime/default change; model gates pending.
+22 tests pass,scratch36->0B. No default change; model throughput gate pending.
 [Evidence](results/2026-09-07-framework-qwen4exp-q51-row-publish.json).
 
 Q5_1 first-wave reduction rejected before model admission:

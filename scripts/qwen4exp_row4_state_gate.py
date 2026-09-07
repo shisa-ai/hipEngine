@@ -44,7 +44,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register"), default="q5k-row4")
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register", "q51-row-publish"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -65,7 +65,7 @@ def main():
         model_path=args.model_root, weight_index=index,
         model_plugin=resolve_model(index.architecture or ""),
         backend="hip_gfx1151", max_sequence_length=4352,
-        prefill_chunk_size=1024 if args.route_package in {"chunk1024","q8-down-register"} else 512))
+        prefill_chunk_size=1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish"} else 512))
     flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
             if args.route_package == "q5k-row4"
             else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
@@ -101,6 +101,8 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
     if args.route_package == "q51-register-cache":
         flag = "HIPENGINE_QWEN4_EXP_Q51_REGISTER_CACHE"
+    if args.route_package == "q51-row-publish":
+        flag = "HIPENGINE_QWEN4_EXP_Q51_ROW_PUBLISH"
     from hipengine.kernels.registry import KernelKey, register, resolve
     key = (KernelKey("hip_gfx1151", "linear", "gguf_q5_k",
                      "selected_grouped_row4_gemv_bf16_bf16_out")
@@ -150,6 +152,9 @@ def main():
     if args.route_package == "q51-register-cache":
         key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
                         "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
+    if args.route_package == "q51-row-publish":
+        key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
+                        "selected_grouped_prefill_pair2_row_publish_bf16_bf16_out")
     if args.route_package=="q8-down-register":
         key=KernelKey("hip_gfx1151","linear","gguf_q8_0",
                       "selected_grouped_row4_register_gemv_bf16_bf16_out")
@@ -193,7 +198,7 @@ def main():
         register(qsa_key, counted_qsa, replace=True)
     report = {
         "status": "running",
-        "allocated_chunk_size":1024 if args.route_package in {"chunk1024","q8-down-register"} else 512,
+        "allocated_chunk_size":1024 if args.route_package in {"chunk1024","q8-down-register", "q51-row-publish"} else 512,
         "source": _git_metadata(ROOT), "host": _host_metadata(), "command": sys.argv,
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
@@ -289,11 +294,11 @@ def main():
                         case["prompt_tokens"], 512) if enabled == "1" else 0
                     assert prefill_invoked == expected_vec4_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "MMQ vec4 ran during decode"
-                if args.route_package in {"q51-fold128", "q51-fold-pair", "q51-register-cache"}:
-                    count_fn = (q51_fold_pair_expected_calls if args.route_package in {"q51-fold-pair", "q51-register-cache"}
+                if args.route_package in {"q51-fold128", "q51-fold-pair", "q51-register-cache", "q51-row-publish"}:
+                    count_fn = (q51_fold_pair_expected_calls if args.route_package in {"q51-fold-pair", "q51-register-cache", "q51-row-publish"}
                                 else q51_fold128_expected_calls)
                     expected_fold_calls = count_fn(
-                        case["prompt_tokens"], 512) if enabled == "1" else 0
+                        case["prompt_tokens"], 1024 if args.route_package == "q51-row-publish" else 512) if enabled == "1" else 0
                     assert prefill_invoked == expected_fold_calls, (case["id"], prefill_invoked)
                     assert invoked == prefill_invoked, "fold128 ran during decode"
                 if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
@@ -305,7 +310,7 @@ def main():
                     args.route_package in {"q5k-row4","q4-bundle","prefill-bundle","q51-pair","gdn-register","q4-pair","q8-wave-scale","gr-wave-scale","q8-mmq-prepack","q8-down-row4","q51-fold128"} or case["prompt_tokens"] > 2051)
                 if args.route_package in {"q8-down-row4", "q8-down-bundle"}:
                     expected = expected_calls > 0
-                if args.route_package in {"q51-fold128", "q51-fold-pair", "q51-register-cache"}:
+                if args.route_package in {"q51-fold128", "q51-fold-pair", "q51-register-cache", "q51-row-publish"}:
                     expected = expected_fold_calls > 0
                 if args.route_package == "q8-mmq-vec4":
                     expected = expected_vec4_calls > 0

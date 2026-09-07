@@ -76,6 +76,13 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 per-row publication admission (September7 UTC):** default-off
+parent-only rows>=512/K640 route passes five chunk1024 full-logit/state/
+full-KV off/on/off cases. p512 calls0/25/0,p4096 calls0/100/0,zero decode
+calls and final owners; peak86,094,241,540 bytes unchanged.16 CPU tests
+pass. Both binders remain0; clean canonical12-case A/B is next.
+[State evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish-state.json).
+
 **Q5_1 spill-free per-row publication candidate (September7 UTC):**
 interchange row/pass work so both logical256 streams finish and publish
 the exact folded sum to LDS before the next row. The register weight cache,
@@ -84,8 +91,8 @@ with synthetic routing512/1024 improve1.413x/1.523x; historical captured
 mixed-p4096 chunk0 (512-token routing, synthetic activations) improves1.498x.
 All60 pairs exact,both orders positive;22 tests include current10240
 compact rows. VGPR96/dynamic LDS8672B unchanged,scratch36->0B.
-Kernel only. Next: default-off K640 current-chunk admission, full logits/
-state/KV and canonical12-case A/B before a production claim.
+Default-off K640 current-chunk admission passes above; canonical12-case
+A/B remains required before a production claim.
 [Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row-publish.json).
 
 **Q5_1 first-wave reduction rejected (September7 UTC):** preserve register
