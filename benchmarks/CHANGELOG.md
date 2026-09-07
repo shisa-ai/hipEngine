@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC post-QSA-quad families] Clean30b92de13/chunk1024 six-case capture:QSA2.068->1.331s (-35.66%),total21.227->20.305s (-4.345% snapshot);FFN10.214s,linear4.452s. Interval spans three promotions;Vulkan reused,not causal A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-post-qsa-quad-family.json`.
+
 - [2026-09-07 UTC QSA quad promotion] Staged72 exact,p4096 PP185.413->192.034 (+3.571%),TG13.990->13.496 (-3.531%);all4 long-request means1.010-1.016x with transition included. Scoped prefill-first promotion,short paths unchanged,variance retained. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json`.
 
 - [2026-09-07 UTC QSA quad admission] Six chunk1024 full-logit/state/KV cases exact,all4 p4096 categories,24 sparse calls each,zero dense/decode/final owners;15 focused tests. Explicit default-off quad mode,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-state.json`.

@@ -2,6 +2,14 @@
 
 Last updated: **2026-09-07 UTC**
 
+Post-four-head QSA family refresh at clean `30b92de13`,Framework gfx1151,
+UD-Q4_K_XL/BF16 KV/chunk1024:four-category p4096 device sum
+21.227->20.305s (-4.345% snapshot),QSA2.068->1.331s (-35.66%).
+FFN10.214s/non-GR linear4.452s remain largest targets. Twelve phases
+fully attributed;earlier Vulkan profiles reused,not a causal A/B or new
+throughput comparison.
+[Evidence](results/2026-09-07-framework-qwen4exp-post-qsa-quad-family.json).
+
 Four-head QSA promoted:p4096 PP185.413->192.034 (+3.571%),
 TG13.990->13.496 (-3.531%),all4 long-request means improve1.010-1.016x.
 72 trajectories exact;transition cost included,short paths unchanged.
