@@ -1,7 +1,7 @@
 # Qwen3.8-27B: capacity on a 24 GB RX 7900 XTX
 
-Status: measurement and optimization plan. Initial startup probes are recorded
-below; current operational context and concurrency limits are not qualified.
+Status: measurement and optimization plan with scoped offline DMS INT8
+integration evidence. General production-serving qualification is not established.
 
 ## INT8 completion audit — 2026-09-07
 
@@ -17,25 +17,75 @@ here; there is no external dense or DMS INT8 owner.
   Sampled headroom is 12.7 MiB. The user stopped the adjacent 54,528 probe to
   prioritize DMS INT8; it has no pass/fail verdict. Prior BF16 evidence on the
   same card reaches 40,960, but no fresh matched quality comparison was run.
-- DMS INT8 device kernels/store are implemented in `e2ec238ab`: 44 focused
-  tests pass, including CPU codec bytes/scales, above-window eviction,
-  deterministic attention, overflow and exact snapshot restoration. Cached
-  profiling confirms the INT8 kernels ran on GPU1. These are device fixture
-  gates, not artifact-scoped model quality or integrated serving qualification.
-- Backend codec/scale plumbing and resident factory injection are implemented.
-  Offline INT8 evaluation requires no fabricated qualification and reports its
-  unqualified status explicitly. The 768-token/eight-step model smoke passes
-  maximum KL 0.00396 and top-1 100% versus dense BF16, with dense prefill storage
-  released; see `benchmarks/results/2026-09-07-rx7900xtx-dms-int8-integrated-smoke.json`.
-- **DMS INT8 remains incomplete:** full category/heldout numerical and task
-  gates, artifact-scoped serving qualification; integrated eviction,
-  concurrency, cancellation/refill and rollback; end-to-end memory benefit.
-  Dense detailed allocation attribution and further qualification are deferred
-  by the user's priority change, not completed by documenting the gaps.
+- Compact INT8 K/V, FP32 per-token/head scales, pack/compaction, append,
+  split-K attention and resident `dms_backend_factory` integration are
+  implemented. BF16 fallback and fail-closed ordinary INT8 admission are
+  preserved; offline evaluation creates no `DMSCodecQualification`.
+- A shared-memory softmax race was repaired in `eabb08fc2`. Only post-repair
+  INT8 results below supply final numerical/replay evidence. Earlier numerical
+  passes, including the 768-token smoke, do not qualify the repaired path.
+- Post-repair affected pytest: 48 passed. Cached `rocprofv3` fixture run:
+  five passed, with INT8 pack, append and attention launches confirmed.
+  Device/backend fixtures cover CPU oracles, overflow, exact payload/scale
+  restoration, eviction and neighbor isolation.
+- Resident C1 at 8,192 prompt tokens passes one-step independent replay
+  byte-exactly. Interleaved C2 at 8,192/16,384 passes independent C1 replay,
+  cancellation after two rounds, eight survivor decode steps and two refill
+  cycles, with no cycle errors or tracked allocations after close.
+
+| Post-repair numerical gate | Result |
+| --- | --- |
+| Four categories, 16,384 prompt + 32 teacher-forced decode tokens, sidecar vs dense BF16 | 128 rows; mean/p95/p99/max KL 0.001011881/0.005126758/0.009845243/0.014937592; top-1 100% |
+| Same long suite, INT8 no-evict vs dense BF16 | Maximum KL 0.007665685; top-1 100% |
+| Ten canonical prompts, four category heldouts, 64 decode steps | All dense-BF16 and BF16-DMS-relative numerical gates pass; INT8 dense-relative maximum KL 0.006015874; top-1 649/650 |
+
+The long suite removes history during above-window prefill packing; its
+32-step decode reports zero additional evicted tokens. The full canonical
+suite uses 27-59-token raw user prompts below W8192, with 65 comparisons per
+prompt including prefill. Its sole top-1 disagreement is `code_lru_cache`
+(64/65); it is not a free-running task-success evaluation.
+
+Matched same-host, same-model, same-prompt sidecar storage after 16,384 prompt
+and 32 decode tokens, including device-store workspaces:
+
+| Codec | Device-store bytes | Live token rows |
+| --- | ---: | ---: |
+| BF16-DMS | 829,473,104 | 788,544 |
+| INT8-DMS, FP32 scales | 432,046,928 | 788,544 |
+
+The difference is 397,426,176 bytes (47.9131%). This is device-store memory
+savings, not a whole-process percentage, throughput gain or new capacity result.
+The unchanged BF16 control is valid; the INT8 measurements are post-repair.
+
+**Task #20 stays open for qualification.** Implementation, the tested offline
+numerical/lifecycle scope and evidence publication are complete, not general
+production serving. Required distinctions and outstanding scope:
+
+- Tested eager resident C1 and interleaved C2, not packed multi-request kernels
+  or larger concurrency. Backend-advertised widths are not measured model widths.
+- Device/backend rollback is tested, not full-session speculative/MTP rollback.
+- Numerical smoke gates are not calibrated production-profile or free-running
+  task certification. Category heldouts are not proven sidecar-train-disjoint.
+- Artifact-scoped qualification validation and serving admission/promotion
+  are not established. No fabricated qualification is issued.
+- Whole-process benefit, operational reserve and context/throughput gains are
+  not established by store accounting. Dense detailed allocation attribution
+  and further boundary qualification remain deferred by user instruction.
+
+The requirement audit uses the supplied task title/handoff and the
+[integration handoff](../worklog/entries/20260907T115602.481176Z-lhl-dms-int8-evaluation-2b7b71.md);
+the original external task record is not available in this worktree.
+The packet checkmarks below are historical campaign records, not evidence that
+these outstanding DMS INT8 requirements are fulfilled.
 
 Commands, physical identity, pool/payload/scale accounting and raw-file hashes:
 [`INT8 evidence artifact`](../benchmarks/results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
-Publication is complete; the overall INT8 implementation/qualification is not.
+Post-repair commands, raw-file hashes, per-category/per-prompt metrics, lifecycle
+checks and qualification limits:
+[`DMS INT8 consolidated evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json).
+Raw runs report dirty parent `9af884bda`, followed by repair commit `eabb08fc2`;
+they lack canonical profile/variant-manifest and detailed dirtiness capture.
+Publication does not upgrade that provenance or imply production qualification.
 
 ## 1. Scope and required results
 
@@ -684,7 +734,7 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   train-disjoint long manifests is absent from this host). MTP
   provisional-state/eviction rollback is DMS+MTP feature work owned by the
   MTP campaign; the C2 decode-owner routing fix does not touch MTP paths.
-- [ ] **IN PROGRESS (device fixtures pass; serving integration and model qualification absent).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
+- [ ] **IN PROGRESS (offline integration and tested numerical/lifecycle gates pass; serving qualification open).** Evaluate DMS+INT8 only after independent codec/topology gates. Measure
   actual compression and quality; do not multiply nominal factors into a fit
   claim. Keep scope-specific failures linked to the DMS campaign.
   Historical blocker audit, before device implementation `e2ec238ab`: the gfx1151 sidecar package
@@ -695,9 +745,11 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   (`scripts/dms_backend_gate.py --codec int8_per_token_head`) fails closed
   without a qualification file proving KL ≤ 0.05, top-1 ≥ 90%, and no dense
   shadow for the exact artifact (`hipengine/kvcache/dms.py:606-626`).
-  Producing that file requires an INT8-codec quality run (INT8 compact arm
-  vs dense teacher through the same owner) that is not built yet — feature
-  work before any DMS+INT8 measurement.
+  The offline INT8 compact-vs-dense owner comparison is now implemented and
+  post-repair measurements are published in the completion audit above.
+  Ordinary serving still requires real artifact-scoped qualification; the
+  evaluation path deliberately does not manufacture it. This item stays open
+  for the qualification requirements listed in that audit.
 
 ### Packet 5 — Measure context and concurrency limits
 
