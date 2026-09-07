@@ -56,6 +56,64 @@ def test_ud_fixture_exercises_all_new_codebooks_signs_and_high_bits():
         assert set((scales >> 4).ravel()) == set(range(16))
 
 
+@pytest.mark.parametrize('name', FORMATS)
+def test_ud_storage_sizes_and_super_scale_corners(name):
+    sizes = {'IQ3_S': 110, 'IQ2_S': 82, 'IQ4_NL': 18, 'IQ4_XS': 136,
+             'IQ3_XXS': 98, 'IQ2_XS': 74, 'Q3_K': 110}
+    layout = quant_layout(GGMLQuantizationType[name])
+    assert layout.type_size == sizes[name]
+    assert layout.block_size == (32 if name == 'IQ4_NL' else 256)
+    with np.load(FIXTURES / 'synthetic.npz') as fixture:
+        raw = fixture[name + '_raw']
+    offset = 108 if name == 'Q3_K' else 0
+    scales = np.ascontiguousarray(raw[:, offset:offset + 2]).view('<u2')
+    assert set(scales.ravel()) == {0, 0x8000, 1, 0x0400, 0x3c00, 0xbc00, 0x7bff, 0x3555}
+
+
+@pytest.mark.parametrize('name', ('IQ2_XS', 'IQ3_XXS', 'IQ4_XS', 'IQ4_NL', 'Q3_K'))
+def test_ud_existing_packed_selector_coverage_at_nonzero_scale(name):
+    with np.load(FIXTURES / 'synthetic.npz') as fixture:
+        raw = fixture[name + '_raw']
+    offset = 108 if name == 'Q3_K' else 0
+    nonzero = np.ascontiguousarray(raw[:, offset:offset + 2]).view('<f2').ravel() != 0
+    raw = raw[nonzero]
+    if name == 'IQ2_XS':
+        words = np.ascontiguousarray(raw[:, 2:66]).view('<u2')
+        assert set((words & 511).ravel()) == set(range(512))
+        assert set((words >> 9).ravel()) == set(range(128))
+        scales = raw[:, 66:74]
+        assert set((scales & 15).ravel()) | set((scales >> 4).ravel()) == set(range(16))
+    elif name == 'IQ3_XXS':
+        assert set(raw[:, 2:66].ravel()) == set(range(256))
+        aux = np.ascontiguousarray(raw[:, 66:98]).view('<u4')
+        for shift in (0, 7, 14, 21):
+            assert set(((aux >> shift) & 127).ravel()) == set(range(128))
+        assert set((aux >> 28).ravel()) == set(range(16))
+    elif name in ('IQ4_XS', 'IQ4_NL'):
+        start = 8 if name == 'IQ4_XS' else 2
+        assert set((raw[:, start:] & 15).ravel()) == set(range(16))
+        assert set((raw[:, start:] >> 4).ravel()) == set(range(16))
+        if name == 'IQ4_XS':
+            high = raw[:, 2].astype(np.uint16) | (raw[:, 3].astype(np.uint16) << 8)
+            scales = []
+            for j in range(8):
+                low = (raw[:, 4 + j // 2] >> (4 * (j % 2))) & 15
+                scales.extend((low | (((high >> (2 * j)) & 3) << 4)).tolist())
+            assert set(scales) == set(range(64))
+    else:
+        # Each Q3 subblock uses two low quant bits and one independent hmask bit.
+        for bit in range(8):
+            assert set(((raw[:, :32] >> bit) & 1).ravel()) == {0, 1}
+        for shift in (0, 2, 4, 6):
+            assert set(((raw[:, 32:96] >> shift) & 3).ravel()) == set(range(4))
+        scales = []
+        for j in range(16):
+            low = (raw[:, 96 + j % 8] >> (4 * (j // 8))) & 15
+            high = (raw[:, 104 + j % 4] >> (2 * (j // 4))) & 3
+            scales.extend((low | (high << 4)).tolist())
+        assert set(scales) == set(range(64))
+
+
 REAL = json.loads((FIXTURES / 'real_rows.json').read_text())
 
 
