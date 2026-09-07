@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+HIP wait-policy QSA probe:spin was already1;yield1->2 accepted but early
+CPU recovery penalty persists. Parent/candidate tg128 wall8.496/8.925s
+(spin),8.509/8.940s (yield),exact state. No production flag change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-wait-policy.json).
+
 CPU17 affinity isolation does not fix QSA transition:parent/candidate
 early decode1.167/1.573s,exact state,early~1.5GHz/~600MHz.
 Original affinity restored;no production pinning or clock changes.
