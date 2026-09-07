@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""C1 K0-K7 sweep rollup: balanced-pair economics table from the sweep JSONs.
+"""C1 K0-K3 sweep rollup: balanced-pair economics from the sweep JSONs.
 
-Reads the r{1,2,3}-k{0..7} server-bench JSONs and prints the per-depth
-MTP-vs-AR ratio (per-run plus median across the three independent runs),
-the true-AR baseline, and the correctness/route gates. Exit code 1 if any
-gate fails: ar_exact token contract broken, engagement or budget route
-expectation broken, any run status != complete, or the K0 automatic control
-showing engagement (automatic must select K0).
+Reads the r{1,2,3}-k{0..3} server-bench JSONs plus the k7-refusal exemplar
+and prints the per-depth MTP-vs-AR ratio (per-run plus median across the
+three independent runs), the true-AR baseline, and the correctness/route
+gates. Exit code 1 if any gate fails: ar_exact token contract broken,
+engagement or budget route expectation broken, any run status != complete,
+the K0 automatic control showing engagement (automatic must select K0), or
+the K7 refusal exemplar showing engagement (deeper-than-evidence requests
+must refuse pre-mutation to K0).
 
 Writes the compact benchmarks/results/ artifact when all gates pass.
 """
@@ -19,11 +21,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SWEEP_DIR = Path("/tmp/he-bettermtp-raw/c1-k-sweep")
-OUT_PATH = Path("benchmarks/results/2026-09-07-w7900-packed-c1-k0-k7-economics.json")
+OUT_PATH = Path("benchmarks/results/2026-09-07-w7900-packed-c1-k0-k3-economics.json")
 MODEL_SHA256 = "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
 GPU_UNIQUE_ID = "0xe282895b62c2b295"
 HOST = "epyc"
-SCREENING_DEPTHS = (1, 4, 5, 6, 7)  # unlisted policy cells (explicit opt-in env)
+SCREENING_DEPTHS = (1,)  # unlisted policy cell (explicit opt-in env)
 
 
 def load_run(path: Path) -> dict:
@@ -43,13 +45,19 @@ def load_run(path: Path) -> dict:
         "budget_conformed_cells": summary["budget_conformed_cells"],
         "cells": summary["cells"],
         "route_expectation_passed": summary["route_expectation_passed"],
+        "mtp_route_decision": (
+            d["cells"][0]["mtp"]["rows"][0].get("mtp", {})
+            if d.get("cells")
+            else {}
+        ),
     }
 
 
 def main() -> int:
     failures: list[str] = []
     depths: dict[int, dict] = {}
-    for k in range(8):
+    commits: set[str] = set()
+    for k in range(4):
         runs = []
         for r in (1, 2, 3):
             path = SWEEP_DIR / f"r{r}-k{k}.json"
@@ -58,6 +66,7 @@ def main() -> int:
                 continue
             run = load_run(path)
             runs.append(run)
+            commits.add(str(run["source_commit"]))
             if not run["passed"]:
                 failures.append(f"k{k} {run['name']}: status failed {run['failure_reasons']}")
             if run["cells"] != 10 or run["exact_cells"] != 10:
@@ -74,7 +83,6 @@ def main() -> int:
                 failures.append(f"k{k} {run['name']}: engaged {run['engaged_cells']}/10")
             if k > 0 and run["budget_conformed_cells"] != 10:
                 failures.append(f"k{k} {run['name']}: budget {run['budget_conformed_cells']}/10")
-            # Model identity must match the registered lane artifact.
             if run["model_sha256"] != MODEL_SHA256:
                 failures.append(f"k{k} {run['name']}: model sha mismatch")
         if len(runs) != 3:
@@ -83,7 +91,6 @@ def main() -> int:
         ratios = [run["ratio"] for run in runs]
         ar_rate = statistics.median(run["ar"]["tok_s"] for run in runs)
         mtp_rate = statistics.median(run["mtp"]["tok_s"] for run in runs)
-        # Pooled same-suite arms across the three runs (aggregate comparison).
         pooled_ar = sum(run["ar"]["generated_tokens"] for run in runs) / sum(
             run["ar"]["wall_seconds"] for run in runs
         )
@@ -117,11 +124,38 @@ def main() -> int:
             "pooled_mtp_tok_s": round(pooled_mtp, 2),
             "pooled_ratio": round(pooled_mtp / pooled_ar, 4),
             "policy": (
-                "automatic_k0_control" if k == 0 else
-                "listed_product_cell" if k in (2, 3) else
-                "explicit_screening_cell_unqualified"
+                "automatic_k0_control" if k == 0
+                else "explicit_screening_cell_unqualified" if k in SCREENING_DEPTHS
+                else "listed_product_cell"
             ),
         }
+
+    # K7 refusal exemplar: deeper-than-evidence requests must refuse to K0.
+    k7_refusal = None
+    k7_path = SWEEP_DIR / "k7-refusal-exemplar.json"
+    if k7_path.exists():
+        run = load_run(k7_path)
+        commits.add(str(run["source_commit"]))
+        engaged = run["engaged_cells"]
+        summary = run["mtp_route_decision"]
+        k7_refusal = {
+            "requested_candidate_budget": 7,
+            "expected": "pre-mutation refusal to K0 (evidence-scope budget cap 3)",
+            "engaged_cells": f"{engaged}/{run['cells']}",
+            "decision_reason": summary.get("decision_reason"),
+            "selection_reason": summary.get("selection_reason")
+            or summary.get("decision_reason"),
+            "status": run["status"],
+        }
+        if engaged != 0:
+            failures.append(
+                f"k7-refusal: engaged {engaged}/10 (deeper-than-evidence request must refuse)"
+            )
+    else:
+        failures.append("k7-refusal: exemplar run missing")
+
+    if len(commits) > 1:
+        failures.append(f"mixed source commits across runs: {sorted(commits)}")
 
     if failures:
         print("GATE FAILURES:")
@@ -129,23 +163,25 @@ def main() -> int:
             print(f"  - {f}")
         return 1
 
-    print("C1 K0-K7 balanced-pair economics (GPU0 W7900, D24, 20 ms, ar_exact):")
-    print(f"{'depth':>5} {'policy':<36} {'median ratio':>12} {'range':>17} "
+    print("C1 K0-K3 balanced-pair economics (GPU0 W7900, D24, 20 ms, ar_exact):")
+    print(f"{'depth':>5} {'policy':<38} {'median ratio':>12} {'range':>17} "
           f"{'ar tok/s':>9} {'mtp tok/s':>10}")
-    for k in range(8):
+    for k in range(4):
         d = depths[k]
         rng = f"[{d['min_ratio']:.4f},{d['max_ratio']:.4f}]"
-        ar = d["median_ar_tok_s"] if k == 0 else d["median_ar_tok_s"]
         mtp = "-" if k == 0 else f"{d['median_mtp_tok_s']:.2f}"
-        print(f"{'K' + str(k):>5} {d['policy']:<36} {d['median_ratio']:>12.4f} {rng:>17} "
-              f"{ar:>9.2f} {mtp:>10}")
-
-    winner = max((k for k in range(1, 8)), key=lambda k: depths[k]["median_ratio"])
-    print(f"\nWinning depth: K{winner} (median ratio {depths[winner]['median_ratio']:.4f}, "
+        print(f"{'K' + str(k):>5} {d['policy']:<38} {d['median_ratio']:>12.4f} {rng:>17} "
+              f"{d['median_ar_tok_s']:>9.2f} {mtp:>10}")
+    assert k7_refusal is not None
+    print(f"\nK7 refusal exemplar: engaged {k7_refusal['engaged_cells']}, "
+          f"decision_reason={k7_refusal['decision_reason']} (evidence cap 3 < requested 7)")
+    winner = max((k for k in range(1, 4)), key=lambda k: depths[k]["median_ratio"])
+    print(f"Winning qualified depth: K{winner} "
+          f"(median ratio {depths[winner]['median_ratio']:.4f}, "
           f"range [{depths[winner]['min_ratio']:.4f}, {depths[winner]['max_ratio']:.4f}])")
 
     artifact = {
-        "kind": "native_packed_c1_k0_k7_economics",
+        "kind": "native_packed_c1_k0_k3_economics",
         "date": datetime.now(timezone.utc).date().isoformat(),
         "host": HOST,
         "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
@@ -155,33 +191,64 @@ def main() -> int:
         "quant": "Q4_K_M",
         "execution_profile": "production",
         "kv": "BF16",
-        "source_commit": depths[0]["runs"][0]["source_commit"],
+        "source_commit": sorted(commits)[0],
         "source_clean_at_launch": True,
         "protocol": (
             "scripts/gguf_mtp_c1c8_server_bench.py, width 1, resident-capacity 8, "
             "D24 greedy, 20 ms batch window, ar_exact token contract, full canonical "
             "10-prompt mtpbench-code-general-ja suite, GPU_MAX_HW_QUEUES=1, "
             "HIP_VISIBLE_DEVICES=0; one run = 10 balanced AR/MTP pairs with per-prompt "
-            "arm-order alternation; three independent runs per depth (balanced rounds "
-            "r1-r3); per-run ratio is the same-run suite-aggregate MTP/AR rate"
+            "arm-order alternation; three independent runs per depth in balanced "
+            "rounds r1-r3; per-run ratio is the same-run suite-aggregate MTP/AR rate; "
+            "aggregation reports per-run ratios plus their median and pooled arms"
         ),
         "k0_definition": (
-            "true no-MTP autoregressive decode: the K0 'ar' arms (speculative_mtp=false) "
-            "and the automatic control runs (automatic selects K0, engaged 0/10)"
+            "true no-MTP autoregressive decode: the K0 'ar' arms "
+            "(speculative_mtp=false) and the automatic control runs (automatic "
+            "selects K0, engaged 0/10). No verifier-derived B0 substitute."
         ),
-        "depths": {f"k{k}": depths[k] for k in range(8)},
+        "route_validity": (
+            "Native packed C1 product route after the deferred static-intent repair "
+            "(555fc7ef3): the realized width-miss deferral preserves the "
+            "evidence-backed static eligibility, so the resident owner's fail-closed "
+            "physical admission engages C1 requests (listed (1,2)/(1,3) cells; K1 via "
+            "the explicit-only screening opt-in HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1)"
+        ),
+        "depths": {f"k{k}": depths[k] for k in range(4)},
+        "k4_k7_status": {
+            "measured": False,
+            "reason": (
+                "the serving key carries the requested candidate budget (4-7); every "
+                "registered Qwen3.8 gfx1100 evidence row qualifies at most candidate "
+                "budget 3, so resolve_speculative_mtp_serving_plan fails "
+                "candidate_budget_not_qualified with no static eligibility override "
+                "and the request refuses pre-mutation to K0 by design. Measuring "
+                "deeper depths on the product route requires the Packet-5/6 "
+                "qualification chain (draft-chain product-route execution, service "
+                "gates), not an evidence-scope bypass"
+            ),
+            "teacher_numerical_status": (
+                "target-only calibrated fixed-teacher checks pass K1-K7 at N1 with "
+                "three bit-identical repeats per depth (see "
+                "benchmarks/results/2026-09-07-w7900-packed-c1-teacher-k5-repeats.json "
+                "and k6-k7); they do not qualify product-route depth economics"
+            ),
+            "refusal_exemplar": k7_refusal,
+        },
         "winning_depth": f"k{winner}",
         "winner_median_ratio": depths[winner]["median_ratio"],
         "gates": {
-            "ar_exact": "10/10 prompts per run, all 24 runs",
-            "engagement": "10/10 engaged for K1-K7; K0 automatic engaged 0/10",
-            "budget_conformed": "10/10 for K1-K7",
-            "route": "K2/K3 listed product policy; K1/K4-K7 explicit screening opt-in",
+            "ar_exact": "10/10 prompts per run, all runs",
+            "engagement": "10/10 engaged for K1-K3; K0 automatic and K7 refusal engaged 0/10",
+            "budget_conformed": "10/10 for K1-K3",
+            "route": "K2/K3 listed product policy; K1 explicit screening opt-in",
         },
         "evidence_scope": (
-            "Economics evidence only. Lifecycle (K0<->MTP switch), wider-capacity "
-            "isolation, sustained horizon/context, and dynamic service-owner gates "
-            "remain open per the campaign doc; automatic selection stays K0."
+            "Economics evidence only, measured on the actual product server route. "
+            "Lifecycle (K0<->MTP switch), wider-capacity isolation, sustained "
+            "horizon/context, and dynamic service-owner gates remain open per the "
+            "campaign doc before any C1 evidence row is re-registered or automatic "
+            "promotion is considered; automatic selection stays K0."
         ),
         "commands": {
             "sweep": "bash campaign-artifacts/c1-k-sweep/run_c1_k_sweep.sh",
@@ -189,7 +256,7 @@ def main() -> int:
             "explicit_run": (
                 "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 "
                 "HIPENGINE_HIP_ARCH=gfx1100 [HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1 "
-                "for K1/K4-K7] .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py "
+                "for K1] .venv/bin/python scripts/gguf_mtp_c1c8_server_bench.py "
                 "--model /models/gguf/Qwen3.8-27B-Q4_K_M.gguf --backend hip_gfx1100 "
                 "--quant gguf_q4_k_m --execution-profile production "
                 "--prompts benchmarks/prompts/mtpbench-code-general-ja.jsonl "
