@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+QSA CPU-counter isolation:early decode wall1.169->1.581s despite
+~3.91B instructions and1.72-1.75B cycles in both arms,100% counter
+running. Lower effective CPU rate is plausible;clock cause unproven.
+No production change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-phase-perf.json).
+
 QSA transition CPU accounting:early decode wall1.170->1.574s follows
 thread CPU1.165->1.563s;no GC or major faults. Off-CPU waiting does
 not explain this run. Instructions/cycles next;production unchanged.

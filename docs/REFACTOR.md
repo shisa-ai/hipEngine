@@ -23,6 +23,9 @@
   Unprofiled CPU accounting now tracks wall penalty (thread1.165->1.563s),
   with zero GC/major faults. Decode-window instructions/cycles are next;
   hardware counter access confirmed.
+  Measured user-mode instructions~3.91B/cycles~1.74B remain nearly
+  unchanged while CPU time rises. Effective CPU rate/frequency is next;
+  no large extra-work or proven thermal explanation yet.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed

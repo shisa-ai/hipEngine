@@ -76,6 +76,18 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**QSA transition CPU hardware counters (September7 UTC):** unprofiled
+code4096,2 balanced pairs/16 decode steps,decode flag0. Parent/candidate
+wall1.169/1.581s;both retire~3.91B user instructions and1.72-1.75B
+user cycles. CPI0.439-0.443 parent versus0.447-0.448 candidate.
+Counter running fraction100% in every measured arm;thread-local user
+scope excludes kernel/hypervisor. CPU thread time rises with wall,
+not instruction count. This is consistent with lower effective CPU
+execution rate after candidate prefill,not proof of a specific clock or
+power-policy mechanism. No affinity/clocks changed. Next directly inspect
+effective CPU frequency/rate across transition;keep candidate default-off.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-perf.json).
+
 **QSA transition CPU accounting (September7 UTC):** unprofiled
 code4096,2 balanced pairs/16 steps after parent/candidate prefill,
 decode flag0. Wall1.170->1.574s tracks thread CPU1.165->1.563s.
