@@ -5815,6 +5815,136 @@ def test_explicit_c2_intent_survives_request_time_c1_plan_rejection() -> None:
     assert deferred["reason"] == "physical_group_deferred_to_resident_owner"
     assert deferred["deferred_key_rows"] == 1
 
+
+def test_explicit_width_deferred_plan_preserves_static_intent() -> None:
+    """A width-miss deferral keeps the plan's evidence-backed static intent.
+
+    The resident owner can only re-admit a deferred explicit request through
+    its fail-closed physical admission when the deferred route decision still
+    carries the static eligibility override resolved at request time. Dropping
+    it turns every deferred C1 explicit request into pre-mutation K0.
+    """
+
+    plan = {
+        "schema_version": 1,
+        "plan_fingerprint": "sha256:" + "a" * 64,
+        "key": {
+            "realized_group_rows": 1,
+            "context_tokens": 12,
+            "output_horizon_tokens": 25,
+        },
+        "admitted": False,
+        "selected_route": "default",
+        "selected_candidate_count": 0,
+        "reason": "physical_group_not_qualified",
+        "strict_fallback_key": "gguf_target_ar",
+        "evidence_key": "fake-qwen38-q4km-c2-b3",
+        "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-c2.json"],
+        "automatic_eligible": False,
+        "static_max_realized_group_rows": 2,
+        "static_eligibility": {
+            "state": "speculative_capable",
+            "eligible": True,
+            "reason": "qualified_automatic_c2_b3",
+            "packed_c1_target": False,
+            "max_candidate_count": 3,
+            "max_realized_group_rows": 2,
+            "automatic_eligible": False,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": "fake-qwen38-q4km-c2-b3",
+            "evidence_fingerprint": None,
+            "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-c2.json"],
+        },
+        "static_intent_allowed": True,
+    }
+    route, deferred = _resolve_realized_generation_route(
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        group_rows=1,
+        sampling=SamplingParams(max_tokens=25),
+        precomputed_decision=plan,
+    )
+    assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert deferred is not None
+    assert deferred["reason"] == "physical_group_deferred_to_resident_owner"
+    assert deferred["static_intent_allowed"] is True
+    assert deferred["static_eligibility"]["eligible"] is True
+    assert deferred["static_eligibility"]["max_realized_group_rows"] == 2
+    assert deferred["k0_class"] == "not_k0"
+
+    denied = dict(plan, static_intent_allowed=False)
+    _route, denied_deferred = _resolve_realized_generation_route(
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        group_rows=1,
+        sampling=SamplingParams(max_tokens=25),
+        precomputed_decision=denied,
+    )
+    assert denied_deferred is not None
+    assert denied_deferred["static_intent_allowed"] is False
+
+
+def test_reresolved_width_deferred_plan_derives_static_intent() -> None:
+    """A re-resolved raw decision payload (no intent key) still grants intent.
+
+    The batcher replaces the request-time plan with the raw
+    SpeculativeMTPServingDecision.as_dict() payload, which carries the static
+    eligibility override but not the plan layer's static_intent_allowed key.
+    The deferral must derive intent from the eligible payload, because this
+    branch only fires for explicit batch-route width misses.
+    """
+
+    plan = {
+        "schema_version": 1,
+        "plan_fingerprint": "sha256:" + "b" * 64,
+        "key": {
+            "realized_group_rows": 1,
+            "context_tokens": 12,
+            "output_horizon_tokens": 25,
+        },
+        "admitted": False,
+        "selected_route": "default",
+        "selected_candidate_count": 0,
+        "reason": "physical_group_not_qualified",
+        "strict_fallback_key": "gguf_target_ar",
+        "evidence_key": "fake-qwen38-q4km-c2-b3",
+        "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-c2.json"],
+        "automatic_eligible": False,
+        "static_max_realized_group_rows": 2,
+        "static_eligibility": {
+            "state": "speculative_capable",
+            "eligible": True,
+            "reason": "qualified_automatic_c2_b3",
+            "packed_c1_target": False,
+            "max_candidate_count": 3,
+            "max_realized_group_rows": 2,
+            "automatic_eligible": False,
+            "strict_fallback_key": "gguf_target_ar",
+            "evidence_key": "fake-qwen38-q4km-c2-b3",
+            "evidence_fingerprint": None,
+            "evidence_artifacts": ["benchmarks/results/fake-qwen38-q4km-c2.json"],
+        },
+    }
+    route, deferred = _resolve_realized_generation_route(
+        _SPECULATIVE_MTP_BATCH_ROUTE,
+        group_rows=1,
+        sampling=SamplingParams(max_tokens=25),
+        precomputed_decision=plan,
+    )
+    assert route == _SPECULATIVE_MTP_BATCH_ROUTE
+    assert deferred is not None
+    assert deferred["reason"] == "physical_group_deferred_to_resident_owner"
+    assert deferred["static_intent_allowed"] is True
+    assert deferred["static_eligibility"]["eligible"] is True
+
+
+def test_explicit_c1_deferred_plan_drops_intent_outside_scope() -> None:
+    fake = C2OnlyArtifactScopedSpeculativeMTPFakeLLM()
+    request = CompletionRequest(
+        model="fake-model",
+        prompt="one",
+        max_tokens=25,
+        temperature=0.0,
+        speculative_mtp=True,
+    )
     outside_route, outside_plan = _generation_route_for_request(
         ServerConfig(
             model="fake-path",
