@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp GDN wave-tail normalization candidate
+
+- Kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: original serial
+  recurrence, exact128-element normalization tree with wave-local tail.
+- Hk16/Hv48/D128 at512/1024 tokens wins1.042x/1.040x; private scratch
+  rises24->36B. Whole-prefill contribution expected small,not measured.
+- No runtime flag yet. Require full-model state/KV and canonical A/B
+  before promotion; remove candidate if rejected.
+
 ## Qwen4Exp Q4 paired-block pipeline: removed
 
 - Two-block weight prefetch loses ~10% at512/1024 tokens,exact outputs;

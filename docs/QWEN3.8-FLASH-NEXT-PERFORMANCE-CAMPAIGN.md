@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**GDN exact normalization wave-tail candidate (September7 UTC):**
+source comparison confirms current Strix tiled recurrence uses a different
+sum/contraction order; it is not an exact drop-in. In-tree alternative
+keeps serial recurrence and changes only normalization reduction:
+stride64/32 parent tree then wave16/8/4/2/1. Complete Hk16/Hv48/D128
+synthetic recurrence/norm/gate at64/512/1024 tokens improves1.065x/
+1.042x/1.040x;60 measured pairs exact,including output/state checks.
+Tests cover split execution through1024. VGPR256 unchanged,scratch24->36B.
+Kernel-only; roughly0.15% whole-prefill opportunity by prior attribution,
+not measured. Require model state/KV and canonical A/B for admission.
+Do not prioritize a lengthy GDN geometry port merely from external rates.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-gdn-wave-norm.json).
+
 **Q4 two-block pipeline rejected (September7 UTC):** actual layer3
 gate/up+SiLU with synthetic routing/activations at512/1024 tokens yields
 0.910252x/0.909234x (~10% slower),all40 pairs exact,14 tests pass.

@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+GDN exact wave-tail normalization candidate:Hk16/Hv48/D128 synthetic
+512/1024 tokens2.812->2.699ms /5.574->5.358ms (~4% kernel gain),
+60 measured pairs exact. Scratch24->36B; no runtime/default change.
+[Evidence](results/2026-09-07-framework-qwen4exp-gdn-wave-norm.json).
+
 Q4 two-block prefetch rejected:actual layer3 gate/up+SiLU screen
 0.910x/0.909x at512/1024 tokens,40 pairs exact;14 tests.
 VGPR88->112,no scratch; candidate removed,production unchanged.

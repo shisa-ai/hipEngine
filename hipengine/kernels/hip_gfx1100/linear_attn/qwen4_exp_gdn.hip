@@ -208,7 +208,18 @@ __global__ void qwen4_exp_gdn_prefill_sigmoid_gate_f32_kernel(
   }
 }
 
-template <bool REGISTER_STATE = false>
+__device__ inline void exact_norm128_wave_tail(float* values) {
+  if (threadIdx.x < 32) {
+    const int t = threadIdx.x;
+    float sum = (values[t] + values[t+64]) + (values[t+32] + values[t+96]);
+    for (int stride = 16; stride > 0; stride >>= 1)
+      sum += __shfl_down(sum, stride, 32);
+    if (t == 0) values[0] = sum;
+  }
+  __syncthreads();
+}
+
+template <bool REGISTER_STATE = false, bool WAVE_NORM = false>
 __global__ void __launch_bounds__(REGISTER_STATE ? 128 : 1024)
 qwen4_exp_gdn_prefill_f32_kernel(
     const float* __restrict__ conv,
@@ -271,12 +282,17 @@ qwen4_exp_gdn_prefill_f32_kernel(
     reductions[threadIdx.x] = q_sumsq;
     norm_reductions[threadIdx.x] = k_sumsq;
     __syncthreads();
+    if constexpr (WAVE_NORM) {
+      exact_norm128_wave_tail(reductions);
+      exact_norm128_wave_tail(norm_reductions);
+    } else {
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
       if (threadIdx.x < stride) {
         reductions[threadIdx.x] += reductions[threadIdx.x + stride];
         norm_reductions[threadIdx.x] += norm_reductions[threadIdx.x + stride];
       }
       __syncthreads();
+    }
     }
     const float q_scale = rsqrtf(reductions[0] + 1.0e-6f)
         * rsqrtf(static_cast<float>(head_k_dim));
@@ -320,11 +336,15 @@ qwen4_exp_gdn_prefill_f32_kernel(
       norm_reductions[threadIdx.x] = 0.0f;
     }
     __syncthreads();
+    if constexpr (WAVE_NORM) {
+      exact_norm128_wave_tail(norm_reductions);
+    } else {
     for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
       if (threadIdx.x < stride) {
         norm_reductions[threadIdx.x] += norm_reductions[threadIdx.x + stride];
       }
       __syncthreads();
+    }
     }
     if (value_index < head_v_dim) {
       const int64_t index = v_head * head_v_dim + value_index;
@@ -856,7 +876,8 @@ extern "C" int hipengine_qwen4_exp_gdn_prefill_f32(
 }
 
 
-extern "C" int hipengine_qwen4_exp_gdn_register_prefill_f32(
+template <bool WAVE_NORM>
+int launch_register_gdn(
     const void* conv, const void* output_gate, const void* alpha,
     const void* beta_logits, const void* dt_bias, const void* a,
     const void* norm_weight, void* recurrent_state, void* output,
@@ -867,7 +888,7 @@ extern "C" int hipengine_qwen4_exp_gdn_register_prefill_f32(
       num_k_heads <= 0 || num_v_heads <= 0 || num_v_heads % num_k_heads ||
       head_k_dim != 128 || head_v_dim != 128)
     return static_cast<int>(hipErrorInvalidValue);
-  hipLaunchKernelGGL((qwen4_exp_gdn_prefill_f32_kernel<true>),
+  hipLaunchKernelGGL((qwen4_exp_gdn_prefill_f32_kernel<true, WAVE_NORM>),
       dim3(static_cast<uint32_t>(num_v_heads)), dim3(128), 640 * sizeof(float), stream,
       static_cast<const float*>(conv), static_cast<const float*>(output_gate),
       static_cast<const float*>(alpha), static_cast<const float*>(beta_logits),
@@ -876,6 +897,16 @@ extern "C" int hipengine_qwen4_exp_gdn_register_prefill_f32(
       static_cast<float*>(output), tokens, num_k_heads, num_v_heads, head_k_dim, head_v_dim);
   return static_cast<int>(hipGetLastError());
 }
+
+#define REGISTER_GDN_ENTRY(NAME, WAVE) \
+extern "C" int NAME(const void* c, const void* gate, const void* alpha, \
+    const void* beta, const void* dt, const void* a, const void* norm, void* state, void* out, \
+    int64_t t, int64_t hk, int64_t hv, int64_t dk, int64_t dv, hipStream_t s) { \
+  return launch_register_gdn<WAVE>(c,gate,alpha,beta,dt,a,norm,state,out,t,hk,hv,dk,dv,s); \
+}
+REGISTER_GDN_ENTRY(hipengine_qwen4_exp_gdn_register_prefill_f32, false)
+REGISTER_GDN_ENTRY(hipengine_qwen4_exp_gdn_wave_norm_prefill_f32, true)
+#undef REGISTER_GDN_ENTRY
 
 
 extern "C" int hipengine_qwen4_exp_gdn_prefill_columnwarps_f32(

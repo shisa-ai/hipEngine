@@ -433,6 +433,7 @@ def qwen4_exp_gdn_prefill_f32(
     library: ctypes.CDLL | None = None,
     runtime: HipRuntime | None = None,
     _register_state: bool = False,
+    _wave_norm: bool = False,
 ) -> None:
     """Run exact serial-order FP32-state Qwen4Exp recurrence for token rows."""
 
@@ -448,7 +449,8 @@ def qwen4_exp_gdn_prefill_f32(
     runtime = runtime or get_hip_runtime()
     fn = signed_kernel_fn(
         library,
-        ("hipengine_qwen4_exp_gdn_register_prefill_f32" if _register_state
+        ("hipengine_qwen4_exp_gdn_wave_norm_prefill_f32" if _wave_norm else
+         "hipengine_qwen4_exp_gdn_register_prefill_f32" if _register_state
          else "hipengine_qwen4_exp_gdn_prefill_f32"),
         _PREFILL_ARGS,
         ctypes.c_int,
@@ -535,12 +537,16 @@ def qwen4_exp_gdn_prefill_w32_f32(
 def qwen4_exp_gdn_register_prefill_f32(*args, **kwargs):
     qwen4_exp_gdn_prefill_f32(*args, **kwargs, _register_state=True)
 
+def qwen4_exp_gdn_wave_norm_prefill_f32(*args, **kwargs):
+    qwen4_exp_gdn_prefill_f32(*args, **kwargs, _register_state=True, _wave_norm=True)
+
 
 def register_qwen4_exp_gdn_kernels(*, replace: bool = True) -> None:
     registrations = {
         "qwen4exp_sigmoid_strict": qwen4_exp_gdn_decode_f32,
         "qwen4exp_sigmoid_strict_prefill": qwen4_exp_gdn_prefill_f32,
         "qwen4exp_sigmoid_register_prefill": qwen4_exp_gdn_register_prefill_f32,
+        "qwen4exp_sigmoid_wave_norm_prefill": qwen4_exp_gdn_wave_norm_prefill_f32,
         "qwen4exp_sigmoid_peer_prefill": qwen4_exp_gdn_peer_prefill_f32,
         "qwen4exp_gdn_columnwarps_prefill": qwen4_exp_gdn_prefill_columnwarps_f32,
         "qwen4exp_gdn_tiled16_prefill": qwen4_exp_gdn_prefill_tiled16_f32,
@@ -596,6 +602,7 @@ __all__ = [
     "qwen4_exp_gdn_peer_prefill_f32",
     "qwen4_exp_gdn_prefill_f32",
     "qwen4_exp_gdn_register_prefill_f32",
+    "qwen4_exp_gdn_wave_norm_prefill_f32",
     "qwen4_exp_gdn_prefill_prepare_f32",
     "qwen4_exp_gdn_prefill_sigmoid_gate_f32",
     "register_qwen4_exp_gdn_kernels",
