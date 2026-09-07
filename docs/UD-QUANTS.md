@@ -1518,7 +1518,10 @@ Dependencies: U4/U5 per artifact.
 Files: existing row/bulk-prefill, NextN, resident runner, profile and server tests.
 
 - [ ] Caller ABI coverage for rows 1/2/3/4/5/7/8, verifier rows such as
-  6/9/12/16/28/32, prefill tile/chunk boundaries.
+  6/9/12/16/28/32, prefill tile/chunk boundaries. Raw dense leaf tests cover
+  those row counts at N3 with exact/repeat/outer gates and output canaries on
+  gfx1151; all seven synthetic codecs also pass device one-hot checks. This
+  does not qualify full-N runtime callers or tile/chunk transitions.
 - [ ] Short/512/4096 prompts and separately budgeted long-context point such
   as 32768. Short gates do not authorize long trajectories.
 - [ ] Q8 alpha/beta recurrent transitions, full attention, mixed FFN pairs,
