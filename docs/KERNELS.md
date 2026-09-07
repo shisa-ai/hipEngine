@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Router shuffle-tail candidate was removed after full-model A/B failed
+retention:one prefill/four request cases lose despite72 exact trajectories.
+Earlier kernel/state evidence below is historical,not an available variant.
+Original shared-tree router restored;21 focused regression tests pass.
+Evidence: `2026-09-07-framework-qwen4exp-router-shuffle-rejected.json`.
+
 F32 router exposes kernel-only `f32_hidden_token_tile4_shuffle_exact`.
 Per-thread dense accumulation and shared128/64 reduction stay unchanged;
 wave0 handles32..1 with the same tree,saving six block barriers.

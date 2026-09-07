@@ -28,7 +28,7 @@ from scripts.qwen4exp_layer2_profile_gate import _state_summary
 from scripts.qwen4exp_halo_box_campaign_ab import (
     q8_down_row4_expected_calls, q51_fold128_expected_calls, q51_fold_pair_expected_calls,
     q8_mmq_vec4_expected_calls,q8_mmq_raw_vector_expected_calls,q8_mapped_down_expected_calls,
-    q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage,router_shuffle_expected_calls)
+    q8_bundle_call_in_scope,apply_chunk_mode,validate_chunk_coverage)
 
 
 def apply_state_gate_mode(runner, package, enabled, flag, *, environment=os.environ):
@@ -44,8 +44,7 @@ def main():
     p.add_argument("--model-root", type=Path, required=True)
     p.add_argument("--compiler-version-file", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "router-shuffle"), default="q5k-row4")
-    p.add_argument("--prefill-chunk-size",type=int,choices=(512,1024),default=512)
+    p.add_argument("--route-package", choices=("q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "prefill-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024"), default="q5k-row4")
     p.add_argument("--case-id", action="append")
     p.add_argument("--all-cases", action="store_true")
     p.add_argument("--decode-steps", type=int, default=1)
@@ -53,9 +52,6 @@ def main():
     args = p.parse_args()
     if not 1 <= args.decode_steps <= 128:
         p.error("--decode-steps must be in 1..128")
-    if args.prefill_chunk_size!=512 and args.route_package not in {"router-shuffle","chunk1024"}:
-        p.error("explicit1024 is currently supported only by router-shuffle/chunk1024 gates")
-    chunk_size = 1024 if args.route_package=="chunk1024" else args.prefill_chunk_size
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(args.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
     register_gfx1151_kernels(replace=True)
@@ -69,7 +65,7 @@ def main():
         model_path=args.model_root, weight_index=index,
         model_plugin=resolve_model(index.architecture or ""),
         backend="hip_gfx1151", max_sequence_length=4352,
-        prefill_chunk_size=chunk_size))
+        prefill_chunk_size=1024 if args.route_package=="chunk1024" else 512))
     flag = ("HIPENGINE_QWEN4_EXP_GROUPED_ROW4_PREFILL"
             if args.route_package == "q5k-row4"
             else "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL")
@@ -99,8 +95,6 @@ def main():
         flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
     if args.route_package == "q8-mapped-down":
         flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
-    if args.route_package == "router-shuffle":
-        flag = "HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE"
     if args.route_package == "q51-fold-pair":
         flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
     if args.route_package == "q51-register-cache":
@@ -154,8 +148,6 @@ def main():
     if args.route_package == "q51-register-cache":
         key = KernelKey("hip_gfx1151", "moe_linear", "gguf_q5_1",
                         "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
-    if args.route_package == "router-shuffle":
-        key = KernelKey("hip_gfx1151","router_logits","f32","f32_hidden_token_tile4_shuffle_exact")
     original = (None if args.route_package=="chunk1024" else
                 resolve(backend=key.backend, layer=key.layer, quant=key.quant, variant=key.variant))
     calls = [0]
@@ -193,7 +185,6 @@ def main():
         register(qsa_key, counted_qsa, replace=True)
     report = {
         "status": "running",
-        "prefill_chunk_size":chunk_size,
         "source": _git_metadata(ROOT), "host": _host_metadata(), "command": sys.argv,
         "manifest_sha256": resolved.manifest_sha256,
         "strict_manifest_sha256": resolved.strict_manifest_sha256,
@@ -213,24 +204,6 @@ def main():
             "kernel_flags_changed":False,
             "memory_scope":"Shared larger allocation;not an allocation-size A/B",
         }
-    original_select = None
-    routing_digest = None
-    if args.route_package=="router-shuffle":
-        from hipengine.runtime import qwen4_exp_runner as runner_module
-        from hipengine.core.hip import HipMemcpyKind
-        original_select = runner_module.qwen35_router_select
-        def capture_selection(*call_args,**kwargs):
-            result = original_select(*call_args,**kwargs)
-            rows,stride,_,top_k = call_args[3:7]
-            if rows>=2:
-                runtime = kwargs["runtime"]
-                for ptr,size in ((call_args[0],rows*stride*4),
-                                 (call_args[1],rows*top_k*8),(call_args[2],rows*top_k*4)):
-                    raw = np.empty(size,dtype=np.uint8)
-                    runtime.memcpy(host_array_ptr(raw),int(ptr),size,HipMemcpyKind.DEVICE_TO_HOST)
-                    routing_digest.update(raw)
-            return result
-        runner_module.qwen35_router_select = capture_selection
     try:
         if args.route_package == "q8-mmq-prepack":
             assert os.environ.get(flag) == "1", "production must bind prepacked MMQ by default"
@@ -254,7 +227,6 @@ def main():
             baseline = None
             summaries = []
             for enabled in ("0", "1", "0"):
-                routing_digest = hashlib.sha256()
                 apply_state_gate_mode(generator.runner,args.route_package,enabled,flag)
                 observed_chunks.clear()
                 if args.route_package == "prefill-bundle":
@@ -287,11 +259,6 @@ def main():
                             kv_digest.update(raw)
                     state["full_kv_sha256"] = kv_digest.hexdigest()
                 invoked = calls[0] - start_calls
-                if args.route_package=="router-shuffle":
-                    expected_router = router_shuffle_expected_calls(case["prompt_tokens"],chunk_size)
-                    assert prefill_invoked == (expected_router if enabled=="1" else 0)
-                    assert invoked == prefill_invoked,"router candidate ran during decode"
-                    state["prefill_routing_sha256"] = routing_digest.hexdigest()
                 if args.route_package == "q8-mapped-down":
                     expected_mapped_calls = q8_mapped_down_expected_calls(
                         case["prompt_tokens"],512) if enabled=="1" else 0
@@ -331,8 +298,6 @@ def main():
                     expected = expected_raw_calls > 0
                 if args.route_package == "q8-mapped-down":
                     expected = expected_mapped_calls > 0
-                if args.route_package == "router-shuffle":
-                    expected = enabled=="1"
                 if args.route_package == "chunk1024":
                     validate_chunk_coverage(observed_chunks,case["prompt_tokens"],
                                             generator.runner.prefill_chunk_size)
@@ -361,7 +326,6 @@ def main():
                     "qsa_candidate_calls": invoked_qsa,
                     "step_seconds": step_seconds,
                     "full_kv_sha256": state.get("full_kv_sha256"),
-                    "prefill_routing_sha256":state.get("prefill_routing_sha256"),
                 })
                 if args.route_package=="chunk1024":
                     summaries[-1].update(active_chunk_size=generator.runner.prefill_chunk_size,
@@ -374,8 +338,6 @@ def main():
         report["error"] = f"{type(error).__name__}: {error}"
         raise
     finally:
-        if original_select is not None:
-            runner_module.qwen35_router_select = original_select
         if original_chunk is not None:
             generator.runner._prefill_chunk = original_chunk
             generator.runner.prefill_chunk_size = 1024

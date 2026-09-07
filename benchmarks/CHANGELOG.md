@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-07 UTC router shuffle rejected] Full12-case PP180.511->181.155 (+0.357%)/191.238->191.559 (+0.168%)/176.596->177.042 (+0.253%),72 exact but one prefill/four request cases lose. Candidate removed,21 cleanup tests pass. `benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-rejected.json`.
+
 - [2026-09-07 UTC router shuffle admission] Five chunk1024 full-logit/routing/state/KV cases exact,calls0/48/0 or0/192/0,zero decode/final owners;18 CPU tests,both binders0. Throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-state.json`.
 
 - [2026-09-07 UTC router shuffle candidate] Layer0/27 router1024 rows3.043->2.635ms (-13.42%)/3.051->2.648ms (-13.20%),80 exact pairs,both orders positive;16 tests,32 VGPR/scratch0 unchanged. Kernel-only,model gates pending. `benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle.json`.

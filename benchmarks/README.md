@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Router shuffle rejected after full12-case A/B:PP+0.357%/+0.168%/+0.253%
+but one prefill/four request cases lose.72 exact trajectories;candidate
+removed,production unchanged. No favorable rerun.
+[Evidence](results/2026-09-07-framework-qwen4exp-router-shuffle-rejected.json).
+
 Router shuffle model admission at chunk1024:five cases exact for full
 logits/routing/state/KV;48/192 prefill calls,zero decode/final owners.
 Both binders0;canonical throughput gate remains.

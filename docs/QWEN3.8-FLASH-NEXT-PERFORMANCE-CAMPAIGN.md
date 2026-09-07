@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Router shuffle rejected and removed (September7 UTC):** full12-case
+chunk1024 A/B at clean `db929145c` preserves72 exact trajectories but
+only marginal aggregate PP+0.357%/+0.168%/+0.253%;one prefill case and
+four request-wall cases regress. Max PP/TG CV0.994%/4.616%,zero final
+owners. No broadly non-regressive model win established;no favorable
+rerun. Remove candidate kernel/key/flag/harness routes and candidate
+tests;affected code matches pre-experimentfa4cf3a02.21 regressions pass.
+Earlier kernel/state packets remain historical;production unchanged.
+[Rejection](../benchmarks/results/2026-09-07-framework-qwen4exp-router-shuffle-rejected.json).
+
 **Router shuffle default-off admission (September7 UTC):** five cases at
 current chunk1024 pass full logits,four decode steps,state/full KV and
 all prefill router-logit/selected-expert/routing-weight hashes.

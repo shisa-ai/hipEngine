@@ -218,7 +218,7 @@ void qwen35_router_logits_bf16_f32w_wave0_tree_anyorder_kernel(
   }
 }
 
-template <int TOKENS_PER_BLOCK, bool SHUFFLE_TAIL = false>
+template <int TOKENS_PER_BLOCK>
 __global__ void qwen35_router_logits_f32_token_tile_dense_exact_kernel(
     const float* __restrict__ hidden,
     const float* __restrict__ weight,
@@ -269,7 +269,7 @@ __global__ void qwen35_router_logits_f32_token_tile_dense_exact_kernel(
     partial[t * blockDim.x + threadIdx.x] = acc[t];
   }
   __syncthreads();
-  for (int stride = blockDim.x / 2; stride > (SHUFFLE_TAIL ? 32 : 0); stride >>= 1) {
+  for (int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
     if (threadIdx.x < stride) {
 #pragma unroll
       for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
@@ -279,21 +279,7 @@ __global__ void qwen35_router_logits_f32_token_tile_dense_exact_kernel(
     }
     __syncthreads();
   }
-  if constexpr (SHUFFLE_TAIL) {
-    // Preserve shared strides128/64, then the same32/16/8/4/2/1 tree in wave0.
-    if (threadIdx.x < 32) {
-#pragma unroll
-      for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
-        float value = partial[t*blockDim.x+threadIdx.x] +
-                      partial[t*blockDim.x+threadIdx.x+32];
-#pragma unroll
-        for (int offset=16; offset>0; offset>>=1)
-          value += __shfl_down(value,offset,32);
-        if (threadIdx.x==0 && token_base+t<tokens)
-          logits[(token_base+t)*num_experts+expert] = value;
-      }
-    }
-  } else if (threadIdx.x == 0) {
+  if (threadIdx.x == 0) {
 #pragma unroll
     for (int t = 0; t < TOKENS_PER_BLOCK; ++t) {
       const int64_t token = token_base + t;
@@ -1024,8 +1010,7 @@ extern "C" int hipengine_qwen35_router_logits_fp16_f32w(
       stream));
 }
 
-template <bool SHUFFLE_TAIL>
-int launch_router_tile4(
+extern "C" int hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact(
     const float* hidden,
     const float* weight,
     float* logits,
@@ -1040,7 +1025,7 @@ int launch_router_tile4(
   }
   constexpr int tokens_per_block = 4;
   hipLaunchKernelGGL(
-      (qwen35_router_logits_f32_token_tile_dense_exact_kernel<tokens_per_block, SHUFFLE_TAIL>),
+      (qwen35_router_logits_f32_token_tile_dense_exact_kernel<tokens_per_block>),
       dim3(
           static_cast<unsigned int>(num_rows),
           static_cast<unsigned int>((tokens + tokens_per_block - 1) / tokens_per_block)),
@@ -1055,15 +1040,6 @@ int launch_router_tile4(
       num_rows);
   return static_cast<int>(hipGetLastError());
 }
-
-#define ROUTER_TILE4_ENTRY(NAME, TAIL) \
-extern "C" int NAME(const float* x,const float* w,float* y, \
-    int64_t rows,int64_t k,int64_t n,int64_t threads,hipStream_t stream) { \
-  return launch_router_tile4<TAIL>(x,w,y,rows,k,n,threads,stream); \
-}
-ROUTER_TILE4_ENTRY(hipengine_qwen35_router_logits_f32_f32w_token_tile4_dense_exact, false)
-ROUTER_TILE4_ENTRY(hipengine_qwen35_router_logits_f32_f32w_token_tile4_shuffle_exact, true)
-#undef ROUTER_TILE4_ENTRY
 
 extern "C" int hipengine_qwen35_router_logits_f32_f32w(
     const float* hidden,

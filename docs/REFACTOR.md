@@ -1,14 +1,10 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## Qwen4Exp router shuffle-tail candidate
+## Qwen4Exp router shuffle-tail: removed
 
-- Default-off `HIPENGINE_QWEN4_EXP_ROUTER_SHUFFLE` selects
-  `f32_hidden_token_tile4_shuffle_exact` only after existing multirow
-  tile4 selection;both profile binders0. Full logits/routing/state/KV pass.
-- Require canonical A/B at current chunk1024 before promotion;
-  remove candidate if rejected. Existing shared-tree tile4
-  remains strict fallback. Router owner ceiling is limited;no inflated
-  whole-model forecast from its isolated13% time reduction.
+- Closed after mixed full-model A/B:one prefill/four request cases lose.
+  Kernel/key/flag/harness routes and candidate-only tests removed;strict
+  shared-tree tile4 stays. Reproduce at db929145c;no unchanged rescreen.
 
 ## Qwen4Exp chunk allocation before profile binding
 
