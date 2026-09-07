@@ -98,6 +98,43 @@ def test_synthetic_decoder_on_device(library, quant):
             free(buf)
 
 
+@pytest.mark.parametrize('quant', sorted({e['type'] for e in ENTRIES}))
+@pytest.mark.parametrize('rows', (1, 8, 32))
+@pytest.mark.parametrize('output', ('f32', 'bf16'))
+def test_dense_full_output_geometry(library, quant, rows, output):
+    """Repeat two independent rows to test actual N without a large fixture."""
+    from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import launch
+    entry = next(e for e in ENTRIES if e['type'] == quant)
+    with np.load(FIXTURE / 'real_rows.npz') as fixture:
+        raw = fixture[entry['key']+'_raw']
+        weights = fixture[entry['key']+'_f32']
+    n, k = entry['shape']
+    indices = np.arange(n) % 2
+    raw = np.ascontiguousarray(raw[indices])
+    x = bf16(np.random.default_rng(91).normal(0, 0.125, (rows, k)))
+    want = reference(bf16_to_float32(x), weights)[:, indices]
+    if output == 'bf16':
+        want = bf16(want)
+    host = np.full((rows+2, n), 123, dtype=want.dtype)
+    buffers = []
+    try:
+        for array in (x, raw, host):
+            buf = malloc(array.nbytes)
+            buffers.append(buf)
+            copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
+        for _ in range(3):
+            launch(buffers[0].ptr, buffers[1].ptr,
+                   buffers[2].ptr+host.strides[0], rows, k, n,
+                   quant='gguf_'+quant.lower(), output=output, library=library)
+            copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
+            assert np.all(host[[0, -1]] == 123)
+            bits = np.uint32 if output == 'f32' else np.uint16
+            np.testing.assert_array_equal(host[1:-1].view(bits), want.view(bits))
+    finally:
+        for buf in reversed(buffers):
+            free(buf)
+
+
 @pytest.fixture(scope='module')
 def library():
     try:
