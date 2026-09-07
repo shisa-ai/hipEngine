@@ -3,6 +3,50 @@
 Status: measurement and optimization plan with scoped offline DMS INT8
 integration evidence. General production-serving qualification is not established.
 
+## Near-limit DMS INT8 capacity — 2026-09-07 UTC
+
+Eager resident C1 now passes **72,960 prompt tokens plus eight decode appends**
+on the RX 7900 XTX, with finite logits and zero tracked allocations after close.
+This extends observed prompt coverage from 65,536 by 11.33%; it is a new
+measurement, not a kernel optimization or a proven maximum.
+
+| Prompt tokens / decode appends | Outcome | Sampled whole-card peak | Tracked allocation peak |
+| --- | --- | ---: | ---: |
+| 65,536 / 8 | Pass; eight logit hashes match prior exact replay | 23.377 GiB | 22.539 GiB |
+| 72,704 / 8 | Pass; finite logits and clean drain | 23.893 GiB | 23.105 GiB |
+| 72,960 / 8 | Pass; finite logits and clean drain | 23.893 GiB | 23.125 GiB |
+| 77,824 / 8 | OOM before decode | 23.952 GiB before failure | Not captured |
+| 81,920 / 8 | OOM before decode | 23.946 GiB before failure | Not captured |
+| 82,944 / 8 | OOM before decode | 23.967 GiB before failure | Not captured |
+| 83,968 / 8 | OOM before decode | 23.940 GiB before failure | Not captured |
+
+The 72,960-token point peaks at 25,655,005,184 whole-card bytes, leaving
+98,021,376 bytes (93.48 MiB) of sampled headroom out of 23.984375 GiB total.
+That is approximately 23.9 GiB, but **7.08 MiB below the literal 23.9 GiB
+target**. Testing stopped there to avoid further multi-minute prefills for
+that small difference. Context after eight appends is 72,968 tokens.
+Intermediate sizes up to the smallest tested OOM, 77,824, are not qualified.
+
+Each point ran in a fresh process, with a 600-second bound and 20 ms sysfs
+sampling of PCI `0000:10:00.0`, unique ID `cc4d02090dc9c3ff`. All four OOMs
+were HIP error 2 while allocating compact V payloads after dense prefill,
+before dense storage could be released. Each process returned the card to
+baseline; same-process allocation-failure recovery was not tested.
+
+The initial allocator-only estimate was too optimistic: the matched 64K
+control measures 23.377 GiB whole-card versus 22.539 GiB tracked. These are
+different accounting domains, not interchangeable capacity budgets.
+Sampled peaks remain lower bounds, and failed-point peaks do not measure the
+bytes needed to finish. This is a near-limit execution fit, not an operating
+reserve recommendation, new numerical qualification or serving promotion.
+No new exact replay was run at the larger points; the existing 64K replay and
+post-fix numerical evidence remain separate. Dense boundaries are unchanged.
+
+Commands, identities, raw hashes, failure stages and the sampling wrapper:
+[`DMS INT8 edge evidence`](../benchmarks/results/2026-09-07-rx7900xtx-dms-int8-edge-capacity.json).
+Measured source is clean `bc7d7c7de`; the DMS runtime, cache, kernels, core and
+probe are unchanged in the later integrated main `ae2e02754`.
+
 ## Bounded correctness and capacity closeout — 2026-09-07
 
 The user narrowed closeout to implementation correctness and observed capacity,

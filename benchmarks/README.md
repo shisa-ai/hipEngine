@@ -94,18 +94,18 @@ two concurrent requests on the W7900.
 | Qwen3.8-27B `Q4_K_M`, W8192 | BF16-DMS | INT8-DMS, FP32 scales | Reduction |
 | --- | ---: | ---: | ---: |
 | 16,384/32 device-store bytes, including workspaces | 829,473,104 | 432,046,928 | 397,426,176 (47.9%) |
-| C1 execution fit, 65,536 prompt / eight decode; tracked device peak | Not paired | 22.54 GiB; exact replay | Not compared |
+| C1 execution fit, 72,960 prompt / eight decode; tracked / whole-card peak | Not paired | 23.125 / 23.893 GiB; 93.5 MiB sampled headroom | Not compared |
 
 Four long-context categories pass (maximum KL 0.014937592; top-1 100%).
 All ten canonical short prompts, including four category heldouts, pass dense-BF16
 and BF16-DMS-relative checks (64 steps; dense-relative top-1 649/650).
-Resident C1/interleaved-C2 replay is byte-exact; cancellation/refill/drain pass.
+Prior 64K C1/interleaved-C2 replay is byte-exact; the new 72,960-token point passes finite-logit/drain checks, not a new replay gate.
 These are not calibrated production-profile or free-running task gates; heldouts
 are not proven sidecar-train-disjoint. Packed/larger-C execution and full-session
 speculative rollback are unqualified. BF16 fallback stays; no serving promotion,
 whole-process memory percentage, throughput gain or proven context maximum.
 [Numerical/lifecycle evidence](results/2026-09-07-rx7900xtx-dms-int8-postfix-audit.json);
-[64K fit and C2 checks](results/2026-09-07-rx7900xtx-dms-int8-bounded-merge-gate.json); [dense context measurements](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
+[Near-limit fit and OOM evidence](results/2026-09-07-rx7900xtx-dms-int8-edge-capacity.json); [dense context measurements](results/2026-09-07-rx7900xtx-int8-repair-capacity-audit.json).
 
 ## Current default notes
 
