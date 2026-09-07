@@ -45,14 +45,17 @@ def main() -> int:
             speculative_candidate_budget=1, shutdown_grace_seconds=5.0,
         ), llm=llm)
         with bench.TestClient(app) as client:
-            result = bench._run_arm(
-                client, llm=llm, model="repro",
-                prompt=prompts[0]["rendered_prompt"],
-                width=1, max_tokens=24, arm="mtp", mtp_request_mode="explicit",
-            )
-            row = result["rows"][0]
-            print(f"[repro] used={row['mtp'].get('used')} "
-                  f"exact={row['correctness']['passed']}", flush=True)
+            for prompt in prompts:
+                for mode in ("explicit", "automatic"):
+                    result = bench._run_arm(
+                        client, llm=llm, model="repro",
+                        prompt=prompt["rendered_prompt"],
+                        width=1, max_tokens=24, arm="mtp", mtp_request_mode=mode,
+                    )
+                    row = result["rows"][0]
+                    print(f"[repro] {prompt['id']} {mode} "
+                          f"used={row['mtp'].get('used')} "
+                          f"tok_s={result['tok_s']:.2f}", flush=True)
         print("[repro] request context exited; closing engine...", flush=True)
     except BaseException as exc:  # noqa: BLE001 - diagnostic path
         print(f"[repro] exception before close: {exc!r}", flush=True)
