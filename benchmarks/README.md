@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q5_1 first-wave reduction rejected before model admission:
+actual-weight paired-down screen0.809x/0.798x at512/1024 tokens,
+all40 pairs exact.21 tests pass; production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json).
+
 Q8 paired-load candidate rejected and removed:full12-case PP
 +0.433%/+1.664%/+1.865%, but one prefill/nine request cases regress;
 p4096 TG -14.822%,total request0.975227x.72 trajectories exact.

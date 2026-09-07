@@ -788,6 +788,13 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q5_1 register-cache paired-down first-wave reduction experiment removed:
+exact stride64/32 LDS reads followed by shuffle tail is0.809x/0.798x
+at512/1024 synthetic-routing tokens with actual layer0/1 weights.
+All40 pairs exact,21 tests pass; VGPR96 unchanged,scratch36->24B,
+dynamic LDS8672B unchanged. Production register-cache tree remains.
+Evidence: `2026-09-07-framework-qwen4exp-q51-wave-tail-rejected.json`.
+
 Q8 coltile paired-load candidate is removed after full12-case model A/B:
 one prefill/nine request cases regress, aggregate p4096 decode -14.822%,
 despite72 exact trajectories and kernel-only gate wins. Wave-scale
