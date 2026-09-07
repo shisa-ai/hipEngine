@@ -2571,24 +2571,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "gguf_iq4_xs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
         ),
-        # WPF-1 fixed-grid-Y raw Q5/Q6 row reuse is W7900-only pending an
-        # independent gfx1151 gate. Keep every output/slab key unaliased.
-        *(
-            ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for row_batch in (4, 8, 16, 32)
-            for output_dtype in ("bf16", "f32")
-        ),
-        *(
-            (
-                "linear",
-                quant,
-                f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
-            )
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for col_tile, row_batch in ((2, 16), (4, 8))
-            for output_dtype in ("bf16", "f32")
-        ),
         # WPF-H7C transfers the exact H6U reduction instruction form to two
         # W7900 raw-Q6 leaves and remains absent without a gfx1151 screen.
         (
