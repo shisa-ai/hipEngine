@@ -1,5 +1,4 @@
 """Strict dense UD projection gates using independently decoded real rows."""
-import ctypes
 import json
 import os
 from pathlib import Path
@@ -9,6 +8,7 @@ import pytest
 
 from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr
 from hipengine.quant.gguf import bf16_to_float32
+from tests._ud_hip import ud_hip_backend
 
 FIXTURE = Path(__file__).parent / 'fixtures/gguf_ud'
 ENTRIES = json.loads((FIXTURE / 'real_rows.json').read_text())['entries']
@@ -169,7 +169,8 @@ def test_synthetic_decoder_on_device(library, quant):
 @pytest.mark.parametrize('quant', sorted({e['type'] for e in ENTRIES}))
 @pytest.mark.parametrize('rows', (1, 8, 32))
 @pytest.mark.parametrize('output', ('f32', 'bf16'))
-def test_dense_full_output_geometry(library, quant, rows, output):
+@pytest.mark.parametrize('caller', ('leaf', 'runtime'))
+def test_dense_full_output_geometry(library, ud_hip_backend, quant, rows, output, caller):
     """Repeat two independent rows to test actual N without a large fixture."""
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import launch
     entry = next(e for e in ENTRIES if e['type'] == quant)
@@ -190,10 +191,39 @@ def test_dense_full_output_geometry(library, quant, rows, output):
             buf = malloc(array.nbytes)
             buffers.append(buf)
             copy_host_to_device(buf, host_array_ptr(array), array.nbytes)
+        quant_key = 'gguf_'+quant.lower()
+        if caller == 'runtime':
+            from types import SimpleNamespace
+            from hipengine.loading.qwen35_gguf_materialize import LAYOUT_RAW_GGUF
+            from hipengine.runtime.gguf_linear import launch_gguf_linear
+            from hipengine.kernels.backends import load_backend_kernel_package
+            from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import register_gguf_iq_dense_kernels
+            # Test isolation removes lazy import registrations between cases.
+            # Restore the source family before loading backend aliases.
+            register_gguf_iq_dense_kernels()
+            load_backend_kernel_package(ud_hip_backend)
+            allocation = SimpleNamespace(tensor=SimpleNamespace(ptr=buffers[1].ptr))
+            allocations = {'raw': allocation}
+            weight = SimpleNamespace(
+                backend=ud_hip_backend,
+                spec=SimpleNamespace(layout=LAYOUT_RAW_GGUF, quant_key=quant_key),
+                allocations=allocations,
+                allocation=lambda name='raw': allocations[name],
+            )
         for _ in range(3):
-            launch(buffers[0].ptr, buffers[1].ptr,
-                   buffers[2].ptr+host.strides[0], rows, k, n,
-                   quant='gguf_'+quant.lower(), output=output, library=library)
+            host[1:-1].view(np.uint8).fill(0xff)
+            copy_host_to_device(buffers[2], host_array_ptr(host), host.nbytes)
+            if caller == 'runtime':
+                launch_gguf_linear(
+                    weight, buffers[0].ptr, buffers[2].ptr+host.strides[0], rows, k, n,
+                    activation_dtype='bf16', output_dtype=output,
+                    libraries={quant_key: library}, use_wmma_prefill=False,
+                    use_gemv_decode=True,
+                )
+            else:
+                launch(buffers[0].ptr, buffers[1].ptr,
+                       buffers[2].ptr+host.strides[0], rows, k, n,
+                       quant=quant_key, output=output, library=library)
             copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
             assert np.all(host[[0, -1]] == 123)
             bits = np.uint32 if output == 'f32' else np.uint16
@@ -204,11 +234,7 @@ def test_dense_full_output_geometry(library, quant, rows, output):
 
 
 @pytest.fixture(scope='module')
-def library():
-    try:
-        ctypes.CDLL('libamdhip64.so')
-    except OSError:
-        pytest.skip('HIP runtime is unavailable')
+def library(ud_hip_backend):
     from hipengine.kernels.hip_gfx1100.quant.gguf_iq_dense import build_gguf_iq_dense
     version_file = os.environ.get('HIPENGINE_COMPILER_VERSION_FILE')
     return build_gguf_iq_dense(compiler_version=Path(version_file).read_text() if version_file else None,
