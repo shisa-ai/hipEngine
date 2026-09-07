@@ -617,17 +617,24 @@ coordinate shared-file edits with the INT8, MTP and DMS owners.
   65,536). Artifact: `results/2026-09-07-rx7900xtx-dms-c1-ladder.json`.
   Not yet measured: C2/C4/C8 concurrency, heterogeneous lengths, cancellation,
   pressure/refill.
-  C2/C4/C8 BLOCKED structurally, discovered 2026-09-07: the shared runner
-  routes external DMS decode through a single `_dms_decode_owner` slot
-  (`Qwen35GGUFResidentSession` DMS setup overwrites it at prefill finalize;
-  only the owner itself pops it on close), so with two simultaneous DMS
-  resident sessions the first session's decode routes through the second
-  session's DMS backend/state and fails deterministically with "DMS direct
-  append device/host live-count mismatch" on the first decode step (repro:
-  `scripts/qwen38_dms_concurrency_probe.py`, sessions=2, prompt 16,384 each,
-  0 decode rows survive; prefills succeed — the blocker is routing, not
-  memory). DMS C>1 requires per-session owner routing through the decode
-  dispatch; recorded as a capability blocker, not a memory ceiling.
+  Not yet measured: heterogeneous lengths, cancellation, pressure/refill.
+  C2/C4/C8 UNBLOCKED and measured 2026-09-07 (fix: per-step decode-owner
+  routing). The shared runner's `_dms_decode_owner` marker is now claimed or
+  cleared by each session at every decode entry (`step()` and
+  `step_async_top1()`) instead of being set once at prefill finalize, so
+  interleaved steps route through their own session's DMS backend/state and
+  a dense session on a shared runner never inherits DMS routing. RED:
+  pre-fix C2@16,384 failed deterministically on the first decode step
+  (0 rows survive; probe preserved). GREEN: C2 and C4 @ 16,384 tokens/session
+  (16,384/session, ratio 1.3331 per session, above-window eviction) and C8
+  @ 4,096 tokens/session all pass with finite logits, per-session extent
+  ledgers consistent, and 0.0 MiB after close. C8 @ 8,192/16,384 OOM at
+  compact-backend pack-time allocation — the same dense-owner + payload
+  coexistence memory boundary as the C1 ladder, not a routing blocker.
+  Unit marker semantics: `tests/test_qwen38_dms_decode_owner_routing.py`
+  (6 cases); focused bundle 124 passed; single-session 768 quality suite
+  identical post-fix (max KL/top-1 unchanged). Artifact:
+  `results/2026-09-07-rx7900xtx-dms-concurrency-ladder.json`.
 - [ ] **BLOCKED (cross-campaign, DMS artifact re-provisioning):** Gate the trained policy against dense and no-evict controls on all
   categories/heldouts and long trajectories. Add MTP provisional-state/eviction
   rollback before combining them; rejected drafts must not evict committed KV.
