@@ -53,7 +53,10 @@ NumPy dot products for its outer KL/top-1 floor and repeats its exact schedule
 three times. All seven raw dense types have synthetic one-hot checks exposing
 every independently decoded value. Real-row projections cover activation rows
 1/2/3/4/5/6/7/8/9/12/16/28/32 with N3 output and untouched leading/trailing
-canaries. These bounded output shapes do not establish full-N serving coverage.
+canaries. A separate geometry test repeats two independently decoded source
+rows across actual N=5120/17408, at activation rows 1/8/32 and both output
+dtypes, with three exact repeats and output canaries. This covers full output
+geometry, not independent values for every model row or serving state.
 IQ2_XS remains a separately budgeted BF16 fallback at model integration.
 CPU oracle completion does not close that compact-resident gap or the
 full-shape/model/backend gates.
