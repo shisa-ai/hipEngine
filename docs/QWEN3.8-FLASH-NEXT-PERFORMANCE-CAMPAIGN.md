@@ -76,6 +76,37 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+### Current Strix Fork Follow-ups (September 7, 2026)
+
+Read-only source: `/home/lhl/strix-llama.cpp`, clean
+`7baf0a98c7ed0bd7c9f6fd3b7f8c3d8747c3889a`. This is a new source lane,
+not the benchmarked halo-box `b212548e0` or the earlier Nathan fork.
+The owner-provided review motivates the queue below; only the explicitly
+inspected source predicates are confirmed here. No GPU benchmark of this
+fork was run and no comparator rates are replaced.
+
+| Priority | Follow-up | Bounded gate / stop condition |
+| --- | --- | --- |
+| P1 source comparison | Non-KDA H=48 tiled GDN | Confirmed in `ggml/src/ggml-cuda/gated_delta_net.cu:539`: RDNA3.5, Sv128, num_warps32, tokens>=16; H48 defaults to `<128,8,8,16,keep_rs_t>`. Compare Q/K tile staging, column ownership, registers and snapshot writes with `qwen4_exp_gdn.hip` serial-register/tile16. Measure complete recurrence/norm/gate on current gfx1151. Preserve serial arithmetic or require full production numerical gates; do not copy geometry alone. |
+| P1 correctness coverage | Retired/padded KV and deterministic selection publication | Audit which attention readers can touch masked/padded cells; poison free rows while keeping neighboring live slots, then test repeated requests, reset and restore. Check ordered selected positions as well as set equality. No blanket zeroing without a demonstrated reader requirement. |
+| P2 launch grouping | Shared-input c1 projections and complete GDN/GR chains | `mmvq.cu:2171` exposes `ggml_cuda_mmv_group`; graph use is in `ggml-cuda.cu:3765`. Trace remaining QKV/gate/alpha/beta or GR down/inject launches first. Require independent outputs, alias/lifetime proof, exact ownership and operation-complete timing. Existing graphs do not count as removed kernels. |
+| P2 attention layout | D256 WMMA prefill and Q8_0 KV tiled decode | Confirmed `fattn.cu:491` predicate: RDNA3.5, one query, equal Q/K/V D64/128/256, K/V Q8_0; no blanket GQA6 restriction there. Audit other dispatch constraints before claiming coverage. Study instruction/layout ideas, not a BF16-KV replacement. Any adapted reader must consume complete `KVLiveSpans`; no GQA12 claim from GQA6 evidence. |
+| P2 conditional | Transposed CONCAT/state-prefix copy | `concat.cu:90` defines `concat_transposed_src1_dim0`. Only investigate if a current hipEngine trace identifies separate history/transposition materialization; existing fused causal-conv/preparation may already eliminate it. Do not add a concat abstraction otherwise. |
+
+Already substantially covered: grouped MoE/shared activations/weighted down,
+dense QSA shortcut, host PLE gather and sparse page advice, device checkpoints.
+Audit production coverage and lifecycle tests rather than add duplicate features.
+Preserve the bounded head-major AOTriton scratch decision in
+[the earlier review](STRIX-HALO-LLAMACPP-REVIEW.md); no persistent-KV rewrite.
+Vulkan LDS/compiler/command policies are not HIP launch settings. ROCmFPx,
+new quant formats and DeepSeek-only kernels stay out of this Qwen patch scope.
+
+Execution order: finish the promoted Q5_1 current-default owner refresh,
+then use fresh costs to rank the GDN comparison against FFN/linear work.
+The P1 poisoned-cell audit is a correctness follow-up, not an assertion of
+a known defect. Existing historical PR11 explanations and `b212548e0`
+measurements retain their revision identity; they do not describe this fork.
+
 **Q5_1 per-row publication promoted (September7 UTC):** cleanbe156c242
 full12-case chunk1024 A/B preserves72 exact trajectories and improves all
 prefill/request averages. PP512/1024/4096:181.824->189.634 (+4.296%),
