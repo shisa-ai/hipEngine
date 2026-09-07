@@ -86,9 +86,10 @@ def _read_device(ptr: int, shape: tuple[int, ...], dtype, runtime) -> np.ndarray
 class PackedC1Capture:
     """Instrument the real adapter and its target; never replace its execution."""
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, *, check_state: bool = False):
         directory.mkdir(parents=True, exist_ok=False)
         self.directory = directory
+        self.check_state = check_state
         self.current = ContextVar("packed_c1_capture", default=None)
         self.records: list[dict[str, Any]] = []
         self.prompt: dict[str, Any] | None = None
@@ -175,7 +176,25 @@ class PackedC1Capture:
             if int(tokens[0]) != context["root"]:
                 raise ValueError("target root does not match authoritative generated tail")
             context["fresh_logits"] = False
+            before_state = None
+            if self.check_state:
+                from scripts.qwen38_packed_c1_state import (
+                    snapshot_committed_state, assert_committed_state_unchanged,
+                )
+                if not all(job.get(k) for k in (
+                    "capture_linear_state_rows", "defer_linear_state_commit", "defer_state_scatter",
+                )):
+                    raise ValueError("state isolation requires deferred packed verification")
+                before_state = snapshot_committed_state(job["session"])
             result = verify(owner, jobs, **kwargs)
+            if before_state is not None:
+                after_state = snapshot_committed_state(job["session"])
+                assert_committed_state_unchanged(before_state, after_state)
+                context["pre_accept_state_isolation"] = {
+                    "passed": True, "checked_buffers": len(before_state["buffers"]),
+                    "checked_bytes": sum(b["checked_nbytes"] for b in before_state["buffers"].values()),
+                    "position": before_state["position"],
+                }
             if not context["fresh_logits"] or owner._verify_logits_buf is None:
                 raise ValueError("packed target did not write fresh full logits")
             all_logits = _read_device(owner._verify_logits_buf.ptr,
@@ -209,7 +228,7 @@ class PackedC1Capture:
 
 
 def capture(args) -> None:
-    recorder = PackedC1Capture(args.directory)
+    recorder = PackedC1Capture(args.directory, check_state=args.check_state)
     success = False
     previous = sys.argv
     try:
@@ -351,6 +370,8 @@ def main() -> None:
     parser.add_argument("mode", choices=("capture", "reference", "compare"))
     parser.add_argument("--model", type=Path, default=Path("/models/gguf/Qwen3.8-27B-Q4_K_M.gguf"))
     parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--check-state", action="store_true",
+                        help="Check committed resident state is unchanged before acceptance")
     parser.add_argument("--repeat-directory", type=Path, action="append", default=[],
                         help="Additional independent capture; repeat for each run in compare mode")
     parser.add_argument("--capacity", type=int, choices=(1, 2, 8), default=1)

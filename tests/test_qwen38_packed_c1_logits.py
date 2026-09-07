@@ -35,7 +35,7 @@ def test_strict_replay_prefills_only_prompt_then_steps_generated_prefix(batched_
     assert session.position == 5
 
 
-@pytest.mark.parametrize("failure", [None, "stale", "direct_top1", "root", "prefix"])
+@pytest.mark.parametrize("failure", [None, "stale", "direct_top1", "root", "prefix", "state"])
 def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch, tmp_path, failure):
     from types import SimpleNamespace as NS
     import json
@@ -48,7 +48,16 @@ def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch,
     monkeypatch.setattr(bench, "load_prompt_suite", lambda path: [prompt])
     target = NS(position=2, runtime=None, runner=NS(vocab_size=16),
                 _verify_logits_buf=NS(ptr=1))
-    job = dict(session=target, input_token_ids=(0 if failure == "root" else 12, 13))
+    job = dict(session=target, input_token_ids=(0 if failure == "root" else 12, 13),
+               capture_linear_state_rows=True, defer_linear_state_commit=True,
+               defer_state_scatter=True)
+    from scripts import qwen38_packed_c1_state as state_module
+    snapshots = []
+    def snapshot(session):
+        snapshots.append(session)
+        return dict(position=2, buffers={"conv": {"checked_nbytes": 16}},
+                    sentinel=len(snapshots) if failure == "state" else 0)
+    monkeypatch.setattr(state_module, "snapshot_committed_state", snapshot)
 
     def head(owner, *args, **kwargs):
         owner._last_packed_lm_head_decode_path = (
@@ -73,7 +82,7 @@ def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch,
     monkeypatch.setattr(Adapter, "_execute_target_frontier_batch",
                         lambda *args, **kwargs: Session.verify_target_blocks_batch(target, [job], device_result=True))
     monkeypatch.setattr(bench, "_run_arm", lambda *args, **kwargs: Adapter._execute_target_frontier_batch(adapter, plan))
-    recorder = module.PackedC1Capture(tmp_path / "capture")
+    recorder = module.PackedC1Capture(tmp_path / "capture", check_state=True)
     original = Session.verify_target_blocks_batch
     try:
         recorder.install()
@@ -85,6 +94,8 @@ def test_actual_route_capture_requires_fresh_head_and_exact_context(monkeypatch,
             bench._run_arm(prompt="test prompt", width=1)
             assert recorder.records[0]["prefix"] == (10, 11)
             assert recorder.records[0]["tokens"] == [12, 13]
+            assert snapshots == [target, target]
+            assert recorder.records[0]["pre_accept_state_isolation"]["passed"]
     finally:
         recorder.close(success=failure is None)
     assert Session.verify_target_blocks_batch is original
