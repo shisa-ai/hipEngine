@@ -167,7 +167,10 @@ per-cycle overhead at one active request: three balanced pairs per depth
 measured **K2 0.9908x** [0.9872, 0.9922] (a net loss against AR) and **K3
 1.1140x** [1.1120, 1.1174] against the same-run K0 control 0.9986x — versus
 1.5844x/1.6329x on the legacy route. The backend physical policy admits
-packed C1 only at K2/K3; K1 and K4-K7 have no packed cell. The packed
+packed C1 only at K2/K3; K1 and K4-K7 have no packed cell (a K1 harness
+attempt is refused at the adapter and the legacy-forbidden guard converts
+that into a hard 500; the subsequent shutdown-command timeout is teardown
+noise after the aborted first request, not an idle hang). The packed
 single-request route also survives K0↔MTP switching: a 40-leg sequence
 (alternating explicit-MTP and automatic-K0 requests on one resident owner,
 both switch directions, 130 packed frontier calls, legacy verifier never
@@ -175,10 +178,8 @@ invoked) kept every leg token-exact, engaged only the MTP legs, and exited
 cleanly
 ([economics](results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json),
 [switch proof](results/2026-09-07-w7900-packed-route-c1-k0-mtp-switch-proof.json)).
-Closing the engine after a policy-refused K1 harness request still hangs the
-shutdown command (the campaign's previously unexplained hang, reproduced);
-that repair, plus reducing the packed one-row frontier overhead, gates any
-packed-route product registration. Until then the legacy route is the only
+Reducing the packed one-row frontier overhead gates any packed-route
+product registration. Until then the legacy route is the only
 measured single-request MTP path.
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.

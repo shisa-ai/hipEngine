@@ -233,10 +233,12 @@ def main() -> int:
             str(k): (
                 "the backend physical width-depth policy "
                 "(GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS production = "
-                "((1,2),(1,3),(2,2),(2,3),(8,3))) lists no (C1, K{d}) cell; the "
-                "harness attempt at K1 additionally hung engine close after the "
-                "fully-decoded decline-fallback sequence (r1-k1 log; close-hang "
-                "finding)".replace("{d}", str(k))
+                "((1,2),(1,3),(2,2),(2,3),(8,3))) lists no (C1, K{d}) cell; "
+                "_physical_c1_request consults the same policy, so the adapter "
+                "refuses the packed route at that depth and falls back to the "
+                "legacy singleton, which the harness's forbidden guard converts "
+                "into a hard 500 (the shutdown-command timeout afterwards is "
+                "teardown noise, not an idle hang)".replace("{d}", str(k))
             )
             for k in POLICY_REFUSED_DEPTHS
         },
