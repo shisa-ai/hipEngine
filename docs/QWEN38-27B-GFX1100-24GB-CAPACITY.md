@@ -22,9 +22,13 @@ here; there is no external dense or DMS INT8 owner.
   deterministic attention, overflow and exact snapshot restoration. Cached
   profiling confirms the INT8 kernels ran on GPU1. These are device fixture
   gates, not artifact-scoped model quality or integrated serving qualification.
-- **DMS INT8 remains incomplete:** backend codec/scale plumbing and resident
-  factory integration; a genuine qualification bootstrap and model harness;
-  full category/heldout numerical and task gates; integrated eviction,
+- Backend codec/scale plumbing and resident factory injection are implemented.
+  Offline INT8 evaluation requires no fabricated qualification and reports its
+  unqualified status explicitly. The 768-token/eight-step model smoke passes
+  maximum KL 0.00396 and top-1 100% versus dense BF16, with dense prefill storage
+  released; see `benchmarks/results/2026-09-07-rx7900xtx-dms-int8-integrated-smoke.json`.
+- **DMS INT8 remains incomplete:** full category/heldout numerical and task
+  gates, artifact-scoped serving qualification; integrated eviction,
   concurrency, cancellation/refill and rollback; end-to-end memory benefit.
   Dense detailed allocation attribution and further qualification are deferred
   by the user's priority change, not completed by documenting the gaps.

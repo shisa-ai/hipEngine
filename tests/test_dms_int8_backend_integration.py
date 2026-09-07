@@ -56,3 +56,44 @@ def test_int8_backend_pack_uses_compact_device_codec():
             assert kernel['k_scale_ptr'] and kernel['v_scale_ptr']
     finally:
         backend.close()
+
+
+@pytest.mark.skipif(not _hip_available(), reason="HIP runtime unavailable")
+def test_int8_backend_rollback_cancel_refill_preserves_other_request():
+    backend = _backend(True)
+    try:
+        values = np.ones((9, 1, 2, 16), dtype=np.float32)
+        for rid in (0, 1):
+            _admit(backend, request_id=rid, tokens=9)
+            backend.streaming_pack(rid, values * (rid + 1), values, np.ones((9, 1, 2), bool))
+        state0 = backend.state_for_request(0)
+        state1 = backend.state_for_request(1)
+        transaction = backend.begin_transaction([state0.lease], None)
+        before = backend.device_layer_view(0, 0)
+        live_before = state0.live_counts.copy()
+        backend.append_decode(0, values[0] * 3, values[0], np.zeros((1, 2), bool), position=9)
+        assert backend.evicted_tokens > 0
+        backend.rollback(transaction)
+        after = backend.device_layer_view(0, 0)
+        np.testing.assert_array_equal(state0.live_counts, live_before)
+        for head in range(2):
+            base = int(state0.base_offsets[0, head]); cap = int(state0.range_capacity[0, head])
+            for name in ('k_bits', 'v_bits', 'k_scales', 'v_scales', 'positions', 'evict'):
+                np.testing.assert_array_equal(getattr(before, name)[base:base+cap],
+                                              getattr(after, name)[base:base+cap])
+        backend.reclaim(state0.lease)
+        _admit(backend, request_id=2, tokens=9)
+        backend.streaming_pack(2, values * 4, values, np.zeros((9, 1, 2), bool))
+        final = backend.device_layer_view(1, 0)
+        for head in range(2):
+            base = int(state1.base_offsets[0, head]); n = int(state1.live_counts[0, head])
+            for name in ('k_bits', 'v_bits', 'k_scales', 'v_scales', 'positions', 'evict'):
+                np.testing.assert_array_equal(getattr(before, name)[base:base+n],
+                                              getattr(final, name)[base:base+n])
+        backend.assert_conserved()
+        for rid in (1, 2):
+            backend.reclaim(backend.state_for_request(rid).lease)
+        backend.assert_conserved()
+        assert not backend._states
+    finally:
+        backend.close()
