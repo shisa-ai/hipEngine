@@ -452,6 +452,14 @@ GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES = {
 # The sole-Q4T16 dense gate/up owners already expose an exact c1 dual+SiLU
 # sibling. The complete Qwen3.8 512/128 and natural25 gates admit it for the
 # validated H5120 geometry, removing 128 decode-graph nodes without a sidecar.
+# The gfx1100 Qwen3.8 serial full-attention composite is the same exact
+# registered kernel admitted on gfx1151 (bit-exact + CPU KL/top-1 gated in
+# tests/test_qwen38_full_attn_qk_postprocess.py); the policy admits it for the
+# qualified (rows, heads, kv-heads, key-length) geometry so DMS serving and
+# dense decode share the fused route. Other shapes stay on the unfused chain.
+GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES = {
+    (1, 24, 4, 256): "qwen35_position_qk_bf16_f32",
+}
 GGUF_DENSE_PAIR_SILU_DECODE_POLICIES = {
     (QWEN35_DENSE_H5120_GEOMETRY, "MOSTLY_Q4_K_M"): {
         (1, 5_120, 17_408): "dense_dual_local32_bf16_bf16_out",
@@ -1161,6 +1169,7 @@ __all__ = [
     "GGUF_PRIVATE_C1_SMALL_WEIGHT_ARENA_POLICIES",
     "GGUF_PRIVATE_C1_DECODE_SCRATCH_ARENA_POLICIES",
     "GGUF_DENSE_PAIR_SILU_DECODE_POLICIES",
+    "GGUF_FULL_ATTN_QK_POSTPROCESS_DECODE_POLICIES",
     "GGUF_C8_Q5_RAW_MMQ_SSM_OUT",
     "GGUF_DENSE_Q5_T16_SSM_OUT",
     "GGUF_DENSE_Q6_T16_QMICRO_PLANAR",
