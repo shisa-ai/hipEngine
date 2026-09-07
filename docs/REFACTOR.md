@@ -2,12 +2,13 @@
 
 ## Qwen4Exp Q8 down register-weight candidate
 
-- Kernel-only `selected_grouped_row4_register_gemv_bf16_bf16_out`,
-  K640/128 threads;no runtime flag/default yet. Existing compact/mapped
+- Default-off `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` selects
+  `selected_grouped_row4_register_gemv_bf16_bf16_out`,
+  K640/128 threads, rows>=512, parent bundle only. Existing compact/mapped
   bundled row4 remains fallback. No extra LDS or private scratch.
-- Require current-chunk full-model state/KV/map and canonical A/B before
-  promotion;remove candidate if rejected. Capture both compact and mapped
-  engagement rather than silently widening only one path.
+- Five chunk1024 full-logit/state/KV cases pass, including compact/mapped
+  engagement and zero decode calls. Both binders remain0.
+  Require canonical A/B before promotion; remove candidate if rejected.
 
 ## Qwen4Exp router shuffle-tail: removed
 

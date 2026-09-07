@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC Q8 register admission] Five chunk1024 full-logit/state/KV cases exact, compact/mapped engagement verified, zero decode/final owners;30 CPU tests. Both binders0; throughput delta N/A pending canonical A/B. `benchmarks/results/2026-09-07-framework-qwen4exp-q8-down-register-state.json`.
+
 Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.

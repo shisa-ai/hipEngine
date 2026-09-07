@@ -788,13 +788,17 @@ Fallback requirements:
 
 ## Source-lineage audit
 
-Q8 down exposes kernel-only `selected_grouped_row4_register_gemv_bf16_bf16_out`,
+Q8 down exposes default-off `selected_grouped_row4_register_gemv_bf16_bf16_out`,
 restricted to K640/128 threads. Five decoded weights/thread are reused
 across the expert row loop;row4 bundled reduction and mapped output order
 unchanged. Compact/mapped screens37.373->32.127ms /37.228->30.808ms,
 40 pairs exact,both orders positive.18 tests pass,VGPR24->32/LDS512B/
-scratch0. No runtime route yet;existing bundle is strict fallback.
+scratch0. `HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER=1` replaces only the
+compact/mapped bundle at rows>=512/K640; existing bundle remains fallback.
+Five chunk1024 model state/full-KV cases pass exactly, zero decode calls;
+both profile binders0 pending canonical throughput A/B.
 Evidence: `2026-09-07-framework-qwen4exp-q8-down-register.json`.
+Admission: `2026-09-07-framework-qwen4exp-q8-down-register-state.json`.
 
 Router shuffle-tail candidate was removed after full-model A/B failed
 retention:one prefill/four request cases lose despite72 exact trajectories.

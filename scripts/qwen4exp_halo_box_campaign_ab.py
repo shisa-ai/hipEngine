@@ -236,6 +236,10 @@ def q8_mapped_down_expected_calls(prompt_tokens: int, chunk_size: int) -> int:
     return full*(chunk_size>=512)+(tail>=512)
 
 
+def q8_down_register_expected_calls(tokens: int,chunk: int) -> int:
+    return q8_down_row4_expected_calls(tokens,chunk)+q8_mapped_down_expected_calls(tokens,chunk)
+
+
 def apply_chunk_mode(runner: Any, mode: str, *, allocated_chunk_size: int) -> None:
     if mode not in {"before","after"}:
         raise ValueError("invalid chunk mode")
@@ -263,7 +267,7 @@ def _apply_mode(
         if mode not in {"before","after"}:
             raise ValueError("invalid chunk mode")
         return
-    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"}:
+    if route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register"}:
         if mode not in {"before", "after"}:
             raise ValueError(f"invalid campaign A/B mode {mode!r}")
         flag = ROW4_ENV if route_package == "q5k-row4" else QSA_H256_ENV
@@ -293,6 +297,8 @@ def _apply_mode(
             flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_BUNDLE_PREFILL"
         if route_package == "q8-mapped-down":
             flag = "HIPENGINE_QWEN4_EXP_Q8_MAPPED_DOWN"
+        if route_package == "q8-down-register":
+            flag = "HIPENGINE_QWEN4_EXP_Q8_DOWN_REGISTER"
         if route_package == "q51-fold-pair":
             flag = "HIPENGINE_QWEN4_EXP_Q51_FOLD_PAIR_PREFILL"
         if route_package == "q51-register-cache":
@@ -335,7 +341,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repetitions-per-mode", type=int, default=3)
     parser.add_argument("--compiler-version-file", type=Path)
     parser.add_argument("--require-cached-build", action="store_true")
-    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024"), default="pf13")
+    parser.add_argument("--route-package", choices=("pf13", "q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "chunk1024", "q8-down-register"), default="pf13")
     parser.add_argument("--case-id", action="append", help="Diagnostic subset; omitted for full gate")
     return parser
 
@@ -478,8 +484,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Exact generated trajectories are required by this screening harness. "
             "A mismatch requires full declared production numerical/state gates, not relaxed checks.")
     row4_calls = [0]
+    register_mapped_calls = [0]
     original_row4 = None
-    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down"}:
+    if args.route_package in {"q5k-row4", "qsa-h256-wave", "qsa-h256-page256", "q4-bundle", "q51-pair", "gdn-register", "q4-pair", "q8-wave-scale", "gr-wave-scale", "q8-mmq-prepack", "q8-down-row4", "q51-fold128", "q8-down-bundle", "q51-fold-pair", "q8-mmq-vec4", "q51-register-cache", "q8-mmq-raw-vector", "q8-mapped-down", "q8-down-register"}:
         from hipengine.kernels.registry import KernelKey, register, resolve
         row4_key = (KernelKey(
             "hip_gfx1151", "linear", "gguf_q5_k",
@@ -543,11 +550,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             row4_key = KernelKey(
                 "hip_gfx1151", "moe_linear", "gguf_q5_1",
                 "selected_grouped_prefill_pair2_register_cache_bf16_bf16_out")
+        if args.route_package=="q8-down-register":
+            row4_key=KernelKey("hip_gfx1151","linear","gguf_q8_0",
+                              "selected_grouped_row4_register_gemv_bf16_bf16_out")
         original_row4 = resolve(
             backend=row4_key.backend, layer=row4_key.layer,
             quant=row4_key.quant, variant=row4_key.variant)
 
         def counted_row4(*call_args, **call_kwargs):
+            if args.route_package=="q8-down-register" and call_args[2]:
+                register_mapped_calls[0]+=1
             if q8_bundle_call_in_scope(args.route_package,call_args):
                 row4_calls[0] += 1
             return original_row4(*call_args, **call_kwargs)
@@ -638,6 +650,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "after": {"q51_down": row4_key.variant},
             }
     artifact["route_package"] = args.route_package
+    if args.route_package=="q8-down-register":
+        artifact["arms"] = {
+            "before":{"q8_down":"selected_grouped_row4_bundle_gemv_bf16_bf16_out"},
+            "after":{"q8_down":"selected_grouped_row4_register_gemv_bf16_bf16_out"}}
     artifact["diagnostic_subset"] = bool(args.case_id)
 
     def sample(mode, case, repetition):
@@ -646,6 +662,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             apply_chunk_mode(generator.runner,mode,allocated_chunk_size=args.prefill_chunk_size)
             observed_chunks.clear()
         start_calls = row4_calls[0]
+        start_mapped = register_mapped_calls[0]
         row = _hipengine_case_sample(
             generator.runner, case=case, repetition=repetition, transitions=transitions)
         if args.route_package == "chunk1024":
@@ -655,7 +672,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             row["active_chunk_size"] = generator.runner.prefill_chunk_size
         if original_row4 is not None:
             calls = row4_calls[0] - start_calls
-            if args.route_package == "q8-mapped-down":
+            if args.route_package=="q8-down-register":
+                expected=q8_down_register_expected_calls(int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
+                mapped=register_mapped_calls[0]-start_mapped
+                assert calls==expected,(calls,expected)
+                assert mapped==(q8_mapped_down_expected_calls(int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0)
+                row["mapped_candidate_calls"]=mapped
+                row["compact_candidate_calls"]=calls-mapped
+            elif args.route_package == "q8-mapped-down":
                 expected_calls = q8_mapped_down_expected_calls(
                     int(case["prompt_tokens"]),args.prefill_chunk_size) if mode=="after" else 0
                 if calls != expected_calls:
