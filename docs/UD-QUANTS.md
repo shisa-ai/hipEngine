@@ -2,9 +2,10 @@
 
 Last updated: 2026-09-07.
 Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
-added; dense GPU consumers are next.** Shared resident prerequisites and invocation
+added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K dense GPU leaves pass bounded gfx1151
+checks.** Loader integration is next. Shared resident prerequisites and invocation
 contracts have CPU coverage. K_M/K_S still have 18/41 refused slots.
-**No full UD generation or GPU validation is claimed.** General certificate
+**No full UD generation or gfx1100 numerical validation is claimed.** General certificate
 cleanup is deferred in favor of end-to-end inference. Generic profile lifecycle
 transactions and per-call native authorization scans have been removed.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
@@ -1408,7 +1409,13 @@ Files: Q3 donor, proposed dense IQ family, materializer/registry consumers;
 proposed `tests/test_gguf_ud_km.py`.
 
 - [ ] Add dense Q3_K from existing math and explicit dtype contracts.
+  Raw BF16-input BF16/F32-output leaf passes exact real-row gates on gfx1151;
+  gfx1100 numerical validation and materializer integration remain open.
 - [ ] Add standalone IQ4_NL and IQ3_S strict consumers and independent leaf gates.
+  The same bounded gfx1151 leaf evidence exists for both IQ types and IQ4_XS.
+  Combined codec/dense suite: 102 passed; cache-only trace: 72 passed with all
+  eight expected instantiations. See the `ud-dense-iq-leaves` and `ud-q3-dense`
+  worklog entries. This is not model or full-shape qualification.
 - [ ] Cover all 18 refused AR slots and all other incomplete dense operations.
 - [ ] Validate c1 AR, teacher logits and compact memory before broader modes.
 - [ ] Reject unsupported requested modes in preflight; c1 is not full serving.
