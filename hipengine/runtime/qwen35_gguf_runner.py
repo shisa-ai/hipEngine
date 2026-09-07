@@ -13813,6 +13813,103 @@ class Qwen35GGUFKVChunkBacking:
         if any(int(buffer.nbytes) <= 0 or int(buffer.nbytes) % int(self.pages) for buffer in self.buffers):
             raise ValueError("GGUF KV chunk buffers must contain whole positive pages")
 
+    def release_full_attention_layer(self, layer_id: int, *, runtime: HipRuntime) -> None:
+        """Free one full-attention layer's payload planes early.
+
+        Layerwise DMS prefill (2026-09-07 memory review, target 1): after a
+        compact layer has been packed from this dense backing, its source
+        planes are dead. The layer's key/value (and mirror/scale) buffers are
+        freed, their tuple entries are replaced with None and the buffers are
+        pruned so a later chunk free never double-frees them. Only valid on
+        backings whose layers are whole-buffer owned (every GGUF chunk backing
+        is); linear-attention layers and already-released layers are rejected.
+        """
+
+        layer_id = int(layer_id)
+        if not 0 <= layer_id < len(self.layout.layer_storage_dtypes):
+            raise ValueError("GGUF KV chunk layer index is out of range")
+        if self.layout.layer_storage_dtypes[layer_id] is None:
+            raise ValueError("cannot release a linear-attention GGUF KV chunk layer")
+        if self.full_key_caches[layer_id] is None:
+            raise ValueError("GGUF KV chunk layer is already released")
+        released = [
+            self.full_key_caches[layer_id],
+            self.full_value_caches[layer_id],
+            self.full_bf16_mirror_key_caches[layer_id],
+            self.full_bf16_mirror_value_caches[layer_id],
+            self.full_k_scale_caches[layer_id],
+            self.full_v_scale_caches[layer_id],
+        ]
+        released = [buffer for buffer in released if buffer is not None]
+        for buffer in released:
+            free(buffer, runtime=runtime)
+        released_ids = {id(buffer) for buffer in released}
+        object.__setattr__(
+            self,
+            "full_key_caches",
+            tuple(
+                None if index == layer_id else buffer
+                for index, buffer in enumerate(self.full_key_caches)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "full_value_caches",
+            tuple(
+                None if index == layer_id else buffer
+                for index, buffer in enumerate(self.full_value_caches)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "full_bf16_mirror_key_caches",
+            tuple(
+                None if index == layer_id else buffer
+                for index, buffer in enumerate(self.full_bf16_mirror_key_caches)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "full_bf16_mirror_value_caches",
+            tuple(
+                None if index == layer_id else buffer
+                for index, buffer in enumerate(self.full_bf16_mirror_value_caches)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "full_k_scale_caches",
+            tuple(
+                None if index == layer_id else buffer
+                for index, buffer in enumerate(self.full_k_scale_caches)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "full_v_scale_caches",
+            tuple(
+                None if index == layer_id else buffer
+                for index, buffer in enumerate(self.full_v_scale_caches)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "full_kv_scale_metadata",
+            tuple(
+                None if index == layer_id else metadata
+                for index, metadata in enumerate(self.full_kv_scale_metadata)
+            ),
+        )
+        object.__setattr__(
+            self,
+            "buffers",
+            tuple(
+                buffer
+                for buffer in self.buffers
+                if id(buffer) not in released_ids
+            ),
+        )
+
     @property
     def total_nbytes(self) -> int:
         return sum(int(buffer.nbytes) for buffer in self.buffers)
@@ -15416,17 +15513,37 @@ class Qwen35GGUFResidentSession:
             runtime.stream_synchronize(int(stream))
         else:
             runtime.device_synchronize()
-        for compact_layer, physical_layer in enumerate(source.config.physical_layer_ids):
-            key_cache, value_cache = self.scratch.full_cache(physical_layer)
-            backend.device_streaming_pack_layer(
-                0,
-                compact_layer,
-                k_ptr=key_cache.ptr,
-                v_ptr=value_cache.ptr,
-                evict_ptr=collector.decision_ptr(compact_layer),
-                tokens=int(tokens),
-                stream=int(stream),
-            )
+        try:
+            for compact_layer, physical_layer in enumerate(source.config.physical_layer_ids):
+                key_cache, value_cache = self.scratch.full_cache(physical_layer)
+                backend.device_streaming_pack_layer(
+                    0,
+                    compact_layer,
+                    k_ptr=key_cache.ptr,
+                    v_ptr=value_cache.ptr,
+                    evict_ptr=collector.decision_ptr(compact_layer),
+                    tokens=int(tokens),
+                    stream=int(stream),
+                )
+                # Layerwise pack (2026-09-07 memory review, target 1): the
+                # compact destination for this layer is allocated on first
+                # touch inside the pack, and its dense BF16 source planes are
+                # dead once the pack retires. Synchronize, then release the
+                # source so only one layer of compact/dense overlap exists.
+                if stream:
+                    runtime.stream_synchronize(int(stream))
+                else:
+                    runtime.device_synchronize()
+                self._release_dense_prefill_layer(physical_layer, runtime=runtime)
+        except BaseException:
+            # Partial compact-store construction must not leak the partially
+            # built backend (review target 6c): free it before propagating.
+            # The dense pool remains session-owned and is freed at close.
+            try:
+                backend.close()
+            except Exception:  # noqa: BLE001 - cleanup best effort, original error wins
+                pass
+            raise
         backend.finalize_device_streaming_pack(0, eviction=decisions, tokens=int(tokens))
         self._dms_backend = backend
         collector.close()
@@ -15438,6 +15555,33 @@ class Qwen35GGUFResidentSession:
         pool.release(allocation.request_id)
         pool.close()
         self._dms_dense_prefill_pool = None
+
+    def _release_dense_prefill_layer(self, physical_layer: int, *, runtime: HipRuntime) -> None:
+        """Release one dense BF16 prefill layer's planes after its compact pack.
+
+        Frees the layer's key/value (and mirror/scale) planes in the bound
+        chunk backing and refreshes the resident scratch's plane references
+        so no later consumer can touch the freed pointers. Only valid during
+        external-DMS prefill finalization, before the pool is released.
+        """
+
+        allocation = self._device_kv_allocation
+        if allocation is None:
+            raise RuntimeError("external DMS prefill has no bound device KV allocation")
+        if self.scratch is None:
+            raise RuntimeError("external DMS prefill owner is unavailable")
+        backing = allocation.backing
+        backing.release_full_attention_layer(physical_layer, runtime=runtime)
+        self.scratch = replace(
+            self.scratch,
+            full_key_caches=backing.full_key_caches,
+            full_value_caches=backing.full_value_caches,
+            full_bf16_mirror_key_caches=backing.full_bf16_mirror_key_caches,
+            full_bf16_mirror_value_caches=backing.full_bf16_mirror_value_caches,
+            full_k_scale_caches=backing.full_k_scale_caches,
+            full_v_scale_caches=backing.full_v_scale_caches,
+            full_kv_scale_metadata=backing.full_kv_scale_metadata,
+        )
 
     def _run_external_dms_full_attention(
         self,

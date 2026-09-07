@@ -294,19 +294,26 @@ class DMSDevicePayloadStore:
             raise ValueError("retrofit GQA geometry must divide evenly")
 
         self._buffers: list[DeviceBuffer] = []
-        payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
-        self._k_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]
-        self._v_slot = [self._alloc(payload_bytes) for _ in range(self._layers)]
-        self._k_scales = [self._alloc(self._slots * 4) for _ in range(self._layers)] if codec != "bf16" else []
-        self._v_scales = [self._alloc(self._slots * 4) for _ in range(self._layers)] if codec != "bf16" else []
-        self._positions = [self._alloc(self._slots * 4) for _ in range(self._layers)]
-        self._slot_evict = [self._alloc(self._slots) for _ in range(self._layers)]
+        # Layerwise pack (2026-09-07 memory review, target 1): per-layer
+        # payload planes are allocated lazily on first touch (_ensure_layer)
+        # so the compact store grows one layer at a time while the dense BF16
+        # source shrinks. The shared staging below stays eager.
+        self._k_slot: list[DeviceBuffer | None] = [None] * self._layers
+        self._v_slot: list[DeviceBuffer | None] = [None] * self._layers
+        self._k_scales: list[DeviceBuffer | None] = (
+            [None] * self._layers if codec != "bf16" else []
+        )
+        self._v_scales: list[DeviceBuffer | None] = (
+            [None] * self._layers if codec != "bf16" else []
+        )
+        self._positions: list[DeviceBuffer | None] = [None] * self._layers
+        self._slot_evict: list[DeviceBuffer | None] = [None] * self._layers
         # Serving metadata is persistent per compact layer. Host-composition
         # methods refresh these planes; direct methods consume them in place so
         # K/V and decisions never stage through host memory.
-        self._base_meta = [self._alloc(self._heads * 4) for _ in range(self._layers)]
-        self._capacity_meta = [self._alloc(self._heads * 4) for _ in range(self._layers)]
-        self._live_meta = [self._alloc(self._heads * 4) for _ in range(self._layers)]
+        self._base_meta: list[DeviceBuffer | None] = [None] * self._layers
+        self._capacity_meta: list[DeviceBuffer | None] = [None] * self._layers
+        self._live_meta: list[DeviceBuffer | None] = [None] * self._layers
 
         h, d = self._heads, self._dim
         self._stg = {
@@ -338,12 +345,67 @@ class DMSDevicePayloadStore:
         self._buffers.append(buf)
         return buf
 
+    def _ensure_layer(self, layer: int) -> None:
+        """Allocate one compact layer's payload planes on first touch.
+
+        Layerwise pack support: the destination planes for a layer come into
+        existence only when that layer is first packed, appended to or read.
+        On allocation failure the layer is left fully unallocated.
+        """
+
+        self._check_closed()
+        layer = int(layer)
+        if layer < 0 or layer >= self._layers:
+            raise ValueError("DMS device layer index is out of range")
+        if self._k_slot[layer] is not None:
+            return
+        payload_bytes = self._slots * self._dim * self._payload_dtype.itemsize
+        allocated: list[DeviceBuffer] = []
+
+        def tracked_alloc(nbytes: int) -> DeviceBuffer:
+            buffer = self._alloc(nbytes)
+            allocated.append(buffer)
+            return buffer
+
+        try:
+            k_slot = tracked_alloc(payload_bytes)
+            v_slot = tracked_alloc(payload_bytes)
+            k_scale = tracked_alloc(self._slots * 4) if self._k_scales else None
+            v_scale = tracked_alloc(self._slots * 4) if self._v_scales else None
+            positions = tracked_alloc(self._slots * 4)
+            slot_evict = tracked_alloc(self._slots)
+            base_meta = tracked_alloc(self._heads * 4)
+            capacity_meta = tracked_alloc(self._heads * 4)
+            live_meta = tracked_alloc(self._heads * 4)
+        except BaseException:
+            # Roll the partially allocated layer back so a failed _ensure_layer
+            # leaves no orphaned buffers and can be retried.
+            self._buffers = [
+                buffer
+                for buffer in self._buffers
+                if not any(buffer is value for value in allocated)
+            ]
+            for value in allocated:
+                free(value)
+            raise
+        self._k_slot[layer] = k_slot
+        self._v_slot[layer] = v_slot
+        if self._k_scales:
+            self._k_scales[layer] = k_scale
+            self._v_scales[layer] = v_scale
+        self._positions[layer] = positions
+        self._slot_evict[layer] = slot_evict
+        self._base_meta[layer] = base_meta
+        self._capacity_meta[layer] = capacity_meta
+        self._live_meta[layer] = live_meta
+
     def layer_scale_ptrs(self, layer: int) -> dict[str, int]:
         if not 0 <= int(layer) < self._layers:
             raise ValueError("DMS layer index is out of range")
         return self._scale_kwargs(int(layer))
 
     def _scale_kwargs(self, layer: int) -> dict[str, int]:
+        self._ensure_layer(layer)
         if not self._k_scales:
             return {}
         return {"k_scale_ptr": self._k_scales[layer].ptr,
@@ -367,6 +429,7 @@ class DMSDevicePayloadStore:
         layer = int(layer)
         if layer < 0 or layer >= self._layers:
             raise ValueError("DMS device metadata layer is out of range")
+        self._ensure_layer(layer)
         base_values = np.ascontiguousarray(base, dtype=np.int32)
         if base_values.shape != (self._heads,) or np.any(base_values < 0):
             raise ValueError("DMS device extent bases must be [kv_heads]")
@@ -396,6 +459,8 @@ class DMSDevicePayloadStore:
 
     def live_counts(self, layer: int) -> np.ndarray:
         """Synchronize one compact layer's live counts at a lifecycle barrier."""
+
+        self._ensure_layer(layer)
 
         self._check_closed()
         values = np.empty((self._heads,), dtype=np.int32)
@@ -433,6 +498,7 @@ class DMSDevicePayloadStore:
         """Return K/V/base/live device pointers for integrated layer kernels."""
 
         layer = int(layer)
+        self._ensure_layer(layer)
         if layer < 0 or layer >= self._layers:
             raise ValueError("DMS device layer pointer index is out of range")
         return (
@@ -454,6 +520,8 @@ class DMSDevicePayloadStore:
         stream: int = 0,
     ) -> None:
         """Pack device-resident contiguous K/V and decisions without host staging."""
+
+        self._ensure_layer(layer)
 
         self._check_closed()
         layer = int(layer)
@@ -502,6 +570,7 @@ class DMSDevicePayloadStore:
         """Append device-resident K/V and decisions using persistent metadata."""
 
         self._check_closed()
+        self._ensure_layer(layer)
         layer = int(layer)
         if layer < 0 or layer >= self._layers:
             raise ValueError("DMS device append layer is out of range")
@@ -580,6 +649,7 @@ class DMSDevicePayloadStore:
             raise ValueError("DMS device attention layer is out of range")
         if min(int(q_ptr), int(out_ptr)) <= 0:
             raise ValueError("DMS direct device attention requires non-null pointers")
+        self._ensure_layer(layer)
         capacity = int(score_capacity)
         if capacity <= 0:
             raise ValueError("DMS direct device attention requires positive capacity")
@@ -648,6 +718,7 @@ class DMSDevicePayloadStore:
         int32 (the request's per-head extents on this layer).
         """
         self._check_closed()
+        self._ensure_layer(layer)
         tokens = int(k_bits.shape[0])
         if k_bits.shape != (tokens, self._heads, self._dim) or v_bits.shape != k_bits.shape:
             raise ValueError("DMS device pack expects K/V [tokens,heads,dim]")
@@ -688,6 +759,7 @@ class DMSDevicePayloadStore:
         read back as a tripwire when ``ENV_TRIPWIRE`` is set.
         """
         self._check_closed()
+        self._ensure_layer(layer)
         if k_new_bits.shape != (self._heads, self._dim):
             raise ValueError("DMS device append expects K/V [heads,dim]")
         self._upload("append_k", k_new_bits)
@@ -729,6 +801,7 @@ class DMSDevicePayloadStore:
         ``out_ptr`` (device). ``base``/``live`` are ``[heads]`` int32.
         """
         self._check_closed()
+        self._ensure_layer(layer)
         if (q is None) == (q_ptr is None):
             raise ValueError("provide exactly one of q / q_ptr")
         if (out is None) == (out_ptr is None):
@@ -758,6 +831,7 @@ class DMSDevicePayloadStore:
 
     def layer_view(self, layer: int) -> DMSLayerView:
         self._check_closed()
+        self._ensure_layer(layer)
         dim = self._dim
         k_bits = np.zeros((self._slots, dim), dtype=self._payload_dtype)
         v_bits = np.zeros_like(k_bits)
@@ -777,6 +851,7 @@ class DMSDevicePayloadStore:
         )
 
     def _read_scales(self, layer: int, start: int, length: int):
+        self._ensure_layer(layer)
         if not self._k_scales:
             return None, None
         arrays = [np.empty(length, dtype=np.float32) for _ in range(2)]
@@ -800,6 +875,7 @@ class DMSDevicePayloadStore:
             raise ValueError("DMS device snapshot extent metadata shape mismatch")
         extents: list[DMSDeviceExtentSnapshot] = []
         for layer in range(self._layers):
+            self._ensure_layer(layer)
             for head in range(self._heads):
                 start = int(bases[layer, head])
                 length = int(capacities[layer, head])
@@ -848,6 +924,7 @@ class DMSDevicePayloadStore:
         seen: set[tuple[int, int]] = set()
         all_planes = []
         for extent in snapshot.extents:
+            self._ensure_layer(int(extent.layer))
             key = (int(extent.layer), int(extent.head))
             if key in seen:
                 raise ValueError("DMS device snapshot has duplicate layer/head extent")
