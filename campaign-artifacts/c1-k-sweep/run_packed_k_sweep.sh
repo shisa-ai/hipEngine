@@ -12,8 +12,13 @@
 # three independent runs per depth = the three-balanced-pairs protocol.
 # K0 arms: --mtp-request-mode automatic (expected engaged 0/10 = automatic
 # stays K0 control); its "ar" arm is the true no-MTP AR baseline.
-# Resumable: existing complete outputs are skipped. Any run failure, watchdog
-# timeout, or verdict-gate failure aborts the sweep for diagnosis.
+# Depth set: the backend physical policy admits C1 at K2 and K3 only
+# (GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS production = ((1,2),(1,3),
+# (2,2),(2,3),(8,3))); K1/K4-K7 harness requests are refused at the
+# physical layer and additionally hang engine close (see the 2026-09-07
+# close-hang finding), so they are excluded from the sweep.
+# Resumable: existing complete outputs are skipped. Any run failure,
+# watchdog timeout, or verdict-gate failure aborts the sweep for diagnosis.
 set -u
 cd /home/lhl/hipEngine-main
 export HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1
@@ -70,7 +75,7 @@ EOF
 # interruption still leaves one complete pair per finished depth.
 for r in 1 2 3; do
   run "r${r}-k0" automatic none 3
-  for k in 1 2 3 4 5 6 7; do
+  for k in 2 3; do
     run "r${r}-k${k}" explicit 1 "$k"
   done
 done
