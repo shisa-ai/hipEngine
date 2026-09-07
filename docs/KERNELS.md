@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 raw-vector MMQ output-scale hoist tested and removed:actual qkv/Q
+projections at512/1024 rows yield0.319-0.338x operation-complete speedup,
+80 pairs exact,22 tests pass. VGPR184->256,scratch0->1132B.
+Original raw-vector kernel/wrapper/registry/harness restored.
+Evidence: `2026-09-07-framework-qwen4exp-mmq-scale-cache-rejected.json`.
+
 Q5_1 per-row publication row16 specialization was tested and removed:
 actual two-bank512/1024 synthetic-routing screen0.429x/0.412x,
 40 pairs exact,9 tests pass. Dynamic LDS8672->16864B,VGPR96->88,

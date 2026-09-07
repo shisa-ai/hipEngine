@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Dense MMQ scale-hoist rejected (September7 UTC):** move16 weight
+scales/subblock outside token-group loop,keep integer WMMA and F32
+accumulation order. Actual layer0 qkv/layer3 Q at512/1024 rows,
+complete quantize/clear/matmul/repair boundary gives0.319-0.338x speedup
+(roughly3x slower);80 pairs exact,22 tests pass.
+Trace VGPR184->256,scratch0->1132B. Candidate removed before runtime
+admission;raw-vector production unchanged. Scale live ranges cannot be
+expanded this way on the current128x128 accumulator schedule.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-scale-cache-rejected.json).
+
 **Poisoned-QSA reader coverage (September7 UTC):**
 `tests/test_qwen4exp_qsa_poisoned_padding.py` now checks parent,
 H256 wave,and production page256 wave readers against BF16 NaN/Inf in

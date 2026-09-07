@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+MMQ scale-hoist rejected:actual qkv/Q projection screen0.319-0.338x
+at512/1024 rows,80 exact pairs,22 tests. VGPR184->256,
+scratch0->1132B;candidate removed,production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-mmq-scale-cache-rejected.json).
+
 One-pair screening calibration:two training/two held-out Framework
 chunk1024 packets give empirical first-pair error factors1.0352 PP/
 1.0340 request. Held-outs stay within envelope but do not establish

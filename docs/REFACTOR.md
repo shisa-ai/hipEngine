@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp MMQ output-scale hoist: removed
+
+- Hoisting16 scales across token groups triggers VGPR184->256 and
+  scratch0->1132B;operation-complete ratios0.319-0.338x.
+- Candidate removed,raw-vector production unchanged. Do not repeat this
+  hoist without a materially different accumulator/register schedule.
+
 ## Qwen4Exp Q5_1 row16 publication: removed
 
 - Row16 after spill-free row publication loses0.429x/0.412x at512/1024
