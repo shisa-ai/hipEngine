@@ -93,11 +93,15 @@ def main():
                    help="Read CPUFreq feedback/reported frequency and CPU identity at step boundaries")
     p.add_argument("--pin-cpu",type=int,
                    help="Pin calling thread after model load; restore affinity at exit")
+    p.add_argument("--cpu-min-khz",type=int,
+                   help="Temporary requested minimum on pinned CPU policy; restored at exit")
     p.add_argument("--hip-wait",choices=("auto","spin","yield","blocking"),
                    help="Disposable-process device scheduling flag before model allocation")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
+    if a.cpu_min_khz is not None and a.pin_cpu is None:
+        p.error("--cpu-min-khz requires --pin-cpu")
     frequency=None
     if a.cpu_frequency:
         from scripts.qwen4exp_cpu_frequency import CpuFrequency
@@ -154,6 +158,8 @@ def main():
     previous=os.environ.get(FLAG)
     from scripts.qwen4exp_thread_affinity import ThreadAffinity
     affinity=ThreadAffinity(a.pin_cpu)
+    from scripts.qwen4exp_cpu_floor import CpuFloor
+    floor=CpuFloor(a.pin_cpu,a.cpu_min_khz)
     gc_events=[]
     gc_start=[None]
     active_step=[None]
@@ -167,6 +173,7 @@ def main():
             gc_start[0]=None
     try:
         report["thread_affinity"]=affinity.enter()
+        report["cpu_floor"]=floor.enter()
         if a.thread_perf:
             perf=ThreadPerf()
         if a.cpu_accounting:
@@ -269,9 +276,12 @@ def main():
                 os.environ[FLAG]=previous
             generator.close()
         finally:
-            report["restored_thread_affinity"]=affinity.close()
-            report["memory_after_close"]=memory_stats()
-            a.output.write_text(json.dumps(report,indent=2)+"\n")
+            try:
+                report["restored_cpu_min_khz"]=floor.close()
+            finally:
+                report["restored_thread_affinity"]=affinity.close()
+                report["memory_after_close"]=memory_stats()
+                a.output.write_text(json.dumps(report,indent=2)+"\n")
 
 
 if __name__=="__main__":

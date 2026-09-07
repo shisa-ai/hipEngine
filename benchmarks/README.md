@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+QSA CPU-floor diagnostic:policy17 minimum2->4GHz accepted but early
+decode1.169/1.589s and~1.5GHz/~600MHz feedback persist. Original
+minimum/affinity restored;no production policy change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-cpu-floor.json).
+
 ROCr MWAITX-request diagnostic:parent/candidate tg128 wall8.496/8.937s,
 early CPU-frequency split persists. Exact state;runtime hashes retained,
 actual MWAITX engagement unproven. No production environment change.

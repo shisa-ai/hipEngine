@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Requested CPU floor intervention (September7 UTC):** caller pinned17,
+policy17 minimum temporarily2->4GHz,readback verified. Parent/candidate
+early decode1.169/1.589s;feedback still~1.5GHz/~600MHz. The original
+2GHz minimum and0..31 affinity were restored and independently read back.
+All tokens/state/layout exact,zero candidate decode calls,clean teardown.
+Governor/EPP were already performance;no other policy modified. This
+rejects a requested-minimum workaround,not all hardware-policy hypotheses.
+Read-only RyzenAdj reports configured STAPM120W/fast160W/slow140W;
+clock-control fields unavailable. These snapshots do not identify a limit
+trigger during inference. No production policy change. Stop floor/wait
+guessing;identify the hardware constraint or qualify the full-request
+prefill-first tradeoff explicitly without hiding transition time.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-cpu-floor.json).
+
 **ROCr MWAITX request tested (September7 UTC):** source inspection at
 ROCr1559d101f2716ed3d4f30beb33200e91f1af024b identifies
 `HSA_ENABLE_MWAITX` in `runtime/hsa-runtime/core/util/flag.h` and
