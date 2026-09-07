@@ -1554,7 +1554,13 @@ Files: existing row/bulk-prefill, NextN, resident runner, profile and server tes
   6/9/12/16/28/32, prefill tile/chunk boundaries. Raw dense leaf tests cover
   those row counts at N3 with exact/repeat/outer gates and output canaries on
   gfx1151; all seven synthetic codecs also pass device one-hot checks. This
-  does not qualify full-N runtime callers or tile/chunk transitions.
+  does not qualify full-N runtime math or tile/chunk transitions.
+  A separate 768-case CPU gate exercises `launch_gguf_linear` for the six
+  integrated raw IQ/Q3 formats on both backend declarations, BF16/F32 output,
+  all those rows and 511/512/513. It checks actual registry resolution and
+  pointer/dimension/stream/library forwarding with captured leaves, not GPU
+  numerics. See `tests/test_gguf_ud_linear_callers.py` and the
+  `ud-dense-caller-abi` worklog entry.
 - [ ] Short/512/4096 prompts and separately budgeted long-context point such
   as 32768. Short gates do not authorize long trajectories.
 - [ ] Q8 alpha/beta recurrent transitions, full attention, mixed FFN pairs,
