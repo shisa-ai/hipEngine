@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Paired-head decode flag isolation (September7 UTC):** fixed
+parent-prefilled p4096 roots restored before each arm,only HEAD_PAIR
+flag toggled at decode. Code/mixed,4 balanced pairs of16 steps:
+off/on wall ratios0.999450/0.999805 (on wall+0.055%/+0.019%).
+All tokens/state/layout exact,zero paired-head calls,clean teardown.
+Read-only temperature/clock snapshots retained;no clock intervention.
+This does not reproduce the staged6.526% loss and gives no evidence of
+a flag-at-decode dispatch leak in this bounded test. It does not rule out
+effects of candidate prefill,128-step trajectories,or phase history.
+Candidate stays default-off;next isolate preceding prefill with decode
+flag held constant. No favorable throughput rerun or thermal attribution.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-decode-flag.json).
+
 **Paired-head QSA staged model result (September7 UTC):** clean a8957d6ec,
 full12 cases/chunk1024,72 exact trajectories,first24 samples preserved
 and remaining48 added without reload. No early-stop condition triggered.
