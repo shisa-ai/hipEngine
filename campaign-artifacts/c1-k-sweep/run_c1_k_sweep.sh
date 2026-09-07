@@ -1,5 +1,5 @@
 #!/bin/bash
-# C1 K0-K7 decode sweep on GPU0 (W7900), native packed C1 product route.
+# C1 K0-K3 decode sweep on GPU0 (W7900), native packed C1 product route.
 # Protocol mirrors the retained Packet-3 C1 cells exactly:
 #   scripts/gguf_mtp_c1c8_server_bench.py, width 1, resident-capacity 8,
 #   explicit mode, D24 greedy, 20 ms batch window, ar_exact contract,
@@ -10,8 +10,16 @@
 # stays K0 control); its "ar" arm is the true no-MTP AR baseline.
 # K2/K3 are listed product policy cells ((1,2),(1,3) in
 # GGUF_SPECDEC2_MTP2_PHYSICAL_WIDTH_DEPTHS[production]) - no env opt-in.
-# K1/K4-K7 are explicit-only screening cells and require
+# K1 is an explicit-only screening cell and requires
 # HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS=1 (fail-closed refusal without it).
+# K4-K7 are NOT measured as economics: the serving key carries the requested
+# candidate budget (4-7), every registered evidence row qualifies at most 3,
+# so resolve_speculative_mtp_serving_plan fails candidate_budget_not_qualified
+# with no static eligibility override and the request refuses pre-mutation to
+# K0 by design. Forcing deeper execution would fabricate evidence scope; real
+# K4-K7 product-route numbers wait on the Packet-5/6 qualification chain. One
+# K7 refusal exemplar (typed K0 expectations + decline trace) documents the
+# mechanism on GPU.
 # Resumable: existing complete outputs are skipped. Any run failure, watchdog
 # timeout, or verdict-gate failure aborts the sweep for diagnosis.
 set -u
@@ -74,12 +82,35 @@ EOF
 for r in 1 2 3; do
   # Round 1 leads with the K0 AR baseline + automatic-K0 control.
   run "r${r}-k0" automatic none 3
-  for k in 1 2 3 4 5 6 7; do
-    if [ "$k" = "1" ] || [ "$k" -ge 4 ]; then
-      run "r${r}-k${k}" --screening explicit 1 "$k"   # unlisted policy cell
+  for k in 1 2 3; do
+    if [ "$k" = "1" ]; then
+      run "r${r}-k${k}" --screening explicit 1 "$k"   # unlisted screening cell
     else
       run "r${r}-k${k}" explicit 1 "$k"               # listed product cell
     fi
   done
 done
+
+# K7 refusal exemplar: the K7 request must refuse pre-mutation to K0
+# (evidence-scope budget cap). Typed-K0 expectations + decline trace.
+if [ ! -s "$OUT/k7-refusal-exemplar.json" ]; then
+  echo "=== START k7-refusal-exemplar $(date -u +%H:%M:%S)"
+  HIPENGINE_MTP2_TRACE_DECLINE=1 timeout 900 "$PY" \
+    scripts/gguf_mtp_c1c8_server_bench.py \
+    --model "$MODEL" \
+    --backend hip_gfx1100 --quant gguf_q4_k_m --execution-profile production \
+    --prompts "$PROMPTS" \
+    --mtp-request-mode explicit --widths 1 --resident-capacity 8 \
+    --expected-mtp-widths none --candidate-budget 7 \
+    --max-tokens 24 --batch-window-ms 20 --correctness-contract ar_exact \
+    --output "$OUT/k7-refusal-exemplar.json" > "$OUT/k7-refusal-exemplar.log" 2>&1
+  rc=$?
+  echo "=== DONE k7-refusal-exemplar rc=$rc $(date -u +%H:%M:%S)"
+  if [ $rc -ne 0 ]; then
+    echo "=== FAIL k7-refusal-exemplar rc=$rc"
+    tail -6 "$OUT/k7-refusal-exemplar.log"
+    exit $rc
+  fi
+  grep -m 3 "mtp2-decline\|candidate_budget" "$OUT/k7-refusal-exemplar.log" || true
+fi
 echo "=== SWEEP COMPLETE $(date -u +%Y-%m-%dT%H:%M:%SZ)"
