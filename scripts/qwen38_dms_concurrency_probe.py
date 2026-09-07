@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""DMS C2/C4/C8 concurrency probe: N resident sessions through one runner.
+"""DMS C1-C8 concurrency probe: N resident sessions, C1 on a private runner.
 
-Opens N simultaneous trained-DMS resident sessions on one shared
-``Qwen35GGUFFullStackRunner``, gives each a distinct above-window prompt
-sliced from the same manifest validation stream, prefills sequentially
-(each prefill's dense owner coexists with the other sessions' live compact
-owners), then decodes round-robin so all N sessions are interleaved.
+Opens N simultaneous trained-DMS resident sessions, gives each a distinct
+above-window prompt sliced from the same manifest validation stream,
+prefills sequentially (each prefill's dense owner coexists with the other
+sessions' live compact owners), then decodes round-robin so all N sessions
+are interleaved.
+
+N > 1 shares one ``Qwen35GGUFFullStackRunner`` across sessions (multi-row
+device placement). A single-session (C1) cycle constructs no shared runner,
+so the session owns its runner and the private-C1 placement policies apply
+(mapped-host token embedding, selective small-weight arena); the resolved
+policies are labeled in each cycle's ``runner_wiring`` record.
 
 The shared runner binds the active session's DMS owner at each decode step.
 Optional C1 verification compares every interleaved logit byte with an
@@ -199,8 +205,19 @@ def _run_cycle(
     n = len(prompts)
     before = memory_stats()
     started = time.perf_counter()
-    runner = Qwen35GGUFFullStackRunner(args.model, backend=str(args.backend))
+    # A single-session (C1) cycle constructs no shared runner: the resident
+    # session then owns its runner and the private-C1 placement policies
+    # apply (mapped-host token embedding, selective small-weight arena).
+    # Sharing would force ``shared_runner_device_fallback`` placement and
+    # disable the arena. Multi-session cycles keep the one shared runner,
+    # which is the required multi-row placement policy.
+    runner = (
+        Qwen35GGUFFullStackRunner(args.model, backend=str(args.backend))
+        if n > 1
+        else None
+    )
     loaded_at = time.perf_counter()
+    runner_wiring: dict[str, Any] | None = None
     sessions: list[Qwen35GGUFResidentSession] = []
     prefill_rows: list[dict[str, Any]] = []
     decode_rows: list[dict[str, Any]] = []
@@ -231,6 +248,32 @@ def _run_cycle(
             )
             session.__enter__()
             sessions.append(session)
+            if index == 0:
+                # Explicit placement labeling for the cycle record: which
+                # runner wiring ran and which placement/arena policies it
+                # resolved to (e.g. mapped_host_private_c1_auto versus
+                # shared_runner_device_fallback).
+                runner_wiring = {
+                    "sessions": n,
+                    "shared_runner": runner is not None,
+                    "session_owns_runner": bool(
+                        getattr(session, "_owns_runner", False)
+                    ),
+                    "token_embedding_placement": getattr(
+                        getattr(session, "runner", None),
+                        "token_embedding_placement",
+                        None,
+                    ),
+                    "host_token_embedding_reason": getattr(
+                        session, "host_token_embedding_reason", None
+                    ),
+                    "small_weight_arena_enabled": getattr(
+                        session, "small_weight_arena_enabled", None
+                    ),
+                    "small_weight_arena_reason": getattr(
+                        session, "small_weight_arena_reason", None
+                    ),
+                }
             mark_started = time.perf_counter()
             session.prefill(
                 prompt,
@@ -346,12 +389,14 @@ def _run_cycle(
                 session.__exit__(None, None, None)
             except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
                 errors.append(repr(exc))
-        runner.close()
+        if runner is not None:
+            runner.close()
         ended = time.perf_counter()
     after = memory_stats()
 
     cycle = {
         "cycle": cycle_index,
+        "runner_wiring": runner_wiring,
         "prefill": prefill_rows,
         "decode": decode_rows,
         "cancellation": cancellation,
