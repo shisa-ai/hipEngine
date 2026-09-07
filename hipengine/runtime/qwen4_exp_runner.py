@@ -6291,6 +6291,10 @@ class Qwen4ExpGGUFResidentModelRunner:
             "HIPENGINE_QWEN4_EXP_Q8_WAVE_SCALE", "0"
         ) not in {"", "0", "false", "False"}:
             selected_raw_variant = "coltile8_wave_scale"
+        if selected_raw_variant == "coltile8_wave_scale" and os.environ.get(
+            "HIPENGINE_QWEN4_EXP_Q8_GATE_PREFETCH2", "0"
+        ) == "1":
+            selected_raw_variant = "coltile8_wave_scale_prefetch2"
         q8_wmma_layers_raw = os.environ.get(
             "HIPENGINE_QWEN4_EXP_Q8_WMMA_LAYERS", ""
         )

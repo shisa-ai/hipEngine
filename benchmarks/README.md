@@ -2,10 +2,15 @@
 
 Last updated: **2026-09-07 UTC**
 
+Q8 paired-load gate admission:five chunk1024 full-logit/state/full-KV
+cases exact,36/144 prefill calls,zero decode calls/final owners.
+Both profile binders0; throughput A/B pending, no production change.
+[State evidence](results/2026-09-07-framework-qwen4exp-q8-prefetch2-state.json).
+
 Exact Q8 paired-load kernel candidate, actual layer0/4 gates at1024 rows:
 10.909->7.992ms /10.893->7.998ms; independent layer20 pressure screen
 11.078->8.096ms. All180 pairs exact, VGPR72->80/no scratch.
-K640 shared-down loses and is excluded; full-model gates pending.
+K640 shared-down loses and is excluded; full-model throughput gate pending.
 [Evidence](results/2026-09-07-framework-qwen4exp-q8-prefetch2.json).
 
 Post-Q8-register chunk1024 family refresh at cleancc3d48a70:

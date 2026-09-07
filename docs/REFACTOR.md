@@ -2,11 +2,14 @@
 
 ## Qwen4Exp Q8 coltile paired-load candidate
 
-- Kernel-only `coltile8_rowbatch4_prefetch2_f32_f32_out` pipelines two
-  K-lane steps, preserves exact FMA/reduction order. No runtime flag.
+- Default-off `HIPENGINE_QWEN4_EXP_Q8_GATE_PREFETCH2=1` selects
+  `coltile8_rowbatch4_prefetch2_f32_f32_out` through a context-local raw
+  variant; pipelines two K-lane steps, preserves exact FMA/reduction order.
 - Actual K2560/N6144 gates improve; K640 shared-down loses and must not
-  be admitted. Scope future route to the measured gate geometry, rows>=64.
-- Require full model state/KV and canonical chunk1024 A/B before promotion.
+  be admitted. Route requires K2560/N6144, rows>=64, existing wave-scale
+  parent and registered candidate. Both profile binders remain0.
+- Five chunk1024 full-logit/state/KV cases pass,36/144 prefill calls,
+  zero decode calls/final owners. Require canonical A/B before promotion.
   Remove candidate if model gate rejects it; do not widen to GR without
   operation-complete GR evidence.
 
