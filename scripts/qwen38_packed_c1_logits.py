@@ -270,7 +270,16 @@ class PackedC1Capture:
                 record["kv_commit"] = dict(passed=True, checked_buffers=len(expected_kv['buffers']))
                 return output
 
-            self._patch(Qwen35GGUFResidentSession, "_commit_deferred_packed_verify_states_batch_device", checked_commit)
+            def recorded_commit(owner, results, sessions, *, accept_buffers, **kwargs):
+                try:
+                    return checked_commit(owner, results, sessions, accept_buffers=accept_buffers, **kwargs)
+                except Exception as error:
+                    context = self.current.get()
+                    if context is not None and "record_index" in context:
+                        self.records[context["record_index"]]["commit_error"] = f"{type(error).__name__}: {error}"
+                    raise
+
+            self._patch(Qwen35GGUFResidentSession, "_commit_deferred_packed_verify_states_batch_device", recorded_commit)
 
         self._patch(bench, "_run_arm", measured_arm)
         self._patch(Qwen35GGUFMTP2Adapter, "_execute_target_frontier_batch", target)

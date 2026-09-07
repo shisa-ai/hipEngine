@@ -127,12 +127,15 @@ def selected_aux_sources(session, result, *, accepted: int) -> dict:
         raise ValueError("invalid provider hidden source or selected row")
     size = hidden * 2
     destination = session._hidden_a
-    if destination is None or int(destination.nbytes) != size:
+    if destination is None or int(destination.nbytes) < size:
         raise ValueError("invalid provider hidden destination")
     session.runtime.device_synchronize()
     view = SimpleNamespace(ptr=int(source.ptr) + accepted * size, nbytes=size)
     expected = {"provider_hidden": dict(ptr=int(destination.ptr), nbytes=size,
                                         hash=_device_hash(session, view))}
+    if int(destination.nbytes) > size:
+        tail = SimpleNamespace(ptr=int(destination.ptr) + size, nbytes=int(destination.nbytes) - size)
+        expected["provider_tail"] = dict(ptr=tail.ptr, nbytes=tail.nbytes, hash=_device_hash(session, tail))
     for name, buffer, advance in (("position_device", session.scratch.position_buf, 1),
                                    ("context_device", session.scratch.context_buf, 2)):
         if buffer is None or int(buffer.nbytes) != 8:
@@ -146,7 +149,18 @@ def selected_aux_sources(session, result, *, accepted: int) -> dict:
 def assert_aux_commit(session, expected: dict) -> None:
     """Check cursor values, BF16 provider bytes, and the published provider pointer."""
     session.runtime.device_synchronize()
-    for name, buffer in (("provider_hidden", session._hidden_a),
+    hidden = session._hidden_a
+    row = expected["provider_hidden"]
+    tail = expected.get("provider_tail")
+    allocation_size = row["nbytes"] + (tail["nbytes"] if tail else 0)
+    if hidden is None or int(hidden.ptr) != row["ptr"] or int(hidden.nbytes) != allocation_size:
+        raise ValueError("selected provider allocation changed")
+    if tail:
+        view = SimpleNamespace(ptr=int(hidden.ptr) + row["nbytes"], nbytes=tail["nbytes"])
+        if view.ptr != tail["ptr"] or _device_hash(session, view) != tail["hash"]:
+            raise ValueError("selected provider tail changed")
+    hidden_row = SimpleNamespace(ptr=int(hidden.ptr), nbytes=row["nbytes"])
+    for name, buffer in (("provider_hidden", hidden_row),
                           ("position_device", session.scratch.position_buf),
                           ("context_device", session.scratch.context_buf)):
         row = expected[name]
