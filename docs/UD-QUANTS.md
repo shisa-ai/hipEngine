@@ -1440,13 +1440,15 @@ gfx1151 peer registration, materializer/dense capability maps;
 proposed `tests/test_gguf_ud_dense.py`.
 
 - [ ] RED role-shaped dispatch/math tests for raw Q5/Q6 in expanded slots;
-  use existing registered variants where operation-complete. A 42-case
-  gfx1151 raw-leaf gate passes for sampled published K_M rows at actual
+  use existing registered variants where operation-complete. An 84-case
+  gfx1151 raw-leaf gate passes for sampled and full published K_M tensors at
   K=5120/6144/17408 and Q6 eh_proj K=10240, rows 1/8/32, BF16/F32 outputs.
   Hash-pinned samples, exact row-partition/repeat checks, output canaries,
-  elementwise CPU-reference and outer KL/top-1 checks are covered. Full-N,
-  runtime dispatch and repack qualification are separate. See
-  `tests/test_gguf_ud_q56_roles.py` and the `ud-q56-roles` worklog entry.
+  float64 elementwise/KL and output-dtype-matched CPU top-1 are covered.
+  Three full-N BF16 cases miss the unrounded FP64 top-1 threshold because
+  rounding merges distinct maxima into ties; these are not model-quality
+  passes. Runtime dispatch and repack qualification are separate. See
+  `tests/test_gguf_ud_q56_roles.py` and the `ud-q56-full-n` worklog entry.
 - [ ] Add raw IQ4_XS dense c1 strict GEMV for actual K/N, BF16/F32 outputs,
   and supported tail-N; reuse block math without forcing rank-3 runtime paths.
 - [ ] Supply correct row-batched and bounded prefill execution. A bring-up

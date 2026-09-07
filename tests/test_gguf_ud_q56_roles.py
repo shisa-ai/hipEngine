@@ -1,7 +1,7 @@
-"""Optional published-weight Q5/Q6 gates; sampled N, actual role K.
+"""Optional published-weight Q5/Q6 gates; sampled/full N, actual role K.
 
 Set HIPENGINE_UD_ROLE_MODEL to the published K_M GGUF. These tests qualify
-raw leaves, not loader repacks, full-N geometry, or NextN state semantics.
+raw leaves, not loader repacks, runtime dispatch, or NextN state semantics.
 """
 from __future__ import annotations
 
@@ -58,7 +58,8 @@ def bf16(x):
 ))
 @pytest.mark.parametrize("rows", (1, 8, 32))
 @pytest.mark.parametrize("output", ("f32", "bf16"))
-def test_raw_role_rows(model, name, quant, width, rows, output):
+@pytest.mark.parametrize("geometry", ("sampled", "full"))
+def test_raw_role_rows(model, name, quant, width, rows, output, geometry):
     from hipengine.core.memory import malloc, free, copy_host_to_device, copy_device_to_host, host_array_ptr
     from hipengine.kernels.hip_gfx1100.quant import gguf_k_gemv
     path, tensors, library = model
@@ -72,15 +73,23 @@ def test_raw_role_rows(model, name, quant, width, rows, output):
         for index in indices:
             f.seek(tensor.data_offset + index * row_bytes)
             payloads.append(f.read(row_bytes))
+        if geometry == "full":
+            f.seek(tensor.data_offset)
+            full_payload = f.read(tensor.nbytes)
+            assert len(full_payload) == tensor.nbytes
     assert all(len(p) == row_bytes for p in payloads)
     payload = b"".join(payloads)
     assert hashlib.sha256(payload).hexdigest() == ROW_HASHES[name]
-    raw = np.frombuffer(payload, dtype=np.uint8).reshape(5, row_bytes).copy()
-    weights = dequantize_gguf_data(raw, tensor.ggml_type).reshape(5, width)
+    n = tensor.shape[0] if geometry == "full" else 5
+    raw = np.frombuffer(full_payload if geometry == "full" else payload,
+                        dtype=np.uint8).reshape(n, row_bytes).copy()
+    if geometry == "full":
+        assert raw[indices].tobytes() == payload
+    weights = dequantize_gguf_data(raw, tensor.ggml_type).reshape(n, width)
     x = bf16(np.random.default_rng(731).normal(0, 0.125, (rows, width)))
     teacher = bf16_to_float32(x).astype(np.float64) @ weights.astype(np.float64).T
     dtype = np.float32 if output == "f32" else np.uint16
-    host = np.full((rows + 2, 5), 123, dtype=dtype)
+    host = np.full((rows + 2, n), 123, dtype=dtype)
     fn = getattr(gguf_k_gemv, "gguf_" + quant.lower() + "_gemv_bf16_" + output + "_out")
     buffers = []
     try:
@@ -90,7 +99,7 @@ def test_raw_role_rows(model, name, quant, width, rows, output):
             copy_host_to_device(buffer, host_array_ptr(array), array.nbytes)
         def launch(row, count):
             fn(buffers[0].ptr + row * x.strides[0], buffers[1].ptr,
-               buffers[2].ptr + (row + 1) * host.strides[0], count, width, 5, library=library)
+               buffers[2].ptr + (row + 1) * host.strides[0], count, width, n, library=library)
         launch(0, rows)
         copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
         original = host.copy()
@@ -101,7 +110,7 @@ def test_raw_role_rows(model, name, quant, width, rows, output):
                 launch(row, 1)
             copy_device_to_host(host_array_ptr(host), buffers[2], host.nbytes)
             np.testing.assert_array_equal(host.view(np.uint8), original.view(np.uint8))
-        np.testing.assert_array_equal(host[[0, -1]], np.full((2, 5), 123, dtype=dtype))
+        np.testing.assert_array_equal(host[[0, -1]], np.full((2, n), 123, dtype=dtype))
         actual = host[1:-1] if output == "f32" else bf16_to_float32(host[1:-1])
         assert np.isfinite(actual).all()
         np.testing.assert_allclose(actual, teacher,
@@ -112,7 +121,11 @@ def test_raw_role_rows(model, name, quant, width, rows, output):
             return a - np.log(np.exp(a).sum(axis=1, keepdims=True))
         p, q = logsoft(teacher), logsoft(actual.astype(np.float64))
         assert np.max(np.sum(np.exp(p) * (p - q), axis=1)) <= 0.05
-        assert np.mean(teacher.argmax(axis=1) == actual.argmax(axis=1)) >= 0.9
+        # Compare argmax under the declared output ABI. BF16 can merge
+        # distinct maxima into a tie even for an exact CPU implementation.
+        # Keep unrounded float64 elementwise/KL checks above independently.
+        output_teacher = bf16_to_float32(bf16(teacher)) if output == "bf16" else teacher
+        assert np.mean(output_teacher.argmax(axis=1) == actual.argmax(axis=1)) >= 0.9
     finally:
         for buffer in reversed(buffers):
             free(buffer)
