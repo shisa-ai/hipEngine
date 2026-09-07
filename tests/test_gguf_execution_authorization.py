@@ -161,6 +161,7 @@ def test_qualified_capture_reaches_stream_only_after_entry_contract(monkeypatch,
     def stream():
         raise ReachedStream("certified graph entry")
     session.runtime = SimpleNamespace(stream_create=stream)
+    session.runner.runtime = session.runtime
     with pytest.raises(ReachedStream):
         session.capture_native_rows_graph(rows=2, max_context_len=64)
     assert owner.calls == [(0, 0)]

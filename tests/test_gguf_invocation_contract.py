@@ -196,12 +196,28 @@ def test_native_caller_supplies_mixed_gdn_operands_and_executes_cast(monkeypatch
         assert calls[-1] == "cast"
     monkeypatch.setattr(runner, "launch_gguf_linear", linear)
     session = NS(weights=resident, runtime=object(), backend="hip_gfx1100",
-                 fp16_recurrent_state=False, hidden_size=256, linear_qkv_width=192,
+                 fp16_recurrent_state=False, hidden_size=256, vocab_size=64, linear_qkv_width=192,
                  ssm_value_dim=32, _cast_library=lambda: object(),
                  _run_post_attention_ffn_rows=lambda *a, **kw: None)
+    from tests.test_gguf_ud_admission import _native_entry_session
+    scratch.calls = []
+    owner_session = _native_entry_session(resident, scratch_owner=scratch)
+    owner_session.runner = session
+    owner_session.runtime = session.runtime
+    owner_session._native_compact_scratch = lambda *a, **kw: scratch
+    for name, dtype in (("norm", "bf16"), ("linear_qkv", "bf16"), ("linear_z", "bf16"),
+                        ("linear_alpha", "bf16"), ("linear_beta", "bf16"), ("conv_out", "f32"),
+                        ("recurrent_out", "f32"), ("recurrent_bf16", "bf16")):
+        dtypes[getattr(scratch, name).ptr] = dtype
+    dtypes[scratch.layer_conv_states[0].ptr] = "f32"
+    dtypes[scratch.layer_recurrent_states[0].ptr] = "f32"
+    dtypes[owner_session._native_cu_seqlens_buf.ptr] = "i32"
+    dtypes[owner_session._native_state_indices_buf.ptr] = "i64"
+    context = owner_session._native_invocation_context(2, scratch)
     result = runner.Qwen35GGUFFullStackRunner._run_linear_attention_decode_rows_native(
-        session, 0, 1001, 1002, scratch, rows=2,
-        cu_seqlens_ptr=buffer("i32").ptr, state_indices_ptr=buffer("i64").ptr)
+        session, 0, owner_session._hidden_a.ptr, owner_session._hidden_b.ptr, scratch, rows=2,
+        cu_seqlens_ptr=owner_session._native_cu_seqlens_buf.ptr,
+        state_indices_ptr=owner_session._native_state_indices_buf.ptr, invocation_context=context)
     assert result == "indexed_conv_gdn"
     assert calls == ["indexed_conv", "segmented_gdn", "cast"]
     ssm_norm = next(item for item in report.plan_contract.invocations if item.slot.endswith("ssm_norm"))

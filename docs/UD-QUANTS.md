@@ -1261,6 +1261,44 @@ by the affected CPU bundle. F5's integrated LLM profile-binder hole remains
 math, environment flag or numerical default. Exact validation and scope limits
 are recorded in the `ud-u1-f1-execution` worklog entry.
 
+#### F1 physical-operand review correction — pending review
+
+Review of `1b3ee1417` accepted the load dependency closure but found two HIGH
+physical-binding gaps: sampler output replacement and named KV/position/rotary
+view replacement could evade the graph key, and direct native layer methods
+did not validate their supplied hidden/output/index pointers. The earlier
+physical-ownership claim was therefore incomplete.
+
+`loading/qwen35_gguf_native_operands.py` now owns `NativeRowsOperands`, the
+actual native launch **and host-readback** plan: token IDs, BF16 ping-pong
+hidden rows, logits, segmented-index inputs, sampler block values/indices,
+sampler output IDs/values, and the persistent host token destination. Native
+enqueue and replay consume that plan. A recursive inventory walks every named
+scratch dataclass field, including nested KV spans, cache tuples, position and
+rotary Tensor views, their dtype/shape/strides/device, owning buffers and static
+geometry. Merely retaining `scratch.buffers` cannot hide a changed named view.
+Host array contents are dynamic; the invocation's decode bound, graph context
+bounds, physical owners and view geometry are not.
+
+Both direct native layer methods require an owner-issued
+`NativeInvocationContext`. The real enqueue supplies it. Validation checks the
+current certificate/owner plan, actual runner and scratch views, layer geometry,
+BF16 row-prefix inputs/outputs, buffer ranges/dtypes/non-aliasing, and exact
+compact index pointers before any kernel or library access. Prefix views of
+larger resident buffers and the real compact KV/position subview constructor
+are covered; arbitrary nonzero pointers or unrequested offsets are not authority.
+`NativeIndexBinding` records the canonical host metadata and destination after
+the allocator's successful H2D publication. This is producer/ownership evidence,
+**not an assertion that device contents were read or numerically verified**.
+
+Capture stores the issued context. Replay checks it, including freshly derived
+compact views and all sampler/readback operands, before H2D, position publication
+or graph launch. Missing legacy contexts fail closed. CPU tests exercise both
+real layer entries, real enqueue forwarding, legal prefix views, changed named
+operands with unchanged owning lists, and changing contents with stable owners.
+F1 still awaits independent review; F5 remains **OPEN**. No GPU, kernel, math,
+profile, default-route, or U2 work is included in this correction.
+
 ### U2. Independent Codec Oracles
 
 Dependencies: U0; CPU-only before GPU leaf tests.
