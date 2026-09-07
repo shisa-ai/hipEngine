@@ -1,0 +1,63 @@
+{
+  "kind": "native_c1_bounded_merge_confirmation",
+  "source_commit": "392113a20060349e3c823c6ec87c0c201dbb1d8b",
+  "source_clean_at_launch": true,
+  "host": "epyc",
+  "hardware": "GPU0 AMD Radeon Pro W7900 gfx1100",
+  "gpu_unique_id": "0xe282895b62c2b295",
+  "model": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+  "model_sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+  "quant": "Q4_K_M",
+  "execution_profile": "production",
+  "kv": "BF16",
+  "capacity": 1,
+  "budget": 3,
+  "decode_horizon": 24,
+  "canonical_prompts": 10,
+  "exact_prompts": 10,
+  "engaged_prompts": 10,
+  "budget_conformed_prompts": 10,
+  "packed_target_calls": 70,
+  "legacy_target_forbidden": true,
+  "process_exit_code": 0,
+  "full_profile_qualification": false,
+  "performance_claim": false,
+  "automatic_selection": "K0",
+  "native_c1_public_evidence": "withdrawn",
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python campaign-artifacts/review/check_packed_c1.py --capacity 1 --budget 3 --output /tmp/c1-merged-n1-confirmation.json",
+  "raw_result_sha256": "ed0eed8693ee55efb32ac0ca30bf7f1234e4d89e774a919cfa017f8af6a4ba13",
+  "test_confirmation": {
+    "single_process_full_suite_passed": false,
+    "full_run": {
+      "collected": 12048,
+      "exit_code": 134,
+      "aborted_at_percent": 76,
+      "aborting_file": "tests/test_qwen35_gguf_moe_graph_parity.py",
+      "log": "/tmp/c1-merged-full-pytest.log",
+      "log_sha256": "73c0a289a73c777b3a7e0fc6d5357142cae2985102ae704e9e9dc4cc8f44688e"
+    },
+    "isolated_aborting_file": {
+      "passed": 1,
+      "seconds": 122.17,
+      "log_sha256": "2c94190e9f7d9f92bb7e17190639402d1ad02743897a14c285216a1fa57856ca"
+    },
+    "unexecuted_suffix_and_affected_h7u": {
+      "passed": 2798,
+      "skipped": 57,
+      "initial_failed": 2,
+      "seconds": 722.31,
+      "log_sha256": "64a24cfac4a936b153115f314ac52a1ef8776f103a20493a256aadad9c057559"
+    },
+    "observed_assertion_failures_repaired": 40,
+    "focused_repair_runs": [
+      {"scope": "first affected bundle", "passed": 192, "skipped": 1},
+      {"scope": "complete CPU batch scheduler file", "passed": 323},
+      {"scope": "published-command drift and smoke plan", "passed": 15}
+    ]
+  },
+  "limitations": [
+    "Diagnostic-only native C1 row; no public promotion or throughput claim.",
+    "The full-process abort did not reproduce in isolation and remains unexplained; do not report a monolithic all-green test run.",
+    "Native K0-switch suite, independent provider/intermediate references, wider teacher isolation, sustained task/service and matched economics remain open."
+  ]
+}
