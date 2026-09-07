@@ -1,6 +1,6 @@
 # Qwen3.8-27B gfx1100: faster MTP on the concurrency engine
 
-Status (2026-09-07 review): partial implementation ready for integration;
+Status: partial implementation integrated;
 **campaign completion and automatic promotion remain open**.
 
 ### Review outcome
