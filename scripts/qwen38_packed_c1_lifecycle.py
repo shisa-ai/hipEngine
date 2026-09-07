@@ -6,6 +6,8 @@ checks them against independent HTTP AR output. Default horizons are D8/D24;
 The cancelled prefix comes from its terminal collector, not a public response.
 --refill-peer admits a D8 child after a native C1 survivor, requires a new packed
 pair, and checks request ownership and resident leases after all children finish.
+--wide-refill tests eight initial children and seven refills at capacity eight,
+with a real native C1 survivor between the two packed width-eight groups.
 The original HTTP mode cannot batch unequal horizons and reproduces that failure.
 No lease swap, HTTP lifecycle, provisional-transaction rollback, EOS, full numerical
 qualification, or promotion claim.
@@ -78,12 +80,12 @@ def validate_response(expected: dict, actual: dict) -> None:
         raise ValueError('concurrent token usage differs from independent AR')
 
 
-def install_lifecycle_evidence(capacity: int) -> None:
+def install_lifecycle_evidence(capacity: int, widths=(1, 2)) -> None:
     """Extend only runtime diagnostic clones to cover the short retirement child."""
     from dataclasses import replace
     from hipengine.models import qwen35
     from scripts.qwen38_packet5_k4_watchdog_probe import _inject_k4_evidence_row
-    for width in (1, 2):
+    for width in widths:
         _inject_k4_evidence_row(width, 3, capacity=capacity)
         plugin = qwen35.QWEN35_GGUF
         rows = plugin.speculative_mtp_serving_evidence
@@ -186,7 +188,12 @@ def main() -> None:
                         help='Cancel one D24 engine child after a successful paired target')
     parser.add_argument('--refill-peer', action='store_true',
                         help='Admit a new D8 child after the D24 child becomes a native C1 survivor')
+    parser.add_argument('--wide-refill', action='store_true',
+                        help='Test eight initial children, their C1 survivor, then seven new peers')
     args = parser.parse_args()
+    if args.wide_refill and (not args.engine_boundary or args.capacity != 8
+                            or args.cancel_peer or args.refill_peer):
+        parser.error('--wide-refill requires --engine-boundary --capacity 8 and no other scenario')
     if (args.cancel_peer or args.refill_peer) and not args.engine_boundary:
         parser.error('--cancel-peer and --refill-peer require --engine-boundary')
     if args.cancel_peer and args.refill_peer:
@@ -197,7 +204,7 @@ def main() -> None:
     from hipengine.runtime.qwen35_gguf_runner import Qwen35GGUFResidentSession
 
     os.environ['HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS'] = '1'
-    install_lifecycle_evidence(args.capacity)
+    install_lifecycle_evidence(args.capacity, range(1, 9) if args.wide_refill else (1, 2))
     traces = []
     paired_ready = None
     singleton_ready = None
@@ -225,8 +232,16 @@ def main() -> None:
                 paired_ready.set()
             if (singleton_ready is not None and len(ids) == 1
                     and record['active_request_ids'] == ids and record['native_c1']):
-                validate_transition(traces[start:])
-                singleton_ready.set()
+                if args.wide_refill:
+                    if any(len(t['request_ids']) == 8 and ids[0] in t['request_ids']
+                           and t['active_request_ids'] == t['request_ids']
+                           and t['packed_request_ids'] == t['request_ids']
+                           and t['packed_group_sizes'] == [8] and not t['error']
+                           for t in traces[start:-1]):
+                        singleton_ready.set()
+                else:
+                    validate_transition(traces[start:])
+                    singleton_ready.set()
             return result
         except Exception as error:
             record['error'] = f'{type(error).__name__}: {error}'
@@ -278,13 +293,19 @@ def main() -> None:
                 start = len(traces)
                 paired_ready = threading.Event() if args.cancel_peer else None
                 cancellation = {} if args.cancel_peer else None
-                singleton_ready = threading.Event() if args.refill_peer else None
+                singleton_ready = threading.Event() if args.refill_peer or args.wide_refill else None
                 refill = {} if args.refill_peer else None
                 drain = None
                 if args.refill_peer:
                     expected.append(expected[0])  # Same prompt and D8 as the first independent AR arm.
                 intent_sources = None
-                if args.engine_boundary:
+                if args.wide_refill:
+                    from scripts.qwen38_packed_c1_wide_refill import resolve_wide_intents, submit_wide_refill
+                    expected = [expected[0]] * 7 + [expected[1]] + [expected[0]] * 7
+                    intents, intent_sources = resolve_wide_intents(llm, prompt['rendered_prompt'])
+                    actual, refill = submit_wide_refill(llm._get_text_generator(),
+                        prompt['rendered_prompt'], intents, singleton_ready)
+                elif args.engine_boundary:
                     intents, intent_sources = resolve_engine_intents(llm, prompt['rendered_prompt'], horizons)
                     actual = submit_engine_pair(llm._get_text_generator(), prompt['rendered_prompt'], intents,
                                                 horizons=horizons, paired_ready=paired_ready,
@@ -299,11 +320,17 @@ def main() -> None:
                         barrier.wait(timeout=30)
                         actual = [future.result() for future in futures]
                 trace = traces[start:]
-                transition = validate_transition(trace)
-                if args.refill_peer:
-                    from scripts.qwen38_packed_c1_refill import validate_refill_transition
+                if args.wide_refill:
+                    from scripts.qwen38_packed_c1_wide_refill import validate_wide_refill
+                    transition = validate_wide_refill(trace, refill['initial_request_ids'],
+                                                      refill['refill_request_ids'])
+                else:
+                    transition = validate_transition(trace)
+                if args.refill_peer or args.wide_refill:
                     from scripts.qwen38_packed_c1_drain import validate_request_drain
-                    transition = validate_refill_transition(trace, refill)
+                    if args.refill_peer:
+                        from scripts.qwen38_packed_c1_refill import validate_refill_transition
+                        transition = validate_refill_transition(trace, refill)
                     snapshot = llm._get_text_generator().live_loop_snapshot()
                     validate_request_drain(snapshot, capacity=args.capacity)
                     drain = dict(engine_service=snapshot['engine_service'],
@@ -341,6 +368,7 @@ def main() -> None:
                 diagnostic_only=True, performance_claim=False, full_profile_qualification=False,
                 passed=passed, capacity=args.capacity, budget=3, horizons=list(horizons),
                 cancellation_requested=args.cancel_peer, refill_requested=args.refill_peer,
+                wide_refill_requested=args.wide_refill,
                 boundary='engine_service' if args.engine_boundary else 'http',
                 cells=cells, all_target_traces=traces))
         finally:

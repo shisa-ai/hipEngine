@@ -34,18 +34,18 @@ def test_teardown_failure_cannot_publish_pass(tmp_path, close_fails):
     assert saved['teardown_error'] == ('RuntimeError: drain failed' if close_fails else None)
 
 
-@pytest.mark.parametrize('capacity', [2, 8])
-def test_lifecycle_scope_extension_is_diagnostic_only(monkeypatch, capacity):
+@pytest.mark.parametrize('capacity,widths', [(2, (1, 2)), (8, (1, 2)), (8, tuple(range(1, 9)))])
+def test_lifecycle_scope_extension_is_diagnostic_only(monkeypatch, capacity, widths):
     from types import SimpleNamespace
     from hipengine.models import qwen35
     from scripts.qwen38_packed_c1_lifecycle import install_lifecycle_evidence
     original = qwen35.QWEN35_GGUF.speculative_mtp_serving_evidence
     plugin = SimpleNamespace(speculative_mtp_serving_evidence=original)
     monkeypatch.setattr(qwen35, 'QWEN35_GGUF', plugin)
-    install_lifecycle_evidence(capacity)
+    install_lifecycle_evidence(capacity, widths)
     rows = plugin.speculative_mtp_serving_evidence
-    assert rows[:-2] == original
-    for width, row in zip((1, 2), rows[-2:], strict=True):
+    assert rows[:-len(widths)] == original
+    for width, row in zip(widths, rows[-len(widths):], strict=True):
         assert row.min_output_horizon_tokens == 8
         assert row.max_output_horizon_tokens == 24
         assert row.resident_capacity == capacity
