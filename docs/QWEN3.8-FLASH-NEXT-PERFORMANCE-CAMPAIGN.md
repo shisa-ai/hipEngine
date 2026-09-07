@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**QSA transition CPU accounting (September7 UTC):** unprofiled
+code4096,2 balanced pairs/16 steps after parent/candidate prefill,
+decode flag0. Wall1.170->1.574s tracks thread CPU1.165->1.563s.
+No GC events or major faults;minor faults0 except one candidate arm1.
+Involuntary switches16-20 per window,voluntary0-1. Thus off-CPU waits/
+GC do not explain the~0.40s penalty in this bounded run;more CPU work,
+lower effective execution rate,or CPU-side waiting/spinning remain possible.
+No clock/scheduling intervention. `perf stat -e cycles,instructions -- true`
+succeeds;next measure decode-window instructions/cycles to distinguish
+work count from execution rate. Exact tokens/state/layout and clean
+teardown pass;candidate stays default-off. Do not label it thermal.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-cpu.json).
+
 **QSA transition trace (September7 UTC):** code4096,first16 steps,
 decode flag0 after parent/candidate prefill,2 balanced pairs. Same29440
 kernel launches per window. Parent/candidate wall1203.112/1569.281ms,

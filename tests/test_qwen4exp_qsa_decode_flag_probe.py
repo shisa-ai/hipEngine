@@ -22,3 +22,10 @@ def test_markers_distinguish_warmup_and_measured_arms():
     from scripts.qwen4exp_qsa_decode_flag_probe import step_marker
     assert len({step_marker("code-p4096",p,a,s)
                 for p in (-1,0,1) for a in (0,1) for s in range(16)})==96
+
+
+def test_cpu_counter_delta():
+    from scripts.qwen4exp_qsa_decode_flag_probe import counter_delta
+    assert counter_delta({"thread_seconds":1.0,"minor_faults":4},
+                         {"thread_seconds":1.5,"minor_faults":7})=={
+                             "thread_seconds":.5,"minor_faults":3}
