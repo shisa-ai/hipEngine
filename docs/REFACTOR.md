@@ -1,16 +1,19 @@
 # hipEngine Refactor / Dead-Path Ledger
 
-## H256 QSA four-head leaf candidate
+## H256 QSA four-head production
 
 - `strict_h256_head_quad_rows_spans` shares K/V across four heads,
-  requires page256 and GQA divisible by4. Default-off model mode
+  requires page256 and GQA divisible by4. Production model mode
   `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=quad` is Hq24/Hkv2-only,
-  after existing page256 sparse-prefill guard. Other values fail closed.
+  after existing page256 sparse-prefill guard. Invalid values fail closed.
 - Synthetic512/1024 leaf ratios1.033x/1.063x versus two-head candidate;
   VGPR72->112,no LDS/scratch.23 tests pass.
-- No whole-request/CPU-transition claim. Full state/KV and request
-  gate passes six cases including all4 p4096 categories,24 calls each,
-  zero dense/decode engagement. Request qualification still required.
+- Full state/KV gate passes six cases including all4 p4096 categories,
+  24 calls each,zero dense/decode engagement. Staged72 trajectories exact;
+  all4 long-request means improve1.010-1.016x,PP+3.571%,TG-3.531%.
+- Production bindsquad,strict0. CPU recovery penalty persists and is
+  included,not hidden. Pair1/single-head0 retained for bisection;remove
+  temporary mode chain when profile plans own head grouping.
 
 ## GDN full-layer diagnostic graph cache
 

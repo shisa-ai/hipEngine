@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Four-head QSA promoted:p4096 PP185.413->192.034 (+3.571%),
+TG13.990->13.496 (-3.531%),all4 long-request means improve1.010-1.016x.
+72 trajectories exact;transition cost included,short paths unchanged.
+Staged protocol/variance explicit;not a CPU-recovery fix.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json).
+
 Four-head QSA admission:six full-logit/state/KV cases exact,all4 p4096
 categories,24 sparse calls each,zero dense/decode calls. Default-off
 quad mode;full-request timing including CPU recovery still pending.

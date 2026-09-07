@@ -315,8 +315,8 @@ def _production_selections() -> tuple[VariantSelection, ...]:
         ),
         _selection(
             "qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16",
-            "strict_h256_page256_wave_rows_spans", "strict_rows_spans", "bf16_kv",
-            evidence="benchmarks/results/2026-09-05-framework-qwen4exp-prefill-promotion.json",
+            "strict_h256_head_quad_rows_spans", "strict_rows_spans", "bf16_kv",
+            evidence="benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json",
         ),
         _selection(
             "linear",
@@ -495,7 +495,7 @@ def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool)
         "HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_MMQ_TOKEN64": "1" if production else "0",
         "HIPENGINE_QWEN4_EXP_QSA_H256_WAVE_PREFILL": "page256" if production else "0",
-        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "0",
+        "HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR": "quad" if production else "0",
         # ds4-MMQ MoE suffixes are superseded by the certified WMMA-MoE27
         # routing on layers 27-47.
         "HIPENGINE_QWEN4_EXP_Q5_1_MMQ_PREFILL": "0",

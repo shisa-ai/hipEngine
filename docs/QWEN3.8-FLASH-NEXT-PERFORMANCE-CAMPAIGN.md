@@ -76,6 +76,22 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Four-head QSA promoted (September7 UTC):** clean6c0e3d214 staged
+full12-case/chunk1024 run preserves72 exact trajectories and all first-stage
+samples. p4096 PP185.413->192.034 (+3.571%),TG13.990->13.496
+(-3.531%). All4 p4096 request means improve1.00983-1.01637x with
+transition included. Overall request1.008325x;unchanged short-path PP
++0.082%/+0.149%,mixed request deltas retained (worst short~0.458% loss).
+Max PP/TG CV3.004%/7.957%,measured span27m39s. Not a statistical
+all-case non-regression claim or cross-packet pair-vs-quad comparison.
+Promote scoped page256/Hq24/Hkv2 sparse prefill under prefill-first direction:
+productionquad/strict0,dense shortcuts and decode kernels unchanged.
+CPU recovery penalty remains explicitly accepted because complete long
+requests improve;no clock/affinity/wait overrides or hidden warmup.
+Prior pair regression and all mitigation failures remain historical evidence.
+Next refresh owner costs and return to larger FFN/linear work.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json).
+
 **Four-head QSA model admission (September7 UTC):** explicit
 `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=quad` mode,default-off,after
 existing page256/Hq24/Hkv2/D256 sparse-prefill guards. Two-head mode1

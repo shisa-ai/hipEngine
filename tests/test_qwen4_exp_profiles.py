@@ -276,7 +276,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_REGISTER_PREFILL"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_GDN_WAVE_NORM"] == "1"
     assert os.environ["HIPENGINE_QWEN4_EXP_MMQ_TOKEN64"] == "1"
-    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "0"
+    assert os.environ["HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR"] == "quad"
     raw_q = _selection_map(production)[("linear","prefill_rows_ge512_k2560_n12288_raw_q")]
     assert raw_q["selected_variant"] == "mmq128_token64_q8_1_d4x3_guarded_f32_f32_out"
     assert raw_q["strict_fallback_variant"] == "coltile8_rowbatch4_f32_f32_out"
@@ -309,7 +309,7 @@ def test_qwen4_exp_profile_binders_select_only_certified_late_layers(
     assert selected[("moe_linear", "prefill_rows_ge64_exact_grouped_q4_gate_up")]["selected_variant"] == (
         "selected_dual_grouped_pair2_bf16_bf16_out")
     assert selected[("qsa_sparse_attention", "prefill_h256_page256_sparse_rows_ge16")]["selected_variant"] == (
-        "strict_h256_page256_wave_rows_spans")
+        "strict_h256_head_quad_rows_spans")
     row4 = _selection_map(production)[("linear", "ungrouped_prefill_rows_ge64_q5k_gate_up")]
     assert row4["selected_variant"] == "selected_grouped_row4_gemv_bf16_bf16_out"
     assert row4["strict_fallback_variant"] == "selected_gemv_bf16_bf16_out"
