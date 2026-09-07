@@ -905,6 +905,7 @@ def make_qwen4_exp_gguf_generator_gfx1151(
     vision_model_path: str | Path | None = None,
     max_sequence_length: int | None = None,
     resident_capacity: int | None = None,
+    prefill_chunk_size: int = 512,
 ) -> Qwen4ExpGGUFTextGenerator:
     return Qwen4ExpGGUFTextGenerator(
         model_path=model_path,
@@ -914,19 +915,42 @@ def make_qwen4_exp_gguf_generator_gfx1151(
         vision_model_path=vision_model_path,
         max_sequence_length=max_sequence_length,
         resident_capacity=resident_capacity,
+        prefill_chunk_size=prefill_chunk_size,
     )
 
 
-for _quant in ("gguf_q4_k_m", "gguf_ud_q4_k_xl"):
-    register_text_generator(
-        model="qwen4_exp_gguf",
-        backend="hip_gfx1151",
-        quant=_quant,
-        factory=make_qwen4_exp_gguf_generator_gfx1151,
+def make_qwen4_exp_ud_q4_k_xl_generator_gfx1151(
+    *,
+    model_path: str | Path,
+    weight_index: object,
+    model_plugin: object,
+    vision_model_path: str | Path | None = None,
+    max_sequence_length: int | None = None,
+    resident_capacity: int | None = None,
+    prefill_chunk_size: int | None = None,
+) -> Qwen4ExpGGUFTextGenerator:
+    generator = make_qwen4_exp_gguf_generator_gfx1151(
+        model_path=model_path,weight_index=weight_index,model_plugin=model_plugin,
+        vision_model_path=vision_model_path,max_sequence_length=max_sequence_length,
+        resident_capacity=resident_capacity,
+        prefill_chunk_size=1024 if prefill_chunk_size is None else prefill_chunk_size,
     )
+    generator._implicit_profile_chunk_size = prefill_chunk_size is None
+    return generator
+
+
+register_text_generator(
+    model="qwen4_exp_gguf",backend="hip_gfx1151",quant="gguf_q4_k_m",
+    factory=make_qwen4_exp_gguf_generator_gfx1151,
+)
+register_text_generator(
+    model="qwen4_exp_gguf",backend="hip_gfx1151",quant="gguf_ud_q4_k_xl",
+    factory=make_qwen4_exp_ud_q4_k_xl_generator_gfx1151,
+)
 
 
 __all__ = [
     "Qwen4ExpGGUFTextGenerator",
     "make_qwen4_exp_gguf_generator_gfx1151",
+    "make_qwen4_exp_ud_q4_k_xl_generator_gfx1151",
 ]

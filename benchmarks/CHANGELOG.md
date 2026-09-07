@@ -4,6 +4,8 @@ Reverse-chronological human-readable history for benchmark rollup changes. Keep
 entries short; detailed evidence belongs in `benchmarks/results/*.json` and
 `WORKLOG.md`.
 
+- [2026-09-07 UTC chunk1024 scoped promotion] Registered gfx1151 UD-Q4_K_XL production512->1024 retains measured PP1024+7.87%/PP4096+8.18%;72 exact,full state/KV/native-c2 and public8K gates pass. Decode-1.72%/short controls explicit;strict active512,other quants/direct defaults unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-promotion.json`.
+
 - [2026-09-07 UTC Framework chunk1024 native/c2 memory] Two262144-context runners allocate106.87GB,within existing scratch allowance by1.46GB before reserve;zero final owners. Allocation-only delta N/A,not inference/throughput. `benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-native-c2-memory.json`.
 
 - [2026-09-07 UTC Framework chunk1024 full screen] PP512180.264->180.168 (-0.053%),PP1024176.706->190.614 (+7.871%),PP4096162.799->176.114 (+8.178%);72 exact,all long requests faster. P4096 TG-1.723%/small short-request losses explicit,native/c2 memory gate pending,default unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-full.json`.

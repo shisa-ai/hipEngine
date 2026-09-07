@@ -16,6 +16,7 @@ def main():
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--target-tokens",type=int,default=8192)
     p.add_argument("--chat-only",action="store_true")
+    p.add_argument("--expected-chunk-size",type=int)
     a = p.parse_args()
     os.environ["HIPENGINE_COMPILER_VERSION_FILE"] = str(a.compiler_version_file)
     os.environ["HIPENGINE_REQUIRE_CACHED_BUILD"] = "1"
@@ -46,6 +47,10 @@ def main():
             report["resolved_context"] = capacity
             report["admission"] = generator.context_admission
             report["resident_runners"] = len(generator._resident_model_runner._all_runners)
+            report["prefill_chunk_sizes"] = [
+                runner.prefill_chunk_size for runner in generator._resident_model_runner._all_runners]
+            if a.expected_chunk_size is not None:
+                assert report["prefill_chunk_sizes"] == [a.expected_chunk_size]*report["resident_runners"]
             assert capacity == generator.model_plugin.native_context_length
             assert generator.runner.config.qsa_dense_equivalent_max_tokens == 2051
             prompt,needle = build_retrieval_prompt(generator.tokenizer,target_tokens=a.target_tokens)

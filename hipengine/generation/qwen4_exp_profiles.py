@@ -441,7 +441,14 @@ def _production_selections() -> tuple[VariantSelection, ...]:
     )
 
 
+def _bind_default_chunk(generator: Any, *, production: bool) -> None:
+    if getattr(generator,"_implicit_profile_chunk_size",False):
+        # The qualified factory allocated1024 before profile binding.
+        generator.runner.prefill_chunk_size = 1024 if production else 512
+
+
 def _bind(generator: Any, resolved: ResolvedRuntimeProfile, *, production: bool) -> None:
+    _bind_default_chunk(generator,production=production)
     os.environ[PRODUCTION_MOE_PREFILL_ENV] = "1" if production else "0"
     # Freeze neighboring experiments and select only the complete certified
     # WMMA-MoE27 prefill + Q8-MMQ dense + DP4A-decode + peer-GDN composition.
