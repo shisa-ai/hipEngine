@@ -2447,11 +2447,13 @@ def run_qwen4_exp_dense_qsa_token_mixer(
 
 
 def _qwen4_exp_qsa_head_pair_key(key: KernelKey, *, query_heads: int, kv_heads: int) -> KernelKey:
+    mode=os.environ.get("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","0")
     if (key.variant!="strict_h256_page256_wave_rows_spans"
             or query_heads!=24 or kv_heads!=2
-            or os.environ.get("HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR","0")!="1"):
+            or mode not in {"1","quad"}):
         return key
-    candidate=KernelKey(key.backend,key.layer,key.quant,"strict_h256_head_pair_rows_spans")
+    candidate=KernelKey(key.backend,key.layer,key.quant,
+                       "strict_h256_head_quad_rows_spans" if mode=="quad" else "strict_h256_head_pair_rows_spans")
     return candidate if is_registered(candidate) else key
 
 

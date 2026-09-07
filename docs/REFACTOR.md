@@ -2,12 +2,15 @@
 
 ## H256 QSA four-head leaf candidate
 
-- Kernel-only `strict_h256_head_quad_rows_spans` shares K/V across
-  four heads,requires page256 and GQA divisible by4. No runtime flag.
+- `strict_h256_head_quad_rows_spans` shares K/V across four heads,
+  requires page256 and GQA divisible by4. Default-off model mode
+  `HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=quad` is Hq24/Hkv2-only,
+  after existing page256 sparse-prefill guard. Other values fail closed.
 - Synthetic512/1024 leaf ratios1.033x/1.063x versus two-head candidate;
   VGPR72->112,no LDS/scratch.23 tests pass.
 - No whole-request/CPU-transition claim. Full state/KV and request
-  qualification required before promotion;remove route if rejected.
+  gate passes six cases including all4 p4096 categories,24 calls each,
+  zero dense/decode engagement. Request qualification still required.
 
 ## GDN full-layer diagnostic graph cache
 

@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Four-head QSA admission:six full-logit/state/KV cases exact,all4 p4096
+categories,24 sparse calls each,zero dense/decode calls. Default-off
+quad mode;full-request timing including CPU recovery still pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-head-quad-state.json).
+
 Four-head QSA leaf candidate:1.033x/1.063x versus two-head candidate at
 512/1024 rows,20 exact pairs,23 tests. VGPR72->112,no scratch/LDS.
 No runtime/default or whole-request change.

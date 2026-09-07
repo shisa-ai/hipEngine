@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA quad admission] Six chunk1024 full-logit/state/KV cases exact,all4 p4096 categories,24 sparse calls each,zero dense/decode/final owners;15 focused tests. Explicit default-off quad mode,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-state.json`.
+
 - [2026-09-07 UTC QSA four-head leaf] Synthetic2051-selected512/1024 attention1.033x/1.063x vs two-head candidate,20 exact pairs,23 tests,VGPR72->112/no scratch. Kernel-only,no request/CPU-recovery claim. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad.json`.
 
 - [2026-09-07 UTC advancing GDN graphs] Code/mixed4096 full36-layer graphs preserve16-step tokens/state,setup228-232ms included;warm graph1.049s vs eager1.046-1.047s,not a demonstrated win. Diagnostic only,production unchanged. `benchmarks/results/2026-09-07-framework-qwen4exp-gdn-advancing-graph.json`.

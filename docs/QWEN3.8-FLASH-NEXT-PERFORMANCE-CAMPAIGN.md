@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Four-head QSA model admission (September7 UTC):** explicit
+`HIPENGINE_QWEN4_EXP_QSA_HEAD_PAIR=quad` mode,default-off,after
+existing page256/Hq24/Hkv2/D256 sparse-prefill guards. Two-head mode1
+and disabled0 remain distinct;invalid modes select parent.
+Six full-logit/state/KV cases pass atchunk1024:code512/1024 unchanged,
+all four p4096 categories exact with0/24/0 calls,zero decode engagement,
+tracked teardown0.15 focused tests pass. No production default change.
+Next full-request qualification must include CPU recovery penalty;neither
+four-head leaf speedup nor state equality establishes net request benefit.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-state.json).
+
 **Four-head QSA leaf candidate (September7 UTC):** existing exact
 head-sharing template instantiated for4 adjacent query heads/page256,
 GQA ratio divisible by4. Synthetic selected2051 at512/1024 rows gives
