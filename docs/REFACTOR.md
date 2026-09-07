@@ -10,7 +10,9 @@
   page256 Hq24/Hkv2 prefill parent;dense/decode unchanged.
   Eight full-logit/state/KV cases pass,including all four p4096 categories,
   24 sparse calls each and zero decode. Both binders0.
-- Staged throughput qualification pending;remove route if rejected.
+- Staged72 trajectories exact,p4096 PP+3.560% but TG-6.526%;
+  two long-request means regress. Keep default-off until decode/phase
+  interference is localized;no favorable full-suite rerun.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed

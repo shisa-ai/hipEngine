@@ -76,6 +76,22 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Paired-head QSA staged model result (September7 UTC):** clean a8957d6ec,
+full12 cases/chunk1024,72 exact trajectories,first24 samples preserved
+and remaining48 added without reload. No early-stop condition triggered.
+p4096 PP186.922->193.577 (+3.560%),TG13.662->12.771 (-6.526%);
+two p4096 request averages regress (English0.996791x,mixed0.997346x),
+code/Japanese improve1.008937x/1.009882x.
+Untouched short PP-0.161%/+0.035%;max PP/TG CV3.187%/10.318%.
+Measured span27m45s. Staged ordering differs from canonical and absolute
+rates drift between phases;do not label that as proven thermal causality.
+Retain kernel/route default-off:prefill gain measured,but decode tradeoff
+exceeds prior small accepted losses. Next isolate decode launch/phase
+behavior before promotion;no full-suite rerun to seek favorable numbers.
+This validates staged continuation/sample preservation,not an early-stop
+runtime saving or statistical non-regression.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-model.json).
+
 **Paired-head QSA model admission (September7 UTC):** default-off
 page256-parent Hq24/Hkv2 selector;existing D256/rows>=16 route guard
 stays. Dense shortcuts and decode untouched. Eight full-logit/state/KV

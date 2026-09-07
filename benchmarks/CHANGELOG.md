@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA head-pair staged model] p4096 PP186.922->193.577 (+3.560%),TG13.662->12.771 (-6.526%),72 exact;two long-request means regress. First24 samples retained through same-residency extension;candidate remains default-off pending decode/phase investigation. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-model.json`.
+
 - [2026-09-07 UTC QSA head-pair admission] Eight full-logit/state/KV cases exact atchunk1024,all four p4096 categories,24 sparse calls each,zero decode/final owners;13 route/profile tests. Both binders0,throughput delta N/A. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair-state.json`.
 
 - [2026-09-07 UTC QSA head pair] Exact two-head/wave selected attention512/1024 rows2.544x/2.610x vs page256 parent,30 exact pairs,23 tests;VGPR40->72,no scratch/LDS. Kernel-only,model gates pending;initial FMA mismatch fixed. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-pair.json`.

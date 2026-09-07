@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Paired-head QSA staged model run:p4096 PP186.922->193.577 (+3.560%),
+TG13.662->12.771 (-6.526%);72 exact,first24 samples preserved.
+Two long-request means regress;candidate retained default-off pending
+decode/phase investigation. No production change.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-head-pair-model.json).
+
 Paired-head QSA admission:eight full-logit/state/KV cases exact,
 all four p4096 categories,24 sparse calls each,zero decode/short calls.
 Both binders0;no production change,staged throughput gate pending.
