@@ -13,6 +13,9 @@
 - Staged72 trajectories exact,p4096 PP+3.560% but TG-6.526%;
   two long-request means regress. Keep default-off until decode/phase
   interference is localized;no favorable full-suite rerun.
+  Fixed parent-root16-step flag-only probe is near-neutral (wall+0.055%/
+  +0.019%),exact state and zero candidate calls;candidate-prefill effect
+  remains untested by that probe.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed

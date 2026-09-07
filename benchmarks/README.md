@@ -2,6 +2,12 @@
 
 Last updated: **2026-09-07 UTC**
 
+Paired-head flag-only decode isolation:fixed parent roots,code/mixed4096,
+4 balanced pairs of16 steps,wall+0.055%/+0.019%,exact tokens/state,
+zero paired-head calls. Does not explain candidate-prefill phase effects;
+production unchanged.
+[Evidence](results/2026-09-07-framework-qwen4exp-qsa-decode-flag.json).
+
 Paired-head QSA staged model run:p4096 PP186.922->193.577 (+3.560%),
 TG13.662->12.771 (-6.526%);72 exact,first24 samples preserved.
 Two long-request means regress;candidate retained default-off pending
