@@ -1,5 +1,14 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q8 down register-weight candidate
+
+- Kernel-only `selected_grouped_row4_register_gemv_bf16_bf16_out`,
+  K640/128 threads;no runtime flag/default yet. Existing compact/mapped
+  bundled row4 remains fallback. No extra LDS or private scratch.
+- Require current-chunk full-model state/KV/map and canonical A/B before
+  promotion;remove candidate if rejected. Capture both compact and mapped
+  engagement rather than silently widening only one path.
+
 ## Qwen4Exp router shuffle-tail: removed
 
 - Closed after mixed full-model A/B:one prefill/four request cases lose.

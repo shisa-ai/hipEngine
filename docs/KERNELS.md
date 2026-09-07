@@ -788,6 +788,14 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 down exposes kernel-only `selected_grouped_row4_register_gemv_bf16_bf16_out`,
+restricted to K640/128 threads. Five decoded weights/thread are reused
+across the expert row loop;row4 bundled reduction and mapped output order
+unchanged. Compact/mapped screens37.373->32.127ms /37.228->30.808ms,
+40 pairs exact,both orders positive.18 tests pass,VGPR24->32/LDS512B/
+scratch0. No runtime route yet;existing bundle is strict fallback.
+Evidence: `2026-09-07-framework-qwen4exp-q8-down-register.json`.
+
 Router shuffle-tail candidate was removed after full-model A/B failed
 retention:one prefill/four request cases lose despite72 exact trajectories.
 Earlier kernel/state evidence below is historical,not an available variant.

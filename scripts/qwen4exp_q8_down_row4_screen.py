@@ -36,6 +36,7 @@ def main():
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--bundle", action="store_true")
     p.add_argument("--mapped-selected", action="store_true")
+    p.add_argument("--register-weights", action="store_true")
     args = p.parse_args()
     if args.pairs < 2 or args.pairs % 2:
         p.error("use a positive even pair count")
@@ -78,10 +79,16 @@ def main():
         if args.bundle:
             functions = [gemv.gguf_q8_0_selected_grouped_row4_gemv_bf16_bf16_out,
                          gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out]
+        if args.register_weights:
+            functions = [gemv.gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out,
+                         gemv.gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out]
 
         def run(i):
             if args.mapped_selected:
-                if i == 0:
+                if args.register_weights:
+                    functions[i](dx.ptr,ds.ptr,mapping.ptr,dw.ptr,outputs[i].ptr,
+                                 5120,5120,512,640,2560,library=library,runtime=runtime)
+                elif i == 0:
                     gemv.gguf_q8_0_selected_gemv_bf16_bf16_out(
                         dx.ptr,selected.ptr,dw.ptr,outputs[i].ptr,
                         5120,5120,512,640,2560,library=library,runtime=runtime)
@@ -129,6 +136,10 @@ def main():
                 candidate_variant="gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
                 boundary="Token-major BF16 activation/output; supplied counts and seeded random sorted-lane-to-original-row permutation. Both consume same expert selection. Mapping already exists after Q5_K row4 gate/up in target runtime; no map construction charged.",
                 mapping_seed=5421)
+        if args.register_weights:
+            report.update(
+                parent_variant="gguf_q8_0_selected_grouped_row4_bundle_gemv_bf16_bf16_out",
+                candidate_variant="gguf_q8_0_selected_grouped_row4_register_gemv_bf16_bf16_out")
     finally:
         for buf in reversed(allocations):
             free(buf, runtime=runtime)
