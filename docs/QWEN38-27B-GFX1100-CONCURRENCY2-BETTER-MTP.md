@@ -52,13 +52,38 @@ Status: partial implementation integrated;
   explicit-only screening opt-in for K1. Three balanced same-host pairs per
   depth on the full canonical suite (D24, greedy, 20 ms window, ar_exact 10/10,
   engaged 10/10) measure **K0 0.9995x / K1 1.3916x / K2 1.5844x / K3 1.6329x**
-  median MTP/AR; K3 is the fastest qualified depth. Requested K4-K7 refuses
-  pre-mutation to AR because every evidence row caps K3 (K7 refusal probe
-  engaged 0/10); their product-route economics await the depth-generic
-  execution and service qualification chain. Automatic stays K0; C1
-  evidence-row re-registration still awaits lifecycle, wider-capacity
-  isolation, sustained-context and service gates. See the
+  median MTP/AR — but the spied verifier identity at 731bde019 shows those
+  engaged arms ran the **legacy singleton target verifier** (the evidence
+  override carries `packed_c1_target=false`; 1 legacy construction, 0 packed
+  frontier calls), so these rates describe the legacy route and the committed
+  economics artifact is marked invalid as packed-target evidence. Requested
+  K4-K7 refuses pre-mutation to AR because every evidence row caps K3 (K7
+  refusal probe engaged 0/10). Automatic stays K0. See the marked
   [economics artifact](../benchmarks/results/2026-09-07-w7900-packed-c1-k0-k3-economics.json).
+- The actual packed route, measured under the fail-closed diagnostic harness
+  (injected one-request `packed_c1_target` evidence row, legacy verifier
+  forbidden process-wide, packed frontier calls counted; the Packet-0
+  explicitly-unqualified test candidate path) with the unmodified canonical
+  bench protocol and three balanced pairs per depth, is far slower at one
+  active request: **K0 0.9986x / K2 0.9908x (net loss) / K3 1.1140x** median
+  MTP/AR. The backend physical policy admits packed C1 only at K2/K3
+  (`((1,2),(1,3),(2,2),(2,3),(8,3))`); K1/K4-K7 have no cell — the adapter
+  refuses and falls back to the legacy singleton, which the harness guard
+  turns into a hard 500 (the shutdown timeout afterwards is teardown noise,
+  not an idle hang; the earlier unexplained-hang hypothesis is withdrawn for
+  these occurrences). Reducing the packed one-row frontier overhead is the
+  blocking economics gap for any packed-C1 registration; until then the
+  legacy route is the only measured single-request MTP path. See the
+  [packed economics](../benchmarks/results/2026-09-07-w7900-packed-route-c1-k0-k3-economics.json).
+- The native K0↔MTP lifecycle proof **passed** on the packed route:
+  40 sequential legs on one resident product server (10 prompts × alternating
+  explicit-MTP / automatic-K0, counterbalanced start, both switch directions),
+  130 packed frontier calls, legacy verifier never invoked, every leg
+  token-exact against the same-prompt AR legs (provider catch-up works across
+  both switch directions), MTP legs engaged, K0 legs AR, clean exit. The
+  outside-the-API method avoids the rejected probe's reclaimed-row
+  consultation. See the
+  [switch proof](../benchmarks/results/2026-09-07-w7900-packed-route-c1-k0-mtp-switch-proof.json).
 - Review also repairs per-request claims safety, order-dependent capability
   fixtures, and a row48 dispatch change that leaked into gfx1151. CPU policy
   regressions pass; gfx1151 hardware was not tested on this W7900 host.
