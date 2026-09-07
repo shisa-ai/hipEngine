@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC QSA frequency samples] Early decode CPUFreq~600MHz after candidate versus parent~1.5GHz,both later~5.1GHz;wall1.170->1.567s,sampler3.5-8ms. No policy changes;delayed CPU recovery localized,trigger open. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-frequency.json`.
+
 - [2026-09-07 UTC QSA CPU perf] First16 decode wall1.169->1.581s with nearly unchanged~3.91B user instructions/~1.74B cycles,100% counter running;supports rate rather than extra-work investigation. No clock changes or promotion. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-perf.json`.
 
 - [2026-09-07 UTC QSA CPU accounting] First16 decode after parent/candidate prefill:wall1.170->1.574s,thread CPU1.165->1.563s,no GC/major faults. Extra on-CPU time localized;hardware counters available,next instructions/cycles. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-cpu.json`.

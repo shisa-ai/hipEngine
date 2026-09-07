@@ -26,6 +26,9 @@
   Measured user-mode instructions~3.91B/cycles~1.74B remain nearly
   unchanged while CPU time rises. Effective CPU rate/frequency is next;
   no large extra-work or proven thermal explanation yet.
+  CPUFreq sampling now shows candidate near600MHz for initial decode
+  versus parent~1.5GHz,then both~5.1GHz. Controlled policy/affinity
+  isolation next;do not silently change host clocks or hide transition cost.
   Do not assume all QSA cost shrinks by the kernel ratio.
 
 ## Qwen4Exp raw-vector square64: removed

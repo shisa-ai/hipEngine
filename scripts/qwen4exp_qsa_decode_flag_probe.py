@@ -71,9 +71,15 @@ def main():
                    help="Read thread CPU/fault/switch deltas and observe GC without disabling it")
     p.add_argument("--thread-perf",action="store_true",
                    help="Count calling-thread user cycles/instructions only during decode")
+    p.add_argument("--cpu-frequency",action="store_true",
+                   help="Read CPUFreq feedback/reported frequency and CPU identity at step boundaries")
     p.add_argument("--case-id",action="append",choices=("code-p4096","mixed_ja_en-p4096"))
     a=p.parse_args()
     schedule=orders(a.pairs)
+    frequency=None
+    if a.cpu_frequency:
+        from scripts.qwen4exp_cpu_frequency import CpuFrequency
+        frequency=CpuFrequency()
     perf=None
     if a.thread_perf:
         from scripts.qwen4exp_thread_perf import ThreadPerf
@@ -110,7 +116,7 @@ def main():
     report=dict(status="running",source=gate._git_metadata(ROOT),host=gate._host_metadata(),
         model_identity=identity,fixture_sha256=digest,command=sys.argv,cases=[],
         steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,trace_markers=a.trace_markers,
-        cpu_accounting=a.cpu_accounting,thread_perf=a.thread_perf,
+        cpu_accounting=a.cpu_accounting,thread_perf=a.thread_perf,cpu_frequency=a.cpu_frequency,
         protocol="Parent prefill once per case; restore identical root before each arm,one warmup per flag,balanced measured pairs; host hashes and telemetry outside timing",
         limits="Snapshot restore and inter-arm inspection change cache/power history. This isolates flag-at-decode only,not the effects of preceding candidate prefill. No clock changes.")
     if a.vary_prefill:
@@ -166,12 +172,14 @@ def main():
                     tokens=[]
                     step_seconds=[]
                     cpu_steps=[]
+                    frequency_steps=[]
                     gc_events.clear()
                     runner.runtime.device_synchronize()
                     if perf:
                         perf.start()
                     start=time.perf_counter()
                     for step in range(a.steps):
+                        frequency_before=frequency.sample() if frequency else None
                         if marker:
                             marker.push(step_marker(name,pair-1,arm,step))
                         step_start=time.perf_counter()
@@ -186,6 +194,8 @@ def main():
                         if cpu_before is not None:
                             cpu_steps.append(counter_delta(cpu_before,cpu_counters()))
                         step_seconds.append(time.perf_counter()-step_start)
+                        if frequency:
+                            frequency_steps.append(dict(before=frequency_before,after=frequency.sample()))
                         tokens.append(token)
                     runner.runtime.device_synchronize()
                     elapsed=time.perf_counter()-start
@@ -202,6 +212,7 @@ def main():
                             prefill_seconds=prefill_seconds,step_seconds=step_seconds,
                             cpu_steps=cpu_steps,gc_events=list(gc_events),
                             hardware_counters=hardware,
+                            frequency_steps=frequency_steps,
                             state_sha256=state["state_sha256"],tokens=tokens,candidate_calls=0,
                             telemetry_before=before,telemetry_after=telemetry()))
             means=[statistics.mean(r["seconds"] for r in rows if r["flag"]==i) for i in (0,1)]
