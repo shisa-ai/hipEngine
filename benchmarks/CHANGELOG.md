@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC linear structural floor] Actual blk.0.attn_gate (Q8_0 K2560/N6144 F32):exact coltile5.47/10.99ms vs 3-plane MMQ chain2.83/5.91ms (1.94x/1.86x);91.2% F32 outputs differ;vs f64 truth parent~1ulp,MMQ~2ulp (2.1-2.8x) so error is order-dominated - no plane count moves the failed T2 bars; exact repair does not transfer (no rounding boundary). `benchmarks/results/2026-09-07-framework-qwen4exp-gate-mmq-discriminator.json`.
+
 - [2026-09-07 UTC iu8-risk exact MoE promoted] Clean73dc4acf2 full12-case chunk1024 A/B:72 exact trajectories,every prefill case improves;PP512/1024/4096 +7.602%/+8.842%/+8.361% (per-case+7.54..9.06%);TG incidental-0.016/+0.082/+0.324%,total request0.95674x. Production binds HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT=1,strict0,multiplier4. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-production.json`.
 
 - [2026-09-07 UTC iu8-risk exact route state gate] Five-case off/on/off at chunk1024,multiplier4:full logits/4 decode steps/state/full KV bit-identical to production pair2;26/104 candidate calls at p512/p4096,zero decode,zero final owners. Route default-off `HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT`. `benchmarks/results/2026-09-07-framework-qwen4exp-q4-iu8-exact-state.json`.
