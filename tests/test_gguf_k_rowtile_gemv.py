@@ -180,15 +180,16 @@ def test_q5k_q6k_output_coltile_registry_binds() -> None:
                 )
 
 
-def test_raw_k_prefill_rowbatch16_32_are_not_aliased_to_gfx1151() -> None:
+def test_raw_k_prefill_rowbatch_and_coltile_are_aliased_to_gfx1151() -> None:
+    """WPF-1 raw Q5/Q6 row reuse is qualified on gfx1151 for raw residency."""
     from hipengine.kernels.hip_gfx1151 import register_gfx1151_kernels
     from hipengine.kernels.registry import KernelKey, is_registered
 
     register_gfx1151_kernels(replace=True)
     for quant in ("gguf_q5_k", "gguf_q6_k"):
-        for row_batch in (16, 32):
+        for row_batch in (4, 8, 16, 32):
             for output_dtype in ("bf16", "f32"):
-                assert not is_registered(
+                assert is_registered(
                     KernelKey(
                         "hip_gfx1151",
                         "linear",
@@ -198,7 +199,7 @@ def test_raw_k_prefill_rowbatch16_32_are_not_aliased_to_gfx1151() -> None:
                 )
         for col_tile, row_batch in ((2, 16), (4, 8)):
             for output_dtype in ("bf16", "f32"):
-                assert not is_registered(
+                assert is_registered(
                     KernelKey(
                         "hip_gfx1151",
                         "linear",
@@ -366,9 +367,29 @@ def test_raw_k_prefill_coltile_dispatch_is_exactly_scoped(monkeypatch) -> None:
                     f"rowbatch{row_batch}_bf16_{output_dtype}_out"
                 )
 
-    unsupported = GGUFLinearDispatch(
+    # gfx1151 now shares the qualified WPF-1 raw-K row-reuse selectors;
+    # a backend that declares no such capability still passes through.
+    supported_gfx1151 = GGUFLinearDispatch(
         KernelKey(
             "hip_gfx1151",
+            "linear",
+            "gguf_q5_k",
+            "prefill_bf16_bf16_out",
+        ),
+        "raw",
+    )
+    selected_gfx1151 = _raw_k_prefill_rowbatch_dispatch(
+        supported_gfx1151,
+        rows=512,
+        in_features=3072,
+        out_features=72,
+        row_batch=32,
+        variant="coltile",
+    )
+    assert selected_gfx1151.key.variant == "coltile4_rowbatch8_bf16_bf16_out"
+    unsupported = GGUFLinearDispatch(
+        KernelKey(
+            "cuda_sm120a",
             "linear",
             "gguf_q5_k",
             "prefill_bf16_bf16_out",

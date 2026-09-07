@@ -2991,28 +2991,28 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED",
         )
-        is False
+        is True
     )
     assert (
         backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_ROWBATCH",
         )
-        == 0
+        == 32
     )
     assert (
         backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_VARIANT",
         )
-        == "rowbatch"
+        == "coltile"
     )
     assert (
         backend_package_capability(
             "hip_gfx1151",
             "GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED",
         )
-        is False
+        is True
     )
     assert (
         backend_package_capability(
@@ -3030,9 +3030,9 @@ def test_gfx1151_backend_aliases_gfx1100_kernel_keys() -> None:
         )
     )
     for quant in ("gguf_q5_k", "gguf_q6_k"):
-        for row_batch in (4, 8):
+        for row_batch in (4, 8, 16, 32):
             for output_dtype in ("bf16", "f32"):
-                assert not is_registered(
+                assert is_registered(
                     KernelKey(
                         "hip_gfx1151",
                         "linear",
@@ -3291,8 +3291,8 @@ def test_gguf_runner_loads_backend_aliases_and_tags_resident_weights(
         lambda backend: loaded.append(backend),
     )
 
-    def fake_materialize(model_path, *, runtime, backend):
-        del model_path, runtime
+    def fake_materialize(model_path, *, runtime, backend, **kwargs):
+        del model_path, runtime, kwargs
         materialized.append(backend)
         return fake_weights
 

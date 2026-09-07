@@ -2323,14 +2323,15 @@ GGUF_Q8_T16_DUAL_WMMA_PREFILL_POLICIES = {
 # Same-commit production-protocol 128K A/B rejects predecessor two-wave
 # (382.041 vs 392.219 tok/s), so LCP-3 conservatively inherits its 64K ceiling.
 GGUF_Q8_T16_PREFILL_TWO_WAVE_MAX_TOKENS = 65536
-# WPF-1/WPF-1T are W7900 raw-Q5/Q6 candidates. gfx1151 retains its
-# independently admitted Q4_K_M/T16 matrix schedules and must not inherit their
-# rowbatch or output-column selectors.
-GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = False
-GGUF_RAW_K_PREFILL_ROWBATCH = 0
-GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = False
+# WPF-1 fixed-grid-Y raw Q5/Q6 row reuse, aliased to gfx1151 after the
+# bit-exact rowbatch/coltile leaf gates passed on this hardware (the shared
+# gguf_k_gemv suite runs the same compiled kernels locally) and the E2E
+# raw-residency qualification on the published K_M artifact.
+GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED = True
+GGUF_RAW_K_PREFILL_ROWBATCH = 32
+GGUF_RAW_K_PREFILL_COLTILE_SUPPORTED = True
 GGUF_RAW_K_PREFILL_COLTILE2_SHAPES = frozenset()
-GGUF_RAW_K_PREFILL_VARIANT = "rowbatch"
+GGUF_RAW_K_PREFILL_VARIANT = "coltile"
 # WPF-H5I exact-F32 ordered raw-K ownership is W7900-only until an
 # independently measured gfx1151 package policy exists.
 GGUF_Q6_F32_ORDERED_PREFILL = False
@@ -2561,24 +2562,6 @@ _GFX1151_ALIAS_EXCLUSIONS = frozenset(
             "moe_linear",
             "gguf_iq4_xs",
             "selected_weighted_down_gemv_decode_bf16_bf16_out",
-        ),
-        # WPF-1 fixed-grid-Y raw Q5/Q6 row reuse is W7900-only pending an
-        # independent gfx1151 gate. Keep every output/slab key unaliased.
-        *(
-            ("linear", quant, f"rowbatch{row_batch}_bf16_{output_dtype}_out")
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for row_batch in (4, 8, 16, 32)
-            for output_dtype in ("bf16", "f32")
-        ),
-        *(
-            (
-                "linear",
-                quant,
-                f"coltile{col_tile}_rowbatch{row_batch}_bf16_{output_dtype}_out",
-            )
-            for quant in ("gguf_q5_k", "gguf_q6_k")
-            for col_tile, row_batch in ((2, 16), (4, 8))
-            for output_dtype in ("bf16", "f32")
         ),
         # WPF-H7C transfers the exact H6U reduction instruction form to two
         # W7900 raw-Q6 leaves and remains absent without a gfx1151 screen.

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "date": "2026-09-08",
+  "status": "retained_perf_default_flip",
+  "host": "zbook",
+  "hardware": "AMD RYZEN AI MAX+ PRO 395 / Radeon 8060S (laptop form factor; gross numbers only)",
+  "backend": "hip_gfx1151",
+  "model": "/models/gguf/Qwen3.8-27B-UD-Q4_K_M.gguf",
+  "change": [
+    "Rank-2 layer Q5_K/Q6_K planning flips from dense-BF16 expansion to raw GGUF residency (materializer + consumer surface; Q5_K added to RAW_LINEAR_SOURCE_QUANT_KEYS).",
+    "WPF-1 raw-Q5/Q6 prefill row-reuse (rowbatch4/8/16/32 + coltile2/4) aliased to gfx1151 and enabled by package default (32/coltile); previously W7900-only.",
+    "launch_gguf_linear falls back to the backend package rowbatch default when no execution owner selected a slab (ContextVar default None; explicit 0 still disables)."
+  ],
+  "perf_gross": {
+    "command": "public LLM path, 121-token prompt, 64 decode tokens, greedy, ignore_eos; same command as the 2026-09-08 IQ-kernel artifact",
+    "K_M": {
+      "decode_before_tok_s": 5.52,
+      "decode_after_tok_s": 6.39,
+      "decode_delta": "+15.8%",
+      "prefill_before_tok_s": 9.2,
+      "prefill_after_tok_s": 7.8,
+      "prefill_delta": "-15% (rowbatch off: 4.6)"
+    },
+    "K_S": {
+      "decode_after_tok_s": 6.04,
+      "prefill_after_tok_s": 7.0
+    },
+    "weights_resident_K_M_bytes": {
+      "before": 21527000000,
+      "after": 16550209536,
+      "delta": "-23% (-4.98 GB counted weight buffers)"
+    }
+  },
+  "numerics": {
+    "context512_teacher_gate_K_M_vs_f16kv_teacher": {
+      "before_default_expanded": {
+        "mean": 0.0013153,
+        "p95": 0.005102,
+        "max": 0.0346252,
+        "top1": "161/162"
+      },
+      "after_default_raw_q56": {
+        "mean": 0.0011282,
+        "p95": 0.0033652,
+        "p99": 0.0245706,
+        "max": 0.040433,
+        "top1": "161/162"
+      },
+      "verdict": "mean -14% and p95 -34% better; tail (p99/max) slightly worse but within the 0.05 max gate. Neither default passes the full c1 aggregate gate (pre-existing recorded state); the new default is closer on mean. Capture consumed-token histories verified equal to the teacher input binary for all 18 prompts.",
+      "capture": "/tmp/ud-rawq56-default-M-baseline.npz (process-local; allocated_weight_buffer_bytes 16550209536)"
+    },
+    "exactness": "rowbatch/coltile prefill kernels are bit-exact vs the per-row prefill kernel (tests/test_gguf_k_rowtile_gemv.py); the IQ4_XS strict kernel is bit-exact vs its declared reduction; raw Q5/Q6 dequant-on-the-fly replaces the expanded-BF16 rounding (the arithmetic change under teacher evaluation above)."
+  },
+  "correctness_suites": "test_gguf_e2e_acceptance.py (6), test_qwen35_gguf_materialize.py, test_gguf_ud_km.py, test_gguf_ud_ks.py, test_gguf_ud_km_raw_q56.py (new, RED-first), test_gguf_ud_dense.py, test_gguf_ud_admission.py, test_gguf_k_rowtile_gemv.py, test_gguf_k_gemv.py, test_gfx1151_backend.py",
+  "known_regressions": [
+    "Prefill -15% vs the dense-BF16 default (7.8 vs 9.2 tok/s gross); the rowbatch prefill recovers most of the generic raw prefill's 2x loss. The structural fix (multirow weight reuse for the IQ family and bulk prefill scheduling) is the U6 work."
+  ],
+  "limitations": [
+    "Laptop clocks: gross numbers only.",
+    "Task/repeat/serving gates remain outstanding for both old and new defaults (recorded campaign state)."
+  ]
+}

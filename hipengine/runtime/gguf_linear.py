@@ -513,9 +513,11 @@ _RAW_K_PREFILL_ROWBATCH_VARIANTS = frozenset(
     {"prefill_bf16_bf16_out", "prefill_bf16_f32_out"}
 )
 _RAW_K_PREFILL_VARIANTS = frozenset({"rowbatch", "coltile"})
-_raw_k_prefill_rowbatch: ContextVar[int] = ContextVar(
+# Default None means no execution owner selected a slab yet; owners that
+# explicitly disable row reuse set 0 and keep it.
+_raw_k_prefill_rowbatch: ContextVar[int | None] = ContextVar(
     "raw_k_prefill_rowbatch",
-    default=0,
+    default=None,
 )
 _raw_k_prefill_variant: ContextVar[str] = ContextVar(
     "raw_k_prefill_variant",
@@ -1775,7 +1777,8 @@ def _resolve_use_q4k_rowtile(kwarg: bool | None) -> bool:
 def raw_k_prefill_rowbatch() -> int:
     """Return the execution owner's exact raw-Q5/Q6 prefill row slab."""
 
-    return int(_raw_k_prefill_rowbatch.get())
+    value = _raw_k_prefill_rowbatch.get()
+    return 0 if value is None else int(value)
 
 
 @contextlib.contextmanager
@@ -3046,6 +3049,20 @@ def launch_gguf_linear(
     ):
         return
     raw_k_rowbatch = raw_k_prefill_rowbatch()
+    if _raw_k_prefill_rowbatch.get() is None:
+        # No execution owner selected a raw-Q5/Q6 prefill slab. Fall back to
+        # the backend package's qualified default when it declares one, so
+        # raw-resident Q5/Q6 prefill routes through the fixed row-reuse
+        # kernels instead of the per-row generic prefill path. An owner that
+        # explicitly selected 0 keeps its disabled choice.
+        if backend_package_capability(
+            resolved_backend, "GGUF_RAW_K_PREFILL_ROWBATCH_SUPPORTED", False
+        ):
+            package_rowbatch = backend_package_capability(
+                resolved_backend, "GGUF_RAW_K_PREFILL_ROWBATCH", 0
+            )
+            if int(package_rowbatch) in _RAW_K_PREFILL_ROWBATCHES - {0}:
+                raw_k_rowbatch = int(package_rowbatch)
     raw_k_variant = raw_k_prefill_variant()
     mmq_session = _q8_mmq_prefill_session.get()
     q5_raw_mmq_session = _q5_raw_mmq_target_session.get()
