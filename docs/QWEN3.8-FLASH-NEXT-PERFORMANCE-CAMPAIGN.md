@@ -76,6 +76,17 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q8 gate paired-load kernel candidate (September7 UTC):** pipeline two
+K-lane weight/activation loads before consuming them, preserving exact
+FMA order and the current coltile8/rowbatch4 reduction. Actual layer0/4
+K2560/N6144 at1024 rows10.909->7.992ms /10.893->7.998ms (1.365x/1.362x);
+layer20 with64MiB fill wins1.255x/1.360x/1.368x at64/511/1024 rows.
+All180 pairs across the full screen are exact; K640 shared-down medians
+lose0.5-1.3%, so exclude that shape. VGPR72->80,LDS512B/scratch0.
+No runtime default or GR expansion. Next: gate-only default-off admission
+at K2560/N6144, rows>=64, full logits/state/KV and canonical1024 A/B.
+[Kernel evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q8-prefetch2.json).
+
 **Post-Q8-register family refresh (September7 UTC):** clean `cc3d48a70`,
 explicit chunk1024, six cases/twelve phases with complete attribution and
 restored-state/output checks. Four-category p4096 FFN11.356->11.231s,

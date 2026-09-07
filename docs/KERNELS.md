@@ -788,6 +788,15 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q8 exact coltile exposes kernel-only
+`coltile8_rowbatch4_prefetch2_f32_f32_out`: two-step weight/activation
+load pipelining, unchanged K/FMA/publication ownership. Actual K2560/N6144
+gate weights at1024 rows improve10.909->7.992ms and10.893->7.998ms;
+independent layer20 with64MiB fill11.078->8.096ms. All pairs exact,
+both orders positive. VGPR72->80,LDS512B/scratch0. K640 shared-down
+loses and is excluded from proposed admission. No default/GR change.
+Evidence: `2026-09-07-framework-qwen4exp-q8-prefetch2.json`.
+
 Q8 down promotes `selected_grouped_row4_register_gemv_bf16_bf16_out`,
 restricted to K640/128 threads. Five decoded weights/thread are reused
 across the expert row loop;row4 bundled reduction and mapped output order

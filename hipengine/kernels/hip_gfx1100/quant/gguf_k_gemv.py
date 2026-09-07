@@ -727,6 +727,11 @@ gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out = _make_wrapper(
     "gguf_q8_0",
     _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_f32_f32_out"),
 )
+gguf_q8_0_gemv_coltile8_rowbatch4_prefetch2_f32_f32_out = _make_wrapper(
+    "gguf_q8_0",
+    _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_prefetch2_f32_f32_out"),
+)
+
 gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out = _make_wrapper(
     "gguf_q8_0",
     _symbol("gguf_q8_0", "gemv_coltile8_rowbatch4_wave_scale_f32_f32_out"),
@@ -1590,6 +1595,7 @@ _WRAPPERS = {
         "coltile4_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out,
         "coltile8_rowbatch4_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out,
         "coltile8_rowbatch4_wave_scale_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out,
+        "coltile8_rowbatch4_prefetch2_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch4_prefetch2_f32_f32_out,
         "coltile8_rowbatch8_f32_f32_out": gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out,
         "coltile16_rowbatch2_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch2_f32_f32_out,
         "coltile16_rowbatch4_f32_f32_out": gguf_q8_0_gemv_coltile16_rowbatch4_f32_f32_out,
@@ -1698,6 +1704,7 @@ __all__ = [
     "gguf_q8_0_gemv_coltile4_rowbatch8_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_f32_f32_out",
     "gguf_q8_0_gemv_coltile8_rowbatch4_wave_scale_f32_f32_out",
+    "gguf_q8_0_gemv_coltile8_rowbatch4_prefetch2_f32_f32_out",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_f32",
     "gguf_q8_0_gr_up_sigmoid_mean_coltile2_branch4_rowbatch4_wave_scale_f32",
     "gguf_q8_0_gemv_coltile8_rowbatch8_f32_f32_out",
