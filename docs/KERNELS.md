@@ -788,6 +788,16 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Raw Q8 MMQ exposes kernel-only
+`mmq128_token64_q8_1_d4x3_guarded_f32_f32_out`:128-output/64-token
+tile with existing vector activation staging. Exact per-output arithmetic,
+risk set and repaired outputs;23 tests pass. Large Q projection screens
+win1.109x/1.138x at1024 rows on layers3/7;all200 screen pairs exact.
+VGPR184->160,dynamic LDS57856->48384B,scratch0. Short-Q/long-GR
+mixed order results excluded from proposed runtime scope;prepacked path
+unchanged. No production default change.
+Evidence: `2026-09-07-framework-qwen4exp-mmq-token64.json`.
+
 Q8 MMQ bank-first compute experiment removed:actual qkv/Q512 medians
 1.000x/0.998x,1024 medians1.013x/1.020x but opposite-order means
 regress for all four shapes.80 pairs exact,22 tests pass,

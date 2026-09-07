@@ -939,6 +939,15 @@ extern "C" int hipengine_gguf_q8_0_mmq128_raw_vec4_q8_1_d4x3_guarded_f32_f32_out
       risk_count,risk_indices,max_risks,risk_threshold);
 }
 
+extern "C" int hipengine_gguf_q8_0_mmq128_token64_q8_1_d4x3_guarded_f32_f32_out(
+    const void* x, const uint8_t* w, float* y, int* count, int* indices,
+    int64_t capacity, float threshold, int64_t rows, int64_t k,
+    int64_t n, hipStream_t stream) {
+  return launch_mmq_tile<128,64,3,float,true,false,true>(
+      reinterpret_cast<const block_q8_1_mmq_d4*>(x),w,y,rows,k,n,stream,
+      count,indices,capacity,threshold);
+}
+
 // PF-1d plane-reduction candidate: guarded f32 chain with two activation
 // planes. Not bit-identical to d4x3; admission requires the production
 // numerics gate.

@@ -76,6 +76,19 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Raw-vector MMQ token64 candidate (September7 UTC):** distinct from
+earlier64-output/128-token GR rejection. Current candidate retains128
+outputs,halves token tile to64 with retained vector activation staging.
+Actual qkv/Q512 ratios1.050x/1.125x,1024 ratios1.077x/1.109x;
+independent layer7 Q1024 1.138x,both orders positive. Long-row GR is
+flat/mixed and short-Q has large outliers;all adverse rows retained.
+200 screen pairs exact,23 tests include nonzero repair threshold/tails.
+VGPR184->160,dynamic LDS57856->48384B,scratch0. Kernel-only:
+next default-off parent raw-vector K2560/N12288 rows>=512 Q route,
+then model state/KV and throughput gate. Prepacked qkv is not qualified
+by these raw-only screens;do not blanket replace MMQ.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-mmq-token64.json).
+
 **Current-default three-engine refresh (September7 UTC):** clean95df2c3a9,
 hipEngine chunk1024,UD-Q4_K_XL/BF16 KV,full12-case logger-off protocol.
 HE PP/TG512:190.94/19.79,1024:201.82/19.34,4096:186.03/14.93.
