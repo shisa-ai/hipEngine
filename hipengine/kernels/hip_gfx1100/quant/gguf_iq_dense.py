@@ -7,7 +7,7 @@ from hipengine.core.hip import get_hip_runtime
 from hipengine.kernels.registry import KernelKey, register
 
 SOURCE = Path(__file__).with_suffix('.hip')
-QUANTS = {'gguf_iq4_xs': 0, 'gguf_iq4_nl': 1, 'gguf_iq3_s': 2}
+QUANTS = {'gguf_iq4_xs': 0, 'gguf_iq4_nl': 1, 'gguf_iq3_s': 2, 'gguf_q3_k': 3}
 OUTPUTS = {'f32': 0, 'bf16': 1}
 _HANDLES = {}
 
