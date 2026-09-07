@@ -76,6 +76,22 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**ROCr MWAITX request tested (September7 UTC):** source inspection at
+ROCr1559d101f2716ed3d4f30beb33200e91f1af024b identifies
+`HSA_ENABLE_MWAITX` in `runtime/hsa-runtime/core/util/flag.h` and
+conditional MWAITX in default_signal.cpp/interrupt_signal.cpp.
+CLR50f79bbaefa7e265493881cb2ff9c8da6476d44c rocvirtual.hpp has a
+separate active/blocked signal wait path. These are upstream references,
+not confirmed installed-runtime source identity.
+Disposable process with MWAITX=1,code4096,2 balanced pairs/tg128:
+parent/candidate decode8.496/8.937s;early~1.5GHz/~600MHz persists.
+Exact tokens/state and zero candidate decode calls,clean teardown.
+Loaded HIP/HSA binary hashes and env recorded;actual MWAITX engagement
+unproven. No production env change or energy claim. Stop trying generic
+wait switches without engagement evidence;next investigate bounded CPU
+frequency policy intervention or identify installed runtime wait code.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-mwaitx.json).
+
 **HIP wait-policy isolation (September7 UTC):** disposable code4096
 phase probes with2 balanced pairs/128 decode steps,decode HEAD_PAIR flag0.
 Initial device flags already1 (spin);explicit spin1->1 is a no-op,

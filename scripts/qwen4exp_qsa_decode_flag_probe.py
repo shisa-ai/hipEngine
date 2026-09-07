@@ -1,6 +1,7 @@
 """Fixed-root decode flag isolation; not normal request throughput."""
 import argparse
 import gc
+import hashlib
 import json
 import os
 import resource
@@ -29,6 +30,23 @@ def cpu_counters():
 
 def counter_delta(before,after):
     return {key:after[key]-value for key,value in before.items()}
+
+def wait_runtime_identity():
+    """Record loaded binaries and env; env alone does not prove activation."""
+    libraries={}
+    try:
+        lines=Path("/proc/self/maps").read_text().splitlines()
+        paths={line.split(maxsplit=5)[5] for line in lines if len(line.split(maxsplit=5))==6}
+        for value in paths:
+            path=Path(value)
+            if path.name.startswith(("libamdhip64.so","libhsa-runtime64.so")) and path.is_file():
+                with path.open("rb") as source:
+                    libraries[str(path)]=hashlib.file_digest(source,"sha256").hexdigest()
+    except OSError as error:
+        libraries["error"]=str(error)
+    return dict(libraries=libraries,environment={name:os.environ.get(name) for name in
+        ("HSA_ENABLE_MWAITX","HSA_ENABLE_INTERRUPT","ROC_ACTIVE_WAIT_TIMEOUT")},
+        caveat="Requested environment and binary identity only; not wait-path engagement proof")
 
 
 def orders(pairs):
@@ -123,6 +141,7 @@ def main():
         return original(*args,**kwargs)
     report=dict(status="running",source=gate._git_metadata(ROOT),host=gate._host_metadata(),
         hip_wait_policy=wait_policy,
+        wait_runtime=wait_runtime_identity(),
         model_identity=identity,fixture_sha256=digest,command=sys.argv,cases=[],
         steps=a.steps,pairs=a.pairs,vary_prefill=a.vary_prefill,trace_markers=a.trace_markers,
         cpu_accounting=a.cpu_accounting,thread_perf=a.thread_perf,cpu_frequency=a.cpu_frequency,

@@ -1,5 +1,7 @@
 # hipEngine Benchmark Changelog
 
+- [2026-09-07 UTC MWAITX request] Code4096 MWAITX=1 parent/candidate tg128 wall8.496/8.937s,exact state,early recovery penalty persists. Loaded runtime hashes recorded;activation unproven,no production change. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-mwaitx.json`.
+
 - [2026-09-07 UTC QSA wait policy] Spin already1 (no-op);yield1->2 readback accepted. Parent/candidate tg128 wall8.496/8.925s and8.509/8.940s,exact state;neither resolves early CPU recovery. No production change or inter-policy causal speedup claim. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-wait-policy.json`.
 
 - [2026-09-07 UTC QSA affinity isolation] Calling thread pinnedCPU17 still gives parent/candidate early decode1.167/1.573s and~1.5GHz/~600MHz feedback. Exact state,affinity restored;pinning not a fix,no production change. `benchmarks/results/2026-09-07-framework-qwen4exp-qsa-phase-affinity.json`.
