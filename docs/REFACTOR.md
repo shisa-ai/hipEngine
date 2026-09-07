@@ -5475,3 +5475,22 @@ Qwen3.6/gfx1151 routes are untouched; admission is recorded in
 `_physical_width_depth_admitted_for_group` screening branch, and its tests
 when the campaign's final C1-C8/K1-K7 matrix lands and every measured cell
 either has a qualified serving-evidence row or stays explicitly rejected.
+
+## 2026-09-07 Dual C1 target-route dispatch — singleton vs packed frontier
+
+`Qwen35GGUFMTP2Adapter` dispatches one-request C1 cycles to the legacy
+singleton target verifier (graph-captured, device-side acceptance,
+`_ensure_active_singleton_target_verifier`) and everything else (C2-C8 and
+packed-C1) to `_execute_target_frontier_batch` (eager, host accept sync).
+The 2026-09-07 stage-timing diagnostic
+(`benchmarks/results/2026-09-07-w7900-packed-route-c1-stage-timing-diagnostic.json`)
+showed the packed C1 cycle costs ~88 ms versus the legacy graph replay's
+~48 ms for the identical 4-row frontier, entirely from eager launch overhead
+plus the ~57 ms/cycle host accept readback. The packed route can at best
+reach parity at C1 (same verify work; no batching advantage with one
+request), so the legacy singleton route is the correct C1 default and stays.
+When (and only when) the packed frontier path is graph-captured with
+device-side acceptance and re-measured at parity-or-better on the C1
+balanced-pair protocol, delete the singleton verifier dispatch branch and
+its graph-bucket preparation so one target route serves C1-C8. Until then
+this is a documented duplicate dispatch route, not dead code.
