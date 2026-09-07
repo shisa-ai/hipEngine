@@ -5,6 +5,7 @@ selected state, provider repair, or full lifecycle qualification.
 """
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from types import SimpleNamespace
 
@@ -103,6 +104,47 @@ def selected_state_sources(owner, session, *, selected_row: int) -> dict:
         capture(f"recurrent:{layer}", pair[1], recurrent)
     capture("hidden_seed", owner._verify_hidden_seed_buf, session.scratch.hidden_seed_fp32)
     return result
+
+
+def selected_aux_sources(session, result, *, accepted: int) -> dict:
+    """Select the local BF16 provider row and independently encode next cursors."""
+    from hipengine.core import DType
+
+    source = result.pre_output_norm_hidden
+    hidden = int(session.runner.hidden_size)
+    if (source is None or source.dtype != DType.BF16 or len(source.shape) != 2
+            or source.shape[1] != hidden or not 0 <= accepted < source.shape[0]):
+        raise ValueError("invalid provider hidden source or selected row")
+    size = hidden * 2
+    destination = session._hidden_a
+    if destination is None or int(destination.nbytes) != size:
+        raise ValueError("invalid provider hidden destination")
+    session.runtime.device_synchronize()
+    view = SimpleNamespace(ptr=int(source.ptr) + accepted * size, nbytes=size)
+    expected = {"provider_hidden": dict(ptr=int(destination.ptr), nbytes=size,
+                                        hash=_device_hash(session, view))}
+    for name, buffer, advance in (("position_device", session.scratch.position_buf, 1),
+                                   ("context_device", session.scratch.context_buf, 2)):
+        if buffer is None or int(buffer.nbytes) != 8:
+            raise ValueError(f"invalid cursor destination: {name}")
+        raw = np.array([int(result.start_position) + accepted + advance], dtype=np.int64)
+        expected[name] = dict(ptr=int(buffer.ptr), nbytes=8,
+                             hash=hashlib.blake2b(raw.tobytes(), digest_size=16).hexdigest())
+    return expected
+
+
+def assert_aux_commit(session, expected: dict) -> None:
+    """Check cursor values, BF16 provider bytes, and the published provider pointer."""
+    session.runtime.device_synchronize()
+    for name, buffer in (("provider_hidden", session._hidden_a),
+                          ("position_device", session.scratch.position_buf),
+                          ("context_device", session.scratch.context_buf)):
+        row = expected[name]
+        if (buffer is None or int(buffer.ptr) != row["ptr"] or int(buffer.nbytes) != row["nbytes"]
+                or _device_hash(session, buffer) != row["hash"]):
+            raise ValueError(f"selected auxiliary commit mismatch: {name}")
+    if int(session._last_target_hidden_ptr) != expected["provider_hidden"]["ptr"]:
+        raise ValueError("selected provider hidden pointer was not published")
 
 
 def assert_committed_state_unchanged(before: dict, after: dict) -> None:

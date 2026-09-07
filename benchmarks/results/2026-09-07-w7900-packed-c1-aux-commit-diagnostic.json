@@ -1,0 +1,118 @@
+{
+  "hardware": {
+    "host": "epyc",
+    "cpu": "AMD Ryzen 9 5950X 16-Core Processor",
+    "gpu": "AMD Radeon Pro W7900",
+    "uuid": "GPU-e282895b62c2b295",
+    "target_arch": "gfx1100",
+    "rocm": "7.2.4",
+    "identity_source": "campaign-artifacts/packet0/provenance.txt"
+  },
+  "model": {
+    "path": "/models/gguf/Qwen3.8-27B-Q4_K_M.gguf",
+    "sha256": "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b",
+    "quant": "Q4_K_M",
+    "kv": "bf16",
+    "execution_profile": "production",
+    "manifest_sha256": "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
+  },
+  "schema": 1,
+  "kind": "packed_c1_provider_hidden_cursor_commit",
+  "base_commit": "8e844b1172e23b2eee875c29048e0fe432ac1b77",
+  "performance_claim": false,
+  "full_profile_qualification": false,
+  "scope": "C1 N1 K3, ten canonical prompts, D24 greedy, BF16 KV, max sequence1024, 20ms batch window",
+  "cycles": 70,
+  "buffers_per_cycle": [
+    131
+  ],
+  "checked_bytes_per_side": 11374290016,
+  "pre_acceptance_state_unchanged": true,
+  "per_prompt": [
+    {
+      "prompt_id": "code_merge_intervals",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "code_topological_sort",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "code_lru_cache",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "code_markdown_table",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 6
+    },
+    {
+      "prompt_id": "general_en_plan",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 6
+    },
+    {
+      "prompt_id": "general_en_explain",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "general_ja_plan",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 8
+    },
+    {
+      "prompt_id": "general_ja_explain",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 8
+    },
+    {
+      "prompt_id": "mixed_ja_en_translate",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    },
+    {
+      "prompt_id": "mixed_ja_en_review",
+      "exact": true,
+      "engaged": true,
+      "budget_conformed": true,
+      "packed_calls": 7
+    }
+  ],
+  "command": "HIP_VISIBLE_DEVICES=0 ROCR_VISIBLE_DEVICES=0 GPU_MAX_HW_QUEUES=1 HIPENGINE_HIP_ARCH=gfx1100 .venv/bin/python scripts/qwen38_packed_c1_logits.py capture --directory /tmp/packed-c1-n1k3-aux-commit --capacity 1 --budget 3 --check-commit",
+  "validation": "69 focused CPU tests pass; eight helper RED failures first",
+  "limitation": "Exact GPU accepted counts/commit positions, selected Conv/GDN/FP32 hidden, BF16 provider hidden destination and published pointer, INT64 device position/context. Does not qualify numerical teacher state, selected KV prefix, host cursor lifecycle, provider repair beyond hidden installation, EOS/cancel/slot reuse/width transitions.",
+  "selected_commit_all_pass": true,
+  "selected_buffers_per_call": [
+    97
+  ],
+  "accepted_count_histogram": {
+    "3": 39,
+    "2": 13,
+    "1": 15,
+    "0": 3
+  },
+  "aux_commit_all_pass": true,
+  "aux_buffers_per_call": 3
+}
