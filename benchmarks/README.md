@@ -1,6 +1,13 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-06 UTC**
+Last updated: **2026-09-07 UTC**
+
+Full-category chunk512->1024 screen:PP1024176.71->190.61 (+7.87%),
+PP4096162.80->176.11 (+8.18%);p512-0.053% neutral-work control.
+72 exact trajectories;all long requests faster,but p4096 decode-1.72%
+and small p512 request losses remain explicit. Default unchanged;
+native/c2 memory qualification pending.
+[Evidence](results/2026-09-07-framework-qwen4exp-chunk1024-full.json).
 
 Chunk1024 state gate:all12 cases exact for full logits/four decode steps/
 recurrent state/full KV;coverage verified,zero final owners. Shared larger

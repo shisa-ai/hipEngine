@@ -76,6 +76,21 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Chunk1024 full-category screen (September7 UTC):** clean `e5afb7b41`,
+72/72 trajectories exact,coverage verified,zero final owners. PP512
+180.264->180.168 (-0.053%,identical work control);PP1024176.706->
+190.614 (+7.871%);PP4096162.799->176.114 (+8.178%).
+Every long-prompt prefill/request case improves;three p512 request cases
+are slightly negative (worst mixed-0.144%). TG1024-0.224%,TG4096-1.723%,
+worst Japanese4096-3.139%,not hidden or attributed causally to heat.
+Max PP/TG CV0.950%/3.204%;shared-capacity peak86,093,186,980B.
+Positive candidate with explicit tradeoffs,not an all-metric/all-case win.
+Default512 remains until native-context/c2 admission check and a recorded
+retention decision. Prepared allocation-only
+`scripts/qwen4exp_chunk_memory_probe.py` validates actual c2 bytes against
+explicit plan components plus scratch separately from reserve;not yet run.
+[Full screen](../benchmarks/results/2026-09-07-framework-qwen4exp-chunk1024-full.json).
+
 **Chunk1024 full state gate (September6 UTC):** all12 canonical cases pass
 512/1024/512 full-logit comparisons,four decode steps,recurrent state and
 full KV. Chunk coverage verified;kernel flags unchanged;zero final owners.
