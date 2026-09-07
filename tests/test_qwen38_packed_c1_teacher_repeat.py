@@ -18,6 +18,62 @@ def runs():
     return [deepcopy(base) for _ in range(3)]
 
 
+def test_candidate_loader_checks_actual_arrays_and_windows(tmp_path):
+    import hashlib
+    import json
+    from hipengine.execution_profiles import build_variant_manifest, manifest_sha256
+    from scripts.qwen38_packed_c1_teacher_repeat import load_candidate_capture
+    manifest = build_variant_manifest(profile='production', backend='hip_gfx1100',
+        model='example', quant='gguf', kv_policy='paged_bf16', graph_policy='eager',
+        selections=[dict(layer='linear', scope='all', selected_variant='strict',
+                         strict_fallback_variant='strict')])
+    teacher_manifest = dict(manifest, execution_profile='strict')
+    data = runs()[0]
+    record = data['records'][0]
+    logits, prefill = record.pop('logits'), record.pop('prefill_logits')
+    record['logits_file'] = 'one.npz'
+    record['windows'][0].update(resident_slot=0, head_path='row_linear_f32_logits')
+    data.update(candidate_manifest=manifest, candidate_manifest_sha256=manifest_sha256(manifest),
+                teacher_runtime_manifest_sha256=manifest_sha256(teacher_manifest))
+    for key, array in [('logits', logits), ('prefill_logits', prefill)]:
+        record[key + '_sha256'] = hashlib.sha256(array.tobytes()).hexdigest()
+    np.savez(tmp_path / 'one.npz', logits=logits, prefill_logits=prefill)
+    fixture = dict(model_sha256='model', runtime_manifest=teacher_manifest,
+                   runtime_manifest_sha256=manifest_sha256(teacher_manifest),
+                   kv_storage_dtype='DType.BF16', records=[dict(prompt_id='one',
+                   category='code', suite='canonical', prompt_ids=(0, 0), inputs=(1, 2),
+                   logits=logits, prefill_logits=prefill)])
+    path = tmp_path / 'candidate.json'
+    path.write_text(json.dumps(data))
+    result = load_candidate_capture(tmp_path, fixture, teacher_manifest_sha256='teacher')
+    assert np.array_equal(result['records'][0]['logits'], logits)
+    for fault in ('position', 'slot', 'capacity', 'hash', 'runtime', 'teacher', 'kv', 'file', 'shape'):
+        broken = deepcopy(data)
+        if fault == 'position':
+            broken['records'][0]['windows'][0]['position'] += 1
+        elif fault == 'slot':
+            broken['records'][0]['windows'][0]['resident_slot'] = 1
+        elif fault == 'capacity':
+            broken['capacity'] = True
+        elif fault == 'hash':
+            broken['records'][0]['logits_sha256'] = 'wrong'
+        elif fault == 'runtime':
+            broken['candidate_manifest_sha256'] = 'wrong'
+        elif fault == 'teacher':
+            broken['teacher_runtime_manifest_sha256'] = 'wrong'
+        elif fault == 'kv':
+            broken['kv_storage_dtype'] = 'DType.FP32'
+        elif fault == 'file':
+            broken['records'][0]['logits_file'] = '../one.npz'
+        else:
+            wrong = logits.reshape(1, -1)
+            np.savez(tmp_path / 'one.npz', logits=wrong, prefill_logits=prefill)
+            broken['records'][0]['logits_sha256'] = hashlib.sha256(wrong.tobytes()).hexdigest()
+        path.write_text(json.dumps(broken))
+        with pytest.raises(ValueError):
+            load_candidate_capture(tmp_path, fixture, teacher_manifest_sha256='teacher')
+
+
 def test_three_bit_identical_runs():
     assert assert_teacher_repeats(runs()) == dict(repeats=3, prompts=1, decode_rows=2,
         prefill_rows=1, bit_identical=True, full_profile_qualification=False)
