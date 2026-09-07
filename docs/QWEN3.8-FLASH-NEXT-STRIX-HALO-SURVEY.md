@@ -47,10 +47,10 @@ stable tails from n=3.
 [Current rates and variance](../benchmarks/results/2026-09-07-framework-qwen4exp-current-default-baselines.json).
 The [September6 chunk512 packet](../benchmarks/results/2026-09-06-framework-qwen4exp-post-vec4-baselines.json)
 remains historical; do not assign cross-packet changes to one promotion.
-Latest complete family costs at `e7024541b` are FFN10.281s,non-GR linear4.523s,
-GR3.414s,QSA2.068s,GDN0.826s at p4096; that separate diagnostic precedes
-GDN wave normalization and reuses
-the earlier pinned Vulkan profile.
+Latest complete family costs at `30b92de13` are FFN10.214s,non-GR linear4.452s,
+GR3.395s,QSA1.331s,GDN0.801s at p4096 (four-category mean,chunk1024).
+This separate diagnostic includes four-head QSA and reuses the earlier
+pinned Vulkan profile;it does not refresh the throughput table above.
 [Generated family tables](QWEN3.8-FLASH-NEXT-HALO-BOX-CAMPAIGN.md#521-framework-starting-and-current-owner-snapshots).
 
 The following promotion notes and older tables are revision-specific history,

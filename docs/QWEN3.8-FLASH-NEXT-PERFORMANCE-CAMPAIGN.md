@@ -76,6 +76,20 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Post-four-head owner refresh (September7 UTC):** clean `30b92de13`,
+six cases/twelve phases at explicit chunk1024,complete semantic attribution.
+Four-category p4096 mean:FFN10.214s,non-GR linear4.452s,GR3.395s,
+QSA1.331s,GDN0.801s,total20.305s. QSA2.068->1.331s (-35.66%)
+and total21.227->20.305s (-4.345%) are snapshot deltas spanning
+GDN wave normalization,raw-Q token64 and four-head QSA,not causal A/B.
+Reused pinned Vulkan ratios are2.336x/4.367x/1.988x/2.062x/0.576x
+respectively. FFN and non-GR linear remain the leading prefill targets.
+Code4096 profiled wall21.061s exceeds device sum20.397s by0.664s;
+keep host/transition costs in full-request qualification.
+Fixed-live4097 decode QSA16.955ms versus Vulkan3.161ms is a separate
+one-step ledger,not tg128 throughput. No new competitor throughput run.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-post-qsa-quad-family.json).
+
 **Four-head QSA promoted (September7 UTC):** clean6c0e3d214 staged
 full12-case/chunk1024 run preserves72 exact trajectories and all first-stage
 samples. p4096 PP185.413->192.034 (+3.571%),TG13.990->13.496
@@ -89,7 +103,7 @@ productionquad/strict0,dense shortcuts and decode kernels unchanged.
 CPU recovery penalty remains explicitly accepted because complete long
 requests improve;no clock/affinity/wait overrides or hidden warmup.
 Prior pair regression and all mitigation failures remain historical evidence.
-Next refresh owner costs and return to larger FFN/linear work.
+The completed owner snapshot above now guides larger FFN/linear work.
 [Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-qsa-head-quad-production.json).
 
 **Four-head QSA model admission (September7 UTC):** explicit
