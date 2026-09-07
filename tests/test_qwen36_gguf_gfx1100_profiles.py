@@ -4,8 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from hipengine.execution_profiles import resolve_runtime_profile as _resolve_runtime_profile
-from tests._gguf_profile_fixture import profile_context
+from hipengine.execution_profiles import resolve_runtime_profile
 from hipengine.generation import qwen36_gguf_gfx1100_profiles as _profiles
 from hipengine.runtime import qwen35_gguf_runner as _qwen35_gguf_runner  # noqa: F401
 from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
@@ -24,19 +23,6 @@ from hipengine.generation.qwen36_gguf_gfx1100_profiles import (
     register_qwen36_dense_gguf_gfx1100_profiles,
     register_qwen36_moe_gguf_gfx1100_profiles,
 )
-
-
-def resolve_runtime_profile(**kwargs):
-    return _resolve_runtime_profile(
-        **kwargs, qualification_context=profile_context(kwargs['model'])
-    )
-
-
-def construct(resolved):
-    return resolved.construct_generator(
-        lambda **kw: SimpleNamespace(**kw),
-        **profile_context(resolved.manifest['model']),
-    )
 
 
 @pytest.fixture(autouse=True)
@@ -76,7 +62,7 @@ def test_qwen36_dense_gfx1100_strict_profile_resolves_exact_c1_route(
         quant=QWEN36_DENSE_GGUF_QUANT,
         profile="strict",
     )
-    generator = construct(resolved)
+    generator = resolved.construct_generator(lambda: SimpleNamespace())
 
     assert generator.execution_profile == "strict"
     assert resolved.fell_back_to_strict is False
@@ -118,7 +104,7 @@ def test_qwen36_moe_gfx1100_strict_fallback_and_production_candidate(
     assert strict.fell_back_to_strict is False
     assert production.fell_back_to_strict is False
     assert production.source_profile.value == "production"
-    generator = construct(production)
+    generator = production.construct_generator(lambda: SimpleNamespace())
     assert production.manifest["graph_policy"] == (
         "specdec2_moe_bulk_f32_k2_strict_k1_candidate"
     )
@@ -149,7 +135,7 @@ def test_qwen36_dense_gfx1100_production_resolves_periodic_strict_r28_and_c8_q6(
     assert resolved.manifest["graph_policy"] == (
         "specdec2_eager_c1_exact_qwen38_c8_q6_dp4a"
     )
-    construct(resolved)
+    resolved.construct_generator(lambda: SimpleNamespace())
     selections = resolved.manifest["selections"]
     assert selections[0]["selected_variant"] == "bf16_c1_exact_state_rows_tloop"
     r28 = next(row for row in selections if "c7_k3_r28" in row["scope"])
@@ -179,10 +165,10 @@ def test_profile_owned_strict_values_do_not_mask_dense_production_defaults() -> 
         profile="production",
     )
 
-    construct(strict)
+    strict.construct_generator(lambda: SimpleNamespace())
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "0"
     assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "0"
-    construct(production)
+    production.construct_generator(lambda: SimpleNamespace())
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "1"
     assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "1"
 
@@ -199,6 +185,6 @@ def test_qwen36_dense_gfx1100_production_honors_explicit_rollbacks(
         quant=QWEN36_DENSE_GGUF_QUANT,
         profile="production",
     )
-    construct(resolved)
+    resolved.construct_generator(lambda: SimpleNamespace())
     assert __import__("os").environ[Q4_FUSED_R28_ENV] == "0"
     assert __import__("os").environ[Q6_DP4A_GROUPED_ENV] == "0"

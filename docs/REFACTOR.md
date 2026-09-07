@@ -18,17 +18,21 @@ should be removed or collapsed.
   `EXECUTION-PROFILES.md`; remove dead runtime dispatch branches and stale
   experiment toggles first.
 
-## 2026-09-07 GGUF profile qualification — lifecycle debt
+## 2026-09-07 UD cleanup — reduce authorization surface
 
-- Artifact-scoped profile plans now validate header identity before resolution,
-  construction and public binder application; no new environment flag or
-  default-off path is introduced. Successful legacy binders still apply
-  process-global environment policy. Preserve existing serialized construction
-  and explicit caller restore contexts; this is not concurrent per-generator
-  isolation. Replace those writes with generator/session-owned resolved policy
-  when all consumers can accept it, preserving explicit rollback semantics,
-  artifact revalidation and failure/restore tests. Do not remove qualification
-  or infer numerical permission from a generic operation certificate.
+- Removed generic profile qualifiers, custom-factory rollback and the cancelled
+  profile-application prototype. Preserve ordinary profile plugin composition
+  and the shared header-identity helper; do not recreate a transaction or
+  file-replacement defense around model loading. Model files are immutable
+  during a session.
+- Existing GGUF binders still write process-wide settings. Initial UD bring-up
+  uses a fresh process without a named profile. If multiple model/profile owners
+  must coexist, replace the needed settings with explicit owner fields at their
+  actual consumers; do not wrap every method in implicit profile context.
+- Next: simplify reusable admission certificates and native physical-operand
+  authorization. Keep loader shape/dtype checks and shared dispatch contracts.
+  Prefer stable graph-owned buffers and explicit invalidation to rescanning the
+  model and scratch allocation graph on every decode/replay.
 
 ## 2026-09-07 GGUF native execution authorization — bounded cleanup
 

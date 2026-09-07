@@ -1,14 +1,13 @@
 # Dense UD Q4_K_S / Q4_K_M Support Campaign
 
 Last updated: 2026-09-07.
-Status: verified analysis and coder handoff; **U0 audit/identity/pinning
-complete** (CPU-only, including the startup-isolation review fix:
-`import hipengine` loads no GPU backend package), **U1 not accepted**:
-resident/repack/NextN prerequisites and integrated F3/F4 invocation/certificate
-binding accepted after GDN geometry closure; bounded F1 load/execution/physical
-operands accepted in parent review; F5 integrated profile authorization
-implemented pending independent review. U1 still requires an integrated audit.
-All work here is CPU-only; **no GPU validation**.
+Status: **U0 audit/identity/pinning complete; direct cleanup in progress.**
+Shared resident prerequisites and invocation contracts have CPU coverage.
+The subagent experiment did not implement the missing dense UD consumers:
+K_M/K_S still have 18/41 refused slots. **No full UD generation or GPU
+validation is claimed.** Certificate and execution-authorization infrastructure
+is being simplified; generic profile qualification and lifecycle transactions
+have been removed from the working implementation.
 hipEngine source audited: `bf46abefc5ad8fbb00608cd5fb274ca1af21f716`;
 U0 audit/identity repair landed on the `ud-quants` branch (see
 [UD-QUANTS-REVIEW-v2.json](UD-QUANTS-REVIEW-v2.json) for its schema-v2
@@ -1300,7 +1299,15 @@ operands with unchanged owning lists, and changing contents with stable owners.
 F1 still awaits independent review; F5 remains **OPEN**. No GPU, kernel, math,
 profile, default-route, or U2 work is included in this correction.
 
-#### F5 named-profile authorization repair — pending review
+#### F5 named-profile authorization experiment — historical, removed
+
+The following describes the rejected experiment, not the current API. Generic
+factory qualification/rollback was removed during direct cleanup. The
+cancelled lifecycle prototype was also discarded after a local backup. Existing
+profile binders retain their pre-experiment process-scoped behavior; use a fresh
+process without a named profile for initial UD bring-up. Model hot replacement,
+custom-factory transactions and concurrent profile isolation are not bring-up
+requirements. Numerical production-profile validation remains a later gate.
 
 The final known integrated-review bypass was profile-generated permission:
 `LLM` auto or explicit plain quant lookup selected a plain production plan for

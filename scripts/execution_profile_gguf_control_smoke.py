@@ -602,8 +602,7 @@ def main() -> int:
     output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = _prompt_rows(list(args.prompts), limit=int(args.limit))
-    model_info = scan_gguf(args.model)
-    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(model_info)
+    tokenizer = Qwen35GGUFTokenizer.from_gguf_info(scan_gguf(args.model))
     prompt_tokens = {
         str(row["id"]): build_chat_prompt(tokenizer, row["prompt"])
         for row in rows
@@ -624,14 +623,12 @@ def main() -> int:
         backend=QWEN36_GGUF_BACKEND,
         quant=QWEN36_GGUF_QUANT,
         profile=ExecutionProfile.STRICT,
-        qualification_context={"weight_index": model_info},
     )
     production_plan = resolve_runtime_profile(
         model=QWEN36_GGUF_MODEL,
         backend=QWEN36_GGUF_BACKEND,
         quant=QWEN36_GGUF_QUANT,
         profile=ExecutionProfile.PRODUCTION,
-        qualification_context={"weight_index": model_info},
     )
     strict_manifest = validate_variant_manifest(strict_plan.manifest)
     production_manifest = validate_variant_manifest(production_plan.manifest)
