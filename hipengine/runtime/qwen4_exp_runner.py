@@ -102,7 +102,9 @@ from hipengine.kernels.hip_gfx1100.quant.gguf_q4_k_selected_prefill import (
     gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out,
     gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out,
+    gguf_q4_k_selected_dual_sparse_exact_repair_bf16,
     gguf_q4_k_selected_dual_wmma_iu8_prefill_bf16_bf16_out,
+    gguf_q4_k_selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out,
     gguf_q4_k_selected_dual_wmma_prefill_compact_bf16_bf16_out,
 )
 from hipengine.kernels.hip_gfx1100.quant.gguf_k_selected_prefill import (
@@ -1895,6 +1897,8 @@ class Qwen4ExpMoEScratch:
     q4_k_mmq_ds4_workspace: DeviceBuffer | None = None
     q4_k_mmq_identity: DeviceBuffer | None = None
     q4_k_mmq_library: object | None = None
+    group_risk_count: DeviceBuffer | None = None
+    group_risk_indices: DeviceBuffer | None = None
 
     @classmethod
     def allocate(
@@ -1998,7 +2002,42 @@ class Qwen4ExpMoEScratch:
         if self.q4_k_mmq_ds4_workspace is not None:
             free(self.q4_k_mmq_ds4_workspace, runtime=self.runtime)
             self.q4_k_mmq_ds4_workspace = None
+        if self.group_risk_indices is not None:
+            free(self.group_risk_indices, runtime=self.runtime)
+            self.group_risk_indices = None
+        if self.group_risk_count is not None:
+            free(self.group_risk_count, runtime=self.runtime)
+            self.group_risk_count = None
         self.closed = True
+
+    def ensure_group_risk_buffers(
+        self, *, compact_rows: int, out_features_total: int
+    ) -> tuple[DeviceBuffer, DeviceBuffer]:
+        """Lazily allocate the bounded risk counter/index queue.
+
+        The index capacity is the full worst case (every output at risk) so
+        the exact repair route can never silently drop a queued index.
+        """
+
+        if self.closed:
+            raise RuntimeError("Qwen4Exp MoE scratch is closed")
+        capacity = int(compact_rows) * int(out_features_total)
+        if capacity <= 0 or capacity > 2**31 - 1:
+            raise ValueError("risk index capacity must be a positive int32 count")
+        if (
+            self.group_risk_count is None
+            or self.group_risk_indices is None
+            or self.group_risk_indices.nbytes < capacity * DType.INT32.itemsize
+        ):
+            if self.group_risk_indices is not None:
+                free(self.group_risk_indices, runtime=self.runtime)
+            if self.group_risk_count is not None:
+                free(self.group_risk_count, runtime=self.runtime)
+            self.group_risk_count = malloc(
+                DType.INT32.itemsize, runtime=self.runtime)
+            self.group_risk_indices = malloc(
+                capacity * DType.INT32.itemsize, runtime=self.runtime)
+        return self.group_risk_count, self.group_risk_indices
 
 
 @dataclass(frozen=True)
@@ -3168,6 +3207,36 @@ def qwen4_exp_q4_pair_prefill_selected(
     )
 
 
+def _qwen4_exp_q4_iu8_exact_enabled() -> bool:
+    """Default-off exact iu8-risk+repair selected Q4 gate/up route."""
+
+    return os.environ.get(
+        "HIPENGINE_QWEN4_EXP_Q4_IU8_EXACT", "0"
+    ) not in {"", "0", "false", "False"}
+
+
+def _qwen4_exp_q4_iu8_risk_multiplier() -> float:
+    """Kahan-bound multiplier for the exact iu8 risk criterion.
+
+    Screened floor on actual weights is between 0.5 and 1 (below it, BF16
+    flips escape the repair); the default 4.0 keeps a >=4x margin at
+    1.50-1.82x operation-complete speedup.
+    """
+
+    raw = os.environ.get("HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT", "4.0")
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(
+            "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT must be a positive float"
+        )
+    if not (value > 0.0) or value != value:
+        raise ValueError(
+            "HIPENGINE_QWEN4_EXP_Q4_IU8_RISK_MULT must be a positive float"
+        )
+    return value
+
+
 def qwen4_exp_q51_pair_prefill_selected(
     backend: str, quant: str, *, rows: int, in_features: int
 ) -> bool:
@@ -3504,56 +3573,151 @@ def run_qwen4_exp_moe(
                 runtime=active_runtime,
             )
         elif exact_grouped_q4_gate:
-            expert_grid_mode = os.environ.get(
-                "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+            q4_iu8_exact = (
+                _qwen4_exp_q4_iu8_exact_enabled()
+                and rows >= 2
+                and hidden % 256 == 0
+                and ffn % 128 == 0
+                and weights["expert_gate"].spec.quant_key == "gguf_q4_k"
+                and weights["expert_up"].spec.quant_key == "gguf_q4_k"
             )
-            expert_grid64 = expert_grid_mode in {"64", "q4"}
-            grouped_q4_gate = (
-                gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
-                if expert_grid64
-                else gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
-                if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
-                not in {"", "0", "false", "False"}
-                else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
-            )
-            if expert_grid64 and qwen4_exp_q4_pair_prefill_selected(
-                backend, weights["expert_gate"].spec.quant_key,
-                rows=rows, in_features=hidden,
-            ):
-                grouped_q4_gate = resolve(
-                    backend=backend, layer="moe_linear",
-                    quant=weights["expert_gate"].spec.quant_key,
-                    variant="selected_dual_grouped_pair2_bf16_bf16_out")
-            elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
-                backend, weights["expert_gate"].spec.quant_key
-            ):
-                grouped_q4_gate = resolve(
-                    backend=backend, layer="moe_linear",
-                    quant=weights["expert_gate"].spec.quant_key,
-                    variant="selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
-            grouped_q4_gate(
-                scratch.expert_down.ptr,
-                scratch.group_expert_start.ptr,
-                weights["expert_gate"].allocation("raw").tensor.ptr,
-                weights["expert_up"].allocation("raw").tensor.ptr,
-                scratch.expert_gate.ptr,
-                scratch.expert_up.ptr,
-                compact,
-                experts,
-                hidden,
-                ffn,
-                stream=stream,
-                runtime=active_runtime,
-            )
-            silu_mul_separate_out_bf16(
-                scratch.expert_gate.ptr,
-                scratch.expert_up.ptr,
-                scratch.expert_intermediate.ptr,
-                compact,
-                ffn,
-                stream=stream,
-                runtime=active_runtime,
-            )
+            if q4_iu8_exact:
+                # Exact iu8-risk+repair route: GPU tile map with the static
+                # upper bound (no device read), risk-collecting iu8-WMMA
+                # gate/up, sparse exact repair reproducing the pair2 parent,
+                # then the combined-layout SiLU (bit-identical element-wise
+                # to the separate-layout SiLU used by the pair2 path).
+                tile_capacity = (
+                    scratch.group_tile_expert.nbytes // DType.INT64.itemsize
+                )
+                active = min(compact, experts)
+                static_tiles = active + (compact - active) // 16
+                if static_tiles > tile_capacity:
+                    raise RuntimeError(
+                        "Qwen4Exp grouped MoE tile capacity is invalid"
+                    )
+                qwen35_moe_wmma_tile_map(
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    scratch.group_wmma_total.ptr,
+                    experts,
+                    tile_capacity=static_tiles,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                risk_count, risk_indices = scratch.ensure_group_risk_buffers(
+                    compact_rows=compact, out_features_total=2 * ffn
+                )
+                active_runtime.memset(
+                    risk_count.ptr, 0, DType.INT32.itemsize
+                )
+                risk_capacity = compact * 2 * ffn
+                iu8_risk_gate_up = resolve(
+                    backend=backend, layer="moe_linear", quant="gguf_q4_k",
+                    variant="selected_dual_wmma_iu8_risk_prefill_bf16_bf16_out",
+                )
+                sparse_exact_repair = resolve(
+                    backend=backend, layer="moe_linear", quant="gguf_q4_k",
+                    variant="selected_dual_sparse_exact_repair_bf16",
+                )
+                iu8_risk_gate_up(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    scratch.group_wmma_expert_start.ptr,
+                    scratch.group_tile_expert.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.group_gate_up.ptr,
+                    risk_count.ptr,
+                    risk_indices.ptr,
+                    risk_capacity,
+                    _qwen4_exp_q4_iu8_risk_multiplier(),
+                    compact,
+                    hidden,
+                    ffn,
+                    ffn,
+                    experts,
+                    static_tiles * 16,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                sparse_exact_repair(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.group_gate_up.ptr,
+                    risk_count.ptr,
+                    risk_indices.ptr,
+                    risk_capacity,
+                    compact,
+                    hidden,
+                    ffn,
+                    ffn,
+                    experts,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                silu_mul_dual_out_bf16(
+                    scratch.group_gate_up.ptr,
+                    scratch.expert_intermediate.ptr,
+                    rows=compact,
+                    features=ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+            else:
+                expert_grid_mode = os.environ.get(
+                    "HIPENGINE_QWEN4_EXP_EXACT_EXPERT_GRID", "64"
+                )
+                expert_grid64 = expert_grid_mode in {"64", "q4"}
+                grouped_q4_gate = (
+                    gguf_q4_k_selected_dual_grouped_rowbatch8_out4_expertgrid64_bf16_bf16_out
+                    if expert_grid64
+                    else gguf_q4_k_selected_dual_grouped_rowbatch8_out4_bf16_bf16_out
+                    if os.environ.get("HIPENGINE_QWEN4_EXP_Q4_OUT4", "1")
+                    not in {"", "0", "false", "False"}
+                    else gguf_q4_k_selected_dual_grouped_rowbatch8_bf16_bf16_out
+                )
+                if expert_grid64 and qwen4_exp_q4_pair_prefill_selected(
+                    backend, weights["expert_gate"].spec.quant_key,
+                    rows=rows, in_features=hidden,
+                ):
+                    grouped_q4_gate = resolve(
+                        backend=backend, layer="moe_linear",
+                        quant=weights["expert_gate"].spec.quant_key,
+                        variant="selected_dual_grouped_pair2_bf16_bf16_out")
+                elif expert_grid64 and qwen4_exp_q4_bundle_prefill_selected(
+                    backend, weights["expert_gate"].spec.quant_key
+                ):
+                    grouped_q4_gate = resolve(
+                        backend=backend, layer="moe_linear",
+                        quant=weights["expert_gate"].spec.quant_key,
+                        variant="selected_dual_grouped_rowbatch8_out4_expertgrid64_bundle_bf16_bf16_out")
+                grouped_q4_gate(
+                    scratch.expert_down.ptr,
+                    scratch.group_expert_start.ptr,
+                    weights["expert_gate"].allocation("raw").tensor.ptr,
+                    weights["expert_up"].allocation("raw").tensor.ptr,
+                    scratch.expert_gate.ptr,
+                    scratch.expert_up.ptr,
+                    compact,
+                    experts,
+                    hidden,
+                    ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
+                silu_mul_separate_out_bf16(
+                    scratch.expert_gate.ptr,
+                    scratch.expert_up.ptr,
+                    scratch.expert_intermediate.ptr,
+                    compact,
+                    ffn,
+                    stream=stream,
+                    runtime=active_runtime,
+                )
         elif exact_grouped_down:
             selected_projection(
                 "expert_gate", scratch.hidden_bf16.ptr, scratch.expert_gate.ptr,
