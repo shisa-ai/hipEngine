@@ -1,6 +1,6 @@
 # hipEngine Topline Benchmarks
 
-Last updated: **2026-09-06**
+Last updated: **2026-09-07**
 
 This file is the current benchmark scoreboard. It intentionally contains only
 current user-facing results, compact protocol/status notes, and links to the
@@ -233,6 +233,24 @@ load, context/graph/prefix/pressure, and lifecycle packets pass. Product closure
 remains blocked at c32: **10.590 tok/s**, **18.617 s TTFT p95**, **2.125 s ITL
 p99**, **24.171 s E2E p95**, and **0/3 SLO runs**; C2 64K and heavy-load SLOs
 also remain blocked. [`gfx1151 campaign final`](results/2026-08-24-gfx1151-qwen38-concurrency2-campaign-final.json).
+
+## Qwen3.8-27B UD short-context diagnostic
+
+On zbook / Radeon 8060S, both published UD files match 161/162 next-token
+choices against llama.cpp HIP using the same artifact, 18 category/heldout
+prompts (39–71 tokens) and nine forced logit positions per prompt.
+
+| UD file | Default mean/max KL vs llama.cpp | Q5/Q6 candidate allocated weight bytes | Status |
+| --- | ---: | ---: | --- |
+| `UD-Q4_K_M` | 0.000873 / 0.014724 | 26,396,502,016 → 21,526,849,536 (−18.45%) | Diagnostic only |
+| `UD-Q4_K_S` | 0.000593 / 0.013256 | 21,125,912,576 → 18,599,622,656 (−11.96%) | Diagnostic only |
+
+The candidate changes Q5/Q6 residency, matches all 162 baseline top-1 choices
+per file, and is not enabled by default. Its K_M p95 KL against llama.cpp is
+0.005398, above the 0.005 gate; K_S prefill top-1 is 17/18 for both arms, below
+the 97% transition gate. Weight-buffer sums exclude load peak, scratch and KV.
+No speed, BF16-model quality, long-context or serving qualification is claimed.
+[Protocol, per-category results and reproduction sources](results/2026-09-07-zbook-ud-c1-residency-logits-diagnostic.json).
 
 ## Current Qwen3.6-35B quantization quality
 
