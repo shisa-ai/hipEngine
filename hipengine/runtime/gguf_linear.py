@@ -2359,7 +2359,10 @@ def _q4_t16_dual_wmma_silu_dispatch(
         # Measured packet4 row screen (2026-09-06, bit-exact at every screened
         # row): rows 33-48 run row48 1.9x faster than row64; 49-64 keep row64
         # and 65-128 keep row128.
-        if rows <= 48:
+        row48_max = int(backend_package_capability(
+            dispatch_a.key.backend, "GGUF_Q4_DUAL_SILU_PREFILL_ROW48_MAX_ROWS", 0,
+        ))
+        if rows <= row48_max:
             variants.append("dense_dual_wmma_prefill_row48_bf16_bf16_out")
         elif rows <= 64:
             variants.append("dense_dual_wmma_prefill_row64_bf16_bf16_out")

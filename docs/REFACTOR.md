@@ -45,6 +45,22 @@ should be removed or collapsed.
 - Analysis and the wider campaign this sits inside:
   [`UD-QUANTS.md`](UD-QUANTS.md), sections 2, 7.3 and U0/U1.
 
+## 2026-09-07 W7900 packed C1 target qualification — open
+
+- The physical-provider C1 route previously installed a legacy singleton
+  target during preparation. Review prevents that substitution; its old C1
+  rates are not packed-target evidence. Public C1 rows are withdrawn.
+- Keep the repaired route diagnostic-only until packed C1 K1-K7, native N=1,
+  N=2/8 slots/transitions, numerical/task, lifecycle and repeated-economics
+  gates pass. Then register exact evidence keys; do not restore old rows by
+  copying their legacy-target measurements.
+- `HIPENGINE_MTP2_SCREEN_UNQUALIFIED_CELLS` remains a test-only admission aid,
+  not public safety evidence. Remove it and the runtime row-injection probe
+  after the matrix is qualified or the campaign is explicitly stopped.
+- Consolidate the duplicated implementation-depth tuples and B1-B7 graph-cache
+  fields after lifecycle coverage proves the cleanup. Shared capacity is not
+  permission to widen Qwen3.6/gfx1151 public evidence.
+
 ## 2026-09-01 gfx1100 segmented GDN wave reduction — closed
 
 - The complete counterbalanced C5-C8 category+heldout gate retained the exact

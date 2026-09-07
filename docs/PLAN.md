@@ -469,11 +469,15 @@ routes remain available, and Qwen3.6 policies are unchanged. The follow-up
 requires native physical C1 on the Generation-2 provider/frontier/transaction
 path, not a legacy singleton verifier substitution, plus measured complete-cycle
 reductions and width-specific numerical/lifecycle/performance qualification.
-The follow-up must fix the K4 hang and implement depth-generic K1-K7 execution
-at C1-C8; diagnosis alone is not completion. Deeper public execution remains
-safety-gated during implementation, and automatic depth selection is qualified
-separately from functional support. Existing kernel improvements remain enabled
-in their qualified scopes. Source audit and rejected alternatives remain in
+The follow-up implements K1-K7 capacity and records a 56-cell diagnostic sweep,
+but is not complete. The 2026-09-07 review found that C1 preparation installed
+a legacy target verifier: those C1 measurements do not qualify the repaired
+packed target, and its public evidence is withdrawn. The repaired C1/K3 target
+passes a ten-prompt exact diagnostic; N=1 ownership, capacity/depth, numerical,
+lifecycle and repeated-economics gates remain. C2/K3 and C8/K3 explicit keys and
+qualified kernel improvements stay enabled; automatic Qwen3.8 remains K0.
+Deeper public execution and automatic depth selection remain separately gated.
+Source audit and rejected alternatives remain in
 [`SPECDEC2-RESEARCH.md`](SPECDEC2-RESEARCH.md).
 [`CONCURRENCY.md`](CONCURRENCY.md) is the legacy retained c=N kernel/resident-
 runner roadmap and evidence history. The batch-shaped, `KVLiveSpans`,

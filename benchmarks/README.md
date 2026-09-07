@@ -83,8 +83,8 @@ two concurrent requests on the W7900.
 W7900 Qwen3.6 enables automatic MTP only for its qualified single-request and
 capacity-2/two-request keys. **Qwen3.8-27B `Q4_K_M` uses ordinary AR by default
 at every width.** Explicit MTP is available with production/BF16 KV, context
-4-95 and 24 generated tokens: one active request at resident capacity 8 with
-K2/K3, two at capacity 2 with K2/K3, or eight at capacity 8 with K3. K denotes
+4-95 and 24 generated tokens: two active requests at resident capacity 2 with
+K2/K3, or eight at capacity 8 with K3. K denotes
 maximum draft candidates per request; other keys fall back to AR.
 
 The 2026-09-06 server-protocol snapshots on physical host `epyc`/W7900 use the
@@ -95,15 +95,16 @@ three-pair confidence estimates or a serving-latency qualification.
 
 | Active requests / resident capacity | Requested depth | AR tok/s | MTP tok/s | MTP / AR |
 | --- | --- | ---: | ---: | ---: |
-| 1 / 8 | K3 | 24.44 | 40.40 | 1.653x |
 | 2 / 2 | K2 | 42.20 | 42.41 | 1.005x |
 | 8 / 8 | K3 | 92.67 | 97.35 | 1.051x |
 
 A separate C2/K3 qualification run measured 44.69 versus 41.87 AR tok/s
 (1.067x); that key is now available by explicit request. The 56-cell depth
 screen is diagnostic, mixes resident capacities, and does not establish
-N=1 support. Automatic promotion awaits repeated performance, numerical and
-service-lifecycle gates. See the [measurements and exact commands](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json)
+N=1 support. C1 public admission is withdrawn: its measurements used a legacy
+target verifier, not the required packed target. The repaired target is
+diagnostic-only pending qualification. Automatic promotion awaits repeated
+performance, numerical and service-lifecycle gates. See the [measurements and exact commands](results/2026-09-06-w7900-q4km-mtp-packet6-grid-and-c2k3.json)
 and [remaining qualification work](../docs/QWEN38-27B-GFX1100-CONCURRENCY2-BETTER-MTP.md).
 
 Strix Halo `Q4_K_M`: strict C1/K3 automatic at **18.191 tok/s (1.6445x AR)**; production explicit/K0. Production C8/K3 is **52.103 vs 52.025 AR tok/s**. Detailed gfx1151 evidence remains in result artifacts.

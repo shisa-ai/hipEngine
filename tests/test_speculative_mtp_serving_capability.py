@@ -64,6 +64,26 @@ def _evidence() -> SpeculativeMTPServingEvidence:
     )
 
 
+@pytest.mark.parametrize("budget", [2, 3, 7])
+@pytest.mark.parametrize("capacity", [1, 2, 8])
+def test_w7900_c1_fails_closed_until_packed_target_is_qualified(budget, capacity) -> None:
+    decision = resolve_speculative_mtp_serving_plan(
+        Qwen35GGUFModel().speculative_mtp_serving_evidence,
+        key=_key(
+            artifact_sha256=_W7900_MODEL_SHA256,
+            artifact_size_bytes=17_106_773_984,
+            backend="hip_gfx1100", target_arch="gfx1100",
+            execution_profile="production",
+            execution_profile_manifest_sha256=_W7900_PRODUCTION_MANIFEST_SHA256,
+            realized_group_rows=1, resident_capacity=capacity,
+            candidate_budget=budget, context_tokens=95, output_horizon_tokens=24,
+        ),
+    )
+    assert decision.admitted is False
+    assert decision.automatic_eligible is False
+    assert decision.selected_candidate_count == 0
+
+
 def test_qwen38_q4km_strict_c1_b3_capacity4_realized_singleton_is_automatic() -> None:
     decision = resolve_speculative_mtp_serving_plan(
         Qwen35GGUFModel().speculative_mtp_serving_evidence,
@@ -295,15 +315,9 @@ def test_qwen38_q4km_gfx1100_production_c8_k3_d24_is_exact_automatic_key() -> No
         "2026-09-05-w7900-q4km-k3-c8-automatic-promotion.json"
     )
 
-    singleton = resolve_speculative_mtp_serving_plan(
-        evidence, key=replace(key, realized_group_rows=1),
-    )
-    assert singleton.admitted is True
-    assert singleton.automatic_eligible is False
-    assert singleton.evidence_key == "qwen38-q4km-gfx1100-production-bf16-c1-k3-d24"
-
-    # C1 has separate capacity-8 evidence; widths 2-7 do not.
-    for realized_rows in range(2, 8):
+    # The C1 measurements used the legacy target and cannot qualify the
+    # repaired packed target. Only the exact C8 key remains admitted here.
+    for realized_rows in range(1, 8):
         rejected = resolve_speculative_mtp_serving_plan(
             evidence,
             key=replace(key, realized_group_rows=realized_rows),

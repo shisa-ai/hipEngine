@@ -1,5 +1,6 @@
 {
  "kind": "mtp-packet2-c1-suite-economics",
+ "review_status": "INVALID as native packed-target evidence: preparation installed the legacy singleton target verifier. Historical counters are preserved; C1 public evidence is withdrawn. See 2026-09-07-w7900-mtp-merge-review.json.",
  "created": "2026-09-06",
  "hardware": "AMD Radeon Pro W7900 (gfx1100)",
  "model": "Qwen3.8-27B Q4_K_M GGUF",

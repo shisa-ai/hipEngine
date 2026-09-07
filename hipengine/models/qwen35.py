@@ -193,70 +193,9 @@ _QWEN36_DENSE_Q4KM_MTP_SERVING_EVIDENCE = (
 
 
 _QWEN38_Q4KM_MTP_SERVING_EVIDENCE = (
-    SpeculativeMTPServingEvidence(
-        evidence_key="qwen38-q4km-gfx1100-production-bf16-c1-k3-d24",
-        artifact_sha256=(
-            "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
-        ),
-        artifact_size_bytes=17_106_773_984,
-        backend="hip_gfx1100",
-        target_arch="gfx1100",
-        weight_quant="gguf_q4_k_m",
-        execution_profile="production",
-        execution_profile_manifest_sha256=(
-            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
-        ),
-        kv_storage="bf16",
-        kv_layout="uniform",
-        realized_group_rows=1,
-        resident_capacity=8,
-        candidate_budget=3,
-        sampling_modes=("greedy_fast",),
-        max_sequence_length=1024,
-        min_context_tokens=4,
-        max_context_tokens=95,
-        min_output_horizon_tokens=24,
-        max_output_horizon_tokens=24,
-        reason="qualified_explicit_gfx1100_production_c1_k3_d24_packed_route_2026_09_06",
-        evidence_artifacts=(
-            "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-physical-route-proof.json",
-            "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-suite-economics.json",
-        ),
-        strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
-    ),
-    SpeculativeMTPServingEvidence(
-        evidence_key="qwen38-q4km-gfx1100-production-bf16-c1-k2-d24",
-        artifact_sha256=(
-            "7b2aec3b9ababdfd75aa17552ee95607d866e44decf547f6f12fcef85cc89f1b"
-        ),
-        artifact_size_bytes=17_106_773_984,
-        backend="hip_gfx1100",
-        target_arch="gfx1100",
-        weight_quant="gguf_q4_k_m",
-        execution_profile="production",
-        execution_profile_manifest_sha256=(
-            "2adc137a32d65bc63619947577f5233548d5835a474713abe270d666122a1960"
-        ),
-        kv_storage="bf16",
-        kv_layout="uniform",
-        realized_group_rows=1,
-        resident_capacity=8,
-        candidate_budget=2,
-        sampling_modes=("greedy_fast",),
-        max_sequence_length=1024,
-        min_context_tokens=4,
-        max_context_tokens=95,
-        min_output_horizon_tokens=24,
-        max_output_horizon_tokens=24,
-        reason="qualified_explicit_gfx1100_production_c1_k2_d24_packed_route_2026_09_06",
-        evidence_artifacts=(
-            "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-physical-route-proof.json",
-            "benchmarks/results/2026-09-06-w7900-q4km-mtp-packet2-c1-suite-economics.json",
-        ),
-        strict_fallback_key="gguf_target_ar",
-        automatic_eligible=False,
-    ),
+    # W7900 C1 evidence is withdrawn: its runs used the legacy singleton
+    # target after preparation. Requalify the packed target independently
+    # before adding C1 serving rows (see the better-MTP campaign review).
     SpeculativeMTPServingEvidence(
         evidence_key="qwen38-q4km-gfx1151-strict-bf16-c1-b3-natural25-s0",
         artifact_sha256=(

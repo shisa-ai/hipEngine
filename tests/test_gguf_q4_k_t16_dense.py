@@ -1198,6 +1198,26 @@ def test_q4_t16_dense_bulk_pair_silu_uses_measured_row_retile(
     ]
 
 
+@pytest.mark.parametrize("backend", ["hip_gfx1100", "hip_gfx1151"])
+@pytest.mark.parametrize("rows", [33, 48, 49])
+def test_bulk_row48_promotion_is_backend_qualified(monkeypatch, backend, rows) -> None:
+    from types import SimpleNamespace
+    from hipengine.kernels.backends import load_backend_kernel_package
+    from hipengine.runtime import gguf_linear as module
+
+    load_backend_kernel_package(backend)
+    monkeypatch.setattr(module, "_q4_t16_physical_dual_silu_variant", lambda *a, **kw: None)
+    monkeypatch.setattr(module, "_q4_t16_dual_silu_retile_enabled", lambda: True)
+    dispatch = SimpleNamespace(
+        key=KernelKey(backend, "linear", "gguf_q4_k_t16_v1", "default"), abi="t16",
+    )
+    key = module._q4_t16_dual_wmma_silu_dispatch(
+        dispatch, dispatch, rows=rows, in_features=5120, out_features=17408,
+    )
+    tile = 48 if backend == "hip_gfx1100" and rows <= 48 else 64
+    assert key.variant == f"dense_dual_wmma_prefill_row{tile}_bf16_bf16_out"
+
+
 def test_q4_t16_physical_r32_pair_silu_selects_two_wave_fused_owner(
     monkeypatch,
 ) -> None:

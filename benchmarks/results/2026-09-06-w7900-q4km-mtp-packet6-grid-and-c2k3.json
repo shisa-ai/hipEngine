@@ -2,7 +2,8 @@
  "schema": 1,
  "kind": "w7900_qwen38_q4km_packet6_grid_and_c2k3_qualification",
  "date": "2026-09-06",
- "status": "retained_explicit_route",
+ "status": "partial_explicit_route_c1_withdrawn",
+ "review_status": "C1 cells are INVALID as packed-target evidence: preparation installed the legacy singleton target. C2/K3 remains explicit; C1 public evidence is withdrawn. Grid capacities are N=2 at C2 and N=8 elsewhere, with no N=1/2 C1 controls. Single-run ranks are not confidence estimates. See 2026-09-07-w7900-mtp-merge-review.json.",
  "performance_claim": true,
  "decision": "Register the production C2/K3 explicit serving row for the exact Qwen3.8-27B Q4_K_M W7900/gfx1100 key and admit the (2,3) policy cell. The Packet 6 56-cell diagnostic grid (K1-K7 x C1-C8, canonical suite) selected K3 at every MTP-winning width: C1 1.665x, C2 1.069x, C8 1.067x, with widths 3-7 losing at every depth. The retained C2/K3 qualification run confirms 1.067x vs the registered C2/K2 row's 1.005x under the same protocol.",
  "hardware": {

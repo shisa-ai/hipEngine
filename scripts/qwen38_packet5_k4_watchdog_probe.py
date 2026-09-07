@@ -99,6 +99,10 @@ def _inject_k4_evidence_row(width: int, budget: int) -> str:
     row = dataclasses.replace(
         base,
         realized_group_rows=int(width),
+        # C1 public rows were withdrawn after the target-route review. A C8
+        # clone must explicitly bound C1 to one row to exercise the repaired
+        # packed-C1 target rather than the legacy singleton target.
+        max_realized_group_rows=(1 if int(width) == 1 else base.max_realized_group_rows),
         evidence_key=f"qwen38-q4km-gfx1100-production-bf16-c{width}-k{budget}-d24-k4probe",
         candidate_budget=int(budget),
         reason=_PROBE_LABEL,

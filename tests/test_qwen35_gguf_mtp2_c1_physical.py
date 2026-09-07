@@ -135,6 +135,46 @@ def test_claims_recheck_each_requests_safety_envelope(monkeypatch, screening, in
     assert adapter._states == {}
 
 
+def test_prepare_physical_c1_never_installs_legacy_target_verifier(monkeypatch) -> None:
+    adapter = _adapter(
+        backend="hip_gfx1100", capacity=8, rid=7, eligibility=_c1_eligibility(7),
+    )
+    adapter._states[7] = SimpleNamespace(verifier=None)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("physical C1 must not create a legacy singleton verifier")
+
+    monkeypatch.setattr(mtp2_module, "Qwen35GGUFTransactionalVerifier", forbidden)
+    plan = _c1_plan(7)
+    adapter.prepare_requests(plan, ())
+    assert adapter._states[7].verifier is None
+    claims = ResourceClaimSet(claim_id="specdec2-cycle:physical-c1-prepare")
+    adapter._active_claims = claims
+    marker = object()
+    adapter._execute_target_frontier_batch = lambda *args, **kwargs: marker
+    assert adapter.execute_target_frontier(
+        plan, SimpleNamespace(target_batch=object()), claims,
+        commit=True, cancelled_request_ids=lambda: (),
+    ) is marker
+
+
+def test_diagnostic_c1_clone_bounds_the_repaired_target_to_one_row(monkeypatch) -> None:
+    from hipengine.models import qwen35
+    from scripts.qwen38_packet5_k4_watchdog_probe import _inject_k4_evidence_row
+
+    original = qwen35.QWEN35_GGUF.speculative_mtp_serving_evidence
+    plugin = SimpleNamespace(speculative_mtp_serving_evidence=original)
+    monkeypatch.setattr(qwen35, "QWEN35_GGUF", plugin)
+    key = _inject_k4_evidence_row(1, 7)
+    row = plugin.speculative_mtp_serving_evidence[-1]
+    assert row.evidence_key == key
+    assert row.realized_group_rows == row.max_realized_group_rows == 1
+    assert row.resident_capacity == 8
+    assert row.candidate_budget == 7
+    assert row.automatic_eligible is False
+    assert plugin.speculative_mtp_serving_evidence[:-1] == original
+
+
 def test_physical_c1_route_flag_is_package_owned() -> None:
     """gfx1100 owns the physical-C1 route; gfx1151 keeps the legacy singleton."""
 
