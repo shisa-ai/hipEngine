@@ -1,5 +1,13 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## QSA requested CPU minimum diagnostic
+
+- Policy17 floor2->4GHz accepted but early feedback remained~600MHz
+  after candidate prefill;transition penalty unchanged. Original2GHz and
+  calling-thread affinity restored. No production floor override.
+- Diagnostic helper restores on failure;requested floor is never labeled
+  an effective hardware clock lock.
+
 ## QSA MWAITX request diagnostic
 
 - HSA_ENABLE_MWAITX=1 request does not eliminate early decode recovery
