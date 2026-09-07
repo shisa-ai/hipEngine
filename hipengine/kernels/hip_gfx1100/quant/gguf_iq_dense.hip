@@ -6,6 +6,7 @@
 
 namespace {
 #include "gguf_iq_dense_tables.h"
+#include "gguf_iq2_xs_dense_table.h"
 // MIT License
 //
 // Copyright (c) 2023-2026 The ggml authors
@@ -576,6 +577,15 @@ template<int Q> __device__ float weight(const uint8_t* b, int k) {
         float d = (half_load(b) * (0.5f+float(aux>>28))) * 0.5f;
         float mag = d * float(iq3_xxs_grid[index*4+(j&3)]);
         return mag * ((signs & (1<<(j&7))) ? -1.0f : 1.0f);
+    } else if constexpr (Q == 6) {
+        int g = k >> 5, j = k & 31, slot = j >> 3;
+        const uint8_t* p = b + 2 + 2*(g*4+slot);
+        int word = int(p[0]) | (int(p[1]) << 8);
+        int code = (IQ2_XS_GRID_PACKED[word & 511] >> (2*(j&7))) & 3;
+        int scale = (b[66+g] >> (4*(j>>4))) & 15;
+        float d = (half_load(b) * (0.5f+float(scale))) * 0.25f;
+        float mag = d * float(code == 0 ? 8 : (code == 1 ? 25 : 43));
+        return mag * ((iq_signs[word >> 9] & (1<<(j&7))) ? -1.0f : 1.0f);
     } else if constexpr (Q == 5) {
         int g = k >> 5, j = k & 31, slot = j >> 3;
         int index = b[2+g*4+slot] | (((b[66+g] >> (2*slot)) & 3) << 8);
@@ -614,7 +624,7 @@ __global__ void gguf_q3_k_embedding_kernel(const int64_t* ids,
 template<int Q, bool BF16> __global__ void gguf_iq_dense_strict_kernel(
     const uint16_t* x, const uint8_t* w, void* out, int64_t K, int64_t N) {
     constexpr int B = Q == 1 ? 32 : 256;
-    constexpr int S = Q == 0 ? 136 : (Q == 1 ? 18 : (Q == 4 ? 98 : (Q == 5 ? 82 : 110)));
+    constexpr int S = Q == 0 ? 136 : (Q == 1 ? 18 : (Q == 4 ? 98 : (Q == 5 ? 82 : (Q == 6 ? 74 : 110))));
     int64_t n = blockIdx.x, row = blockIdx.y;
     const uint8_t* wr = w + n * (K/B) * S;
     float acc = 0.0f;
@@ -657,6 +667,7 @@ extern "C" int hipengine_gguf_iq_dense(const void* x,const void* w,void* out,
         case 3: run<3>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         case 4: run<4>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         case 5: run<5>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
+        case 6: run<6>(x,w,out,rows,K,N,output,(hipStream_t)stream); break;
         default: return int(hipErrorInvalidValue);
     }
     return int(hipGetLastError());

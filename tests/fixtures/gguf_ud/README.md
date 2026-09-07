@@ -50,6 +50,7 @@ The strict raw dense leaves in `tests/test_gguf_ud_dense.py` use:
 This is a declared raw-leaf contract, not parity with the previous BF16-expanded
 resident route. The leaf suite independently compares against high-precision
 NumPy dot products for its outer KL/top-1 floor and repeats its exact schedule
-three times. It covers six raw dense types; IQ2_XS remains a separately budgeted
-BF16 fallback at model integration. CPU oracle completion does not close that
+three times. It covers seven raw dense types; the IQ2_XS leaf additionally
+checks all synthetic decoded values with one-hot activations. IQ2_XS remains a
+separately budgeted BF16 fallback at model integration. CPU oracle completion does not close that
 compact-resident gap or the full-shape/model/backend gates.

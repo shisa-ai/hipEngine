@@ -1500,7 +1500,10 @@ proposed `tests/test_gguf_ud_ks.py`.
 
 - [ ] Q3 embedding lookup RED: repeated/boundary IDs, prompt/decode gather,
   row output ownership and vocabulary bounds.
-- [ ] Dense IQ3_XXS and IQ2_XS from existing math.
+- [ ] Dense IQ3_XXS and IQ2_XS from existing math. Both raw leaves have
+  bounded gfx1151 numerical evidence. IQ2_XS passes exact BF16/F32 real-row
+  projection gates and synthetic one-hot decode coverage; model residency still
+  uses its BF16 fallback pending integration. gfx1100 remains unverified.
 - [ ] IQ2_S device decoder/strict consumers from U2 oracle.
 - [ ] Clear 41 refusals and IQ2_XS expansion; any temporary fallback reports
   bytes/removal trigger, not silent permanent debt.
