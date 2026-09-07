@@ -4,7 +4,7 @@ hipEngine is a ROCm-native local inference engine built primarily for AMD
 Radeon GPUs. It pairs a small Python host with custom HIP kernels for torch-free
 model loading, generation, and OpenAI-compatible serving on supported hardware.
 
-**Current release: v0.4.0 alpha.** Besides the Qwen 3.6 PARO and GGUF models,
+**Current release: v0.5.0.** Besides the Qwen 3.6 PARO and GGUF models,
 the latest version of hipEngine now supports GGUF inference for more model
 families. These include [Laguna S 2.1](https://poolside.ai/blog/introducing-laguna-s-2-1),
 [Maple ternary](https://github.com/deepgrove-ai/mlx-lm-deepgrove), and [Moonshine ASR](https://github.com/moonshine-ai/moonshine).
@@ -170,7 +170,7 @@ speculative decoding, which is enabled only where it is qualified for that
 model and shape. Rows use different models and protocols — compare within a
 row, not across them.
 
-### At a glance — one request
+### Performance
 
 #### Radeon Pro W7900 — 48 GB (`gfx1100`)
 
@@ -198,21 +198,12 @@ row, not across them.
 | --- | --- | ---: | ---: | ---: | ---: |
 | Maple-Preview | 2-bit | **1917.5** | **402.4** | — | — |
 
-Blank cells are shapes we have not measured yet, not failures. Max context is
-published only where a dedicated ceiling run exists.
-
-- **On a 24 GB card, Qwen3.8-27B `Q4_K_M` is tight.** Measured on a physical
-  RX 7900 XTX: one request starts and completes at **3,072 context tokens** and
-  fails to start at 4,096, on BF16 and INT8 alike; at 512-token prompts the same
-  budget allows four to five concurrent requests. **INT8 KV saves no memory
-  today** -- identical peaks to BF16 and the same failure point. Why the
-  footprint grows as steeply as it does is under investigation.
-
 ### Serving several requests at once
 
-This is where hipEngine pulls furthest ahead. Aggregate tokens per second
-across all active requests, Qwen3.8-27B `Q4_K_M` on the W7900 under one server
-protocol; the peers use F16 KV where hipEngine uses BF16.
+hipEngine is very strong at multi-concurrency vs llama.cpp (or even vLLM).
+Aggregate tokens per second across all active requests, Qwen3.8-27B `Q4_K_M`
+on the W7900 under one server protocol; the peers use F16 KV where hipEngine
+uses BF16.
 
 | Requests | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -230,7 +221,7 @@ generated tokens per request, showing what each added request costs in memory:
 | Peak memory (GiB) | 19.4 | 20.3 | 21.1 | 22.0 | 22.8 | 23.7 | 24.5 | 25.4 |
 
 Eight concurrent requests need about 25 GiB, so this shape wants a 32 GB or
-larger card; a 24 GB card runs the same model comfortably at one or two.
+larger card. What the same model tolerates on a 24 GB card is not qualified yet.
 
 On Strix Halo, Maple-Preview 2-bit scales to **214.788** tok/s across eight
 requests (123.131 at one, 165.697 at two, 202.038 at four). Where speculative
@@ -244,16 +235,27 @@ checks are in the [benchmark report](benchmarks/README.md).
 
 ## Status and limits
 
-v0.4.0 is a large alpha release. It adds or expands:
+v0.5.0 adds the dense Qwen models, and hipEngine now picks some performance
+routes on its own, but only where they have been measured as safe:
 
-- Qwen3.5 and Qwen3.6 GGUF model support on both AMD backends.
-- Native parallel request handling for supported Qwen and Maple paths.
-- Laguna S 2.1 generation and serving on Radeon 8060S systems.
-- Maple-Preview 2-bit generation on AMD, plus an experimental native CUDA path
-  for NVIDIA Blackwell.
-- Faster prompt processing and generation across the supported AMD paths.
-- OpenAI-compatible streaming, sampling, tools, structured-output validation,
-  request cancellation, and an endpoint that reports available features.
+- Qwen3.6-27B and Qwen3.8-27B GGUF generation and serving on both AMD backends.
+  Both can speculate with the model's own multi-token prediction head, as can
+  Qwen3.6-35B-A3B.
+- The server turns speculative decoding on only for the model, GPU, and request
+  shapes it has measured, reports why when it skips speculation, and can be
+  switched off for all new requests by one endpoint call.
+- An optional execution-profile selector (`strict`, `production`,
+  `batch_invariant`) that runs a registered kernel plan, checks that its
+  fallbacks are installed, and rejects a combination hipEngine has not been
+  shown to complete.
+- Scheduling and memory defaults: the `fair` prefill/decode policy, a smaller
+  per-process GPU memory reserve on Radeon RDNA 3, and FP16 recurrent state for
+  Qwen3.8 `Q4_K_S` on Strix Halo.
+- Still supported: Qwen3.5/3.6 GGUF and ParoQuant, Laguna S 2.1, Maple-Preview,
+  several requests at once on one resident model, and OpenAI-compatible
+  streaming, sampling, tools, structured-output validation, and cancellation.
+
+Full user-facing change history is in the [changelog](CHANGELOG.md).
 
 Important limits:
 
@@ -265,8 +267,15 @@ Important limits:
 - Maple currently uses greedy generation only.
 - Advertised model context lengths are not a promise that hipEngine supports the
   same length. Use the model guide and set a conservative server context limit.
-- Dense-Qwen server MTP defaults to fail-closed `auto`; explicit MTP uses native B3 and may differ from AR.
-  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact` restores token-exact control; see [Server API](docs/API.md).
+  Repeated 128K context on Strix Halo can still stall, so no 128K number is
+  published.
+- The memory figures come from a 48 GB W7900. What Qwen3.8-27B tolerates on a
+  24 GB card is not qualified yet, so keep a conservative context limit there.
+- Automatic speculative decoding covers only narrow measured shapes. Asking for
+  it explicitly on a dense Qwen model uses three draft tokens and can produce
+  different text from normal decoding;
+  `HIPENGINE_GGUF_MTP_VERIFY_MODE=serial_exact` restores token-for-token
+  agreement. See [Server API](docs/API.md).
 - APIs and supported combinations can still change before 1.0.
 
 ## Hardware detection

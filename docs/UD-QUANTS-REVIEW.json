@@ -1,0 +1,1541 @@
+[
+  {
+    "file": "Qwen3.8-27B-Q4_K_M.gguf",
+    "header_sha256": "2b388fac52efc56320cd60053cdfdf0a5f888ef3de64d2913c220498cced3916",
+    "header_bytes": 10996704,
+    "file_bytes_observed": 17106775008,
+    "required_file_end": 17106775008,
+    "file_type": "MOSTLY_Q4_K_M",
+    "disk_tensors": 866,
+    "ar_tensors": 851,
+    "ar_layers": 64,
+    "ignored_blocks": [
+      64
+    ],
+    "histogram": {
+      "Q6_K": 67,
+      "F32": 456,
+      "Q4_K": 294,
+      "Q5_K": 48,
+      "Q8_0": 1
+    },
+    "source_bytes": 17095778304,
+    "ar_source_bytes": 16806250496,
+    "lanes": [
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "current",
+        "accepted_bytes": 18159568896,
+        "bf16_count": 0,
+        "native_refusals_gib": 16.912416458129883,
+        "bf16_refusals_gib": 16.912416458129883,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 449,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 65,
+          "Q4_K:gguf_q4_k_t16_v1": 288,
+          "Q5_K:gguf_q5_k_t16_v1": 48
+        },
+        "refused_count": 0,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "repack",
+        "accepted_bytes": 18159568896,
+        "bf16_count": 0,
+        "native_refusals_gib": 16.912416458129883,
+        "bf16_refusals_gib": 16.912416458129883,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 449,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 65,
+          "Q4_K:gguf_q4_k_t16_v1": 288,
+          "Q5_K:gguf_q5_k_t16_v1": 48
+        },
+        "refused_count": 0,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "repack_iq4",
+        "accepted_bytes": 18159568896,
+        "bf16_count": 0,
+        "native_refusals_gib": 16.912416458129883,
+        "bf16_refusals_gib": 16.912416458129883,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 449,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 65,
+          "Q4_K:gguf_q4_k_t16_v1": 288,
+          "Q5_K:gguf_q5_k_t16_v1": 48
+        },
+        "refused_count": 0,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "current",
+        "accepted_bytes": 17121478656,
+        "bf16_count": 0,
+        "native_refusals_gib": 15.945619583129883,
+        "bf16_refusals_gib": 15.945619583129883,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 449,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 41,
+          "Q4_K:gguf_q4_k_t16_v1": 288,
+          "Q6_K:gguf_q6_k_t16_v1": 24,
+          "Q5_K:gguf_q5_k_t16_v1": 48
+        },
+        "refused_count": 0,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "repack",
+        "accepted_bytes": 17121478656,
+        "bf16_count": 0,
+        "native_refusals_gib": 15.945619583129883,
+        "bf16_refusals_gib": 15.945619583129883,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 449,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 41,
+          "Q4_K:gguf_q4_k_t16_v1": 288,
+          "Q6_K:gguf_q6_k_t16_v1": 24,
+          "Q5_K:gguf_q5_k_t16_v1": 48
+        },
+        "refused_count": 0,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "repack_iq4",
+        "accepted_bytes": 17121478656,
+        "bf16_count": 0,
+        "native_refusals_gib": 15.945619583129883,
+        "bf16_refusals_gib": 15.945619583129883,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 449,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 41,
+          "Q4_K:gguf_q4_k_t16_v1": 288,
+          "Q6_K:gguf_q6_k_t16_v1": 24,
+          "Q5_K:gguf_q5_k_t16_v1": 48
+        },
+        "refused_count": 0,
+        "refused": []
+      }
+    ]
+  },
+  {
+    "file": "Qwen3.8-27B-UD-Q4_K_M.gguf",
+    "header_sha256": "ab8269365254d45b888f76452d2f49e894c9491ac854094cc2d57ab4e9105d44",
+    "header_bytes": 10996640,
+    "file_bytes_observed": 16464440224,
+    "required_file_end": 16464440224,
+    "file_type": "MOSTLY_Q4_K_M",
+    "disk_tensors": 866,
+    "ar_tensors": 851,
+    "ar_layers": 64,
+    "ignored_blocks": [
+      64
+    ],
+    "histogram": {
+      "Q6_K": 30,
+      "F32": 360,
+      "Q4_K": 104,
+      "Q5_K": 131,
+      "IQ4_XS": 117,
+      "Q3_K": 7,
+      "Q8_0": 106,
+      "IQ4_NL": 7,
+      "IQ3_S": 4
+    },
+    "source_bytes": 16453443584,
+    "ar_source_bytes": 16102434816,
+    "lanes": [
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "current",
+        "accepted_bytes": 39520208896,
+        "bf16_count": 271,
+        "refused_source_bytes": 751575040,
+        "refused_bf16_bytes": 3135242240,
+        "native_refusals_gib": 37.50602149963379,
+        "bf16_refusals_gib": 39.72598457336426,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 353,
+          "Q6_K:raw_gguf": 1,
+          "IQ4_XS:dense_bf16": 117,
+          "Q5_K:dense_bf16": 131,
+          "Q8_0:raw_gguf": 104,
+          "Q4_K:q4_k_pack8": 103,
+          "Q6_K:dense_bf16": 23
+        },
+        "refused_count": 18,
+        "refused": [
+          [
+            "layers.0.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.0.ffn_up.weight"
+          ],
+          [
+            "layers.1.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.1.ffn_down.weight"
+          ],
+          [
+            "layers.2.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.2.ffn_down.weight"
+          ],
+          [
+            "layers.3.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.3.ffn_down.weight"
+          ],
+          [
+            "layers.11.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.11.ffn_gate.weight"
+          ],
+          [
+            "layers.13.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_gate.weight"
+          ],
+          [
+            "layers.13.ffn_down",
+            "Q3_K",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_down.weight"
+          ],
+          [
+            "layers.14.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_gate.weight"
+          ],
+          [
+            "layers.14.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_up.weight"
+          ],
+          [
+            "layers.14.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.14.ffn_down.weight"
+          ],
+          [
+            "layers.15.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.15.ffn_gate.weight"
+          ],
+          [
+            "layers.15.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.15.ffn_down.weight"
+          ],
+          [
+            "layers.16.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.16.ffn_gate.weight"
+          ],
+          [
+            "layers.17.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.17.ffn_down.weight"
+          ],
+          [
+            "layers.21.attn_qkv",
+            "IQ4_NL",
+            [
+              10240,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.21.attn_qkv.weight"
+          ],
+          [
+            "layers.27.ffn_gate",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.27.ffn_gate.weight"
+          ],
+          [
+            "layers.27.ffn_up",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.27.ffn_up.weight"
+          ],
+          [
+            "layers.50.ffn_gate",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.50.ffn_gate.weight"
+          ]
+        ]
+      },
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "repack",
+        "accepted_bytes": 37724932096,
+        "bf16_count": 234,
+        "refused_source_bytes": 751575040,
+        "refused_bf16_bytes": 3135242240,
+        "native_refusals_gib": 35.83403968811035,
+        "bf16_refusals_gib": 38.05400276184082,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 5,
+          "IQ4_XS:dense_bf16": 117,
+          "Q5_K:dense_bf16": 98,
+          "Q8_0:gguf_q8_0_t16_v1": 104,
+          "Q5_K:gguf_q5_k_t16_v1": 33,
+          "Q4_K:gguf_q4_k_t16_v1": 98,
+          "Q6_K:dense_bf16": 19,
+          "Q4_K:q4_k_pack8": 5
+        },
+        "refused_count": 18,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "repack_iq4",
+        "accepted_bytes": 24564811776,
+        "bf16_count": 117,
+        "refused_source_bytes": 751575040,
+        "refused_bf16_bytes": 3135242240,
+        "native_refusals_gib": 23.577722549438477,
+        "bf16_refusals_gib": 25.797685623168945,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 5,
+          "IQ4_XS:hypothetical_raw_iq4": 117,
+          "Q5_K:dense_bf16": 98,
+          "Q8_0:gguf_q8_0_t16_v1": 104,
+          "Q5_K:gguf_q5_k_t16_v1": 33,
+          "Q4_K:gguf_q4_k_t16_v1": 98,
+          "Q6_K:dense_bf16": 19,
+          "Q4_K:q4_k_pack8": 5
+        },
+        "refused_count": 18,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "current",
+        "accepted_bytes": 39520208896,
+        "bf16_count": 271,
+        "refused_source_bytes": 751575040,
+        "refused_bf16_bytes": 3135242240,
+        "native_refusals_gib": 37.50602149963379,
+        "bf16_refusals_gib": 39.72598457336426,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 353,
+          "Q6_K:raw_gguf": 1,
+          "IQ4_XS:dense_bf16": 117,
+          "Q5_K:dense_bf16": 131,
+          "Q8_0:raw_gguf": 104,
+          "Q4_K:q4_k_pack8": 103,
+          "Q6_K:dense_bf16": 23
+        },
+        "refused_count": 18,
+        "refused": [
+          [
+            "layers.0.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.0.ffn_up.weight"
+          ],
+          [
+            "layers.1.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.1.ffn_down.weight"
+          ],
+          [
+            "layers.2.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.2.ffn_down.weight"
+          ],
+          [
+            "layers.3.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.3.ffn_down.weight"
+          ],
+          [
+            "layers.11.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.11.ffn_gate.weight"
+          ],
+          [
+            "layers.13.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_gate.weight"
+          ],
+          [
+            "layers.13.ffn_down",
+            "Q3_K",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_down.weight"
+          ],
+          [
+            "layers.14.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_gate.weight"
+          ],
+          [
+            "layers.14.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_up.weight"
+          ],
+          [
+            "layers.14.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.14.ffn_down.weight"
+          ],
+          [
+            "layers.15.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.15.ffn_gate.weight"
+          ],
+          [
+            "layers.15.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.15.ffn_down.weight"
+          ],
+          [
+            "layers.16.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.16.ffn_gate.weight"
+          ],
+          [
+            "layers.17.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.17.ffn_down.weight"
+          ],
+          [
+            "layers.21.attn_qkv",
+            "IQ4_NL",
+            [
+              10240,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.21.attn_qkv.weight"
+          ],
+          [
+            "layers.27.ffn_gate",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.27.ffn_gate.weight"
+          ],
+          [
+            "layers.27.ffn_up",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.27.ffn_up.weight"
+          ],
+          [
+            "layers.50.ffn_gate",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.50.ffn_gate.weight"
+          ]
+        ]
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "repack",
+        "accepted_bytes": 33611565056,
+        "bf16_count": 194,
+        "refused_source_bytes": 751575040,
+        "refused_bf16_bytes": 3135242240,
+        "native_refusals_gib": 32.0031681060791,
+        "bf16_refusals_gib": 34.22313117980957,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 5,
+          "IQ4_XS:dense_bf16": 117,
+          "Q5_K:dense_bf16": 58,
+          "Q5_K:gguf_q5_k_t16_v1": 73,
+          "Q8_0:gguf_q8_0_t16_v1": 104,
+          "Q4_K:gguf_q4_k_t16_v1": 98,
+          "Q6_K:dense_bf16": 19,
+          "Q4_K:q4_k_pack8": 5
+        },
+        "refused_count": 18,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "repack_iq4",
+        "accepted_bytes": 20451444736,
+        "bf16_count": 77,
+        "refused_source_bytes": 751575040,
+        "refused_bf16_bytes": 3135242240,
+        "native_refusals_gib": 19.746850967407227,
+        "bf16_refusals_gib": 21.966814041137695,
+        "routes": {
+          "Q4_K:raw_gguf": 1,
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 5,
+          "IQ4_XS:hypothetical_raw_iq4": 117,
+          "Q5_K:dense_bf16": 58,
+          "Q5_K:gguf_q5_k_t16_v1": 73,
+          "Q8_0:gguf_q8_0_t16_v1": 104,
+          "Q4_K:gguf_q4_k_t16_v1": 98,
+          "Q6_K:dense_bf16": 19,
+          "Q4_K:q4_k_pack8": 5
+        },
+        "refused_count": 18,
+        "refused": []
+      }
+    ]
+  },
+  {
+    "file": "Qwen3.8-27B-UD-Q4_K_S.gguf",
+    "header_sha256": "d2568a4b282a24a3e8841dec0b26848e60d271d9886de6b6a3966f022eb23a39",
+    "header_bytes": 10996640,
+    "file_bytes_observed": 15358213024,
+    "required_file_end": 15358213024,
+    "file_type": "MOSTLY_Q4_K_S",
+    "disk_tensors": 866,
+    "ar_tensors": 851,
+    "ar_layers": 64,
+    "ignored_blocks": [
+      64
+    ],
+    "histogram": {
+      "Q6_K": 18,
+      "F32": 360,
+      "Q3_K": 13,
+      "Q5_K": 80,
+      "IQ4_XS": 172,
+      "IQ2_XS": 1,
+      "IQ2_S": 1,
+      "Q8_0": 99,
+      "Q4_K": 95,
+      "IQ3_S": 15,
+      "IQ4_NL": 7,
+      "IQ3_XXS": 5
+    },
+    "source_bytes": 15347216384,
+    "ar_source_bytes": 14996207616,
+    "lanes": [
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "current",
+        "refused_source_bytes": 2009518080,
+        "refused_bf16_bytes": 9243197440,
+        "accepted_bytes": 36519479296,
+        "bf16_count": 264,
+        "native_refusals_gib": 35.882925033569336,
+        "bf16_refusals_gib": 42.61981391906738,
+        "routes": {
+          "F32:dense_f32": 353,
+          "Q6_K:raw_gguf": 1,
+          "IQ2_XS:dense_bf16": 1,
+          "IQ4_XS:dense_bf16": 172,
+          "Q5_K:dense_bf16": 80,
+          "Q8_0:raw_gguf": 97,
+          "Q4_K:q4_k_pack8": 95,
+          "Q6_K:dense_bf16": 11
+        },
+        "refused_count": 41,
+        "refused": [
+          [
+            "root.token_embedding",
+            "Q3_K",
+            [
+              248320,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: token_embd.weight"
+          ],
+          [
+            "layers.0.ffn_up",
+            "IQ2_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ2_S': blk.0.ffn_up.weight"
+          ],
+          [
+            "layers.1.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.1.ffn_gate.weight"
+          ],
+          [
+            "layers.1.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.1.ffn_up.weight"
+          ],
+          [
+            "layers.3.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.3.ffn_down.weight"
+          ],
+          [
+            "layers.3.attn_q",
+            "IQ4_NL",
+            [
+              12288,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.3.attn_q.weight"
+          ],
+          [
+            "layers.4.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.4.ffn_gate.weight"
+          ],
+          [
+            "layers.5.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.5.ffn_gate.weight"
+          ],
+          [
+            "layers.6.ssm_out",
+            "IQ4_NL",
+            [
+              5120,
+              6144
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.6.ssm_out.weight"
+          ],
+          [
+            "layers.7.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.7.ffn_up.weight"
+          ],
+          [
+            "layers.7.attn_output",
+            "IQ4_NL",
+            [
+              5120,
+              6144
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.7.attn_output.weight"
+          ],
+          [
+            "layers.9.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.9.ffn_gate.weight"
+          ],
+          [
+            "layers.9.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.9.ffn_down.weight"
+          ],
+          [
+            "layers.10.ffn_gate",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.10.ffn_gate.weight"
+          ],
+          [
+            "layers.11.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.11.ffn_gate.weight"
+          ],
+          [
+            "layers.12.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.12.ffn_gate.weight"
+          ],
+          [
+            "layers.12.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.12.ffn_up.weight"
+          ],
+          [
+            "layers.12.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.12.ffn_down.weight"
+          ],
+          [
+            "layers.13.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_gate.weight"
+          ],
+          [
+            "layers.13.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_up.weight"
+          ],
+          [
+            "layers.13.ffn_down",
+            "Q3_K",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_down.weight"
+          ],
+          [
+            "layers.14.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_gate.weight"
+          ],
+          [
+            "layers.14.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_up.weight"
+          ],
+          [
+            "layers.14.ffn_down",
+            "IQ3_XXS",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.14.ffn_down.weight"
+          ],
+          [
+            "layers.15.ffn_gate",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.15.ffn_gate.weight"
+          ],
+          [
+            "layers.15.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.15.ffn_up.weight"
+          ],
+          [
+            "layers.15.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.15.ffn_down.weight"
+          ],
+          [
+            "layers.16.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.16.ffn_gate.weight"
+          ],
+          [
+            "layers.16.ffn_up",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.16.ffn_up.weight"
+          ],
+          [
+            "layers.16.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.16.ffn_down.weight"
+          ],
+          [
+            "layers.17.ffn_gate",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.17.ffn_gate.weight"
+          ],
+          [
+            "layers.17.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.17.ffn_up.weight"
+          ],
+          [
+            "layers.17.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.17.ffn_down.weight"
+          ],
+          [
+            "layers.18.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.18.ffn_gate.weight"
+          ],
+          [
+            "layers.18.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.18.ffn_up.weight"
+          ],
+          [
+            "layers.18.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.18.ffn_down.weight"
+          ],
+          [
+            "layers.19.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.19.ffn_gate.weight"
+          ],
+          [
+            "layers.19.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.19.ffn_up.weight"
+          ],
+          [
+            "layers.21.attn_qkv",
+            "IQ4_NL",
+            [
+              10240,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.21.attn_qkv.weight"
+          ],
+          [
+            "layers.25.attn_qkv",
+            "IQ4_NL",
+            [
+              10240,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.25.attn_qkv.weight"
+          ],
+          [
+            "layers.27.ffn_up",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.27.ffn_up.weight"
+          ]
+        ]
+      },
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "repack",
+        "refused_source_bytes": 2009518080,
+        "refused_bf16_bytes": 9243197440,
+        "accepted_bytes": 35269830656,
+        "bf16_count": 239,
+        "native_refusals_gib": 34.719099044799805,
+        "bf16_refusals_gib": 41.45598793029785,
+        "routes": {
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 6,
+          "IQ2_XS:dense_bf16": 1,
+          "IQ4_XS:dense_bf16": 172,
+          "Q5_K:dense_bf16": 60,
+          "Q8_0:gguf_q8_0_t16_v1": 97,
+          "Q5_K:gguf_q5_k_t16_v1": 20,
+          "Q4_K:gguf_q4_k_t16_v1": 84,
+          "Q6_K:dense_bf16": 6,
+          "Q4_K:q4_k_pack8": 11
+        },
+        "refused_count": 41,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1100",
+        "scenario": "repack_iq4",
+        "refused_source_bytes": 2009518080,
+        "refused_bf16_bytes": 9243197440,
+        "accepted_bytes": 17866745856,
+        "bf16_count": 67,
+        "native_refusals_gib": 18.511213302612305,
+        "bf16_refusals_gib": 25.24810218811035,
+        "routes": {
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 6,
+          "IQ2_XS:dense_bf16": 1,
+          "IQ4_XS:hypothetical_raw_iq4": 172,
+          "Q5_K:dense_bf16": 60,
+          "Q8_0:gguf_q8_0_t16_v1": 97,
+          "Q5_K:gguf_q5_k_t16_v1": 20,
+          "Q4_K:gguf_q4_k_t16_v1": 84,
+          "Q6_K:dense_bf16": 6,
+          "Q4_K:q4_k_pack8": 11
+        },
+        "refused_count": 41,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "current",
+        "refused_source_bytes": 2009518080,
+        "refused_bf16_bytes": 9243197440,
+        "accepted_bytes": 36519479296,
+        "bf16_count": 264,
+        "native_refusals_gib": 35.882925033569336,
+        "bf16_refusals_gib": 42.61981391906738,
+        "routes": {
+          "F32:dense_f32": 353,
+          "Q6_K:raw_gguf": 1,
+          "IQ2_XS:dense_bf16": 1,
+          "IQ4_XS:dense_bf16": 172,
+          "Q5_K:dense_bf16": 80,
+          "Q8_0:raw_gguf": 97,
+          "Q4_K:q4_k_pack8": 95,
+          "Q6_K:dense_bf16": 11
+        },
+        "refused_count": 41,
+        "refused": [
+          [
+            "root.token_embedding",
+            "Q3_K",
+            [
+              248320,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: token_embd.weight"
+          ],
+          [
+            "layers.0.ffn_up",
+            "IQ2_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ2_S': blk.0.ffn_up.weight"
+          ],
+          [
+            "layers.1.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.1.ffn_gate.weight"
+          ],
+          [
+            "layers.1.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.1.ffn_up.weight"
+          ],
+          [
+            "layers.3.ffn_down",
+            "IQ4_NL",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.3.ffn_down.weight"
+          ],
+          [
+            "layers.3.attn_q",
+            "IQ4_NL",
+            [
+              12288,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.3.attn_q.weight"
+          ],
+          [
+            "layers.4.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.4.ffn_gate.weight"
+          ],
+          [
+            "layers.5.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.5.ffn_gate.weight"
+          ],
+          [
+            "layers.6.ssm_out",
+            "IQ4_NL",
+            [
+              5120,
+              6144
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.6.ssm_out.weight"
+          ],
+          [
+            "layers.7.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.7.ffn_up.weight"
+          ],
+          [
+            "layers.7.attn_output",
+            "IQ4_NL",
+            [
+              5120,
+              6144
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.7.attn_output.weight"
+          ],
+          [
+            "layers.9.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.9.ffn_gate.weight"
+          ],
+          [
+            "layers.9.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.9.ffn_down.weight"
+          ],
+          [
+            "layers.10.ffn_gate",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.10.ffn_gate.weight"
+          ],
+          [
+            "layers.11.ffn_gate",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.11.ffn_gate.weight"
+          ],
+          [
+            "layers.12.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.12.ffn_gate.weight"
+          ],
+          [
+            "layers.12.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.12.ffn_up.weight"
+          ],
+          [
+            "layers.12.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.12.ffn_down.weight"
+          ],
+          [
+            "layers.13.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_gate.weight"
+          ],
+          [
+            "layers.13.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_up.weight"
+          ],
+          [
+            "layers.13.ffn_down",
+            "Q3_K",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.13.ffn_down.weight"
+          ],
+          [
+            "layers.14.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_gate.weight"
+          ],
+          [
+            "layers.14.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.14.ffn_up.weight"
+          ],
+          [
+            "layers.14.ffn_down",
+            "IQ3_XXS",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.14.ffn_down.weight"
+          ],
+          [
+            "layers.15.ffn_gate",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.15.ffn_gate.weight"
+          ],
+          [
+            "layers.15.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.15.ffn_up.weight"
+          ],
+          [
+            "layers.15.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.15.ffn_down.weight"
+          ],
+          [
+            "layers.16.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.16.ffn_gate.weight"
+          ],
+          [
+            "layers.16.ffn_up",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.16.ffn_up.weight"
+          ],
+          [
+            "layers.16.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.16.ffn_down.weight"
+          ],
+          [
+            "layers.17.ffn_gate",
+            "IQ3_XXS",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_XXS' outside rank-3 expert slots: blk.17.ffn_gate.weight"
+          ],
+          [
+            "layers.17.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.17.ffn_up.weight"
+          ],
+          [
+            "layers.17.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.17.ffn_down.weight"
+          ],
+          [
+            "layers.18.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.18.ffn_gate.weight"
+          ],
+          [
+            "layers.18.ffn_up",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.18.ffn_up.weight"
+          ],
+          [
+            "layers.18.ffn_down",
+            "IQ3_S",
+            [
+              5120,
+              17408
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.18.ffn_down.weight"
+          ],
+          [
+            "layers.19.ffn_gate",
+            "Q3_K",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'Q3_K' outside rank-3 expert slots: blk.19.ffn_gate.weight"
+          ],
+          [
+            "layers.19.ffn_up",
+            "IQ3_S",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ3_S': blk.19.ffn_up.weight"
+          ],
+          [
+            "layers.21.attn_qkv",
+            "IQ4_NL",
+            [
+              10240,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.21.attn_qkv.weight"
+          ],
+          [
+            "layers.25.attn_qkv",
+            "IQ4_NL",
+            [
+              10240,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.25.attn_qkv.weight"
+          ],
+          [
+            "layers.27.ffn_up",
+            "IQ4_NL",
+            [
+              17408,
+              5120
+            ],
+            "unsupported Qwen3.5 GGUF tensor type 'IQ4_NL': blk.27.ffn_up.weight"
+          ]
+        ]
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "repack",
+        "refused_source_bytes": 2009518080,
+        "refused_bf16_bytes": 9243197440,
+        "accepted_bytes": 33134176256,
+        "bf16_count": 216,
+        "native_refusals_gib": 32.73011589050293,
+        "bf16_refusals_gib": 39.46700477600098,
+        "routes": {
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 6,
+          "IQ2_XS:dense_bf16": 1,
+          "IQ4_XS:dense_bf16": 172,
+          "Q5_K:dense_bf16": 37,
+          "Q8_0:gguf_q8_0_t16_v1": 97,
+          "Q5_K:gguf_q5_k_t16_v1": 43,
+          "Q4_K:gguf_q4_k_t16_v1": 67,
+          "Q6_K:dense_bf16": 6,
+          "Q4_K:gguf_q4_k_qmicro_t16_v1": 17,
+          "Q4_K:q4_k_pack8": 11
+        },
+        "refused_count": 41,
+        "refused": []
+      },
+      {
+        "backend": "hip_gfx1151",
+        "scenario": "repack_iq4",
+        "refused_source_bytes": 2009518080,
+        "refused_bf16_bytes": 9243197440,
+        "accepted_bytes": 15731091456,
+        "bf16_count": 44,
+        "native_refusals_gib": 16.52223014831543,
+        "bf16_refusals_gib": 23.259119033813477,
+        "routes": {
+          "F32:dense_f32": 353,
+          "Q6_K:gguf_q6_k_t16_qmicro_planar_v1": 6,
+          "IQ2_XS:dense_bf16": 1,
+          "IQ4_XS:hypothetical_raw_iq4": 172,
+          "Q5_K:dense_bf16": 37,
+          "Q8_0:gguf_q8_0_t16_v1": 97,
+          "Q5_K:gguf_q5_k_t16_v1": 43,
+          "Q4_K:gguf_q4_k_t16_v1": 67,
+          "Q6_K:dense_bf16": 6,
+          "Q4_K:gguf_q4_k_qmicro_t16_v1": 17,
+          "Q4_K:q4_k_pack8": 11
+        },
+        "refused_count": 41,
+        "refused": []
+      }
+    ]
+  }
+]

@@ -11,6 +11,27 @@
 - **Opening evidence:**
   [`QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md`](QWEN38-STRIX-HALO-EXTERNAL-SURVEY.md)
 
+## September 6 Verified Scope Update
+
+Read [`UD-QUANTS.md`](UD-QUANTS.md) before execution. It supplies the corrected
+AR/NextN audit, reproducible allocation accounting, current upstream kernel
+review, and the additional K_S campaign. The artifact key, single-owner rules,
+quality requirements and binding K_M performance charter in this document
+remain in force; use `KM-U0..U8` for the tasks below and `UD-U0..U7` for the
+cross-file dependency map.
+
+The 18 refused tensors are only part of the work: all 117 IQ4_XS tensors still
+expand to BF16 on the dense route, and raw-IQ's file-global repack veto expands
+many Q5/Q6 roles too. Dense IQ4_XS consumption and qualification of existing
+Q5/Q6 routes must precede full-model bring-up. Raw Q5/Q6 and generic selected-IQ
+math already exist; new IQ repacking is not a prerequisite.
+
+The corrected current AR plan contains 851 tensors across 64 AR layers,
+with block64/15 tensors handled separately by NextN. Hypothetically expanding
+all refused AR tensors gives 39.725985 GiB of weight allocations before runtime
+memory, not just the 2.220 GiB incremental cost for the refused subset.
+See the new document for sidecar/backend policy accounting and its limits.
+
 ## 1. Objective and definition of success
 
 This campaign adds native support for the exact Qwen3.8-27B `UD-Q4_K_M`
@@ -97,7 +118,7 @@ The GGUF payload inventory is:
 | `F32` | 360 | 0.010 GiB | Supported metadata/norm tensors |
 | `IQ3_S` | 4 | 0.143 GiB | Unsupported dense projections; no hipEngine CPU dequantizer |
 | `IQ4_NL` | 7 | 0.308 GiB | CPU dequantizer exists; no dense projection route |
-| `IQ4_XS` | 117 | 4.433 GiB | Existing supported mixed-quant family |
+| `IQ4_XS` | 117 | 4.433 GiB | Selected-MoE math exists; dense route still expands to BF16 and needs compressed consumers |
 | `Q3_K` | 7 | 0.250 GiB | CPU oracle and selected-expert kernels exist; dense rank-2 route is rejected |
 | `Q4_K` | 104 | 3.915 GiB | Existing native family |
 | `Q5_K` | 131 | 4.502 GiB | Existing native family |
@@ -163,6 +184,9 @@ Do not remove this rejection until the relevant registered strict route exists.
 
 ### 3.2 Missing work
 
+- Dense IQ4_XS operation-complete consumers and role-aware per-tensor resident
+  policy for existing Q4/Q5/Q6/Q8. Complete UD-U3 before KM-U3; fixing only
+  the 18 refusal sites cannot satisfy compact exact-artifact support.
 - `IQ3_S` NumPy/CPU-reference dequantization and real-row llama.cpp oracle.
 - Dense rank-2 quant plugin contracts for `Q3_K`, `IQ4_NL`, and `IQ3_S`.
 - Strict raw dense GEMV for BF16 input and BF16/F32 output.
