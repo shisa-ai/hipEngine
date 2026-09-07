@@ -23,9 +23,13 @@ should be removed or collapsed.
 - F1 native session entries, enqueue and standalone native-layer entries all
   consume the complete F4 contract. Direct-layer guards deliberately repeat
   whole-model metadata checks so bypass calls cannot borrow session authority.
-  Removal trigger for redundant checks: a scoped per-entry receipt that binds
-  the same resident/backend/rows/state/scratch owners, with bypass and stale
-  graph regressions preserved. Do not replace checks with an unkeyed cache.
+  The physical-operand correction now supplies an owner-issued
+  `NativeInvocationContext`, including actual input/output/index pointers and
+  all named scratch/sampler/readback views. It deliberately revalidates live
+  ownership rather than treating the receipt as an unkeyed cache. Removal
+  trigger for redundant scans: proven stable owner lifetime across the entry,
+  with direct-bypass, named-view replacement and stale graph regressions
+  preserved. No scan/cache optimization is claimed by the correctness repair.
   No timing claim or new environment flag accompanies this correctness unit.
 - `qwen35_gguf_native_row_binding_errors` is now a legacy alpha/beta diagnostic,
   not the execution guard. Remove its export when diagnostic callers/tests

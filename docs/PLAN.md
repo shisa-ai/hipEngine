@@ -975,8 +975,14 @@ payload reads/allocation. Native eager, capture, replay and direct native-layer
 entries consume the pre-certified F4 contract against actual residents, caller
 operands, rows and state/scratch ownership; they never replan allocated weights
 or turn a filtered diagnostic certificate into full-model permission. Graphs
-pin the invocation and physical ownership identity. F1 is pending independent
-review; integrated profile-binder authorization (F5) remains OPEN. Availability
+pin the invocation and physical ownership identity. The F1 physical-operand
+correction adds `loading/qwen35_gguf_native_operands.py`: a shared launch/readback
+plan, recursive named scratch-view inventory, canonical index-publication owner,
+and owner-issued contexts required at direct native layers. A buffer-allocation
+list alone is not a captured operand plan. Contexts validate the actual BF16
+row-prefix input/output and index pointers, not just weights and scratch.
+F1 is pending independent review; integrated profile-binder authorization (F5)
+remains OPEN. Availability
 and ABI checks still confer no numerical-profile permission; see
 [`UD-QUANTS.md`](UD-QUANTS.md).
 

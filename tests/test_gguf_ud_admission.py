@@ -1396,6 +1396,7 @@ def _native_entry_session(resident, *, scratch_owner):
     session.runner = SimpleNamespace(
         weights=resident,
         backend="hip_gfx1100",
+        runtime=session.runtime,
         hidden_size=256,
         vocab_size=64,
         fp16_recurrent_state=False,
@@ -1406,8 +1407,8 @@ def _native_entry_session(resident, *, scratch_owner):
     cursor = 0x1000000
     def buffer(nbytes):
         nonlocal cursor
-        ptr = cursor
-        cursor += int(nbytes) + 256
+        ptr = (cursor + 255) // 256 * 256
+        cursor = ptr + int(nbytes) + 256
         return SimpleNamespace(ptr=ptr, nbytes=int(nbytes))
     qkv = 2 * cfg.ssm_group_count * cfg.ssm_state_size + cfg.ssm_inner_size
     scratch_owner.slot_count = 8
@@ -1426,7 +1427,22 @@ def _native_entry_session(resident, *, scratch_owner):
     session._logits_buf = buffer(8 * cfg.vocab_size * 4)
     session._native_cu_seqlens_buf = buffer(9 * 4)
     session._native_state_indices_buf = buffer(8 * 8)
-    session._native_token_ids_host = object()
+    session._native_token_ids_host = np.zeros(8, dtype=np.int32)
+    session._lm_head_threads = 128
+    session._lm_head_stage1_blocks = 1
+    session._lm_block_values = buffer(8 * 4)
+    session._lm_block_indices = buffer(8 * 8)
+    session._lm_out_index = buffer(8 * 8)
+    session._lm_out_value = buffer(8 * 4)
+    session._buffers = tuple(getattr(session, name) for name in (
+        "_token_buf", "_hidden_a", "_hidden_b", "_logits_buf", "_native_cu_seqlens_buf",
+        "_native_state_indices_buf", "_lm_block_values", "_lm_block_indices", "_lm_out_index", "_lm_out_value"))
+    from hipengine.loading.qwen35_gguf_native_operands import NativeIndexBinding
+    # Mock the same successful canonical H2D publication as the real allocator.
+    session._native_index_binding = NativeIndexBinding.after_upload(
+        session._native_cu_seqlens_buf, session._native_state_indices_buf,
+        np.arange(9, dtype=np.int32), np.arange(8, dtype=np.int64))
+    scratch_owner.decode_spans = SimpleNamespace(span_role="decode", max_live_count=64)
     return session
 
 
