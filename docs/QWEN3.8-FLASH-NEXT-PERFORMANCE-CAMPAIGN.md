@@ -76,6 +76,16 @@ MoE, dense/GR, D=256 sparse QSA, then serial GDN, reranked by fresh owner cost.
 
 ## Current-host owner refresh
 
+**Q5_1 row16 after spill removal rejected (September7 UTC):**
+larger row group on the current per-row-publication kernel preserves
+arithmetic but loses0.428561x/0.411661x at512/1024 synthetic-routing
+tokens with actual layer0/1 weights.40 paired outputs exact,both orders
+lose;9 tests pass. Dynamic LDS8672->16864B,VGPR96->88,scratch0 both.
+No revival of prior spill issue; increased reduction slab/work distribution
+is a separate cost,not a proven occupancy diagnosis. Candidate removed
+before model admission;current row8 production remains.
+[Evidence](../benchmarks/results/2026-09-07-framework-qwen4exp-q51-row16-rejected.json).
+
 **GDN wave normalization promoted on owner evidence (September7 UTC):**
 model-input probe intercepts all21 serial-prefix calls/chunk,restores
 identical starting state outside timing,and compares full output/state

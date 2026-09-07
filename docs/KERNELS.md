@@ -788,6 +788,12 @@ Fallback requirements:
 
 ## Source-lineage audit
 
+Q5_1 per-row publication row16 specialization was tested and removed:
+actual two-bank512/1024 synthetic-routing screen0.429x/0.412x,
+40 pairs exact,9 tests pass. Dynamic LDS8672->16864B,VGPR96->88,
+scratch0 both. Production row8 unchanged; no runtime candidate remains.
+Evidence: `2026-09-07-framework-qwen4exp-q51-row16-rejected.json`.
+
 GDN exposes kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: exact128
 normalization reduction, stride64/32 grouped as parent then wave shuffle
 16/8/4/2/1; serial recurrence unchanged. Dk=Dv128 only. Synthetic

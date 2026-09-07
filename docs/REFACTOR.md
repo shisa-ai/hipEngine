@@ -1,5 +1,12 @@
 # hipEngine Refactor / Dead-Path Ledger
 
+## Qwen4Exp Q5_1 row16 publication: removed
+
+- Row16 after spill-free row publication loses0.429x/0.412x at512/1024
+  tokens,40 exact pairs. Dynamic LDS8672->16864B,VGPR96->88,scratch0.
+- Candidate removed; no model admission. Keep row8 production and do not
+  repeat unchanged row16 on the assumption that spill removal makes it faster.
+
 ## Qwen4Exp GDN wave-tail normalization production
 
 - Kernel-only `qwen4exp_sigmoid_wave_norm_prefill`: original serial
