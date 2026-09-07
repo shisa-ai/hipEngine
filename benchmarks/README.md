@@ -2,6 +2,11 @@
 
 Last updated: **2026-09-07 UTC**
 
+Raw-vector square64 rejected against production128x64:actual Q512/1024
+screen0.959-0.985x,80 exact pairs,27 tests. Candidate removed,
+production unchanged;historical zbook evidence remains separate.
+[Evidence](results/2026-09-07-framework-qwen4exp-mmq-square64-rejected.json).
+
 Prepacked MMQ token64 rejected:qkv/SSM512/1024 screen0.931-0.969x,
 80 exact pairs,27 tests. Lower VGPR did not improve timing.
 Prepacked128 and promoted raw-Q64 defaults unchanged.
