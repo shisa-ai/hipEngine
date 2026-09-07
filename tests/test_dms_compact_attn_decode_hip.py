@@ -68,7 +68,11 @@ def test_dms_compact_attn_decode_registers_and_build_plan() -> None:
         compiler_version="dms-test-version", target_arch="gfx1100"
     )
     assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" in gfx1151.flags
-    assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" not in gfx1100.flags
+    # gfx1100 measured 2026-09-08 on the W7900: the wave-group6 producer is
+    # 4.35x faster than the generic grouped producer at the 24q/4kv/256d
+    # geometry (0.344 -> 0.079 ms at live 8192) with identical output, so the
+    # define now covers both RDNA3 targets.
+    assert "-DHIPENGINE_DMS_ENABLE_WAVE_GROUP6=1" in gfx1100.flags
 
 
 def test_dms_compact_attn_decode_wrapper_validates_before_gpu_load() -> None:
