@@ -3,8 +3,9 @@
 Last updated: 2026-09-07.
 Status: **U0 complete; CPU IQ3_S/IQ2_S decoders and synthetic/real-row oracles
 added; raw IQ4_XS/IQ4_NL/IQ3_S/Q3_K dense GPU leaves pass bounded gfx1151
-checks. Published K_M eager c1 inference runs on gfx1151.** The eight-token
-smoke returns finite logits and coherent text; teacher-logit quality and broader
+checks. Published K_M eager c1 and public `LLM.generate()` run on gfx1151.**
+The eight-token eager smoke returns finite logits; public generation returns the
+same text without importing torch. Teacher-logit quality and broader
 serving are not qualified. Loader preflight has zero K_M refusals and seven
 remaining K_S refusals. Q5/Q6 expansion still needs compact resident integration.
 **No gfx1100 numerical validation is claimed.** General certificate
@@ -1429,6 +1430,8 @@ proposed `tests/test_gguf_ud_km.py`.
   from `The capital of France is`: ` Paris.\nThe capital of Germany is`.
   This is a smoke, not a teacher-quality gate or compact-memory claim. See
   `worklog/entries/20260907T035440.022336Z-lhl-ud-km-c1-integration-c5bbd6.md`.
+  Public `LLM.generate()` matches this completion in a fresh process without
+  importing torch; see the `ud-km-public-smoke` worklog entry.
 - [ ] Reject unsupported requested modes in preflight; c1 is not full serving.
 
 Run: `.venv/bin/python -m pytest tests/test_gguf_ud_km.py -q`.
